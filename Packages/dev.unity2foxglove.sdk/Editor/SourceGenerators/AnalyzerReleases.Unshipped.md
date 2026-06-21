@@ -14,3 +14,8 @@ FOXRUN011 | FoxRun | Error | FoxRun declaring class name is required.
 FOXRUN012 | FoxRun | Error | FoxRun member name is required.
 FOXRUN013 | FoxRun | Error | FoxRun publish mode must be between 0 and 3.
 FOXRUN014 | FoxRun | Error | FoxRun member kind must be field or property.
+FOXRUN018 | FoxRun | Error | [FoxRunField] requires an enclosing [FoxRunMessage] type.
+FOXRUN019 | FoxRun | Error | Aggregate and field-level FoxRun members cannot share one topic.
+FOXRUN020 | FoxRun | Error | Aggregate array fields are not supported yet.
+FOXRUN021 | FoxRun | Error | [FoxRunField] cannot be applied to static members.
+FOXRUN022 | FoxRun | Error | Aggregate JSON field names must be unique per topic.

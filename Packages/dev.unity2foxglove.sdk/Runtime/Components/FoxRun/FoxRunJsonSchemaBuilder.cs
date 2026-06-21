@@ -43,12 +43,7 @@ namespace Unity.FoxgloveSDK.Components
         private static void AppendShape(StringBuilder sb, FoxRunSchemaFieldInfo field)
         {
             if (field.Array)
-            {
-                sb.Append("{\"type\":\"array\",\"items\":");
-                AppendScalarOrObjectShape(sb, field.Type);
-                sb.Append('}');
-                return;
-            }
+                throw new InvalidOperationException("FoxRun aggregate array fields are not supported by generated JSON schema inference: " + field.JsonName);
 
             if (field.Nullable)
             {
@@ -67,10 +62,12 @@ namespace Unity.FoxgloveSDK.Components
             {
                 case "bool":
                 case "boolean":
+                case "Boolean":
                 case "System.Boolean":
                     sb.Append("{\"type\":\"boolean\"}");
                     break;
                 case "string":
+                case "String":
                 case "System.String":
                     sb.Append("{\"type\":\"string\"}");
                     break;
@@ -90,33 +87,46 @@ namespace Unity.FoxgloveSDK.Components
                 case "System.UInt32":
                 case "System.Int64":
                 case "System.UInt64":
+                case "uint8":
+                case "int8":
+                case "int16":
+                case "uint16":
+                case "int32":
+                case "uint32":
+                case "int64":
+                case "uint64":
                     sb.Append("{\"type\":\"integer\"}");
                     break;
                 case "float":
                 case "double":
                 case "System.Single":
                 case "System.Double":
-                    sb.Append("{\"type\":\"number\"}");
+                case "float32":
+                case "float64":
+                    AppendNullableNumber(sb);
                     break;
                 case "UnityEngine.Vector2":
                 case "Vector2":
+                case "unity.vector2.float32":
                     AppendNumberObject(sb, "x", "y");
                     break;
                 case "UnityEngine.Vector3":
                 case "Vector3":
+                case "unity.vector3.float32":
                     AppendNumberObject(sb, "x", "y", "z");
                     break;
                 case "UnityEngine.Quaternion":
                 case "Quaternion":
+                case "unity.quaternion.float32":
                     AppendNumberObject(sb, "x", "y", "z", "w");
                     break;
                 case "UnityEngine.Color":
                 case "Color":
+                case "unity.color.float32":
                     AppendNumberObject(sb, "r", "g", "b", "a");
                     break;
                 default:
-                    sb.Append("{\"type\":\"string\"}");
-                    break;
+                    throw new InvalidOperationException("Unsupported FoxRun aggregate schema field type: " + type);
             }
         }
 
@@ -128,7 +138,8 @@ namespace Unity.FoxgloveSDK.Components
                 if (i > 0)
                     sb.Append(',');
                 AppendString(sb, names[i]);
-                sb.Append(":{\"type\":\"number\"}");
+                sb.Append(':');
+                AppendNullableNumber(sb);
             }
             sb.Append("},\"required\":[");
             for (int i = 0; i < names.Length; i++)
@@ -138,6 +149,11 @@ namespace Unity.FoxgloveSDK.Components
                 AppendString(sb, names[i]);
             }
             sb.Append("]}");
+        }
+
+        private static void AppendNullableNumber(StringBuilder sb)
+        {
+            sb.Append("{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}");
         }
 
         private static string NormalizeType(string type)

@@ -167,6 +167,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var containingType = symbol.ContainingType;
             if (containingType == null) return null;
 
+            var memberLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource) ?? Location.None;
             var topics = new List<TopicEntry>();
             foreach (var attr in symbol.GetAttributes())
             {
@@ -198,45 +199,48 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == FieldAttrFullName);
             if (aggregateFieldAttr != null)
             {
+                if (symbol.IsStatic)
+                    return MemberData.ForDiagnostic(memberLocation, "FOXRUN021");
+
                 var messageAttr = containingType.GetAttributes()
                     .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == MessageAttrFullName);
-                if (messageAttr != null)
+                if (messageAttr == null)
+                    return MemberData.ForDiagnostic(memberLocation, "FOXRUN018");
+
+                var topic = ReadStringConstructorArgument(messageAttr);
+                var rateHz = 10f;
+                var schemaName = "";
+                var publishMode = 0;
+                var changeEpsilon = 0f;
+                var forceIntervalSeconds = 0f;
+                var when = "";
+                var unless = "";
+                foreach (var named in messageAttr.NamedArguments)
                 {
-                    var topic = ReadStringConstructorArgument(messageAttr);
-                    var rateHz = 10f;
-                    var schemaName = "";
-                    var publishMode = 0;
-                    var changeEpsilon = 0f;
-                    var forceIntervalSeconds = 0f;
-                    var when = "";
-                    var unless = "";
-                    foreach (var named in messageAttr.NamedArguments)
-                    {
-                        if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
-                        if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                        if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
-                        if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
-                        if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
-                        if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
-                        if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
-                    }
-
-                    if (string.IsNullOrWhiteSpace(schemaName))
-                        schemaName = DeclaringTypeName(containingType);
-
-                    var jsonFieldName = ReadStringConstructorArgument(aggregateFieldAttr);
-                    topics.Add(new TopicEntry(
-                        topic,
-                        rateHz,
-                        schemaName,
-                        publishMode,
-                        changeEpsilon,
-                        forceIntervalSeconds,
-                        when,
-                        unless,
-                        isAggregateMember: true,
-                        jsonFieldName: jsonFieldName));
+                    if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
+                    if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
+                    if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
+                    if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
+                    if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
+                    if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
+                    if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
                 }
+
+                if (string.IsNullOrWhiteSpace(schemaName))
+                    schemaName = DeclaringTypeName(containingType);
+
+                var jsonFieldName = ReadStringConstructorArgument(aggregateFieldAttr);
+                topics.Add(new TopicEntry(
+                    topic,
+                    rateHz,
+                    schemaName,
+                    publishMode,
+                    changeEpsilon,
+                    forceIntervalSeconds,
+                    when,
+                    unless,
+                    isAggregateMember: true,
+                    jsonFieldName: jsonFieldName));
             }
             if (topics.Count == 0) return null;
 
@@ -269,7 +273,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var isArray = TryGetArrayElementType(typeSymbol, out var elementType);
             var elementTypeName = elementType == null ? "" : elementType.ToDisplayString();
             var rawMemberOrder = symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start ?? 0;
-            var memberLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource) ?? Location.None;
 
             string ns = containingType.ContainingNamespace != null
                 && !containingType.ContainingNamespace.IsGlobalNamespace
@@ -1041,7 +1044,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
                 if (item.DiagnosticLocation != null)
                 {
-                    spc.ReportDiagnostic(Diagnostic.Create(Diags.MultiVariableDeclaration, item.DiagnosticLocation));
+                    spc.ReportDiagnostic(Diagnostic.Create(Diags.Member(item.DiagnosticId), item.DiagnosticLocation));
                     continue;
                 }
 
@@ -1380,12 +1383,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly TopicEntry[] Topics;
             /// <summary>Non-null when this represents a diagnostic-only placeholder.</summary>
             public readonly Location DiagnosticLocation;
+            public readonly string DiagnosticId;
 
             /// <summary>
             /// Factory for diagnostic-only instances (e.g. multi-variable declaration error).
             /// </summary>
-            public static MemberData ForDiagnostic(Location location) =>
-                new MemberData("", "", false, "", "", "", "", false, false, "", 0, Location.None, Array.Empty<TopicEntry>(), location);
+            public static MemberData ForDiagnostic(Location location, string diagnosticId = "FOXRUN004") =>
+                new MemberData("", "", false, "", "", "", "", false, false, "", 0, Location.None, Array.Empty<TopicEntry>(), location, diagnosticId);
 
             /// <summary>
             /// Creates a valid member-data record with no diagnostic.
@@ -1400,6 +1404,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// <c>ForDiagnostic</c>.
             /// </summary>
             private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation)
+                : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, diagnosticLocation, string.Empty)
+            {
+            }
+
+            private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId)
             {
                 Ns = ns;
                 ClassName = cn;
@@ -1415,6 +1424,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 MemberLocation = memberLocation;
                 Topics = t;
                 DiagnosticLocation = diagnosticLocation;
+                DiagnosticId = string.IsNullOrEmpty(diagnosticId) ? "FOXRUN004" : diagnosticId;
             }
 
             public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers()
@@ -1602,6 +1612,31 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "Topic '{0}' has mixed When or Unless values across FoxRun members",
                 "FoxRun", DiagnosticSeverity.Error, true);
 
+            public static readonly DiagnosticDescriptor AggregateFieldWithoutMessage = new DiagnosticDescriptor(
+                "FOXRUN018", "FoxRunField requires FoxRunMessage",
+                "[FoxRunField] member must be declared inside a type annotated with [FoxRunMessage]",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor MixedAggregateTopic = new DiagnosticDescriptor(
+                "FOXRUN019", "Mixed aggregate and field-level topic",
+                "{0}: topic cannot mix FoxRunMessage aggregate fields with field-level FoxRun members",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor AggregateArrayUnsupported = new DiagnosticDescriptor(
+                "FOXRUN020", "Aggregate array fields unsupported",
+                "{0}: FoxRun aggregate array fields are not supported yet",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor StaticAggregateMember = new DiagnosticDescriptor(
+                "FOXRUN021", "Static aggregate member unsupported",
+                "[FoxRunField] cannot be applied to static members",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor DuplicateAggregateJsonName = new DiagnosticDescriptor(
+                "FOXRUN022", "Duplicate aggregate JSON field",
+                "{0}: aggregate topic has duplicate JSON field names",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
             public static readonly DiagnosticDescriptor InvalidServiceName = new DiagnosticDescriptor(
                 "FOXSERVICE001", "FoxService name must be absolute",
                 "FoxService '{0}' must be non-empty and start with '/'",
@@ -1666,8 +1701,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN015": return ConditionMissing;
                     case "FOXRUN016": return ConditionNotBool;
                     case "FOXRUN017": return MixedTopicConditions;
+                    case "FOXRUN019": return MixedAggregateTopic;
+                    case "FOXRUN020": return AggregateArrayUnsupported;
+                    case "FOXRUN022": return DuplicateAggregateJsonName;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped shared FoxRun diagnostic id.");
+                }
+            }
+
+            public static DiagnosticDescriptor Member(string id)
+            {
+                switch (id)
+                {
+                    case "FOXRUN004": return MultiVariableDeclaration;
+                    case "FOXRUN018": return AggregateFieldWithoutMessage;
+                    case "FOXRUN021": return StaticAggregateMember;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped FoxRun member diagnostic id.");
                 }
             }
 

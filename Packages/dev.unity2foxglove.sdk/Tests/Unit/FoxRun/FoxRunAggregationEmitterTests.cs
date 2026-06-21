@@ -94,15 +94,7 @@ namespace Demo
         private bool _enabled;
     }
 }";
-            var compilation = CSharpCompilation.Create(
-                "Phase154GeneratorProbe",
-                new[] { CSharpSyntaxTree.ParseText(source) },
-                BasicReferences(),
-                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-
-            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
-            driver = driver.RunGenerators(compilation);
-            var result = driver.GetRunResult();
+            var result = RunGenerator(source);
             var generated = result.GeneratedTrees
                 .Select(tree => tree.GetText().ToString())
                 .SingleOrDefault(text => text.Contains("partial class VehicleTelemetry", StringComparison.Ordinal));
@@ -120,6 +112,106 @@ namespace Demo
             Assert.Contains("\\\"enabled\\\"", generated, StringComparison.Ordinal);
             Assert.DoesNotContain("mgr.PublishJson(\"/phase154/vehicle\"", generated, StringComparison.Ordinal);
             Assert.DoesNotContain("new Dictionary<string, object>", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsFoxRunFieldOutsideMessage()
+        {
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class VehicleTelemetry
+    {
+        [FoxRunField(""speed"")]
+        private float _speed;
+    }
+}";
+
+            AssertGeneratorDiagnostic(source, "FOXRUN018");
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsAggregateArrayFields()
+        {
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase154/vehicle"")]
+    public partial class VehicleTelemetry
+    {
+        [FoxRunField(""samples"")]
+        private float[] _samples;
+    }
+}";
+
+            AssertGeneratorDiagnostic(source, "FOXRUN020");
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsUnsupportedAggregateFieldTypes()
+        {
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase154/vehicle"")]
+    public partial class VehicleTelemetry
+    {
+        [FoxRunField(""payload"")]
+        private object _payload;
+    }
+}";
+
+            AssertGeneratorDiagnostic(source, "FOXRUN006");
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsMixedAggregateAndFieldLevelTopics()
+        {
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase154/vehicle"")]
+    public partial class VehicleTelemetry
+    {
+        [FoxRunField(""speed"")]
+        private float _speed;
+
+        [FoxRun(""/phase154/vehicle"")]
+        private float _legacySpeed;
+    }
+}";
+
+            AssertGeneratorDiagnostic(source, "FOXRUN019");
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsDuplicateAggregateJsonFieldNames()
+        {
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase154/vehicle"")]
+    public partial class VehicleTelemetry
+    {
+        [FoxRunField(""speed"")]
+        private float _speed;
+
+        [FoxRunField(""speed"")]
+        private float _velocity;
+    }
+}";
+
+            AssertGeneratorDiagnostic(source, "FOXRUN022");
         }
 
         [Fact]
@@ -156,7 +248,8 @@ namespace Demo
                                     new[]
                                     {
                                         new FoxRunSchemaFieldInfo("speed", "_speed", "field", "float", false, false, aggregate: true),
-                                        new FoxRunSchemaFieldInfo("enabled", "_enabled", "field", "bool", false, false, aggregate: true)
+                                        new FoxRunSchemaFieldInfo("enabled", "_enabled", "field", "bool", false, false, aggregate: true),
+                                        new FoxRunSchemaFieldInfo("position", "_position", "field", "unity.vector3.float32", false, false, aggregate: true)
                                     })
                             })
                     });
@@ -167,9 +260,11 @@ namespace Demo
 
                 Assert.True(registry.TryGetSchema("Demo.VehicleTelemetry", "jsonschema", out var entry));
                 Assert.Equal("jsonschema", entry.Encoding);
-                Assert.Contains("\"speed\":{\"type\":\"number\"}", entry.Content, StringComparison.Ordinal);
+                Assert.Contains("\"speed\":{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}", entry.Content, StringComparison.Ordinal);
                 Assert.Contains("\"enabled\":{\"type\":\"boolean\"}", entry.Content, StringComparison.Ordinal);
-                Assert.Contains("\"required\":[\"speed\",\"enabled\"]", entry.Content, StringComparison.Ordinal);
+                Assert.Contains("\"position\":{\"type\":\"object\"", entry.Content, StringComparison.Ordinal);
+                Assert.Contains("\"x\":{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}", entry.Content, StringComparison.Ordinal);
+                Assert.Contains("\"required\":[\"speed\",\"enabled\",\"position\"]", entry.Content, StringComparison.Ordinal);
             }
             finally
             {
@@ -235,6 +330,25 @@ namespace Demo
                 MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(Unity.FoxgloveSDK.Components.FoxRunMessageAttribute).Assembly.Location)
             };
+        }
+
+        private static GeneratorDriverRunResult RunGenerator(string source)
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase154GeneratorProbe",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                BasicReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGenerators(compilation);
+            return driver.GetRunResult();
+        }
+
+        private static void AssertGeneratorDiagnostic(string source, string diagnosticId)
+        {
+            var result = RunGenerator(source);
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == diagnosticId);
         }
     }
 }

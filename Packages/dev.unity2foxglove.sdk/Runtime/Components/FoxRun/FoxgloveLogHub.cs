@@ -142,6 +142,9 @@ namespace Unity.FoxgloveSDK.Components
                 if (!PendingRegistrations.Contains(source))
                     PendingRegistrations.Add(source);
             }
+
+            if (Application.isPlaying)
+                EnsureInstance();
         }
 
         /// <summary>Unregister a generated FoxRun source from the hub cache.</summary>
@@ -176,6 +179,14 @@ namespace Unity.FoxgloveSDK.Components
             return _instance.TriggerSource(source, topicIndex);
         }
 
+        /// <summary>Try to get the process-local topic bus, creating the hidden hub in Play Mode when needed.</summary>
+        public static bool TryGetTopicBus(out FoxTopicBus bus)
+        {
+            var instance = Application.isPlaying ? EnsureInstance() : _instance;
+            bus = instance?._topicBus;
+            return bus != null;
+        }
+
         /// <summary>Reset static state when Unity enters Play Mode without domain reload.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticState()
@@ -195,7 +206,13 @@ namespace Unity.FoxgloveSDK.Components
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
         {
-            if (_instance != null) return;
+            EnsureInstance();
+        }
+
+        private static FoxgloveLogHub EnsureInstance()
+        {
+            if (_instance != null)
+                return _instance;
 
             var existing = FindFirstObjectByType<FoxgloveLogHub>();
             if (existing != null)
@@ -208,7 +225,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     _instance = existing;
                     _instance.DrainPendingRegistrations();
-                    return;
+                    return _instance;
                 }
             }
 
@@ -217,6 +234,7 @@ namespace Unity.FoxgloveSDK.Components
             go.hideFlags = HideFlags.HideAndDontSave;
             _instance = go.AddComponent<FoxgloveLogHub>();
             _instance.DrainPendingRegistrations();
+            return _instance;
         }
 
         /// <summary>

@@ -59,6 +59,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && generator.Contains("DeclaringTypeName(containingType)", StringComparison.Ordinal),
                 "Source generator lowers FoxRunMessage/FoxRunField members into aggregate topic entries");
 
+            Check(generator.Contains("FOXRUN018", StringComparison.Ordinal)
+                  && generator.Contains("FOXRUN019", StringComparison.Ordinal)
+                  && generator.Contains("FOXRUN020", StringComparison.Ordinal)
+                  && generator.Contains("FOXRUN022", StringComparison.Ordinal),
+                "Source generator exposes fail-closed diagnostics for invalid aggregate message shapes");
+
             Check(publish.Contains("PublishFoxRunJsonBytes", StringComparison.Ordinal)
                   && publish.Contains("__WriteFoxRunJson_", StringComparison.Ordinal)
                   && publish.Contains("__AppendFoxRunJsonString", StringComparison.Ordinal)
@@ -81,8 +87,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(builder.Contains("public static string Build(FoxRunSchemaContractInfo contract)", StringComparison.Ordinal)
                   && builder.Contains("AppendNumberObject", StringComparison.Ordinal)
                   && builder.Contains("UnityEngine.Vector3", StringComparison.Ordinal)
-                  && builder.Contains("UnityEngine.Quaternion", StringComparison.Ordinal),
-                "FoxRun JSON schema builder emits object schemas with inline Unity vector and quaternion shapes");
+                  && builder.Contains("UnityEngine.Quaternion", StringComparison.Ordinal)
+                  && builder.Contains("Unsupported FoxRun aggregate schema field type", StringComparison.Ordinal)
+                  && !builder.Contains("default:\r\n                    sb.Append(\"{\\\"type\\\":\\\"string\\\"}\");", StringComparison.Ordinal),
+                "FoxRun JSON schema builder emits inline Unity shapes and rejects unsupported aggregate field types");
 
             Check(schemaField.Contains("public bool Aggregate { get; }", StringComparison.Ordinal)
                   && writer.Contains("field.Aggregate", StringComparison.Ordinal)
@@ -96,9 +104,11 @@ namespace Unity.FoxgloveSDK.Tests
                 FoxRunSchemaInfoRegistry.RegisterGenerated(CreateSchemaInfo(aggregate: true, schemaName: "Demo.VehicleTelemetry"));
                 FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas(registry);
                 Check(registry.TryGetSchema("Demo.VehicleTelemetry", FoxgloveSchemaDefinitions.JsonSchemaEncoding, out var entry)
-                      && entry.Content.Contains("\"speed\":{\"type\":\"number\"}", StringComparison.Ordinal)
-                      && entry.Content.Contains("\"enabled\":{\"type\":\"boolean\"}", StringComparison.Ordinal),
-                    "Aggregate FoxRun schema info registers inferred JSON schema content");
+                      && entry.Content.Contains("\"speed\":{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}", StringComparison.Ordinal)
+                      && entry.Content.Contains("\"enabled\":{\"type\":\"boolean\"}", StringComparison.Ordinal)
+                      && entry.Content.Contains("\"position\":{\"type\":\"object\"", StringComparison.Ordinal)
+                      && entry.Content.Contains("\"x\":{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}", StringComparison.Ordinal),
+                    "Aggregate FoxRun schema info registers inferred canonical JSON schema content");
             }
             finally
             {
@@ -155,8 +165,9 @@ namespace Unity.FoxgloveSDK.Tests
                                 0f,
                                 new[]
                                 {
-                                    new FoxRunSchemaFieldInfo("speed", "_speed", "field", "float", false, false, aggregate),
-                                    new FoxRunSchemaFieldInfo("enabled", "_enabled", "field", "bool", false, false, aggregate)
+                                    new FoxRunSchemaFieldInfo("speed", "_speed", "field", "float32", false, false, aggregate),
+                                    new FoxRunSchemaFieldInfo("enabled", "_enabled", "field", "bool", false, false, aggregate),
+                                    new FoxRunSchemaFieldInfo("position", "_position", "field", "unity.vector3.float32", false, false, aggregate)
                                 })
                         })
                 });

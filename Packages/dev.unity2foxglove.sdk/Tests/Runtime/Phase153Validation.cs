@@ -77,6 +77,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && hub.Contains("public interface IFoxgloveTopicBusSource", StringComparison.Ordinal)
                   && hub.Contains("private readonly FoxTopicBus _topicBus = new();", StringComparison.Ordinal)
                   && hub.Contains("public FoxTopicBus TopicBus => _topicBus;", StringComparison.Ordinal)
+                  && hub.Contains("public static bool TryGetTopicBus(out FoxTopicBus bus)", StringComparison.Ordinal)
+                  && hub.Contains("EnsureInstance()", StringComparison.Ordinal)
                   && hub.Contains("RegisterSourceContracts(source, count)", StringComparison.Ordinal)
                   && hub.Contains("UnregisterSourceContracts(source, timers.Length)", StringComparison.Ordinal)
                   && hub.Contains("RemoveSourceNow(source)", StringComparison.Ordinal),
