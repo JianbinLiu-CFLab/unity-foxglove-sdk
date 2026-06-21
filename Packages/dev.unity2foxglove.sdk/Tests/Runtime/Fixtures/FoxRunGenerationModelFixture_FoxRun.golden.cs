@@ -74,7 +74,20 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             __json.Append('{');
             __json.Append("\"samples\":");
-            __AppendFoxRunJsonString(__json, this._samples == null ? null : this._samples.ToString());
+            if (this._samples == null)
+            {
+                __json.Append("null");
+            }
+            else
+            {
+                __json.Append('[');
+                for (int __foxRunIndex_0 = 0; __foxRunIndex_0 < this._samples.Length; __foxRunIndex_0++)
+                {
+                    if (__foxRunIndex_0 > 0) __json.Append(',');
+                    if (float.IsNaN(this._samples[__foxRunIndex_0]) || float.IsInfinity(this._samples[__foxRunIndex_0])) __json.Append("null"); else __json.Append(this._samples[__foxRunIndex_0].ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+                }
+                __json.Append(']');
+            }
             __json.Append('}');
         }
 
@@ -104,7 +117,20 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             __json.Append('{');
             __json.Append("\"sampleList\":");
-            __AppendFoxRunJsonString(__json, this._sampleList == null ? null : this._sampleList.ToString());
+            if (this._sampleList == null)
+            {
+                __json.Append("null");
+            }
+            else
+            {
+                __json.Append('[');
+                for (int __foxRunIndex_0 = 0; __foxRunIndex_0 < this._sampleList.Count; __foxRunIndex_0++)
+                {
+                    if (__foxRunIndex_0 > 0) __json.Append(',');
+                    if (float.IsNaN(this._sampleList[__foxRunIndex_0]) || float.IsInfinity(this._sampleList[__foxRunIndex_0])) __json.Append("null"); else __json.Append(this._sampleList[__foxRunIndex_0].ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+                }
+                __json.Append(']');
+            }
             __json.Append('}');
         }
 

@@ -128,6 +128,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void LegacyArrayFieldTopicEmitsJsonArrayForSinkFanout()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "ArrayTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "ArrayTelemetry", "_samples", "field", "System.Single[]",
+                        true, false, "", "/phase155/array", 10f, "",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false, jsonFieldName: "samples")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("case 0: mgr.PublishJson(\"/phase155/array\", \"\"", source, StringComparison.Ordinal);
+            Assert.Contains("var __sink_0 = __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("_samples == null ? null : _samples.ToString()", source, StringComparison.Ordinal);
+            Assert.Contains("__json.Append('[');", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RoslynGeneratorLowersFoxRunMessageFieldsToAggregateJsonPublish()
         {
             var source = @"
