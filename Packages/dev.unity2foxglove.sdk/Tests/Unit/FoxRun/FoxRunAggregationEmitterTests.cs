@@ -77,6 +77,57 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void AggregateMemberEmitsSinkFanoutSideChannelReusingExplicitJsonBytes()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "VehicleTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "VehicleTelemetry", "_speed", "field", "System.Single",
+                        true, false, "", "/phase155/vehicle", 10f, "Demo.VehicleTelemetry",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: true, jsonFieldName: "speed")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("IFoxgloveTopicSinkSource", source, StringComparison.Ordinal);
+            Assert.Contains("void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)", source, StringComparison.Ordinal);
+            Assert.Contains("if (router == null || !router.HasSinks)", source, StringComparison.Ordinal);
+            Assert.Contains("private byte[] __foxRunLastJson_0;", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunLastJson_0 = __payload_0;", source, StringComparison.Ordinal);
+            Assert.Contains("var __sink_0 = __foxRunLastJson_0 ?? __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunLastJson_0 = null;", source, StringComparison.Ordinal);
+            Assert.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0,", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LegacySingleFieldTopicEmitsSinkFanoutSideChannel()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "ScalarTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "ScalarTelemetry", "_status", "field", "System.String",
+                        true, false, "", "/phase155/status", 10f, "foxglove.Log",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false, jsonFieldName: "message")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("case 0: mgr.PublishJson(\"/phase155/status\", \"foxglove.Log\"", source, StringComparison.Ordinal);
+            Assert.Contains("void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)", source, StringComparison.Ordinal);
+            Assert.Contains("var __sink_0 = __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
+            Assert.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0,", source, StringComparison.Ordinal);
+            Assert.Contains("\\\"message\\\"", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RoslynGeneratorLowersFoxRunMessageFieldsToAggregateJsonPublish()
         {
             var source = @"

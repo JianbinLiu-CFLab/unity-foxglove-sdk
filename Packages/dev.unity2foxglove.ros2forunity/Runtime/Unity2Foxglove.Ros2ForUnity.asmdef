@@ -1,7 +1,9 @@
 {
   "name": "Unity2Foxglove.Ros2ForUnity",
   "rootNamespace": "Unity2Foxglove.Ros2ForUnity",
-  "references": [],
+  "references": [
+    "Unity.FoxgloveSDK"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [
     "WebGL"

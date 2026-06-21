@@ -173,6 +173,7 @@ namespace Unity.FoxgloveSDK.Editor
             TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
             PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
             PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
+            PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
             ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
 
             var triggerMembers = TriggerEmitter.BuildTriggerMembers(members, topics, topicModes);

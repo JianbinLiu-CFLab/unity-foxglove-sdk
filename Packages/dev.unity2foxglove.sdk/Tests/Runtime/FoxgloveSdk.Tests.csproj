@@ -22,6 +22,7 @@
     <Compile Include="../../Runtime/Components/FoxService/IFoxgloveServiceSource.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxRun*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxTopic*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/IFoxTopic*.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
     <Compile Include="../../Runtime/Core/**/*.cs" />
@@ -146,6 +147,8 @@
     <Compile Include="Phase151Validation.cs" />
     <Compile Include="Phase153Validation.cs" />
     <Compile Include="Phase154Validation.cs" />
+    <Compile Include="Phase155Validation.cs" />
+    <Compile Include="Phase156Validation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="Phase138Validation.cs" />
