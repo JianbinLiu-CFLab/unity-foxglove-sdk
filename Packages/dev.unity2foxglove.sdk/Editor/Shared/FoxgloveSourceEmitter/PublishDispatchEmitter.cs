@@ -171,7 +171,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     var separator = j == 0 ? string.Empty : ",";
                     sb.AppendLine($"{pad}        __json.Append(\"{separator}\\\"{StringLiteralEmitter.CSharpStringLiteral(fields[j].JsonFieldName)}\\\":\");");
-                    EmitJsonValueAppend(sb, fields[j], pad + "        ");
+                    EmitJsonValueAppend(sb, fields[j], j, pad + "        ");
                 }
                 sb.AppendLine($"{pad}        __json.Append('}}');");
                 sb.AppendLine($"{pad}    }}");
@@ -213,10 +213,46 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    }}");
         }
 
-        private static void EmitJsonValueAppend(StringBuilder sb, FoxgloveSourceEmitter.TopicMember field, string pad)
+        private static void EmitJsonValueAppend(StringBuilder sb, FoxgloveSourceEmitter.TopicMember field, int fieldIndex, string pad)
         {
             var type = NormalizeType(field.TypeName);
             var access = TypeExprEmitter.MemberAccess(field.MemberName);
+            if (TryGetCollectionElementType(type, out var elementType, out var countProperty))
+            {
+                EmitCollectionJsonValueAppend(sb, elementType, countProperty, access, fieldIndex, pad);
+                return;
+            }
+
+            EmitScalarOrObjectJsonValueAppend(sb, type, access, pad);
+        }
+
+        private static void EmitCollectionJsonValueAppend(
+            StringBuilder sb,
+            string elementType,
+            string countProperty,
+            string access,
+            int fieldIndex,
+            string pad)
+        {
+            var indexName = "__foxRunIndex_" + fieldIndex;
+            sb.AppendLine($"{pad}if ({access} == null)");
+            sb.AppendLine($"{pad}{{");
+            sb.AppendLine($"{pad}    __json.Append(\"null\");");
+            sb.AppendLine($"{pad}}}");
+            sb.AppendLine($"{pad}else");
+            sb.AppendLine($"{pad}{{");
+            sb.AppendLine($"{pad}    __json.Append('[');");
+            sb.AppendLine($"{pad}    for (int {indexName} = 0; {indexName} < {access}.{countProperty}; {indexName}++)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        if ({indexName} > 0) __json.Append(',');");
+            EmitScalarOrObjectJsonValueAppend(sb, elementType, access + "[" + indexName + "]", pad + "        ");
+            sb.AppendLine($"{pad}    }}");
+            sb.AppendLine($"{pad}    __json.Append(']');");
+            sb.AppendLine($"{pad}}}");
+        }
+
+        private static void EmitScalarOrObjectJsonValueAppend(StringBuilder sb, string type, string access, string pad)
+        {
             switch (type)
             {
                 case "bool":
@@ -258,6 +294,49 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}__AppendFoxRunJsonString(__json, {access} == null ? null : {access}.ToString());");
                     break;
             }
+        }
+
+        private static bool TryGetCollectionElementType(string type, out string elementType, out string countProperty)
+        {
+            elementType = string.Empty;
+            countProperty = string.Empty;
+
+            if (type.EndsWith("[]", System.StringComparison.Ordinal))
+            {
+                elementType = NormalizeType(type.Substring(0, type.Length - 2));
+                countProperty = "Length";
+                return true;
+            }
+
+            const string listPrefix = "List<";
+            const string genericListPrefix = "System.Collections.Generic.List<";
+            const string iListPrefix = "IList<";
+            const string genericIListPrefix = "System.Collections.Generic.IList<";
+            const string readOnlyListPrefix = "IReadOnlyList<";
+            const string genericReadOnlyListPrefix = "System.Collections.Generic.IReadOnlyList<";
+
+            if (TryGetSingleGenericArgument(type, listPrefix, out elementType)
+                || TryGetSingleGenericArgument(type, genericListPrefix, out elementType)
+                || TryGetSingleGenericArgument(type, iListPrefix, out elementType)
+                || TryGetSingleGenericArgument(type, genericIListPrefix, out elementType)
+                || TryGetSingleGenericArgument(type, readOnlyListPrefix, out elementType)
+                || TryGetSingleGenericArgument(type, genericReadOnlyListPrefix, out elementType))
+            {
+                countProperty = "Count";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetSingleGenericArgument(string type, string prefix, out string argument)
+        {
+            argument = string.Empty;
+            if (!type.StartsWith(prefix, System.StringComparison.Ordinal) || !type.EndsWith(">", System.StringComparison.Ordinal))
+                return false;
+
+            argument = NormalizeType(type.Substring(prefix.Length, type.Length - prefix.Length - 1).Trim());
+            return argument.IndexOf(',') < 0;
         }
 
         private static void AppendVector(StringBuilder sb, string pad, string access, params string[] fields)
