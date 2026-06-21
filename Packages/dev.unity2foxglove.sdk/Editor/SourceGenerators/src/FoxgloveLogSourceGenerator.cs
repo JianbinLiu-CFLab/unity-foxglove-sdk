@@ -269,6 +269,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 typeSymbol = null;
             }
 
+            var hasInboundTopic = topics.Any(topic => topic.Mode == 1 || topic.Mode == 2);
+            if (hasInboundTopic
+                && ((symbol is IFieldSymbol inboundField && inboundField.IsReadOnly)
+                    || (symbol is IPropertySymbol inboundProperty && inboundProperty.SetMethod == null)))
+            {
+                return MemberData.ForDiagnostic(memberLocation, "FOXRUN028");
+            }
+
             var memberType = typeSymbol == null ? "object" : typeSymbol.ToDisplayString();
             var emissionTypeName = FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(memberType);
             var isValueType = typeSymbol?.IsValueType == true;
@@ -1619,6 +1627,31 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "{0}: FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe",
                 "FoxRun", DiagnosticSeverity.Error, true);
 
+            public static readonly DiagnosticDescriptor UnsupportedInboundShape = new DiagnosticDescriptor(
+                "FOXRUN024", "Unsupported FoxRun inbound shape",
+                "{0}: FoxRun inbound arrays and aggregate members are not supported",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor IgnoredSubscribePolicy = new DiagnosticDescriptor(
+                "FOXRUN025", "SubscribeOnly ignores publish policy",
+                "{0}: SubscribeOnly ignores publish timing options",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor BidirectionalAuthority = new DiagnosticDescriptor(
+                "FOXRUN026", "PublishAndSubscribe authority",
+                "{0}: PublishAndSubscribe requires explicit authority ownership",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor InboundNaming = new DiagnosticDescriptor(
+                "FOXRUN027", "FoxRun inbound naming",
+                "{0}: SubscribeOnly member name should communicate input-port authority",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor InboundTargetNotWritable = new DiagnosticDescriptor(
+                "FOXRUN028", "FoxRun inbound target is not writable",
+                "FoxRun inbound fields must not be readonly and properties must have a setter",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
             public static readonly DiagnosticDescriptor InvalidMemberKind = new DiagnosticDescriptor(
                 "FOXRUN014", "FoxRun member kind invalid",
                 "{0}: FoxRun member kind must be field or property",
@@ -1732,6 +1765,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN020": return AggregateArrayUnsupported;
                     case "FOXRUN022": return DuplicateAggregateJsonName;
                     case "FOXRUN023": return InvalidFoxRunMode;
+                    case "FOXRUN024": return UnsupportedInboundShape;
+                    case "FOXRUN025": return IgnoredSubscribePolicy;
+                    case "FOXRUN026": return BidirectionalAuthority;
+                    case "FOXRUN027": return InboundNaming;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped shared FoxRun diagnostic id.");
                 }
@@ -1744,6 +1781,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN004": return MultiVariableDeclaration;
                     case "FOXRUN018": return AggregateFieldWithoutMessage;
                     case "FOXRUN021": return StaticAggregateMember;
+                    case "FOXRUN028": return InboundTargetNotWritable;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped FoxRun member diagnostic id.");
                 }

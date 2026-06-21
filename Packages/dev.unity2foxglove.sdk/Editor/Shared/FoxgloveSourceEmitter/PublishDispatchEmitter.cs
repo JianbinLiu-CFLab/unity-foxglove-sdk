@@ -33,10 +33,19 @@ namespace Unity.FoxgloveSDK.Editor
                 var fields = topicMap[topics[i]];
                 var schema = StringLiteralEmitter.CSharpStringLiteral(fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "");
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
+                var suppressRemoteEcho = fields.Any(field => field.Mode == 2);
                 if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
                     sb.AppendLine($"{pad}            case {i}:");
+                    if (suppressRemoteEcho)
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunSuppressNextPublish_{i})");
+                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine($"{pad}                    __foxRunSuppressNextPublish_{i} = false;");
+                        sb.AppendLine($"{pad}                    break;");
+                        sb.AppendLine($"{pad}                }}");
+                    }
                     sb.AppendLine($"{pad}                var __payload_{i} = __BuildFoxRunJson_{i}();");
                     sb.AppendLine($"{pad}                __foxRunLastJson_{i} = __payload_{i};");
                     sb.AppendLine($"{pad}                mgr.PublishFoxRunJsonBytes(\"{topic}\", \"{schema}\", __payload_{i}, nowNs);");
@@ -44,7 +53,17 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 else
                 {
-                    sb.AppendLine($"{pad}            case {i}: mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs); break;");
+                    sb.AppendLine($"{pad}            case {i}:");
+                    if (suppressRemoteEcho)
+                    {
+                        sb.AppendLine($"{pad}                if (__foxRunSuppressNextPublish_{i})");
+                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine($"{pad}                    __foxRunSuppressNextPublish_{i} = false;");
+                        sb.AppendLine($"{pad}                    break;");
+                        sb.AppendLine($"{pad}                }}");
+                    }
+                    sb.AppendLine($"{pad}                mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs);");
+                    sb.AppendLine($"{pad}                break;");
                 }
             }
             sb.AppendLine($"{pad}        }}");
@@ -149,6 +168,11 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
+                if (fields.Any(field => field.Mode == 2))
+                {
+                    sb.AppendLine();
+                    sb.AppendLine($"{pad}    private bool __foxRunSuppressNextPublish_{i};");
+                }
                 if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);

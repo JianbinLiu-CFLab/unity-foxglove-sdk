@@ -68,6 +68,40 @@ namespace Unity.FoxgloveSDK.Editor
             if (member.Mode < 0 || member.Mode > 2)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN023", target, member.MemberName, "FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe."));
 
+            if (member.Mode != 0 && (member.IsArray || member.IsAggregateMember))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    "FOXRUN024",
+                    target,
+                    member.MemberName,
+                    "FoxRun inbound currently supports scalar field/property topics only; arrays and aggregate members are rejected."));
+
+            if (member.Mode == 1
+                && (member.PublishMode != 0
+                    || member.ChangeEpsilon > 0f
+                    || member.ForceIntervalSeconds > 0f
+                    || member.RateHz != 10f))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
+                    "FOXRUN025",
+                    target,
+                    member.MemberName,
+                    "SubscribeOnly ignores RateHz, PublishMode, ChangeEpsilon, and ForceIntervalSeconds."));
+            }
+
+            if (member.Mode == 2)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
+                    "FOXRUN026",
+                    target,
+                    member.MemberName,
+                    "PublishAndSubscribe exposes remote-authoritative state; document ownership and feedback behavior."));
+
+            if (member.Mode == 1 && !LooksLikeInputPort(member.MemberName))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
+                    "FOXRUN027",
+                    target,
+                    member.MemberName,
+                    "SubscribeOnly members should use an input-port name such as _incoming, _input, _requested, _command, or _remote."));
+
             if (!IsKnownMemberKind(member.MemberKind))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN014", target, member.MemberName, "FoxRun member kind must be 'field' or 'property'."));
 
@@ -222,6 +256,16 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return false;
+        }
+
+        private static bool LooksLikeInputPort(string memberName)
+        {
+            var value = (memberName ?? string.Empty).TrimStart('_').ToLowerInvariant();
+            return value.StartsWith("incoming", StringComparison.Ordinal)
+                   || value.StartsWith("input", StringComparison.Ordinal)
+                   || value.StartsWith("requested", StringComparison.Ordinal)
+                   || value.StartsWith("command", StringComparison.Ordinal)
+                   || value.StartsWith("remote", StringComparison.Ordinal);
         }
 
         private static bool IsIdentifierStart(char ch)

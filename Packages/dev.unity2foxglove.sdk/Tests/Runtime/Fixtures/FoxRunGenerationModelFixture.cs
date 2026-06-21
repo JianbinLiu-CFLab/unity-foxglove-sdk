@@ -9,6 +9,20 @@ using Unity.FoxgloveSDK.Components;
 
 namespace UnityEngine
 {
+    public struct Color
+    {
+        public float r;
+        public float g;
+        public float b;
+        public float a;
+    }
+
+    public struct Vector2
+    {
+        public float x;
+        public float y;
+    }
+
     public struct Vector3
     {
         public float x;

@@ -150,6 +150,11 @@ namespace Unity.FoxgloveSDK.Editor
             var publishMembers = members
                 .Where(member => member.Mode != 1)
                 .ToList();
+            var inputMembers = members
+                .Where(member => member.Mode == 1 || member.Mode == 2)
+                .OrderBy(member => member.Topic, StringComparer.Ordinal)
+                .ThenBy(member => member.MemberName, StringComparer.Ordinal)
+                .ToList();
 
             var topicMap = new Dictionary<string, List<TopicMember>>();
             foreach (var m in publishMembers)
@@ -175,18 +180,31 @@ namespace Unity.FoxgloveSDK.Editor
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
 
-            ClassFrameEmitter.EmitClassFrame(sb, ns, className, topics.Count, hasPolicy, hasConditions, pad);
-            TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
-            TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
-            PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
-            PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
-            PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
-            ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
+            ClassFrameEmitter.EmitClassFrame(
+                sb,
+                ns,
+                className,
+                topics.Count,
+                hasPolicy,
+                hasConditions,
+                inputMembers.Count > 0,
+                pad);
+            if (topics.Count > 0)
+            {
+                TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
+                TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
+                ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
+            }
+            InputDispatchEmitter.EmitInput(sb, inputMembers, topics, pad);
 
             var triggerMembers = TriggerEmitter.BuildTriggerMembers(publishMembers, topics, topicModes);
             TriggerEmitter.EmitTriggers(sb, triggerMembers, topics, topicModes, pad);
 
-            PolicyEmitter.EmitPolicy(sb, topics, topicMap, topicModes, pad);
+            if (topics.Count > 0)
+                PolicyEmitter.EmitPolicy(sb, topics, topicMap, topicModes, pad);
 
             sb.AppendLine($"{pad}}}");
             if (!string.IsNullOrEmpty(ns)) sb.AppendLine("}");

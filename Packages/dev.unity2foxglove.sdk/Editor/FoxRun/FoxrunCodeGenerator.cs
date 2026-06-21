@@ -342,6 +342,10 @@ namespace Unity.FoxgloveSDK.Editor
                 var attrs = fi.GetCustomAttributes<FoxRunAttribute>();
                 foreach (var a in attrs)
                 {
+                    if (a.Mode != FoxRunMode.PublishOnly && fi.IsInitOnly)
+                        throw new InvalidOperationException(
+                            "FOXRUN028: " + type.FullName + "." + fi.Name
+                            + ": FoxRun inbound fields must not be readonly.");
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
@@ -362,6 +366,10 @@ namespace Unity.FoxgloveSDK.Editor
                 var attrs = pi.GetCustomAttributes<FoxRunAttribute>();
                 foreach (var a in attrs)
                 {
+                    if (a.Mode != FoxRunMode.PublishOnly && !pi.CanWrite)
+                        throw new InvalidOperationException(
+                            "FOXRUN028: " + type.FullName + "." + pi.Name
+                            + ": FoxRun inbound properties must have a setter.");
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",

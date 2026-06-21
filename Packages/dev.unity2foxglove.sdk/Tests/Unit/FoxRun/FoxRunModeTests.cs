@@ -46,8 +46,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             Assert.Contains("FoxgloveLog_TopicCount => 1", source, StringComparison.Ordinal);
             Assert.Contains("/phase157/status", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("/phase157/cmd_vel", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("_incomingVelocity", source, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveInputTopicInfo(\"/phase157/cmd_vel\"", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("mgr.PublishJson(\"/phase157/cmd_vel\"", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -78,9 +78,63 @@ namespace Demo
                 "Expected CommandInput generated source. Diagnostics: " +
                 string.Join("; ", result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
             Assert.Contains("/phase157/status", generated, StringComparison.Ordinal);
-            Assert.DoesNotContain("/phase157/cmd_vel", generated, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveInputTopicInfo(\"/phase157/cmd_vel\"", generated, StringComparison.Ordinal);
             Assert.DoesNotContain("mgr.PublishJson(\"/phase157/cmd_vel\"", generated, StringComparison.Ordinal);
             Assert.DoesNotContain("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1)", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorEmitsTypedSubscribeOnlyAssignment()
+        {
+            var source = @"
+using UnityEngine;
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class CommandInput
+    {
+        [FoxRun(""/phase157/cmd_vel"", Mode = FoxRunMode.SubscribeOnly)]
+        private Vector3 _incomingVelocity;
+    }
+}";
+            var result = RunGenerator(source);
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class CommandInput", StringComparison.Ordinal));
+
+            Assert.Contains("partial class CommandInput : IFoxgloveInputSource", generated, StringComparison.Ordinal);
+            Assert.Contains("int IFoxgloveInputSource.FoxgloveInput_TopicCount => 1", generated, StringComparison.Ordinal);
+            Assert.Contains("new FoxgloveInputTopicInfo(\"/phase157/cmd_vel\", \"json\", FoxRunMode.SubscribeOnly)", generated, StringComparison.Ordinal);
+            Assert.Contains("FoxRunInboundJson.TryRead(payload, \"incomingVelocity\", out global::UnityEngine.Vector3 __value", generated, StringComparison.Ordinal);
+            Assert.Contains("this._incomingVelocity = __value", generated, StringComparison.Ordinal);
+            Assert.DoesNotContain("IFoxgloveLogSource", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorEmitsPublishAndSubscribeOnBothSurfaces()
+        {
+            var source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class SharedState
+    {
+        [FoxRun(""/phase157/state"", Mode = FoxRunMode.PublishAndSubscribe)]
+        private string _state;
+    }
+}";
+            var result = RunGenerator(source);
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class SharedState", StringComparison.Ordinal));
+
+            Assert.Contains("IFoxgloveLogSource", generated, StringComparison.Ordinal);
+            Assert.Contains("IFoxgloveInputSource", generated, StringComparison.Ordinal);
+            Assert.Contains("this._state = __value", generated, StringComparison.Ordinal);
+            Assert.Contains("__foxRunSuppressNextPublish_0 = true", generated, StringComparison.Ordinal);
+            Assert.Contains("if (__foxRunSuppressNextPublish_0)", generated, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -111,8 +165,8 @@ namespace Demo
                 generated != null,
                 "Expected CommandInput generated source. Diagnostics: " +
                 string.Join("; ", result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
-            Assert.DoesNotContain("/phase157/cmd_vel", generated, StringComparison.Ordinal);
-            Assert.DoesNotContain("_incomingVelocity", generated, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveInputTopicInfo(\"/phase157/cmd_vel\"", generated, StringComparison.Ordinal);
+            Assert.DoesNotContain("mgr.PublishJson(\"/phase157/cmd_vel\"", generated, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -197,6 +251,42 @@ namespace Demo
             Assert.NotEqual(
                 publishOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
                 subscribeOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash);
+        }
+
+        [Fact]
+        public void InboundValidationRejectsArraysAndWarnsAboutPublishOptions()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                new FoxRunGenerationMember(
+                    "Demo", "CommandInput", "_incomingSamples", "field", "System.Single[]",
+                    false, true, "System.Single", "/phase157/samples", 10f, "",
+                    1, 0.1f, 2f, "UnitTest", 0, "",
+                    mode: (int)FoxRunMode.SubscribeOnly)
+            });
+
+            var diagnostics = FoxRunGenerationModelValidator.Validate(model);
+
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024" && diagnostic.Severity == "Error");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN025" && diagnostic.Severity == "Warning");
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsReadOnlyInboundProperty()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class CommandInput
+    {
+        [FoxRun(""/phase157/cmd"", Mode = FoxRunMode.SubscribeOnly)]
+        private float IncomingCommand => 0;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
         }
 
         private static FoxRunGenerationModel ModelWithMode(FoxRunMode mode)

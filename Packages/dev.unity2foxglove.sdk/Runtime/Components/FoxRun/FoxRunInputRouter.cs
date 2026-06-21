@@ -1,0 +1,188 @@
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Module: Runtime/Components/FoxRun
+// Purpose: Deterministic allowlisted dispatch for generated FoxRun inputs.
+
+using System;
+using System.Collections.Generic;
+
+namespace Unity.FoxgloveSDK.Components
+{
+    public enum FoxRunInputDispatchStatus
+    {
+        Applied,
+        UnknownTopic,
+        PayloadTooLarge,
+        RateLimited,
+        DecodeRejected
+    }
+
+    public readonly struct FoxRunInputDispatchResult
+    {
+        public FoxRunInputDispatchResult(FoxRunInputDispatchStatus status, string diagnostic, int appliedCount)
+        {
+            Status = status;
+            Diagnostic = diagnostic ?? string.Empty;
+            AppliedCount = appliedCount;
+        }
+
+        public FoxRunInputDispatchStatus Status { get; }
+        public string Diagnostic { get; }
+        public int AppliedCount { get; }
+    }
+
+    public sealed class FoxRunInputRouter
+    {
+        private readonly Dictionary<string, List<Registration>> _registrations =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Queue<double>> _arrivalTimes =
+            new(StringComparer.Ordinal);
+
+        public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
+        {
+            MaxPayloadBytes = Math.Max(1, maxPayloadBytes);
+            MaxMessagesPerSecondPerTopic = Math.Max(1, maxMessagesPerSecondPerTopic);
+        }
+
+        public int MaxPayloadBytes { get; set; }
+        public int MaxMessagesPerSecondPerTopic { get; set; }
+
+        public void Register(IFoxgloveInputSource source)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+
+            for (var index = 0; index < source.FoxgloveInput_TopicCount; index++)
+            {
+                var info = source.FoxgloveInput_GetTopic(index);
+                if (string.IsNullOrWhiteSpace(info.Topic))
+                    continue;
+                if (!_registrations.TryGetValue(info.Topic, out var registrations))
+                    _registrations[info.Topic] = registrations = new List<Registration>();
+                if (registrations.Exists(item => ReferenceEquals(item.Source, source) && item.TopicIndex == index))
+                    continue;
+                registrations.Add(new Registration(source, index, info.Encoding));
+            }
+        }
+
+        public void Unregister(IFoxgloveInputSource source)
+        {
+            if (source == null)
+                return;
+
+            var emptyTopics = new List<string>();
+            foreach (var pair in _registrations)
+            {
+                pair.Value.RemoveAll(item => ReferenceEquals(item.Source, source));
+                if (pair.Value.Count == 0)
+                    emptyTopics.Add(pair.Key);
+            }
+            foreach (var topic in emptyTopics)
+            {
+                _registrations.Remove(topic);
+                _arrivalTimes.Remove(topic);
+            }
+        }
+
+        public FoxRunInputDispatchResult Dispatch(
+            string topic,
+            byte[] payload,
+            string encoding,
+            double nowSeconds)
+        {
+            if (string.IsNullOrEmpty(topic)
+                || !_registrations.TryGetValue(topic, out var registrations)
+                || registrations.Count == 0)
+            {
+                return new FoxRunInputDispatchResult(
+                    FoxRunInputDispatchStatus.UnknownTopic,
+                    "Topic is not in the generated FoxRun inbound allowlist.",
+                    0);
+            }
+
+            payload ??= Array.Empty<byte>();
+            if (payload.Length > Math.Max(1, MaxPayloadBytes))
+            {
+                return new FoxRunInputDispatchResult(
+                    FoxRunInputDispatchStatus.PayloadTooLarge,
+                    "Payload exceeds the FoxRun inbound byte limit.",
+                    0);
+            }
+
+            if (!AcceptRate(topic, nowSeconds))
+            {
+                return new FoxRunInputDispatchResult(
+                    FoxRunInputDispatchStatus.RateLimited,
+                    "Topic exceeded the FoxRun inbound rate limit.",
+                    0);
+            }
+
+            var applied = 0;
+            var firstError = string.Empty;
+            foreach (var registration in registrations.ToArray())
+            {
+                if (!string.Equals(registration.Encoding, encoding ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrEmpty(firstError))
+                        firstError = "Inbound encoding does not match the generated FoxRun contract.";
+                    continue;
+                }
+
+                try
+                {
+                    if (registration.Source.FoxgloveInput_TryApply(
+                            registration.TopicIndex,
+                            payload,
+                            encoding,
+                            out var error))
+                    {
+                        applied++;
+                    }
+                    else if (string.IsNullOrEmpty(firstError))
+                    {
+                        firstError = error;
+                    }
+                }
+                catch (Exception ex) when (!(ex is OutOfMemoryException)
+                                           && !(ex is StackOverflowException)
+                                           && !(ex is AccessViolationException))
+                {
+                    if (string.IsNullOrEmpty(firstError))
+                        firstError = ex.Message;
+                }
+            }
+
+            return applied > 0
+                ? new FoxRunInputDispatchResult(FoxRunInputDispatchStatus.Applied, firstError, applied)
+                : new FoxRunInputDispatchResult(FoxRunInputDispatchStatus.DecodeRejected, firstError, 0);
+        }
+
+        private bool AcceptRate(string topic, double nowSeconds)
+        {
+            if (!_arrivalTimes.TryGetValue(topic, out var arrivals))
+                _arrivalTimes[topic] = arrivals = new Queue<double>();
+
+            while (arrivals.Count > 0 && nowSeconds - arrivals.Peek() >= 1d)
+                arrivals.Dequeue();
+            if (arrivals.Count >= Math.Max(1, MaxMessagesPerSecondPerTopic))
+                return false;
+            arrivals.Enqueue(nowSeconds);
+            return true;
+        }
+
+        private readonly struct Registration
+        {
+            public Registration(IFoxgloveInputSource source, int topicIndex, string encoding)
+            {
+                Source = source;
+                TopicIndex = topicIndex;
+                Encoding = encoding ?? string.Empty;
+            }
+
+            public IFoxgloveInputSource Source { get; }
+            public int TopicIndex { get; }
+            public string Encoding { get; }
+        }
+    }
+}
