@@ -193,7 +193,8 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + StringLiteral(field.MemberKind) + ",");
                 sb.AppendLine(inner + "    " + StringLiteral(field.Type) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Nullable) + ",");
-                sb.AppendLine(inner + "    " + BoolLiteral(field.Array) + "),");
+                sb.AppendLine(inner + "    " + BoolLiteral(field.Array) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(field.Aggregate) + "),");
             }
             sb.AppendLine(indent + "}");
         }

@@ -31,6 +31,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private const string AttrFullName = "Unity.FoxgloveSDK.Components.FoxRunAttribute";
         private const string AttrQualifiedNameSuffix = ".FoxRun";
         private const string AttrQualifiedAttributeNameSuffix = ".FoxRunAttribute";
+        private const string MessageAttrShortName = "FoxRunMessage";
+        private const string MessageAttrAttributeName = "FoxRunMessageAttribute";
+        private const string MessageAttrFullName = "Unity.FoxgloveSDK.Components.FoxRunMessageAttribute";
+        private const string MessageAttrQualifiedNameSuffix = ".FoxRunMessage";
+        private const string MessageAttrQualifiedAttributeNameSuffix = ".FoxRunMessageAttribute";
+        private const string FieldAttrShortName = "FoxRunField";
+        private const string FieldAttrAttributeName = "FoxRunFieldAttribute";
+        private const string FieldAttrFullName = "Unity.FoxgloveSDK.Components.FoxRunFieldAttribute";
+        private const string FieldAttrQualifiedNameSuffix = ".FoxRunField";
+        private const string FieldAttrQualifiedAttributeNameSuffix = ".FoxRunFieldAttribute";
         private const string ServiceAttrShortName = "FoxService";
         private const string ServiceAttrAttributeName = "FoxServiceAttribute";
         private const string ServiceAttrFullName = "Unity.FoxgloveSDK.Components.FoxServiceAttribute";
@@ -70,9 +80,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private static bool IsCandidate(SyntaxNode node)
         {
             if (node is FieldDeclarationSyntax f && f.AttributeLists.Count > 0)
-                return HasFoxRunAttr(f.AttributeLists);
+                return HasFoxRunAttr(f.AttributeLists) || HasFoxRunFieldAttr(f.AttributeLists);
             if (node is PropertyDeclarationSyntax p && p.AttributeLists.Count > 0)
-                return HasFoxRunAttr(p.AttributeLists);
+                return HasFoxRunAttr(p.AttributeLists) || HasFoxRunFieldAttr(p.AttributeLists);
             return false;
         }
 
@@ -89,6 +99,20 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     if (name == AttrShortName || name == AttrAttributeName
                         || name.EndsWith(AttrQualifiedNameSuffix, StringComparison.Ordinal)
                         || name.EndsWith(AttrQualifiedAttributeNameSuffix, StringComparison.Ordinal))
+                        return true;
+                }
+            return false;
+        }
+
+        private static bool HasFoxRunFieldAttr(SyntaxList<AttributeListSyntax> lists)
+        {
+            foreach (var al in lists)
+                foreach (var a in al.Attributes)
+                {
+                    var name = a.Name.ToString();
+                    if (name == FieldAttrShortName || name == FieldAttrAttributeName
+                        || name.EndsWith(FieldAttrQualifiedNameSuffix, StringComparison.Ordinal)
+                        || name.EndsWith(FieldAttrQualifiedAttributeNameSuffix, StringComparison.Ordinal))
                         return true;
                 }
             return false;
@@ -140,14 +164,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
             if (symbol == null) return null;
 
+            var containingType = symbol.ContainingType;
+            if (containingType == null) return null;
+
             var topics = new List<TopicEntry>();
             foreach (var attr in symbol.GetAttributes())
             {
                 if (attr.AttributeClass?.ToDisplayString() != AttrFullName)
                     continue;
 
-                string topic = attr.ConstructorArguments.Length > 0
-                    ? attr.ConstructorArguments[0].Value as string ?? "" : "";
+                string topic = ReadStringConstructorArgument(attr);
                 float rateHz = 10f;
                 string schemaName = "";
                 int publishMode = 0;
@@ -167,10 +193,52 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 }
                 topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless));
             }
-            if (topics.Count == 0) return null;
 
-            var containingType = symbol.ContainingType;
-            if (containingType == null) return null;
+            var aggregateFieldAttr = symbol.GetAttributes()
+                .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == FieldAttrFullName);
+            if (aggregateFieldAttr != null)
+            {
+                var messageAttr = containingType.GetAttributes()
+                    .FirstOrDefault(attr => attr.AttributeClass?.ToDisplayString() == MessageAttrFullName);
+                if (messageAttr != null)
+                {
+                    var topic = ReadStringConstructorArgument(messageAttr);
+                    var rateHz = 10f;
+                    var schemaName = "";
+                    var publishMode = 0;
+                    var changeEpsilon = 0f;
+                    var forceIntervalSeconds = 0f;
+                    var when = "";
+                    var unless = "";
+                    foreach (var named in messageAttr.NamedArguments)
+                    {
+                        if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
+                        if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
+                        if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
+                        if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
+                        if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
+                        if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
+                        if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(schemaName))
+                        schemaName = DeclaringTypeName(containingType);
+
+                    var jsonFieldName = ReadStringConstructorArgument(aggregateFieldAttr);
+                    topics.Add(new TopicEntry(
+                        topic,
+                        rateHz,
+                        schemaName,
+                        publishMode,
+                        changeEpsilon,
+                        forceIntervalSeconds,
+                        when,
+                        unless,
+                        isAggregateMember: true,
+                        jsonFieldName: jsonFieldName));
+                }
+            }
+            if (topics.Count == 0) return null;
 
             bool isPartial = containingType.DeclaringSyntaxReferences
                 .Any(r => r.GetSyntax(ct) is TypeDeclarationSyntax tds &&
@@ -208,6 +276,43 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
 
             return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray());
+        }
+
+        private static string DeclaringTypeName(INamedTypeSymbol containingType)
+        {
+            if (containingType == null)
+                return string.Empty;
+
+            var ns = containingType.ContainingNamespace != null
+                     && !containingType.ContainingNamespace.IsGlobalNamespace
+                ? containingType.ContainingNamespace.ToDisplayString()
+                : string.Empty;
+            return string.IsNullOrEmpty(ns)
+                ? containingType.Name
+                : ns + "." + containingType.Name;
+        }
+
+        private static string ReadStringConstructorArgument(AttributeData attr)
+        {
+            if (attr == null)
+                return string.Empty;
+
+            if (attr.ConstructorArguments.Length > 0
+                && attr.ConstructorArguments[0].Value is string value)
+            {
+                return value;
+            }
+
+            if (attr.ApplicationSyntaxReference?.GetSyntax() is AttributeSyntax syntax
+                && syntax.ArgumentList?.Arguments.Count > 0
+                && syntax.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax literal
+                && literal.IsKind(SyntaxKind.StringLiteralExpression)
+                && literal.Token.Value is string syntaxValue)
+            {
+                return syntaxValue;
+            }
+
+            return string.Empty;
         }
 
         private static ServiceMethodData ExtractServiceMethod(GeneratorSyntaxContext ctx, System.Threading.CancellationToken ct)
@@ -1349,7 +1454,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     RawMemberOrder,
                     string.Empty,
                     topic.When,
-                    topic.Unless);
+                    topic.Unless,
+                    topic.IsAggregateMember,
+                    topic.JsonFieldName);
             }
         }
 
@@ -1373,6 +1480,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly float ForceIntervalSeconds;
             public readonly string When;
             public readonly string Unless;
+            public readonly bool IsAggregateMember;
+            public readonly string JsonFieldName;
 
             /// <summary>
             /// Creates a topic entry with the given topic, rate, and schema (backward compat).
@@ -1384,7 +1493,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// Creates a topic entry with publish policy.
             /// </summary>
             public TopicEntry(string topic, float rate, string schema,
-                int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "")
+                int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
+                bool isAggregateMember = false, string jsonFieldName = "")
             {
                 Topic = topic; RateHz = rate; SchemaName = schema;
                 PublishMode = publishMode;
@@ -1392,6 +1502,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ForceIntervalSeconds = forceIntervalSeconds;
                 When = when ?? string.Empty;
                 Unless = unless ?? string.Empty;
+                IsAggregateMember = isAggregateMember;
+                JsonFieldName = jsonFieldName ?? string.Empty;
             }
         }
 

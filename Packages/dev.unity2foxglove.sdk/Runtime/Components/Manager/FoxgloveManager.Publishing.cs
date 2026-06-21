@@ -319,6 +319,54 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Publishes a source-generated FoxRun JSON payload that has already
+        /// been serialized without runtime reflection.
+        /// </summary>
+        /// <param name="topic">Topic to publish to.</param>
+        /// <param name="schemaName">Schema name, or null/empty for schemaless JSON.</param>
+        /// <param name="payload">UTF-8 JSON payload bytes.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
+        public void PublishFoxRunJsonBytes(string topic, string schemaName, byte[] payload, ulong logTimeNs)
+        {
+#if UNITY_2020_3_OR_NEWER
+            PublishJsonMarker.Begin();
+            try
+            {
+#endif
+            if (SuppressLivePublishersForReplay)
+            {
+                return;
+            }
+
+            if (!IsRunning)
+            {
+                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                {
+                    Debug.LogWarning("[Foxglove] PublishFoxRunJsonBytes called but server is not running.");
+                    _warnedNotRunning = true;
+                }
+
+                return;
+            }
+
+            if (!TryValidatePublishTopic(topic, "publish FoxRun JSON"))
+                return;
+
+            var channelId = string.IsNullOrEmpty(schemaName)
+                ? GetOrRegisterChannel(topic, JsonEncoding)
+                : GetOrRegisterSchemaChannel(topic, schemaName, JsonEncoding);
+            _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
+            RecordPublishCadence(topic, JsonEncoding);
+#if UNITY_2020_3_OR_NEWER
+            }
+            finally
+            {
+                PublishJsonMarker.End();
+            }
+#endif
+        }
+
+        /// <summary>
         /// Publishes a protobuf-encoded payload on the specified topic.
         /// </summary>
         /// <param name="topic">Topic to publish to.</param>

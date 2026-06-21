@@ -35,7 +35,9 @@ namespace Unity.FoxgloveSDK.Editor
                     member.RawMemberOrder >= 0 ? member.RawMemberOrder : index,
                     member.ConditionalSymbols,
                     member.When,
-                    member.Unless))
+                    member.Unless,
+                    member.IsAggregateMember,
+                    member.JsonFieldName))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -62,6 +64,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string ConditionalSymbols;
         public readonly string When;
         public readonly string Unless;
+        public readonly bool IsAggregateMember;
+        public readonly string JsonFieldName;
 
         public FoxRunReflectionGenerationMember(
             string ns,
@@ -82,7 +86,9 @@ namespace Unity.FoxgloveSDK.Editor
             int rawMemberOrder,
             string conditionalSymbols,
             string when = "",
-            string unless = "")
+            string unless = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -105,6 +111,8 @@ namespace Unity.FoxgloveSDK.Editor
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
             When = when ?? string.Empty;
             Unless = unless ?? string.Empty;
+            IsAggregateMember = isAggregateMember;
+            JsonFieldName = jsonFieldName ?? string.Empty;
         }
 
         public FoxRunReflectionGenerationMember(
@@ -125,7 +133,9 @@ namespace Unity.FoxgloveSDK.Editor
             int rawMemberOrder,
             string conditionalSymbols,
             string when = "",
-            string unless = "")
+            string unless = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
             : this(
                 ns,
                 className,
@@ -145,7 +155,9 @@ namespace Unity.FoxgloveSDK.Editor
                 rawMemberOrder,
                 conditionalSymbols,
                 when,
-                unless)
+                unless,
+                isAggregateMember,
+                jsonFieldName)
         {
         }
     }

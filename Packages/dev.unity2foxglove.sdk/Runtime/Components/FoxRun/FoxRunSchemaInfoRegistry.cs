@@ -5,6 +5,7 @@
 // Purpose: Runtime registry for generated FoxRun schema metadata.
 
 using System;
+using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -53,6 +54,60 @@ namespace Unity.FoxgloveSDK.Components
                     "A generated FoxRun schema info snapshot with a different manifest hash attempted to register. " +
                     "The first snapshot remains active.";
             }
+        }
+
+        /// <summary>Registers generated FoxRun JSON schemas into a runtime schema registry.</summary>
+        public static void RegisterGeneratedSchemas(ISchemaRegistry registry)
+        {
+            if (registry == null)
+                throw new ArgumentNullException(nameof(registry));
+
+            FoxRunSchemaManifestInfo current;
+            lock (Sync)
+            {
+                current = _current;
+            }
+
+            if (current == null)
+                return;
+
+            foreach (var type in current.Types)
+            {
+                if (type == null)
+                    continue;
+
+                foreach (var contract in type.Contracts)
+                {
+                    if (contract == null
+                        || !string.Equals(contract.Encoding, "json", StringComparison.Ordinal)
+                        || string.IsNullOrWhiteSpace(contract.SchemaName)
+                        || !IsGeneratedAggregateContract(contract))
+                    {
+                        continue;
+                    }
+
+                    registry.Register(new SchemaEntry
+                    {
+                        Name = contract.SchemaName,
+                        Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
+                        Content = FoxRunJsonSchemaBuilder.Build(contract)
+                    });
+                }
+            }
+        }
+
+        private static bool IsGeneratedAggregateContract(FoxRunSchemaContractInfo contract)
+        {
+            if (contract.Fields == null || contract.Fields.Count == 0)
+                return false;
+
+            foreach (var field in contract.Fields)
+            {
+                if (field == null || !field.Aggregate)
+                    return false;
+            }
+
+            return true;
         }
 
         /// <summary>Clears generated registry state for validation tests.</summary>
