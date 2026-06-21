@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Components
         [Header("FoxRun Inbound")]
         [Tooltip("Allow generated SubscribeOnly and PublishAndSubscribe FoxRun members to receive client-published JSON. Disabled by default.")]
         [SerializeField] private bool _enableFoxRunInbound;
-        [Tooltip("Permit non-loopback FoxRun inbound only when a shared token is configured. This is a separate explicit remote-control opt-in.")]
+        [Tooltip("Permit non-loopback FoxRun inbound only when a configured shared token is required at WebSocket connect time. This is shared-token authorization, not per-client identity.")]
         [SerializeField] private bool _allowRemoteFoxRunInboundWithSharedToken;
         [SerializeField, Min(256)] private int _foxRunInboundMaxPayloadBytes = 64 * 1024;
         [SerializeField, Min(1)] private int _foxRunInboundMaxMessagesPerSecondPerTopic = 60;

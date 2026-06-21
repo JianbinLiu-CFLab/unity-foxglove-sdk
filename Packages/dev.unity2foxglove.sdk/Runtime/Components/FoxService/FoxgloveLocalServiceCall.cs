@@ -40,6 +40,13 @@ namespace Unity.FoxgloveSDK.Components
 
     public static class FoxgloveLocalServiceCall
     {
+        /// <summary>
+        /// Invoke a generated service handler on the caller thread.
+        /// </summary>
+        /// <remarks>
+        /// The timeout is reported after the synchronous handler returns; it is not
+        /// a preemptive cancellation mechanism.
+        /// </remarks>
         public static FoxgloveLocalServiceCallResult Invoke(
             FoxgloveGeneratedServiceDescriptor descriptor,
             JToken request,

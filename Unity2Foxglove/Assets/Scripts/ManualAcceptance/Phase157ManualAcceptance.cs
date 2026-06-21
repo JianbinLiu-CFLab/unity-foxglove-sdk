@@ -48,7 +48,7 @@ public sealed partial class Phase157ManualAcceptance : MonoBehaviour
     [SerializeField] private float appliedTargetSpeed;
 
     [Header("Bidirectional State")]
-    [Tooltip("Shared observed state used to verify PublishAndSubscribe echo suppression.")]
+    [Tooltip("Low-frequency shared observed state used to verify PublishAndSubscribe echo suppression; not a closed-loop control command.")]
 #pragma warning disable FOXRUN026 // Acceptance intentionally models shared observed state with explicit bidirectional ownership.
     [FoxRun("/phase157/shared-state", Mode = FoxRunMode.PublishAndSubscribe, RateHz = 2f)]
     [SerializeField] private float sharedState;
