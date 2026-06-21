@@ -330,6 +330,12 @@ namespace Unity.FoxgloveSDK.Editor
             var flags = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.DeclaredOnly;
             var ns = type.Namespace ?? "";
             var cn = type.Name;
+            var aggregateMessage = type.GetCustomAttribute<FoxRunMessageAttribute>();
+            var aggregateSchema = aggregateMessage == null
+                ? string.Empty
+                : string.IsNullOrWhiteSpace(aggregateMessage.SchemaName)
+                    ? (string.IsNullOrEmpty(ns) ? cn : ns + "." + cn)
+                    : aggregateMessage.SchemaName;
 
             foreach (var fi in type.GetFields(flags))
             {
@@ -341,6 +347,15 @@ namespace Unity.FoxgloveSDK.Editor
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
                         a.When, a.Unless));
                 }
+
+                var aggregateField = fi.GetCustomAttribute<FoxRunFieldAttribute>();
+                if (aggregateMessage != null && aggregateField != null)
+                {
+                    result.Add(new MemberData(
+                        fi.Name, fi.FieldType, "field", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
+                        (int)aggregateMessage.PublishMode, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, fi.MetadataToken, "",
+                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName));
+                }
             }
             foreach (var pi in type.GetProperties(flags))
             {
@@ -351,6 +366,15 @@ namespace Unity.FoxgloveSDK.Editor
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
                         a.When, a.Unless));
+                }
+
+                var aggregateField = pi.GetCustomAttribute<FoxRunFieldAttribute>();
+                if (aggregateMessage != null && aggregateField != null)
+                {
+                    result.Add(new MemberData(
+                        pi.Name, pi.PropertyType, "property", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
+                        (int)aggregateMessage.PublishMode, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, pi.MetadataToken, "",
+                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName));
                 }
             }
             return result;
@@ -649,13 +673,15 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string ConditionalSymbols;
             public readonly string When;
             public readonly string Unless;
+            public readonly bool IsAggregateMember;
+            public readonly string JsonFieldName;
 
             /// <summary>
             /// Constructs a <c>MemberData</c> from a reflection <c>Type</c> and
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "")
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "")
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -676,6 +702,8 @@ namespace Unity.FoxgloveSDK.Editor
                 ConditionalSymbols = conditionalSymbols ?? "";
                 When = when ?? "";
                 Unless = unless ?? "";
+                IsAggregateMember = isAggregateMember;
+                JsonFieldName = jsonFieldName ?? "";
             }
 
             /// <summary>
@@ -683,7 +711,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "")
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "")
             {
                 MemberName = name;
                 MemberKind = "field";
@@ -704,6 +732,8 @@ namespace Unity.FoxgloveSDK.Editor
                 ConditionalSymbols = conditionalSymbols ?? "";
                 When = when ?? "";
                 Unless = unless ?? "";
+                IsAggregateMember = isAggregateMember;
+                JsonFieldName = jsonFieldName ?? "";
             }
 
             public FoxRunManifestMember ToManifestMember()
@@ -722,7 +752,9 @@ namespace Unity.FoxgloveSDK.Editor
                     SchemaName,
                     PublishMode,
                     ChangeEpsilon,
-                    ForceIntervalSeconds);
+                    ForceIntervalSeconds,
+                    IsAggregateMember,
+                    JsonFieldName);
             }
 
             public FoxRunReflectionGenerationMember ToReflectionMember()
@@ -746,7 +778,9 @@ namespace Unity.FoxgloveSDK.Editor
                     RawMemberOrder,
                     ConditionalSymbols,
                     When,
-                    Unless);
+                    Unless,
+                    IsAggregateMember,
+                    JsonFieldName);
             }
         }
 

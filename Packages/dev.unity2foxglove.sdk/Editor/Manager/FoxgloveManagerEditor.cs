@@ -120,10 +120,8 @@ namespace Unity.FoxgloveSDK.Editor
                         if (stats.Supported)
                         {
                             EditorGUILayout.IntField("Active Clients", stats.ActiveClientCount);
-                            if (stats.TotalQueuedFrames > 0)
-                                EditorGUILayout.LongField("Queued Frames", stats.TotalQueuedFrames);
-                            if (stats.TotalDroppedDataFrames > 0)
-                                EditorGUILayout.LongField("Dropped Data Frames", stats.TotalDroppedDataFrames);
+                            EditorGUILayout.LongField("Queued Frames", stats.TotalQueuedFrames);
+                            EditorGUILayout.LongField("Dropped Data Frames", stats.TotalDroppedDataFrames);
                         }
                     }
                 }

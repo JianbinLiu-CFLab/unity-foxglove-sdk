@@ -60,6 +60,7 @@ namespace Unity.FoxgloveSDK.Components
 
             try
             {
+                FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas(_runtime.Schemas);
                 RegisterAssetRoots();
                 SetupPlaybackControl();
                 if (!SetupRecording())

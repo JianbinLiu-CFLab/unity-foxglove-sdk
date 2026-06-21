@@ -55,6 +55,10 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string When;
             /// <summary>Optional bool member that must be false to publish.</summary>
             public readonly string Unless;
+            /// <summary>True when the member belongs to a class-level FoxRun aggregate message.</summary>
+            public readonly bool IsAggregateMember;
+            /// <summary>JSON property name emitted for aggregate and dictionary payloads.</summary>
+            public readonly string JsonFieldName;
 
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
@@ -66,7 +70,8 @@ namespace Unity.FoxgloveSDK.Editor
             /// Creates a topic-member descriptor with publish policy.
             /// </summary>
             public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName,
-                int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "")
+                int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
+                bool isAggregateMember = false, string jsonFieldName = "")
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -78,6 +83,10 @@ namespace Unity.FoxgloveSDK.Editor
                 ForceIntervalSeconds = forceIntervalSeconds;
                 When = when ?? string.Empty;
                 Unless = unless ?? string.Empty;
+                IsAggregateMember = isAggregateMember;
+                JsonFieldName = string.IsNullOrWhiteSpace(jsonFieldName)
+                    ? DefaultJsonFieldName(memberName)
+                    : jsonFieldName;
             }
         }
 
@@ -161,7 +170,9 @@ namespace Unity.FoxgloveSDK.Editor
 
             ClassFrameEmitter.EmitClassFrame(sb, ns, className, topics.Count, hasPolicy, hasConditions, pad);
             TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
+            TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
             PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
+            PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
             ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
 
             var triggerMembers = TriggerEmitter.BuildTriggerMembers(members, topics, topicModes);
@@ -184,6 +195,14 @@ namespace Unity.FoxgloveSDK.Editor
             if (fields.Any(f => f.PublishMode == 1))
                 return 1;
             return 0;
+        }
+
+        internal static string DefaultJsonFieldName(string memberName)
+        {
+            var name = memberName != null && memberName.StartsWith("@", StringComparison.Ordinal)
+                ? memberName.Substring(1)
+                : memberName ?? string.Empty;
+            return name.TrimStart('_');
         }
     }
 }

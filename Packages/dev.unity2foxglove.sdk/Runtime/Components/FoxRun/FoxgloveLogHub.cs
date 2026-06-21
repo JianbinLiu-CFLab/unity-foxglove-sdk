@@ -58,6 +58,29 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
+    /// Optional FoxRun contract surface implemented by generated sources that
+    /// expose stable topic identity for local routing and future fanout phases.
+    /// </summary>
+    public interface IFoxgloveTopicContractSource
+    {
+        /// <summary>Stable source identity used by the local topic bus.</summary>
+        string FoxgloveLog_Origin { get; }
+        /// <summary>Retrieve the topic contract by generated topic index.</summary>
+        FoxTopicContract FoxgloveLog_GetContract(int index);
+    }
+
+    /// <summary>
+    /// Optional side-channel implemented by generated sources that can publish
+    /// typed envelopes to the process-local topic bus after live publish
+    /// succeeds. The live Foxglove path remains the primary path.
+    /// </summary>
+    public interface IFoxgloveTopicBusSource
+    {
+        /// <summary>Publish one topic value to the local topic bus.</summary>
+        void FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs);
+    }
+
+    /// <summary>
     /// Optional interface for event-driven FoxRun sources.
     /// Sources that implement this interface can suppress unchanged values
     /// and publish heartbeat frames. Sources that do not implement it
@@ -89,6 +112,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _enableFallbackSceneScan = true;
         /// <summary>Per-source scheduler state for rate throttling.</summary>
         private readonly Dictionary<IFoxgloveLogSource, FixedRatePublishState[]> _timers = new();
+        private readonly FoxTopicBus _topicBus = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
         private readonly List<IFoxgloveLogSource> _stale = new();
         private readonly List<IFoxgloveLogSource> _pendingAdds = new();
@@ -104,6 +128,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Fallback scene scan interval used when generated sources did not self-register.</summary>
         private const float ScanIntervalSeconds = 2f;
 
+        /// <summary>Process-local FoxRun topic bus. Publish remains Unity main-thread only.</summary>
+        public FoxTopicBus TopicBus => _topicBus;
+
         /// <summary>Register a generated FoxRun source without waiting for the fallback scene scan.</summary>
         public static void RegisterSource(IFoxgloveLogSource source)
         {
@@ -115,6 +142,9 @@ namespace Unity.FoxgloveSDK.Components
                 if (!PendingRegistrations.Contains(source))
                     PendingRegistrations.Add(source);
             }
+
+            if (Application.isPlaying)
+                EnsureInstance();
         }
 
         /// <summary>Unregister a generated FoxRun source from the hub cache.</summary>
@@ -149,6 +179,14 @@ namespace Unity.FoxgloveSDK.Components
             return _instance.TriggerSource(source, topicIndex);
         }
 
+        /// <summary>Try to get the process-local topic bus, creating the hidden hub in Play Mode when needed.</summary>
+        public static bool TryGetTopicBus(out FoxTopicBus bus)
+        {
+            var instance = Application.isPlaying ? EnsureInstance() : _instance;
+            bus = instance?._topicBus;
+            return bus != null;
+        }
+
         /// <summary>Reset static state when Unity enters Play Mode without domain reload.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticState()
@@ -168,7 +206,13 @@ namespace Unity.FoxgloveSDK.Components
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoCreate()
         {
-            if (_instance != null) return;
+            EnsureInstance();
+        }
+
+        private static FoxgloveLogHub EnsureInstance()
+        {
+            if (_instance != null)
+                return _instance;
 
             var existing = FindFirstObjectByType<FoxgloveLogHub>();
             if (existing != null)
@@ -181,7 +225,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     _instance = existing;
                     _instance.DrainPendingRegistrations();
-                    return;
+                    return _instance;
                 }
             }
 
@@ -190,6 +234,7 @@ namespace Unity.FoxgloveSDK.Components
             go.hideFlags = HideFlags.HideAndDontSave;
             _instance = go.AddComponent<FoxgloveLogHub>();
             _instance.DrainPendingRegistrations();
+            return _instance;
         }
 
         /// <summary>
@@ -278,6 +323,7 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
 
                 source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
+                PublishTopicBusSideChannel(source, topicIndex, nowNs, "scheduled publish");
                 policySource?.FoxgloveLog_MarkPublished(topicIndex, nowSec);
                 return true;
             }
@@ -296,6 +342,7 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
 
                 source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
+                PublishTopicBusSideChannel(source, topicIndex, nowNs, "trigger publish");
                 if (source is IFoxgloveLogPolicySource policySource)
                     policySource.FoxgloveLog_MarkPublished(topicIndex, nowSec);
                 return true;
@@ -332,6 +379,25 @@ namespace Unity.FoxgloveSDK.Components
                 Debug.LogWarning($"[FoxRun] {operation} failed for {sourceName}[{topicIndex}]: {ex.Message}");
         }
 
+        private void PublishTopicBusSideChannel(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            ulong nowNs,
+            string operation)
+        {
+            if (!(source is IFoxgloveTopicBusSource busSource))
+                return;
+
+            try
+            {
+                busSource.FoxgloveLog_PublishToBus(topicIndex, _topicBus, nowNs);
+            }
+            catch (Exception ex) when (IsRecoverableSourceException(ex))
+            {
+                LogSourceFailure(source, topicIndex, operation + " bus side-channel", ex);
+            }
+        }
+
         /// <summary>
         /// Finds every active MonoBehaviour implementing <see cref="IFoxgloveLogSource"/>
         /// and registers new sources in the timer dictionary.
@@ -365,8 +431,67 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             var count = source.FoxgloveLog_TopicCount;
             if (count > 0)
+            {
                 _timers[source] = new FixedRatePublishState[count];
+                RegisterSourceContracts(source, count);
+            }
         }
+
+        private void RegisterSourceContracts(IFoxgloveLogSource source, int count)
+        {
+            var contractSource = source as IFoxgloveTopicContractSource;
+            var origin = contractSource?.FoxgloveLog_Origin ?? source.GetType().FullName ?? string.Empty;
+            for (var i = 0; i < count; i++)
+            {
+                try
+                {
+                    var contract = contractSource != null
+                        ? contractSource.FoxgloveLog_GetContract(i)
+                        : FallbackContract(source.FoxgloveLog_GetTopic(i));
+                    if (contract == null)
+                        continue;
+
+                    var result = _topicBus.Register(contract, origin);
+                    if (!result.Accepted)
+                        LogSourceFailure(source, i, "topic contract registration", new InvalidOperationException(result.Diagnostic));
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, i, "topic contract registration", ex);
+                }
+            }
+        }
+
+        private void UnregisterSourceContracts(IFoxgloveLogSource source, int count)
+        {
+            var contractSource = source as IFoxgloveTopicContractSource;
+            var origin = contractSource?.FoxgloveLog_Origin ?? source.GetType().FullName ?? string.Empty;
+            for (var i = 0; i < count; i++)
+            {
+                try
+                {
+                    var contract = contractSource != null
+                        ? contractSource.FoxgloveLog_GetContract(i)
+                        : FallbackContract(source.FoxgloveLog_GetTopic(i));
+                    if (contract != null)
+                        _topicBus.Unregister(contract.Topic, origin);
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, i, "topic contract unregister", ex);
+                }
+            }
+        }
+
+        private static FoxTopicContract FallbackContract(FoxgloveLogTopicInfo info)
+            => new FoxTopicContract(
+                info.Topic,
+                string.Empty,
+                "json",
+                string.Empty,
+                string.Empty,
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
 
         private void RemoveSource(IFoxgloveLogSource source)
         {
@@ -379,6 +504,17 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
+            RemoveSourceNow(source);
+        }
+
+        private void RemoveSourceNow(IFoxgloveLogSource source)
+        {
+            if (source == null)
+                return;
+            if (!_timers.TryGetValue(source, out var timers))
+                return;
+
+            UnregisterSourceContracts(source, timers.Length);
             _timers.Remove(source);
         }
 
@@ -387,7 +523,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_pendingRemoves.Count > 0)
             {
                 foreach (var source in _pendingRemoves)
-                    _timers.Remove(source);
+                    RemoveSourceNow(source);
                 _pendingRemoves.Clear();
             }
 

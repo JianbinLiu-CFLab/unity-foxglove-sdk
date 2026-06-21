@@ -120,6 +120,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string ConditionalSymbols;
         public readonly string When;
         public readonly string Unless;
+        public readonly bool IsAggregateMember;
+        public readonly string JsonFieldName;
 
         public FoxRunGenerationMember(
             string ns,
@@ -140,7 +142,9 @@ namespace Unity.FoxgloveSDK.Editor
             int rawMemberOrder,
             string conditionalSymbols,
             string when = "",
-            string unless = "")
+            string unless = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
             : this(
                 ns,
                 className,
@@ -161,7 +165,9 @@ namespace Unity.FoxgloveSDK.Editor
                 rawMemberOrder,
                 conditionalSymbols,
                 when,
-                unless)
+                unless,
+                isAggregateMember,
+                jsonFieldName)
         {
         }
 
@@ -185,7 +191,9 @@ namespace Unity.FoxgloveSDK.Editor
             int rawMemberOrder,
             string conditionalSymbols,
             string when = "",
-            string unless = "")
+            string unless = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
             : this(
                 ns,
                 className,
@@ -207,7 +215,9 @@ namespace Unity.FoxgloveSDK.Editor
                 rawMemberOrder,
                 conditionalSymbols,
                 when,
-                unless)
+                unless,
+                isAggregateMember,
+                jsonFieldName)
         {
         }
 
@@ -232,7 +242,9 @@ namespace Unity.FoxgloveSDK.Editor
             int rawMemberOrder,
             string conditionalSymbols,
             string when = "",
-            string unless = "")
+            string unless = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -263,6 +275,10 @@ namespace Unity.FoxgloveSDK.Editor
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
             When = when ?? string.Empty;
             Unless = unless ?? string.Empty;
+            IsAggregateMember = isAggregateMember;
+            JsonFieldName = string.IsNullOrWhiteSpace(jsonFieldName)
+                ? DefaultJsonFieldName(MemberName)
+                : jsonFieldName;
             CanonicalType = string.IsNullOrEmpty(canonicalType)
                 ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(SelectCanonicalSourceType())
                 : FoxRunCanonicalTypeNormalizer.NormalizeTypeName(canonicalType);
@@ -288,7 +304,17 @@ namespace Unity.FoxgloveSDK.Editor
                 ChangeEpsilon,
                 ForceIntervalSeconds,
                 When,
-                Unless);
+                Unless,
+                IsAggregateMember,
+                JsonFieldName);
+        }
+
+        private static string DefaultJsonFieldName(string memberName)
+        {
+            var name = memberName != null && memberName.StartsWith("@", StringComparison.Ordinal)
+                ? memberName.Substring(1)
+                : memberName ?? string.Empty;
+            return name.TrimStart('_');
         }
 
         public static float NormalizeRateHz(float rateHz)

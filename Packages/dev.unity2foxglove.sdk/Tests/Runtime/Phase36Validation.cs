@@ -6,6 +6,7 @@
 // counters, immutability, and unsupported fallback.
 
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -41,6 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestSnapshotClientsNotMutable();
             TestDisconnectedClientDropsRetained();
             TestRuntimeAccessorLifecycle();
+            TestCompactStatusDrawsStableTransportStatsControls();
 
             Console.WriteLine("Phase 36: All checks passed.");
         }
@@ -227,6 +229,27 @@ namespace Unity.FoxgloveSDK.Tests
             snap = runtime.GetTransportStatsSnapshot();
             Check(!snap.IsRunning, "36C-1d: transport not running after stop");
             // No exception thrown = pass
+        }
+
+        private static void TestCompactStatusDrawsStableTransportStatsControls()
+        {
+            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            Check(editorSource.Contains("EditorGUILayout.LongField(\"Queued Frames\", stats.TotalQueuedFrames);", StringComparison.Ordinal),
+                "36D-1: compact status always draws queued frame count");
+            Check(editorSource.Contains("EditorGUILayout.LongField(\"Dropped Data Frames\", stats.TotalDroppedDataFrames);", StringComparison.Ordinal),
+                "36D-2: compact status always draws dropped frame count");
+            Check(!editorSource.Contains("if (stats.TotalQueuedFrames > 0)", StringComparison.Ordinal)
+                  && !editorSource.Contains("if (stats.TotalDroppedDataFrames > 0)", StringComparison.Ordinal),
+                "36D-3: compact status avoids value-dependent IMGUI control count changes");
+        }
+
+        private static string ReadRepoText(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not find repository root.");
+
+            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         }
 
         /// <summary>

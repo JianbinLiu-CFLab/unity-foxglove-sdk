@@ -86,6 +86,13 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN006", target, member.MemberName, message));
             }
 
+            if (member.IsAggregateMember && member.IsArray)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    "FOXRUN020",
+                    target,
+                    member.MemberName,
+                    "FoxRun aggregate array fields are not supported yet; publish a scalar aggregate field or keep the array as a field-level topic."));
+
             if (IsUnsupportedGenericMember(member))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN007", target, member.MemberName, "Generic FoxRun member type may be unsafe for IL2CPP contract governance."));
 
@@ -127,6 +134,30 @@ namespace Unity.FoxgloveSDK.Editor
                         group.Key,
                         "",
                         "Topic has conflicting SchemaName values across FoxRun members."));
+
+                if (group.Any(member => member.IsAggregateMember) && group.Any(member => !member.IsAggregateMember))
+                {
+                    var first = group.First();
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                        "FOXRUN019",
+                        first.DeclaringType + "." + first.MemberName,
+                        first.MemberName,
+                        "Topic '" + group.Key + "' cannot mix FoxRunMessage aggregate fields with field-level FoxRun members."));
+                }
+
+                var duplicateJsonName = group
+                    .Where(member => member.IsAggregateMember)
+                    .GroupBy(member => member.JsonFieldName, StringComparer.Ordinal)
+                    .FirstOrDefault(names => names.Count() > 1);
+                if (duplicateJsonName != null)
+                {
+                    var first = duplicateJsonName.First();
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                        "FOXRUN022",
+                        first.DeclaringType + "." + first.MemberName,
+                        first.MemberName,
+                        "FoxRun aggregate topic '" + group.Key + "' has duplicate JSON field name '" + duplicateJsonName.Key + "'."));
+                }
 
                 var collision = group
                     .GroupBy(member => member.MemberName.TrimStart('_'), StringComparer.Ordinal)

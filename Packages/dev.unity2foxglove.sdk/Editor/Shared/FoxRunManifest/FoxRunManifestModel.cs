@@ -25,6 +25,8 @@ namespace Unity.FoxgloveSDK.Editor
         public int PublishMode { get; }
         public float ChangeEpsilon { get; }
         public float ForceIntervalSeconds { get; }
+        public bool IsAggregateMember { get; }
+        public string JsonFieldName { get; }
 
         public FoxRunManifestMember(
             string ns,
@@ -40,7 +42,9 @@ namespace Unity.FoxgloveSDK.Editor
             string schemaName,
             int publishMode,
             float changeEpsilon,
-            float forceIntervalSeconds)
+            float forceIntervalSeconds,
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -56,6 +60,8 @@ namespace Unity.FoxgloveSDK.Editor
             PublishMode = publishMode;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
+            IsAggregateMember = isAggregateMember;
+            JsonFieldName = jsonFieldName ?? string.Empty;
         }
     }
 
@@ -176,6 +182,7 @@ namespace Unity.FoxgloveSDK.Editor
         public string Type { get; }
         public bool Nullable { get; }
         public bool Array { get; }
+        public bool Aggregate { get; }
 
         public FoxRunManifestField(
             string jsonName,
@@ -183,7 +190,8 @@ namespace Unity.FoxgloveSDK.Editor
             string memberKind,
             string type,
             bool nullable,
-            bool array)
+            bool array,
+            bool aggregate = false)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -191,6 +199,7 @@ namespace Unity.FoxgloveSDK.Editor
             Type = type ?? string.Empty;
             Nullable = nullable;
             Array = array;
+            Aggregate = aggregate;
         }
     }
 

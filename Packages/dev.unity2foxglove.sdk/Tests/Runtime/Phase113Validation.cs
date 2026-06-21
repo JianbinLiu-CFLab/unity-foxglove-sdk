@@ -234,7 +234,7 @@ namespace Unity.FoxgloveSDK.Tests
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase113Validation.cs", StringComparison.Ordinal)
-                  && project.Contains("Runtime/Components/FoxRun/FoxRunSchema*.cs", StringComparison.Ordinal)
+                  && project.Contains("Runtime/Components/FoxRun/FoxRun*.cs", StringComparison.Ordinal)
                   && project.Contains("FoxRunSchemaInfoWriter.cs", StringComparison.Ordinal),
                 "113-D7: runtime validation project compiles schema registry, writer, and Phase113 tests");
             Check(validationRegistry.Contains("--phase113", StringComparison.Ordinal)

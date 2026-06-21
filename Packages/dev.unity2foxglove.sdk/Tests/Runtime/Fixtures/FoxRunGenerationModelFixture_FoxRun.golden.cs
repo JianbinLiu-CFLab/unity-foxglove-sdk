@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Components;
 namespace Unity.FoxgloveSDK.Tests.Fixtures
 {
     [Preserve]
-    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveLogPolicySource
+    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveLogPolicySource
     {
         int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -31,6 +31,23 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             }
         }
 
+        string IFoxgloveTopicContractSource.FoxgloveLog_Origin => "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture";
+
+        FoxTopicContract IFoxgloveTopicContractSource.FoxgloveLog_GetContract(int index)
+        {
+            switch (index)
+            {
+                case 0: return new FoxTopicContract("/debug/array", "", "json", "topic=/debug/array\nencoding=json\nschema=\nfields=samples:float[]", "a0af5045296f2ac5e426b6ba74e3da823e843e7c5ddc23c3820bee52b721a07a", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 1: return new FoxTopicContract("/debug/extra", "", "json", "topic=/debug/extra\nencoding=json\nschema=\nfields=extra:string", "8eb01177533ef20403fa1743e727a4ec4b3aa9c530d3f8ea443e5df3ab889e1a", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 2: return new FoxTopicContract("/debug/list", "", "json", "topic=/debug/list\nencoding=json\nschema=\nfields=sampleList:System.Collections.Generic.List<float>", "d14f9ccdea31a1dd1abafa83d51595e03512a97ba6f6a11ed37f091e85224d0c", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 3: return new FoxTopicContract("/debug/nullable", "", "json", "topic=/debug/nullable\nencoding=json\nschema=\nfields=optionalCount:int32", "402b6d6df7b236e18d1923d2386e4124ed4d08bb25b9fe39a07c50e7e16fdd09", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 4: return new FoxTopicContract("/debug/trigger", "", "json", "topic=/debug/trigger\nencoding=json\nschema=\nfields=trigger:int32", "efe12de12cc6551edee33af19c945963c1f1b86731e6a9d267cbaea703178b5d", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 5: return new FoxTopicContract("/debug/value", "", "json", "topic=/debug/value\nencoding=json\nschema=\nfields=value:float32;valueMirror:float32", "035e0b0d62cfd4f916911c6743e474359c4fd9fc48b037316cda28fc9f60f9fc", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 6: return new FoxTopicContract("/debug/vector", "", "json", "topic=/debug/vector\nencoding=json\nschema=\nfields=position:unity.vector3.float32", "e1262964bf17e20d1b016ffd1d5fd9ecdf74530aed60a10be94ad4bcd6ea6055", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                default: return null;
+            }
+        }
+
         [Preserve]
         void IFoxgloveLogSource.FoxgloveLog_Publish(int topicIndex, FoxgloveManager mgr, ulong nowNs)
         {
@@ -43,6 +60,44 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 4: mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = this._trigger }, nowNs); break;
                 case 5: mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, nowNs); break;
                 case 6: mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, nowNs); break;
+            }
+        }
+
+        [Preserve]
+        void IFoxgloveTopicBusSource.FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs)
+        {
+            if (bus == null)
+                return;
+            switch (topicIndex)
+            {
+                case 0:
+                    if (!bus.HasSubscribers("/debug/array")) break;
+                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, new Dictionary<string, object> { ["samples"] = this._samples }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 1:
+                    if (!bus.HasSubscribers("/debug/extra")) break;
+                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, new Dictionary<string, object> { ["extra"] = this._extra }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 2:
+                    if (!bus.HasSubscribers("/debug/list")) break;
+                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, new Dictionary<string, object> { ["sampleList"] = this._sampleList }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 3:
+                    if (!bus.HasSubscribers("/debug/nullable")) break;
+                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, new Dictionary<string, object> { ["optionalCount"] = this._optionalCount }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 4:
+                    if (!bus.HasSubscribers("/debug/trigger")) break;
+                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, new Dictionary<string, object> { ["trigger"] = this._trigger }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 5:
+                    if (!bus.HasSubscribers("/debug/value")) break;
+                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), nowNs, new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 6:
+                    if (!bus.HasSubscribers("/debug/vector")) break;
+                    bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), nowNs, new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
             }
         }
 

@@ -115,12 +115,13 @@ namespace Unity.FoxgloveSDK.Editor
                            || FoxRunCanonicalTypeNormalizer.IsStringType(member.TypeName)
                            || (!member.IsValueType && !FoxRunCanonicalTypeNormalizer.IsKnownUnityValueType(member.TypeName));
             return new FoxRunManifestField(
-                JsonFieldName(member.MemberName),
+                JsonFieldName(member),
                 member.MemberName,
                 NormalizeMemberKind(member.MemberKind),
                 normalized,
                 nullable,
-                member.IsArray);
+                member.IsArray,
+                member.IsAggregateMember);
         }
 
         private static string ResolveFieldSourceType(FoxRunManifestMember member)
@@ -213,8 +214,12 @@ namespace Unity.FoxgloveSDK.Editor
                 : member.Namespace + "." + member.ClassName;
         }
 
-        private static string JsonFieldName(string memberName)
+        private static string JsonFieldName(FoxRunManifestMember member)
         {
+            if (!string.IsNullOrWhiteSpace(member.JsonFieldName))
+                return member.JsonFieldName;
+
+            var memberName = member.MemberName;
             var name = memberName != null && memberName.StartsWith("@", StringComparison.Ordinal)
                 ? memberName.Substring(1)
                 : memberName ?? string.Empty;

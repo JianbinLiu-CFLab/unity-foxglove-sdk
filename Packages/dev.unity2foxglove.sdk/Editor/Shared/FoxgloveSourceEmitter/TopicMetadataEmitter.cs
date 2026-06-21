@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -47,6 +48,36 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
+        /// Emits the optional Phase153 topic contract surface. Contracts are
+        /// generated constants so runtime registration does not need
+        /// reflection, model walking, or Editor-only helpers.
+        /// </summary>
+        internal static void EmitGetContract(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
+        {
+            var origin = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
+            sb.AppendLine($"{pad}    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => \"{StringLiteralEmitter.CSharpStringLiteral(origin)}\";");
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    FoxTopicContract IFoxgloveTopicContractSource.FoxgloveLog_GetContract(int index)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        switch (index)");
+            sb.AppendLine($"{pad}        {{");
+            for (int i = 0; i < topics.Count; i++)
+            {
+                var topic = topics[i];
+                var fields = topicMap[topic];
+                var schema = fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "";
+                var canonical = CanonicalTopicShape(topic, schema, fields);
+                var fingerprint = Sha256Hex(canonical);
+                sb.AppendLine(
+                    $"{pad}            case {i}: return new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"json\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
+            }
+            sb.AppendLine($"{pad}            default: return null;");
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+            sb.AppendLine();
+        }
+
+        /// <summary>
         /// Returns the <c>FoxRunPublishMode</c> enum literal for the given
         /// numeric mode value (0=FixedRate, 1=OnChange, 2=OnChangeOrInterval,
         /// 3=OnTrigger).
@@ -61,6 +92,44 @@ namespace Unity.FoxgloveSDK.Editor
                 case 3: return "FoxRunPublishMode.OnTrigger";
                 default: return FormattableString.Invariant($"(FoxRunPublishMode){mode}");
             }
+        }
+
+        private static string CanonicalTopicShape(string topic, string schema, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        {
+            var sb = new StringBuilder();
+            sb.Append("topic=").Append(topic ?? string.Empty).Append('\n');
+            sb.Append("encoding=json\n");
+            sb.Append("schema=").Append(schema ?? string.Empty).Append('\n');
+            sb.Append("fields=");
+            for (var i = 0; i < fields.Count; i++)
+            {
+                if (i > 0)
+                    sb.Append(';');
+                var field = fields[i];
+                sb.Append(JsonFieldName(field.MemberName));
+                sb.Append(':');
+                sb.Append(FoxRunCanonicalTypeNormalizer.NormalizeTypeName(field.TypeName));
+            }
+            return sb.ToString();
+        }
+
+        private static string JsonFieldName(string memberName)
+        {
+            var name = memberName != null && memberName.StartsWith("@", StringComparison.Ordinal)
+                ? memberName.Substring(1)
+                : memberName ?? "";
+            return name.TrimStart('_');
+        }
+
+        private static string Sha256Hex(string value)
+        {
+            using var sha = SHA256.Create();
+            var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+            var hash = sha.ComputeHash(bytes);
+            var sb = new StringBuilder(hash.Length * 2);
+            foreach (var b in hash)
+                sb.Append(b.ToString("x2", CultureInfo.InvariantCulture));
+            return sb.ToString();
         }
     }
 }

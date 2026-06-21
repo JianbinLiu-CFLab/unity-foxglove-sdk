@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Components
         public string Type { get; }
         public bool Nullable { get; }
         public bool Array { get; }
+        public bool Aggregate { get; }
 
         public FoxRunSchemaFieldInfo(
             string jsonName,
@@ -22,7 +23,8 @@ namespace Unity.FoxgloveSDK.Components
             string memberKind,
             string type,
             bool nullable,
-            bool array)
+            bool array,
+            bool aggregate = false)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -30,6 +32,7 @@ namespace Unity.FoxgloveSDK.Components
             Type = type ?? string.Empty;
             Nullable = nullable;
             Array = array;
+            Aggregate = aggregate;
         }
     }
 }

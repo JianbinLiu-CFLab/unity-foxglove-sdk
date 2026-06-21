@@ -37,12 +37,12 @@ namespace Unity.FoxgloveSDK.Editor
 
             sb.AppendLine($"{pad}[Preserve]");
             var interfaces = hasPolicy && hasConditions
-                ? "IFoxgloveLogSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource"
+                ? "IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveLogPolicySource, IFoxgloveLogConditionSource"
                 : hasPolicy
-                ? "IFoxgloveLogSource, IFoxgloveLogPolicySource"
+                ? "IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveLogPolicySource"
                 : hasConditions
-                ? "IFoxgloveLogSource, IFoxgloveLogConditionSource"
-                : "IFoxgloveLogSource";
+                ? "IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveLogConditionSource"
+                : "IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource";
             sb.Append($"{pad}partial class {className} : {interfaces}\n");
             sb.AppendLine($"{pad}{{");
             sb.AppendLine($"{pad}    int IFoxgloveLogSource.FoxgloveLog_TopicCount => {topicCount};");

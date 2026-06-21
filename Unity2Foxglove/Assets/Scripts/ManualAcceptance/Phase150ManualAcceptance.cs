@@ -174,13 +174,18 @@ public sealed class Phase150ManualAcceptance : MonoBehaviour
 
     private void Pass(string message)
     {
-        lastStatus = message;
+        lastStatus = BuildStatus(message);
         Debug.Log("[Phase150] " + message);
     }
 
     private void Fail(string message)
     {
-        lastStatus = message;
+        lastStatus = BuildStatus(message);
         Debug.LogError("[Phase150] " + message);
+    }
+
+    private string BuildStatus(string message)
+    {
+        return $"{message} Initial samples: {publishedInitialSamples}. Stale wrapper rejected: {staleWrapperRejected}.";
     }
 }

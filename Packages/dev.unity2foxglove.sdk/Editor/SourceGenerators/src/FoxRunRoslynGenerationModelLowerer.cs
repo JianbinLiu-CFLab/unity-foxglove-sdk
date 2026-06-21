@@ -36,7 +36,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     member.RawMemberOrder,
                     member.ConditionalSymbols,
                     member.When,
-                    member.Unless))
+                    member.Unless,
+                    member.IsAggregateMember,
+                    member.JsonFieldName))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -63,6 +65,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly string ConditionalSymbols;
         public readonly string When;
         public readonly string Unless;
+        public readonly bool IsAggregateMember;
+        public readonly string JsonFieldName;
 
         public FoxRunRoslynGenerationMember(
             string ns,
@@ -83,7 +87,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int rawMemberOrder,
             string conditionalSymbols,
             string when = "",
-            string unless = "")
+            string unless = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -106,6 +112,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
             When = when ?? string.Empty;
             Unless = unless ?? string.Empty;
+            IsAggregateMember = isAggregateMember;
+            JsonFieldName = jsonFieldName ?? string.Empty;
         }
 
         public FoxRunRoslynGenerationMember(
@@ -126,7 +134,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int rawMemberOrder,
             string conditionalSymbols,
             string when = "",
-            string unless = "")
+            string unless = "",
+            bool isAggregateMember = false,
+            string jsonFieldName = "")
             : this(
                 ns,
                 className,
@@ -146,7 +156,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 rawMemberOrder,
                 conditionalSymbols,
                 when,
-                unless)
+                unless,
+                isAggregateMember,
+                jsonFieldName)
         {
         }
     }
