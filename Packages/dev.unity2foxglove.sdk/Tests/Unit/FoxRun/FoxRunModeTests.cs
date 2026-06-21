@@ -170,6 +170,28 @@ namespace Demo
         }
 
         [Fact]
+        public void RoslynGeneratorEmitsPrimitiveInboundAssignmentsWithValidTypeName()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class CommandInput
+    {
+        [FoxRun(""/phase157/target-speed"", Mode = FoxRunMode.SubscribeOnly)]
+        private float requestedTargetSpeed;
+    }
+}");
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class CommandInput", StringComparison.Ordinal));
+
+            Assert.Contains("FoxRunInboundJson.TryRead(payload, \"requestedTargetSpeed\", out float __value", generated, StringComparison.Ordinal);
+            Assert.DoesNotContain("out global::float __value", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RoslynAttributeDataExposesFoxRunModeConstant()
         {
             var compilation = CreateCompilation(@"

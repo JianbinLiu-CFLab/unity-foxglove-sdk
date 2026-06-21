@@ -71,6 +71,25 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", System.StringComparison.Ordinal))
                 return typeName;
+            switch (typeName)
+            {
+                case "bool":
+                case "byte":
+                case "sbyte":
+                case "short":
+                case "ushort":
+                case "int":
+                case "uint":
+                case "long":
+                case "ulong":
+                case "float":
+                case "double":
+                case "decimal":
+                case "string":
+                case "char":
+                case "object":
+                    return typeName;
+            }
             return "global::" + typeName;
         }
 
