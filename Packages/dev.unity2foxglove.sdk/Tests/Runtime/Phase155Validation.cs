@@ -62,6 +62,7 @@ namespace Unity.FoxgloveSDK.Tests
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
 
             Check(hub.Contains("public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter", StringComparison.Ordinal)
+                  && hub.Contains("public static bool TryGetTopicSinkRouter(out FoxTopicSinkRouter router)", StringComparison.Ordinal)
                   && hub.Contains("_sinkRouter.Register(contract)", StringComparison.Ordinal)
                   && hub.Contains("_sinkRouter.Dispose()", StringComparison.Ordinal),
                 "155-5: hub owns the sink router, registers exported contracts, and disposes it on teardown");

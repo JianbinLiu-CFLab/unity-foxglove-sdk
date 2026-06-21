@@ -12,7 +12,7 @@ using Unity.FoxgloveSDK.Components;
 namespace Unity.FoxgloveSDK.Tests.Fixtures
 {
     [Preserve]
-    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveLogPolicySource
+    partial class FoxRunGenerationModelFixture : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgloveTopicBusSource, IFoxgloveTopicSinkSource, IFoxgloveLogPolicySource
     {
         int IFoxgloveLogSource.FoxgloveLog_TopicCount => 7;
 
@@ -63,6 +63,151 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             }
         }
 
+        private byte[] __BuildFoxRunJson_0()
+        {
+            var __json = new global::System.Text.StringBuilder(128);
+            __WriteFoxRunJson_0(__json);
+            return global::System.Text.Encoding.UTF8.GetBytes(__json.ToString());
+        }
+
+        private void __WriteFoxRunJson_0(global::System.Text.StringBuilder __json)
+        {
+            __json.Append('{');
+            __json.Append("\"samples\":");
+            __AppendFoxRunJsonString(__json, this._samples == null ? null : this._samples.ToString());
+            __json.Append('}');
+        }
+
+        private byte[] __BuildFoxRunJson_1()
+        {
+            var __json = new global::System.Text.StringBuilder(128);
+            __WriteFoxRunJson_1(__json);
+            return global::System.Text.Encoding.UTF8.GetBytes(__json.ToString());
+        }
+
+        private void __WriteFoxRunJson_1(global::System.Text.StringBuilder __json)
+        {
+            __json.Append('{');
+            __json.Append("\"extra\":");
+            __AppendFoxRunJsonString(__json, this._extra);
+            __json.Append('}');
+        }
+
+        private byte[] __BuildFoxRunJson_2()
+        {
+            var __json = new global::System.Text.StringBuilder(128);
+            __WriteFoxRunJson_2(__json);
+            return global::System.Text.Encoding.UTF8.GetBytes(__json.ToString());
+        }
+
+        private void __WriteFoxRunJson_2(global::System.Text.StringBuilder __json)
+        {
+            __json.Append('{');
+            __json.Append("\"sampleList\":");
+            __AppendFoxRunJsonString(__json, this._sampleList == null ? null : this._sampleList.ToString());
+            __json.Append('}');
+        }
+
+        private byte[] __BuildFoxRunJson_3()
+        {
+            var __json = new global::System.Text.StringBuilder(128);
+            __WriteFoxRunJson_3(__json);
+            return global::System.Text.Encoding.UTF8.GetBytes(__json.ToString());
+        }
+
+        private void __WriteFoxRunJson_3(global::System.Text.StringBuilder __json)
+        {
+            __json.Append('{');
+            __json.Append("\"optionalCount\":");
+            __AppendFoxRunJsonString(__json, this._optionalCount == null ? null : this._optionalCount.ToString());
+            __json.Append('}');
+        }
+
+        private byte[] __BuildFoxRunJson_4()
+        {
+            var __json = new global::System.Text.StringBuilder(128);
+            __WriteFoxRunJson_4(__json);
+            return global::System.Text.Encoding.UTF8.GetBytes(__json.ToString());
+        }
+
+        private void __WriteFoxRunJson_4(global::System.Text.StringBuilder __json)
+        {
+            __json.Append('{');
+            __json.Append("\"trigger\":");
+            __json.Append(this._trigger.ToString(global::System.Globalization.CultureInfo.InvariantCulture));
+            __json.Append('}');
+        }
+
+        private byte[] __BuildFoxRunJson_5()
+        {
+            var __json = new global::System.Text.StringBuilder(128);
+            __WriteFoxRunJson_5(__json);
+            return global::System.Text.Encoding.UTF8.GetBytes(__json.ToString());
+        }
+
+        private void __WriteFoxRunJson_5(global::System.Text.StringBuilder __json)
+        {
+            __json.Append('{');
+            __json.Append("\"value\":");
+            if (float.IsNaN(this._value) || float.IsInfinity(this._value)) __json.Append("null"); else __json.Append(this._value.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+            __json.Append(",\"valueMirror\":");
+            if (float.IsNaN(this._valueMirror) || float.IsInfinity(this._valueMirror)) __json.Append("null"); else __json.Append(this._valueMirror.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+            __json.Append('}');
+        }
+
+        private byte[] __BuildFoxRunJson_6()
+        {
+            var __json = new global::System.Text.StringBuilder(128);
+            __WriteFoxRunJson_6(__json);
+            return global::System.Text.Encoding.UTF8.GetBytes(__json.ToString());
+        }
+
+        private void __WriteFoxRunJson_6(global::System.Text.StringBuilder __json)
+        {
+            __json.Append('{');
+            __json.Append("\"position\":");
+            __json.Append('{');
+            __json.Append("\"x\":");
+            if (float.IsNaN(this._position.x) || float.IsInfinity(this._position.x)) __json.Append("null"); else __json.Append(this._position.x.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+            __json.Append(",\"y\":");
+            if (float.IsNaN(this._position.y) || float.IsInfinity(this._position.y)) __json.Append("null"); else __json.Append(this._position.y.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+            __json.Append(",\"z\":");
+            if (float.IsNaN(this._position.z) || float.IsInfinity(this._position.z)) __json.Append("null"); else __json.Append(this._position.z.ToString("R", global::System.Globalization.CultureInfo.InvariantCulture));
+            __json.Append('}');
+            __json.Append('}');
+        }
+
+        private static void __AppendFoxRunJsonString(global::System.Text.StringBuilder __json, string value)
+        {
+            if (value == null)
+            {
+                __json.Append("null");
+                return;
+            }
+            __json.Append('\"');
+            for (int __i = 0; __i < value.Length; __i++)
+            {
+                var __c = value[__i];
+                switch (__c)
+                {
+                    case '\"': __json.Append("\\\""); break;
+                    case '\\': __json.Append("\\\\"); break;
+                    case '\b': __json.Append("\\b"); break;
+                    case '\f': __json.Append("\\f"); break;
+                    case '\n': __json.Append("\\n"); break;
+                    case '\r': __json.Append("\\r"); break;
+                    case '\t': __json.Append("\\t"); break;
+                    default:
+                        if (__c < ' ')
+                            __json.Append("\\u").Append(((int)__c).ToString("x4", global::System.Globalization.CultureInfo.InvariantCulture));
+                        else
+                            __json.Append(__c);
+                        break;
+                }
+            }
+            __json.Append('\"');
+        }
+
         [Preserve]
         void IFoxgloveTopicBusSource.FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs)
         {
@@ -97,6 +242,44 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 6:
                     if (!bus.HasSubscribers("/debug/vector")) break;
                     bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), nowNs, new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+            }
+        }
+
+        [Preserve]
+        void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)
+        {
+            if (router == null || !router.HasSinks)
+                return;
+            switch (topicIndex)
+            {
+                case 0:
+                    var __sink_0 = __BuildFoxRunJson_0();
+                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 1:
+                    var __sink_1 = __BuildFoxRunJson_1();
+                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), nowNs, __sink_1, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 2:
+                    var __sink_2 = __BuildFoxRunJson_2();
+                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), nowNs, __sink_2, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 3:
+                    var __sink_3 = __BuildFoxRunJson_3();
+                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), nowNs, __sink_3, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 4:
+                    var __sink_4 = __BuildFoxRunJson_4();
+                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), nowNs, __sink_4, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 5:
+                    var __sink_5 = __BuildFoxRunJson_5();
+                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), nowNs, __sink_5, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
+                    break;
+                case 6:
+                    var __sink_6 = __BuildFoxRunJson_6();
+                    router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), nowNs, __sink_6, "Unity.FoxgloveSDK.Tests.Fixtures.FoxRunGenerationModelFixture");
                     break;
             }
         }

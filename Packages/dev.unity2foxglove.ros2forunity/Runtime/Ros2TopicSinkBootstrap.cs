@@ -5,84 +5,81 @@
 // Purpose: Attaches an outbound ROS2 sink to the FoxRun sink router without the
 //          core SDK knowing any concrete ROS2 type.
 
+using System;
 using Unity.FoxgloveSDK.Components;
-using UnityEngine;
 
 namespace Unity2Foxglove.Ros2ForUnity
 {
     /// <summary>
     /// Registers a <see cref="Ros2R2FUTopicSink"/> with the active
     /// <see cref="FoxgloveLogHub"/> sink router so exported FoxRun topics fan out
-    /// to ROS2. Subclass this and supply the concrete ros2cs message converters;
-    /// the core SDK never references this component or any ROS2 type.
+    /// to ROS2. Host components supply the concrete generated ROS2 message
+    /// converters and context provider; the core SDK never references this
+    /// bootstrap or any ROS2 type.
     /// </summary>
-    public abstract class Ros2TopicSinkBootstrap : MonoBehaviour
+    public sealed class Ros2TopicSinkBootstrap : IDisposable
     {
-        [Tooltip("ROS2 node name used by the FoxRun outbound sink.")]
-        [SerializeField] private string _nodeName = "unity2foxglove_foxrun";
+        private readonly string _nodeName;
+        private readonly Func<IRos2TopicPublisherFactory> _createPublisherFactory;
+        private readonly Func<IUnity2FoxgloveRos2Context> _createContext;
+        private readonly Action<string> _logWarning;
 
         private Ros2R2FUTopicSink _sink;
         private IUnity2FoxgloveRos2Context _context;
-        private FoxgloveLogHub _hub;
+        private FoxTopicSinkRouter _router;
 
-        /// <summary>
-        /// Supply the explicit, fail-closed converter factory mapping FoxRun
-        /// contracts to concrete ROS2 messages. Return <c>null</c> to disable.
-        /// </summary>
-        protected abstract IRos2TopicPublisherFactory CreatePublisherFactory();
-
-        /// <summary>
-        /// Create or acquire the concrete ROS2 context owned by the adapter package.
-        /// Return <c>null</c> to disable.
-        /// </summary>
-        protected abstract IUnity2FoxgloveRos2Context CreateContext();
-
-        private void OnEnable() => TryAttach();
-
-        private void Update()
+        public Ros2TopicSinkBootstrap(
+            string nodeName,
+            Func<IRos2TopicPublisherFactory> createPublisherFactory,
+            Func<IUnity2FoxgloveRos2Context> createContext,
+            Action<string> logWarning = null)
         {
-            // The hub auto-creates when FoxRun sources register; retry until it
-            // exists, then stop. Once attached, _sink stays non-null.
-            if (_sink == null)
-                TryAttach();
+            _nodeName = string.IsNullOrWhiteSpace(nodeName) ? "unity2foxglove_foxrun" : nodeName;
+            _createPublisherFactory = createPublisherFactory ?? throw new ArgumentNullException(nameof(createPublisherFactory));
+            _createContext = createContext ?? throw new ArgumentNullException(nameof(createContext));
+            _logWarning = logWarning;
         }
 
-        private void TryAttach()
+        public bool IsAttached => _sink != null;
+
+        /// <summary>
+        /// Attempts to attach the ROS2 sink to the active FoxRun sink router.
+        /// Returns <c>false</c> when the router is not ready or providers disable
+        /// the sink.
+        /// </summary>
+        public bool TryAttach()
         {
             if (_sink != null)
-                return;
+                return true;
 
-            _hub = FindFirstObjectByType<FoxgloveLogHub>();
-            if (_hub == null)
-                return;
+            if (!FoxgloveLogHub.TryGetTopicSinkRouter(out _router))
+                return false;
 
-            var factory = CreatePublisherFactory();
+            var factory = _createPublisherFactory();
             if (factory == null)
-            {
-                enabled = false;
-                return;
-            }
+                return false;
 
-            _context = CreateContext();
+            _context = _createContext();
             if (_context == null)
-            {
-                enabled = false;
-                return;
-            }
+                return false;
 
-            _sink = new Ros2R2FUTopicSink(_context, factory, _nodeName, Debug.LogWarning);
-            _hub.TopicSinkRouter.AddSink(_sink);
+            _sink = new Ros2R2FUTopicSink(_context, factory, _nodeName, _logWarning);
+            _router.AddSink(_sink);
+            return true;
         }
 
-        private void OnDisable()
+        public void Detach()
         {
-            if (_sink != null && _hub != null)
-                _hub.TopicSinkRouter.RemoveSink(_sink);
+            if (_sink != null && _router != null)
+                _router.RemoveSink(_sink);
 
             _sink?.Dispose();
             _context?.Dispose();
             _sink = null;
             _context = null;
+            _router = null;
         }
+
+        public void Dispose() => Detach();
     }
 }

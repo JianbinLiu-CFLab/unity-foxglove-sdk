@@ -17,7 +17,7 @@ namespace Unity2Foxglove.Ros2ForUnity
     /// </summary>
     /// <remarks>
     /// Outbound only: inbound ROS2 subscriptions are owned by a later phase. The
-    /// sink is message-type agnostic — concrete ros2cs message conversion lives in
+    /// sink is message-type agnostic — concrete generated ROS2 message conversion lives in
     /// the injected <see cref="IRos2TopicPublisherFactory"/>, which fails closed for
     /// any unsupported contract (no best-guess conversion). The core SDK never
     /// references this type; it is added to <c>FoxgloveLogHub.TopicSinkRouter</c>

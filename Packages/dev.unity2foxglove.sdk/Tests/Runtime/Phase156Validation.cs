@@ -43,12 +43,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var bootstrap = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2TopicSinkBootstrap.cs");
 
-            Check(bootstrap.Contains("protected abstract IUnity2FoxgloveRos2Context CreateContext()", StringComparison.Ordinal)
+            Check(bootstrap.Contains("Func<IUnity2FoxgloveRos2Context> createContext", StringComparison.Ordinal)
+                  && bootstrap.Contains("_createContext = createContext ?? throw new ArgumentNullException", StringComparison.Ordinal)
                   && !bootstrap.Contains("Unity2FoxgloveRos2ContextFactory.Create()", StringComparison.Ordinal),
                 "156-3: ROS2 sink bootstrap requires a real context provider instead of the unavailable facade factory");
 
-            Check(bootstrap.Contains("_hub.TopicSinkRouter.AddSink(_sink)", StringComparison.Ordinal)
-                  && bootstrap.Contains("_hub.TopicSinkRouter.RemoveSink(_sink)", StringComparison.Ordinal),
+            Check(bootstrap.Contains("FoxgloveLogHub.TryGetTopicSinkRouter(out _router)", StringComparison.Ordinal)
+                  && bootstrap.Contains("_router.AddSink(_sink)", StringComparison.Ordinal)
+                  && bootstrap.Contains("_router.RemoveSink(_sink)", StringComparison.Ordinal),
                 "156-4: optional bootstrap attaches and detaches through the core sink router");
         }
 

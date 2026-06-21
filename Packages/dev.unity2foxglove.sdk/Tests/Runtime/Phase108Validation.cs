@@ -54,8 +54,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check((string)asmdef["name"] == "Unity2Foxglove.Ros2ForUnity"
                   && (string)asmdef["rootNamespace"] == "Unity2Foxglove.Ros2ForUnity",
                 "108-A2: optional package Runtime asmdef defines the owned facade assembly");
-            Check(asmdef["references"] is JArray references && references.Count == 0,
-                "108-A3: optional package Runtime asmdef has no assembly references");
+            Check(asmdef["references"] is JArray references
+                  && references.All(item => (string)item == "Unity.FoxgloveSDK"),
+                "108-A3: optional package Runtime asmdef references only the core SDK");
 
             var required = new[]
             {

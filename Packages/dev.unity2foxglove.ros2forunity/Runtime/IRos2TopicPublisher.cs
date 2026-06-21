@@ -3,7 +3,7 @@
 //
 // Module: Ros2ForUnity
 // Purpose: Pluggable converter boundary that maps a FoxRun topic payload to a
-//          concrete ROS2 message and publishes it, isolating ros2cs message
+//          concrete ROS2 message and publishes it, isolating generated ROS2 message
 //          types from the generic sink.
 
 using System;
@@ -17,7 +17,7 @@ namespace Unity2Foxglove.Ros2ForUnity
     /// created per supported topic.
     /// </summary>
     /// <remarks>
-    /// This is the only seam that knows concrete ros2cs message types. The
+    /// This is the only seam that knows concrete generated ROS2 message types. The
     /// <see cref="Ros2R2FUTopicSink"/> stays message-type agnostic so it can be
     /// reviewed and reasoned about without the ROS2 runtime present.
     /// </remarks>

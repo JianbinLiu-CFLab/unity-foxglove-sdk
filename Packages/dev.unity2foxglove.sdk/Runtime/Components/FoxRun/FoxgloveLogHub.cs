@@ -212,6 +212,14 @@ namespace Unity.FoxgloveSDK.Components
             return bus != null;
         }
 
+        /// <summary>Try to get the additive FoxRun sink router, creating the hidden hub in Play Mode when needed.</summary>
+        public static bool TryGetTopicSinkRouter(out FoxTopicSinkRouter router)
+        {
+            var instance = Application.isPlaying ? EnsureInstance() : _instance;
+            router = instance?._sinkRouter;
+            return router != null;
+        }
+
         /// <summary>Reset static state when Unity enters Play Mode without domain reload.</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticState()
