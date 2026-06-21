@@ -81,6 +81,18 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
+    /// Optional side-channel implemented by generated sources that can fan one
+    /// already-serialized topic payload out to additional sinks after live
+    /// publish succeeds. The live Foxglove and MCAP paths remain primary; this
+    /// side-channel only runs when at least one sink is registered.
+    /// </summary>
+    public interface IFoxgloveTopicSinkSource
+    {
+        /// <summary>Fan one serialized topic payload out to the sink router.</summary>
+        void FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs);
+    }
+
+    /// <summary>
     /// Optional interface for event-driven FoxRun sources.
     /// Sources that implement this interface can suppress unchanged values
     /// and publish heartbeat frames. Sources that do not implement it
@@ -113,6 +125,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Per-source scheduler state for rate throttling.</summary>
         private readonly Dictionary<IFoxgloveLogSource, FixedRatePublishState[]> _timers = new();
         private readonly FoxTopicBus _topicBus = new();
+        private readonly FoxTopicSinkRouter _sinkRouter = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
         private readonly List<IFoxgloveLogSource> _stale = new();
         private readonly List<IFoxgloveLogSource> _pendingAdds = new();
@@ -130,6 +143,13 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Process-local FoxRun topic bus. Publish remains Unity main-thread only.</summary>
         public FoxTopicBus TopicBus => _topicBus;
+
+        /// <summary>
+        /// Additive multi-sink fanout for exported FoxRun topics. Add sinks to
+        /// receive serialized payloads alongside the primary live/MCAP paths.
+        /// Main-thread only.
+        /// </summary>
+        public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter;
 
         /// <summary>Register a generated FoxRun source without waiting for the fallback scene scan.</summary>
         public static void RegisterSource(IFoxgloveLogSource source)
@@ -385,16 +405,28 @@ namespace Unity.FoxgloveSDK.Components
             ulong nowNs,
             string operation)
         {
-            if (!(source is IFoxgloveTopicBusSource busSource))
-                return;
-
-            try
+            if (source is IFoxgloveTopicBusSource busSource)
             {
-                busSource.FoxgloveLog_PublishToBus(topicIndex, _topicBus, nowNs);
+                try
+                {
+                    busSource.FoxgloveLog_PublishToBus(topicIndex, _topicBus, nowNs);
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, topicIndex, operation + " bus side-channel", ex);
+                }
             }
-            catch (Exception ex) when (IsRecoverableSourceException(ex))
+
+            if (_sinkRouter.HasSinks && source is IFoxgloveTopicSinkSource sinkSource)
             {
-                LogSourceFailure(source, topicIndex, operation + " bus side-channel", ex);
+                try
+                {
+                    sinkSource.FoxgloveLog_PublishToSinks(topicIndex, _sinkRouter, nowNs);
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, topicIndex, operation + " sink side-channel", ex);
+                }
             }
         }
 
@@ -454,6 +486,10 @@ namespace Unity.FoxgloveSDK.Components
                     var result = _topicBus.Register(contract, origin);
                     if (!result.Accepted)
                         LogSourceFailure(source, i, "topic contract registration", new InvalidOperationException(result.Diagnostic));
+
+                    // Additive: export the contract to sinks (LocalOnly is gated
+                    // inside the router). Live/MCAP keep their primary paths.
+                    _sinkRouter.Register(contract);
                 }
                 catch (Exception ex) when (IsRecoverableSourceException(ex))
                 {
@@ -579,6 +615,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnDestroy()
         {
             _timers.Clear();
+            _sinkRouter.Dispose();
             if (_instance == this) _instance = null;
         }
     }

@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxTopicSinkRouter : IDisposable
     {
         private readonly List<IFoxTopicSink> _sinks = new List<IFoxTopicSink>();
+        private readonly Dictionary<string, FoxTopicContract> _contracts = new Dictionary<string, FoxTopicContract>(StringComparer.Ordinal);
         private readonly HashSet<string> _reportedFaults = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary>Raised once per unique (sink, topic, operation, exception type) failure.</summary>
@@ -52,13 +53,30 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Whether any sink is registered.</summary>
         public bool HasSinks => _sinks.Count > 0;
 
-        /// <summary>Add a sink. Duplicate references are ignored. Preserves order.</summary>
+        /// <summary>
+        /// Add a sink. Duplicate references are ignored and order is preserved.
+        /// Contracts registered before this sink was added are replayed so the
+        /// sink can be attached at any time.
+        /// </summary>
         public void AddSink(IFoxTopicSink sink)
         {
             if (sink == null)
                 throw new ArgumentNullException(nameof(sink));
-            if (!_sinks.Contains(sink))
-                _sinks.Add(sink);
+            if (_sinks.Contains(sink))
+                return;
+
+            _sinks.Add(sink);
+            foreach (var contract in _contracts.Values)
+            {
+                try
+                {
+                    sink.Register(contract);
+                }
+                catch (Exception ex)
+                {
+                    ReportFault(sink, contract.Topic, "register", ex);
+                }
+            }
         }
 
         /// <summary>Remove a sink. Returns whether it was present.</summary>
@@ -76,6 +94,7 @@ namespace Unity.FoxgloveSDK.Components
             if (contract.Visibility == FoxTopicVisibility.LocalOnly)
                 return;
 
+            _contracts[contract.Topic] = contract;
             for (var i = 0; i < _sinks.Count; i++)
             {
                 var sink = _sinks[i];
@@ -153,6 +172,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _sinks.Clear();
+            _contracts.Clear();
             _reportedFaults.Clear();
         }
 

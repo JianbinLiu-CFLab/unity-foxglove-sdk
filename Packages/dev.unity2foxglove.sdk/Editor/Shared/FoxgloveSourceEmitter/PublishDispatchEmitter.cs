@@ -88,6 +88,40 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    }}");
         }
 
+        /// <summary>
+        /// Emits the optional additive sink fanout side-channel. v1 fans out
+        /// aggregate topics only, reusing the explicit JSON byte writer so the
+        /// same serialization shape feeds every sink without reflection or
+        /// per-sink re-serialization. The method is gated on <c>router.HasSinks</c>
+        /// so it costs nothing when no sink is attached.
+        /// </summary>
+        internal static void EmitPublishToSinks(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
+        {
+            var origin = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
+            sb.AppendLine();
+            sb.AppendLine($"{pad}    [Preserve]");
+            sb.AppendLine($"{pad}    void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)");
+            sb.AppendLine($"{pad}    {{");
+            sb.AppendLine($"{pad}        if (router == null || !router.HasSinks)");
+            sb.AppendLine($"{pad}            return;");
+            sb.AppendLine($"{pad}        switch (topicIndex)");
+            sb.AppendLine($"{pad}        {{");
+            for (int i = 0; i < topics.Count; i++)
+            {
+                var fields = topicMap[topics[i]];
+                if (!IsAggregateTopic(fields))
+                    continue;
+
+                EnsurePureAggregateTopic(fields, topics[i]);
+                sb.AppendLine($"{pad}            case {i}:");
+                sb.AppendLine($"{pad}                var __sink_{i} = __BuildFoxRunJson_{i}();");
+                sb.AppendLine($"{pad}                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, __sink_{i}, \"{StringLiteralEmitter.CSharpStringLiteral(origin)}\");");
+                sb.AppendLine($"{pad}                break;");
+            }
+            sb.AppendLine($"{pad}        }}");
+            sb.AppendLine($"{pad}    }}");
+        }
+
         private static string PayloadExpr(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
             var jsonNames = fields.Select(f => f.JsonFieldName).ToList();

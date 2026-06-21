@@ -77,6 +77,30 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void AggregateMemberEmitsSinkFanoutSideChannelReusingExplicitJsonBytes()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "VehicleTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "VehicleTelemetry", "_speed", "field", "System.Single",
+                        true, false, "", "/phase155/vehicle", 10f, "Demo.VehicleTelemetry",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: true, jsonFieldName: "speed")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("IFoxgloveTopicSinkSource", source, StringComparison.Ordinal);
+            Assert.Contains("void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)", source, StringComparison.Ordinal);
+            Assert.Contains("if (router == null || !router.HasSinks)", source, StringComparison.Ordinal);
+            Assert.Contains("var __sink_0 = __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
+            Assert.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, __sink_0,", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RoslynGeneratorLowersFoxRunMessageFieldsToAggregateJsonPublish()
         {
             var source = @"
