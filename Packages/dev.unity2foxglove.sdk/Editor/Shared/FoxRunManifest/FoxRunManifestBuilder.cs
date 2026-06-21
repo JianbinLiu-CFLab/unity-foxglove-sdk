@@ -79,12 +79,14 @@ namespace Unity.FoxgloveSDK.Editor
                 .ToList();
             ValidateJsonFieldNames(declaringType, key, fields);
             var policy = BuildPolicy(members);
+            var flowMode = BuildFlowMode(members);
             var contractHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteContractHashInput(
                     declaringType,
                     key.SchemaName,
                     key.Encoding,
-                    fields));
+                    fields,
+                    flowMode));
             var bindingHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteBindingHashInput(
                     declaringType,
@@ -103,7 +105,8 @@ namespace Unity.FoxgloveSDK.Editor
                 bindingHash,
                 policyHash,
                 fields.AsReadOnly(),
-                policy);
+                policy,
+                flowMode);
         }
 
         private static FoxRunManifestField BuildField(FoxRunManifestMember member)
@@ -168,6 +171,15 @@ namespace Unity.FoxgloveSDK.Editor
                 members.Count == 0 ? 0f : members.Max(member => NormalizeRateHz(member.RateHz)),
                 members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ChangeEpsilon)),
                 members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ForceIntervalSeconds)));
+        }
+
+        private static string BuildFlowMode(IReadOnlyList<FoxRunManifestMember> members)
+        {
+            var modes = members.Select(member => member.FlowMode).Distinct().ToList();
+            if (modes.Count > 1)
+                throw new InvalidOperationException("FoxRun topic has mixed data-flow modes.");
+
+            return FoxRunGenerationMember.ModeToName(modes.Count == 0 ? 0 : modes[0]);
         }
 
         private static float NormalizeRateHz(float rateHz)

@@ -65,6 +65,9 @@ namespace Unity.FoxgloveSDK.Editor
             if (member.PublishMode < 0 || member.PublishMode > 3)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun publish mode must be between 0 and 3."));
 
+            if (member.Mode < 0 || member.Mode > 2)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN023", target, member.MemberName, "FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe."));
+
             if (!IsKnownMemberKind(member.MemberKind))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN014", target, member.MemberName, "FoxRun member kind must be 'field' or 'property'."));
 

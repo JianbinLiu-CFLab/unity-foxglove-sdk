@@ -19,3 +19,4 @@ FOXRUN019 | FoxRun | Error | Aggregate and field-level FoxRun members cannot sha
 FOXRUN020 | FoxRun | Error | Aggregate array fields are not supported yet.
 FOXRUN021 | FoxRun | Error | [FoxRunField] cannot be applied to static members.
 FOXRUN022 | FoxRun | Error | Aggregate JSON field names must be unique per topic.
+FOXRUN023 | FoxRun | Error | FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe.

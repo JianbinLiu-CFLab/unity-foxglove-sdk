@@ -10,6 +10,22 @@ using System;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
+    /// Declares the data-flow direction for a <see cref="FoxRunAttribute"/>
+    /// topic. Publishing remains the default for backward compatibility.
+    /// </summary>
+    public enum FoxRunMode
+    {
+        /// <summary>Current FoxRun behavior: Unity publishes the member value.</summary>
+        PublishOnly = 0,
+
+        /// <summary>Inbound-only control surface; no generated publish path.</summary>
+        SubscribeOnly = 1,
+
+        /// <summary>Advanced bidirectional state sync; publish path remains enabled.</summary>
+        PublishAndSubscribe = 2
+    }
+
+    /// <summary>
     /// Marks a field or property for source-generated publishing as a Foxglove
     /// topic. The containing <c>MonoBehaviour</c> must be declared
     /// <c>partial</c> so the generator can add the publish implementation.
@@ -32,6 +48,12 @@ namespace Unity.FoxgloveSDK.Components
         /// methods are called explicitly by user code.
         /// </summary>
         public FoxRunPublishMode PublishMode { get; set; } = FoxRunPublishMode.FixedRate;
+
+        /// <summary>
+        /// Data-flow mode for this topic. The default keeps existing FoxRun
+        /// members publish-only; inbound modes explicitly expose a control surface.
+        /// </summary>
+        public FoxRunMode Mode { get; set; } = FoxRunMode.PublishOnly;
 
         /// <summary>Epsilon for float/double/Vector change detection. Negative treated as 0.</summary>
         public float ChangeEpsilon { get; set; } = 0f;

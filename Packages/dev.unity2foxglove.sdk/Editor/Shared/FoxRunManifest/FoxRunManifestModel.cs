@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Editor
         public float RateHz { get; }
         public string SchemaName { get; }
         public int PublishMode { get; }
+        public int FlowMode { get; }
         public float ChangeEpsilon { get; }
         public float ForceIntervalSeconds { get; }
         public bool IsAggregateMember { get; }
@@ -44,7 +45,8 @@ namespace Unity.FoxgloveSDK.Editor
             float changeEpsilon,
             float forceIntervalSeconds,
             bool isAggregateMember = false,
-            string jsonFieldName = "")
+            string jsonFieldName = "",
+            int mode = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -58,6 +60,7 @@ namespace Unity.FoxgloveSDK.Editor
             RateHz = rateHz;
             SchemaName = schemaName ?? string.Empty;
             PublishMode = publishMode;
+            FlowMode = mode;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
             IsAggregateMember = isAggregateMember;
@@ -148,6 +151,7 @@ namespace Unity.FoxgloveSDK.Editor
         public string ContractHash { get; }
         public string BindingHash { get; }
         public string PolicyHash { get; }
+        public string FlowMode { get; }
         public IReadOnlyList<FoxRunManifestField> Fields { get; }
         public FoxRunManifestPolicy Policy { get; }
 
@@ -160,7 +164,8 @@ namespace Unity.FoxgloveSDK.Editor
             string bindingHash,
             string policyHash,
             IReadOnlyList<FoxRunManifestField> fields,
-            FoxRunManifestPolicy policy)
+            FoxRunManifestPolicy policy,
+            string flowMode = "PublishOnly")
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -169,6 +174,7 @@ namespace Unity.FoxgloveSDK.Editor
             ContractHash = contractHash ?? string.Empty;
             BindingHash = bindingHash ?? string.Empty;
             PolicyHash = policyHash ?? string.Empty;
+            FlowMode = string.IsNullOrWhiteSpace(flowMode) ? "PublishOnly" : flowMode;
             Fields = new List<FoxRunManifestField>(fields ?? Array.Empty<FoxRunManifestField>()).AsReadOnly();
             Policy = policy ?? throw new ArgumentNullException(nameof(policy));
         }
