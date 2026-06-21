@@ -6,6 +6,14 @@
 
 namespace UnityEngine
 {
+    public struct Color
+    {
+        public float r;
+        public float g;
+        public float b;
+        public float a;
+    }
+
     public struct Quaternion
     {
         public float x;
@@ -19,5 +27,11 @@ namespace UnityEngine
         public float x;
         public float y;
         public float z;
+    }
+
+    public struct Vector2
+    {
+        public float x;
+        public float y;
     }
 }

@@ -178,6 +178,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 float rateHz = 10f;
                 string schemaName = "";
                 int publishMode = 0;
+                int mode = 0;
                 float changeEpsilon = 0f;
                 float forceIntervalSeconds = 0f;
                 string when = "";
@@ -186,13 +187,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                    if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
+                    if (named.Key == "PublishMode" && TryReadIntConstant(named.Value, out var pm)) publishMode = pm;
+                    if (named.Key == "Mode" && TryReadIntConstant(named.Value, out var flowMode)) mode = flowMode;
                     if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
                     if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
                     if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
                     if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
                 }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless));
+                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -219,7 +221,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                    if (named.Key == "PublishMode" && named.Value.Value is int pm) publishMode = pm;
+                    if (named.Key == "PublishMode" && TryReadIntConstant(named.Value, out var pm)) publishMode = pm;
                     if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
                     if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
                     if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
@@ -265,6 +267,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             {
                 memberKind = "field";
                 typeSymbol = null;
+            }
+
+            var hasInboundTopic = topics.Any(topic => topic.Mode == 1 || topic.Mode == 2);
+            if (hasInboundTopic
+                && ((symbol is IFieldSymbol inboundField && inboundField.IsReadOnly)
+                    || (symbol is IPropertySymbol inboundProperty && inboundProperty.SetMethod == null)))
+            {
+                return MemberData.ForDiagnostic(memberLocation, "FOXRUN028");
             }
 
             var memberType = typeSymbol == null ? "object" : typeSymbol.ToDisplayString();
@@ -1028,6 +1038,23 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             }
         }
 
+        private static bool TryReadIntConstant(TypedConstant constant, out int value)
+        {
+            value = 0;
+            if (constant.Value == null)
+                return false;
+
+            try
+            {
+                value = Convert.ToInt32(constant.Value);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         /// <summary>
         /// Entry point for source output: reports diagnostics, groups members by
         /// enclosing class, and emits one generated partial class per valid group.
@@ -1466,7 +1493,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     topic.When,
                     topic.Unless,
                     topic.IsAggregateMember,
-                    topic.JsonFieldName);
+                    topic.JsonFieldName,
+                    topic.Mode);
             }
         }
 
@@ -1484,6 +1512,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public readonly float RateHz;
             /// <summary>Publish mode enum value.</summary>
             public readonly int PublishMode;
+            public readonly int Mode;
             /// <summary>Change epsilon.</summary>
             public readonly float ChangeEpsilon;
             /// <summary>Heartbeat interval.</summary>
@@ -1504,10 +1533,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             /// </summary>
             public TopicEntry(string topic, float rate, string schema,
                 int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
-                bool isAggregateMember = false, string jsonFieldName = "")
+                bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
             {
                 Topic = topic; RateHz = rate; SchemaName = schema;
                 PublishMode = publishMode;
+                Mode = mode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
                 When = when ?? string.Empty;
@@ -1590,6 +1620,36 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             public static readonly DiagnosticDescriptor InvalidPublishMode = new DiagnosticDescriptor(
                 "FOXRUN013", "FoxRun publish mode out of range",
                 "{0}: FoxRun publish mode must be between 0 and 3",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor InvalidFoxRunMode = new DiagnosticDescriptor(
+                "FOXRUN023", "FoxRun mode out of range",
+                "{0}: FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor UnsupportedInboundShape = new DiagnosticDescriptor(
+                "FOXRUN024", "Unsupported FoxRun inbound shape",
+                "{0}: FoxRun inbound arrays and aggregate members are not supported",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
+            public static readonly DiagnosticDescriptor IgnoredSubscribePolicy = new DiagnosticDescriptor(
+                "FOXRUN025", "SubscribeOnly ignores publish policy",
+                "{0}: SubscribeOnly ignores publish timing options",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor BidirectionalAuthority = new DiagnosticDescriptor(
+                "FOXRUN026", "PublishAndSubscribe authority",
+                "{0}: PublishAndSubscribe requires explicit authority ownership",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor InboundNaming = new DiagnosticDescriptor(
+                "FOXRUN027", "FoxRun inbound naming",
+                "{0}: SubscribeOnly member name should communicate input-port authority",
+                "FoxRun", DiagnosticSeverity.Warning, true);
+
+            public static readonly DiagnosticDescriptor InboundTargetNotWritable = new DiagnosticDescriptor(
+                "FOXRUN028", "FoxRun inbound target is not writable",
+                "FoxRun inbound fields must not be readonly and properties must have a setter",
                 "FoxRun", DiagnosticSeverity.Error, true);
 
             public static readonly DiagnosticDescriptor InvalidMemberKind = new DiagnosticDescriptor(
@@ -1704,6 +1764,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN019": return MixedAggregateTopic;
                     case "FOXRUN020": return AggregateArrayUnsupported;
                     case "FOXRUN022": return DuplicateAggregateJsonName;
+                    case "FOXRUN023": return InvalidFoxRunMode;
+                    case "FOXRUN024": return UnsupportedInboundShape;
+                    case "FOXRUN025": return IgnoredSubscribePolicy;
+                    case "FOXRUN026": return BidirectionalAuthority;
+                    case "FOXRUN027": return InboundNaming;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped shared FoxRun diagnostic id.");
                 }
@@ -1716,6 +1781,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN004": return MultiVariableDeclaration;
                     case "FOXRUN018": return AggregateFieldWithoutMessage;
                     case "FOXRUN021": return StaticAggregateMember;
+                    case "FOXRUN028": return InboundTargetNotWritable;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(id), id, "Unmapped FoxRun member diagnostic id.");
                 }

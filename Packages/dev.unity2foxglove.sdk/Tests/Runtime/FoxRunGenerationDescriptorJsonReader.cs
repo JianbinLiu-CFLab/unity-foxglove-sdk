@@ -46,7 +46,8 @@ namespace Unity.FoxgloveSDK.Tests
                         forceIntervalSeconds: FloatValue(member, "forceIntervalSeconds"),
                         hostKind: StringValue(member, "hostKind"),
                         rawMemberOrder: IntValue(member, "rawMemberOrder"),
-                        conditionalSymbols: StringValue(member, "conditionalSymbols")));
+                        conditionalSymbols: StringValue(member, "conditionalSymbols"),
+                        mode: ModeValue(member)));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));
             }
@@ -84,6 +85,19 @@ namespace Unity.FoxgloveSDK.Tests
                 case "OnChangeOrInterval": return (int)FoxRunPublishMode.OnChangeOrInterval;
                 case "OnTrigger": return (int)FoxRunPublishMode.OnTrigger;
                 default: throw new InvalidOperationException("Unknown FoxRun publishMode: " + mode);
+            }
+        }
+
+        private static int ModeValue(JObject member)
+        {
+            var mode = StringValue(member, "mode");
+            switch (mode)
+            {
+                case "":
+                case "PublishOnly": return (int)FoxRunMode.PublishOnly;
+                case "SubscribeOnly": return (int)FoxRunMode.SubscribeOnly;
+                case "PublishAndSubscribe": return (int)FoxRunMode.PublishAndSubscribe;
+                default: throw new InvalidOperationException("Unknown FoxRun mode: " + mode);
             }
         }
     }

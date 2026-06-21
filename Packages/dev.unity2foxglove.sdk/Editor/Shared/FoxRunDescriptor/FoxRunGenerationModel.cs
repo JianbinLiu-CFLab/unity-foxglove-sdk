@@ -110,6 +110,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly float RateHz;
         public readonly int PublishMode;
         public readonly string PublishModeName;
+        public readonly int Mode;
+        public readonly string ModeName;
         public readonly float ChangeEpsilon;
         public readonly float ForceIntervalSeconds;
         public readonly bool HasNonFiniteRateHz;
@@ -144,7 +146,8 @@ namespace Unity.FoxgloveSDK.Editor
             string when = "",
             string unless = "",
             bool isAggregateMember = false,
-            string jsonFieldName = "")
+            string jsonFieldName = "",
+            int mode = 0)
             : this(
                 ns,
                 className,
@@ -167,7 +170,8 @@ namespace Unity.FoxgloveSDK.Editor
                 when,
                 unless,
                 isAggregateMember,
-                jsonFieldName)
+                jsonFieldName,
+                mode)
         {
         }
 
@@ -193,7 +197,8 @@ namespace Unity.FoxgloveSDK.Editor
             string when = "",
             string unless = "",
             bool isAggregateMember = false,
-            string jsonFieldName = "")
+            string jsonFieldName = "",
+            int mode = 0)
             : this(
                 ns,
                 className,
@@ -217,7 +222,8 @@ namespace Unity.FoxgloveSDK.Editor
                 when,
                 unless,
                 isAggregateMember,
-                jsonFieldName)
+                jsonFieldName,
+                mode)
         {
         }
 
@@ -244,7 +250,8 @@ namespace Unity.FoxgloveSDK.Editor
             string when = "",
             string unless = "",
             bool isAggregateMember = false,
-            string jsonFieldName = "")
+            string jsonFieldName = "",
+            int mode = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -270,6 +277,8 @@ namespace Unity.FoxgloveSDK.Editor
             PublishModeName = PublishModeToName(publishMode);
             ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
             ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);
+            Mode = mode;
+            ModeName = ModeToName(mode);
             HostKind = hostKind ?? string.Empty;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
@@ -306,7 +315,8 @@ namespace Unity.FoxgloveSDK.Editor
                 When,
                 Unless,
                 IsAggregateMember,
-                JsonFieldName);
+                JsonFieldName,
+                Mode);
         }
 
         private static string DefaultJsonFieldName(string memberName)
@@ -344,6 +354,17 @@ namespace Unity.FoxgloveSDK.Editor
                 case 1: return "OnChange";
                 case 2: return "OnChangeOrInterval";
                 case 3: return "OnTrigger";
+                default: return "Unknown";
+            }
+        }
+
+        public static string ModeToName(int mode)
+        {
+            switch (mode)
+            {
+                case 0: return "PublishOnly";
+                case 1: return "SubscribeOnly";
+                case 2: return "PublishAndSubscribe";
                 default: return "Unknown";
             }
         }

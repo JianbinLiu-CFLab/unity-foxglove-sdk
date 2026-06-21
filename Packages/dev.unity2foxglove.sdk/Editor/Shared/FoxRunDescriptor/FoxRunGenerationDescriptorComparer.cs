@@ -132,6 +132,7 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
             CompareSemantic(key, "rateHz", left.RateHz, right.RateHz, semantic);
             CompareSemantic(key, "publishMode", left.PublishModeName, right.PublishModeName, semantic);
+            CompareSemantic(key, "mode", left.ModeName, right.ModeName, semantic);
             CompareSemantic(key, "changeEpsilon", left.ChangeEpsilon, right.ChangeEpsilon, semantic);
             CompareSemantic(key, "forceIntervalSeconds", left.ForceIntervalSeconds, right.ForceIntervalSeconds, semantic);
             CompareProvenance(key, "hostKind", left.HostKind, right.HostKind, provenance);

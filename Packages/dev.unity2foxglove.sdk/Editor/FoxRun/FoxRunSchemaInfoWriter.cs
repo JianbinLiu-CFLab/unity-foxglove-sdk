@@ -173,13 +173,18 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.RateHz) + ",");
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ChangeEpsilon) + ",");
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ForceIntervalSeconds) + ",");
-                WriteFieldsArray(sb, contract.Fields, indentLevel + 2);
+                WriteFieldsArray(sb, contract.Fields, indentLevel + 2, trailingComma: true);
+                sb.AppendLine(inner + "    " + StringLiteral(contract.FlowMode));
                 sb.AppendLine(inner + "),");
             }
             sb.AppendLine(indent + "}");
         }
 
-        private static void WriteFieldsArray(StringBuilder sb, IReadOnlyList<FoxRunManifestField> fields, int indentLevel)
+        private static void WriteFieldsArray(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunManifestField> fields,
+            int indentLevel,
+            bool trailingComma = false)
         {
             var indent = Indent(indentLevel);
             var inner = Indent(indentLevel + 1);
@@ -196,7 +201,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Array) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Aggregate) + "),");
             }
-            sb.AppendLine(indent + "}");
+            sb.AppendLine(indent + (trailingComma ? "}," : "}"));
         }
 
         private static void EnsureMetaFile(string metaPath)

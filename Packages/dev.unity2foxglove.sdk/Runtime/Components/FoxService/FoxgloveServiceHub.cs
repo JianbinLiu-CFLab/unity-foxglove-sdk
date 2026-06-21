@@ -376,6 +376,28 @@ namespace Unity.FoxgloveSDK.Components
             return snapshots;
         }
 
+        /// <summary>
+        /// Invokes an existing generated service locally on the Unity main thread.
+        /// This reuses the active FoxService registry and does not create a
+        /// parallel service authoring or registration path.
+        /// </summary>
+        public FoxgloveLocalServiceCallResult CallLocal(
+            string serviceName,
+            Newtonsoft.Json.Linq.JToken request,
+            TimeSpan timeout)
+        {
+            FoxgloveGeneratedServiceDescriptor descriptor = null;
+            if (!string.IsNullOrEmpty(serviceName)
+                && _ownersByServiceName.TryGetValue(serviceName, out var owner)
+                && _descriptorsBySource.TryGetValue(owner, out var descriptors))
+            {
+                descriptor = descriptors.Find(item =>
+                    string.Equals(item.Name, serviceName, StringComparison.Ordinal));
+            }
+
+            return FoxgloveLocalServiceCall.Invoke(descriptor, request, timeout);
+        }
+
         private void ReleaseServiceNamesByOwner(IFoxgloveServiceSource source)
         {
             var names = new List<string>();

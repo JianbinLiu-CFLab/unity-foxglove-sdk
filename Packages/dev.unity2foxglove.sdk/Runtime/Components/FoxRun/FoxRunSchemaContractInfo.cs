@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Components
         public string BindingHash { get; }
         public string PolicyHash { get; }
         public string Mode { get; }
+        public string FlowMode { get; }
         public float RateHz { get; }
         public float ChangeEpsilon { get; }
         public float ForceIntervalSeconds { get; }
@@ -37,7 +38,8 @@ namespace Unity.FoxgloveSDK.Components
             float rateHz,
             float changeEpsilon,
             float forceIntervalSeconds,
-            IReadOnlyList<FoxRunSchemaFieldInfo> fields)
+            IReadOnlyList<FoxRunSchemaFieldInfo> fields,
+            string flowMode = "PublishOnly")
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -47,6 +49,7 @@ namespace Unity.FoxgloveSDK.Components
             BindingHash = bindingHash ?? string.Empty;
             PolicyHash = policyHash ?? string.Empty;
             Mode = mode ?? string.Empty;
+            FlowMode = string.IsNullOrWhiteSpace(flowMode) ? "PublishOnly" : flowMode;
             RateHz = rateHz;
             ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
             ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);

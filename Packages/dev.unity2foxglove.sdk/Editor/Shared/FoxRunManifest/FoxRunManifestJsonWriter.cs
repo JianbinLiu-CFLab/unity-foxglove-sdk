@@ -64,7 +64,8 @@ namespace Unity.FoxgloveSDK.Editor
             string declaringType,
             string schemaName,
             string encoding,
-            IReadOnlyList<FoxRunManifestField> fields)
+            IReadOnlyList<FoxRunManifestField> fields,
+            string flowMode = "PublishOnly")
         {
             var sb = new StringBuilder();
             sb.Append('{');
@@ -77,6 +78,12 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "encoding");
             AppendString(sb, encoding);
             sb.Append(',');
+            if (!IsDefaultFlowMode(flowMode))
+            {
+                AppendPropertyName(sb, "flowMode");
+                AppendString(sb, flowMode);
+                sb.Append(',');
+            }
             AppendPropertyName(sb, "fields");
             WriteFields(sb, fields);
             sb.Append('}');
@@ -238,6 +245,12 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "policy");
             WritePolicy(sb, contract.Policy);
+            if (!IsDefaultFlowMode(contract.FlowMode))
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "flowMode");
+                AppendString(sb, contract.FlowMode);
+            }
             sb.Append('}');
         }
 
@@ -347,5 +360,9 @@ namespace Unity.FoxgloveSDK.Editor
             // Canonical identity text must stay stable across Unity/Mono/.NET runtimes.
             sb.Append(value.ToString("G9", CultureInfo.InvariantCulture));
         }
+
+        private static bool IsDefaultFlowMode(string flowMode)
+            => string.IsNullOrWhiteSpace(flowMode)
+               || string.Equals(flowMode, "PublishOnly", StringComparison.Ordinal);
     }
 }

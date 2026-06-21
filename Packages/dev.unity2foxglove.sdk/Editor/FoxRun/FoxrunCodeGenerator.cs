@@ -342,10 +342,14 @@ namespace Unity.FoxgloveSDK.Editor
                 var attrs = fi.GetCustomAttributes<FoxRunAttribute>();
                 foreach (var a in attrs)
                 {
+                    if (a.Mode != FoxRunMode.PublishOnly && fi.IsInitOnly)
+                        throw new InvalidOperationException(
+                            "FOXRUN028: " + type.FullName + "." + fi.Name
+                            + ": FoxRun inbound fields must not be readonly.");
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
-                        a.When, a.Unless));
+                        a.When, a.Unless, mode: (int)a.Mode));
                 }
 
                 var aggregateField = fi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -362,10 +366,14 @@ namespace Unity.FoxgloveSDK.Editor
                 var attrs = pi.GetCustomAttributes<FoxRunAttribute>();
                 foreach (var a in attrs)
                 {
+                    if (a.Mode != FoxRunMode.PublishOnly && !pi.CanWrite)
+                        throw new InvalidOperationException(
+                            "FOXRUN028: " + type.FullName + "." + pi.Name
+                            + ": FoxRun inbound properties must have a setter.");
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
-                        a.When, a.Unless));
+                        a.When, a.Unless, mode: (int)a.Mode));
                 }
 
                 var aggregateField = pi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -665,6 +673,7 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly float RateHz;
             /// <summary>Publish mode as int enum value.</summary>
             public readonly int PublishMode;
+            public readonly int Mode;
             /// <summary>Change epsilon.</summary>
             public readonly float ChangeEpsilon;
             /// <summary>Heartbeat interval seconds.</summary>
@@ -681,7 +690,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "")
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -696,6 +705,7 @@ namespace Unity.FoxgloveSDK.Editor
                 RateHz = rate;
                 SchemaName = schema;
                 PublishMode = publishMode;
+                Mode = mode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
                 RawMemberOrder = rawMemberOrder;
@@ -711,7 +721,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "")
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
             {
                 MemberName = name;
                 MemberKind = "field";
@@ -726,6 +736,7 @@ namespace Unity.FoxgloveSDK.Editor
                 Ns = "";
                 ClassName = "";
                 PublishMode = publishMode;
+                Mode = mode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
                 RawMemberOrder = rawMemberOrder;
@@ -754,7 +765,8 @@ namespace Unity.FoxgloveSDK.Editor
                     ChangeEpsilon,
                     ForceIntervalSeconds,
                     IsAggregateMember,
-                    JsonFieldName);
+                    JsonFieldName,
+                    Mode);
             }
 
             public FoxRunReflectionGenerationMember ToReflectionMember()
@@ -780,7 +792,8 @@ namespace Unity.FoxgloveSDK.Editor
                     When,
                     Unless,
                     IsAggregateMember,
-                    JsonFieldName);
+                    JsonFieldName,
+                    Mode);
             }
         }
 

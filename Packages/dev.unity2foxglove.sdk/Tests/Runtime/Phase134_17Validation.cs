@@ -208,12 +208,39 @@ namespace Unity.FoxgloveSDK.Tests
             Check(comparison.IsProvenanceEqual,
                 "134-17-F5: descriptor comparison exposes provenance equality");
 
+            var inboundModel = new FoxRunGenerationModel(new[]
+            {
+                new FoxRunGenerationType("Demo", "InboundProbe", new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "InboundProbe", "_command", "field", "float",
+                        true, false, string.Empty, "/demo/command", 1f, string.Empty,
+                        0, 0f, 0f, "Test", 0, string.Empty, mode: 1)
+                })
+            });
+            var inboundJson = FoxRunGenerationDescriptorJsonWriter.Write(inboundModel);
+            var inboundReread = FoxRunGenerationDescriptorJsonReader.Read(inboundJson);
+            Check(FoxRunGenerationDescriptorComparer.Compare(inboundModel, inboundReread).IsSemanticEqual,
+                "134-17-F6: descriptor reader round-trips FoxRun flow mode");
+            var outboundModel = new FoxRunGenerationModel(new[]
+            {
+                new FoxRunGenerationType("Demo", "InboundProbe", new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "InboundProbe", "_command", "field", "float",
+                        true, false, string.Empty, "/demo/command", 1f, string.Empty,
+                        0, 0f, 0f, "Test", 0, string.Empty, mode: 0)
+                })
+            });
+            Check(!FoxRunGenerationDescriptorComparer.Compare(outboundModel, inboundModel).IsSemanticEqual,
+                "134-17-F7: descriptor comparer treats FoxRun flow mode as semantic state");
+
             var versionLeft = new FoxRunGenerationModel(Array.Empty<FoxRunGenerationType>(), descriptorVersion: 1, generatorVersion: "1.0.0");
             var versionRight = new FoxRunGenerationModel(Array.Empty<FoxRunGenerationType>(), descriptorVersion: 2, generatorVersion: "1.0.0");
             var versionComparison = FoxRunGenerationDescriptorComparer.Compare(versionLeft, versionRight);
             Check(!versionComparison.IsProvenanceEqual
                   && versionComparison.ProvenanceDifferences.Any(diff => diff.Contains("descriptorVersion", StringComparison.Ordinal)),
-                "134-17-F6: descriptor comparer reports descriptor version drift as provenance");
+                "134-17-F8: descriptor comparer reports descriptor version drift as provenance");
         }
 
         private static void VerifyModelAndManifestValidationHardening()

@@ -189,7 +189,31 @@ This SDK schema manifest is release evidence, not replay governance. Unity repla
 
 For temporary diagnostics that should stay outside the FoxRun contract, publish explicit `/debug/...` schemaless JSON through the debug overlay helper. Debug overlay messages are non-contract data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or the canonical manifest fingerprints, and they are not replay guard keys. MCAP recording may still capture them as ordinary JSON frames, but replay schema mismatch checks should ignore them.
 
-## 14. Troubleshooting
+## 14. Inbound Fields
+
+FoxRun fields are publish-only by default. To expose a field as an explicit input port, set `Mode`:
+
+```csharp
+[FoxRun("/control/target-speed", Mode = FoxRunMode.SubscribeOnly)]
+private float _requestedTargetSpeed;
+
+private void Update()
+{
+    _targetSpeed = Mathf.Clamp(_requestedTargetSpeed, 0f, 10f);
+}
+```
+
+`SubscribeOnly` fields are not published. `PublishAndSubscribe` fields retain publishing and suppress the first echo after an inbound assignment. Inbound fields must be writable scalar, string, or supported Unity value types; arrays, aggregate message fields, readonly fields, and properties without setters are rejected by generator diagnostics.
+
+Prefer an input-buffer field such as `_requestedTargetSpeed`, validate it in normal Unity code, and then apply it to authoritative state. Use `SubscribeOnly` for remote-authoritative commands. Keep local-authoritative state publish-only. Use `PublishAndSubscribe` only for intentionally shared observed state where both sides understand the ownership and feedback-loop policy.
+
+Inbound FoxRun is an external control surface and is disabled by default. Enable it under `FoxgloveManager > Connection & Security > FoxRun Inbound`. The runtime accepts only generated topic contracts, applies bounded payload and per-topic rate limits, decodes JSON directly into the declared member type, rejects polymorphic `$type` metadata, and assigns values on the Unity main thread.
+
+Loopback endpoints may opt in directly. A non-loopback endpoint remains fail-closed unless shared-token authentication is configured and the separate remote-inbound option is enabled. Every authenticated client currently receives the same generated allowlist; per-client topic authorization is not provided.
+
+Local service calls extend the existing `[FoxService]` registry through `FoxgloveServiceHub.CallLocal`. They do not create a second service registry or move Unity handlers onto worker threads.
+
+## 15. Troubleshooting
 
 | Symptom | Check |
 |---|---|
@@ -200,7 +224,7 @@ For temporary diagnostics that should stay outside the FoxRun contract, publish 
 | Generated trigger method returns `false` | Confirm the Foxglove manager is running and live publishers are not suppressed by replay mode. |
 | Build loops or recompiles too often | Generated fallback files should only be written when content changes. |
 
-## 15. Where to Learn More
+## 16. Where to Learn More
 
 - Use [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md) for build verification.
 - Use [10_Architecture](10_Architecture.md) for generator and fallback internals.

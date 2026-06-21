@@ -168,6 +168,24 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_allowHostedFoxgloveWeb");
             DrawProperty("_allowedBrowserOrigins");
 
+            FoxgloveManagerInspectorLayout.Subheader("FoxRun Inbound");
+            DrawProperty("_enableFoxRunInbound");
+            using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
+            {
+                DrawProperty("_allowRemoteFoxRunInboundWithSharedToken");
+                DrawProperty("_foxRunInboundMaxPayloadBytes");
+                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic");
+            }
+            if (GetBool("_enableFoxRunInbound")
+                && !Components.FoxgloveManager.IsLoopbackHost(GetString("_host", "127.0.0.1"))
+                && (!GetBool("_allowRemoteFoxRunInboundWithSharedToken")
+                    || string.IsNullOrWhiteSpace(GetString("_sharedToken", ""))))
+            {
+                EditorGUILayout.HelpBox(
+                    "FoxRun inbound is fail-closed for non-loopback hosts. Enable remote inbound explicitly and configure a shared token.",
+                    MessageType.Warning);
+            }
+
             var isSecure = IsSecureMode();
             FoxgloveManagerInspectorLayout.Subheader("Security / WSS");
             DrawSecureWebSocketFields(isSecure);

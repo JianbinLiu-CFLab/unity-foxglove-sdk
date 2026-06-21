@@ -37,7 +37,8 @@ namespace Unity.FoxgloveSDK.Editor
                     member.When,
                     member.Unless,
                     member.IsAggregateMember,
-                    member.JsonFieldName))
+                    member.JsonFieldName,
+                    member.Mode))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -58,6 +59,7 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string SchemaName;
         public readonly float RateHz;
         public readonly int PublishMode;
+        public readonly int Mode;
         public readonly float ChangeEpsilon;
         public readonly float ForceIntervalSeconds;
         public readonly int RawMemberOrder;
@@ -88,7 +90,8 @@ namespace Unity.FoxgloveSDK.Editor
             string when = "",
             string unless = "",
             bool isAggregateMember = false,
-            string jsonFieldName = "")
+            string jsonFieldName = "",
+            int mode = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -105,6 +108,7 @@ namespace Unity.FoxgloveSDK.Editor
             SchemaName = schemaName ?? string.Empty;
             RateHz = rateHz;
             PublishMode = publishMode;
+            Mode = mode;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
             RawMemberOrder = rawMemberOrder;

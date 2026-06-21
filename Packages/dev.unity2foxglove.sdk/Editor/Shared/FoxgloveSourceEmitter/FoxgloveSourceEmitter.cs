@@ -47,6 +47,8 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string SchemaName;
             /// <summary>Publish mode from the attribute.</summary>
             public readonly int PublishMode;
+            /// <summary>FoxRun data-flow mode from the attribute.</summary>
+            public readonly int Mode;
             /// <summary>Change epsilon for numeric comparison.</summary>
             public readonly float ChangeEpsilon;
             /// <summary>Heartbeat interval for OnChangeOrInterval.</summary>
@@ -71,7 +73,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// </summary>
             public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName,
                 int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
-                bool isAggregateMember = false, string jsonFieldName = "")
+                bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -79,6 +81,7 @@ namespace Unity.FoxgloveSDK.Editor
                 RateHz = rateHz;
                 SchemaName = schemaName;
                 PublishMode = publishMode;
+                Mode = mode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
                 When = when ?? string.Empty;
@@ -144,8 +147,17 @@ namespace Unity.FoxgloveSDK.Editor
             if (members == null || members.Count == 0)
                 throw new ArgumentException("At least one member is required.", nameof(members));
 
+            var publishMembers = members
+                .Where(member => member.Mode != 1)
+                .ToList();
+            var inputMembers = members
+                .Where(member => member.Mode == 1 || member.Mode == 2)
+                .OrderBy(member => member.Topic, StringComparer.Ordinal)
+                .ThenBy(member => member.MemberName, StringComparer.Ordinal)
+                .ToList();
+
             var topicMap = new Dictionary<string, List<TopicMember>>();
-            foreach (var m in members)
+            foreach (var m in publishMembers)
             {
                 if (m == null)
                     throw new ArgumentException("TopicMember cannot be null.", nameof(members));
@@ -163,23 +175,36 @@ namespace Unity.FoxgloveSDK.Editor
 
             var topics = topicMap.Keys.OrderBy(topic => topic, StringComparer.Ordinal).ToList();
             var topicModes = topicMap.ToDictionary(kvp => kvp.Key, kvp => TopicPublishMode(kvp.Value));
-            var hasPolicy = members.Any(m => m.PublishMode != 0);
-            var hasConditions = members.Any(m => !string.IsNullOrWhiteSpace(m.When) || !string.IsNullOrWhiteSpace(m.Unless));
+            var hasPolicy = publishMembers.Any(m => m.PublishMode != 0);
+            var hasConditions = publishMembers.Any(m => !string.IsNullOrWhiteSpace(m.When) || !string.IsNullOrWhiteSpace(m.Unless));
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
 
-            ClassFrameEmitter.EmitClassFrame(sb, ns, className, topics.Count, hasPolicy, hasConditions, pad);
-            TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
-            TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
-            PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
-            PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
-            PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
-            ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
+            ClassFrameEmitter.EmitClassFrame(
+                sb,
+                ns,
+                className,
+                topics.Count,
+                hasPolicy,
+                hasConditions,
+                inputMembers.Count > 0,
+                pad);
+            if (topics.Count > 0)
+            {
+                TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
+                TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
+                ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
+            }
+            InputDispatchEmitter.EmitInput(sb, inputMembers, topics, pad);
 
-            var triggerMembers = TriggerEmitter.BuildTriggerMembers(members, topics, topicModes);
+            var triggerMembers = TriggerEmitter.BuildTriggerMembers(publishMembers, topics, topicModes);
             TriggerEmitter.EmitTriggers(sb, triggerMembers, topics, topicModes, pad);
 
-            PolicyEmitter.EmitPolicy(sb, topics, topicMap, topicModes, pad);
+            if (topics.Count > 0)
+                PolicyEmitter.EmitPolicy(sb, topics, topicMap, topicModes, pad);
 
             sb.AppendLine($"{pad}}}");
             if (!string.IsNullOrEmpty(ns)) sb.AppendLine("}");

@@ -98,6 +98,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "publishMode", member.PublishModeName);
             sb.Append(',');
+            WriteStringField(sb, "mode", member.ModeName);
+            sb.Append(',');
             WriteName(sb, "changeEpsilon");
             WriteFloat(sb, member.ChangeEpsilon);
             sb.Append(',');
