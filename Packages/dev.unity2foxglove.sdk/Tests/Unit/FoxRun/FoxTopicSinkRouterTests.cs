@@ -102,6 +102,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void UnregisteredContractIsNotReplayedToLaterSinks()
+        {
+            var router = new FoxTopicSinkRouter();
+            var first = Exported("/telemetry");
+            router.Register(first);
+
+            Assert.True(router.Unregister(first.Topic));
+
+            var late = new RecordingSink("late", new List<string>());
+            router.AddSink(late);
+
+            Assert.Empty(late.Registered);
+        }
+
+        [Fact]
         public void DisposeDisposesEverySinkAndClearsRouter()
         {
             var router = new FoxTopicSinkRouter();

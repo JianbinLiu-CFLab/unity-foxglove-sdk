@@ -51,6 +51,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(router.Contains("foreach (var contract in _contracts.Values)", StringComparison.Ordinal),
                 "155-3: router replays known contracts so a sink can be attached at any time");
+
+            Check(router.Contains("public bool Unregister(string topic)", StringComparison.Ordinal)
+                  && router.Contains("return _contracts.Remove(topic)", StringComparison.Ordinal),
+                "155-4: router removes stale source contracts so late sinks do not replay destroyed topics");
         }
 
         private static void VerifyHubOwnsRouterAndFansOutAfterLivePublish()
@@ -60,10 +64,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(hub.Contains("public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter", StringComparison.Ordinal)
                   && hub.Contains("_sinkRouter.Register(contract)", StringComparison.Ordinal)
                   && hub.Contains("_sinkRouter.Dispose()", StringComparison.Ordinal),
-                "155-4: hub owns the sink router, registers exported contracts, and disposes it on teardown");
+                "155-5: hub owns the sink router, registers exported contracts, and disposes it on teardown");
 
             Check(LiveThenSink(hub),
-                "155-5: live publish stays primary and the sink fanout runs afterward gated on HasSinks");
+                "155-6: live publish stays primary and the sink fanout runs afterward gated on HasSinks");
+
+            Check(hub.Contains("_sinkRouter.Unregister(contract.Topic)", StringComparison.Ordinal)
+                  && hub.Contains("_sinkRouter.SinkFaulted += OnSinkFaulted", StringComparison.Ordinal)
+                  && hub.Contains("Debug.LogWarning(message)", StringComparison.Ordinal),
+                "155-7: hub unregisters stale sink contracts and makes sink faults visible by default");
         }
 
         private static void VerifyGeneratedSinkSideChannel()
@@ -75,13 +84,19 @@ namespace Unity.FoxgloveSDK.Tests
                   && emitter.Contains("void IFoxgloveTopicSinkSource.FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs)", StringComparison.Ordinal)
                   && emitter.Contains("if (router == null || !router.HasSinks)", StringComparison.Ordinal)
                   && emitter.Contains("router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(", StringComparison.Ordinal),
-                "155-6: generated sources fan aggregate topics out to the sink router, gated on HasSinks");
+                "155-8: generated sources fan topics out to the sink router, gated on HasSinks");
+
+            Check(emitter.Contains("__foxRunLastJson_", StringComparison.Ordinal)
+                  && emitter.Contains("var __sink_", StringComparison.Ordinal)
+                  && !emitter.Contains("if (!IsAggregateTopic(fields))\r\n                    continue;", StringComparison.Ordinal)
+                  && !emitter.Contains("if (!IsAggregateTopic(fields))\n                    continue;", StringComparison.Ordinal),
+                "155-9: aggregate sink fanout reuses primary JSON bytes and legacy field topics also get sink payloads");
         }
 
         private static void VerifyValidationRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase155"),
-                "155-7: validation registry exposes the multi-sink fanout flag");
+                "155-10: validation registry exposes the multi-sink fanout flag");
         }
 
         private static bool LiveThenSink(string hub)

@@ -31,6 +31,12 @@ namespace Unity2Foxglove.Ros2ForUnity
         /// </summary>
         protected abstract IRos2TopicPublisherFactory CreatePublisherFactory();
 
+        /// <summary>
+        /// Create or acquire the concrete ROS2 context owned by the adapter package.
+        /// Return <c>null</c> to disable.
+        /// </summary>
+        protected abstract IUnity2FoxgloveRos2Context CreateContext();
+
         private void OnEnable() => TryAttach();
 
         private void Update()
@@ -57,7 +63,13 @@ namespace Unity2Foxglove.Ros2ForUnity
                 return;
             }
 
-            _context = Unity2FoxgloveRos2ContextFactory.Create();
+            _context = CreateContext();
+            if (_context == null)
+            {
+                enabled = false;
+                return;
+            }
+
             _sink = new Ros2R2FUTopicSink(_context, factory, _nodeName, Debug.LogWarning);
             _hub.TopicSinkRouter.AddSink(_sink);
         }

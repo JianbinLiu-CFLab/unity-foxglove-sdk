@@ -36,7 +36,11 @@ namespace Unity.FoxgloveSDK.Editor
                 if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
-                    sb.AppendLine($"{pad}            case {i}: mgr.PublishFoxRunJsonBytes(\"{topic}\", \"{schema}\", __BuildFoxRunJson_{i}(), nowNs); break;");
+                    sb.AppendLine($"{pad}            case {i}:");
+                    sb.AppendLine($"{pad}                var __payload_{i} = __BuildFoxRunJson_{i}();");
+                    sb.AppendLine($"{pad}                __foxRunLastJson_{i} = __payload_{i};");
+                    sb.AppendLine($"{pad}                mgr.PublishFoxRunJsonBytes(\"{topic}\", \"{schema}\", __payload_{i}, nowNs);");
+                    sb.AppendLine($"{pad}                break;");
                 }
                 else
                 {
@@ -89,11 +93,11 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Emits the optional additive sink fanout side-channel. v1 fans out
-        /// aggregate topics only, reusing the explicit JSON byte writer so the
-        /// same serialization shape feeds every sink without reflection or
-        /// per-sink re-serialization. The method is gated on <c>router.HasSinks</c>
-        /// so it costs nothing when no sink is attached.
+        /// Emits the optional additive sink fanout side-channel. Aggregate topics
+        /// reuse the JSON bytes built for the primary live/MCAP publish path.
+        /// Legacy field-level topics still keep their primary <c>PublishJson</c>
+        /// path, while the side-channel builds equivalent JSON bytes only when a
+        /// sink is attached.
         /// </summary>
         internal static void EmitPublishToSinks(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {
@@ -109,12 +113,17 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                if (!IsAggregateTopic(fields))
-                    continue;
-
-                EnsurePureAggregateTopic(fields, topics[i]);
                 sb.AppendLine($"{pad}            case {i}:");
-                sb.AppendLine($"{pad}                var __sink_{i} = __BuildFoxRunJson_{i}();");
+                if (IsAggregateTopic(fields))
+                {
+                    EnsurePureAggregateTopic(fields, topics[i]);
+                    sb.AppendLine($"{pad}                var __sink_{i} = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
+                    sb.AppendLine($"{pad}                __foxRunLastJson_{i} = null;");
+                }
+                else
+                {
+                    sb.AppendLine($"{pad}                var __sink_{i} = __BuildFoxRunJson_{i}();");
+                }
                 sb.AppendLine($"{pad}                router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, __sink_{i}, \"{StringLiteralEmitter.CSharpStringLiteral(origin)}\");");
                 sb.AppendLine($"{pad}                break;");
             }
@@ -137,15 +146,16 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void EmitAggregateJsonWriters(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {
-            var emittedAny = false;
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                if (!IsAggregateTopic(fields))
-                    continue;
+                if (IsAggregateTopic(fields))
+                {
+                    EnsurePureAggregateTopic(fields, topics[i]);
+                    sb.AppendLine();
+                    sb.AppendLine($"{pad}    private byte[] __foxRunLastJson_{i};");
+                }
 
-                EnsurePureAggregateTopic(fields, topics[i]);
-                emittedAny = true;
                 sb.AppendLine();
                 sb.AppendLine($"{pad}    private byte[] __BuildFoxRunJson_{i}()");
                 sb.AppendLine($"{pad}    {{");
@@ -167,7 +177,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}    }}");
             }
 
-            if (!emittedAny)
+            if (topics.Count == 0)
                 return;
 
             sb.AppendLine();

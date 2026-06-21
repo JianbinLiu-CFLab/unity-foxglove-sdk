@@ -151,6 +151,11 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter;
 
+        private void Awake()
+        {
+            _sinkRouter.SinkFaulted += OnSinkFaulted;
+        }
+
         /// <summary>Register a generated FoxRun source without waiting for the fallback scene scan.</summary>
         public static void RegisterSource(IFoxgloveLogSource source)
         {
@@ -510,7 +515,10 @@ namespace Unity.FoxgloveSDK.Components
                         ? contractSource.FoxgloveLog_GetContract(i)
                         : FallbackContract(source.FoxgloveLog_GetTopic(i));
                     if (contract != null)
+                    {
                         _topicBus.Unregister(contract.Topic, origin);
+                        _sinkRouter.Unregister(contract.Topic);
+                    }
                 }
                 catch (Exception ex) when (IsRecoverableSourceException(ex))
                 {
@@ -611,9 +619,18 @@ namespace Unity.FoxgloveSDK.Components
                    && !(ex is AppDomainUnloadedException);
         }
 
+        private static void OnSinkFaulted(FoxTopicSinkFault fault)
+        {
+            var message = "[FoxRun] Topic sink '" + fault.SinkName + "' failed during "
+                          + fault.Operation + " for topic '" + fault.Topic + "': "
+                          + fault.Exception.Message;
+            Debug.LogWarning(message);
+        }
+
         /// <summary>Clears all timers and nulls the singleton reference.</summary>
         private void OnDestroy()
         {
+            _sinkRouter.SinkFaulted -= OnSinkFaulted;
             _timers.Clear();
             _sinkRouter.Dispose();
             if (_instance == this) _instance = null;

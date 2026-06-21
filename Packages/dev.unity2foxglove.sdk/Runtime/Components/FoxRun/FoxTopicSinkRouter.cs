@@ -83,6 +83,15 @@ namespace Unity.FoxgloveSDK.Components
         public bool RemoveSink(IFoxTopicSink sink)
             => sink != null && _sinks.Remove(sink);
 
+        /// <summary>Remove a previously registered exported contract.</summary>
+        public bool Unregister(string topic)
+        {
+            if (string.IsNullOrWhiteSpace(topic))
+                return false;
+
+            return _contracts.Remove(topic);
+        }
+
         /// <summary>
         /// Register an exported contract with every sink. Local-only contracts
         /// are not exported and are skipped.
