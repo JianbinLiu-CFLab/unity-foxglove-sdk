@@ -49,16 +49,18 @@ namespace Unity.FoxgloveSDK.Editor
                 var typeName = GlobalTypeName(member.TypeName);
                 var access = TypeExprEmitter.MemberAccess(member.MemberName);
                 sb.AppendLine($"{pad}            case {i}:");
-                sb.AppendLine($"{pad}                if (!FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error))");
-                sb.AppendLine($"{pad}                    return false;");
-                sb.AppendLine($"{pad}                {access} = __value;");
+                sb.AppendLine($"{pad}                {{");
+                sb.AppendLine($"{pad}                    if (!FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error))");
+                sb.AppendLine($"{pad}                        return false;");
+                sb.AppendLine($"{pad}                    {access} = __value;");
                 if (member.Mode == 2)
                 {
                     var publishIndex = IndexOf(publishTopics, member.Topic);
                     if (publishIndex >= 0)
-                        sb.AppendLine($"{pad}                __foxRunSuppressNextPublish_{publishIndex} = true;");
+                        sb.AppendLine($"{pad}                    __foxRunSuppressNextPublish_{publishIndex} = true;");
                 }
-                sb.AppendLine($"{pad}                return true;");
+                sb.AppendLine($"{pad}                    return true;");
+                sb.AppendLine($"{pad}                }}");
             }
             sb.AppendLine($"{pad}            default:");
             sb.AppendLine($"{pad}                error = \"Unknown FoxRun inbound topic index.\";");

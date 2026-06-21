@@ -192,6 +192,33 @@ namespace Demo
         }
 
         [Fact]
+        public void RoslynGeneratorScopesInboundAssignmentLocalsPerTopic()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class CommandInput
+    {
+        [FoxRun(""/phase157/shared-state"", Mode = FoxRunMode.PublishAndSubscribe)]
+        private float sharedState;
+
+        [FoxRun(""/phase157/target-speed"", Mode = FoxRunMode.SubscribeOnly)]
+        private float requestedTargetSpeed;
+    }
+}");
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString().Replace("\r\n", "\n", StringComparison.Ordinal))
+                .Single(text => text.Contains("partial class CommandInput", StringComparison.Ordinal));
+
+            Assert.Contains("case 0:\n                    {", generated, StringComparison.Ordinal);
+            Assert.Contains("case 1:\n                    {", generated, StringComparison.Ordinal);
+            Assert.Contains("FoxRunInboundJson.TryRead(payload, \"requestedTargetSpeed\", out float __value", generated, StringComparison.Ordinal);
+            Assert.Contains("FoxRunInboundJson.TryRead(payload, \"sharedState\", out float __value", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RoslynAttributeDataExposesFoxRunModeConstant()
         {
             var compilation = CreateCompilation(@"

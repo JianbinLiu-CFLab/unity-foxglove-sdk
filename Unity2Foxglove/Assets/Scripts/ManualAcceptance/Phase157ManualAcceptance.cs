@@ -58,7 +58,9 @@ public sealed partial class Phase157ManualAcceptance : MonoBehaviour
     [Tooltip("Number of accepted command-buffer changes applied by this component.")]
     [SerializeField] private int appliedCommandCount;
     [Tooltip("True after the existing FoxServiceHub successfully handles the local Phase157 service call.")]
+#pragma warning disable CS0414 // Manual acceptance state is observed in the Unity Inspector.
     [SerializeField] private bool localServicePassed;
+#pragma warning restore CS0414
     [Tooltip("Most recent local service response or failure diagnostic.")]
     [SerializeField] private string localServiceStatus;
     [Tooltip("Last acceptance status written by this component.")]
