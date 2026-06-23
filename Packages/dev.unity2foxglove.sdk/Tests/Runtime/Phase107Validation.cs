@@ -161,10 +161,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && distributionPolicy == "runtime_artifacts_live_in_separate_runtime_packages"
                   && (string)manifest["distributionModel"] == "one_repo_multi_package_release_artifacts",
                 "107-B10: manifest records not-bundled multi-package distribution policy");
+            var knownRuntimeDistros = (manifest.Value<string>("knownRuntimeRosDistro") ?? string.Empty)
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             Check((string)manifest["knownRuntimeRmw"] == "rmw_fastrtps_cpp"
-                  && (string)manifest["knownRuntimeRosDistro"] == "jazzy"
+                  && knownRuntimeDistros.Contains("humble")
+                  && knownRuntimeDistros.Contains("jazzy")
+                  && knownRuntimeDistros.Contains("lyrical")
                   && (string)manifest["activeRuntimePolicy"] == "one_runtime_package_per_project",
-                "107-B11: manifest records Jazzy runtime and one-runtime policy");
+                "107-B11: manifest records supported ROS distros and one-runtime policy");
             Check(manifest["packageComposition"] is JObject composition
                   && composition["adapterAlone"] != null
                   && composition["runtimeAlone"] != null

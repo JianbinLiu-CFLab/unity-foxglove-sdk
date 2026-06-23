@@ -1,0 +1,16 @@
+{
+  "name": "Unity2Foxglove.Ros2ForUnity.Runtime",
+  "rootNamespace": "",
+  "references": [],
+  "includePlatforms": [
+    "Editor",
+    "WindowsStandalone64"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "versionDefines": [],
+  "noEngineReferences": false
+}

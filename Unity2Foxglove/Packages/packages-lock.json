@@ -206,12 +206,6 @@
       "source": "local",
       "dependencies": {}
     },
-    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64": {
-      "version": "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
-      "depth": 0,
-      "source": "local",
-      "dependencies": {}
-    },
     "dev.unity2foxglove.sdk": {
       "version": "file:../../Packages/dev.unity2foxglove.sdk",
       "depth": 0,
@@ -497,6 +491,12 @@
         "com.unity.modules.jsonserialize": "1.0.0",
         "com.unity.modules.subsystems": "1.0.0"
       }
+    },
+    "dev.unity2foxglove.ros2forunity.runtime.humble.win64": {
+      "version": "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+      "depth": 0,
+      "source": "local",
+      "dependencies": {}
     }
   }
 }

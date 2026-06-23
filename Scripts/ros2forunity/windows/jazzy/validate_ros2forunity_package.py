@@ -330,10 +330,16 @@ def check_manifest(results: list[CheckResult]) -> None:
         "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
         "activeRuntimePolicy": "one_runtime_package_per_project",
         "knownRuntimeRmw": "rmw_fastrtps_cpp",
-        "knownRuntimeRosDistro": "jazzy",
     }
     for key, value in expected.items():
         add(results, f"manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+    known_distros = str(data.get("knownRuntimeRosDistro", ""))
+    add(
+        results,
+        "manifest known runtime distros include supported candidates",
+        {"humble", "jazzy", "lyrical"}.issubset({part.strip() for part in known_distros.split(",")}),
+        f"knownRuntimeRosDistro={known_distros!r}",
+    )
 
     current = data.get("currentRecommendedRuntime", {})
     add(
@@ -422,10 +428,11 @@ def check_manifest(results: list[CheckResult]) -> None:
     packages = data.get("plannedRuntimePackages", [])
     add(
         results,
-        "manifest planned runtime packages",
+        "manifest planned runtime packages contain only future candidates",
         isinstance(packages, list)
-        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in packages
-        and "dev.unity2foxglove.ros2forunity.runtime.humble.win64" in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" not in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.humble.win64" not in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64" not in packages
         and "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64" in packages,
         f"plannedRuntimePackages={packages!r}",
     )

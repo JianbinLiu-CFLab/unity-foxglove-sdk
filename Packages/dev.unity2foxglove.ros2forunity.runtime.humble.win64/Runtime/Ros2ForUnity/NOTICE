@@ -1,0 +1,13 @@
+ROS2 For Unity
+Copyright 2019-2021 Robotec.ai.
+Modifications Copyright (c) 2026 Jianbin Liu.
+
+This fork is maintained by Jianbin Liu for the JianbinLiu-CFLab ROS2Unity
+workspace. RobotecAI remains the original upstream source and licensing
+history for ROS2 For Unity.
+
+Open-source release of ROS2 For Unity was made possible through cooperation
+with TIER IV. Encouragement, support, and requirements driven by TIER IV
+significantly improved the project in terms of portability, stability, core
+structure, and user-friendliness.
+

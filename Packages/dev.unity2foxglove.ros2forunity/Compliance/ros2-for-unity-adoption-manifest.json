@@ -12,7 +12,7 @@
   "activeRuntimePolicy": "one_runtime_package_per_project",
   "activeRuntimeSourceOfTruth": "Unity2Foxglove/Packages/manifest.json resolves exactly one dev.unity2foxglove.ros2forunity.runtime.* package",
   "knownRuntimeRmw": "rmw_fastrtps_cpp",
-  "knownRuntimeRosDistro": "jazzy",
+  "knownRuntimeRosDistro": "humble,jazzy,lyrical",
   "currentRecommendedRuntime": {
     "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
     "runtimeId": "r2fu-jazzy-win64",
@@ -54,12 +54,30 @@
     "evidence": "WINDOWS_ROS2_GREEN / RTPS_LOCATOR_GREEN / WSL_TO_UNITY_SEDP_GREEN / UNITY_TO_WSL_SEDP_BLOCKED / WSL_ROS2_DISCOVERY_BLOCKED"
   },
   "plannedRuntimePackages": [
-    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
-    "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
     "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64"
   ],
   "supportedRuntimePackages": [
+    {
+      "packageName": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+      "runtimeId": "r2fu-humble-win64",
+      "rosDistro": "humble",
+      "platform": "win64",
+      "supportLevel": "Recommended",
+      "distributionLevel": "Prototype",
+      "artifact": "Ros2ForUnity_humble_standalone_windows_x86_64.zip",
+      "artifactSha256": "2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f",
+      "artifactSize": 14909425,
+      "inventoryFile": "Compliance/r2fu-humble-win64-runtime-inventory.json",
+      "runtimeNoticesFile": "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/THIRD_PARTY_NOTICES.md",
+      "inventoryFileCount": 1129,
+      "criticalRuntimeFiles": [
+        "rcl.dll",
+        "yaml.dll",
+        "spdlog.dll",
+        "rosgraph_msgs_assembly.dll"
+      ],
+      "sourceBasis": "Local Humble handoff/rebuild artifact for the runtime package; distinct from the legacy upstream windows11 release asset."
+    },
     {
       "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
       "runtimeId": "r2fu-jazzy-win64",

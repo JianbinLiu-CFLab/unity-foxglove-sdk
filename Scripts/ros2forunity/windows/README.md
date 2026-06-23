@@ -5,6 +5,7 @@ ROS distro subdirectory.
 
 ```text
 windows/
+  humble/
   jazzy/
   lyrical/
 ```

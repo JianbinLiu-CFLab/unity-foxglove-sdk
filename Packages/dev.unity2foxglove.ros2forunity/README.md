@@ -6,7 +6,7 @@ It provides facade/API boundaries, documentation, attribution records, and a sou
 
 The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
 
-The current Windows x64 runtime work uses explicit candidate runtime packages. Jazzy and Lyrical are packaged as separate candidates, and exactly one runtime package should be active in a Unity project manifest at a time. Runtime packages own the ROS2 For Unity standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
+The current Windows x64 runtime work uses explicit candidate runtime packages. Humble, Jazzy, and Lyrical are packaged as separate candidates, and exactly one runtime package should be active in a Unity project manifest at a time. Runtime packages own the ROS2 For Unity standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
 
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
@@ -23,16 +23,16 @@ This optional package is reserved for users who later want Unity to participate 
 ```text
 bundleStatus: not_bundled
 adapterStatus: external_assets_sample
-runtimePackages: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64, dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
+runtimePackages: dev.unity2foxglove.ros2forunity.runtime.humble.win64, dev.unity2foxglove.ros2forunity.runtime.jazzy.win64, dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 localRos2Entrypoint: <repo-root>/ros2-windows/ros2_<distro>
 localArtifactEntrypoint: <repo-root>/r2fu-runtime-artifacts/<distro>
 ```
 
-The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment. Lyrical is also available as a candidate runtime package and must be validated in a fresh Unity Editor process after switching from another loaded runtime.
+The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment. Humble and Lyrical are also available as candidate runtime packages and must be validated in a fresh Unity Editor process after switching from another loaded runtime.
 
 The current Windows x64 runtime packages have their runtime manifests, generated file inventories, checksums, and artifact-specific notices under repository-root `Packages/dev.unity2foxglove.ros2forunity.runtime.*` directories. The adapter package keeps compatibility records under `Compliance/` without bundling runtime binaries itself.
 
-Local ROS2 command-line probes should use the repository-local `ros2-windows/` entrypoint, for example `ros2-windows/ros2_jazzy` or `ros2-windows/ros2_lyrical`. Local ROS2 For Unity runtime ZIP inputs should use `r2fu-runtime-artifacts/<distro>/...`. These entrypoint directories keep machine-local installs and downloaded artifacts out of the package source tree.
+Local ROS2 command-line probes should use the repository-local `ros2-windows/` entrypoint, for example `ros2-windows/ros2_humble`, `ros2-windows/ros2_jazzy`, or `ros2-windows/ros2_lyrical`. Local ROS2 For Unity runtime ZIP inputs should use `r2fu-runtime-artifacts/<distro>/...`. These entrypoint directories keep machine-local installs and downloaded artifacts out of the package source tree.
 
 Windows Firewall may block inbound Fast DDS UDP discovery. WSL2, VPN, physical Linux host, or bridged Ubuntu VM are all valid ROS2 peer topologies once appropriate firewall allow rules are in place (see report 20 for root cause and fixes).
 
@@ -88,13 +88,14 @@ Install the adapter package and keep candidate runtime packages under the reposi
 
 ```text
 dev.unity2foxglove.ros2forunity
+dev.unity2foxglove.ros2forunity.runtime.humble.win64
 dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 ```
 
 The Foxglove Manager Inspector exposes one `ROS2 For Unity Runtime` active runtime dropdown. Changing it edits `Unity2Foxglove/Packages/manifest.json` so exactly one runtime package is active, then Unity performs a normal package reimport and script compilation. This is intentionally slower than a scripting-define switch because Unity must not import two sets of ROS2 managed message DLLs or native runtime DLLs at once.
 
-If the current Editor session has not entered Play Mode yet, you can switch runtime packages and enter Play Mode without restarting. After an Editor session has loaded one ROS2 runtime in Play Mode, switching to a different runtime requires a Unity restart before Play Mode. Windows native ROS2 plugins stay loaded until the Editor process exits, so the Inspector blocks unsafe Play Mode entry and offers a restart action instead of letting Jazzy and Lyrical DLLs mix in one process.
+If the current Editor session has not entered Play Mode yet, you can switch runtime packages and enter Play Mode without restarting. After an Editor session has loaded one ROS2 runtime in Play Mode, switching to a different runtime requires a Unity restart before Play Mode. Windows native ROS2 plugins stay loaded until the Editor process exits, so the Inspector blocks unsafe Play Mode entry and offers a restart action instead of letting Humble, Jazzy, and Lyrical DLLs mix in one process.
 
 The adapter package manages only the base Standalone build-target symbol:
 
