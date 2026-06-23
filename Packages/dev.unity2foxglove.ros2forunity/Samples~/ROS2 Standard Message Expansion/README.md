@@ -1,4 +1,4 @@
-﻿# ROS2 Standard Message Expansion
+# ROS2 Standard Message Expansion
 
 This source-only sample publishes six conventional ROS2 standard message topics through the optional ROS2 For Unity route:
 
@@ -18,7 +18,7 @@ The sample is a CLI smoke kit, not a new RViz2 productization gate. It does not 
 - A Unity project with `dev.unity2foxglove.ros2forunity`.
 - A ROS2 For Unity runtime package or external ROS2 For Unity import.
 - The compile symbol `UNITY2FOXGLOVE_ROS2_FOR_UNITY`.
-- Windows ROS2 Jazzy at `C:\ros2_jazzy\ros2-windows` for the canonical helper.
+- Windows ROS2 Jazzy at `ros2-windows\ros2_jazzy` for the canonical helper.
 
 ## Unity Setup
 
@@ -77,7 +77,7 @@ Production projects should namespace them, for example `/unity/odom` or `/unity/
 Run Unity first, then execute this canonical command from the repository root:
 
 ```text
-python Scripts\smoke\ros2\phase132_standard_messages_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows
+python Scripts\smoke\ros2\phase132_standard_messages_acceptance.py --ros2-root ros2-windows\ros2_jazzy
 ```
 
 The helper uses:

@@ -10,6 +10,9 @@ Expected local shape:
 
 ```text
 r2fu-runtime-artifacts/
+  humble/
+    windows_x86_64/
+      Ros2ForUnity_humble_standalone_windows_x86_64.zip
   jazzy/
     windows_x86_64/
       Ros2ForUnity_jazzy_standalone_windows_x86_64.zip
@@ -22,6 +25,7 @@ On a developer workstation, the distro subdirectories may be junctions or
 symlinks to an external artifact cache. For example:
 
 ```text
+r2fu-runtime-artifacts/humble -> <external-artifact-cache>/humble
 r2fu-runtime-artifacts/jazzy   -> <external-artifact-cache>/jazzy
 r2fu-runtime-artifacts/lyrical -> <external-artifact-cache>/lyrical
 ```

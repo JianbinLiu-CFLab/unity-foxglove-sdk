@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import sys
 
+import _ros2_windows_env as ros2env
 import phase138u_lidar_deskew_rviz2_acceptance as phase138u
 
 
-DEFAULT_LYRICAL_ROOT = r"C:\ros2_lyrical\ros2-windows"
+DEFAULT_LYRICAL_ROOT = str(ros2env.default_ros2_root("lyrical"))
 REQUIRE_MOTION_FLAG = "--require-motion"
 
 
@@ -32,7 +33,7 @@ def main(argv: list[str]) -> int:
             args.extend(["--rviz-display-mode", "both"])
 
     print("[phase146b-lyrical-lidar-deskew] Unity must run the Lyrical Win64 runtime package in standalone mode.")
-    print("[phase146b-lyrical-lidar-deskew] External ROS2/RViz2 probes use C:\\ros2_lyrical; Unity must not source that environment.")
+    print("[phase146b-lyrical-lidar-deskew] External ROS2/RViz2 probes use the repo-local ros2-windows/ros2_lyrical entrypoint; Unity must not source that environment.")
     print("[phase146b-lyrical-lidar-deskew] Static captures are accepted by default for runtime/DDS wiring; pass --require-motion for strict deskew motion proof.")
     return phase138u.main(args)
 

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -16,7 +16,7 @@ sets a Windows ROS2 Jazzy environment and validates the external graph:
   3. Publishing three messages to /in succeeds.
 
 The optional positional path is the ROS2 Jazzy Windows root, not the Unity
-project path. It defaults to C:\\ros2_jazzy\\ros2-windows.
+project path. It defaults to ros2-windows\\ros2_jazzy.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ except ImportError as exc:
     ros2env = None
     ROS2_ENV_IMPORT_ERROR = exc
 
-DEFAULT_ROS2_ROOT = pathlib.Path(r"C:\ros2_jazzy\ros2-windows") if ros2env is None else ros2env.DEFAULT_ROS2_ROOT
+DEFAULT_ROS2_ROOT = pathlib.Path(r"ros2-windows\ros2_jazzy") if ros2env is None else ros2env.DEFAULT_ROS2_ROOT
 NODE_NAME = "unity2foxglove_phase110"
 IN_TOPIC = "/unity2foxglove/ros2forunity/string/in"
 OUT_TOPIC = "/unity2foxglove/ros2forunity/string/out"
@@ -50,7 +50,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "ros2_root",
         nargs="?",
         default=str(DEFAULT_ROS2_ROOT),
-        help="Windows ROS2 Jazzy root. Default: C:\\ros2_jazzy\\ros2-windows",
+        help="Windows ROS2 Jazzy root. Default: ros2-windows\\ros2_jazzy",
     )
     parser.add_argument(
         "--mode",

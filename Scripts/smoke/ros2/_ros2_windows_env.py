@@ -17,7 +17,26 @@ import time
 from datetime import datetime
 
 
-DEFAULT_ROS2_ROOT = pathlib.Path(r"C:\ros2_jazzy\ros2-windows")
+def find_workspace_root() -> pathlib.Path:
+    """Find the repository root from either cwd or this module location."""
+
+    starts = [pathlib.Path.cwd(), pathlib.Path(__file__).resolve().parent]
+    for start in starts:
+        for candidate in (start, *start.parents):
+            if (candidate / "Packages").is_dir() and (candidate / "Scripts").is_dir():
+                return candidate
+    return pathlib.Path.cwd()
+
+
+def default_ros2_root(distro: str = "jazzy", workspace_root: pathlib.Path | None = None) -> pathlib.Path:
+    """Return the repo-local ROS2 Windows junction for a distro."""
+
+    normalized = distro.lower().strip()
+    root = workspace_root or find_workspace_root()
+    return root / "ros2-windows" / f"ros2_{normalized}"
+
+
+DEFAULT_ROS2_ROOT = default_ros2_root("jazzy")
 
 if os.name == "nt":
     import ctypes
@@ -42,17 +61,6 @@ def log_event(log_prefix: str, message: str) -> None:
     """Print a timestamped acceptance diagnostic line."""
 
     print(f"[{timestamp()}] [{log_prefix}] {message}", flush=True)
-
-
-def find_workspace_root() -> pathlib.Path:
-    """Find the repository root from either cwd or this module location."""
-
-    starts = [pathlib.Path.cwd(), pathlib.Path(__file__).resolve().parent]
-    for start in starts:
-        for candidate in (start, *start.parents):
-            if (candidate / "Packages").is_dir() and (candidate / "Scripts").is_dir():
-                return candidate
-    return pathlib.Path.cwd()
 
 
 def resolve_existing_path(path_text: str, description: str, workspace_root: pathlib.Path) -> pathlib.Path:

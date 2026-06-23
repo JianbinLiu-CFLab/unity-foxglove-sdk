@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,7 +17,7 @@ Jazzy environment and validates the external data path:
   3. Publishing inbound messages to /in succeeds.
 
 The optional positional path is the ROS2 Jazzy Windows root. It defaults to
-C:\\ros2_jazzy\\ros2-windows.
+ros2-windows\\ros2_jazzy.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "ros2_root",
         nargs="?",
         default=str(DEFAULT_ROS2_ROOT),
-        help="Windows ROS2 Jazzy root. Default: C:\\ros2_jazzy\\ros2-windows",
+        help="Windows ROS2 Jazzy root. Default: ros2-windows\\ros2_jazzy",
     )
     parser.add_argument(
         "--message",

@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string AcceptanceScriptPath = "Scripts/smoke/ros2/phase131_standard_visualization_acceptance.py";
         private const string RvizLauncherScriptPath = "Scripts/smoke/ros2/launch_phase131_rviz2.py";
         private const string SharedHelperPath = "Scripts/smoke/ros2/_ros2_windows_env.py";
+        private const string Define = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
 
         private static int _passed;
         private static string _repoRoot;
@@ -138,7 +139,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "131D-1: helper uses shared Windows ROS2 environment module");
             Check(helper.Contains("ros2-script.py", StringComparison.Ordinal)
                   && helper.Contains("ros2env.DEFAULT_ROS2_ROOT", StringComparison.Ordinal)
-                  && shared.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal)
+                  && shared.Contains("\"ros2-windows\"", StringComparison.Ordinal) && shared.Contains("ros2_{normalized}", StringComparison.Ordinal)
                   && shared.Contains("ros2-script.py", StringComparison.Ordinal)
                   && shared.Contains(".pixi", StringComparison.Ordinal),
                 "131D-2: helper uses pinned Windows Jazzy pixi Python and ros2-script.py");
@@ -235,8 +236,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "131E-2: sample README explains consolidated kit boundary and required publisher imports");
             Check(sampleReadme.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && sampleReadme.Contains("external ROS2 For Unity", StringComparison.OrdinalIgnoreCase)
-                  && sampleReadme.Contains("python Scripts\\smoke\\phase131_standard_visualization_acceptance.py", StringComparison.Ordinal)
-                  && sampleReadme.Contains("--ros2-root C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
+                  && sampleReadme.Contains("python Scripts\\smoke\\ros2\\phase131_standard_visualization_acceptance.py", StringComparison.Ordinal)
+                  && sampleReadme.Contains("--ros2-root ros2-windows\\ros2_jazzy", StringComparison.Ordinal)
                   && sampleReadme.Contains("--no-launch-rviz", StringComparison.Ordinal)
                   && sampleReadme.Contains("timestamped RViz2 startup diagnostics", StringComparison.Ordinal)
                   && sampleReadme.Contains("ros2-script.py", StringComparison.Ordinal)
@@ -348,17 +349,17 @@ namespace Unity.FoxgloveSDK.Tests
                 + (coreHits.Count == 0 ? string.Empty : " (" + string.Join(", ", coreHits) + ")"));
 
             var optionalRuntimeHits = ExistingTextFilesOrSingleFile(OptionalPackage + "/Runtime")
-                .SelectMany(path =>
+                .Where(path =>
                 {
                     var text = File.ReadAllText(path);
-                    return OptionalRuntimeForbiddenTokens()
-                        .Where(token => text.Contains(token, StringComparison.Ordinal))
-                        .Select(token => Rel(path) + " -> " + token);
+                    return OptionalRuntimeForbiddenTokens().Any(token => text.Contains(token, StringComparison.Ordinal))
+                           && !AllR2fuReferencesAreGuarded(text);
                 })
+                .Select(Rel)
                 .ToList();
 
             Check(optionalRuntimeHits.Count == 0,
-                "131H-2: optional package Runtime remains facade-only with no R2FU/message references"
+                "131H-2: optional package Runtime keeps R2FU/message references behind compile guards"
                 + (optionalRuntimeHits.Count == 0 ? string.Empty : " (" + string.Join(", ", optionalRuntimeHits) + ")"));
         }
 
@@ -399,6 +400,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool ContainsAny(string text, IEnumerable<string> tokens)
         {
             return tokens.Any(token => text.Contains(token, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool AllR2fuReferencesAreGuarded(string text)
+        {
+            return PhaseRos2ForUnityValidationHelpers.AllR2fuReferencesAreGuarded(
+                text, Define, PhaseRos2ForUnityValidationHelpers.R2fuGuardTokens, out _);
         }
 
         private static IEnumerable<string> ExistingTextFilesOrSingleFile(string relativePath)

@@ -37,7 +37,7 @@ Use Windows ROS2 Jazzy as the local acceptance peer. WSL2 ROS2 peers are valid o
 In PowerShell:
 
 ```powershell
-$root = "C:\ros2_jazzy\ros2-windows"
+$root = "ros2-windows\ros2_jazzy"
 $pixi = "$root\.pixi\envs\default"
 $env:Path = "$root\bin;$root\Scripts;$pixi;$pixi\Library\bin;$pixi\Scripts;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0"
 $env:COLCON_PYTHON_EXECUTABLE = "$pixi\python.exe"

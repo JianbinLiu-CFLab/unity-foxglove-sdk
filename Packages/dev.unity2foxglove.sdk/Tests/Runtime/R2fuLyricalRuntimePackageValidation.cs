@@ -108,7 +108,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var orchestrator = ReadRepoText(LyricalScripts + "/phase146b_r2fu_lyrical_windows_build.py");
             Check(orchestrator.Contains("r2fu-lyrical-win64", StringComparison.Ordinal)
-                  && orchestrator.Contains("C:\\ros2_lyrical\\ros2-windows", StringComparison.Ordinal)
+                  && orchestrator.Contains("default_ros2_root(\"lyrical\")", StringComparison.Ordinal)
                   && orchestrator.Contains("phase146b", StringComparison.Ordinal),
                 "146B-B3: Lyrical build orchestrator has distro-specific defaults");
         }
