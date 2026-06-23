@@ -173,10 +173,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "160-C3: Humble validator locks the message dependency floor and FastRTPS-only boundary");
 
             var smoke = ReadRepoText(Ros2SmokeScripts + "/phase160_humble_lidar_deskew_acceptance.py");
-            Check(smoke.Contains("default_ros2_root(\"humble\")", StringComparison.Ordinal)
+            Check(smoke.Contains("default_ros2_root(\"humble\"", StringComparison.Ordinal)
                   && smoke.Contains("ros2-windows/ros2_humble", StringComparison.Ordinal)
-                  && smoke.Contains("phase138u_lidar_deskew_rviz2_acceptance", StringComparison.Ordinal),
-                "160-C4: Humble ROS2 smoke wrapper uses the repo-local Humble entrypoint");
+                  && smoke.Contains("RESULT_MARKER = \"PHASE160_RESULT_JSON:\"", StringComparison.Ordinal)
+                  && smoke.Contains("--probe", StringComparison.Ordinal)
+                  && smoke.Contains("Manual pass criterion", StringComparison.Ordinal)
+                  && smoke.Contains("phase160_humble_", StringComparison.Ordinal)
+                  && smoke.Contains("launch_rviz", StringComparison.Ordinal)
+                  && !smoke.Contains("phase138u_lidar_deskew_rviz2_acceptance", StringComparison.Ordinal),
+                "160-C4: Humble ROS2 smoke launches Phase160 RViz2 from the repo-local Humble entrypoint and keeps direct probes explicit");
 
             var ros2Env = ReadRepoText(Ros2SmokeScripts + "/_ros2_windows_env.py");
             Check(ros2Env.Contains("\"humble\" in root_text", StringComparison.Ordinal)
