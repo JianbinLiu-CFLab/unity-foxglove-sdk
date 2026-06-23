@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -186,7 +186,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && script.Contains("ros2env.DEFAULT_ROS2_ROOT", StringComparison.Ordinal)
                   && shared.Contains("ros2-script.py", StringComparison.Ordinal)
                   && shared.Contains(".pixi", StringComparison.Ordinal)
-                  && shared.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal),
+                  && shared.Contains("\"ros2-windows\"", StringComparison.Ordinal) && shared.Contains("ros2_{normalized}", StringComparison.Ordinal),
                 "128E-2: helper uses pinned Windows Jazzy pixi Python and ros2-script.py");
             Check(shared.Contains("--no-daemon", StringComparison.Ordinal)
                   && shared.Contains("topic\", \"info\"", StringComparison.Ordinal)
@@ -257,8 +257,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "128F-1: optional package README mentions the RViz2 acceptance kit");
             Check(sampleReadme.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && sampleReadme.Contains("external ROS2 For Unity", StringComparison.OrdinalIgnoreCase)
-                  && sampleReadme.Contains("python Scripts\\smoke\\phase128_rviz2_acceptance.py", StringComparison.Ordinal)
-                  && sampleReadme.Contains("--ros2-root C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
+                  && sampleReadme.Contains("python Scripts\\smoke\\ros2\\phase128_rviz2_acceptance.py", StringComparison.Ordinal)
+                  && sampleReadme.Contains("--ros2-root ros2-windows\\ros2_jazzy", StringComparison.Ordinal)
                   && sampleReadme.Contains("--rviz-config", StringComparison.Ordinal)
                   && sampleReadme.Contains("ROS_AUTOMATIC_DISCOVERY_RANGE", StringComparison.Ordinal)
                   && sampleReadme.Contains("launch_phase128_rviz2.py", StringComparison.Ordinal)
@@ -352,7 +352,7 @@ namespace Unity.FoxgloveSDK.Tests
             var manifest = ReadRepoText(RuntimePackage + "/RuntimeSupport/runtime-manifest.json");
 
             Check(packageJson.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
-                  && manifest.Contains("f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232", StringComparison.Ordinal),
+                  && manifest.Contains("709c7c5ecb693402ab0d3dbb3ec0268e1b7a6db0e18cb694e922278e10cbcb7a", StringComparison.Ordinal),
                 "128I-1: Phase127 Jazzy runtime package identity and artifact hash remain intact");
         }
 

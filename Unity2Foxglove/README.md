@@ -40,7 +40,7 @@ The scene includes the following feature demonstrations:
 | Mouse interaction | `MouseDragCube` | Left-drag to rotate, right-drag to pan, scroll to zoom the cube |
 | Parameters | `FoxgloveDemoSetup` | Registers `/cube/color` (writable) and `/cube/scale` (writable) parameters; cube updates in real time |
 | Services | `FoxgloveDemoSetup` | Registers `/cube/reset_pose` service; calling it resets the cube's position, rotation, scale, and color |
-| FoxRun logging | `[FoxRun]` Source Generator | Autonomously publishes `/debug/position` and `/debug/health` topics via `[FoxRun]` annotations in `TestLog.cs` |
+| FoxRun logging | `[FoxRun]` Source Generator | Autonomously publishes generated telemetry topics via `[FoxRun]` annotations in `TestLog.cs` and the manual acceptance probes |
 
 Scene hierarchy (GameObject tree):
 
@@ -116,10 +116,10 @@ The SDK provides a command-line script for IL2CPP standalone player builds:
 
 ```powershell
 # Run from the repository root (target auto-selected based on current OS)
-python Scripts/build_tools/unity_il2cpp.py
+python Scripts/unity_build/unity_il2cpp.py
 
 # Explicitly specify Windows 64-bit
-python Scripts/build_tools/unity_il2cpp.py --target win64
+python Scripts/unity_build/unity_il2cpp.py --target win64
 ```
 
 After building, run the generated Player and connect Foxglove to `ws://127.0.0.1:8765` to verify all features.

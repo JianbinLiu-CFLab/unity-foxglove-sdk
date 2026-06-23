@@ -202,6 +202,10 @@ def main() -> int:
             ["python", "Scripts/package/validate_unity_package.py"],
             "validate_unity_package.py"
         )
+        results["validate-entrypoints"] = run(
+            ["python", "Scripts/package/validate_local_entrypoints.py"],
+            "validate_local_entrypoints.py"
+        )
         results["validate-r2fu"] = run(
             ["python", "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],
             "validate_r2fu_runtime_package.py"

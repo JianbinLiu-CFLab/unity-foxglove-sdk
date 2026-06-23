@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -55,7 +55,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--ros2-root",
         default=str(ros2env.DEFAULT_ROS2_ROOT),
-        help="Windows ROS2 Jazzy root. Default: C:\\ros2_jazzy\\ros2-windows",
+        help="Windows ROS2 Jazzy root. Default: ros2-windows\\ros2_jazzy",
     )
     parser.add_argument(
         "--rviz-config",

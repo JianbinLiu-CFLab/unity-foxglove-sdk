@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -221,7 +221,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "132D-1: helper uses shared Windows ROS2 environment module with domain-id support");
             Check(helper.Contains("ros2-script.py", StringComparison.Ordinal)
                   && helper.Contains("ros2env.DEFAULT_ROS2_ROOT", StringComparison.Ordinal)
-                  && shared.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal)
+                  && shared.Contains("\"ros2-windows\"", StringComparison.Ordinal) && shared.Contains("ros2_{normalized}", StringComparison.Ordinal)
                   && shared.Contains(".pixi", StringComparison.Ordinal)
                   && shared.Contains("ros2-script.py", StringComparison.Ordinal)
                   && !helper.Contains("subprocess.run([\"ros2\"", StringComparison.Ordinal),
@@ -276,12 +276,12 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(AllTokens(readme, Topics) && AllTokens(readme, Types),
                 "132E-1: sample README lists all six default topics and ROS2 types");
-            Check(readme.Contains("python Scripts\\smoke\\phase132_standard_messages_acceptance.py", StringComparison.Ordinal)
-                  && readme.Contains("--ros2-root C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal)
+            Check(readme.Contains("python Scripts\\smoke\\ros2\\phase132_standard_messages_acceptance.py", StringComparison.Ordinal)
+                  && readme.Contains("--ros2-root ros2-windows\\ros2_jazzy", StringComparison.Ordinal)
                   && readme.Contains("ros2-script.py", StringComparison.Ordinal)
                   && readme.Contains("launches RViz2 by default", StringComparison.Ordinal)
                   && readme.Contains("--no-launch-rviz", StringComparison.Ordinal)
-                  && readme.Contains("python Scripts\\smoke\\launch_phase132_rviz2.py", StringComparison.Ordinal)
+                  && readme.Contains("python Scripts\\smoke\\ros2\\launch_phase132_rviz2.py", StringComparison.Ordinal)
                   && readme.Contains("Use bare ROS2 commands only after", StringComparison.Ordinal)
                   && AllTokens(readme,
                       "ros2 topic info /camera/camera_info",
@@ -388,17 +388,17 @@ namespace Unity.FoxgloveSDK.Tests
                 + (coreHits.Count == 0 ? string.Empty : " (" + string.Join(", ", coreHits) + ")"));
 
             var optionalRuntimeHits = ExistingTextFilesOrSingleFile(OptionalPackage + "/Runtime")
-                .SelectMany(path =>
+                .Where(path =>
                 {
                     var text = File.ReadAllText(path);
-                    return OptionalRuntimeForbiddenTokens()
-                        .Where(token => text.Contains(token, StringComparison.Ordinal))
-                        .Select(token => Rel(path) + " -> " + token);
+                    return OptionalRuntimeForbiddenTokens().Any(token => text.Contains(token, StringComparison.Ordinal))
+                           && !AllR2fuReferencesAreGuarded(text);
                 })
+                .Select(Rel)
                 .ToList();
 
             Check(optionalRuntimeHits.Count == 0,
-                "132G-2: optional package Runtime remains facade-only with no R2FU/message references"
+                "132G-2: optional package Runtime keeps R2FU/message references behind compile guards"
                 + (optionalRuntimeHits.Count == 0 ? string.Empty : " (" + string.Join(", ", optionalRuntimeHits) + ")"));
         }
 

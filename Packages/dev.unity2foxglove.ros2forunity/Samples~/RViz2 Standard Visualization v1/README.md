@@ -1,4 +1,4 @@
-﻿# RViz2 Standard Visualization v1
+# RViz2 Standard Visualization v1
 
 This docs/config/evidence kit consolidates the source-only ROS2 For Unity RViz2 acceptance workflow for the v1 topic set:
 
@@ -30,7 +30,7 @@ It does not add CameraInfo, raw Image, CompressedImage, IMU, Odometry, PoseStamp
 - A Unity project with `dev.unity2foxglove.ros2forunity`.
 - A ROS2 For Unity runtime package or external ROS2 For Unity import.
 - The compile symbol `UNITY2FOXGLOVE_ROS2_FOR_UNITY`.
-- Windows ROS2 Jazzy at `C:\ros2_jazzy\ros2-windows` for the canonical helper.
+- Windows ROS2 Jazzy at `ros2-windows\ros2_jazzy` for the canonical helper.
 
 ## Unity Setup
 
@@ -52,7 +52,7 @@ python Scripts\smoke\ros2\phase131_standard_visualization_acceptance.py
 If your ROS2 root or sample path differs from the default, override them explicitly:
 
 ```text
-python Scripts\smoke\ros2\phase131_standard_visualization_acceptance.py --ros2-root C:\ros2_jazzy\ros2-windows --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization v1\rviz2_phase131_standard_visualization.rviz"
+python Scripts\smoke\ros2\phase131_standard_visualization_acceptance.py --ros2-root ros2-windows\ros2_jazzy --rviz-config "Packages\dev.unity2foxglove.ros2forunity\Samples~\RViz2 Standard Visualization v1\rviz2_phase131_standard_visualization.rviz"
 ```
 
 The helper uses:

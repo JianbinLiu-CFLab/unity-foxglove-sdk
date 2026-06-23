@@ -50,7 +50,7 @@ Unity2Foxglove turns your Unity Editor and standalone player into a live data se
 
 Unity2Foxglove does not require ROS for normal Foxglove WebSocket streaming, MCAP recording, or replay. In plain terms: no ROS2 install is required for the core SDK path. The optional **ROS2 Bridge** is disabled by default, runs independently from WebSocket output, and can mirror selected publisher CDR payloads to a localhost ROS 2 sidecar under `Tools/ros2_bridge` when developers explicitly want a ROS 2 graph integration path. Bridge topic namespaces, per-publisher bridge topic overrides, and simple ROS 2 QoS presets affect only this mirror path.
 
-The project also includes an optional **RobotecAI ROS2 For Unity** package line for users who want Unity to publish and subscribe directly in a ROS2 graph without installing ROS2 on the Windows Unity machine. In v1.9.0, this path is represented by a lightweight adapter package plus a separate Jazzy Windows x64 runtime package. It remains outside the core SDK package and keeps upstream Apache-2.0 attribution, runtime inventory, checksums, and third-party notices separate from the ROS-free SDK path.
+The project also includes an optional **RobotecAI ROS2 For Unity** package line for users who want Unity to publish and subscribe directly in a ROS2 graph without installing ROS2 on the Windows Unity machine. This path is represented by a lightweight adapter package plus separate Windows x64 runtime packages for the validated candidate runtimes. It remains outside the core SDK package and keeps upstream Apache-2.0 attribution, runtime inventory, checksums, and third-party notices separate from the ROS-free SDK path.
 
 ## 1.2 Who This Is For
 
@@ -98,7 +98,9 @@ No external processes. No ROS installation. No platform lock-in. Just attach a `
 
 - Use `Packages/dev.unity2foxglove.sdk` when you want to install the core SDK into your own Unity project. This is the normal ROS-free package for Foxglove WebSocket streaming, MCAP recording, replay, FoxRun, and publisher components.
 - Use `Packages/dev.unity2foxglove.ros2forunity` as the optional ROS2 For Unity adapter package. It provides facade/API boundaries, docs, and a source-only external adapter sample; it does not bundle the ROS2 For Unity runtime.
-- Use `Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` when you need the optional Jazzy Windows x64 ROS2 For Unity runtime package. It owns the packaged runtime files, package-path patch, checksum, manifest, inventory, and third-party notices. It is separate from the core SDK and from the adapter package.
+- Use `Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` or `Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64` when you need one of the optional Windows x64 ROS2 For Unity runtime packages. Each runtime package owns its packaged runtime files, package-path patch, checksum, manifest, inventory, and third-party notices. Runtime packages are separate from the core SDK and from the adapter package.
+- Use `ros2-windows/` as the repository-local entry point for external Windows ROS2 installs used by local smoke scripts. Only `ros2-windows/README.md` is tracked; the distro junctions under it are local machine state.
+- Use `r2fu-runtime-artifacts/` as the repository-local entry point for optional ROS2 For Unity runtime ZIP artifacts used by local packaging scripts. Only its README is expected to stay lightweight; artifact subdirectories are ignored.
 - Use the `Unity2Foxglove` demo project when you want a ready-to-open workspace for Foxglove panels, MCAP recording, replay, IL2CPP, manual acceptance, and future combined package experiments.
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/BasicVisualization` for the minimal publisher setup (no extra dependencies).
 - Use `Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization` for the complete demo experience (requires Input System + URP).
@@ -113,6 +115,7 @@ Optional ROS2 For Unity packaging follows this boundary:
 | `dev.unity2foxglove.sdk` | Core Foxglove WebSocket, MCAP, Replay, FoxRun, and normal Unity SDK workflows. | No |
 | `dev.unity2foxglove.ros2forunity` | Optional facade, adapter sample, docs, and diagnostics for ROS2 For Unity workflows. | No large runtime |
 | `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Optional Jazzy Windows x64 runtime package with ROS2 For Unity runtime files, package-path patch, manifest, inventory, checksums, and notices. | Yes |
+| `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64` | Optional Lyrical Windows x64 runtime package with the same runtime-package boundary and metadata obligations. | Yes |
 
 The packages should also stand alone cleanly:
 
@@ -120,9 +123,9 @@ The packages should also stand alone cleanly:
 |---|---|
 | `sdk` only | Fully usable for normal Foxglove/MCAP/FoxRun workflows. |
 | `ros2forunity` only | Compiles and reports missing runtime gracefully. |
-| `runtime.jazzy.win64` only | Imports runtime files and exposes metadata/diagnostics. |
-| `ros2forunity + runtime.jazzy.win64` | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. |
-| `sdk + ros2forunity + runtime.jazzy.win64` | Full combined workflow. |
+| `runtime.<distro>.win64` only | Imports runtime files and exposes metadata/diagnostics. |
+| `ros2forunity + one runtime.<distro>.win64` | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. Exactly one runtime should be active in a Unity project manifest. |
+| `sdk + ros2forunity + one runtime.<distro>.win64` | Full combined workflow. |
 
 ---
 
@@ -152,9 +155,29 @@ The ROS2 For Unity integration boundary is a separate optional adapter package:
 Packages/dev.unity2foxglove.ros2forunity
 ```
 
-Do not install it for normal Foxglove WebSocket streaming, MCAP recording, or replay. The adapter package is source-only and can compile without a runtime package; live ROS2-node behavior requires either an external ROS2 For Unity runtime import or the optional `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` package.
+Do not install it for normal Foxglove WebSocket streaming, MCAP recording, or replay. The adapter package is source-only and can compile without a runtime package; live ROS2-node behavior requires either an external ROS2 For Unity runtime import or one active optional runtime package such as `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` or `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64`.
 
-### 2.2 Open the Demo Project
+### 2.2 Local ROS2 / R2FU Entrypoints
+
+Contributor smoke scripts use repository-local entry directories instead of hard-coded absolute paths:
+
+```text
+ros2-windows/
+  README.md
+  ros2_humble  -> local junction to C:\ros2_humble\ros2-windows
+  ros2_jazzy   -> local junction to C:\ros2_jazzy\ros2-windows
+  ros2_lyrical -> local junction to C:\ros2_lyrical\ros2-windows
+
+r2fu-runtime-artifacts/
+  README.md
+  humble/      -> optional local artifact cache or junction
+  jazzy/       -> optional local artifact cache or junction
+  lyrical/     -> optional local artifact cache or junction
+```
+
+Only the README files are repository content. Full ROS2 installs, downloaded archives, generated runtime packages, and local junction targets must stay out of git. Scripts should prefer these repo-local entrypoints and expose explicit override arguments when a machine keeps installations elsewhere.
+
+### 2.3 Open the Demo Project
 
 For quickly exploring all features without creating a new project.
 
@@ -236,10 +259,10 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - MCAP replay for transform/scene snapshot reconstruction, paused scrub scene updates, and bounded panel-history replay after seek debounce
 - Parameters (get, set, subscribe), Services (call/response), Connection Graph, Client Publish, Playback Control
 - Asset fetching (fetchAsset) with configurable asset roots
-- FoxRun attribute-based zero-code publishing via generated code, including fixed-rate, change-driven, interval, and explicit `OnTrigger` topics
+- FoxRun attribute-based zero-code publishing via generated code, including fixed-rate, change-driven, interval, explicit `OnTrigger` topics, aggregate JSON topics, local topic-bus side channels, sink fanout, and guarded inbound control topics
 - Optional Unity-native WSS/TLS transport, local dev certificate generation, root CA distribution helper, and lightweight shared query-token gate
 - IL2CPP build support with automatic link.xml generation
-- Optional ROS2 For Unity adapter plus Jazzy Windows x64 runtime package for Unity-as-ROS2-node smoke workflows. The boundary keeps ROS2 For Unity attribution, adapter samples, runtime inventory, checksums, notices, and binary policy separate from the core SDK.
+- Optional ROS2 For Unity adapter plus Windows x64 candidate runtime packages for Unity-as-ROS2-node smoke workflows. The boundary keeps ROS2 For Unity attribution, adapter samples, runtime inventory, checksums, notices, and binary policy separate from the core SDK.
 - WSL2 and remote Linux ROS2 peer topologies, validated with both Default Discovery and Discovery Server RMW modes
 
 > [!IMPORTANT]
@@ -252,7 +275,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - **Multi-language SDK parity** - this is a Unity bridge, not a full foxglove-sdk replacement
 - **Physics/input simulation replay** - MCAP replay is transform snapshot playback; non-deterministic components such as physics, random state, and live input are not replayed
 - **Production ROS 2 bridge distribution** - the current ROS 2 sidecar bridge is experimental, localhost-only, manual to build/run, and has no installer or remote-host support
-- **General ROS2 For Unity runtime matrix** - v1.9.0 packages a Jazzy Windows x64 runtime path only. Linux, macOS, Humble, Lyrical, alternate RMW implementations, and multi-runtime conflict resolution are not included.
+- **General ROS2 For Unity runtime matrix** - current runtime packages are Windows x64 candidate packages. Linux, macOS, a Humble runtime package, alternate RMW implementations, and loading multiple ROS2 runtime packages in one Unity Editor process are not supported product paths.
 - **Production ROS2 For Unity support contract** - the ROS2 For Unity runtime package is optional and preview-scoped. It is not part of the core SDK, does not imply RobotecAI support for Unity2Foxglove users, and should not be treated as a full production ROS2 distribution.
 
 ### Security

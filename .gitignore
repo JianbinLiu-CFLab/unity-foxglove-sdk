@@ -47,6 +47,12 @@ r2fu-runtime-artifacts/*
 !r2fu-runtime-artifacts/
 !r2fu-runtime-artifacts/README.md
 
+# Local Windows ROS 2 install entry points. Keep the directory README, but do
+# not let junction targets or full ROS 2 installs become repository resources.
+ros2-windows/*
+!ros2-windows/
+!ros2-windows/README.md
+
 # ISG generated source files are rebuilt before IL2CPP/CI builds
 Unity2Foxglove/Assets/Scripts/Generated/*
 Unity2Foxglove/Assets/Scripts/Generated.meta

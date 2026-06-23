@@ -80,7 +80,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--repo-root", default=str(find_repo_root(pathlib.Path.cwd())))
     parser.add_argument("--work-root", default=str(DEFAULT_WORK_ROOT))
     parser.add_argument("--temp-root", default=str(DEFAULT_TEMP_ROOT))
-    parser.add_argument("--ros2-root", default=r"C:\ros2_lyrical\ros2-windows")
+    parser.add_argument("--ros2-root", default=str(default_ros2_root("lyrical")))
     parser.add_argument("--vs-dev-cmd", default="")
     parser.add_argument("--generator", choices=("auto", "visualstudio", "ninja"), default="auto")
     parser.add_argument("--clean", action="store_true")
@@ -102,6 +102,12 @@ def find_repo_root(start: pathlib.Path) -> pathlib.Path:
         if (candidate / ".git").exists():
             return candidate
     raise Phase146BError("BLOCKED_UNKNOWN_TOOLCHAIN", f"Could not locate repo root from {start}")
+
+
+def default_ros2_root(distro: str) -> pathlib.Path:
+    """Return the repo-local Windows ROS2 junction for a distro."""
+
+    return find_repo_root(pathlib.Path.cwd()) / "ros2-windows" / f"ros2_{distro}"
 
 
 def is_relative_to(path: pathlib.Path, parent: pathlib.Path) -> bool:
@@ -126,7 +132,7 @@ def assert_safe_root(label: str, path: pathlib.Path, repo_root: pathlib.Path) ->
     if "baidusyncdisk" in str(resolved).lower() or "BaiduSyncdisk" in str(resolved):
         raise Phase146BError(
             "BLOCKED_UNKNOWN_TOOLCHAIN",
-            f"{label} must not be inside D:\\BaiduSyncdisk: {resolved}",
+            f"{label} must not be inside a synced workspace: {resolved}",
         )
 
 

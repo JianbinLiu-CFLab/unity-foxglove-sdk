@@ -6,7 +6,7 @@ It provides facade/API boundaries, documentation, attribution records, and a sou
 
 The facade is an API boundary only when no runtime package is active. It compiles and reports missing runtime gracefully, but it is not end-user ready for ROS2 publishing until a runtime package or external ROS2 For Unity import provides the backing implementation.
 
-The current product direction is Jazzy-first for Windows x64 runtime work, with Lyrical Win64 available as a supported candidate runtime. Runtime packages own the ROS2 For Unity standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
+The current Windows x64 runtime work uses explicit candidate runtime packages. Jazzy and Lyrical are packaged as separate candidates, and exactly one runtime package should be active in a Unity project manifest at a time. Runtime packages own the ROS2 For Unity standalone runtime files, manifests, checksums, inventory, and notices. This adapter package stays lightweight and compiles without a runtime package.
 
 Use the core package when you want normal Unity-to-Foxglove workflows:
 
@@ -23,20 +23,20 @@ This optional package is reserved for users who later want Unity to participate 
 ```text
 bundleStatus: not_bundled
 adapterStatus: external_assets_sample
-recommendedRuntimeCandidate: Ros2ForUnity_jazzy_standalone_windows_x86_64.zip
 runtimePackages: dev.unity2foxglove.ros2forunity.runtime.jazzy.win64, dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
-legacyRuntimeAsset: Ros2ForUnity_humble_standalone_windows11.zip
+localRos2Entrypoint: <repo-root>/ros2-windows/ros2_<distro>
+localArtifactEntrypoint: <repo-root>/r2fu-runtime-artifacts/<distro>
 ```
 
-The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment.
+The rebuilt Jazzy standalone route has exchanged simple `std_msgs/msg/String` topics bidirectionally with Windows ROS2 Jazzy while Unity itself is not launched from a local ROS2 environment. Lyrical is also available as a candidate runtime package and must be validated in a fresh Unity Editor process after switching from another loaded runtime.
 
 The current Windows x64 runtime packages have their runtime manifests, generated file inventories, checksums, and artifact-specific notices under repository-root `Packages/dev.unity2foxglove.ros2forunity.runtime.*` directories. The adapter package keeps compatibility records under `Compliance/` without bundling runtime binaries itself.
 
-The old Humble standalone asset remains historical/fallback evidence, but it is not the recommended new-user runtime line after the Jazzy rebuild and retest.
+Local ROS2 command-line probes should use the repository-local `ros2-windows/` entrypoint, for example `ros2-windows/ros2_jazzy` or `ros2-windows/ros2_lyrical`. Local ROS2 For Unity runtime ZIP inputs should use `r2fu-runtime-artifacts/<distro>/...`. These entrypoint directories keep machine-local installs and downloaded artifacts out of the package source tree.
 
 Windows Firewall may block inbound Fast DDS UDP discovery. WSL2, VPN, physical Linux host, or bridged Ubuntu VM are all valid ROS2 peer topologies once appropriate firewall allow rules are in place (see report 20 for root cause and fixes).
 
-ROS2 For Unity Jazzy graph snapshots can be intermittent in `ros2 topic list`; use actual publish/subscribe data flow as the current acceptance signal.
+ROS2 For Unity graph snapshots can be intermittent in `ros2 topic list`; use actual publish/subscribe data flow as the current acceptance signal.
 
 ## Package Composition
 
@@ -58,6 +58,29 @@ Multiple candidate runtime packages may exist on disk, but exactly one active ru
 ```
 
 Runtime packages are expected to be package/release artifacts. They should carry their own manifest, checksum, file inventory, third-party notices, and license inventory.
+
+## Local Entrypoints
+
+The repository intentionally keeps local ROS2 and ROS2 For Unity artifact inputs behind lightweight entry directories:
+
+```text
+ros2-windows/
+  README.md
+  ros2_humble
+  ros2_jazzy
+  ros2_lyrical
+
+r2fu-runtime-artifacts/
+  README.md
+  humble/
+  jazzy/
+  lyrical/
+```
+
+Only the README files belong in git. The distro entries are local junctions,
+symlinks, or restored artifact caches. Scripts should default to these
+repo-local paths and allow explicit overrides when a developer or CI machine
+uses a different cache location.
 
 ## External Adapter Sample
 

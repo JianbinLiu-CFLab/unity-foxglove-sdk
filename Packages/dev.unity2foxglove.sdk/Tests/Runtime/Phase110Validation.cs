@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
@@ -373,8 +373,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var script = ReadRepoText(StringSmokeRos2ScriptPath);
 
-            Check((script.Contains(@"C:\ros2_jazzy\ros2-windows", StringComparison.Ordinal)
-                  || script.Contains(@"C:\\ros2_jazzy\\ros2-windows", StringComparison.Ordinal))
+            Check((script.Contains(@"ros2-windows\ros2_jazzy", StringComparison.Ordinal)
+                  || script.Contains(@"ros2-windows\\ros2_jazzy", StringComparison.Ordinal))
                   && script.Contains("DEFAULT_ROS2_ROOT", StringComparison.Ordinal)
                   && script.Contains("default=str(DEFAULT_ROS2_ROOT)", StringComparison.Ordinal)
                   && script.Contains("ros2_root", StringComparison.Ordinal)

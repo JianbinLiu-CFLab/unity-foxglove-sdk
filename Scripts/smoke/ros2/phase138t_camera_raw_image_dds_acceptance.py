@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -37,7 +37,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--ros2-root",
         default=None,
         help=(
-            "Windows ROS2 Jazzy root. Default on Windows: C:\\ros2_jazzy\\ros2-windows. "
+            "Windows ROS2 Jazzy root. Default on Windows: ros2-windows\\ros2_jazzy. "
             "On WSL/Linux, omit this to use the current ROS2 Python environment."
         ),
     )
