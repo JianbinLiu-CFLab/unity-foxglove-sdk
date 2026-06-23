@@ -252,14 +252,20 @@ def probe_script_text() -> str:
 
 
         def stamp_to_float(stamp):
+            """Convert a ROS timestamp into floating-point seconds."""
+
             return float(stamp.sec) + float(stamp.nanosec) / 1_000_000_000.0
 
 
         def vector_dict(value):
+            """Convert a ROS vector object into a JSON-friendly dictionary."""
+
             return {"x": float(value.x), "y": float(value.y), "z": float(value.z)}
 
 
         def quat_dict(value):
+            """Convert a ROS quaternion object into a JSON-friendly dictionary."""
+
             return {
                 "x": float(value.x),
                 "y": float(value.y),
@@ -269,6 +275,8 @@ def probe_script_text() -> str:
 
 
         def distance(a, b):
+            """Return the Euclidean distance between two vector dictionaries."""
+
             return math.sqrt(
                 (float(a["x"]) - float(b["x"])) ** 2
                 + (float(a["y"]) - float(b["y"])) ** 2
@@ -277,6 +285,8 @@ def probe_script_text() -> str:
 
 
         def point_summary(msg):
+            """Return a compact summary of a PointCloud2 message."""
+
             return {
                 "frame_id": msg.header.frame_id,
                 "stamp": {"sec": int(msg.header.stamp.sec), "nanosec": int(msg.header.stamp.nanosec)},
@@ -295,6 +305,8 @@ def probe_script_text() -> str:
 
 
         def main():
+            """Run the direct Humble PointCloud2 and TF probe."""
+
             parser = argparse.ArgumentParser()
             parser.add_argument("--raw-topic", required=True)
             parser.add_argument("--deskewed-topic", required=True)
@@ -315,7 +327,11 @@ def probe_script_text() -> str:
             transforms = {}
 
             def point_cb(topic):
+                """Create a bounded PointCloud2 callback for one topic."""
+
                 def callback(msg):
+                    """Record a compact PointCloud2 summary."""
+
                     bucket = points[topic]
                     if len(bucket) < 6:
                         bucket.append(point_summary(msg))
@@ -324,6 +340,8 @@ def probe_script_text() -> str:
                 return callback
 
             def tf_cb(msg):
+                """Record bounded TF samples by parent-child edge."""
+
                 for transform in msg.transforms:
                     parent = transform.header.frame_id.strip("/")
                     child = transform.child_frame_id.strip("/")
