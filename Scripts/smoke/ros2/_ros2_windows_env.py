@@ -85,6 +85,8 @@ def infer_ros_distro(ros2_root: pathlib.Path) -> str:
     """Infer the Windows ROS2 distro from the install path."""
 
     root_text = str(ros2_root).lower()
+    if "humble" in root_text:
+        return "humble"
     if "lyrical" in root_text:
         return "lyrical"
     if "jazzy" in root_text:
@@ -367,6 +369,12 @@ def launch_rviz(
         raise FileNotFoundError(f"rviz2.exe does not exist: {rviz_exe}")
 
     pixi = ros2_root / ".pixi" / "envs" / "default"
+    qt_plugin_candidates = (
+        pixi / "Library" / "lib" / "qt6" / "plugins",
+        pixi / "Library" / "plugins",
+        pixi / "Library" / "bin" / "plugins",
+        pixi / "Lib" / "site-packages" / "PyQt5" / "Qt5" / "plugins",
+    )
     rviz_path = [
         str(ros2_root / "bin"),
         str(ros2_root / "Scripts"),
@@ -382,8 +390,11 @@ def launch_rviz(
     ]
     rviz_env = env.copy()
     rviz_env["PATH"] = os.pathsep.join(rviz_path)
-    qt_plugin_path = pixi / "Library" / "lib" / "qt6" / "plugins"
-    if qt_plugin_path.exists():
+    qt_plugin_path = next(
+        (candidate for candidate in qt_plugin_candidates if (candidate / "platforms" / "qwindows.dll").exists()),
+        None,
+    )
+    if qt_plugin_path is not None:
         rviz_env["QT_PLUGIN_PATH"] = str(qt_plugin_path)
         rviz_env["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(qt_plugin_path / "platforms")
         rviz_env["QT_QPA_PLATFORM"] = "windows:dpiawareness=0"

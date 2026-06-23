@@ -181,6 +181,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var mode = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudOutputMode.cs");
             var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var lidarFramePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanFramePublisher.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
@@ -189,11 +190,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && mode.Contains("PointCloud2NativeTopic", StringComparison.Ordinal)
                   && mode.Contains("PointCloud2NativeSchema", StringComparison.Ordinal),
                 "138L-2T: PointCloud2Native is an explicit output profile, not an overload of Raw");
-            Check(publisher.Contains("Ros2PublisherSchemaNames.SensorPointCloud2", StringComparison.Ordinal)
-                  && publisher.Contains("Ros2CdrSensorPointCloud2Builder.Serialize", StringComparison.Ordinal),
-                "138L-2U: PointCloud2Native publishes standard sensor_msgs/msg/PointCloud2 CDR");
+            var workerEncoders = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            Check(mode.Contains("Ros2PublisherSchemaNames.SensorPointCloud2", StringComparison.Ordinal)
+                  && publisher.Contains("PointCloudWorkerEncoders.EncodePointCloud2NativeRequest", StringComparison.Ordinal)
+                  && publisher.Contains("PublishCompletedPointCloud2NativePayload", StringComparison.Ordinal)
+                  && workerEncoders.Contains("BuildPointCloud2NativePayload", StringComparison.Ordinal)
+                  && workerEncoders.Contains("Ros2CdrSensorPointCloud2Builder.Serialize", StringComparison.Ordinal),
+                "138L-2U: PointCloud2Native publishes standard sensor_msgs/msg/PointCloud2 CDR through the worker encoder");
             Check(publisher.Contains("CanQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal)
-                  && publisher.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal),
+                  && nativePublisher.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", StringComparison.Ordinal),
                 "138L-2V: PointCloud2Native exposes a native VirtualLidar queue entry point");
             Check(lidar.Contains("UseNativePointCloudSnapshotPath", StringComparison.Ordinal)
                   && lidarFramePublisher.Contains("TryPublishNativePointCloud2Scan", StringComparison.Ordinal),
@@ -208,7 +213,7 @@ namespace Unity.FoxgloveSDK.Tests
                 @"QueueVirtualLidarDracoEncode\s*\([^)]*bool\s+publishNativeFrame",
                 RegexOptions.Singleline);
             var pointCloud2QueueTakesNativeFrameDemand = Regex.IsMatch(
-                publisher,
+                nativePublisher,
                 @"QueueVirtualLidarPointCloud2Native\s*\([^)]*bool\s+publishNativeFrame",
                 RegexOptions.Singleline);
             Check(!dracoQueueTakesNativeFrameDemand && pointCloud2QueueTakesNativeFrameDemand,

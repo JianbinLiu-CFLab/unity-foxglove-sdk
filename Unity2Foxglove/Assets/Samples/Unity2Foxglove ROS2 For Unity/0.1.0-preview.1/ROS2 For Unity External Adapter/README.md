@@ -6,6 +6,7 @@ Recommended setup:
 
 ```text
 dev.unity2foxglove.ros2forunity
+dev.unity2foxglove.ros2forunity.runtime.humble.win64
 dev.unity2foxglove.ros2forunity.runtime.jazzy.win64
 dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 ```
@@ -23,7 +24,7 @@ For an external, non-package ROS2 For Unity import, add that symbol manually.
 ## Unity Setup
 
 1. Install the `dev.unity2foxglove.ros2forunity` package.
-2. Keep at least one runtime candidate package under repository-root `Packages/`, such as `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` or `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64`.
+2. Keep at least one runtime candidate package under repository-root `Packages/`, such as `dev.unity2foxglove.ros2forunity.runtime.humble.win64`, `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`, or `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64`.
 3. Import this package sample: `ROS2 For Unity External Adapter`.
 4. Add the ROS2 For Unity string smoke component to a scene object.
 5. Enter Play Mode.

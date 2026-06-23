@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "runtimeId": "r2fu-humble-win64",
+  "packageName": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+  "packageVersion": "0.1.0-preview.1",
+  "rosDistro": "humble",
+  "platform": "win64",
+  "unityPlatform": "Windows",
+  "architecture": "x86_64",
+  "buildType": "standalone",
+  "rmwImplementation": "rmw_fastrtps_cpp",
+  "artifactName": "Ros2ForUnity_humble_standalone_windows_x86_64.zip",
+  "artifactSha256": "2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f",
+  "artifactSize": 14909425,
+  "inventoryFile": "RuntimeSupport/r2fu-humble-win64-runtime-inventory.json",
+  "inventoryFileCount": 1129,
+  "runtimeRoot": "Runtime/Ros2ForUnity",
+  "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
+  "sourceBasis": "Local Humble rebuild from RobotecAI ROS2 For Unity and ros2cs sources with Windows ROS2 Humble dependency closure",
+  "supportLevel": "Recommended",
+  "distributionLevel": "Prototype",
+  "activeRuntimePolicy": "one_runtime_package_per_project",
+  "criticalRuntimeFiles": [
+    "rcl.dll",
+    "yaml.dll",
+    "spdlog.dll"
+  ],
+  "packagePathPatch": {
+    "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
+    "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
+    "keepsAssetFolderFallback": true
+  },
+  "freshProjectAcceptance": "deferred_to_install_acceptance"
+}
