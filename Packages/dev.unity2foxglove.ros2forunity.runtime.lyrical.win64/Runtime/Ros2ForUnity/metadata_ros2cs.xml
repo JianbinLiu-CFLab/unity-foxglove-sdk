@@ -2,9 +2,10 @@
 <ros2cs>
    <ros2>lyrical</ros2>
    <version>
-      <sha>064f7ba47451bce2ca7e80b06b91e4e226bf810e</sha>
-      <desc>v0.6.0-jazzy-preview.1-6-g064f7ba</desc>
-      <date>2026-06-16 00:19:05 +0200</date>
+      <sha>bfe3afdd26ef811284e121f0741b2391f90feb91</sha>
+      <desc>v0.6.0-jazzy-preview.1-53-gbfe3afd</desc>
+      <date>2026-06-23 00:36:37 +0200</date>
+      <branch>main</branch>
    </version>
    <standalone>1</standalone>
 </ros2cs>

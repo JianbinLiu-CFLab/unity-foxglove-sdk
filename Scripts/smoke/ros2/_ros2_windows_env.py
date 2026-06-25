@@ -94,6 +94,15 @@ def infer_ros_distro(ros2_root: pathlib.Path) -> str:
     return "jazzy"
 
 
+def ros2_opt_bin_paths(ros2_root: pathlib.Path) -> list[pathlib.Path]:
+    """Return existing ROS2 vendor DLL directories under opt."""
+
+    opt_root = ros2_root / "opt"
+    if not opt_root.is_dir():
+        return []
+    return sorted(path for path in opt_root.glob("*/bin") if path.is_dir())
+
+
 def build_ros_env(
     ros2_root: pathlib.Path,
     rmw_implementation: str | None = None,
@@ -109,6 +118,7 @@ def build_ros_env(
     env["PATH"] = os.pathsep.join(
         [
             str(ros2_root / "bin"),
+            *(str(path) for path in ros2_opt_bin_paths(ros2_root)),
             str(ros2_root / "Scripts"),
             str(pixi),
             str(pixi / "Library" / "bin"),
@@ -384,12 +394,11 @@ def launch_rviz(
     )
     rviz_path = [
         str(ros2_root / "bin"),
+        *(str(path) for path in ros2_opt_bin_paths(ros2_root)),
         str(ros2_root / "Scripts"),
         str(pixi),
         str(pixi / "Library" / "bin"),
         str(pixi / "Scripts"),
-        str(ros2_root / "opt" / "rviz_ogre_vendor" / "bin"),
-        str(ros2_root / "opt" / "gz_math_vendor" / "bin"),
         r"C:\Windows\system32",
         r"C:\Windows",
         r"C:\Windows\System32\Wbem",

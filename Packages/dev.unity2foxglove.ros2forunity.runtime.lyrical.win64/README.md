@@ -1,6 +1,6 @@
 # Unity2Foxglove ROS2 For Unity Runtime - Lyrical Win64
 
-This package is an optional Windows x64 runtime for the Unity2Foxglove ROS2 For Unity integration. It carries the ROS2 For Unity runtime files, generated message assemblies, native ROS2 Lyrical DLLs, Fast DDS/RMW files, ros2cs files, metadata, inventory, and notices.
+This package is an optional Windows x64 runtime for the Unity2Foxglove ROS2 For Unity integration. It carries the ROS2 For Unity runtime files, generated message assemblies, native ROS2 Lyrical DLLs, Fast DDS/RMW files, optional Zenoh RMW files, ros2cs files, metadata, inventory, and notices.
 
 ## Package Role
 
@@ -25,10 +25,11 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - ROS distro: Lyrical
 - Platform: Windows x64
 - Build type: standalone
-- RMW implementation: `rmw_fastrtps_cpp`
+- Default RMW implementation: `rmw_fastrtps_cpp`
+- Supported RMW implementations: `rmw_fastrtps_cpp`, `rmw_zenoh_cpp`
 - Runtime id: `r2fu-lyrical-win64`
 - Artifact source: `Ros2ForUnity_lyrical_standalone_windows_x86_64.zip`
-- SHA-256: `58d4a3dbf5d354c8c90c30548a4a2712296b513f374685cdf9b395cba65c7fe5`
+- SHA-256: `ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json`.
 
@@ -44,7 +45,7 @@ This patch is limited to locating runtime files from a Unity package. It does no
 
 ## Network Acceptance Notes
 
-WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance.
+WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies.
 
 ## Support Boundary
 

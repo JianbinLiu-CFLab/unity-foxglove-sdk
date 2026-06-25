@@ -134,9 +134,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(manifest.GlobalManifestHash == ExpectedGlobalFixtureHash,
                 "115C-B2: updated FoxRun fixture hash reflects G9 canonical text");
 
-            Check(HashWrittenLast("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs", "ManifestReportFileName", "ManifestHashFileName")
-                  && HashWrittenLast("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestWriter.cs", "ManifestReportFileName", "ManifestHashFileName"),
-                "115C-B3: generated manifest hash sidecars are written after JSON and report files");
+            Check(ReportWriteIsCanonicalChangeGated("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs", "ManifestReportFileName", "ManifestHashFileName")
+                  && ReportWriteIsCanonicalChangeGated("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestWriter.cs", "ManifestReportFileName", "ManifestHashFileName"),
+                "115C-B3: generated manifest reports are not rewritten for timestamp-only Play Mode refreshes");
 
             var foxRunWriter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs");
             var aggregateWriter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestWriter.cs");
@@ -310,13 +310,14 @@ namespace Unity.FoxgloveSDK.Tests
             };
         }
 
-        private static bool HashWrittenLast(string relativePath, string reportToken, string hashToken)
+        private static bool ReportWriteIsCanonicalChangeGated(string relativePath, string reportToken, string hashToken)
         {
             var source = ReadRepoText(relativePath);
-            var jsonIndex = source.IndexOf("WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName)", StringComparison.Ordinal);
-            var reportIndex = source.IndexOf("WriteIfChanged(Path.Combine(outputDirectory, " + reportToken + ")", StringComparison.Ordinal);
-            var hashIndex = source.IndexOf("WriteIfChanged(Path.Combine(outputDirectory, " + hashToken + ")", StringComparison.Ordinal);
-            return jsonIndex >= 0 && reportIndex > jsonIndex && hashIndex > reportIndex;
+            return source.Contains("var manifestChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName)", StringComparison.Ordinal)
+                   && source.Contains("var hashChanged = WriteIfChanged(Path.Combine(outputDirectory, " + hashToken + ")", StringComparison.Ordinal)
+                   && source.Contains("var reportPath = Path.Combine(outputDirectory, " + reportToken + ")", StringComparison.Ordinal)
+                   && source.Contains("if (manifestChanged || hashChanged || !File.Exists(reportPath))", StringComparison.Ordinal)
+                   && source.Contains("WriteIfChanged(reportPath, report)", StringComparison.Ordinal);
         }
 
         private static void CreateIncompleteEvidenceFixture(string currentRoot)

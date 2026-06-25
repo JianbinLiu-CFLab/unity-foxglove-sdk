@@ -2,8 +2,9 @@
 <ros2_for_unity>
    <ros2>lyrical</ros2>
    <version>
-      <sha>e5e6e947ef292c3d72da7d10e76e8b9ba695601a</sha>
-      <desc>v0.6.0-jazzy-win64-preview.1-6-ge5e6e94</desc>
-      <date>2026-06-16 00:19:05 +0200</date>
+      <sha>bf56fb59be3dd3a4587a16af78bf8353700401ae</sha>
+      <desc>v0.7.0-8-gbf56fb5</desc>
+      <date>2026-06-23 00:37:06 +0200</date>
+      <branch>feature/lyrical-dynamic-typesupport-runtime-closure</branch>
    </version>
 </ros2_for_unity>

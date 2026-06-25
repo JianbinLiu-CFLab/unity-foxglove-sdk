@@ -85,10 +85,10 @@ def pointcloud_display(name: str, topic: str, color: str, size: int) -> str:
       Enabled: true
       Name: {name} {topic}
       Topic:
-        Depth: 10
+        Depth: 1
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: {topic}
       Style: Points
       Size (Pixels): {size}

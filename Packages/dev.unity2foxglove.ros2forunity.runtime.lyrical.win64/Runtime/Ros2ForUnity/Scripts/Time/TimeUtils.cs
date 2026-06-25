@@ -23,6 +23,16 @@ namespace ROS2
 /// </summary>
 internal static class TimeUtils
 {
+  private const double NanosecondsPerSecondDouble = 1_000_000_000.0;
+  private const long NanosecondsPerSecond = 1_000_000_000L;
+
+  /// <summary>
+  /// Converts total seconds into ROS sec/nanosec fields.
+  /// </summary>
+  /// <remarks>
+  /// ROS 2 builtin_interfaces/Time stores seconds in a signed 32-bit field. This helper deliberately
+  /// throws when the input falls outside that range, including timestamps beyond the 2038 boundary.
+  /// </remarks>
   public static void TimeFromTotalSeconds(in double secondsIn, out int seconds, out uint nanoseconds)
   {
     if (Double.IsNaN(secondsIn) || Double.IsInfinity(secondsIn))
@@ -32,12 +42,12 @@ internal static class TimeUtils
 
     double wholeSeconds = Math.Floor(secondsIn);
     double fractionalSeconds = secondsIn - wholeSeconds;
-    long wholeNanoseconds = (long)Math.Round(fractionalSeconds * 1000000000.0);
+    long wholeNanoseconds = (long)Math.Round(fractionalSeconds * NanosecondsPerSecondDouble);
 
-    if (wholeNanoseconds >= 1000000000)
+    if (wholeNanoseconds >= NanosecondsPerSecond)
     {
       wholeSeconds += 1.0;
-      wholeNanoseconds -= 1000000000;
+      wholeNanoseconds -= NanosecondsPerSecond;
     }
 
     if (wholeSeconds < Int32.MinValue || wholeSeconds > Int32.MaxValue)

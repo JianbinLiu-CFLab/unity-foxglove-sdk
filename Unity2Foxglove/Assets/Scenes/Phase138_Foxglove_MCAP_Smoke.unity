@@ -19004,7 +19004,7 @@ MonoBehaviour:
   _logQosDrops: 0
   _logPerformanceDiagnostics: 0
   _includeSyntheticIntensity: 0
-  _publishPointCloud2NativeTfAnchor: 0
+  _publishPointCloud2NativeTfAnchor: 1
   _pointCloud2NativeTfParentFrame: map
   _pointCloud2NativeTfChildFrame:
   _pointCloud2NativeTfTranslation: {x: 0, y: 0, z: 0}

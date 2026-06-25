@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
 import tempfile
 import unittest
@@ -69,16 +70,19 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertIn("README documents artifact SHA-256", failed)
 
     def test_runtime_source_declares_rmw_guard(self) -> None:
-        """ROS2ForUnity startup path declares and enforces the expected RMW."""
+        """ROS2ForUnity startup path declares and enforces supported RMWs."""
         source = (
             self.validator.RUNTIME_ROOT
             / "Scripts"
             / "ROS2ForUnity.cs"
         ).read_text(encoding="utf-8", errors="replace")
 
-        self.assertIn("expectedRmwImplementation", source)
+        self.assertIn("defaultRmwImplementation", source)
+        self.assertIn("zenohRmwImplementation", source)
+        self.assertIn("IsSupportedRmwImplementation", source)
         self.assertIn("ValidateRmwImplementation", source)
         self.assertIn("rmw_fastrtps_cpp", source)
+        self.assertIn("rmw_zenoh_cpp", source)
 
     def test_generator_alignment_reports_missing_generator_as_failed_check(self) -> None:
         """Missing generator source should produce a structured failed result."""
@@ -90,6 +94,31 @@ class RuntimePackageValidatorTests(unittest.TestCase):
 
         self.assertFalse(results[0].ok)
         self.assertIn("generator script readable", results[0].name)
+
+    def test_runtime_files_fail_when_fastdds_import_dependency_is_missing(self) -> None:
+        """Runtime validation rejects an RMW DLL whose transitive imports are absent."""
+        source = (
+            self.validator.PLUGIN_ROOT
+            / "rmw_fastrtps_cpp.dll"
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            plugin_root = Path(temp)
+            shutil.copyfile(source, plugin_root / source.name)
+            self.validator.PLUGIN_ROOT = plugin_root
+            self.validator.RUNTIME_ROOT = plugin_root.parent
+            self.validator.CRITICAL_PLUGIN_DLLS = ()
+            self.validator.ZENOH_CONFIG_FILES = ()
+            results = []
+
+            self.validator.check_runtime_files(results)
+
+        closure = [
+            result for result in results
+            if result.name == "native DLL dependency closure: rmw_fastrtps_cpp.dll"
+        ]
+        self.assertEqual(1, len(closure))
+        self.assertFalse(closure[0].ok)
+        self.assertIn("rosidl_dynamic_typesupport_fastrtps.dll", closure[0].detail)
 
 
 if __name__ == "__main__":

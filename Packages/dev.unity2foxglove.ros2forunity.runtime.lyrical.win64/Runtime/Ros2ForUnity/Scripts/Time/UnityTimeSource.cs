@@ -21,11 +21,15 @@ namespace ROS2
 {
 
 /// <summary>
-/// Acquires Unity time. Note that Time API only allows main thread access,
-/// but this class object also stores last acquired value for other threads.
-/// This is done without a warning, so the class will not behave as expected
-/// when not used by main thread.
+/// Acquires Unity play time from Time.timeAsDouble.
 /// </summary>
+/// <remarks>
+/// This source reports seconds since Unity play-mode or player startup, not Unix epoch or ROS wall time.
+/// Use ROS2ScalableTimeSource when timestamps must stay aligned with ROS/system time.
+///
+/// Unity's Time API only allows main-thread access. Background callers receive the last value sampled
+/// by the main thread, so they may observe a stale timestamp until the next main-thread call.
+/// </remarks>
 public class UnityTimeSource : ITimeSource
 {
   private readonly object mutex = new object();
@@ -38,6 +42,13 @@ public class UnityTimeSource : ITimeSource
     lastReadingSecs = Time.timeAsDouble;
   }
 
+  /// <summary>
+  /// Acquires Unity play time as ROS sec/nanosec fields.
+  /// </summary>
+  /// <returns>
+  /// Always true. Background callers may receive the last main-thread sample because Unity time cannot
+  /// be sampled off the main thread.
+  /// </returns>
   public bool GetTime(out int seconds, out uint nanoseconds)
   {
     double reading;

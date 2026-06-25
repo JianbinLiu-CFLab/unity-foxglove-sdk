@@ -15,6 +15,7 @@ import json
 import argparse
 import hashlib
 import re
+import struct
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -36,13 +37,77 @@ MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
 
 ARTIFACT_NAME = "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip"
-EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
+EXPECTED_ARTIFACT_SHA256 = "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608"
+DEFAULT_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
+ZENOH_RMW_IMPLEMENTATION = "rmw_zenoh_cpp"
+SUPPORTED_RMW_IMPLEMENTATIONS = (DEFAULT_RMW_IMPLEMENTATION, ZENOH_RMW_IMPLEMENTATION)
 
-CRITICAL_DLLS = (
+CRITICAL_RUNTIME_FILES = (
     "rcl.dll",
     "yaml.dll",
     "spdlog.dll",
     "fmt.dll",
+    "fastdds-3.6.dll",
+    "rosidl_buffer_backend_registry.dll",
+    "rosidl_dynamic_typesupport_fastrtps.dll",
+    "rmw_zenoh_cpp.dll",
+    "zenohc.dll",
+    "rosgraph_msgs_assembly.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+)
+
+CRITICAL_PLUGIN_DLLS = (
+    "rcl.dll",
+    "yaml.dll",
+    "spdlog.dll",
+    "fmt.dll",
+    "fastdds-3.6.dll",
+    "rosidl_buffer_backend_registry.dll",
+    "rosidl_dynamic_typesupport_fastrtps.dll",
+    "rmw_zenoh_cpp.dll",
+    "zenohc.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+)
+
+ZENOH_CONFIG_FILES = (
+    RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+    RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+    RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+    RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+)
+
+RMW_DEPENDENCY_CLOSURE_SEEDS = (
+    "rmw_fastrtps_cpp.dll",
+    "rmw_zenoh_cpp.dll",
+)
+
+WINDOWS_SYSTEM_DLL_NAMES = {
+    "advapi32.dll",
+    "bcrypt.dll",
+    "bcryptprimitives.dll",
+    "cfgmgr32.dll",
+    "crypt32.dll",
+    "dnsapi.dll",
+    "gdi32.dll",
+    "iphlpapi.dll",
+    "kernel32.dll",
+    "mswsock.dll",
+    "ntdll.dll",
+    "ole32.dll",
+    "rpcrt4.dll",
+    "secur32.dll",
+    "setupapi.dll",
+    "shell32.dll",
+    "shlwapi.dll",
+    "user32.dll",
+    "ws2_32.dll",
+}
+
+WINDOWS_SYSTEM_DLL_PREFIXES = (
+    "api-ms-win-",
+    "ext-ms-win-",
 )
 
 MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu"
@@ -141,6 +206,116 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def is_windows_system_dll(name: str) -> bool:
+    """Return whether a DLL import is expected to be provided by Windows."""
+    lower = name.lower()
+    return lower in WINDOWS_SYSTEM_DLL_NAMES or lower.startswith(WINDOWS_SYSTEM_DLL_PREFIXES)
+
+
+def rva_to_file_offset(sections: list[tuple[int, int, int, int]], rva: int) -> int | None:
+    """Translate a PE RVA to a file offset using section headers."""
+    for virtual_address, virtual_size, raw_pointer, raw_size in sections:
+        size = max(virtual_size, raw_size)
+        if virtual_address <= rva < virtual_address + size:
+            return raw_pointer + (rva - virtual_address)
+    return None
+
+
+def read_c_string(data: bytes, offset: int) -> str | None:
+    """Read a null-terminated ASCII string from a PE byte buffer."""
+    if offset < 0 or offset >= len(data):
+        return None
+    end = data.find(b"\0", offset)
+    if end < 0:
+        return None
+    return data[offset:end].decode("ascii", errors="replace")
+
+
+def read_pe_imports(path: Path) -> list[str]:
+    """Read direct DLL imports from a PE image without external tools."""
+    data = path.read_bytes()
+    if len(data) < 0x40 or data[:2] != b"MZ":
+        return []
+
+    pe_offset = struct.unpack_from("<I", data, 0x3C)[0]
+    if pe_offset + 24 > len(data) or data[pe_offset:pe_offset + 4] != b"PE\0\0":
+        return []
+
+    coff_offset = pe_offset + 4
+    _machine, section_count, _timestamp, _symbols, _symbol_count, optional_size, _flags = struct.unpack_from(
+        "<HHIIIHH",
+        data,
+        coff_offset,
+    )
+    optional_offset = coff_offset + 20
+    magic = struct.unpack_from("<H", data, optional_offset)[0]
+    data_directory_offset = optional_offset + (112 if magic == 0x20B else 96)
+    import_directory_rva, _import_directory_size = struct.unpack_from("<II", data, data_directory_offset + 8)
+    if import_directory_rva == 0:
+        return []
+
+    section_offset = optional_offset + optional_size
+    sections: list[tuple[int, int, int, int]] = []
+    for index in range(section_count):
+        header_offset = section_offset + index * 40
+        virtual_size, virtual_address, raw_size, raw_pointer = struct.unpack_from("<IIII", data, header_offset + 8)
+        sections.append((virtual_address, virtual_size, raw_pointer, raw_size))
+
+    import_offset = rva_to_file_offset(sections, import_directory_rva)
+    if import_offset is None:
+        return []
+
+    imports: list[str] = []
+    descriptor_offset = import_offset
+    while descriptor_offset + 20 <= len(data):
+        original_first_thunk, timestamp, forwarder_chain, name_rva, first_thunk = struct.unpack_from(
+            "<IIIII",
+            data,
+            descriptor_offset,
+        )
+        if original_first_thunk == timestamp == forwarder_chain == name_rva == first_thunk == 0:
+            break
+
+        name_offset = rva_to_file_offset(sections, name_rva)
+        if name_offset is not None:
+            imported = read_c_string(data, name_offset)
+            if imported:
+                imports.append(imported)
+        descriptor_offset += 20
+
+    return imports
+
+
+def missing_package_dll_imports(seed: Path) -> dict[str, list[str]]:
+    """Return non-system DLL imports missing from PLUGIN_ROOT, grouped by importer."""
+    pending = [seed]
+    visited: set[str] = set()
+    missing: dict[str, list[str]] = {}
+
+    while pending:
+        current = pending.pop()
+        key = current.name.lower()
+        if key in visited:
+            continue
+        visited.add(key)
+        if not current.exists():
+            missing.setdefault(current.name, []).append("<missing seed>")
+            continue
+
+        for imported in read_pe_imports(current):
+            imported_key = imported.lower()
+            if is_windows_system_dll(imported_key):
+                continue
+            imported_path = PLUGIN_ROOT / imported
+            if imported_path.exists():
+                if imported_key not in visited:
+                    pending.append(imported_path)
+            else:
+                missing.setdefault(current.name, []).append(imported)
+
+    return missing
+
+
 def check_package_metadata(results: list[CheckResult]) -> None:
     """Validate Unity package metadata."""
     add(results, "runtime package folder exists", PACKAGE.is_dir(), rel(PACKAGE))
@@ -208,7 +383,8 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
         "unityPlatform": "Windows",
         "architecture": "x86_64",
         "buildType": "standalone",
-        "rmwImplementation": EXPECTED_RMW_IMPLEMENTATION,
+        "rmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
+        "defaultRmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
         "artifactName": ARTIFACT_NAME,
         "inventoryFile": "RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json",
         "runtimeRoot": "Runtime/Ros2ForUnity",
@@ -221,13 +397,35 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     for key, value in expected.items():
         add(results, f"runtime manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
+    supported_rmw = data.get("supportedRmwImplementations", [])
+    add(
+        results,
+        "runtime manifest supported RMW implementations",
+        isinstance(supported_rmw, list) and set(SUPPORTED_RMW_IMPLEMENTATIONS).issubset(set(supported_rmw)),
+        f"supportedRmwImplementations={supported_rmw!r}",
+    )
+    modes = data.get("communicationModes", [])
+    mode_rmw = {
+        item.get("rmwImplementation")
+        for item in modes
+        if isinstance(item, dict)
+    }
+    add(
+        results,
+        "runtime manifest communication modes include FastDDS and Zenoh",
+        isinstance(modes, list)
+        and set(SUPPORTED_RMW_IMPLEMENTATIONS).issubset(mode_rmw)
+        and any(isinstance(item, dict) and item.get("id") == "fastdds" and item.get("default") is True for item in modes),
+        f"communicationModes={modes!r}",
+    )
+
     artifact_sha = data.get("artifactSha256")
     artifact_size = data.get("artifactSize")
     inventory_file_count = data.get("inventoryFileCount")
     add(
         results,
         "runtime manifest artifactSha256",
-        isinstance(artifact_sha, str) and len(artifact_sha) == 64 and re.fullmatch(r"[0-9a-f]+", artifact_sha) is not None,
+        artifact_sha == EXPECTED_ARTIFACT_SHA256,
         f"artifactSha256={artifact_sha!r}",
     )
     add(results, "runtime manifest artifactSize", isinstance(artifact_size, int) and artifact_size > 0, f"artifactSize={artifact_size!r}")
@@ -249,8 +447,8 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     critical = data.get("criticalRuntimeFiles", [])
     add(
         results,
-        "runtime manifest critical DLLs",
-        isinstance(critical, list) and set(CRITICAL_DLLS).issubset(set(critical)),
+        "runtime manifest critical runtime files",
+        isinstance(critical, list) and set(CRITICAL_RUNTIME_FILES).issubset(set(critical)),
         f"criticalRuntimeFiles={critical!r}",
     )
 
@@ -277,17 +475,26 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
         "runtimeId": "r2fu-lyrical-win64",
         "artifactName": ARTIFACT_NAME,
         "rosDistro": "lyrical",
-        "rmw": EXPECTED_RMW_IMPLEMENTATION,
+        "rmw": DEFAULT_RMW_IMPLEMENTATION,
+        "defaultRmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
         "platform": "win64",
         "buildType": "standalone",
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
+    supported_rmw = data.get("supportedRmwImplementations", [])
+    add(
+        results,
+        "runtime inventory supported RMW implementations",
+        isinstance(supported_rmw, list) and set(SUPPORTED_RMW_IMPLEMENTATIONS).issubset(set(supported_rmw)),
+        f"supportedRmwImplementations={supported_rmw!r}",
+    )
+
     add(
         results,
         "runtime inventory sha256 matches manifest",
-        data.get("sha256") == manifest.get("artifactSha256"),
+        data.get("sha256") == manifest.get("artifactSha256") == EXPECTED_ARTIFACT_SHA256,
         f"inventory={data.get('sha256')!r}, manifest={manifest.get('artifactSha256')!r}",
     )
     add(
@@ -336,7 +543,7 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
     add(
         results,
         "runtime inventory critical files present",
-        set(CRITICAL_DLLS).issubset(present),
+        set(CRITICAL_RUNTIME_FILES).issubset(present),
         f"present={sorted(present)!r}",
     )
 
@@ -382,12 +589,35 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
 
 def check_runtime_files(results: list[CheckResult]) -> None:
     """Validate critical runtime files and package layout."""
-    for dll in CRITICAL_DLLS:
+    for dll in CRITICAL_PLUGIN_DLLS:
         path = PLUGIN_ROOT / dll
         add(results, f"critical DLL present: {dll}", path.exists(), rel(path))
+    add(
+        results,
+        "critical managed assembly present: rosgraph_msgs_assembly.dll",
+        (RUNTIME_ROOT / "Plugins" / "rosgraph_msgs_assembly.dll").exists(),
+        rel(RUNTIME_ROOT / "Plugins" / "rosgraph_msgs_assembly.dll"),
+    )
+    for path in ZENOH_CONFIG_FILES:
+        add(results, f"Zenoh config present: {path.name}", path.exists(), rel(path))
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 700, f"dll_count={len(dlls)}")
+
+    for seed in RMW_DEPENDENCY_CLOSURE_SEEDS:
+        seed_path = PLUGIN_ROOT / seed
+        missing = missing_package_dll_imports(seed_path)
+        detail = "; ".join(
+            f"{parent} -> {', '.join(children)}"
+            for parent, children in sorted(missing.items())
+        )
+        add(
+            results,
+            f"native DLL dependency closure: {seed}",
+            not missing,
+            detail or rel(seed_path),
+        )
+
     add(results, "no root zip sidecar copied", not any(PACKAGE.glob("*.zip")) and not any(PACKAGE.glob("*.sha256")), rel(PACKAGE))
 
     copied_paths = [path.relative_to(PACKAGE).as_posix() for path in iter_files(PACKAGE)]
@@ -550,17 +780,22 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
     add(
         results,
-        "ROS2ForUnity enforces expected RMW",
-        "expectedRmwImplementation" in runtime
+        "ROS2ForUnity enforces supported RMW implementations",
+        "defaultRmwImplementation" in runtime
+        and "zenohRmwImplementation" in runtime
+        and "supportedRmwImplementationsDescription" in runtime
         and "ValidateRmwImplementation" in runtime
-        and EXPECTED_RMW_IMPLEMENTATION in runtime,
+        and "IsSupportedRmwImplementation" in runtime
+        and DEFAULT_RMW_IMPLEMENTATION in runtime
+        and ZENOH_RMW_IMPLEMENTATION in runtime,
         "ROS2ForUnity.cs",
     )
     add(
         results,
         "ROS2ForUnity standalone isolates sourced ROS2 environment",
         "standalone runtime must not inherit a sourced ROS2 workspace" in runtime
-        and "standalone runtime owns its RMW selection" in runtime
+        and "standalone runtime owns its RMW selection while allowing Lyrical Zenoh" in runtime
+        and "selectedRmwImplementation" in runtime
         and "hide any externally sourced ROS_DISTRO" in runtime
         and "packagedRos2Version = GetMetadataValue" in runtime
         and "ROS2 version in standalone process environment does not match this runtime package" in runtime,
@@ -603,7 +838,11 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         results,
         "TimeUtils normalizes nanoseconds",
         "Math.Floor(secondsIn)" in time_utils
-        and ("normalizedNanoseconds < 0" in time_utils or "wholeNanoseconds >= 1000000000" in time_utils),
+        and (
+            "normalizedNanoseconds < 0" in time_utils
+            or "wholeNanoseconds >= 1000000000" in time_utils
+            or "wholeNanoseconds >= NanosecondsPerSecond" in time_utils
+        ),
         "TimeUtils.cs",
     )
     add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")

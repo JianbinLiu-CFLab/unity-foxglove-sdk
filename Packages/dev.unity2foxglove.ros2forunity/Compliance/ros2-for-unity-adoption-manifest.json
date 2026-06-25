@@ -12,6 +12,10 @@
   "activeRuntimePolicy": "one_runtime_package_per_project",
   "activeRuntimeSourceOfTruth": "Unity2Foxglove/Packages/manifest.json resolves exactly one dev.unity2foxglove.ros2forunity.runtime.* package",
   "knownRuntimeRmw": "rmw_fastrtps_cpp",
+  "knownRuntimeRmwImplementations": [
+    "rmw_fastrtps_cpp",
+    "rmw_zenoh_cpp"
+  ],
   "knownRuntimeRosDistro": "humble,jazzy,lyrical",
   "currentRecommendedRuntime": {
     "packageName": "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
@@ -89,8 +93,8 @@
       "supportLevel": "Recommended",
       "distributionLevel": "BundleCandidate",
       "artifact": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
-    "artifactSha256": "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3",
-    "artifactSize": 17677300,
+      "artifactSha256": "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3",
+      "artifactSize": 17677300,
       "inventoryFile": "Compliance/r2fu-jazzy-win64-runtime-inventory.json",
       "runtimeNoticesFile": "Compliance/r2fu-jazzy-win64-runtime-notices.md",
       "inventoryFileCount": 1198,
@@ -112,16 +116,43 @@
       "supportLevel": "Supported",
       "distributionLevel": "Prototype",
       "artifact": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
-      "artifactSha256": "58d4a3dbf5d354c8c90c30548a4a2712296b513f374685cdf9b395cba65c7fe5",
-      "artifactSize": 17422086,
+      "artifactSha256": "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608",
+      "artifactSize": 25179851,
       "inventoryFile": "Compliance/r2fu-lyrical-win64-runtime-inventory.json",
       "runtimeNoticesFile": "Compliance/r2fu-lyrical-win64-runtime-notices.md",
-      "inventoryFileCount": 961,
+      "inventoryFileCount": 1227,
+      "defaultRmwImplementation": "rmw_fastrtps_cpp",
+      "supportedRmwImplementations": [
+        "rmw_fastrtps_cpp",
+        "rmw_zenoh_cpp"
+      ],
+      "communicationModes": [
+        {
+          "id": "fastdds",
+          "displayName": "FastDDS (default)",
+          "rmwImplementation": "rmw_fastrtps_cpp",
+          "default": true
+        },
+        {
+          "id": "zenoh",
+          "displayName": "Zenoh",
+          "rmwImplementation": "rmw_zenoh_cpp",
+          "default": false
+        }
+      ],
       "criticalRuntimeFiles": [
         "rcl.dll",
         "yaml.dll",
         "spdlog.dll",
-        "fmt.dll"
+        "fmt.dll",
+        "fastdds-3.6.dll",
+        "rosidl_buffer_backend_registry.dll",
+        "rosidl_dynamic_typesupport_fastrtps.dll",
+        "rmw_zenoh_cpp.dll",
+        "zenohc.dll",
+        "rosgraph_msgs_assembly.dll",
+        "rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+        "rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll"
       ]
     }
   ],

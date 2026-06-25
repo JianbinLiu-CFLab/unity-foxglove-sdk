@@ -150,11 +150,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(guard.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
                   && guard.Contains("Restart Unity before entering Play Mode", StringComparison.Ordinal),
                 "146A-F2: Play Mode guard cancels unsafe mixed-runtime entry and explains the restart requirement");
+            Check(guard.Contains("CompilationPipeline.compilationStarted", StringComparison.Ordinal)
+                  && guard.Contains("AssemblyReloadEvents.beforeAssemblyReload", StringComparison.Ordinal)
+                  && guard.Contains("CompilationStartedWhileR2fuPlayModeKey", StringComparison.Ordinal)
+                  && guard.Contains("native ROS2/RMW DLLs cannot be safely unloaded during Play Mode", StringComparison.Ordinal),
+                "146A-F3: Play Mode guard exits for script-compilation reloads without blocking normal Play Mode domain reload");
             Check(inspector.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal)
                   && inspector.Contains("Restart Unity", StringComparison.Ordinal)
                   && inspector.Contains("RestartEditor(projectDirectory)", StringComparison.Ordinal)
                   && ReadRepoText(SelectionPath).Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal),
-                "146A-F3: Inspector surfaces conditional restart state and offers one-click relaunch");
+                "146A-F4: Inspector surfaces conditional restart state and offers one-click relaunch");
         }
 
         private static void ReadmeDocumentsActiveRuntimeSelection()

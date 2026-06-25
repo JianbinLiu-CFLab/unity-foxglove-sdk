@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using ROS2;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Util;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 #if UNITY_EDITOR
@@ -51,6 +52,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                || _runtimeShuttingDown
                || !Application.isPlaying
                || !_playModeSceneLoaded
+               || !IsStableUserSceneLoaded()
                || IsEditorPlayModeTransition()
                || IsBackupSceneActive()
                || IsBackupScene(gameObject.scene)
@@ -75,8 +77,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static bool IsBackupScene(Scene scene)
         {
             var path = scene.path ?? string.Empty;
+            var name = scene.name ?? string.Empty;
             return path.StartsWith("Temp/__Backupscenes/", StringComparison.Ordinal)
-                   || path.Contains("__Backupscenes", StringComparison.Ordinal);
+                   || path.Contains("__Backupscenes", StringComparison.Ordinal)
+                   || name.Contains("__Backupscenes", StringComparison.Ordinal)
+                   || name.EndsWith(".backup", StringComparison.Ordinal);
+        }
+
+        private static bool IsStableUserSceneLoaded()
+        {
+            var scene = SceneManager.GetActiveScene();
+            var path = scene.path ?? string.Empty;
+            return scene.isLoaded
+                   && (path.StartsWith("Assets/", StringComparison.Ordinal)
+                       || path.StartsWith("Packages/", StringComparison.Ordinal));
         }
 
 #if UNITY_EDITOR
@@ -94,6 +108,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static void OnEditorQuitting()
         {
             _editorQuitting = true;
+            _runtimeShuttingDown = true;
         }
 
         private static void OnEditorPlayModeStateChanged(PlayModeStateChange state)
@@ -102,6 +117,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _editorEnteredPlayModeAt = _editorEnteredPlayMode
                 ? EditorApplication.timeSinceStartup
                 : 0.0;
+            if (state == PlayModeStateChange.EnteredPlayMode)
+                _runtimeShuttingDown = false;
+            else if (state == PlayModeStateChange.ExitingPlayMode || state == PlayModeStateChange.EnteredEditMode)
+                _runtimeShuttingDown = true;
         }
 
         private static bool IsEditorPlayModeTransition()
@@ -135,12 +154,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            if (IsBackupSceneActive() || IsAnyBackupSceneLoaded())
+            if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())
             {
+                _runtimeShuttingDown = true;
                 _playModeSceneLoaded = false;
                 return;
             }
 
+            _runtimeShuttingDown = false;
             _playModeSceneLoaded = true;
 
             if (_instance != null)
@@ -165,7 +186,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             _isStopping = false;
             _ros2RuntimeWasReady = false;
-            _runtimeShuttingDown = false;
+            if (IsStableUserSceneLoaded() && !IsEditorPlayModeTransition() && !IsBackupSceneActive() && !IsAnyBackupSceneLoaded())
+                _runtimeShuttingDown = false;
             Application.quitting += OnApplicationQuitting;
         }
 
@@ -201,6 +223,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 ClearBindings();
                 return;
             }
+
+            if (!_ros2RuntimeWasReady && !EnsureRos2UnityReady())
+                return;
 
             if (Time.unscaledTime < _nextScanAt)
                 return;
@@ -263,7 +288,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (IsShuttingDown)
                 return false;
 
-            if (!_ros2RuntimeWasReady && !EnsureRos2UnityReady())
+            if (!_ros2RuntimeWasReady)
                 return false;
 
             return TryGetExistingRos2Unity(out ros2Unity);
@@ -456,7 +481,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     try
                     {
                         _node ??= ros2Unity.CreateNode(BuildNodeName(_source, attempt));
-                        publisher = _node.CreatePublisher<sensor_msgs.msg.PointCloud2>(topic);
+                        publisher = _node.CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(topic);
                         _publishers[topic] = publisher;
                         _warnedPublishFailure = false;
                         LogReady(topic);
@@ -548,8 +573,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 string childFrame)
             {
                 var unixNs = frame == null ? 0UL : frame.UnixNs;
-                var translation = _source.PointCloud2NativeTfTranslation;
-                var rotation = _source.PointCloud2NativeTfRotationRos;
+                ResolveDynamicTfAnchor(out var translation, out var rotation);
 
                 return new tf2_msgs.msg.TFMessage
                 {
@@ -586,6 +610,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         }
                     }
                 };
+            }
+
+            private void ResolveDynamicTfAnchor(out Vector3 translation, out Quaternion rotation)
+            {
+                translation = CoordinateConverter.UnityToFoxglovePosition(_source.transform.position)
+                              + _source.PointCloud2NativeTfTranslation;
+                rotation = CoordinateConverter.UnityToFoxgloveRotation(_source.transform.rotation)
+                           * _source.PointCloud2NativeTfRotationRos;
             }
 
             private void RecordPublishFailure(string message)

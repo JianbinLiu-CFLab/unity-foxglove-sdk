@@ -179,11 +179,15 @@ public class ROS2Node : IDisposable
     /// <param name="topicName">topic that will be used for publishing</param>
     public Publisher<T> CreateSensorPublisher<T>(string topicName) where T : Message, new()
     {
-        // ros2cs copies QoS settings during publisher creation; this temporary profile only configures that call.
-        using (QualityOfServiceProfile sensorProfile = new QualityOfServiceProfile(QosPresetProfile.SENSOR_DATA))
-        {
-            return CreatePublisher<T>(topicName, sensorProfile);
-        }
+        // ros2cs copies QoS settings during publisher creation; set the sensor-data policies
+        // explicitly because some Windows runtime builds do not map the SENSOR_DATA preset.
+        QualityOfServiceProfile sensorProfile = new QualityOfServiceProfile(QosPresetProfile.SENSOR_DATA);
+        sensorProfile.SetPolicies(
+            HistoryPolicy.QOS_POLICY_HISTORY_KEEP_LAST,
+            1,
+            ReliabilityPolicy.QOS_POLICY_RELIABILITY_BEST_EFFORT,
+            DurabilityPolicy.QOS_POLICY_DURABILITY_VOLATILE);
+        return CreatePublisher<T>(topicName, sensorProfile);
     }
 
     /// <summary>

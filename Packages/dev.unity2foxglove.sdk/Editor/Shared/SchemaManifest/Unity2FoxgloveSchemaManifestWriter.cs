@@ -41,23 +41,26 @@ namespace Unity.FoxgloveSDK.Editor
                 warnings ?? Array.Empty<string>());
 
             Directory.CreateDirectory(outputDirectory);
-            WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName), canonical);
-            WriteIfChanged(Path.Combine(outputDirectory, ManifestReportFileName), report);
-            WriteIfChanged(Path.Combine(outputDirectory, ManifestHashFileName), manifest.SdkSchemaManifestHash + "\n");
+            var manifestChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName), canonical);
+            var hashChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestHashFileName), manifest.SdkSchemaManifestHash + "\n");
+            var reportPath = Path.Combine(outputDirectory, ManifestReportFileName);
+            if (manifestChanged || hashChanged || !File.Exists(reportPath))
+                WriteIfChanged(reportPath, report);
             return manifest;
         }
 
-        private static void WriteIfChanged(string path, string content)
+        private static bool WriteIfChanged(string path, string content)
         {
             var bytes = Utf8NoBom.GetBytes(content ?? string.Empty);
             if (TryReadExistingBytes(path, out var existingBytes) && existingBytes.SequenceEqual(bytes))
-                return;
+                return false;
 
             var tempPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
             try
             {
                 File.WriteAllBytes(tempPath, bytes);
                 ReplaceFile(tempPath, path);
+                return true;
             }
             finally
             {

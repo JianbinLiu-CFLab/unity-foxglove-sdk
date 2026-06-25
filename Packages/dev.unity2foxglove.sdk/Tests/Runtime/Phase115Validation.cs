@@ -235,11 +235,12 @@ namespace Unity.FoxgloveSDK.Tests
                 Unity2FoxgloveSchemaManifestWriter.WriteManifestFiles(
                     tempRoot,
                     aggregate,
-                    "2026-05-21T00:00:00.0000000Z",
+                    "2026-05-21T00:00:01.0000000Z",
                     new[] { "report-only warning" });
                 Check(File.ReadAllText(manifestPath) == manifestJson
+                      && File.ReadAllText(reportPath) == report
                       && Encoding.ASCII.GetString(File.ReadAllBytes(hashPath)) == hashText,
-                    "115-E4: repeated writes are deterministic for canonical artifacts");
+                    "115-E4: repeated writes are deterministic for canonical artifacts and do not rewrite timestamp-only reports");
             }
             finally
             {

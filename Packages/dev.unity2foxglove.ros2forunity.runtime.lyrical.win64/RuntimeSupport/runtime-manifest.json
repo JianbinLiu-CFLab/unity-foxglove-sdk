@@ -9,11 +9,30 @@
   "architecture": "x86_64",
   "buildType": "standalone",
   "rmwImplementation": "rmw_fastrtps_cpp",
+  "defaultRmwImplementation": "rmw_fastrtps_cpp",
+  "supportedRmwImplementations": [
+    "rmw_fastrtps_cpp",
+    "rmw_zenoh_cpp"
+  ],
+  "communicationModes": [
+    {
+      "id": "fastdds",
+      "displayName": "FastDDS (default)",
+      "rmwImplementation": "rmw_fastrtps_cpp",
+      "default": true
+    },
+    {
+      "id": "zenoh",
+      "displayName": "Zenoh",
+      "rmwImplementation": "rmw_zenoh_cpp",
+      "default": false
+    }
+  ],
   "artifactName": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
-  "artifactSha256": "58d4a3dbf5d354c8c90c30548a4a2712296b513f374685cdf9b395cba65c7fe5",
-  "artifactSize": 17422086,
+  "artifactSha256": "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608",
+  "artifactSize": 25179851,
   "inventoryFile": "RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json",
-  "inventoryFileCount": 961,
+  "inventoryFileCount": 1227,
   "runtimeRoot": "Runtime/Ros2ForUnity",
   "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
   "sourceBasis": "Local Lyrical rebuild from RobotecAI ROS2 For Unity and ros2cs sources with Windows ROS2 Lyrical dependency closure",
@@ -24,7 +43,15 @@
     "rcl.dll",
     "yaml.dll",
     "spdlog.dll",
-    "fmt.dll"
+    "fmt.dll",
+    "fastdds-3.6.dll",
+    "rosidl_buffer_backend_registry.dll",
+    "rosidl_dynamic_typesupport_fastrtps.dll",
+    "rmw_zenoh_cpp.dll",
+    "zenohc.dll",
+    "rosgraph_msgs_assembly.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll"
   ],
   "packagePathPatch": {
     "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",

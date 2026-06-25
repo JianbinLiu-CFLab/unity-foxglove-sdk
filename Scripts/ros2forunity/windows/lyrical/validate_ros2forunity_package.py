@@ -330,7 +330,7 @@ def check_manifest(results: list[CheckResult]) -> None:
         "distributionPolicy": "runtime_artifacts_live_in_separate_runtime_packages",
         "activeRuntimePolicy": "one_runtime_package_per_project",
         "knownRuntimeRmw": "rmw_fastrtps_cpp",
-        "knownRuntimeRosDistro": "jazzy",
+        "knownRuntimeRosDistro": "humble,jazzy,lyrical",
     }
     for key, value in expected.items():
         add(results, f"manifest {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
@@ -426,10 +426,10 @@ def check_manifest(results: list[CheckResult]) -> None:
         results,
         "manifest planned runtime packages",
         isinstance(packages, list)
-        and "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64" in packages
-        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" in packages
-        and "dev.unity2foxglove.ros2forunity.runtime.humble.win64" in packages
-        and "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64" in packages,
+        and "dev.unity2foxglove.ros2forunity.runtime.lyrical.ubuntu2604.x64" in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64" not in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64" not in packages
+        and "dev.unity2foxglove.ros2forunity.runtime.humble.win64" not in packages,
         f"plannedRuntimePackages={packages!r}",
     )
     composition = data.get("packageComposition", {})

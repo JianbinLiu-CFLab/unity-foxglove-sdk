@@ -34,6 +34,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
                 EditorGUILayout.HelpBox(status.Diagnostic, MessageType.Info);
 
+            if (status.SelectedRuntime != null && status.SelectedRuntime.SupportsZenoh)
+                DrawCommunicationModePopup(projectDirectory, status);
+
             DrawRestartStatus(projectDirectory, status);
 
             if (status.SelectedRuntime != null)
@@ -43,6 +46,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     EditorGUILayout.TextField("Runtime Package", status.SelectedRuntime.PackageName);
                     EditorGUILayout.TextField("ROS Distro", status.SelectedRuntime.RosDistro);
                     EditorGUILayout.TextField("Runtime Id", status.SelectedRuntime.RuntimeId);
+                    EditorGUILayout.TextField(
+                        "Active RMW",
+                        Ros2ForUnityRuntimeSelection.GetRmwImplementationForCommunicationMode(
+                            Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(status.SelectedRuntime)));
                 }
             }
         }
@@ -53,6 +60,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             {
                 var sessionRuntime = Ros2ForUnityRuntimeSelection.GetSessionRuntimePackage();
                 var restartPackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(projectDirectory);
+                var restartCommunicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(projectDirectory);
                 if (!string.IsNullOrWhiteSpace(restartPackage))
                 {
                     EditorGUILayout.HelpBox(
@@ -69,13 +77,57 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                             Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
                     }
                 }
+                else if (!string.IsNullOrWhiteSpace(restartCommunicationMode))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Restart Unity before entering Play Mode. This Editor session already loaded the ROS2 runtime with communication mode "
+                        + Ros2ForUnityRuntimeSelection.GetSessionCommunicationMode()
+                        + ", and the active mode is now "
+                        + restartCommunicationMode
+                        + ". Unity cannot safely unload native ROS2 RMW DLLs mid-session.",
+                        MessageType.Error);
+
+                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    {
+                        if (GUILayout.Button("Restart Unity"))
+                            Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
+                    }
+                }
                 else if (string.IsNullOrWhiteSpace(sessionRuntime))
                 {
                     EditorGUILayout.HelpBox(
-                        "Switching runtime packages is safe before this Editor session enters Play Mode. A restart is required only after a different ROS2 runtime has already loaded native DLLs in this session.",
+                        "Switching runtime packages or Lyrical communication mode is safe before this Editor session enters Play Mode. A restart is required only after native ROS2 DLLs have already loaded in this session.",
                         MessageType.Info);
                 }
             }
+        }
+
+        private static void DrawCommunicationModePopup(
+            string projectDirectory,
+            Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            var selectedRuntime = status.SelectedRuntime;
+            var modes = Ros2ForUnityRuntimeSelection.GetCommunicationModeIds(selectedRuntime).ToArray();
+            var selectedMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(selectedRuntime);
+            var selectedIndex = Math.Max(0, Array.FindIndex(modes, mode =>
+                string.Equals(mode, selectedMode, StringComparison.Ordinal)));
+            var labels = modes.Select(Ros2ForUnityRuntimeSelection.GetCommunicationModeDisplayName).ToArray();
+
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            {
+                EditorGUI.BeginChangeCheck();
+                var changedIndex = EditorGUILayout.Popup("Communication Mode", selectedIndex, labels);
+                if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < modes.Length)
+                {
+                    Ros2ForUnityRuntimeSelection.SetCommunicationMode(
+                        projectDirectory,
+                        selectedRuntime,
+                        modes[changedIndex]);
+                }
+            }
+
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                EditorGUILayout.HelpBox("Exit Play Mode before switching ROS2 For Unity communication mode.", MessageType.Warning);
         }
 
         private static void DrawRuntimePopup(
