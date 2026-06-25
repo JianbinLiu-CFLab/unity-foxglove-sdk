@@ -36,6 +36,7 @@ MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json"
 
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
+EXPECTED_ARTIFACT_SHA256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3"
 EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
 
 CRITICAL_DLLS = (
@@ -43,6 +44,68 @@ CRITICAL_DLLS = (
     "yaml.dll",
     "spdlog.dll",
     "fmt.dll",
+)
+PHASE161_ADDED_DLLS = (
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_generator_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_introspection_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_introspection_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_id__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_id__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_id__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status_array__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status_array__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status_array__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_pose2_d__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_pose2_d__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_pose2_d__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/static_transform_broadcaster_node.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_generator_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_introspection_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_introspection_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/tf2.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/tf2_ros.dll",
+    "Ros2ForUnity/Plugins/actionlib_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/stereo_msgs_assembly.dll",
+)
+PHASE161_ALLOWED_STALE_REMOVED_DLLS = (
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_long__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_long__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_long__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_string__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_string__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_string__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_non_keyed_with_nested_key__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_non_keyed_with_nested_key__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_non_keyed_with_nested_key__rosidl_typesupport_introspection_c_native.dll",
+)
+PHASE161_ASSET_CRITICAL_BASELINE = (
+    "Ros2ForUnity/Plugins/builtin_interfaces_assembly.dll",
+    "Ros2ForUnity/Plugins/std_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/sensor_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/tf2_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/rosgraph_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
 )
 
 MODIFICATIONS_COPYRIGHT = "Modifications Copyright (c) 2026 Jianbin Liu"
@@ -227,7 +290,7 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     add(
         results,
         "runtime manifest artifactSha256",
-        isinstance(artifact_sha, str) and len(artifact_sha) == 64 and re.fullmatch(r"[0-9a-f]+", artifact_sha) is not None,
+        artifact_sha == EXPECTED_ARTIFACT_SHA256,
         f"artifactSha256={artifact_sha!r}",
     )
     add(results, "runtime manifest artifactSize", isinstance(artifact_size, int) and artifact_size > 0, f"artifactSize={artifact_size!r}")
@@ -252,6 +315,27 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
         "runtime manifest critical DLLs",
         isinstance(critical, list) and set(CRITICAL_DLLS).issubset(set(critical)),
         f"criticalRuntimeFiles={critical!r}",
+    )
+
+    delta = data.get("handoffInventoryDelta", {})
+    add(
+        results,
+        "runtime manifest Phase161 added DLL set",
+        isinstance(delta, dict) and set(delta.get("addedDlls", [])) == set(PHASE161_ADDED_DLLS),
+        f"handoffInventoryDelta={delta!r}",
+    )
+    add(
+        results,
+        "runtime manifest Phase161 allowed removed stale DLL set",
+        isinstance(delta, dict)
+        and set(delta.get("allowedRemovedStaleBackupDlls", [])) == set(PHASE161_ALLOWED_STALE_REMOVED_DLLS),
+        f"handoffInventoryDelta={delta!r}",
+    )
+    add(
+        results,
+        "runtime manifest Phase161 asset-critical baseline",
+        isinstance(delta, dict) and set(PHASE161_ASSET_CRITICAL_BASELINE).issubset(set(delta.get("assetCriticalBaseline", []))),
+        f"handoffInventoryDelta={delta!r}",
     )
 
     patch = data.get("packagePathPatch", {})
@@ -287,7 +371,7 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
     add(
         results,
         "runtime inventory sha256 matches manifest",
-        data.get("sha256") == manifest.get("artifactSha256"),
+        data.get("sha256") == manifest.get("artifactSha256") == EXPECTED_ARTIFACT_SHA256,
         f"inventory={data.get('sha256')!r}, manifest={manifest.get('artifactSha256')!r}",
     )
     add(
@@ -376,6 +460,26 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
         "runtime inventory DLL hashes match disk",
         isinstance(files, list) and checked_dlls >= 900 and not mismatched,
         f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}",
+    )
+
+    file_paths = {str(item.get("path", "")) for item in files if isinstance(item, dict)}
+    add(
+        results,
+        "Phase161 added DLL paths are present",
+        set(PHASE161_ADDED_DLLS).issubset(file_paths),
+        f"missing={sorted(set(PHASE161_ADDED_DLLS) - file_paths)!r}",
+    )
+    add(
+        results,
+        "Phase161 stale old-backup DLL paths are absent",
+        not (set(PHASE161_ALLOWED_STALE_REMOVED_DLLS) & file_paths),
+        f"unexpected={sorted(set(PHASE161_ALLOWED_STALE_REMOVED_DLLS) & file_paths)!r}",
+    )
+    add(
+        results,
+        "Phase161 asset-critical baseline paths are present",
+        set(PHASE161_ASSET_CRITICAL_BASELINE).issubset(file_paths),
+        f"missing={sorted(set(PHASE161_ASSET_CRITICAL_BASELINE) - file_paths)!r}",
     )
 
 
@@ -533,6 +637,24 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "expectedRmwImplementation" in runtime
         and "ValidateRmwImplementation" in runtime
         and EXPECTED_RMW_IMPLEMENTATION in runtime,
+        "ROS2ForUnity.cs",
+    )
+    env_tokens = (
+        "SetProcessEnvironmentVariable",
+        "_wputenv_s",
+        "SetStandalonePrefixPath",
+        "AMENT_PREFIX_PATH",
+        "SetStandaloneRmwImplementation",
+        "RMW_IMPLEMENTATION",
+        "SetEnvPathVariable();",
+    )
+    add(
+        results,
+        "ROS2ForUnity configures standalone native environment before init",
+        all(token in runtime for token in env_tokens)
+        and runtime.find("SetStandalonePrefixPath();") < runtime.find("Ros2cs.Init()")
+        and runtime.find("SetStandaloneRmwImplementation();") < runtime.find("Ros2cs.Init()")
+        and runtime.find("SetEnvPathVariable();") < runtime.find("Ros2cs.Init()"),
         "ROS2ForUnity.cs",
     )
 

@@ -2,9 +2,10 @@
 <ros2cs>
    <ros2>jazzy</ros2>
    <version>
-      <sha>b8baff429e8483b556e5933cb98cc9198e176083</sha>
-      <desc>v0.6.0-jazzy-preview.1-3-gb8baff4</desc>
-      <date>2026-06-13 13:47:06 +0200</date>
+      <sha>07a142431cc8c290277a4dc411de81914430f9e6</sha>
+      <desc>v0.6.0-jazzy-preview.1-52-g07a1424</desc>
+      <date>2026-06-22 22:56:09 +0200</date>
+      <branch>feature/humble-windows-standalone-runtime-closure</branch>
    </version>
    <standalone>1</standalone>
 </ros2cs>

@@ -4,7 +4,7 @@
 #
 # Purpose: Build the ROS2 For Unity Jazzy Win64 runtime Unity package from a vetted artifact.
 # Usage: python Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py
-# Inputs: build/dist/Ros2ForUnity_jazzy_standalone_windows_x86_64.zip and compliance inventory.
+# Inputs: r2fu-runtime-artifacts/jazzy/windows_x86_64/Ros2ForUnity_jazzy_standalone_windows_x86_64.zip and compliance inventory.
 # Outputs: Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64 package directory.
 
 """Build the ROS2 For Unity Jazzy Win64 runtime package prototype."""
@@ -32,9 +32,10 @@ PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 PACKAGE_VERSION = "0.1.0-preview.1"
 RUNTIME_ID = "r2fu-jazzy-win64"
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
+EXPECTED_ARTIFACT_SHA256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3"
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
-DEFAULT_ARTIFACT = ROOT / "build" / "dist" / ARTIFACT_NAME
+DEFAULT_ARTIFACT = ROOT / "r2fu-runtime-artifacts" / "jazzy" / "windows_x86_64" / ARTIFACT_NAME
 DEFAULT_INVENTORY = (
     ROOT
     / "Packages"
@@ -54,6 +55,68 @@ LOCAL_PATCH_OVERLAY_FILES = {
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
     "Runtime/Ros2ForUnity/Scripts/Time/ROS2TimeSource.cs",
 }
+PHASE161_ADDED_DLLS = (
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_generator_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_introspection_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs__rosidl_typesupport_introspection_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_id__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_id__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_id__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status_array__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status_array__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/actionlib_msgs_goal_status_array__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_pose2_d__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_pose2_d__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_pose2_d__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/static_transform_broadcaster_node.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_generator_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_introspection_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs__rosidl_typesupport_introspection_cpp.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/tf2.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/tf2_ros.dll",
+    "Ros2ForUnity/Plugins/actionlib_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/stereo_msgs_assembly.dll",
+)
+PHASE161_ALLOWED_STALE_REMOVED_DLLS = (
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_long__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_long__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_long__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_string__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_string__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_keyed_string__rosidl_typesupport_introspection_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_non_keyed_with_nested_key__rosidl_typesupport_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_non_keyed_with_nested_key__rosidl_typesupport_fastrtps_c_native.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_non_keyed_with_nested_key__rosidl_typesupport_introspection_c_native.dll",
+)
+PHASE161_ASSET_CRITICAL_BASELINE = (
+    "Ros2ForUnity/Plugins/builtin_interfaces_assembly.dll",
+    "Ros2ForUnity/Plugins/std_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/sensor_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/tf2_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/rosgraph_msgs_assembly.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+)
 LEAKY_UPSTREAM_EXAMPLES = (
     "ROS2TalkerExample.cs",
     "ROS2ListenerExample.cs",
@@ -245,6 +308,8 @@ def require_inputs(paths: BuildPaths) -> tuple[dict[str, object], RuntimeArtifac
 
     artifact_hash = sha256_file(paths.artifact)
     artifact_size = paths.artifact.stat().st_size
+    if artifact_hash != EXPECTED_ARTIFACT_SHA256:
+        raise ValueError(f"Runtime artifact sha256 does not match pinned Jazzy handoff: {artifact_hash} != {EXPECTED_ARTIFACT_SHA256}")
 
     if not paths.inventory.exists():
         raise FileNotFoundError(f"Missing runtime inventory: {paths.inventory}")
@@ -572,6 +637,11 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
             "spdlog.dll",
             "fmt.dll",
         ],
+        "handoffInventoryDelta": {
+            "addedDlls": list(PHASE161_ADDED_DLLS),
+            "allowedRemovedStaleBackupDlls": list(PHASE161_ALLOWED_STALE_REMOVED_DLLS),
+            "assetCriticalBaseline": list(PHASE161_ASSET_CRITICAL_BASELINE),
+        },
         "packagePathPatch": {
             "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
             "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
@@ -749,6 +819,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = source.read_text(encoding="utf-8")
     text = patch_ros2cs_logger_callback_api(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
+        text = patch_standalone_environment_bootstrap(text)
         write_text(source, text)
         return
     if "unity2FoxgloveRuntimePackageName" not in text:
@@ -767,6 +838,7 @@ def patch_ros2_for_unity(package: Path) -> None:
         text = text.replace(UPSTREAM_COMPUTE_PATH_BLOCK, PACKAGE_COMPUTE_PATH_BLOCK)
     else:
         raise ValueError("Could not find upstream ROS2ForUnity path block to patch.")
+    text = patch_standalone_environment_bootstrap(text)
     write_text(source, text)
 
 
@@ -775,11 +847,118 @@ def patch_ros2cs_logger_callback_api(text: str) -> str:
     return text.replace("Ros2csLogger.setCallback", "Ros2csLogger.SetCallback")
 
 
+def patch_standalone_environment_bootstrap(text: str) -> str:
+    """Patch standalone Jazzy environment writes so native ROS 2 getenv callers see them."""
+    if "using System.Runtime.InteropServices;" not in text:
+        text = text.replace(
+            "using System.Reflection;\n",
+            "using System.Reflection;\nusing System.Runtime.InteropServices;\n",
+            1,
+        )
+
+    if "_wputenv_s" not in text:
+        text = text.replace(
+            "    private bool ownsLifecycle;\n",
+            "    private bool ownsLifecycle;\n\n"
+            "    // Windows standalone ROS 2 libraries read getenv() through UCRT, so mirror managed env writes there.\n"
+            "    [DllImport(\"ucrtbase.dll\", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]\n"
+            "    private static extern int _wputenv_s(string name, string value);\n",
+            1,
+        )
+
+    if "SetProcessEnvironmentVariable" not in text:
+        text = text.replace(
+            "    private string GetEnvPathVariableValue()\n"
+            "    {\n"
+            "        return Environment.GetEnvironmentVariable(GetEnvPathVariableName());\n"
+            "    }\n\n",
+            "    private string GetEnvPathVariableValue()\n"
+            "    {\n"
+            "        return Environment.GetEnvironmentVariable(GetEnvPathVariableName());\n"
+            "    }\n\n"
+            "    private static void SetProcessEnvironmentVariable(string name, string value)\n"
+            "    {\n"
+            "        Environment.SetEnvironmentVariable(name, value);\n"
+            "        if (GetOS() == Platform.Windows)\n"
+            "        {\n"
+            "            // U2F-LOCAL-PATCH: ROS 2 Windows native code reads getenv() from UCRT.\n"
+            "            int result = _wputenv_s(name, value);\n"
+            "            if (result != 0)\n"
+            "            {\n"
+            "                throw new InvalidOperationException(\n"
+            "                    \"Failed to set Windows CRT environment variable '\" + name + \"' (ucrtbase _wputenv_s returned \" + result + \")\");\n"
+            "            }\n"
+            "        }\n"
+            "    }\n\n",
+            1,
+        )
+
+    text = text.replace(
+        "        Environment.SetEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));",
+        "        SetProcessEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));",
+        1,
+    )
+
+    if "SetStandalonePrefixPath" not in text:
+        text = text.replace(
+            "\n    private static string NormalizeEnvPathEntry(string value)\n",
+            "\n    private static void SetStandalonePrefixPath()\n"
+            "    {\n"
+            "        string prefixPath = GetRos2ForUnityPath();\n"
+            "        string pluginPrefixPath = GetPluginPath();\n"
+            "        if (Directory.Exists(Path.Combine(pluginPrefixPath, \"share\")))\n"
+            "        {\n"
+            "            prefixPath = pluginPrefixPath;\n"
+            "        }\n"
+            "        else if (!Directory.Exists(Path.Combine(prefixPath, \"share\")))\n"
+            "        {\n"
+            "            Debug.LogWarning(\"Standalone AMENT_PREFIX_PATH fallback has no share directory: \" + prefixPath);\n"
+            "        }\n\n"
+            "        // U2F-LOCAL-PATCH: standalone runtime must not inherit or require a sourced ROS 2 workspace.\n"
+            "        SetProcessEnvironmentVariable(\"AMENT_PREFIX_PATH\", prefixPath);\n"
+            "    }\n\n"
+            "    private static void SetStandaloneRmwImplementation()\n"
+            "    {\n"
+            "        // U2F-LOCAL-PATCH: standalone Jazzy runtime owns its RMW selection.\n"
+            "        SetProcessEnvironmentVariable(\"RMW_IMPLEMENTATION\", expectedRmwImplementation);\n"
+            "    }\n\n"
+            "    private static string NormalizeEnvPathEntry(string value)\n",
+            1,
+        )
+
+    if "SetStandalonePrefixPath();" not in text:
+        text = text.replace(
+            "        // Library loading\n"
+            "        if (GetOS() == Platform.Windows) {\n",
+            "        // Library loading\n"
+            "        if (IsStandalone())\n"
+            "        {\n"
+            "            SetStandalonePrefixPath();\n"
+            "            SetStandaloneRmwImplementation();\n"
+            "        }\n"
+            "        if (GetOS() == Platform.Windows) {\n",
+            1,
+        )
+
+    for token in ("_wputenv_s", "SetStandalonePrefixPath", "AMENT_PREFIX_PATH", "SetStandaloneRmwImplementation"):
+        if token not in text:
+            raise ValueError(f"Could not patch ROS2ForUnity standalone environment bootstrap token: {token}")
+    return text
+
+
 def patch_ros_time_source_contract(package: Path) -> None:
     """Patch ROS2 time sources for the bool-returning ITimeSource contract."""
     time_dir = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Time"
     dotnet_time = time_dir / "DotnetTimeSource.cs"
-    write_text(dotnet_time, dotnet_time.read_text(encoding="utf-8"))
+    dotnet_text = dotnet_time.read_text(encoding="utf-8")
+    dotnet_text = dotnet_text.replace(
+        "// Modifications Copyright (c) 2026 Jianbin Liu.\n",
+        "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n",
+        1,
+    )
+    if MODIFICATIONS_COPYRIGHT not in dotnet_text:
+        raise ValueError("DotnetTimeSource.cs is missing the local modifications copyright line.")
+    write_text(dotnet_time, dotnet_text)
 
     for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
         source = time_dir / name

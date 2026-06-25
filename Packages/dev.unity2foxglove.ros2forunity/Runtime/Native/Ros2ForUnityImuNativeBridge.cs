@@ -11,6 +11,7 @@ using ROS2;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.Imu;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -35,7 +36,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool _isStopping;
         private bool _ros2RuntimeWasReady;
 
-        private bool IsShuttingDown => _isStopping || _runtimeShuttingDown || !Application.isPlaying;
+        private bool IsShuttingDown
+            => _isStopping || _runtimeShuttingDown || !Application.isPlaying || IsBackupSceneActive();
+
+        private static bool IsBackupSceneActive()
+        {
+            var scene = SceneManager.GetActiveScene();
+            var path = scene.path ?? string.Empty;
+            return path.StartsWith("Temp/__Backupscenes/", StringComparison.Ordinal)
+                   || path.Contains("__Backupscenes", StringComparison.Ordinal);
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
@@ -90,6 +100,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private void Update()
         {
             if (IsShuttingDown || !Ros2NativeOutputPolicy.Enabled)
+            {
+                ClearBindings();
+                return;
+            }
+
+            if (!EnsureRos2UnityReady())
             {
                 ClearBindings();
                 return;
@@ -151,6 +167,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool TryGetRos2Unity(out ROS2UnityComponent ros2Unity)
         {
             ros2Unity = null;
+            if (IsShuttingDown || !_ros2RuntimeWasReady)
+                return false;
+
+            return TryGetExistingRos2Unity(out ros2Unity);
+        }
+
+        private bool EnsureRos2UnityReady()
+        {
             if (IsShuttingDown)
                 return false;
 
@@ -185,8 +209,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             _warnedRos2Unavailable = false;
             _ros2RuntimeWasReady = true;
-            ros2Unity = _ros2Unity;
             return true;
+        }
+
+        private bool TryGetExistingRos2Unity(out ROS2UnityComponent ros2Unity)
+        {
+            if (_ros2Unity == null)
+                _ros2Unity = GetComponent<ROS2UnityComponent>() ?? FindFirstObjectByType<ROS2UnityComponent>();
+
+            ros2Unity = _ros2Unity;
+            return ros2Unity != null;
         }
 
         private void RecordRos2Failure(string message)

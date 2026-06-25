@@ -17,6 +17,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -44,6 +45,10 @@ internal class ROS2ForUnity
     private XmlDocument ros2csMetadata = new XmlDocument();
     private XmlDocument ros2ForUnityMetadata = new XmlDocument();
     private bool ownsLifecycle;
+
+    // Windows standalone ROS 2 libraries read getenv() through UCRT, so mirror managed env writes there.
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    private static extern int _wputenv_s(string name, string value);
 #if UNITY_EDITOR
     private bool editorCallbacksRegistered;
 #endif
@@ -100,6 +105,21 @@ internal class ROS2ForUnity
     private string GetEnvPathVariableValue()
     {
         return Environment.GetEnvironmentVariable(GetEnvPathVariableName());
+    }
+
+    private static void SetProcessEnvironmentVariable(string name, string value)
+    {
+        Environment.SetEnvironmentVariable(name, value);
+        if (GetOS() == Platform.Windows)
+        {
+            // U2F-LOCAL-PATCH: ROS 2 Windows native code reads getenv() from UCRT.
+            int result = _wputenv_s(name, value);
+            if (result != 0)
+            {
+                throw new InvalidOperationException(
+                    "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
+            }
+        }
     }
 
     public static string GetRos2ForUnityPath()
@@ -221,7 +241,30 @@ internal class ROS2ForUnity
             }
         }
 
-        Environment.SetEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));
+        SetProcessEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));
+    }
+
+    private static void SetStandalonePrefixPath()
+    {
+        string prefixPath = GetRos2ForUnityPath();
+        string pluginPrefixPath = GetPluginPath();
+        if (Directory.Exists(Path.Combine(pluginPrefixPath, "share")))
+        {
+            prefixPath = pluginPrefixPath;
+        }
+        else if (!Directory.Exists(Path.Combine(prefixPath, "share")))
+        {
+            Debug.LogWarning("Standalone AMENT_PREFIX_PATH fallback has no share directory: " + prefixPath);
+        }
+
+        // U2F-LOCAL-PATCH: standalone runtime must not inherit or require a sourced ROS 2 workspace.
+        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
+    }
+
+    private static void SetStandaloneRmwImplementation()
+    {
+        // U2F-LOCAL-PATCH: standalone Jazzy runtime owns its RMW selection.
+        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", expectedRmwImplementation);
     }
 
     private static string NormalizeEnvPathEntry(string value)
@@ -475,6 +518,11 @@ internal class ROS2ForUnity
         CheckIntegrity();
 
         // Library loading
+        if (IsStandalone())
+        {
+            SetStandalonePrefixPath();
+            SetStandaloneRmwImplementation();
+        }
         if (GetOS() == Platform.Windows) {
             // Windows version can run standalone, modifies PATH to ensure all plugins visibility
             SetEnvPathVariable();
