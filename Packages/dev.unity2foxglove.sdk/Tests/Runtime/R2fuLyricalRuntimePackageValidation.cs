@@ -64,6 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
             Phase162PayloadIncludesZenohAndBaselineAssets();
             Phase162SelectorScopesCommunicationModeToZenohCapability();
             Phase162InspectorAndGuardApplyRmwBeforePlayMode();
+            Phase162ReadmesDocumentZenohPrerequisites();
             _passed += R2fuJazzyRuntimeRefreshValidation.ValidateNativeBridgeLifecycleGuards("162-G");
             Phase162SmokeHelperCapturesZenohRouterFlow();
             Phase162LyricalRuntimeStopsExecutorsBeforeZenohShutdown();
@@ -352,6 +353,29 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("--echo-only", StringComparison.Ordinal)
                   && helper.Contains("--no-rviz", StringComparison.Ordinal),
                 "162-E4: bare Phase162 runs Zenoh RViz2 PointCloud2 acceptance while echo is explicitly opt-in");
+        }
+
+        private static void Phase162ReadmesDocumentZenohPrerequisites()
+        {
+            var adapterReadme = ReadRepoText(AdapterPackage + "/README.md");
+            var sampleReadme = ReadRepoText(AdapterPackage + "/Samples~/ROS2 For Unity External Adapter/README.md");
+            var importedSampleReadme = ReadRepoText("Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/ROS2 For Unity External Adapter/README.md");
+
+            foreach (var pair in new[]
+            {
+                ("adapter README", adapterReadme, "162-D5"),
+                ("external adapter sample README", sampleReadme, "162-D6"),
+                ("imported external adapter sample README", importedSampleReadme, "162-D7"),
+            })
+            {
+                Check(pair.Item2.Contains("FastDDS and Zenoh are separate ROS2 communication modes", StringComparison.Ordinal)
+                      && pair.Item2.Contains("They do not discover or exchange topics with each other", StringComparison.Ordinal)
+                      && pair.Item2.Contains("RMW_IMPLEMENTATION=rmw_zenoh_cpp", StringComparison.Ordinal)
+                      && pair.Item2.Contains("RMW_IMPLEMENTATION=rmw_fastrtps_cpp", StringComparison.Ordinal)
+                      && pair.Item2.Contains("rmw_zenohd", StringComparison.Ordinal)
+                      && pair.Item2.Contains("does not bridge FastDDS traffic", StringComparison.Ordinal),
+                    pair.Item3 + ": " + pair.Item1 + " documents Zenoh router and same-RMW prerequisites");
+            }
         }
 
         private static void Phase162LyricalRuntimeStopsExecutorsBeforeZenohShutdown()
