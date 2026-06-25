@@ -95,6 +95,8 @@ dev.unity2foxglove.ros2forunity.runtime.lyrical.win64
 
 The Foxglove Manager Inspector exposes one `ROS2 For Unity Runtime` active runtime dropdown. Changing it edits `Unity2Foxglove/Packages/manifest.json` so exactly one runtime package is active, then Unity performs a normal package reimport and script compilation. This is intentionally slower than a scripting-define switch because Unity must not import two sets of ROS2 managed message DLLs or native runtime DLLs at once.
 
+When the active runtime is Lyrical and the package contains the Zenoh payload, the Inspector also exposes a `Communication Mode` dropdown. `FastDDS (default)` sets `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`; `Zenoh (rmw_zenoh_cpp)` sets `RMW_IMPLEMENTATION=rmw_zenoh_cpp` before ROS2 For Unity initializes. Zenoh mode is Lyrical-only and should be selected before entering Play Mode in a fresh Editor session.
+
 If the current Editor session has not entered Play Mode yet, you can switch runtime packages and enter Play Mode without restarting. After an Editor session has loaded one ROS2 runtime in Play Mode, switching to a different runtime requires a Unity restart before Play Mode. Windows native ROS2 plugins stay loaded until the Editor process exits, so the Inspector blocks unsafe Play Mode entry and offers a restart action instead of letting Humble, Jazzy, and Lyrical DLLs mix in one process.
 
 The adapter package manages only the base Standalone build-target symbol:

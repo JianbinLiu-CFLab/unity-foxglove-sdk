@@ -45,7 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
             JazzyScriptsArePinnedToHandoffArtifact();
             UnityProjectResolvesOnlyJazzyRuntime();
             ValidationRegistryWiresPhase161();
-            NativeBridgeCallbacksDoNotLazyInitializeRos2DuringShutdown();
+            _passed += ValidateNativeBridgeLifecycleGuards("161-G");
 
             Console.WriteLine($"Phase 161: {_passed} checks passed.");
         }
@@ -265,8 +265,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "161-F2: runtime validation project compiles the 161 validation");
         }
 
-        private static void NativeBridgeCallbacksDoNotLazyInitializeRos2DuringShutdown()
+        public static int ValidateNativeBridgeLifecycleGuards(string labelPrefix)
         {
+            var passed = 0;
+
             foreach (var bridge in new[]
             {
                 "Ros2ForUnityTransformNativeBridge.cs",
@@ -275,65 +277,94 @@ namespace Unity.FoxgloveSDK.Tests
                 "Ros2ForUnityCameraNativeBridge.cs",
             })
             {
-                var source = ReadRepoText(AdapterPackage + "/Runtime/Native/" + bridge);
-                Check(source.Contains("using UnityEngine.SceneManagement;", StringComparison.Ordinal)
+                var relativePath = AdapterPackage + "/Runtime/Native/" + bridge;
+                var path = RepoPath(relativePath);
+                CheckLifecycle(File.Exists(path), labelPrefix + "-file: " + relativePath + " exists");
+                var source = File.ReadAllText(path);
+
+                CheckLifecycle(source.Contains("using UnityEngine.SceneManagement;", StringComparison.Ordinal)
                       && source.Contains("IsBackupSceneActive()", StringComparison.Ordinal)
-                      && source.Contains("Temp/__Backupscenes", StringComparison.Ordinal),
-                    "161-G-backup-scene: " + bridge + " treats Unity backup scenes as R2FU shutdown windows");
-                Check(source.Contains("gameObject.scene", StringComparison.Ordinal)
+                      && source.Contains("Temp/__Backupscenes", StringComparison.Ordinal)
+                      && source.Contains("scene.name", StringComparison.Ordinal)
+                      && source.Contains("EndsWith(\".backup\"", StringComparison.Ordinal),
+                    labelPrefix + "-backup-scene: " + bridge + " treats Unity backup scenes as R2FU shutdown windows");
+                CheckLifecycle(source.Contains("gameObject.scene", StringComparison.Ordinal)
                       && source.Contains("IsBackupScene(gameObject.scene)", StringComparison.Ordinal),
-                    "161-G-owner-backup-scene: " + bridge + " blocks ROS2 prewarm when the bridge object lives in Unity backup scenes");
-                Check(source.Contains("IsAnyBackupSceneLoaded()", StringComparison.Ordinal)
+                    labelPrefix + "-owner-backup-scene: " + bridge + " blocks ROS2 prewarm when the bridge object lives in Unity backup scenes");
+                CheckLifecycle(source.Contains("IsAnyBackupSceneLoaded()", StringComparison.Ordinal)
                       && source.Contains("SceneManager.sceneCount", StringComparison.Ordinal)
                       && source.Contains("SceneManager.GetSceneAt", StringComparison.Ordinal),
-                    "161-G-loaded-backup-scene: " + bridge + " blocks ROS2 prewarm while any Unity backup scene is loaded");
-                Check(source.Contains("_playModeSceneLoaded", StringComparison.Ordinal)
+                    labelPrefix + "-loaded-backup-scene: " + bridge + " blocks ROS2 prewarm while any Unity backup scene is loaded");
+                CheckLifecycle(source.Contains("_playModeSceneLoaded", StringComparison.Ordinal)
                       && source.Contains("RuntimeInitializeLoadType.SubsystemRegistration", StringComparison.Ordinal)
                       && source.Contains("RuntimeInitializeLoadType.AfterSceneLoad", StringComparison.Ordinal),
-                    "161-G-after-scene-load-gate: " + bridge + " blocks ROS2 prewarm during Unity Play Mode backup/restore transitions");
-                Check(source.Contains("InitializeEditorPlayModeGate", StringComparison.Ordinal)
+                    labelPrefix + "-after-scene-load-gate: " + bridge + " blocks ROS2 prewarm during Unity Play Mode backup/restore transitions");
+                CheckLifecycle(source.Contains("IsStableUserSceneLoaded()", StringComparison.Ordinal)
+                      && source.Contains("StartsWith(\"Assets/\"", StringComparison.Ordinal)
+                      && source.Contains("StartsWith(\"Packages/\"", StringComparison.Ordinal)
+                      && source.Contains("!IsStableUserSceneLoaded()", StringComparison.Ordinal),
+                    labelPrefix + "-stable-user-scene-gate: " + bridge + " prewarms ROS2 only from stable project scenes");
+                CheckLifecycle(source.Contains("InitializeEditorPlayModeGate", StringComparison.Ordinal)
                       && source.Contains("EditorApplication.playModeStateChanged", StringComparison.Ordinal)
                       && source.Contains("PlayModeStateChange.EnteredPlayMode", StringComparison.Ordinal)
+                      && source.Contains("PlayModeStateChange.ExitingPlayMode", StringComparison.Ordinal)
+                      && source.Contains("PlayModeStateChange.EnteredEditMode", StringComparison.Ordinal)
                       && source.Contains("EditorApplication.quitting", StringComparison.Ordinal)
                       && source.Contains("EditorApplication.isCompiling", StringComparison.Ordinal)
                       && source.Contains("EditorApplication.isUpdating", StringComparison.Ordinal)
                       && source.Contains("EditorApplication.timeSinceStartup", StringComparison.Ordinal)
                       && source.Contains("IsEditorPlayModeTransition()", StringComparison.Ordinal),
-                    "161-G-editor-play-mode-gate: " + bridge + " blocks ROS2 prewarm until Unity reports stable Play Mode and no editor update/quitting transition");
-                Check(source.Contains("if (IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                    labelPrefix + "-editor-play-mode-gate: " + bridge + " blocks ROS2 prewarm until Unity reports stable Play Mode and no editor update/quitting transition");
+                CheckLifecycle(source.Contains("if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                      && source.Contains("_runtimeShuttingDown = true", StringComparison.Ordinal)
                       && source.Contains("_playModeSceneLoaded = false", StringComparison.Ordinal)
                       && source.Contains("return;", StringComparison.Ordinal)
-                      && source.IndexOf("if (IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                      && source.IndexOf("if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
                          < source.IndexOf("_playModeSceneLoaded = true", StringComparison.Ordinal),
-                    "161-G-bootstrap-backup-gate: " + bridge + " does not bootstrap native bridges from Unity backup scenes");
-                Check(BridgeUpdateAvoidsRos2Init(source),
-                    "161-G-no-update-init: " + bridge + " never first-initializes ROS2 from bridge Update");
-                Check(BridgeCallbackGetterUsesGuardedLazyInit(source),
-                    "161-G-guarded-lazy-init: " + bridge + " initializes ROS2 only from guarded data callbacks");
+                    labelPrefix + "-bootstrap-backup-gate: " + bridge + " does not bootstrap native bridges from Unity backup scenes");
+                CheckLifecycle(BridgeUpdatePrewarmsRos2FromGuardedPlayMode(source),
+                    labelPrefix + "-update-prewarm: " + bridge + " first-initializes ROS2 only from guarded bridge Update");
+                CheckLifecycle(BridgeCallbackGetterUsesReadyRuntimeOnly(source),
+                    labelPrefix + "-no-callback-lazy-init: " + bridge + " data callbacks never first-initialize ROS2");
+            }
+
+            return passed;
+
+            void CheckLifecycle(bool condition, string message)
+            {
+                if (!condition)
+                    throw new Exception("[FAIL] " + message);
+                passed++;
+                Console.WriteLine("[PASS] " + message);
             }
         }
 
-        private static bool BridgeUpdateAvoidsRos2Init(string source)
+        private static bool BridgeUpdatePrewarmsRos2FromGuardedPlayMode(string source)
         {
             var body = MethodBody(source, "private void Update()");
             if (body.Length == 0)
                 return false;
 
-            return body.Contains("RefreshBindings();", StringComparison.Ordinal)
-                   && !body.Contains("EnsureRos2UnityReady()", StringComparison.Ordinal)
+            var shutdownGate = body.IndexOf("if (IsShuttingDown", StringComparison.Ordinal);
+            var ensure = body.IndexOf("EnsureRos2UnityReady()", StringComparison.Ordinal);
+            var refresh = body.IndexOf("RefreshBindings();", StringComparison.Ordinal);
+            return shutdownGate >= 0
+                   && ensure > shutdownGate
+                   && refresh > ensure
+                   && body.Contains("!_ros2RuntimeWasReady", StringComparison.Ordinal)
                    && !body.Contains("ROS2UnityComponent", StringComparison.Ordinal);
         }
 
-        private static bool BridgeCallbackGetterUsesGuardedLazyInit(string source)
+        private static bool BridgeCallbackGetterUsesReadyRuntimeOnly(string source)
         {
             var body = MethodBody(source, "private bool TryGetRos2Unity(out ROS2UnityComponent ros2Unity)");
             var shutdownGate = body.IndexOf("if (IsShuttingDown)", StringComparison.Ordinal);
-            var ensure = body.IndexOf("EnsureRos2UnityReady()", StringComparison.Ordinal);
+            var readyGate = body.IndexOf("if (!_ros2RuntimeWasReady)", StringComparison.Ordinal);
             var existing = body.IndexOf("TryGetExistingRos2Unity", StringComparison.Ordinal);
             return shutdownGate >= 0
-                   && ensure > shutdownGate
-                   && existing > ensure
-                   && body.Contains("!_ros2RuntimeWasReady", StringComparison.Ordinal);
+                   && readyGate > shutdownGate
+                   && existing > readyGate
+                   && !body.Contains("EnsureRos2UnityReady()", StringComparison.Ordinal);
         }
 
         private static string MethodBody(string source, string signature)

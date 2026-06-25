@@ -30,6 +30,9 @@ namespace ROS2
 /// </summary>
 public class ROS2UnityComponent : MonoBehaviour
 {
+    private static readonly object instancesMutex = new object();
+    private static readonly HashSet<ROS2UnityComponent> instances = new HashSet<ROS2UnityComponent>();
+
     private ROS2ForUnity ros2forUnity;
     private List<ROS2Node> nodes;
     private List<INode> ros2csNodes; // For performance in spinning
@@ -72,6 +75,28 @@ public class ROS2UnityComponent : MonoBehaviour
             ros2csNodes = new List<INode>();
             executableActions = new List<Action>();
             executableActionSet = new HashSet<Action>();
+
+            lock (instancesMutex)
+            {
+                instances.Add(this);
+            }
+        }
+    }
+
+    public static void StopAllExecutorsForRosShutdown()
+    {
+        List<ROS2UnityComponent> snapshot;
+        lock (instancesMutex)
+        {
+            snapshot = new List<ROS2UnityComponent>(instances);
+        }
+
+        foreach (ROS2UnityComponent component in snapshot)
+        {
+            if (component != null)
+            {
+                component.StopExecutor();
+            }
         }
     }
 
@@ -345,6 +370,11 @@ public class ROS2UnityComponent : MonoBehaviour
         if (instance != null)
         {
             instance.DestroyROS2ForUnity();
+        }
+
+        lock (instancesMutex)
+        {
+            instances.Remove(this);
         }
     }
 

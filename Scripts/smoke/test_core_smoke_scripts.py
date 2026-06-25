@@ -218,6 +218,19 @@ class CoreSmokeScriptTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 module.write_runtime_rviz_config(base_config, root, "/unity/point_cloud2", "map")
 
+    def test_phase138u_rviz_pointcloud2_uses_sensor_data_qos(self) -> None:
+        """Phase138U/162 RViz2 PointCloud2 displays should not queue stale high-bandwidth frames."""
+        module = load_smoke_module("phase138u_rviz_under_test", "ros2/launch_phase138u_lidar_deskew_rviz2.py")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            config = module.write_config(Path(tmp), "/unity/point_cloud2", "/unity/point_cloud2_deskewed", "map")
+            text = config.read_text(encoding="utf-8")
+
+        self.assertIn("Reliability Policy: Best Effort", text)
+        self.assertIn("Depth: 1", text)
+        self.assertIn("Value: /unity/point_cloud2", text)
+        self.assertIn("Value: /unity/point_cloud2_deskewed", text)
+
     def test_phase138m_republisher_closes_parent_log_handle_after_spawn(self) -> None:
         """The parent process should not retain the republisher log handle."""
         module = load_smoke_module("phase138m_log_under_test", "ros2/launch_phase138m_rviz2.py")

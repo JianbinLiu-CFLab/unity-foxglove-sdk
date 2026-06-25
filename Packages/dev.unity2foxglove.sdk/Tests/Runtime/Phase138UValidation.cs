@@ -51,7 +51,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(options.ReferenceTime == PointCloudMotionCompensationReferenceTime.ScanStart,
                 "138U-1Ea: default deskewed visualization uses scan-start reference time");
 
-            var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var publisher =
+                Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs")
+                + Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs");
             Check(publisher.Contains("_enableMotionCompensation", StringComparison.Ordinal),
                 "138U-1F: point cloud publisher stores default-off deskew flag");
             Check(publisher.Contains("_deskewedPointCloud2NativeTopic", StringComparison.Ordinal),
@@ -312,6 +314,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "138U-4C: R2FU PointCloud2 bridge resolves per-frame topics");
             Check(bridge.Contains("Dictionary<string, IPublisher<sensor_msgs.msg.PointCloud2>>", StringComparison.Ordinal),
                 "138U-4D: R2FU PointCloud2 bridge reuses one node with per-topic publishers");
+            Check(bridge.Contains("CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal),
+                "138U-4E: R2FU PointCloud2 bridge uses sensor-data QoS for high-bandwidth clouds");
         }
 
         private static void CoreContainsNoRos2References()

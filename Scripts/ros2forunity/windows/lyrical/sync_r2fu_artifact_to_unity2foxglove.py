@@ -14,6 +14,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
+EXPECTED_ARTIFACT_SHA256 = "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608"
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
@@ -115,6 +117,8 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
     if not artifact.exists():
         raise FileNotFoundError(f"Missing artifact zip: {artifact}")
     digest = sha256_file(artifact)
+    if digest.lower() != EXPECTED_ARTIFACT_SHA256:
+        raise ValueError(f"Artifact sha256 does not match pinned Lyrical artifact: {digest} != {EXPECTED_ARTIFACT_SHA256}")
     if manifest is None:
         manifest = manifest_for_artifact(artifact)
     if not manifest.exists():
@@ -127,7 +131,12 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
     return {"path": str(artifact), "sha256": digest, "manifest": str(manifest), "manifestData": data}
 
 
-def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> dict[str, object]:
+def ensure_project_uses_runtime_package(
+    project_root: Path,
+    *,
+    update: bool,
+    require_runtime_dependency: bool = True,
+) -> dict[str, object]:
     """Validate or update the Unity project runtime package dependency."""
     manifest_path = project_root / "Unity2Foxglove" / "Packages" / "manifest.json"
     lock_path = project_root / "Unity2Foxglove" / "Packages" / "packages-lock.json"
@@ -137,7 +146,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
     runtime_ref = "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
 
     changed = False
-    if dependencies.get(PACKAGE_NAME) != runtime_ref:
+    if dependencies.get(PACKAGE_NAME) != runtime_ref and require_runtime_dependency:
         if not update:
             raise RuntimeError(f"{manifest_path} does not reference {PACKAGE_NAME}; rerun with --update-project-manifest")
         dependencies[PACKAGE_NAME] = runtime_ref
@@ -158,9 +167,49 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
     return {
         "manifestPath": str(manifest_path),
         "manifestUpdated": changed,
+        "runtimeDependencyRequired": require_runtime_dependency,
         "lockPath": str(lock_path),
         "lockHasRuntimePackage": lock_has_runtime,
         "directAssetsRos2ForUnityExists": direct_asset.exists(),
+    }
+
+
+def sync_adapter_compliance(project_root: Path, package_path: Path) -> dict[str, object]:
+    """Sync adapter compliance metadata from the generated runtime package."""
+
+    compliance_dir = project_root / "Packages" / "dev.unity2foxglove.ros2forunity" / "Compliance"
+    adoption_path = compliance_dir / "ros2-for-unity-adoption-manifest.json"
+    adapter_notices_path = compliance_dir / "r2fu-lyrical-win64-runtime-notices.md"
+    runtime_manifest = read_json(package_path / "RuntimeSupport" / "runtime-manifest.json")
+    adoption = read_json(adoption_path)
+    runtimes = adoption.get("supportedRuntimePackages", [])
+    target = next(
+        (
+            item for item in runtimes
+            if isinstance(item, dict) and item.get("packageName") == PACKAGE_NAME
+        ),
+        None,
+    )
+    if target is None:
+        raise RuntimeError(f"{adoption_path} does not contain {PACKAGE_NAME}")
+
+    for key in (
+        "artifactSha256",
+        "artifactSize",
+        "inventoryFileCount",
+        "criticalRuntimeFiles",
+        "defaultRmwImplementation",
+        "supportedRmwImplementations",
+        "communicationModes",
+    ):
+        if key in runtime_manifest:
+            target[key] = runtime_manifest[key]
+
+    write_json(adoption_path, adoption)
+    shutil.copyfile(package_path / "THIRD_PARTY_NOTICES.md", adapter_notices_path)
+    return {
+        "adoptionManifestPath": str(adoption_path),
+        "runtimeNoticesPath": str(adapter_notices_path),
     }
 
 
@@ -202,6 +251,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--project-root", type=Path, default=ROOT)
     parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
     parser.add_argument("--update-project-manifest", action="store_true", help="Add the runtime package dependency if it is missing.")
+    parser.add_argument(
+        "--skip-project-manifest-check",
+        action="store_true",
+        help="Refresh the runtime package without requiring the Unity sample manifest to select Lyrical.",
+    )
     parser.add_argument("--skip-validate", action="store_true")
     parser.add_argument("--run-unity-import", action="store_true")
     parser.add_argument("--unity-editor", type=Path, default=Path(os.environ.get("R2FU_UNITY_EXE", str(DEFAULT_UNITY_EXE))))
@@ -226,7 +280,11 @@ def main(argv: list[str] | None = None) -> int:
     validate_script = project_root / "Scripts" / "ros2forunity" / "windows" / "lyrical" / "validate_r2fu_runtime_package.py"
 
     if args.dry_run:
-        project_shape = ensure_project_uses_runtime_package(project_root, update=False)
+        project_shape = ensure_project_uses_runtime_package(
+            project_root,
+            update=False,
+            require_runtime_dependency=not args.skip_project_manifest_check,
+        )
         print("[DRY-RUN] artifact:", artifact)
         print("[DRY-RUN] sha256:", artifact_info["sha256"])
         print("[DRY-RUN] inventory:", inventory_path)
@@ -249,7 +307,12 @@ def main(argv: list[str] | None = None) -> int:
         ],
         cwd=project_root,
     )
-    project_shape = ensure_project_uses_runtime_package(project_root, update=args.update_project_manifest)
+    adapter_compliance = sync_adapter_compliance(project_root, package_path)
+    project_shape = ensure_project_uses_runtime_package(
+        project_root,
+        update=args.update_project_manifest,
+        require_runtime_dependency=not args.skip_project_manifest_check,
+    )
 
     validation_log = evidence_dir / f"sync-r2fu-runtime-validate-{timestamp}.log"
     if not args.skip_validate:
@@ -277,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
             "name": PACKAGE_NAME,
             "manifest": package_manifest,
             "inventoryPath": str(inventory_path),
+            "adapterCompliance": adapter_compliance,
         },
         "projectShape": project_shape,
         "validation": {

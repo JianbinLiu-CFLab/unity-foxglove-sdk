@@ -16,6 +16,7 @@ import hashlib
 import inspect
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -32,6 +33,23 @@ PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
 PACKAGE_VERSION = "0.1.0-preview.1"
 RUNTIME_ID = "r2fu-lyrical-win64"
 ARTIFACT_NAME = "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip"
+DEFAULT_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
+ZENOH_RMW_IMPLEMENTATION = "rmw_zenoh_cpp"
+SUPPORTED_RMW_IMPLEMENTATIONS = (DEFAULT_RMW_IMPLEMENTATION, ZENOH_RMW_IMPLEMENTATION)
+CRITICAL_RUNTIME_FILES = (
+    "rcl.dll",
+    "yaml.dll",
+    "spdlog.dll",
+    "fmt.dll",
+    "fastdds-3.6.dll",
+    "rosidl_buffer_backend_registry.dll",
+    "rosidl_dynamic_typesupport_fastrtps.dll",
+    "rmw_zenoh_cpp.dll",
+    "zenohc.dll",
+    "rosgraph_msgs_assembly.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+)
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_ARTIFACT = ROOT / "build" / "dist" / ARTIFACT_NAME
@@ -189,22 +207,29 @@ PACKAGE_CONSTANTS_BLOCK = """    private const string unity2FoxgloveRuntimePacka
         "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity";
 """
 
-RMW_CONSTANT_BLOCK = """    private const string expectedRmwImplementation = "rmw_fastrtps_cpp";
+RMW_CONSTANT_BLOCK = """    private const string defaultRmwImplementation = "rmw_fastrtps_cpp";
+    private const string zenohRmwImplementation = "rmw_zenoh_cpp";
+    private const string supportedRmwImplementationsDescription = "rmw_fastrtps_cpp, rmw_zenoh_cpp";
 """
 
 RMW_VALIDATE_BLOCK = """    private static void ValidateRmwImplementation(string rmwImpl)
     {
-        if (string.Equals(rmwImpl, expectedRmwImplementation, StringComparison.Ordinal))
+        if (IsSupportedRmwImplementation(rmwImpl))
         {
             return;
         }
 
         string errMessage =
-            "ROS2 For Unity runtime was built for RMW implementation '" +
-            expectedRmwImplementation + "' but initialized with '" + rmwImpl +
-            "'. Ensure RMW_IMPLEMENTATION is unset or set to '" +
-            expectedRmwImplementation + "'.";
+            "ROS2 For Unity Lyrical runtime supports RMW implementations '" +
+            supportedRmwImplementationsDescription + "' but initialized with '" +
+            rmwImpl + "'. Ensure RMW_IMPLEMENTATION is unset or set to one of the supported values.";
         FailIntegrity(errMessage);
+    }
+
+    private static bool IsSupportedRmwImplementation(string rmwImpl)
+    {
+        return string.Equals(rmwImpl, defaultRmwImplementation, StringComparison.Ordinal)
+            || string.Equals(rmwImpl, zenohRmwImplementation, StringComparison.Ordinal);
     }
 
 """
@@ -574,7 +599,23 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
         "unityPlatform": "Windows",
         "architecture": "x86_64",
         "buildType": "standalone",
-        "rmwImplementation": "rmw_fastrtps_cpp",
+        "rmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
+        "defaultRmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
+        "supportedRmwImplementations": list(SUPPORTED_RMW_IMPLEMENTATIONS),
+        "communicationModes": [
+            {
+                "id": "fastdds",
+                "displayName": "FastDDS (default)",
+                "rmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
+                "default": True,
+            },
+            {
+                "id": "zenoh",
+                "displayName": "Zenoh",
+                "rmwImplementation": ZENOH_RMW_IMPLEMENTATION,
+                "default": False,
+            },
+        ],
         "artifactName": artifact.name,
         "artifactSha256": artifact.sha256,
         "artifactSize": artifact.size,
@@ -586,12 +627,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
         "supportLevel": "Supported",
         "distributionLevel": "Prototype",
         "activeRuntimePolicy": "one_runtime_package_per_project",
-        "criticalRuntimeFiles": [
-            "rcl.dll",
-            "yaml.dll",
-            "spdlog.dll",
-            "fmt.dll",
-        ],
+        "criticalRuntimeFiles": list(CRITICAL_RUNTIME_FILES),
         "packagePathPatch": {
             "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
             "reason": "Resolve the runtime root from this Unity package when Assets/Ros2ForUnity is absent.",
@@ -605,7 +641,7 @@ def readme_text(artifact: RuntimeArtifact) -> str:
     """Return the runtime package README."""
     return f"""# Unity2Foxglove ROS2 For Unity Runtime - Lyrical Win64
 
-This package is an optional Windows x64 runtime for the Unity2Foxglove ROS2 For Unity integration. It carries the ROS2 For Unity runtime files, generated message assemblies, native ROS2 Lyrical DLLs, Fast DDS/RMW files, ros2cs files, metadata, inventory, and notices.
+This package is an optional Windows x64 runtime for the Unity2Foxglove ROS2 For Unity integration. It carries the ROS2 For Unity runtime files, generated message assemblies, native ROS2 Lyrical DLLs, Fast DDS/RMW files, optional Zenoh RMW files, ros2cs files, metadata, inventory, and notices.
 
 ## Package Role
 
@@ -630,7 +666,8 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - ROS distro: Lyrical
 - Platform: Windows x64
 - Build type: standalone
-- RMW implementation: `rmw_fastrtps_cpp`
+- Default RMW implementation: `rmw_fastrtps_cpp`
+- Supported RMW implementations: `rmw_fastrtps_cpp`, `rmw_zenoh_cpp`
 - Runtime id: `r2fu-lyrical-win64`
 - Artifact source: `{artifact.name}`
 - SHA-256: `{artifact.sha256}`
@@ -649,7 +686,7 @@ This patch is limited to locating runtime files from a Unity package. It does no
 
 ## Network Acceptance Notes
 
-WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance.
+WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies.
 
 ## Support Boundary
 
@@ -677,7 +714,8 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | ROS distro | `lyrical` |
 | Platform | Windows x64 |
 | Build type | standalone |
-| RMW | `rmw_fastrtps_cpp` |
+| Default RMW | `rmw_fastrtps_cpp` |
+| Supported RMW | `rmw_fastrtps_cpp`, `rmw_zenoh_cpp` |
 | SHA-256 | `{artifact.sha256}` |
 | Inventory file count | `{file_count}` |
 
@@ -688,8 +726,9 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | RobotecAI ROS2 For Unity | Unity integration surface for ROS2 node behavior |
 | ros2cs | ROS2 C# binding stack used by ROS2 For Unity |
 | ROS2 Lyrical native runtime | `rcl`, `rcutils`, `rmw`, message type support, and related runtime DLLs |
-| Fast DDS / Fast CDR | DDS and CDR runtime dependency family used by the FastRTPS RMW path |
-| RMW FastRTPS | `rmw_fastrtps_cpp` runtime path used by the current Windows artifact |
+| Fast DDS / Fast CDR | DDS and CDR runtime dependency family used by the default FastRTPS RMW path |
+| RMW FastRTPS | `rmw_fastrtps_cpp` default runtime path used by this Windows artifact |
+| RMW Zenoh | `rmw_zenoh_cpp` optional runtime path for Lyrical-only routed communication |
 | Generated message support | Managed message assemblies plus native ROSIDL/type-support DLLs |
 
 ## Critical Runtime Closure
@@ -701,6 +740,12 @@ rcl.dll
 yaml.dll
 spdlog.dll
 fmt.dll
+fastdds-3.6.dll
+rosidl_buffer_backend_registry.dll
+rosidl_dynamic_typesupport_fastrtps.dll
+rmw_zenoh_cpp.dll
+zenohc.dll
+rosgraph_msgs_assembly.dll
 ```
 
 If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.dll` even when `rcl.dll` itself is present.
@@ -724,7 +769,10 @@ def extract_runtime(paths: BuildPaths) -> None:
     with zipfile.ZipFile(paths.artifact) as archive:
         for info in archive.infolist():
             name = info.filename
-            if info.is_dir() or not name.startswith("Ros2ForUnity/"):
+            if info.is_dir() or (
+                not name.startswith("Ros2ForUnity/")
+                and not name.startswith("StreamingAssets/")
+            ):
                 continue
             relative = safe_runtime_zip_relative_path(name)
             target = (runtime_root / relative).resolve()
@@ -744,11 +792,13 @@ def safe_runtime_zip_relative_path(name: str) -> Path:
         raise ValueError(f"Rejected absolute runtime zip entry: {name}")
 
     parts = zip_path.parts
-    if len(parts) < 2 or parts[0] != "Ros2ForUnity":
+    if len(parts) < 2 or parts[0] not in ("Ros2ForUnity", "StreamingAssets"):
         raise ValueError(f"Rejected unexpected runtime zip entry: {name}")
     if any(part in ("", ".", "..") for part in parts):
         raise ValueError(f"Rejected unsafe runtime zip entry: {name}")
 
+    if parts[0] == "StreamingAssets":
+        return Path(*parts)
     return Path(*parts[1:])
 
 
@@ -770,6 +820,8 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = patch_ros2cs_logger_callback_api(text)
     text = patch_standalone_environment_isolation(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
+        text = patch_rmw_guard(text)
+        text = patch_standalone_environment_isolation(text)
         write_text(source, text)
         return
     if "unity2FoxgloveRuntimePackageName" not in text:
@@ -799,18 +851,37 @@ def patch_ros2cs_logger_callback_api(text: str) -> str:
 
 
 def patch_rmw_guard(text: str) -> str:
-    """Patch ROS2ForUnity.cs to fail fast when a different RMW is active."""
-    if "expectedRmwImplementation" not in text:
+    """Patch ROS2ForUnity.cs to fail fast unless an explicitly supported RMW is active."""
+    legacy_constant = '    private const string expectedRmwImplementation = "rmw_fastrtps_cpp";\n'
+    if legacy_constant in text:
+        text = text.replace(legacy_constant, RMW_CONSTANT_BLOCK, 1)
+
+    if "defaultRmwImplementation" not in text:
         text = text.replace(
             "    private static ConsoleCancelEventHandler consoleCancelHandler;\n",
             "    private static ConsoleCancelEventHandler consoleCancelHandler;\n" + RMW_CONSTANT_BLOCK,
             1,
         )
-    if "ValidateRmwImplementation" not in text:
-        marker = "    private void RegisterCtrlCHandler()\n"
-        if marker not in text:
-            raise ValueError("Could not find RegisterCtrlCHandler marker for RMW guard patch.")
+
+    marker = "    private void RegisterCtrlCHandler()\n"
+    if marker not in text:
+        raise ValueError("Could not find RegisterCtrlCHandler marker for RMW guard patch.")
+
+    if "ValidateRmwImplementation" in text:
+        method_pattern = (
+            r"    private static void ValidateRmwImplementation\(string rmwImpl\)\n"
+            r"    \{\n.*?\n"
+            r"    \}\n\n"
+            r"(?:    private static bool IsSupportedRmwImplementation\(string rmwImpl\)\n"
+            r"    \{\n.*?\n"
+            r"    \}\n\n)?"
+        )
+        text, replacements = re.subn(method_pattern, RMW_VALIDATE_BLOCK, text, count=1, flags=re.S)
+        if replacements != 1:
+            raise ValueError("Could not replace existing ValidateRmwImplementation block.")
+    else:
         text = text.replace(marker, RMW_VALIDATE_BLOCK + marker, 1)
+
     if "ValidateRmwImplementation(rmwImpl);" not in text:
         marker = "            string rmwImpl = Ros2cs.GetRMWImplementation();\n"
         if marker not in text:
@@ -854,10 +925,19 @@ def patch_standalone_environment_isolation(text: str) -> str:
             SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
         }
 '''
-    new_rmw = '''        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection.
-        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
+    new_rmw = '''        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection while allowing Lyrical Zenoh.
+        string requestedRmwImplementation = Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION");
+        string selectedRmwImplementation = IsSupportedRmwImplementation(requestedRmwImplementation)
+            ? requestedRmwImplementation
+            : defaultRmwImplementation;
+        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", selectedRmwImplementation);
 '''
     text = text.replace(old_rmw, new_rmw)
+
+    old_owned_rmw = '''        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection.
+        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
+'''
+    text = text.replace(old_owned_rmw, new_rmw)
 
     old_distro = '''        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("ROS_DISTRO")))
         {
@@ -991,8 +1071,8 @@ def build_package(paths: BuildPaths) -> None:
         reset_package_dir(paths.package)
         extract_runtime(paths)
         prune_non_contract_examples(paths.package)
-        patch_ros2_for_unity(paths.package)
         apply_local_patch_overlays(paths.package, overlays)
+        patch_ros2_for_unity(paths.package)
         patch_ros_time_source_contract(paths.package)
         write_package_files(paths, inventory, artifact)
         apply_meta_overlays(paths.package, meta_overlays)

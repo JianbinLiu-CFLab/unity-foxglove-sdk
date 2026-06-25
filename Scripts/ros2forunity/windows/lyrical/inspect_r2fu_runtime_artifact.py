@@ -44,6 +44,14 @@ CRITICAL_FILES = (
     "yaml.dll",
     "spdlog.dll",
     "fmt.dll",
+    "fastdds-3.6.dll",
+    "rosidl_buffer_backend_registry.dll",
+    "rosidl_dynamic_typesupport_fastrtps.dll",
+    "rmw_zenoh_cpp.dll",
+    "zenohc.dll",
+    "rosgraph_msgs_assembly.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
+    "rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
 )
 
 
@@ -123,6 +131,7 @@ def summarize_components(file_names: Iterable[str]) -> list[dict[str, object]]:
         ("ROS2 core native runtime", ("rcl.dll", "rcutils.dll", "rmw_")),
         ("Fast DDS / Fast CDR", ("fastrtps", "fastcdr", "fastdds")),
         ("RMW FastRTPS", ("rmw_fastrtps",)),
+        ("RMW Zenoh", ("rmw_zenoh", "zenohc.dll")),
         ("ROSIDL generated message support", ("rosidl", "__rosidl_", "_native.dll")),
         ("Pixi runtime closure DLLs", ("yaml.dll", "spdlog.dll", "fmt.dll")),
     ]
@@ -189,6 +198,8 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
         },
         "rosDistro": "lyrical",
         "rmw": "rmw_fastrtps_cpp",
+        "defaultRmwImplementation": "rmw_fastrtps_cpp",
+        "supportedRmwImplementations": ["rmw_fastrtps_cpp", "rmw_zenoh_cpp"],
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",
@@ -199,7 +210,7 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
         "knownCaveats": [
             "This inventory is generated from a local runtime artifact that is not committed to git.",
             "This is an engineering inventory, not a complete legal audit.",
-            "The Lyrical package must include transitive DLLs such as yaml.dll, spdlog.dll, and fmt.dll or Unity may fail to load rcl.dll.",
+            "The Lyrical package must include transitive DLLs such as yaml.dll, spdlog.dll, fmt.dll, rosidl_buffer_backend_registry.dll, and Zenoh DLLs or Unity may fail to load selected RMW paths.",
             "Windows Firewall may block inbound Fast DDS UDP discovery; configure allow rules for DDS ports. Windows ROS2 Lyrical, properly firewalled WSL2, or a real remote Linux topology should be used for acceptance.",
         ],
         "files": files,

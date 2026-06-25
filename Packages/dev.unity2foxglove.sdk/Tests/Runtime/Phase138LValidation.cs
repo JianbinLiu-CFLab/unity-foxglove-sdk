@@ -265,16 +265,19 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
                 "138L-5C: R2FU PointCloud2 bridge is an automatic product path gated by the Manager toggle");
             Check(bridge.Contains("_source.PointCloud2NativeFrameReady += OnPointCloud2NativeFrameReady", StringComparison.Ordinal)
-                  && bridge.Contains("CreatePublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal)
+                  && bridge.Contains("CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal)
                   && !bridge.Contains("Phase138VirtualLidarPointCloud2Smoke", StringComparison.Ordinal),
-                "138L-5D: R2FU bridge consumes prepared native frames without requiring the Phase138 smoke component");
+                "138L-5D: R2FU bridge consumes prepared native frames with sensor-data QoS and without requiring the Phase138 smoke component");
             Check(bridge.Contains("TfAnchorTopic = \"/tf\"", StringComparison.Ordinal)
                   && bridge.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic)", StringComparison.Ordinal)
                   && bridge.Contains("geometry_msgs.msg.TransformStamped", StringComparison.Ordinal)
                   && bridge.Contains("PublishTfAnchor", StringComparison.Ordinal)
+                  && bridge.Contains("ResolveDynamicTfAnchor", StringComparison.Ordinal)
+                  && bridge.Contains("CoordinateConverter.UnityToFoxglovePosition(_source.transform.position)", StringComparison.Ordinal)
+                  && bridge.Contains("CoordinateConverter.UnityToFoxgloveRotation(_source.transform.rotation)", StringComparison.Ordinal)
                   && bridge.Contains("PointCloud2 Native DDS ready", StringComparison.Ordinal)
                   && !publisher.Contains("tf2_msgs", StringComparison.Ordinal),
-                "138L-5Da: R2FU bridge publishes a product TF anchor while the core SDK stays ROS-free");
+                "138L-5Da: R2FU bridge publishes a dynamic product TF anchor while the core SDK stays ROS-free");
             Check(builder.Contains("Build(PointCloud2NativeFrame frame", StringComparison.Ordinal)
                   && builder.Contains("Data = frame.Data", StringComparison.Ordinal)
                   && !builder.Contains("PointCloudFrame", StringComparison.Ordinal),

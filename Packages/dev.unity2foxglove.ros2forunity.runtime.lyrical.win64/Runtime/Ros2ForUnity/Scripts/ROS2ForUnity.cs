@@ -33,6 +33,7 @@ internal class ROS2ForUnity : IDisposable
 {
     private static bool isInitialized = false;
     private static readonly object initMutex = new object();
+    private static bool shutdownInProgress = false;
     private static int referenceCount = 0;
     private static bool pathConfigured = false;
     private static string ros2ForUnityAssetFolderName = "Ros2ForUnity";
@@ -45,10 +46,12 @@ internal class ROS2ForUnity : IDisposable
     private static readonly Lazy<string> ros2ForUnityPath = new Lazy<string>(ComputeRos2ForUnityPath);
     private static readonly Lazy<string> pluginPath = new Lazy<string>(ComputePluginPath);
     private static ConsoleCancelEventHandler consoleCancelHandler;
-    private const string expectedRmwImplementation = "rmw_fastrtps_cpp";
+    private const string defaultRmwImplementation = "rmw_fastrtps_cpp";
+    private const string zenohRmwImplementation = "rmw_zenoh_cpp";
+    private const string supportedRmwImplementationsDescription = "rmw_fastrtps_cpp, rmw_zenoh_cpp";
 
-    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-    private static extern int _putenv_s(string name, string value);
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    private static extern int _wputenv_s(string name, string value);
 
 #if UNITY_EDITOR
     private static bool editorHandlersRegistered = false;
@@ -114,7 +117,12 @@ internal class ROS2ForUnity : IDisposable
         Environment.SetEnvironmentVariable(name, value);
         if (GetOS() == Platform.Windows)
         {
-            _putenv_s(name, value);
+            int result = _wputenv_s(name, value);
+            if (result != 0)
+            {
+                throw new InvalidOperationException(
+                    "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
+            }
         }
     }
 
@@ -267,8 +275,12 @@ internal class ROS2ForUnity : IDisposable
 
     private static void SetStandaloneRmwImplementation()
     {
-        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection.
-        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
+        // U2F-LOCAL-PATCH: standalone runtime owns its RMW selection while allowing Lyrical Zenoh.
+        string requestedRmwImplementation = Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION");
+        string selectedRmwImplementation = IsSupportedRmwImplementation(requestedRmwImplementation)
+            ? requestedRmwImplementation
+            : defaultRmwImplementation;
+        SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", selectedRmwImplementation);
     }
 
     private static void SetStandaloneRosDistro(string ros2Codename)
@@ -398,17 +410,22 @@ internal class ROS2ForUnity : IDisposable
 
     private static void ValidateRmwImplementation(string rmwImpl)
     {
-        if (string.Equals(rmwImpl, expectedRmwImplementation, StringComparison.Ordinal))
+        if (IsSupportedRmwImplementation(rmwImpl))
         {
             return;
         }
 
         string errMessage =
-            "ROS2 For Unity runtime was built for RMW implementation '" +
-            expectedRmwImplementation + "' but initialized with '" + rmwImpl +
-            "'. Ensure RMW_IMPLEMENTATION is unset or set to '" +
-            expectedRmwImplementation + "'.";
+            "ROS2 For Unity Lyrical runtime supports RMW implementations '" +
+            supportedRmwImplementationsDescription + "' but initialized with '" +
+            rmwImpl + "'. Ensure RMW_IMPLEMENTATION is unset or set to one of the supported values.";
         FailIntegrity(errMessage);
+    }
+
+    private static bool IsSupportedRmwImplementation(string rmwImpl)
+    {
+        return string.Equals(rmwImpl, defaultRmwImplementation, StringComparison.Ordinal)
+            || string.Equals(rmwImpl, zenohRmwImplementation, StringComparison.Ordinal);
     }
 
     private void RegisterCtrlCHandler()
@@ -509,6 +526,11 @@ internal class ROS2ForUnity : IDisposable
     {
         lock (initMutex)
         {
+            if (shutdownInProgress)
+            {
+                throw new InvalidOperationException("Ros2 For Unity is shutting down and cannot create a new context reference.");
+            }
+
             if (isInitialized)
             {
                 referenceCount++;
@@ -591,7 +613,7 @@ internal class ROS2ForUnity : IDisposable
     {
         lock (initMutex)
         {
-            if (!isInitialized)
+            if (!isInitialized || shutdownInProgress)
             {
                 return false;
             }
@@ -600,6 +622,7 @@ internal class ROS2ForUnity : IDisposable
     }
     internal void DestroyROS2ForUnity()
     {
+        bool shouldShutdown = false;
         lock (initMutex)
         {
             if (!ownsReference)
@@ -615,8 +638,13 @@ internal class ROS2ForUnity : IDisposable
 
             if (referenceCount == 0)
             {
-                ShutdownShared();
+                shouldShutdown = TryBeginShutdownLocked();
             }
+        }
+
+        if (shouldShutdown)
+        {
+            CompleteShutdownShared();
         }
     }
 
@@ -628,11 +656,47 @@ internal class ROS2ForUnity : IDisposable
 
     private static void ShutdownShared()
     {
+        bool shouldShutdown = false;
+        lock (initMutex)
+        {
+            shouldShutdown = TryBeginShutdownLocked();
+        }
+
+        if (shouldShutdown)
+        {
+            CompleteShutdownShared();
+        }
+    }
+
+    private static bool TryBeginShutdownLocked()
+    {
+        if (shutdownInProgress)
+        {
+            return false;
+        }
+
+        shutdownInProgress = true;
+        if (!isInitialized)
+        {
+            referenceCount = 0;
+            shutdownInProgress = false;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void CompleteShutdownShared()
+    {
+        // Executor joins must happen outside initMutex. Executor Tick() can call Ok(), which also
+        // takes initMutex; joining here while holding it would create a fragile lock-order inversion.
+        ROS2UnityComponent.StopAllExecutorsForRosShutdown();
         lock (initMutex)
         {
             if (!isInitialized)
             {
                 referenceCount = 0;
+                shutdownInProgress = false;
                 return;
             }
 
@@ -652,6 +716,7 @@ internal class ROS2ForUnity : IDisposable
             {
                 isInitialized = false;
                 referenceCount = 0;
+                shutdownInProgress = false;
                 UnregisterCtrlCHandlerStatic();
             }
         }

@@ -20,22 +20,34 @@ namespace ROS2
 {
 
 /// <summary>
-/// A ros2 clock class that for interfacing between a time source (unity or ros2 system time) and ros2cs messages, structs.
+/// Bridges an ITimeSource to ros2cs clock, header, and builtin_interfaces/Time messages.
 /// </summary>
 public class ROS2Clock : IDisposable
 {
     private ITimeSource _timeSource;
     private bool disposed;
 
+    /// <summary>
+    /// Creates a clock backed by ROS2TimeSource.
+    /// </summary>
     public ROS2Clock() : this(new ROS2TimeSource())
     {   // By default, use ROS2TimeSource
     }
 
+    /// <summary>
+    /// Creates a clock backed by the supplied time source.
+    /// </summary>
+    /// <param name="ts">Time source used for all subsequent timestamp updates.</param>
     public ROS2Clock(ITimeSource ts)
     {
         _timeSource = ts;
     }
 
+    /// <summary>
+    /// Updates a rosgraph_msgs.msg.Clock message in place.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown after this clock is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the configured time source cannot provide a timestamp.</exception>
     public void UpdateClockMessage(ref rosgraph_msgs.msg.Clock clockMessage)
     {
         int seconds;
@@ -45,6 +57,15 @@ public class ROS2Clock : IDisposable
         clockMessage.Clock_.Nanosec = nanoseconds;
     }
 
+    /// <summary>
+    /// Updates a generated builtin_interfaces.msg.Time message in place.
+    /// </summary>
+    /// <remarks>
+    /// Generated ros2cs messages are reference types, so the Time instance itself is passed by value while
+    /// its Sec/Nanosec fields are updated.
+    /// </remarks>
+    /// <exception cref="ObjectDisposedException">Thrown after this clock is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the configured time source cannot provide a timestamp.</exception>
     public void UpdateROSClockTime(builtin_interfaces.msg.Time time)
     {
         int seconds;
@@ -54,6 +75,11 @@ public class ROS2Clock : IDisposable
         time.Nanosec = nanoseconds;
     }
 
+    /// <summary>
+    /// Updates the header timestamp of a generated ROS message.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown after this clock is disposed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the configured time source cannot provide a timestamp.</exception>
     public void UpdateROSTimestamp(ref ROS2.MessageWithHeader message)
     {
         int seconds;
@@ -74,6 +100,9 @@ public class ROS2Clock : IDisposable
         }
     }
 
+    /// <summary>
+    /// Disposes the owned time source when it implements IDisposable.
+    /// </summary>
     public void Dispose()
     {
         if (disposed)

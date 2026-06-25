@@ -13,9 +13,10 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | ROS distro | `lyrical` |
 | Platform | Windows x64 |
 | Build type | standalone |
-| RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `58d4a3dbf5d354c8c90c30548a4a2712296b513f374685cdf9b395cba65c7fe5` |
-| Inventory file count | `961` |
+| Default RMW | `rmw_fastrtps_cpp` |
+| Supported RMW | `rmw_fastrtps_cpp`, `rmw_zenoh_cpp` |
+| SHA-256 | `ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608` |
+| Inventory file count | `1227` |
 
 ## Known Upstream Components
 
@@ -24,8 +25,9 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | RobotecAI ROS2 For Unity | Unity integration surface for ROS2 node behavior |
 | ros2cs | ROS2 C# binding stack used by ROS2 For Unity |
 | ROS2 Lyrical native runtime | `rcl`, `rcutils`, `rmw`, message type support, and related runtime DLLs |
-| Fast DDS / Fast CDR | DDS and CDR runtime dependency family used by the FastRTPS RMW path |
-| RMW FastRTPS | `rmw_fastrtps_cpp` runtime path used by the current Windows artifact |
+| Fast DDS / Fast CDR | DDS and CDR runtime dependency family used by the default FastRTPS RMW path |
+| RMW FastRTPS | `rmw_fastrtps_cpp` default runtime path used by this Windows artifact |
+| RMW Zenoh | `rmw_zenoh_cpp` optional runtime path for Lyrical-only routed communication |
 | Generated message support | Managed message assemblies plus native ROSIDL/type-support DLLs |
 
 ## Critical Runtime Closure
@@ -37,6 +39,12 @@ rcl.dll
 yaml.dll
 spdlog.dll
 fmt.dll
+fastdds-3.6.dll
+rosidl_buffer_backend_registry.dll
+rosidl_dynamic_typesupport_fastrtps.dll
+rmw_zenoh_cpp.dll
+zenohc.dll
+rosgraph_msgs_assembly.dll
 ```
 
 If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.dll` even when `rcl.dll` itself is present.

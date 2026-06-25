@@ -24,13 +24,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             string packageName,
             string runtimeId,
             string rosDistro,
-            string platform)
+            string platform,
+            bool supportsZenoh)
         {
             DisplayName = displayName ?? string.Empty;
             PackageName = packageName ?? string.Empty;
             RuntimeId = runtimeId ?? string.Empty;
             RosDistro = rosDistro ?? string.Empty;
             Platform = platform ?? string.Empty;
+            SupportsZenoh = supportsZenoh;
         }
 
         public string DisplayName { get; }
@@ -38,6 +40,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public string RuntimeId { get; }
         public string RosDistro { get; }
         public string Platform { get; }
+        public bool SupportsZenoh { get; }
     }
 
     internal sealed class Ros2ForUnityRuntimeSelectionStatus
@@ -65,7 +68,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     {
         public const string BaseCompileSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
         public const string RuntimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
+        public const string FastDdsCommunicationMode = "fastdds";
+        public const string ZenohCommunicationMode = "zenoh";
+        public const string FastDdsRmwImplementation = "rmw_fastrtps_cpp";
+        public const string ZenohRmwImplementation = "rmw_zenoh_cpp";
         private const string SessionRuntimeKey = "Unity2Foxglove.R2FU.SessionRuntime";
+        private const string SessionCommunicationModeKey = "Unity2Foxglove.R2FU.SessionCommunicationMode";
+        private const string CommunicationModeEditorUserSettingsKey =
+            "Unity2Foxglove.R2FU.LyricalCommunicationMode";
 
         public static string ProjectDirectoryFromApplication()
         {
@@ -163,17 +173,83 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public static string GetSessionRuntimePackage()
             => SessionState.GetString(SessionRuntimeKey, string.Empty);
 
+        public static string GetSessionCommunicationMode()
+            => SessionState.GetString(SessionCommunicationModeKey, string.Empty);
+
+        public static IReadOnlyList<string> GetCommunicationModeIds(Ros2ForUnityRuntimeDescriptor runtime)
+        {
+            if (runtime != null && runtime.SupportsZenoh)
+                return new[] { FastDdsCommunicationMode, ZenohCommunicationMode };
+            return new[] { FastDdsCommunicationMode };
+        }
+
+        public static string GetCommunicationModeDisplayName(string mode)
+        {
+            return string.Equals(mode, ZenohCommunicationMode, StringComparison.Ordinal)
+                ? "Zenoh (rmw_zenoh_cpp)"
+                : "FastDDS (default)";
+        }
+
+        public static string GetRmwImplementationForCommunicationMode(string mode)
+        {
+            return string.Equals(mode, ZenohCommunicationMode, StringComparison.Ordinal)
+                ? ZenohRmwImplementation
+                : FastDdsRmwImplementation;
+        }
+
+        public static string GetCommunicationModeForRuntime(Ros2ForUnityRuntimeDescriptor runtime)
+        {
+            if (runtime == null || !runtime.SupportsZenoh)
+                return FastDdsCommunicationMode;
+
+            var saved = EditorUserSettings.GetConfigValue(CommunicationModeEditorUserSettingsKey);
+            return string.Equals(saved, ZenohCommunicationMode, StringComparison.Ordinal)
+                ? ZenohCommunicationMode
+                : FastDdsCommunicationMode;
+        }
+
+        public static void SetCommunicationMode(
+            string projectDirectory,
+            Ros2ForUnityRuntimeDescriptor runtime,
+            string mode)
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                throw new InvalidOperationException("Cannot switch ROS2 For Unity communication mode while Play Mode is active or changing.");
+
+            if (runtime == null)
+                throw new InvalidOperationException("Select an active ROS2 For Unity runtime before changing communication mode.");
+
+            if (!GetCommunicationModeIds(runtime).Contains(mode, StringComparer.Ordinal))
+                throw new InvalidOperationException("Communication mode is not supported by the active runtime: " + mode);
+
+            EditorUserSettings.SetConfigValue(CommunicationModeEditorUserSettingsKey, mode);
+            ApplyCommunicationModeEnvironment(projectDirectory);
+        }
+
+        public static void ApplyCommunicationModeEnvironment(string projectDirectory)
+        {
+            var status = GetStatus(projectDirectory);
+            var mode = GetCommunicationModeForRuntime(status.SelectedRuntime);
+            Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", GetRmwImplementationForCommunicationMode(mode));
+        }
+
         public static void BindActiveRuntimeForPlayMode(string projectDirectory)
         {
             var sessionRuntime = GetSessionRuntimePackage();
-            if (!string.IsNullOrWhiteSpace(sessionRuntime))
-                return;
-
             var status = GetStatus(projectDirectory);
             if (status.SelectedRuntime == null)
                 return;
 
-            SessionState.SetString(SessionRuntimeKey, status.SelectedRuntime.PackageName);
+            var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
+            Environment.SetEnvironmentVariable(
+                "RMW_IMPLEMENTATION",
+                GetRmwImplementationForCommunicationMode(communicationMode));
+
+            if (string.IsNullOrWhiteSpace(sessionRuntime))
+                SessionState.SetString(SessionRuntimeKey, status.SelectedRuntime.PackageName);
+
+            if (string.IsNullOrWhiteSpace(GetSessionCommunicationMode()))
+                SessionState.SetString(SessionCommunicationModeKey, communicationMode);
         }
 
         public static string GetRuntimePackageRequiringEditorRestart(string projectDirectory)
@@ -192,7 +268,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         }
 
         public static bool IsEditorRestartRequired(string projectDirectory)
-            => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(projectDirectory));
+            => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(projectDirectory))
+               || !string.IsNullOrWhiteSpace(GetCommunicationModeRequiringEditorRestart(projectDirectory));
+
+        public static string GetCommunicationModeRequiringEditorRestart(string projectDirectory)
+        {
+            var sessionMode = GetSessionCommunicationMode();
+            if (string.IsNullOrWhiteSpace(sessionMode))
+                return string.Empty;
+
+            var status = GetStatus(projectDirectory);
+            if (status.SelectedRuntime == null)
+                return string.Empty;
+
+            var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
+            return string.Equals(communicationMode, sessionMode, StringComparison.Ordinal)
+                ? string.Empty
+                : communicationMode;
+        }
 
         public static void RestartEditor(string projectDirectory)
         {
@@ -268,7 +361,35 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var runtimeId = "r2fu-" + rosDistro + "-" + platform.Replace('.', '-');
             var displayName = ToDisplayName(rosDistro) + " " + ToDisplayName(platform.Replace('.', ' '));
 
-            return new Ros2ForUnityRuntimeDescriptor(displayName, packageName, runtimeId, rosDistro, platform);
+            return new Ros2ForUnityRuntimeDescriptor(
+                displayName,
+                packageName,
+                runtimeId,
+                rosDistro,
+                platform,
+                HasZenohPayload(packageDirectory));
+        }
+
+        private static bool HasZenohPayload(string packageDirectory)
+        {
+            var pluginRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Plugins", "Windows", "x86_64");
+            var streamingAssetsShare = Path.Combine(
+                packageDirectory,
+                "Runtime",
+                "Ros2ForUnity",
+                "StreamingAssets",
+                "Ros2ForUnity",
+                "share",
+                "rmw_zenoh_cpp",
+                "config");
+            var pluginShare = Path.Combine(pluginRoot, "share", "rmw_zenoh_cpp", "config");
+
+            return File.Exists(Path.Combine(pluginRoot, "rmw_zenoh_cpp.dll"))
+                   && File.Exists(Path.Combine(pluginRoot, "zenohc.dll"))
+                   && File.Exists(Path.Combine(pluginShare, "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"))
+                   && File.Exists(Path.Combine(pluginShare, "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"))
+                   && File.Exists(Path.Combine(streamingAssetsShare, "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"))
+                   && File.Exists(Path.Combine(streamingAssetsShare, "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"));
         }
 
         private static bool IsEmbeddedPackage(string projectDirectory, string packageDirectory)

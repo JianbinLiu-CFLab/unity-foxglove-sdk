@@ -206,8 +206,8 @@
       "source": "local",
       "dependencies": {}
     },
-    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64": {
-      "version": "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64": {
+      "version": "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
       "depth": 0,
       "source": "local",
       "dependencies": {}

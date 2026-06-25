@@ -34,36 +34,64 @@ public static class Transformations
         new Vector4( 0.0f, 0.0f, 0.0f, 1.0f)
     ).transpose;
 
+    /// <summary>
+    /// Constant ROS-to-Unity coordinate transform matrix, inverse of Unity2RosMatrix.
+    /// </summary>
+    public static readonly Matrix4x4 Ros2UnityMatrix = Unity2RosMatrix.inverse;
+
+    /// <summary>
+    /// Converts a ROS vector (x-forward, y-left, z-up) into a Unity vector (x-right, y-up, z-forward).
+    /// </summary>
     public static Vector3 Ros2Unity(this Vector3 vector3)
     {
         return new Vector3(-vector3.y, vector3.z, vector3.x);
     }
 
+    /// <summary>
+    /// Converts a Unity vector (x-right, y-up, z-forward) into a ROS vector (x-forward, y-left, z-up).
+    /// </summary>
     public static Vector3 Unity2Ros(this Vector3 vector3)
     {
         return new Vector3(vector3.z, -vector3.x, vector3.y);
     }
 
+    /// <summary>
+    /// Converts ROS scale extents to Unity scale extents. Scale magnitudes do not carry handedness,
+    /// so this only swaps axes and does not apply sign flips.
+    /// </summary>
     public static Vector3 Ros2UnityScale(this Vector3 vector3)
     {
         return new Vector3(vector3.y, vector3.z, vector3.x);
     }
 
+    /// <summary>
+    /// Converts Unity scale extents to ROS scale extents. Scale magnitudes do not carry handedness,
+    /// so this only swaps axes and does not apply sign flips.
+    /// </summary>
     public static Vector3 Unity2RosScale(this Vector3 vector3)
     {
         return new Vector3(vector3.z, vector3.x, vector3.y);
     }
 
+    /// <summary>
+    /// Converts ROS rotation into Unity rotation, including the handedness flip between coordinate systems.
+    /// </summary>
     public static Quaternion Ros2Unity(this Quaternion quaternion)
     {
         return new Quaternion(quaternion.y, -quaternion.z, -quaternion.x, quaternion.w);
     }
 
+    /// <summary>
+    /// Converts Unity rotation into ROS rotation, including the handedness flip between coordinate systems.
+    /// </summary>
     public static Quaternion Unity2Ros(this Quaternion quaternion)
     {
         return new Quaternion(-quaternion.z, quaternion.x, -quaternion.y, quaternion.w);
     }
 
+    /// <summary>
+    /// Converts a Unity rotation to ROS in place.
+    /// </summary>
     public static void Unity2Ros(ref Quaternion quaternion)
     {
         var z = quaternion.z;
@@ -74,6 +102,9 @@ public static class Transformations
         quaternion.z = -y;
     }
 
+    /// <summary>
+    /// Converts a Unity vector to ROS in place.
+    /// </summary>
     public static void Unity2Ros(ref Vector3 vector)
     {
         var z = vector.z;
@@ -84,6 +115,9 @@ public static class Transformations
         vector.z = y;
     }
 
+    /// <summary>
+    /// Compatibility wrapper for callers that expect a method; prefer Unity2RosMatrix for new code.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Matrix4x4 Unity2RosMatrix4x4()
     {

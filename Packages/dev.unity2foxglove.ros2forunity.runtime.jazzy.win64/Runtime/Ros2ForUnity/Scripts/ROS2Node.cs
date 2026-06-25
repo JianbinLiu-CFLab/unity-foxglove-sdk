@@ -55,6 +55,11 @@ public class ROS2Node : IDisposable
     public Publisher<T> CreateSensorPublisher<T>(string topicName) where T : Message, new()
     {
         QualityOfServiceProfile sensorProfile = new QualityOfServiceProfile(QosPresetProfile.SENSOR_DATA);
+        sensorProfile.SetPolicies(
+            HistoryPolicy.QOS_POLICY_HISTORY_KEEP_LAST,
+            1,
+            ReliabilityPolicy.QOS_POLICY_RELIABILITY_BEST_EFFORT,
+            DurabilityPolicy.QOS_POLICY_DURABILITY_VOLATILE);
         return CreatePublisher<T>(topicName, sensorProfile);
     }
 
