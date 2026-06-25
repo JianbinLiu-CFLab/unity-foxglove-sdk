@@ -21,6 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
+EXPECTED_ARTIFACT_SHA256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3"
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
@@ -115,6 +117,8 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
     if not artifact.exists():
         raise FileNotFoundError(f"Missing artifact zip: {artifact}")
     digest = sha256_file(artifact)
+    if digest != EXPECTED_ARTIFACT_SHA256:
+        raise ValueError(f"Artifact sha256 does not match pinned Jazzy handoff: {digest} != {EXPECTED_ARTIFACT_SHA256}")
     if manifest is None:
         manifest = manifest_for_artifact(artifact)
     if not manifest.exists():
@@ -137,12 +141,28 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
     runtime_ref = "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 
     changed = False
+    other_runtimes = [
+        key
+        for key in dependencies
+        if key.startswith(RUNTIME_PACKAGE_PREFIX) and key != PACKAGE_NAME
+    ]
+    if other_runtimes:
+        if not update:
+            raise RuntimeError(
+                f"{manifest_path} references other ROS2 For Unity runtime packages: {', '.join(other_runtimes)}; "
+                "rerun with --update-project-manifest"
+            )
+        for key in other_runtimes:
+            dependencies.pop(key, None)
+        changed = True
+
     if dependencies.get(PACKAGE_NAME) != runtime_ref:
         if not update:
             raise RuntimeError(f"{manifest_path} does not reference {PACKAGE_NAME}; rerun with --update-project-manifest")
         dependencies[PACKAGE_NAME] = runtime_ref
-        write_json(manifest_path, manifest)
         changed = True
+    if changed:
+        write_json(manifest_path, manifest)
 
     if direct_asset.exists():
         raise RuntimeError(

@@ -210,13 +210,24 @@ Window Geometry:
 def probe_topics(pixi_python: pathlib.Path, ros2_script: pathlib.Path, env: dict[str, str]) -> None:
     """Print bounded ROS2 graph diagnostics."""
 
-    for args in (["topic", "list", "-t", "--no-daemon"], ["topic", "echo", "/tf", "tf2_msgs/msg/TFMessage", "--once", "--no-daemon"]):
+    probes = (
+        (["topic", "list", "-t", "--no-daemon"], 5.0),
+        (["topic", "echo", "/tf", "tf2_msgs/msg/TFMessage", "--once", "--no-daemon"], 12.0),
+    )
+    for args, timeout_seconds in probes:
         print("--- ros2 " + " ".join(args) + " ---")
         try:
-            result = ros2env.run_ros2(pixi_python, ros2_script, env, args, check=False, timeout_seconds=5.0)
+            result = ros2env.run_ros2(
+                pixi_python,
+                ros2_script,
+                env,
+                args,
+                check=False,
+                timeout_seconds=timeout_seconds,
+            )
             print(result.stdout)
         except subprocess.TimeoutExpired:
-            print("<probe timed out after 5.0s>")
+            print(f"<probe timed out after {timeout_seconds:.1f}s>")
 
 
 def main(argv: list[str]) -> int:
@@ -248,6 +259,12 @@ def main(argv: list[str]) -> int:
         args.rviz_display_mode)
     print(f"[phase138u-rviz2] config: {config_path}")
     print(f"[phase138u-rviz2] raw={raw_topic} deskewed={deskewed_topic} fixed={fixed_frame}")
+    print(
+        "[phase138u-rviz2] "
+        f"RMW={env.get('RMW_IMPLEMENTATION')} "
+        f"discovery={env.get('ROS_AUTOMATIC_DISCOVERY_RANGE', '<unset>')} "
+        f"fastdds_transports={env.get('FASTDDS_BUILTIN_TRANSPORTS', '<unset>')}"
+    )
 
     if not args.skip_topic_probe:
         probe_topics(pixi_python, ros2_script, env)

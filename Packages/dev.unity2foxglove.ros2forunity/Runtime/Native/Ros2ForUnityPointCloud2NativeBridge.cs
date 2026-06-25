@@ -11,6 +11,10 @@ using ROS2;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -25,6 +29,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static Ros2ForUnityPointCloud2NativeBridge _instance;
         private static bool _runtimeShuttingDown;
+        private static bool _playModeSceneLoaded;
+#if UNITY_EDITOR
+        private static bool _editorEnteredPlayMode;
+        private static double _editorEnteredPlayModeAt;
+        private static bool _editorQuitting;
+#endif
 
         private readonly Dictionary<int, Binding> _bindings = new Dictionary<int, Binding>();
         private readonly HashSet<int> _seen = new HashSet<int>();
@@ -36,18 +46,103 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool _isStopping;
         private bool _ros2RuntimeWasReady;
 
-        private bool IsShuttingDown => _isStopping || _runtimeShuttingDown || !Application.isPlaying;
+        private bool IsShuttingDown
+            => _isStopping
+               || _runtimeShuttingDown
+               || !Application.isPlaying
+               || !_playModeSceneLoaded
+               || IsEditorPlayModeTransition()
+               || IsBackupSceneActive()
+               || IsBackupScene(gameObject.scene)
+               || IsAnyBackupSceneLoaded();
+
+        private static bool IsBackupSceneActive()
+        {
+            return IsBackupScene(SceneManager.GetActiveScene());
+        }
+
+        private static bool IsAnyBackupSceneLoaded()
+        {
+            for (var i = 0; i < SceneManager.sceneCount; i++)
+            {
+                if (IsBackupScene(SceneManager.GetSceneAt(i)))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsBackupScene(Scene scene)
+        {
+            var path = scene.path ?? string.Empty;
+            return path.StartsWith("Temp/__Backupscenes/", StringComparison.Ordinal)
+                   || path.Contains("__Backupscenes", StringComparison.Ordinal);
+        }
+
+#if UNITY_EDITOR
+        [InitializeOnLoadMethod]
+        private static void InitializeEditorPlayModeGate()
+        {
+            EditorApplication.playModeStateChanged -= OnEditorPlayModeStateChanged;
+            EditorApplication.playModeStateChanged += OnEditorPlayModeStateChanged;
+            EditorApplication.quitting -= OnEditorQuitting;
+            EditorApplication.quitting += OnEditorQuitting;
+            _editorEnteredPlayMode = false;
+            _editorQuitting = false;
+        }
+
+        private static void OnEditorQuitting()
+        {
+            _editorQuitting = true;
+        }
+
+        private static void OnEditorPlayModeStateChanged(PlayModeStateChange state)
+        {
+            _editorEnteredPlayMode = state == PlayModeStateChange.EnteredPlayMode;
+            _editorEnteredPlayModeAt = _editorEnteredPlayMode
+                ? EditorApplication.timeSinceStartup
+                : 0.0;
+        }
+
+        private static bool IsEditorPlayModeTransition()
+        {
+            return _editorQuitting
+                   || EditorApplication.isCompiling
+                   || EditorApplication.isUpdating
+                   || !_editorEnteredPlayMode
+                   || EditorApplication.timeSinceStartup - _editorEnteredPlayModeAt < 3.0;
+        }
+#else
+        private static bool IsEditorPlayModeTransition()
+        {
+            return false;
+        }
+#endif
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {
             _instance = null;
             _runtimeShuttingDown = false;
+            _playModeSceneLoaded = false;
+#if UNITY_EDITOR
+            _editorEnteredPlayMode = false;
+            _editorEnteredPlayModeAt = 0.0;
+            _editorQuitting = false;
+#endif
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
+            if (IsBackupSceneActive() || IsAnyBackupSceneLoaded())
+            {
+                _playModeSceneLoaded = false;
+                return;
+            }
+
+            _playModeSceneLoaded = true;
+
             if (_instance != null)
                 return;
 
@@ -168,6 +263,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (IsShuttingDown)
                 return false;
 
+            if (!_ros2RuntimeWasReady && !EnsureRos2UnityReady())
+                return false;
+
+            return TryGetExistingRos2Unity(out ros2Unity);
+        }
+
+        private bool EnsureRos2UnityReady()
+        {
+            if (IsShuttingDown)
+                return false;
+
             if (_ros2Unity == null)
                 _ros2Unity = GetComponent<ROS2UnityComponent>() ?? gameObject.AddComponent<ROS2UnityComponent>();
 
@@ -203,8 +309,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             _warnedRos2Unavailable = false;
             _ros2RuntimeWasReady = true;
-            ros2Unity = _ros2Unity;
             return true;
+        }
+
+        private bool TryGetExistingRos2Unity(out ROS2UnityComponent ros2Unity)
+        {
+            if (_ros2Unity == null)
+                _ros2Unity = GetComponent<ROS2UnityComponent>() ?? FindFirstObjectByType<ROS2UnityComponent>();
+
+            ros2Unity = _ros2Unity;
+            return ros2Unity != null;
         }
 
         private void RecordRos2Failure(string message)
