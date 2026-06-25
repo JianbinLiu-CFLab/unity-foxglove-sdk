@@ -15,6 +15,18 @@ Keep candidate runtime packages under the repository root `Packages/` directory.
 
 Lyrical exposes an additional `Communication Mode` dropdown when its Zenoh payload is present. Use `FastDDS (default)` for the normal path, or select `Zenoh (rmw_zenoh_cpp)` before Play Mode when validating a Zenoh router topology.
 
+FastDDS and Zenoh are separate ROS2 communication modes. They do not discover or exchange topics with each other. Keep Unity, ROS2 CLI probes, RViz2, and external ROS2 nodes on the same RMW implementation, ROS domain, and discovery topology. For Zenoh validation, run the external Lyrical tools with `RMW_IMPLEMENTATION=rmw_zenoh_cpp`; for the normal FastDDS path, use `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`.
+
+For the local Zenoh router topology:
+
+```powershell
+$root = "ros2-windows\ros2_lyrical"
+$env:RMW_IMPLEMENTATION = "rmw_zenoh_cpp"
+& "$root\Lib\rmw_zenoh_cpp\rmw_zenohd.exe"
+```
+
+Selecting `Zenoh (rmw_zenoh_cpp)` in the Inspector only chooses Unity's RMW implementation. It does not start `rmw_zenohd` and does not bridge FastDDS traffic.
+
 When one runtime package is active, the adapter package enables the sample compile symbol automatically for the Standalone build target:
 
 ```text

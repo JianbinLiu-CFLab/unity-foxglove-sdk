@@ -97,6 +97,10 @@ The Foxglove Manager Inspector exposes one `ROS2 For Unity Runtime` active runti
 
 When the active runtime is Lyrical and the package contains the Zenoh payload, the Inspector also exposes a `Communication Mode` dropdown. `FastDDS (default)` sets `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`; `Zenoh (rmw_zenoh_cpp)` sets `RMW_IMPLEMENTATION=rmw_zenoh_cpp` before ROS2 For Unity initializes. Zenoh mode is Lyrical-only and should be selected before entering Play Mode in a fresh Editor session.
 
+FastDDS and Zenoh are separate ROS2 communication modes. They do not discover or exchange topics with each other. Keep Unity, ROS2 CLI probes, RViz2, and any external ROS2 nodes on the same RMW implementation, ROS domain, and discovery topology. For Zenoh validation, run Lyrical peers with `RMW_IMPLEMENTATION=rmw_zenoh_cpp`; FastDDS peers should keep `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`.
+
+Zenoh deployments also need a working Zenoh discovery path before Play Mode. For the local router topology used by the repository smoke tests, start the Lyrical router from the local ROS2 entrypoint, for example `ros2-windows/ros2_lyrical/Lib/rmw_zenoh_cpp/rmw_zenohd.exe`, or configure an equivalent peer/multicast topology for all participants. Selecting `Zenoh (rmw_zenoh_cpp)` in the Inspector only chooses Unity's RMW implementation. It does not start a router and does not bridge FastDDS traffic.
+
 If the current Editor session has not entered Play Mode yet, you can switch runtime packages and enter Play Mode without restarting. After an Editor session has loaded one ROS2 runtime in Play Mode, switching to a different runtime requires a Unity restart before Play Mode. Windows native ROS2 plugins stay loaded until the Editor process exits, so the Inspector blocks unsafe Play Mode entry and offers a restart action instead of letting Humble, Jazzy, and Lyrical DLLs mix in one process.
 
 The adapter package manages only the base Standalone build-target symbol:
