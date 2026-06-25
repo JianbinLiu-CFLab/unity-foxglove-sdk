@@ -78,8 +78,12 @@ PHASE161_ADDED_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_introspection_c_native.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/tf2.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/tf2_ros.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/rosidl_dynamic_typesupport_fastrtps.dll",
     "Ros2ForUnity/Plugins/actionlib_msgs_assembly.dll",
     "Ros2ForUnity/Plugins/stereo_msgs_assembly.dll",
+)
+PHASE161_SUPPLEMENTAL_RUNTIME_DLLS = (
+    "Ros2ForUnity/Plugins/Windows/x86_64/rosidl_dynamic_typesupport_fastrtps.dll",
 )
 PHASE161_ALLOWED_STALE_REMOVED_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll",
@@ -463,11 +467,12 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
     )
 
     file_paths = {str(item.get("path", "")) for item in files if isinstance(item, dict)}
+    artifact_added_dlls = set(PHASE161_ADDED_DLLS) - set(PHASE161_SUPPLEMENTAL_RUNTIME_DLLS)
     add(
         results,
         "Phase161 added DLL paths are present",
-        set(PHASE161_ADDED_DLLS).issubset(file_paths),
-        f"missing={sorted(set(PHASE161_ADDED_DLLS) - file_paths)!r}",
+        artifact_added_dlls.issubset(file_paths),
+        f"missing={sorted(artifact_added_dlls - file_paths)!r}",
     )
     add(
         results,
@@ -488,6 +493,10 @@ def check_runtime_files(results: list[CheckResult]) -> None:
     for dll in CRITICAL_DLLS:
         path = PLUGIN_ROOT / dll
         add(results, f"critical DLL present: {dll}", path.exists(), rel(path))
+
+    for runtime_path in PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
+        path = PACKAGE / "Runtime" / Path(runtime_path)
+        add(results, f"supplemental runtime DLL present: {Path(runtime_path).name}", path.exists(), rel(path))
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 900, f"dll_count={len(dlls)}")

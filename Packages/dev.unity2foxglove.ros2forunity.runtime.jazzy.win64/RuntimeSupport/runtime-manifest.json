@@ -60,6 +60,7 @@
       "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_introspection_c_native.dll",
       "Ros2ForUnity/Plugins/Windows/x86_64/tf2.dll",
       "Ros2ForUnity/Plugins/Windows/x86_64/tf2_ros.dll",
+      "Ros2ForUnity/Plugins/Windows/x86_64/rosidl_dynamic_typesupport_fastrtps.dll",
       "Ros2ForUnity/Plugins/actionlib_msgs_assembly.dll",
       "Ros2ForUnity/Plugins/stereo_msgs_assembly.dll"
     ],

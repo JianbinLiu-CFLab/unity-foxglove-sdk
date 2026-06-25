@@ -36,6 +36,7 @@ EXPECTED_ARTIFACT_SHA256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf0
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_ARTIFACT = ROOT / "r2fu-runtime-artifacts" / "jazzy" / "windows_x86_64" / ARTIFACT_NAME
+DEFAULT_ROS2_BIN = ROOT / "ros2-windows" / "ros2_jazzy" / "bin"
 DEFAULT_INVENTORY = (
     ROOT
     / "Packages"
@@ -88,8 +89,12 @@ PHASE161_ADDED_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/stereo_msgs_disparity_image__rosidl_typesupport_introspection_c_native.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/tf2.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/tf2_ros.dll",
+    "Ros2ForUnity/Plugins/Windows/x86_64/rosidl_dynamic_typesupport_fastrtps.dll",
     "Ros2ForUnity/Plugins/actionlib_msgs_assembly.dll",
     "Ros2ForUnity/Plugins/stereo_msgs_assembly.dll",
+)
+PHASE161_SUPPLEMENTAL_RUNTIME_DLLS = (
+    "rosidl_dynamic_typesupport_fastrtps.dll",
 )
 PHASE161_ALLOWED_STALE_REMOVED_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll",
@@ -787,6 +792,19 @@ def extract_runtime(paths: BuildPaths) -> None:
                 shutil.copyfileobj(source, destination)
 
 
+def copy_supplemental_runtime_dlls(package: Path) -> None:
+    """Copy Jazzy FastRTPS dependencies missing from the pinned R2FU artifact."""
+    plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
+    for name in PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
+        source = DEFAULT_ROS2_BIN / name
+        if not source.exists():
+            raise FileNotFoundError(
+                f"Missing supplemental Jazzy runtime DLL {source}; "
+                "install the repo-local ros2-windows/ros2_jazzy entrypoint before rebuilding this package."
+            )
+        shutil.copy2(source, plugin_root / name)
+
+
 def safe_runtime_zip_relative_path(name: str) -> Path:
     """Return the path under Runtime/Ros2ForUnity for a trusted zip entry name."""
     zip_path = PurePosixPath(name)
@@ -1041,6 +1059,7 @@ def build_package(paths: BuildPaths) -> None:
     try:
         reset_package_dir(paths.package)
         extract_runtime(paths)
+        copy_supplemental_runtime_dlls(paths.package)
         prune_non_contract_examples(paths.package)
         patch_ros2_for_unity(paths.package)
         apply_local_patch_overlays(paths.package, overlays)

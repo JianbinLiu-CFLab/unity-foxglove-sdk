@@ -133,6 +133,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "static_transform_broadcaster_node.dll",
                 "rosgraph_msgs__rosidl_typesupport_fastrtps_c.dll",
                 "rosgraph_msgs__rosidl_typesupport_fastrtps_cpp.dll",
+                "rosidl_dynamic_typesupport_fastrtps.dll",
                 "stereo_msgs__rosidl_typesupport_fastrtps_c.dll",
                 "actionlib_msgs__rosidl_typesupport_fastrtps_c.dll",
             })
@@ -279,25 +280,71 @@ namespace Unity.FoxgloveSDK.Tests
                       && source.Contains("IsBackupSceneActive()", StringComparison.Ordinal)
                       && source.Contains("Temp/__Backupscenes", StringComparison.Ordinal),
                     "161-G-backup-scene: " + bridge + " treats Unity backup scenes as R2FU shutdown windows");
-                Check(source.Contains("EnsureRos2UnityReady()", StringComparison.Ordinal)
-                      && source.Contains("TryGetExistingRos2Unity", StringComparison.Ordinal),
-                    "161-G-prewarm: " + bridge + " prewarms ROS2 from stable bridge Update");
-                Check(BridgeCallbackGetterAvoidsLazyInit(source),
-                    "161-G-no-lazy-init: " + bridge + " callback getter never creates or first-initializes ROS2");
+                Check(source.Contains("gameObject.scene", StringComparison.Ordinal)
+                      && source.Contains("IsBackupScene(gameObject.scene)", StringComparison.Ordinal),
+                    "161-G-owner-backup-scene: " + bridge + " blocks ROS2 prewarm when the bridge object lives in Unity backup scenes");
+                Check(source.Contains("IsAnyBackupSceneLoaded()", StringComparison.Ordinal)
+                      && source.Contains("SceneManager.sceneCount", StringComparison.Ordinal)
+                      && source.Contains("SceneManager.GetSceneAt", StringComparison.Ordinal),
+                    "161-G-loaded-backup-scene: " + bridge + " blocks ROS2 prewarm while any Unity backup scene is loaded");
+                Check(source.Contains("_playModeSceneLoaded", StringComparison.Ordinal)
+                      && source.Contains("RuntimeInitializeLoadType.SubsystemRegistration", StringComparison.Ordinal)
+                      && source.Contains("RuntimeInitializeLoadType.AfterSceneLoad", StringComparison.Ordinal),
+                    "161-G-after-scene-load-gate: " + bridge + " blocks ROS2 prewarm during Unity Play Mode backup/restore transitions");
+                Check(source.Contains("InitializeEditorPlayModeGate", StringComparison.Ordinal)
+                      && source.Contains("EditorApplication.playModeStateChanged", StringComparison.Ordinal)
+                      && source.Contains("PlayModeStateChange.EnteredPlayMode", StringComparison.Ordinal)
+                      && source.Contains("EditorApplication.quitting", StringComparison.Ordinal)
+                      && source.Contains("EditorApplication.isCompiling", StringComparison.Ordinal)
+                      && source.Contains("EditorApplication.isUpdating", StringComparison.Ordinal)
+                      && source.Contains("EditorApplication.timeSinceStartup", StringComparison.Ordinal)
+                      && source.Contains("IsEditorPlayModeTransition()", StringComparison.Ordinal),
+                    "161-G-editor-play-mode-gate: " + bridge + " blocks ROS2 prewarm until Unity reports stable Play Mode and no editor update/quitting transition");
+                Check(source.Contains("if (IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                      && source.Contains("_playModeSceneLoaded = false", StringComparison.Ordinal)
+                      && source.Contains("return;", StringComparison.Ordinal)
+                      && source.IndexOf("if (IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                         < source.IndexOf("_playModeSceneLoaded = true", StringComparison.Ordinal),
+                    "161-G-bootstrap-backup-gate: " + bridge + " does not bootstrap native bridges from Unity backup scenes");
+                Check(BridgeUpdateAvoidsRos2Init(source),
+                    "161-G-no-update-init: " + bridge + " never first-initializes ROS2 from bridge Update");
+                Check(BridgeCallbackGetterUsesGuardedLazyInit(source),
+                    "161-G-guarded-lazy-init: " + bridge + " initializes ROS2 only from guarded data callbacks");
             }
         }
 
-        private static bool BridgeCallbackGetterAvoidsLazyInit(string source)
+        private static bool BridgeUpdateAvoidsRos2Init(string source)
         {
-            var start = source.IndexOf(
-                "private bool TryGetRos2Unity(out ROS2UnityComponent ros2Unity)",
-                StringComparison.Ordinal);
-            if (start < 0)
+            var body = MethodBody(source, "private void Update()");
+            if (body.Length == 0)
                 return false;
+
+            return body.Contains("RefreshBindings();", StringComparison.Ordinal)
+                   && !body.Contains("EnsureRos2UnityReady()", StringComparison.Ordinal)
+                   && !body.Contains("ROS2UnityComponent", StringComparison.Ordinal);
+        }
+
+        private static bool BridgeCallbackGetterUsesGuardedLazyInit(string source)
+        {
+            var body = MethodBody(source, "private bool TryGetRos2Unity(out ROS2UnityComponent ros2Unity)");
+            var shutdownGate = body.IndexOf("if (IsShuttingDown)", StringComparison.Ordinal);
+            var ensure = body.IndexOf("EnsureRos2UnityReady()", StringComparison.Ordinal);
+            var existing = body.IndexOf("TryGetExistingRos2Unity", StringComparison.Ordinal);
+            return shutdownGate >= 0
+                   && ensure > shutdownGate
+                   && existing > ensure
+                   && body.Contains("!_ros2RuntimeWasReady", StringComparison.Ordinal);
+        }
+
+        private static string MethodBody(string source, string signature)
+        {
+            var start = source.IndexOf(signature, StringComparison.Ordinal);
+            if (start < 0)
+                return string.Empty;
 
             var bodyStart = source.IndexOf('{', start);
             if (bodyStart < 0)
-                return false;
+                return string.Empty;
 
             var depth = 0;
             var bodyEnd = -1;
@@ -317,11 +364,9 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             if (bodyEnd <= bodyStart)
-                return false;
+                return string.Empty;
 
-            var body = source.Substring(bodyStart, bodyEnd - bodyStart + 1);
-            return !body.Contains("AddComponent<ROS2UnityComponent>", StringComparison.Ordinal)
-                   && !body.Contains(".Ok()", StringComparison.Ordinal);
+            return source.Substring(bodyStart, bodyEnd - bodyStart + 1);
         }
 
         private static bool NativeDllExists(string fileName)
