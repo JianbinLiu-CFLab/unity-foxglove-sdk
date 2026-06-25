@@ -100,6 +100,7 @@ def build_ros_env(
     discovery_range: str | None = None,
     domain_id: str | None = None,
     ros_distro: str | None = None,
+    fastdds_builtin_transports: str | None = None,
 ) -> dict[str, str]:
     """Build a deterministic Windows ROS2 environment."""
 
@@ -128,6 +129,12 @@ def build_ros_env(
     env["ROS_DISTRO"] = ros_distro or infer_ros_distro(ros2_root)
     env["ROS_DOMAIN_ID"] = str(domain_id) if domain_id is not None else "0"
     env["RMW_IMPLEMENTATION"] = rmw_implementation or env.get("RMW_IMPLEMENTATION") or "rmw_fastrtps_cpp"
+    if os.name == "nt" and env["RMW_IMPLEMENTATION"] == "rmw_fastrtps_cpp":
+        env["FASTDDS_BUILTIN_TRANSPORTS"] = (
+            fastdds_builtin_transports
+            or env.get("FASTDDS_BUILTIN_TRANSPORTS")
+            or "UDPv4"
+        )
     if discovery_range:
         env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = discovery_range
     env.pop("ROS_LOCALHOST_ONLY", None)

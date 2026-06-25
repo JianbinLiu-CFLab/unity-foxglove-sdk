@@ -678,6 +678,12 @@ def main(argv: list[str]) -> int:
     print(f"[phase138u-lidar-deskew] ROS2 root: {ros2_root}")
     print(f"[phase138u-lidar-deskew] ros2-script.py: {ros2_script}")
     print(f"[phase138u-lidar-deskew] raw={raw_topic} deskewed={deskewed_topic} spin={args.spin_seconds}s")
+    print(
+        "[phase138u-lidar-deskew] "
+        f"RMW={env.get('RMW_IMPLEMENTATION')} "
+        f"discovery={env.get('ROS_AUTOMATIC_DISCOVERY_RANGE', '<unset>')} "
+        f"fastdds_transports={env.get('FASTDDS_BUILTIN_TRANSPORTS', '<unset>')}"
+    )
 
     if args.launch_rviz:
         config_path = rviz2launch.write_config(
