@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
-[![.NET](https://img.shields.io/badge/.NET-10.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
+[![.NET tests](https://img.shields.io/badge/.NET%20tests-10.0-purple?logo=dotnet)](https://dotnet.microsoft.com/)
 [![Release](https://img.shields.io/badge/release-v1.9.5-green)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/releases)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20112833.svg)](https://doi.org/10.5281/zenodo.20112833)
 [![Tests](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml/badge.svg)](https://github.com/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/dotnet-tests.yml)
@@ -11,6 +11,8 @@
 > **Positioning**: Unity2Foxglove is a **Unity-focused Foxglove SDK bridge**. It aims for official Foxglove SDK capability parity where that matters for Unity workflows, while adding Unity-native extensions such as `[FoxRun]`, Inspector-driven publishers, MCAP replay, and IL2CPP-oriented validation. It is not an official Foxglove project and does not target multi-language SDK parity.
 
 A cross-platform Unity SDK for real-time runtime data streaming, MCAP recording and replay, and in-editor debugging. It runs inside Unity, speaks the Foxglove WebSocket protocol directly, and can work with [Foxglove](https://foxglove.dev), MCAP files, or custom clients.
+
+The Unity package runs on Unity's managed runtime. The .NET badge above refers to repository test and conformance runner projects, not to a Unity runtime requirement.
 
 ## Citation / Research Positioning
 
@@ -122,7 +124,7 @@ The packages should also stand alone cleanly:
 | Install set | Expected behavior |
 |---|---|
 | `sdk` only | Fully usable for normal Foxglove/MCAP/FoxRun workflows. |
-| `ros2forunity` only | Compiles and reports missing runtime gracefully. |
+| `ros2forunity` package install | Installs the core SDK dependency, compiles without a runtime package, and reports missing runtime gracefully. |
 | `runtime.<distro>.win64` only | Imports runtime files and exposes metadata/diagnostics. |
 | `ros2forunity + one runtime.<distro>.win64` | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. Exactly one runtime should be active in a Unity project manifest. |
 | `sdk + ros2forunity + one runtime.<distro>.win64` | Full combined workflow. |

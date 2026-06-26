@@ -154,7 +154,12 @@ def check_package_metadata(results: list[CheckResult]) -> None:
         add(results, f"package {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
     dependencies = data.get("dependencies")
-    add(results, "package has no dependencies", dependencies == {}, f"dependencies={dependencies!r}")
+    add(
+        results,
+        "package depends only on core SDK package",
+        dependencies == {"dev.unity2foxglove.sdk": "1.9.5"},
+        f"dependencies={dependencies!r}",
+    )
 
     samples = data.get("samples")
     add(

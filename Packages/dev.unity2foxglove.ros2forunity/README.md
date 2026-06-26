@@ -43,7 +43,7 @@ ROS2 For Unity graph snapshots can be intermittent in `ros2 topic list`; use act
 | Install set | Expected behavior |
 |---|---|
 | `dev.unity2foxglove.sdk` | Fully usable by itself for normal Foxglove WebSocket, MCAP, Replay, and FoxRun workflows. |
-| `dev.unity2foxglove.ros2forunity` | Installs and compiles by itself. Reports missing runtime gracefully. |
+| `dev.unity2foxglove.ros2forunity` | Installs with `dev.unity2foxglove.sdk`, compiles without a runtime package, and reports missing runtime gracefully. |
 | `dev.unity2foxglove.ros2forunity.runtime.*` | Candidate runtime packages kept under the repository root `Packages/`; only the active one is resolved by the Unity project manifest. |
 | Adapter + runtime | Enables Unity-as-ROS2-node publish/subscribe through ROS2 For Unity. |
 | SDK + adapter + runtime | Full combined Unity2Foxglove workflow. |
@@ -52,7 +52,7 @@ Dependency direction is intentionally one-way:
 
 ```text
 dev.unity2foxglove.sdk does not depend on ROS2 For Unity packages.
-dev.unity2foxglove.ros2forunity can compile without runtime packages.
+dev.unity2foxglove.ros2forunity depends on dev.unity2foxglove.sdk, but can compile without runtime packages.
 dev.unity2foxglove.ros2forunity.runtime.* packages must not force the core SDK to load ROS2.
 Multiple candidate runtime packages may exist on disk, but exactly one active runtime is resolved in `Unity2Foxglove/Packages/manifest.json` per Unity project.
 ```
@@ -108,6 +108,8 @@ The adapter package manages only the base Standalone build-target symbol:
 ```text
 UNITY2FOXGLOVE_ROS2_FOR_UNITY
 ```
+
+The native bridge asmdef includes both `Editor` and `WindowsStandalone64` because Editor Play Mode compiles against the active Standalone build target symbols in this workflow. The base symbol gates the native ROS2 bridge source in Editor Play Mode and Windows Standalone builds; it is not a per-distro runtime selector.
 
 Runtime detection uses the Unity project manifest as the single source of truth. Candidate packages are discovered by convention from repository-root `Packages/dev.unity2foxglove.ros2forunity.runtime.*` directories and are not copied into `Unity2Foxglove/Packages/` as embedded packages.
 
