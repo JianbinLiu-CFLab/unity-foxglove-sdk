@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestFullWebPageUrlAllowlistNormalizesToOrigin();
             TestDisallowedOriginRejected();
             TestFileOriginAllowed();
+            TestOpaqueFileOriginAllowed();
             Console.WriteLine($"Phase 28: {_passCount} checks passed.");
         }
 
@@ -188,6 +189,29 @@ namespace Unity.FoxgloveSDK.Tests
             catch (WebSocketException ex)
             {
                 Assert(false, $"File Origin: unexpected error: {ex.Message}");
+            }
+            finally
+            {
+                backend.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Browser file contexts may serialize their opaque Origin as "null";
+        /// treat it the same as local file:// clients rather than requiring an
+        /// impossible allowlist entry.
+        /// </summary>
+        static void TestOpaqueFileOriginAllowed()
+        {
+            var backend = new ManagedWsBackend();
+            var port = GetFreeTcpPort();
+            backend.Start("127.0.0.1", port);
+
+            try
+            {
+                var response = SendRawHandshake(port, "null");
+                Assert(response.StartsWith("HTTP/1.1 101", StringComparison.Ordinal),
+                    "Opaque file Origin: raw handshake upgrades");
             }
             finally
             {
