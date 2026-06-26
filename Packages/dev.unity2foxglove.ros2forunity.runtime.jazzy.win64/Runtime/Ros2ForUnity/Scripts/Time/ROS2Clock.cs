@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading;
 using UnityEngine;
 
 namespace ROS2
@@ -25,6 +26,7 @@ namespace ROS2
 public class ROS2Clock : IDisposable
 {
     private ITimeSource _timeSource;
+    private int disposed;
 
     public ROS2Clock() : this(new ROS2TimeSource())
     {   // By default, use ROS2TimeSource
@@ -39,7 +41,7 @@ public class ROS2Clock : IDisposable
     {
         int seconds;
         uint nanoseconds;
-        _timeSource.GetTime(out seconds, out nanoseconds);
+        GetCurrentTime(out seconds, out nanoseconds);
         clockMessage.Clock_.Sec = seconds;
         clockMessage.Clock_.Nanosec = nanoseconds;
     }
@@ -48,7 +50,7 @@ public class ROS2Clock : IDisposable
     {
         int seconds;
         uint nanoseconds;
-        _timeSource.GetTime(out seconds, out nanoseconds);
+        GetCurrentTime(out seconds, out nanoseconds);
         time.Sec = seconds;
         time.Nanosec = nanoseconds;
     }
@@ -57,15 +59,34 @@ public class ROS2Clock : IDisposable
     {
         int seconds;
         uint nanoseconds;
-        _timeSource.GetTime(out seconds, out nanoseconds);
+        GetCurrentTime(out seconds, out nanoseconds);
         message.UpdateHeaderTime(seconds, nanoseconds);
+    }
+
+    private void GetCurrentTime(out int seconds, out uint nanoseconds)
+    {
+        var timeSource = Volatile.Read(ref _timeSource);
+        if (Volatile.Read(ref disposed) != 0 || timeSource == null)
+        {
+            throw new ObjectDisposedException(nameof(ROS2Clock));
+        }
+
+        if (!timeSource.GetTime(out seconds, out nanoseconds))
+        {
+            throw new InvalidOperationException("Cannot acquire valid ROS2 time from the configured time source.");
+        }
     }
 
     public void Dispose()
     {
         // U2F-LOCAL-PATCH: dispose native ROS2 time sources deterministically.
-        (_timeSource as IDisposable)?.Dispose();
-        _timeSource = null;
+        if (Interlocked.Exchange(ref disposed, 1) != 0)
+        {
+            return;
+        }
+
+        var timeSource = Interlocked.Exchange(ref _timeSource, null);
+        (timeSource as IDisposable)?.Dispose();
     }
 }
 

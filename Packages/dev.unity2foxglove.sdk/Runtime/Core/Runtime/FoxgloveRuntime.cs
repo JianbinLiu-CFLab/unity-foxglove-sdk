@@ -37,7 +37,10 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class FoxgloveRuntime : IDisposable, IRuntimeContext
     {
-        /// <summary>Active session; null before Start or after Stop.</summary>
+        /// <summary>
+        /// Active session; null before Start or after Stop. Runtime lifecycle APIs
+        /// are owner-thread operations and must not be called concurrently.
+        /// </summary>
         private FoxgloveSession _session;
         private readonly IFoxgloveTransport _transport;
         private readonly IFoxgloveClock _wallClock;
@@ -46,6 +49,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private bool _protobufSchemasRegistered;
         private bool _ros2MsgSchemasRegistered;
+        private readonly HashSet<string> _replaySuppressionWarnings = new HashSet<string>();
         // Runtime-owned start-time routing policy. Like parameters and services,
         // these survive Stop/Start and are re-applied to the next session; Stop
         // deliberately does not clear them.
@@ -242,6 +246,7 @@ namespace Unity.FoxgloveSDK.Core
                     Volatile.Read(ref _mcapRecordingChannelFilter));
                 session.Start(host, port);
                 _session = session;
+                ClearReplaySuppressionWarnings();
                 _replayOrchestrator.Attach(_replay, session);
                 _stopped = false;
             }
@@ -309,6 +314,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             _stopped = true;
+            ClearReplaySuppressionWarnings();
             _tickCoordinator.ClearPendingReplaySnapshot();
             _tickCoordinator.ClearPendingReplaySceneSnapshot();
             _replay.CancelPanelHistory();
@@ -326,7 +332,12 @@ namespace Unity.FoxgloveSDK.Core
         public void RegisterChannel(AdvertiseChannel channel)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(RegisterChannel), channel?.Id);
+                return;
+            }
+
             _session.RegisterChannel(channel);
         }
 
@@ -341,7 +352,12 @@ namespace Unity.FoxgloveSDK.Core
         public void Publish(uint channelId, byte[] payload)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(Publish), channelId);
+                return;
+            }
+
             _session.Publish(channelId, payload);
         }
 
@@ -349,7 +365,12 @@ namespace Unity.FoxgloveSDK.Core
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(Publish), channelId);
+                return;
+            }
+
             _session.Publish(channelId, payload, logTimeNs);
         }
 
@@ -357,7 +378,12 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishRos2Cdr(uint channelId, byte[] payload)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(PublishRos2Cdr), channelId);
+                return;
+            }
+
             _session.PublishRos2Cdr(channelId, payload);
         }
 
@@ -365,7 +391,12 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishRos2Cdr(uint channelId, byte[] payload, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(PublishRos2Cdr), channelId);
+                return;
+            }
+
             _session.PublishRos2Cdr(channelId, payload, logTimeNs);
         }
 
@@ -378,7 +409,12 @@ namespace Unity.FoxgloveSDK.Core
             string schemaEncoding = null)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(RegisterSchemaChannel), channelId);
+                return;
+            }
+
             _session.RegisterSchemaChannel(channelId, topic, schemaName, encoding, schemaEncoding);
         }
 
@@ -392,7 +428,12 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(PublishJson), channelId);
+                return;
+            }
+
             _session.PublishJson(channelId, message);
         }
 
@@ -400,7 +441,12 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (_session == null) throw new InvalidOperationException("Session not started.");
-            if (ReplayEnabled) return;
+            if (ReplayEnabled)
+            {
+                WarnReplaySuppressed(nameof(PublishJson), channelId);
+                return;
+            }
+
             _session.PublishJson(channelId, message, logTimeNs);
         }
 
@@ -597,6 +643,28 @@ namespace Unity.FoxgloveSDK.Core
             _transport.Dispose();
         }
 
+        private void WarnReplaySuppressed(string operation, uint? channelId)
+        {
+            var key = channelId.HasValue
+                ? operation + ":" + channelId.Value
+                : operation;
+            lock (_replaySuppressionWarnings)
+            {
+                if (!_replaySuppressionWarnings.Add(key))
+                    return;
+            }
+
+            var channelSuffix = channelId.HasValue ? $" for channel {channelId.Value}" : string.Empty;
+            _logger.LogWarning(
+                $"Replay is enabled; ignoring live {operation}{channelSuffix}. Disable replay before publishing live data.");
+        }
+
+        private void ClearReplaySuppressionWarnings()
+        {
+            lock (_replaySuppressionWarnings)
+                _replaySuppressionWarnings.Clear();
+        }
+
         /// <summary>
         /// Try to load protobuf schema registration from the optional Proto assembly.
         /// If the assembly is present, registers all 46 official Foxglove protobuf schemas.
@@ -612,13 +680,23 @@ namespace Unity.FoxgloveSDK.Core
 
                 var method = type.GetMethod("RegisterSchemas",
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                if (method == null) return;
+                if (method == null)
+                {
+                    _logger.LogWarning(
+                        "Optional protobuf schema registration type was found, but RegisterSchemas was missing; continuing without protobuf support.");
+                    return;
+                }
 
                 var register = (Action<ISchemaRegistry>)Delegate.CreateDelegate(
                     typeof(Action<ISchemaRegistry>),
                     method,
                     throwOnBindFailure: false);
-                if (register == null) return;
+                if (register == null)
+                {
+                    _logger.LogWarning(
+                        "Optional protobuf schema registration method has an incompatible signature; continuing without protobuf support.");
+                    return;
+                }
 
                 register(_schemaRegistry);
                 _protobufSchemasRegistered = true;

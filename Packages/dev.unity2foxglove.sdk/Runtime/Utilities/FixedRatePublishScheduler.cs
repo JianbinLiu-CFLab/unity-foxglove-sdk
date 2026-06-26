@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Util
             }
 
             var intervalSec = 1d / rateHz;
-            if (!state.HasSchedule || Math.Abs(state.LastRateHz - rateHz) > float.Epsilon)
+            if (!state.HasSchedule || state.LastRateHz != rateHz)
             {
                 state.HasSchedule = true;
                 state.LastRateHz = rateHz;

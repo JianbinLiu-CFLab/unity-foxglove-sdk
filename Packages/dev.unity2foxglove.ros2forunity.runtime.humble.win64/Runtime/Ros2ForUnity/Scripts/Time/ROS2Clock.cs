@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading;
 using UnityEngine;
 
 namespace ROS2
@@ -25,7 +26,7 @@ namespace ROS2
 public class ROS2Clock : IDisposable
 {
     private ITimeSource _timeSource;
-    private bool disposed;
+    private int disposed;
 
     /// <summary>
     /// Creates a clock backed by ROS2TimeSource.
@@ -90,11 +91,13 @@ public class ROS2Clock : IDisposable
 
     private void GetCurrentTime(out int seconds, out uint nanoseconds)
     {
-        if (disposed || _timeSource == null)
+        var timeSource = Volatile.Read(ref _timeSource);
+        if (Volatile.Read(ref disposed) != 0 || timeSource == null)
         {
             throw new ObjectDisposedException(nameof(ROS2Clock));
         }
-        if (!_timeSource.GetTime(out seconds, out nanoseconds))
+
+        if (!timeSource.GetTime(out seconds, out nanoseconds))
         {
             throw new InvalidOperationException("Cannot acquire valid ROS2 time from the configured time source.");
         }
@@ -105,18 +108,17 @@ public class ROS2Clock : IDisposable
     /// </summary>
     public void Dispose()
     {
-        if (disposed)
+        if (Interlocked.Exchange(ref disposed, 1) != 0)
         {
             return;
         }
 
-        IDisposable disposableTimeSource = _timeSource as IDisposable;
+        var timeSource = Interlocked.Exchange(ref _timeSource, null);
+        IDisposable disposableTimeSource = timeSource as IDisposable;
         if (disposableTimeSource != null)
         {
             disposableTimeSource.Dispose();
         }
-        _timeSource = null;
-        disposed = true;
     }
 }
 

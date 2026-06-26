@@ -55,11 +55,23 @@ namespace Unity.FoxgloveSDK.Protocol
     [JsonObject(MemberSerialization.OptIn)]
     public class DataTimestamp
     {
+        private ulong _rawSec;
+        private ulong _nsecCarry;
         private uint _nsec;
 
         /// <summary>Whole seconds since epoch.</summary>
         [JsonProperty("sec")]
-        public ulong Sec { get; set; }
+        public ulong Sec
+        {
+            get
+            {
+                if (_rawSec > ulong.MaxValue - _nsecCarry)
+                    throw new OverflowException("Nanoseconds overflow timestamp seconds.");
+
+                return _rawSec + _nsecCarry;
+            }
+            set => _rawSec = value;
+        }
 
         /// <summary>Sub-second nanoseconds component. Values above one second are normalized into <see cref="Sec"/>.</summary>
         [JsonProperty("nsec")]
@@ -68,16 +80,11 @@ namespace Unity.FoxgloveSDK.Protocol
             get => _nsec;
             set
             {
-                var carry = value / 1_000_000_000U;
-                if (carry != 0)
-                {
-                    if (Sec > ulong.MaxValue - carry)
-                        throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow timestamp seconds.");
-
-                    Sec += carry;
-                }
-
+                _nsecCarry = value / 1_000_000_000U;
                 _nsec = value % 1_000_000_000U;
+
+                if (_rawSec > ulong.MaxValue - _nsecCarry)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Nanoseconds overflow timestamp seconds.");
             }
         }
     }

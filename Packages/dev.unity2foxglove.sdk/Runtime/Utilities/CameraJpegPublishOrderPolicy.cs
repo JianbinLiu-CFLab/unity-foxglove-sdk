@@ -13,7 +13,8 @@ namespace Unity.FoxgloveSDK.Util
     {
         /// <summary>
         /// Returns <c>true</c> if a capture with <paramref name="captureUnixNs"/> is newer
-        /// than the last published frame timestamp.
+        /// than the last published frame timestamp. Equal timestamps are treated
+        /// as duplicate or stale async results and are intentionally dropped.
         /// </summary>
         public static bool ShouldPublish(ulong captureUnixNs, ulong lastPublishedCaptureUnixNs)
             => captureUnixNs > lastPublishedCaptureUnixNs;

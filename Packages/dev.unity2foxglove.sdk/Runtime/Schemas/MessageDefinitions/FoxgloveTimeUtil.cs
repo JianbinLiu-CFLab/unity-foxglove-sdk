@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Schemas
 {
@@ -20,12 +21,14 @@ namespace Unity.FoxgloveSDK.Schemas
         private static readonly long AnchorTicks;  // Stopwatch.GetTimestamp() at init
         private static readonly long AnchorUnixNs;  // Unix epoch ns at init
         private static readonly double TicksToNs;   // Stopwatch tick → ns conversion
+        private static long LastUnixNs;
 
         static FoxgloveTimeUtil()
         {
             AnchorTicks = Stopwatch.GetTimestamp();
             AnchorUnixNs = checked((DateTimeOffset.UtcNow.Ticks - UnixEpochTicks) * 100L);
             TicksToNs = 1_000_000_000.0 / Stopwatch.Frequency;
+            LastUnixNs = AnchorUnixNs;
         }
 
         /// <summary>Current UTC time as Unix epoch nanoseconds (Stopwatch precision).</summary>
@@ -33,9 +36,19 @@ namespace Unity.FoxgloveSDK.Schemas
         {
             var elapsedTicks = Stopwatch.GetTimestamp() - AnchorTicks;
             var elapsedNs = (long)(elapsedTicks * TicksToNs);
-            // Guard against system time adjustment making this go backwards within the process
             var result = AnchorUnixNs + elapsedNs;
-            return result > 0 ? (ulong)result : 0UL;
+            if (result <= 0)
+                return (ulong)Volatile.Read(ref LastUnixNs);
+
+            while (true)
+            {
+                var last = Volatile.Read(ref LastUnixNs);
+                if (result <= last)
+                    return (ulong)last;
+
+                if (Interlocked.CompareExchange(ref LastUnixNs, result, last) == last)
+                    return (ulong)result;
+            }
         }
 
         /// <summary>Split a Unix nanosecond timestamp into FoxgloveTime.</summary>
