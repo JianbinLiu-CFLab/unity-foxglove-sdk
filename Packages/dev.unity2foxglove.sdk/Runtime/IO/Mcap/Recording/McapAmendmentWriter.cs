@@ -13,13 +13,15 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>
     /// Appends post-recording metadata, attachments, and private records to an
     /// indexed MCAP file. Close writes a complete sibling temp file first, then
-    /// replaces the original and leaves the previous file at <c>.bak</c>.
+    /// replaces the original and leaves the previous file at a unique
+    /// <c>*.bak</c> sibling path.
     /// </summary>
     public sealed class McapAmendmentWriter : IDisposable
     {
         private readonly string _filePath;
         private readonly McapFileSummary _summary;
         private readonly McapTrailerInfo _trailer;
+        private readonly bool _enableCrcs;
         private FileStream _sourceStream;
         private readonly List<PendingMetadata> _metadata = new List<PendingMetadata>();
         private readonly List<PendingAttachment> _attachments = new List<PendingAttachment>();
@@ -29,11 +31,17 @@ namespace Unity.FoxgloveSDK.IO
         private bool _disposed;
 
         public McapAmendmentWriter(string filePath)
+            : this(filePath, enableCrcs: true)
+        {
+        }
+
+        public McapAmendmentWriter(string filePath, bool enableCrcs)
         {
             if (string.IsNullOrEmpty(filePath))
                 throw new ArgumentException("MCAP file path is required.", nameof(filePath));
 
             _filePath = Path.GetFullPath(filePath);
+            _enableCrcs = enableCrcs;
             _sourceStream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.None);
             try
             {
@@ -160,7 +168,8 @@ namespace Unity.FoxgloveSDK.IO
                         item.CreateTimeNs,
                         item.Name,
                         item.MediaType,
-                        item.Data));
+                        item.Data,
+                        _enableCrcs));
                 }
 
                 for (var i = 0; i < _privateRecords.Count; i++)
@@ -268,8 +277,7 @@ namespace Unity.FoxgloveSDK.IO
         private void ReplaceOriginalWithTemp(string tempPath)
         {
             CloseSourceStream();
-            var backupPath = _filePath + ".bak";
-            TryDelete(backupPath);
+            var backupPath = CreateBackupPath(_filePath);
             try
             {
                 File.Replace(tempPath, _filePath, backupPath, ignoreMetadataErrors: true);
@@ -324,6 +332,17 @@ namespace Unity.FoxgloveSDK.IO
             return Path.Combine(
                 directory,
                 "." + Path.GetFileName(filePath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+        }
+
+        private static string CreateBackupPath(string filePath)
+        {
+            var directory = Path.GetDirectoryName(filePath);
+            if (string.IsNullOrEmpty(directory))
+                directory = Directory.GetCurrentDirectory();
+
+            return Path.Combine(
+                directory,
+                Path.GetFileName(filePath) + "." + Guid.NewGuid().ToString("N") + ".bak");
         }
 
         private static void TryDelete(string path)

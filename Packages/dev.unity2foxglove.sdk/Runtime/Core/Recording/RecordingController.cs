@@ -27,23 +27,17 @@ namespace Unity.FoxgloveSDK.Core
     {
         /// <summary>Active MCAP recorder, or null when not recording.</summary>
         private McapRecorder _recorder;
-        /// <summary>Target file path for the recording.</summary>
-        private string _recordingPath;
-        /// <summary>Advanced MCAP writer options for the next recorder.</summary>
-        private McapWriterOptions _writerOptions = McapWriterOptions.Normalize(null);
-        /// <summary>Coordinate mode for spatial transforms (e.g. "ros" or "unity").</summary>
-        private string _coordinateMode = "";
-        /// <summary>Whether recording has been enabled (attached on next session start).</summary>
-        private bool _recordingEnabled;
+        /// <summary>Atomic configuration snapshot for the next recorder.</summary>
+        private RecordingConfiguration _recordingConfiguration;
         private readonly IFoxgloveLogger _logger;
         private readonly IFoxgloveClock _clock;
         private FoxgloveParameterStore _parameters;
         private FoxgloveSession _session;
 
         /// <inheritdoc cref="IRecordingStateReader.IsEnabled"/>
-        public bool IsEnabled => Volatile.Read(ref _recordingEnabled) || Volatile.Read(ref _recorder) != null;
+        public bool IsEnabled => Volatile.Read(ref _recordingConfiguration) != null || Volatile.Read(ref _recorder) != null;
         /// <inheritdoc cref="IRecordingStateReader.CoordinateMode"/>
-        public string CoordinateMode => _coordinateMode;
+        public string CoordinateMode => Volatile.Read(ref _recordingConfiguration)?.CoordinateMode ?? "";
 
         /// <summary>
         /// Creates a recording controller with the provided logger.
@@ -74,20 +68,27 @@ namespace Unity.FoxgloveSDK.Core
         public void Enable(string filePath, McapWriterOptions options, string coordinateMode = "")
         {
             var normalized = McapWriterOptions.Normalize(options);
-            Volatile.Write(ref _recordingEnabled, true);
-            _recordingPath = filePath;
-            _coordinateMode = coordinateMode ?? "";
-            _writerOptions = normalized;
+            Volatile.Write(
+                ref _recordingConfiguration,
+                new RecordingConfiguration(filePath, normalized, coordinateMode ?? ""));
         }
 
         /// <summary>Set the coordinate mode after recording was enabled.</summary>
-        public void SetCoordinateMode(string mode) { _coordinateMode = mode ?? ""; }
+        public void SetCoordinateMode(string mode)
+        {
+            var current = Volatile.Read(ref _recordingConfiguration);
+            if (current == null)
+                return;
+
+            Volatile.Write(
+                ref _recordingConfiguration,
+                new RecordingConfiguration(current.FilePath, current.WriterOptions, mode ?? ""));
+        }
+
         /// <summary>Disable recording without destroying any in-flight state.</summary>
         public void Disable()
         {
-            Volatile.Write(ref _recordingEnabled, false);
-            _recordingPath = null;
-            _writerOptions = McapWriterOptions.Normalize(null);
+            Volatile.Write(ref _recordingConfiguration, null);
             DetachFromSession();
         }
 
@@ -115,15 +116,16 @@ namespace Unity.FoxgloveSDK.Core
                 DetachFromSession();
 
             _parameters = parameters;
-            if (!Volatile.Read(ref _recordingEnabled) || _recordingPath == null) return;
+            var configuration = Volatile.Read(ref _recordingConfiguration);
+            if (configuration == null || configuration.FilePath == null) return;
 
             FileStream fileStream = null;
             McapRecorder recorder = null;
             try
             {
-                fileStream = new FileStream(_recordingPath, FileMode.Create, FileAccess.Write);
-                recorder = new McapRecorder(fileStream, _logger, _writerOptions, leaveOpen: false);
-                recorder.CoordinateMode = _coordinateMode;
+                fileStream = new FileStream(configuration.FilePath, FileMode.Create, FileAccess.Write);
+                recorder = new McapRecorder(fileStream, _logger, configuration.WriterOptions, leaveOpen: false);
+                recorder.CoordinateMode = configuration.CoordinateMode;
 
                 // Defer session attachment until snapshot and event wiring succeed.
                 // If the snapshot or event subscription throws, the recorder and
@@ -225,5 +227,19 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Detach and dispose all resources.</summary>
         public void Dispose() => DetachFromSession();
+
+        private sealed class RecordingConfiguration
+        {
+            public RecordingConfiguration(string filePath, McapWriterOptions writerOptions, string coordinateMode)
+            {
+                FilePath = filePath;
+                WriterOptions = McapWriterOptions.Normalize(writerOptions);
+                CoordinateMode = coordinateMode ?? "";
+            }
+
+            public string FilePath { get; }
+            public McapWriterOptions WriterOptions { get; }
+            public string CoordinateMode { get; }
+        }
     }
 }
