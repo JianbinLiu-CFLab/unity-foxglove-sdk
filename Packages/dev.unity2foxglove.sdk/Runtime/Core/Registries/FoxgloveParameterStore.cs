@@ -27,13 +27,19 @@ namespace Unity.FoxgloveSDK.Core
             _logger = logger;
         }
 
-        /// <summary>Fired when a parameter value changes (name, new value, type).</summary>
+        /// <summary>
+        /// Fired when a parameter value changes (name, new value, type).
+        /// The event is raised outside the store lock with an immutable-by-contract clone.
+        /// </summary>
         public event Action<string, JToken, string> OnParameterChanged;
 
         /// <summary>Register a parameter. Overwrites if already exists. Fires OnParameterChanged.</summary>
         public void Register(string name, JToken value, string type, bool writable)
         {
             var normalizedType = NormalizeParameterType(type);
+            if (!IsSupportedParameterType(normalizedType))
+                throw new ArgumentException($"Unsupported parameter type: {normalizedType}", nameof(type));
+
             if (!TryNormalizeValueForType(normalizedType, value, out var normalizedValue))
             {
                 _logger?.LogWarning(
@@ -46,7 +52,7 @@ namespace Unity.FoxgloveSDK.Core
                 _params[name] = new ParameterEntry { Value = normalizedValue, Type = normalizedType, Writable = writable };
             }
             var handler = OnParameterChanged;
-            handler?.Invoke(name, normalizedValue, normalizedType);
+            handler?.Invoke(name, CloneValue(normalizedValue), normalizedType);
         }
 
         /// <summary>Unregister a parameter.</summary>
@@ -70,12 +76,26 @@ namespace Unity.FoxgloveSDK.Core
                 type = entry.Type;
             }
             var handler = OnParameterChanged;
-            handler?.Invoke(name, normalizedValue, type);
+            handler?.Invoke(name, CloneValue(normalizedValue), type);
             return true;
         }
 
         public static string NormalizeParameterType(string type)
             => string.IsNullOrWhiteSpace(type) ? "number" : type.Trim();
+
+        public static bool IsSupportedParameterType(string type)
+        {
+            switch (NormalizeParameterType(type))
+            {
+                case "number":
+                case "string":
+                case "boolean":
+                case "number[]":
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         public static JToken DefaultValueForType(string type)
         {
@@ -88,8 +108,9 @@ namespace Unity.FoxgloveSDK.Core
                 case "number[]":
                     return new JArray();
                 case "number":
-                default:
                     return new JValue(0);
+                default:
+                    throw new ArgumentException($"Unsupported parameter type: {type}", nameof(type));
             }
         }
 
@@ -136,8 +157,7 @@ namespace Unity.FoxgloveSDK.Core
                     }
                     return false;
                 default:
-                    normalized = value.DeepClone();
-                    return true;
+                    return false;
             }
         }
 
@@ -147,7 +167,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 if (!_params.TryGetValue(name, out var entry)) return null;
-                return new Parameter { Name = name, Value = entry.Value, Type = entry.Type };
+                return ToWireParameter(name, entry);
             }
         }
 
@@ -158,7 +178,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 var result = new List<Parameter>(_params.Count);
                 foreach (var (name, entry) in _params)
-                    result.Add(new Parameter { Name = name, Value = entry.Value, Type = entry.Type });
+                    result.Add(ToWireParameter(name, entry));
                 return result;
             }
         }
@@ -180,14 +200,14 @@ namespace Unity.FoxgloveSDK.Core
                 if (requestedNames == null)
                 {
                     foreach (var (n, e) in _params)
-                        result.Add(new Parameter { Name = n, Value = e.Value, Type = e.Type });
+                        result.Add(ToWireParameter(n, e));
                 }
                 else
                 {
                     foreach (var n in requestedNames)
                     {
                         if (_params.TryGetValue(n, out var entry))
-                            result.Add(new Parameter { Name = n, Value = entry.Value, Type = entry.Type });
+                            result.Add(ToWireParameter(n, entry));
                     }
                 }
                 return result;
@@ -206,5 +226,10 @@ namespace Unity.FoxgloveSDK.Core
             public string Type;
             public bool Writable;
         }
+
+        private static Parameter ToWireParameter(string name, ParameterEntry entry)
+            => new Parameter { Name = name, Value = CloneValue(entry.Value), Type = entry.Type };
+
+        private static JToken CloneValue(JToken value) => value?.DeepClone();
     }
 }

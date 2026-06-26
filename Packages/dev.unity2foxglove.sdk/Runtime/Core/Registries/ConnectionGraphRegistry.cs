@@ -91,6 +91,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Add a publisher to the given topic.</summary>
         public void AddPublishedTopic(string topic, string publisherId)
         {
+            RequireTopic(topic, nameof(topic));
+            RequireIdentifier(publisherId, nameof(publisherId));
+
             lock (_lock)
             {
                 if (!_publishedTopics.ContainsKey(topic)) _publishedTopics[topic] = new();
@@ -101,6 +104,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Remove a publisher from the given topic. Removes the topic entry if empty.</summary>
         public void RemovePublishedTopic(string topic, string publisherId)
         {
+            RequireTopic(topic, nameof(topic));
+            RequireIdentifier(publisherId, nameof(publisherId));
+
             lock (_lock)
             {
                 if (_publishedTopics.TryGetValue(topic, out var set))
@@ -114,6 +120,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Replace all publishers for the given topic with a single publisher.</summary>
         public void SetPublishedTopic(string topic, string publisherId)
         {
+            RequireTopic(topic, nameof(topic));
+            RequireIdentifier(publisherId, nameof(publisherId));
+
             lock (_lock)
             {
                 _publishedTopics[topic] = new HashSet<string> { publisherId };
@@ -123,6 +132,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Add a subscriber to the given topic.</summary>
         public void AddSubscribedTopic(string topic, string subscriberId)
         {
+            RequireTopic(topic, nameof(topic));
+            RequireIdentifier(subscriberId, nameof(subscriberId));
+
             lock (_lock)
             {
                 if (!_subscribedTopics.ContainsKey(topic)) _subscribedTopics[topic] = new();
@@ -133,6 +145,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Remove a subscriber from the given topic. Removes the topic entry if empty.</summary>
         public void RemoveSubscribedTopic(string topic, string subscriberId)
         {
+            RequireTopic(topic, nameof(topic));
+            RequireIdentifier(subscriberId, nameof(subscriberId));
+
             lock (_lock)
             {
                 if (_subscribedTopics.TryGetValue(topic, out var set))
@@ -146,6 +161,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Add a service provider for the given service name.</summary>
         public void AddAdvertisedService(string name, string providerId)
         {
+            RequireTopic(name, nameof(name));
+            RequireIdentifier(providerId, nameof(providerId));
+
             lock (_lock)
             {
                 if (!_advertisedServices.ContainsKey(name)) _advertisedServices[name] = new();
@@ -156,6 +174,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Remove a service provider for the given service name. Removes the entry if empty.</summary>
         public void RemoveAdvertisedService(string name, string providerId)
         {
+            RequireTopic(name, nameof(name));
+            RequireIdentifier(providerId, nameof(providerId));
+
             lock (_lock)
             {
                 if (_advertisedServices.TryGetValue(name, out var set))
@@ -237,6 +258,18 @@ namespace Unity.FoxgloveSDK.Core
             foreach (var id in ids)
                 result.Add(id);
             return result;
+        }
+
+        private static void RequireTopic(string value, string parameterName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                throw new ArgumentException("Topic or service name is required.", parameterName);
+        }
+
+        private static void RequireIdentifier(string value, string parameterName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                throw new ArgumentException("Graph identifier is required.", parameterName);
         }
     }
 }

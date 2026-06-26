@@ -45,6 +45,12 @@ namespace Unity.FoxgloveSDK.Core
 
                     var input = call.JsonPayload;
                     var result = handler(input);
+                    if (result == null)
+                    {
+                        _services.Fail(call.ClientId, call.CallId, "Service handler returned null");
+                        continue;
+                    }
+
                     var responseBytes = Encoding.UTF8.GetBytes(result.ToString(Formatting.None));
                     _services.CompleteResponse(call.ClientId, call.CallId, "json", responseBytes);
                 }

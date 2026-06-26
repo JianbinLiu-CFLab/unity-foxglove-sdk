@@ -38,8 +38,7 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lock)
             {
                 var id = _nextServiceId++;
-                descriptor.Id = id;
-                _services[id] = descriptor;
+                _services[id] = CloneDescriptorWithId(descriptor, id);
                 if (handler != null)
                     _handlers[id] = handler;
                 return id;
@@ -65,19 +64,29 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Get a service descriptor by ID, or null.</summary>
         public ServiceDescriptor GetById(uint serviceId)
         {
-            lock (_lock) { return _services.TryGetValue(serviceId, out var s) ? s : null; }
+            lock (_lock) { return _services.TryGetValue(serviceId, out var s) ? CloneDescriptor(s) : null; }
         }
 
         /// <summary>Try to get a service descriptor by ID.</summary>
         public bool TryGet(uint serviceId, out ServiceDescriptor descriptor)
         {
-            lock (_lock) { return _services.TryGetValue(serviceId, out descriptor); }
+            lock (_lock)
+            {
+                if (_services.TryGetValue(serviceId, out var stored))
+                {
+                    descriptor = CloneDescriptor(stored);
+                    return true;
+                }
+
+                descriptor = null;
+                return false;
+            }
         }
 
         /// <summary>Snapshot of all registered services for advertise.</summary>
         public List<ServiceDescriptor> GetAll()
         {
-            lock (_lock) { return _services.Values.ToList(); }
+            lock (_lock) { return _services.Values.Select(CloneDescriptor).ToList(); }
         }
 
         // ── Pending calls ──
@@ -229,6 +238,8 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>
         /// Timeout and fail calls that exceed the timeout duration.
+        /// Completed timeout failures remain pending until DrainCompleted sends
+        /// the failure response and removes them from the pending-call budget.
         /// </summary>
         public void SweepTimeouts(TimeSpan timeout)
         {
@@ -291,6 +302,41 @@ namespace Unity.FoxgloveSDK.Core
                 _pendingCountByClient.Remove(key.clientId);
             else
                 _pendingCountByClient[key.clientId] = count - 1;
+        }
+
+        private static ServiceDescriptor CloneDescriptorWithId(ServiceDescriptor descriptor, uint id)
+        {
+            var clone = CloneDescriptor(descriptor);
+            clone.Id = id;
+            return clone;
+        }
+
+        private static ServiceDescriptor CloneDescriptor(ServiceDescriptor descriptor)
+        {
+            if (descriptor == null)
+                return null;
+
+            return new ServiceDescriptor
+            {
+                Id = descriptor.Id,
+                Name = descriptor.Name,
+                Type = descriptor.Type,
+                Request = CloneSchemaDescriptor(descriptor.Request),
+                Response = CloneSchemaDescriptor(descriptor.Response)
+            };
+        }
+
+        private static ServiceSchemaDescriptor CloneSchemaDescriptor(ServiceSchemaDescriptor descriptor)
+        {
+            if (descriptor == null)
+                return null;
+
+            return new ServiceSchemaDescriptor
+            {
+                Encoding = descriptor.Encoding,
+                SchemaName = descriptor.SchemaName,
+                Schema = descriptor.Schema
+            };
         }
     }
 }

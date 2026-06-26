@@ -50,6 +50,10 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         /// <summary>Unsubscribe. null or empty parameterNames clears all.</summary>
+        /// <remarks>
+        /// If the client is subscribed to all parameters, named unsubscription
+        /// has no effect; call Unsubscribe(clientId, null) to clear the all subscription.
+        /// </remarks>
         public void Unsubscribe(uint clientId, IEnumerable<string> parameterNames)
         {
             lock (_lock)
