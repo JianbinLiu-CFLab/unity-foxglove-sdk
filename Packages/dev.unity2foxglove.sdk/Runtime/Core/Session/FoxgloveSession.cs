@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SubscriptionRegistry _subscriptions = new();
         private readonly object _subscriberScratchLock = new();
         private readonly List<(uint clientId, uint subscriptionId)> _subscriberScratch = new();
+        private readonly object _paramSubScratchLock = new();
         private readonly List<uint> _paramSubScratch = new();
         private readonly ISchemaRegistry _schemaRegistry;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
@@ -197,6 +198,7 @@ namespace Unity.FoxgloveSDK.Core
             _graph.Clear();
             _playback.Clear();
             _clientPublish.Clear();
+            Interlocked.Exchange(ref _lastTimeBroadcastTicks, 0);
             lock (_subscriptionBudgetWarnedClientsLock)
                 _subscriptionBudgetWarnedClients.Clear();
         }
@@ -911,9 +913,9 @@ namespace Unity.FoxgloveSDK.Core
         private void OnClientBinary(uint clientId, byte[] data)
         {
             if (HandlePlaybackControlRequest(clientId, data)) return;
-            if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out _))
+            if (BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
             {
-                HandleClientBinaryPublish(clientId, data);
+                HandleClientBinaryPublish(clientId, chId, payload);
                 return;
             }
             HandleServiceCallRequest(clientId, data);

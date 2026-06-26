@@ -183,7 +183,8 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 var msg = JsonConvert.DeserializeObject<Unadvertise>(json);
-                foreach (var chId in msg.ChannelIds ?? new List<uint>())
+                var graphChanged = false;
+                foreach (var chId in msg?.ChannelIds ?? new List<uint>())
                 {
                     AdvertiseChannel ch;
                     lock (_clientChannelsLock)
@@ -194,18 +195,17 @@ namespace Unity.FoxgloveSDK.Core
                     }
 
                     _graph.RemoveClientPublishedTopic(clientId, chId, ch.Topic);
+                    graphChanged = true;
                 }
 
-                _graph.BroadcastUpdate();
+                if (graphChanged)
+                    _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning($"Client unadvertise parse error from client {clientId}: {ex.Message}"); }
         }
 
-        public void RouteBinary(uint clientId, byte[] data)
+        public void RouteBinary(uint clientId, uint chId, byte[] payload)
         {
-            if (!BinaryEncoding.TryDecodeClientMessageData(data, out var chId, out var payload))
-                return;
-
             AdvertiseChannel ch;
             lock (_clientChannelsLock)
             {

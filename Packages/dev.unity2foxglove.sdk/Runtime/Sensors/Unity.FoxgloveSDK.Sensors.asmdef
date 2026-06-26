@@ -1,6 +1,6 @@
 {
   "name": "Unity.FoxgloveSDK.Sensors",
-  "rootNamespace": "",
+  "rootNamespace": "Unity.FoxgloveSDK.Sensors",
   "references": [
     "Unity.FoxgloveSDK",
     "Unity.FoxgloveSDK.Proto",

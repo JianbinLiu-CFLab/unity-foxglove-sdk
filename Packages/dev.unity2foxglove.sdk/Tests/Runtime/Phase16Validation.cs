@@ -79,6 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
             ValidatePublicDocsScriptReferences(repoRoot);
             ValidatePrivateWorkspaceBoundaries(repoRoot);
             ValidateResearchDoiPolicy(repoRoot);
+            ValidatePackageContractReviewFindings(repoRoot);
             ValidateGeneratedSourceProvenance(repoRoot);
             ValidateThirdPartyNotices(repoRoot);
 
@@ -525,6 +526,32 @@ namespace Unity.FoxgloveSDK.Tests
                 "shared-emitter research note keeps CITATION.cff on the Concept DOI policy");
             Assert(research.Contains("Concept DOI") && research.Contains("version-specific DOI"),
                 "shared-emitter research note distinguishes Concept DOI from version-specific DOI");
+        }
+
+        static void ValidatePackageContractReviewFindings(string repoRoot)
+        {
+            var adapterPackage = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.ros2forunity");
+            var adapterPackageJson = File.ReadAllText(Path.Combine(adapterPackage, "package.json"));
+            Assert(adapterPackageJson.Contains("\"dev.unity2foxglove.sdk\": \"1.9.5\""),
+                "R2FU adapter package declares its SDK package dependency");
+
+            var nativeAsmdef = File.ReadAllText(Path.Combine(adapterPackage, "Runtime", "Native",
+                "Unity2Foxglove.Ros2ForUnity.Native.asmdef"));
+            Assert(!nativeAsmdef.Contains("\"Unity.FoxgloveSDK.Runtime\""),
+                "R2FU native asmdef does not reference stale Unity.FoxgloveSDK.Runtime assembly");
+            Assert(nativeAsmdef.Contains("\"Unity.FoxgloveSDK\"")
+                   && nativeAsmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\""),
+                "R2FU native asmdef references valid SDK and active runtime assemblies");
+
+            var sensorsAsmdef = File.ReadAllText(Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
+                "Runtime", "Sensors", "Unity.FoxgloveSDK.Sensors.asmdef"));
+            Assert(sensorsAsmdef.Contains("\"rootNamespace\": \"Unity.FoxgloveSDK.Sensors\""),
+                "Sensors asmdef has contributor-facing root namespace");
+
+            var citation = File.ReadAllText(Path.Combine(repoRoot, "CITATION.cff"));
+            Assert(citation.Contains("version: \"1.9.5\"")
+                   && citation.Contains("date-released: \"2026-06-14\""),
+                "CITATION.cff carries exact release metadata");
         }
 
         static void ValidateGeneratedSourceProvenance(string repoRoot)

@@ -217,8 +217,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "138T-6F: Camera raw binding uses ROS2 image builder");
             Check(bridge.Contains("IsRawEligible(", StringComparison.Ordinal),
                 "138T-6G: Camera native bridge exposes dedicated raw eligibility helper");
-            Check(asmdef.Contains("\"Unity.FoxgloveSDK.Runtime\"", StringComparison.Ordinal),
-                "138T-6H: R2FU native asmdef references runtime package");
+            Check(!asmdef.Contains("\"Unity.FoxgloveSDK.Runtime\"", StringComparison.Ordinal)
+                  && asmdef.Contains("\"Unity.FoxgloveSDK\"", StringComparison.Ordinal)
+                  && asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal),
+                "138T-6H: R2FU native asmdef references valid SDK and active runtime asmdefs");
         }
 
         private static void TransformNativeDdsBinding()

@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int MaxRequestLineBytes = 4096;
         /// <summary>Maximum HTTP headers accepted before the local distributor rejects the request.</summary>
         private const int MaxRequestHeaders = 100;
+        private const int MaxConcurrentClients = 10;
         private readonly string _rootCaPath;
         private readonly string _rootCaPemPath;
         private readonly IFoxgloveLogger _logger;
@@ -37,6 +38,7 @@ namespace Unity.FoxgloveSDK.Transport
         private TcpListener _listener;
         private CancellationTokenSource _cts;
         private string _rootCaSha256Fingerprint;
+        private int _activeClientHandlers;
 
         public FoxgloveCertificateDistributor(
             string rootCaPath,
@@ -109,10 +111,34 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 try
                 {
-                    var client = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClient(client, ct), ct);
+                    var listener = _listener;
+                    if (listener == null)
+                        break;
+
+                    var client = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                    if (ct.IsCancellationRequested)
+                    {
+                        try { client.Dispose(); } catch { }
+                        break;
+                    }
+
+                    if (Interlocked.Increment(ref _activeClientHandlers) > MaxConcurrentClients)
+                    {
+                        Interlocked.Decrement(ref _activeClientHandlers);
+                        _logger.LogWarning(
+                            $"Rejected certificate distributor client because active client limit {MaxConcurrentClients} is reached.");
+                        try { client.Dispose(); } catch { }
+                        continue;
+                    }
+
+                    _ = Task.Run(() =>
+                    {
+                        try { HandleClient(client, ct); }
+                        finally { Interlocked.Decrement(ref _activeClientHandlers); }
+                    });
                 }
                 catch (ObjectDisposedException) when (ct.IsCancellationRequested) { break; }
+                catch (NullReferenceException) when (ct.IsCancellationRequested) { break; }
                 catch (Exception) when (ct.IsCancellationRequested) { break; }
                 catch (Exception ex)
                 {

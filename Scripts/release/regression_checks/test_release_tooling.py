@@ -88,6 +88,32 @@ class VersionBumpTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 bump.update_phase16_assertion()
 
+    def test_update_citation_updates_version_and_release_date(self) -> None:
+        """CITATION.cff should carry exact release metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            citation = root / "CITATION.cff"
+            citation.write_text(
+                "\n".join(
+                    [
+                        "cff-version: 1.2.0",
+                        'title: "Unity2Foxglove"',
+                        "type: software",
+                        'version: "1.2.3"',
+                        'date-released: "2026-01-02"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "2.0.0", "2026-06-08", False)
+            bump.update_citation()
+
+            text = citation.read_text(encoding="utf-8")
+            self.assertIn('version: "2.0.0"', text)
+            self.assertIn('date-released: "2026-06-08"', text)
+
 
 class RunCiTests(unittest.TestCase):
     """Regression coverage for local CI runner reliability."""

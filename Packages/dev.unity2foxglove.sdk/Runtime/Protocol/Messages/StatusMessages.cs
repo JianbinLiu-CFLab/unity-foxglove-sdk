@@ -26,10 +26,10 @@ namespace Unity.FoxgloveSDK.Protocol
         public string Message { get; set; }
 
         /// <summary>Optional stable identifier used to replace or remove this status later.</summary>
-        [JsonProperty("id", NullValueHandling = NullValueHandling.Ignore)]
+        [JsonProperty("id")]
         public string Id { get; set; }
 
-        /// <summary>Return true when the optional status identifier should be serialized.</summary>
+        /// <summary>Return true when the optional status identifier should be serialized; empty IDs are intentionally omitted.</summary>
         public bool ShouldSerializeId() => Id != null && Id.Length > 0;
     }
 

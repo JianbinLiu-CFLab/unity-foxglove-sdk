@@ -5,6 +5,7 @@
 // Purpose: Thread-safe channel ID to descriptor mapping. Channels are
 // advertised to Foxglove so clients can discover available topics.
 
+using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -22,6 +23,8 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Register a new channel. Overwrites if channelId already exists.</summary>
         public void Register(AdvertiseChannel channel)
         {
+            if (channel == null) throw new ArgumentNullException(nameof(channel));
+
             lock (_lock)
             {
                 _channels[channel.Id] = channel;

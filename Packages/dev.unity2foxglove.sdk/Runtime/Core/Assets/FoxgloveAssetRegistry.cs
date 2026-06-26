@@ -32,14 +32,16 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>
         /// Register a local file system root for a URI prefix.
+        /// Prefixes are normalized to end in '/' and longest matching prefix wins.
         /// <para><c>maxBytes</c> caps the allowed file size for assets under this root.</para>
         /// </summary>
         public void RegisterRoot(string uriPrefix, string localRoot, long maxBytes = 16 * 1024 * 1024)
         {
             if (string.IsNullOrEmpty(uriPrefix)) throw new ArgumentException("uriPrefix is required", nameof(uriPrefix));
             if (string.IsNullOrWhiteSpace(localRoot)) throw new ArgumentException("localRoot is required", nameof(localRoot));
+            var normalizedPrefix = NormalizeUriPrefix(uriPrefix);
             var fullRoot = Path.GetFullPath(localRoot);
-            lock (_lock) { _roots[uriPrefix] = new AssetRoot { LocalRoot = fullRoot, MaxBytes = Math.Max(0, maxBytes) }; }
+            lock (_lock) { _roots[normalizedPrefix] = new AssetRoot { LocalRoot = fullRoot, MaxBytes = Math.Max(0, maxBytes) }; }
         }
 
         /// <summary>
@@ -63,7 +65,9 @@ namespace Unity.FoxgloveSDK.Core
             List<KeyValuePair<string, AssetRoot>> roots;
             lock (_lock)
             {
-                roots = _roots.ToList();
+                roots = _roots
+                    .OrderByDescending(item => item.Key.Length)
+                    .ToList();
             }
 
             foreach (var (prefix, root) in roots)
@@ -170,7 +174,14 @@ namespace Unity.FoxgloveSDK.Core
             || ex is NotSupportedException
             || ex is PathTooLongException
             || ex is UnauthorizedAccessException
+            || ex is System.Security.SecurityException
             || ex is UriFormatException;
+
+        private static string NormalizeUriPrefix(string uriPrefix)
+        {
+            var normalized = uriPrefix.Trim().Replace('\\', '/');
+            return normalized.EndsWith("/", StringComparison.Ordinal) ? normalized : normalized + "/";
+        }
 
         /// <summary>Descriptor for a registered asset root path and its size cap.</summary>
         private struct AssetRoot

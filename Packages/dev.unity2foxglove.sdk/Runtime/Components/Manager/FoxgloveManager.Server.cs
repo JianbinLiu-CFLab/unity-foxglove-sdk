@@ -278,6 +278,7 @@ namespace Unity.FoxgloveSDK.Components
 
             AdvanceChannelSessionGeneration();
             _runtime.Stop();
+            _sharedSensorClock.Reset();
             StopRemoteMcapFileServer();
             StopReplayCursorEndpoint();
             StopCertificateDistributor();

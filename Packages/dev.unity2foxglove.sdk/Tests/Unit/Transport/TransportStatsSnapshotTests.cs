@@ -7,6 +7,7 @@
 //          (TestDisconnectedClientDropsRetained, TestRuntimeAccessorLifecycle)
 //          intentionally remain in the console runner as integration tests.
 
+using System.Reflection;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Transport;
@@ -115,6 +116,23 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             var snap2 = q.GetSnapshot();
             Assert.True(snap2.QueuedFrames == 4, "36B-5c: new snapshot reflects current state");
+        }
+
+        [Fact]
+        public void QueueByteCapacityCheckDoesNotOverflowNearIntMax()
+        {
+            var q = new WsSendQueue(maxFrames: 10, maxQueuedBytes: int.MaxValue);
+            var queuedBytes = typeof(WsSendQueue).GetField(
+                "_queuedBytes",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            queuedBytes.SetValue(q, int.MaxValue);
+
+            var result = q.Enqueue(D(1));
+
+            Assert.False(result.Accepted);
+            Assert.False(result.ShouldDisconnect);
+            Assert.Equal(1, result.DroppedDataFrames);
+            Assert.Equal(int.MaxValue, q.QueuedBytes);
         }
 
         [Fact]

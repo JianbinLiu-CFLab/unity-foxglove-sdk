@@ -5,6 +5,7 @@
 // Purpose: Tracks per-client subscription state. Maps clientId to
 // (subscriptionId to channelId) for MessageData routing.
 
+using System;
 using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Core
@@ -27,14 +28,21 @@ namespace Unity.FoxgloveSDK.Core
         private int _totalSubscriptionCount;
         private readonly object _lock = new object();
 
-        /// <summary>Add a subscription for a client. Called when a "subscribe" message is received.</summary>
+        /// <summary>Add a subscription for a client. Throws if subscription budgets reject it.</summary>
         public void AddSubscription(uint clientId, uint subscriptionId, uint channelId)
         {
-            TryAddSubscriptions(
+            if (!TryAddSubscription(clientId, subscriptionId, channelId, out var error))
+                throw new InvalidOperationException(error);
+        }
+
+        /// <summary>Try to add one subscription for a client without throwing on budget rejection.</summary>
+        public bool TryAddSubscription(uint clientId, uint subscriptionId, uint channelId, out string error)
+        {
+            return TryAddSubscriptions(
                 clientId,
                 new[] { (subscriptionId, channelId) },
                 out _,
-                out _);
+                out error);
         }
 
         /// <summary>
@@ -280,19 +288,6 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         private int TotalSubscriptionCountLocked() => _totalSubscriptionCount;
-
-        private void RemoveEmptyClientEntriesLocked()
-        {
-            var toRemove = new List<uint>();
-            foreach (var (clientId, subs) in _clients)
-            {
-                if (subs.Count == 0)
-                    toRemove.Add(clientId);
-            }
-
-            foreach (var clientId in toRemove)
-                _clients.Remove(clientId);
-        }
 
         private void AddReverseIndex(uint channelId, uint clientId, uint subscriptionId)
         {

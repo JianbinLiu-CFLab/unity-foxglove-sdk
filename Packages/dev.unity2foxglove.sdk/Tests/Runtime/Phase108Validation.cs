@@ -154,8 +154,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPackageBoundaries()
         {
             var optional = LoadJsonObject(OptionalPackage + "/package.json");
-            Check(optional["dependencies"] is JObject optionalDependencies && optionalDependencies.Count == 0,
-                "108-C1: optional package still has no dependencies");
+            Check(optional["dependencies"] is JObject optionalDependencies
+                  && optionalDependencies.Count == 1
+                  && (string)optionalDependencies["dev.unity2foxglove.sdk"] == "1.9.5",
+                "108-C1: optional package depends only on the core SDK package");
 
             var core = LoadJsonObject(CorePackageJson);
             var coreDependencies = core["dependencies"] as JObject;

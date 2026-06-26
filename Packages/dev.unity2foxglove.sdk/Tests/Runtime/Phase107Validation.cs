@@ -60,8 +60,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "107-A4: optional package display name is stable");
             Check((string)packageJson["license"] == "Apache-2.0",
                 "107-A5: optional package license is Apache-2.0");
-            Check(packageJson["dependencies"] is JObject dependencies && dependencies.Count == 0,
-                "107-A6: optional package has no Phase107 dependencies");
+            Check(packageJson["dependencies"] is JObject dependencies
+                  && dependencies.Count == 1
+                  && (string)dependencies["dev.unity2foxglove.sdk"] == "1.9.5",
+                "107-A6: optional package depends only on the core SDK package");
 
             var requiredFiles = new[]
             {

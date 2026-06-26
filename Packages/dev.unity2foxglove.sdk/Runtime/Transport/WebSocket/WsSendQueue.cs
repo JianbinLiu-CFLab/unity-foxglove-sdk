@@ -278,7 +278,7 @@ namespace Unity.FoxgloveSDK.Transport
         private bool CanFitLocked(QueuedFrame frame)
         {
             return CountLocked + 1 <= _maxFrames
-                && _queuedBytes + frame.SizeBytes <= _maxQueuedBytes;
+                && frame.SizeBytes <= _maxQueuedBytes - _queuedBytes;
         }
 
         private bool TryDequeueLocked(out QueuedFrame frame)

@@ -204,7 +204,9 @@
       "version": "file:../../Packages/dev.unity2foxglove.ros2forunity",
       "depth": 0,
       "source": "local",
-      "dependencies": {}
+      "dependencies": {
+        "dev.unity2foxglove.sdk": "1.9.5"
+      }
     },
     "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64": {
       "version": "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",

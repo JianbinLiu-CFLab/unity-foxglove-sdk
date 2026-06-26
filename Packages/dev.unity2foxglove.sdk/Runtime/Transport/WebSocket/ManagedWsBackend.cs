@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Transport
     public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
+        private const int StopAcceptLoopWaitMs = 500;
         private const int StopDisconnectWaitMs = 2000;
         private const int StopForcedCloseWaitMs = 1000;
         private const int MaxFragmentedMessageBytes = 4 * 1024 * 1024;
@@ -37,6 +38,8 @@ namespace Unity.FoxgloveSDK.Transport
         private TcpListener _listener;
         /// <summary>Cancellation token source to stop accept/receive loops.</summary>
         private CancellationTokenSource _cts;
+        private Task _acceptLoopTask;
+        private int _stopping;
         /// <summary>Active WebSocket connections keyed by client ID.</summary>
         private readonly ConcurrentDictionary<uint, WsConnection> _clients = new ConcurrentDictionary<uint, WsConnection>();
         /// <summary>Shared managed WebSocket options for queue capacity and token gate.</summary>
@@ -91,14 +94,16 @@ namespace Unity.FoxgloveSDK.Transport
             _listener = new TcpListener(addr, port);
             _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _cts = new CancellationTokenSource();
+            Interlocked.Exchange(ref _stopping, 0);
             _listener.Start();
 
-            _ = Task.Run(() => AcceptLoop(_cts.Token));
+            _acceptLoopTask = Task.Run(() => AcceptLoop(_cts.Token));
         }
 
         /// <summary>Cancel listener, disconnect all clients, and stop accepting new connections.</summary>
         public virtual void Stop()
         {
+            Interlocked.Exchange(ref _stopping, 1);
             var cts = _cts;
             _cts = null;
             cts?.Cancel();
@@ -107,6 +112,10 @@ namespace Unity.FoxgloveSDK.Transport
 
             try
             {
+                var acceptLoopTask = _acceptLoopTask;
+                _acceptLoopTask = null;
+                WaitForShutdownTask(acceptLoopTask, StopAcceptLoopWaitMs, "accept loop");
+
                 var clients = _clients.ToArray();
                 var disconnects = clients
                     .Select(pair => Task.Run(() => DisconnectClient(pair.Key, pair.Value)))
@@ -139,6 +148,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
             finally
             {
+                Interlocked.Exchange(ref _nextClientId, 0);
                 cts?.Dispose();
             }
         }
@@ -181,7 +191,7 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Send droppable live data binary frames to every connected client.</summary>
         public void BroadcastDataBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients)
+            foreach (var (id, conn) in _clients.ToArray())
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastDataBinary");
         }
 
@@ -206,7 +216,7 @@ namespace Unity.FoxgloveSDK.Transport
             var clientList = new List<TransportClientStats>();
             long totalQueuedFrames = 0;
             long totalQueuedBytes = 0;
-            var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames);
+            long activeDropped = 0;
 
             foreach (var kv in _clients.ToArray())
             {
@@ -214,8 +224,10 @@ namespace Unity.FoxgloveSDK.Transport
                 clientList.Add(cs);
                 totalQueuedFrames += cs.QueuedFrames;
                 totalQueuedBytes += cs.QueuedBytes;
-                totalDropped += cs.DroppedDataFrames;
+                activeDropped += cs.DroppedDataFrames;
             }
+
+            var totalDropped = Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped;
 
             return new TransportStatsSnapshot
             {
@@ -283,10 +295,21 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 try
                 {
-                    var tcpClient = await _listener.AcceptTcpClientAsync().ConfigureAwait(false);
-                    _ = Task.Run(() => HandleClient(tcpClient, ct), ct);
+                    var listener = _listener;
+                    if (listener == null)
+                        break;
+
+                    var tcpClient = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                    if (ct.IsCancellationRequested || IsStopping)
+                    {
+                        try { tcpClient.Dispose(); } catch { }
+                        break;
+                    }
+
+                    _ = Task.Run(() => HandleClient(tcpClient, ct));
                 }
                 catch (ObjectDisposedException) when (ct.IsCancellationRequested) { break; }
+                catch (NullReferenceException) when (ct.IsCancellationRequested || IsStopping) { break; }
                 catch (Exception) when (ct.IsCancellationRequested) { break; }
                 catch (Exception ex)
                 {
@@ -306,6 +329,12 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 stream = CreateClientStream(tcpClient);
                 ConfigureStreamTimeouts(stream, 5000, 5000);
+                if (ct.IsCancellationRequested || IsStopping)
+                {
+                    CloseUnregisteredClient(tcpClient, stream);
+                    stream = null;
+                    return;
+                }
 
                 var (accepted, _) = _handshakeHandler.Handshake(stream, HasClientCapacityForHandshake);
                 if (!accepted)
@@ -314,6 +343,13 @@ namespace Unity.FoxgloveSDK.Transport
                     try { stream?.Dispose(); } catch { }
                     try { tcpClient.Close(); } catch { }
                     try { tcpClient.Dispose(); } catch { }
+                    return;
+                }
+
+                if (ct.IsCancellationRequested || IsStopping)
+                {
+                    CloseUnregisteredClient(tcpClient, stream);
+                    stream = null;
                     return;
                 }
 
@@ -328,9 +364,20 @@ namespace Unity.FoxgloveSDK.Transport
                     stream,
                     _options.MaxQueuedFramesPerClient,
                     _options.MaxQueuedBytesPerClient);
-                if (!TryRegisterClient(conn, out clientId))
+                if (!TryRegisterClient(conn, out clientId, out var stopped))
                 {
-                    RejectClientAtCapacity(conn);
+                    if (stopped)
+                        CloseUnannouncedClient(conn);
+                    else
+                        RejectClientAtCapacity(conn);
+                    conn = null;
+                    stream = null;
+                    return;
+                }
+
+                if (ct.IsCancellationRequested || IsStopping)
+                {
+                    RemoveUnannouncedClient(clientId, conn);
                     conn = null;
                     stream = null;
                     return;
@@ -391,19 +438,28 @@ namespace Unity.FoxgloveSDK.Transport
             return false;
         }
 
-        private bool TryRegisterClient(WsConnection conn, out uint clientId)
+        private bool TryRegisterClient(WsConnection conn, out uint clientId, out bool stopped)
         {
             lock (_clientAdmissionLock)
             {
-                var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
-                if (_clients.Count >= maxClients)
+                stopped = IsStopping;
+                if (stopped)
                 {
                     clientId = 0;
                     return false;
                 }
 
+                var maxClients = ManagedWebSocketOptions.NormalizeMaxClients(_options.MaxClients);
+                if (_clients.Count >= maxClients)
+                {
+                    clientId = 0;
+                    stopped = false;
+                    return false;
+                }
+
                 clientId = AllocateClientId();
                 _clients[clientId] = conn;
+                stopped = false;
                 return true;
             }
         }
@@ -457,6 +513,39 @@ namespace Unity.FoxgloveSDK.Transport
 
             stream.ReadTimeout = readTimeout;
             stream.WriteTimeout = writeTimeout;
+        }
+
+        private bool IsStopping => Volatile.Read(ref _stopping) != 0;
+
+        private void WaitForShutdownTask(Task task, int timeoutMs, string description)
+        {
+            if (task == null)
+                return;
+
+            try
+            {
+                if (!task.Wait(timeoutMs))
+                    _logger.LogWarning($"WebSocket {description} did not finish within {timeoutMs}ms during stop.");
+            }
+            catch (AggregateException ex)
+            {
+                var meaningful = ex.Flatten().InnerExceptions
+                    .Where(item => item is not OperationCanceledException
+                        && item is not ObjectDisposedException
+                        && !(item is NullReferenceException && IsStopping))
+                    .ToArray();
+                if (meaningful.Length > 0)
+                    _logger.LogError($"WebSocket {description} stop error: {FormatExceptionChain(meaningful[0])}");
+            }
+            catch (ObjectDisposedException) { }
+        }
+
+        private static void CloseUnregisteredClient(TcpClient tcpClient, Stream stream)
+        {
+            try { stream?.Close(); } catch { }
+            try { stream?.Dispose(); } catch { }
+            try { tcpClient?.Close(); } catch { }
+            try { tcpClient?.Dispose(); } catch { }
         }
 
         private uint AllocateClientId()
@@ -614,6 +703,18 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 try { conn.Dispose(); } catch { }
             }
+        }
+
+        private void RemoveUnannouncedClient(uint clientId, WsConnection conn)
+        {
+            if (!_clients.TryRemove(clientId, out _)) return;
+            Interlocked.Add(ref _totalDroppedDataFrames, conn.DroppedDataFrames);
+            CloseUnannouncedClient(conn);
+        }
+
+        private static void CloseUnannouncedClient(WsConnection conn)
+        {
+            try { conn?.Dispose(); } catch { }
         }
 
         private void HandleEnqueueResult(uint clientId, WsConnection conn, EnqueueResult result, string operation)

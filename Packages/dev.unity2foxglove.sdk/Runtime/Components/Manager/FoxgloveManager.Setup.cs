@@ -315,10 +315,12 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var pubs = FindObjectsByType<FoxglovePublisherBase>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var managers = FindObjectsByType<FoxgloveManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var hasSingleLoadedManager = managers.Length <= 1;
             _disabledPublishers.Clear();
             foreach (var pub in pubs)
             {
-                if (pub.enabled)
+                if (pub.enabled && ShouldDisableLivePublisherForReplay(pub, hasSingleLoadedManager))
                 {
                     pub.enabled = false;
                     _disabledPublishers.Add(pub);
@@ -327,6 +329,29 @@ namespace Unity.FoxgloveSDK.Components
 
             _livePublishersDisabled = true;
             Debug.Log($"[Foxglove] Disabled {_disabledPublishers.Count} live publisher(s)");
+        }
+
+        private bool ShouldDisableLivePublisherForReplay(FoxglovePublisherBase publisher, bool hasSingleLoadedManager)
+        {
+            if (publisher == null)
+            {
+                return false;
+            }
+
+            var configuredManager = publisher.ConfiguredManager;
+            if (configuredManager != null)
+            {
+                return configuredManager == this;
+            }
+
+            if (hasSingleLoadedManager)
+            {
+                return true;
+            }
+
+            return publisher.gameObject.scene.IsValid()
+                   && gameObject.scene.IsValid()
+                   && publisher.gameObject.scene.handle == gameObject.scene.handle;
         }
 
         /// <summary>

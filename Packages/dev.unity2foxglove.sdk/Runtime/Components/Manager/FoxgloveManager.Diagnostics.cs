@@ -213,6 +213,11 @@ namespace Unity.FoxgloveSDK.Components
             LogDiagnosticsWithoutStackTrace(summary);
         }
 
+        /// <summary>
+        /// Emits high-volume diagnostics without stack traces by temporarily
+        /// changing Unity's global Log stack-trace mode on the main thread.
+        /// Keep the mutation window limited to the single Debug.Log call.
+        /// </summary>
         private static void LogDiagnosticsWithoutStackTrace(string message)
         {
             var previousStackTraceMode = Application.GetStackTraceLogType(LogType.Log);

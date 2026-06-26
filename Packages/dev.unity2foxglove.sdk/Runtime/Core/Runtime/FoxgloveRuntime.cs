@@ -69,6 +69,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly TickCoordinator _tickCoordinator;
         private readonly ExternalReplayCursorController _externalReplayCursorController = new();
         private int _disposed;
+        private bool _stopped = true;
 
         /// <summary>Current nanosecond timestamp from the playback clock.</summary>
         public ulong NowNs => _playbackClock.NowNs;
@@ -242,6 +243,7 @@ namespace Unity.FoxgloveSDK.Core
                 session.Start(host, port);
                 _session = session;
                 _replayOrchestrator.Attach(_replay, session);
+                _stopped = false;
             }
             catch
             {
@@ -301,6 +303,12 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Stop()
         {
+            if (_stopped && _session == null)
+            {
+                return;
+            }
+
+            _stopped = true;
             _tickCoordinator.ClearPendingReplaySnapshot();
             _tickCoordinator.ClearPendingReplaySceneSnapshot();
             _replay.CancelPanelHistory();

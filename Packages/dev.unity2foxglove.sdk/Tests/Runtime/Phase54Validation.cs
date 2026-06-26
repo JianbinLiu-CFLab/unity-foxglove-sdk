@@ -85,8 +85,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(runtime.AppliedPlaybackControls == FoxgloveSession.MaxPendingPlaybackControls,
                 "54A-2: playback control drain is capped");
-            Check(transport.BinariesFor(1).Count == FoxgloveSession.MaxPendingPlaybackControls,
-                "54A-2b: playback state targeted responses stay bounded");
+            Check(transport.BinariesFor(1).Count == FoxgloveSession.MaxPendingPlaybackControls + 5,
+                "54A-2b: playback overflow returns a targeted state response for each dropped request");
             Check(transport.BroadcastBinaries.Count == 0,
                 "54A-2c: playback state responses do not use BroadcastBinary");
         }

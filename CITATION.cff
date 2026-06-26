@@ -2,6 +2,8 @@ cff-version: 1.2.0
 message: "If you use Unity2Foxglove in research, please cite this software. Use the version-specific Zenodo DOI when an exact archived release is required."
 title: "Unity2Foxglove"
 type: software
+version: "1.9.5"
+date-released: "2026-06-14"
 authors:
   - family-names: "Liu"
     given-names: "Jianbin"

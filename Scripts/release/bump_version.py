@@ -177,6 +177,26 @@ class VersionBump:
         text = text.replace(f"verified for v{old_version}", f"verified for v{self.version}")
         self.write_if_changed(path, text, f"update package README verified version to {self.version}")
 
+    def update_citation(self) -> None:
+        """Update software citation release metadata."""
+        path = self.root / "CITATION.cff"
+        text = self.read(path)
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r'(?m)^version:\s*"[0-9]+\.[0-9]+\.[0-9]+"\s*$',
+            f'version: "{self.version}"',
+            "CITATION.cff version",
+        )
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r'(?m)^date-released:\s*"[0-9]{4}-[0-9]{2}-[0-9]{2}"\s*$',
+            f'date-released: "{self.release_date}"',
+            "CITATION.cff release date",
+        )
+        self.write_if_changed(path, text, f"update CITATION.cff metadata to {self.version}")
+
     def update_changelog(self) -> None:
         """Insert a changelog section for the target version when it is absent."""
         path = self.root / "CHANGELOG.md"
@@ -234,6 +254,7 @@ class VersionBump:
         self.update_phase16_assertion()
         self.update_readme(old_version)
         self.update_package_readme(old_version)
+        self.update_citation()
         self.update_changelog()
         self.create_release_notes()
 
