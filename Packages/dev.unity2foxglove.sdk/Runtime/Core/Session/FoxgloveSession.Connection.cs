@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 var msg = JsonConvert.DeserializeObject<SubscribeMessage>(json);
+                var graphChanged = false;
                 if (msg?.Subscriptions != null)
                 {
                     var requested = new List<(uint subscriptionId, uint channelId)>();
@@ -53,13 +54,17 @@ namespace Unity.FoxgloveSDK.Core
 
                         var ch = _channels.Get(change.ChannelId);
                         if (ch != null)
+                        {
                             _graph.AddSubscribedTopic(clientId, change.SubscriptionId, ch.Topic);
+                            graphChanged = true;
+                        }
                     }
 
                     if (changes.Count > 0)
                         Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill();
                 }
-                _graph.BroadcastUpdate();
+                if (graphChanged)
+                    _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning($"subscribe error: {ex.Message}"); }
         }
@@ -85,17 +90,22 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 var msg = JsonConvert.DeserializeObject<UnsubscribeMessage>(json);
-                if (msg.SubscriptionIds != null)
+                var graphChanged = false;
+                if (msg?.SubscriptionIds != null)
                 {
                     var removed = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
                     foreach (var (subId, chId) in removed)
                     {
                         var ch = _channels.Get(chId);
                         if (ch != null)
+                        {
                             _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
+                            graphChanged = true;
+                        }
                     }
                 }
-                _graph.BroadcastUpdate();
+                if (graphChanged)
+                    _graph.BroadcastUpdate();
             }
             catch (Exception ex) { _logger.LogWarning($"unsubscribe error: {ex.Message}"); }
         }
@@ -130,8 +140,8 @@ namespace Unity.FoxgloveSDK.Core
         /// <see cref="FoxgloveSession.OnClientMessage"/> if the client has
         /// advertised the matching channel.
         /// </summary>
-        private void HandleClientBinaryPublish(uint clientId, byte[] data)
-            => _clientPublish.RouteBinary(clientId, data);
+        private void HandleClientBinaryPublish(uint clientId, uint channelId, byte[] payload)
+            => _clientPublish.RouteBinary(clientId, channelId, payload);
 
         // ── PlaybackControl ──
 

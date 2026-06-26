@@ -37,7 +37,13 @@ namespace Unity.FoxgloveSDK.Core
 
                 try
                 {
-                    var input = call.JsonPayload ?? ParseJsonPayloadBytes(call.Payload);
+                    if (call.JsonPayload == null)
+                    {
+                        _services.Fail(call.ClientId, call.CallId, "Malformed JSON payload");
+                        continue;
+                    }
+
+                    var input = call.JsonPayload;
                     var result = handler(input);
                     var responseBytes = Encoding.UTF8.GetBytes(result.ToString(Formatting.None));
                     _services.CompleteResponse(call.ClientId, call.CallId, "json", responseBytes);
@@ -113,11 +119,6 @@ namespace Unity.FoxgloveSDK.Core
 
             if (!_services.TryEnqueue(serviceId, callId, clientId, encoding, payload, parsedPayload, out _, out var error))
                 SendServiceCallFailure(clientId, serviceId, callId, error);
-        }
-
-        private static JToken ParseJsonPayloadBytes(byte[] payload)
-        {
-            return JToken.Parse(Encoding.UTF8.GetString(payload ?? Array.Empty<byte>()));
         }
 
         private void SendServiceCallFailure(uint clientId, uint serviceId, uint callId, string message)

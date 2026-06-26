@@ -53,10 +53,15 @@ namespace Unity.FoxgloveSDK.Core
                     out var playbackHasSeek, out var playbackSeekNs, out var playbackRequestId))
                 return false;
 
+            List<PendingPlaybackControl> overflowedRequests = null;
             lock (_playbackControlsLock)
             {
                 while (_pendingPlaybackControls.Count >= MaxPendingPlaybackControls)
-                    _pendingPlaybackControls.Dequeue();
+                {
+                    overflowedRequests ??= new List<PendingPlaybackControl>();
+                    overflowedRequests.Add(_pendingPlaybackControls.Dequeue());
+                }
+
                 _pendingPlaybackControls.Enqueue(new PendingPlaybackControl(
                     clientId,
                     playbackCommand,
@@ -65,6 +70,12 @@ namespace Unity.FoxgloveSDK.Core
                     playbackSeekNs,
                     playbackRequestId,
                     runtime.GetPlaybackState(didSeek: false, playbackRequestId)));
+            }
+
+            if (overflowedRequests != null)
+            {
+                foreach (var request in overflowedRequests)
+                    SendPlaybackState(request.ClientId, request.DisabledFallbackState);
             }
 
             return true;

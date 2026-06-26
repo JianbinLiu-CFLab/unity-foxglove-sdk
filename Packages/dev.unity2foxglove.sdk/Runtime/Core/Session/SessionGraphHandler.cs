@@ -144,11 +144,11 @@ namespace Unity.FoxgloveSDK.Core
 
         private void FlushMetadataSnapshotIfDirty(string json)
         {
-            if (Interlocked.CompareExchange(ref _dirty, 0, 1) != 1)
-                return;
-
             var recorder = _recorderProvider();
             if (recorder == null)
+                return;
+
+            if (Interlocked.CompareExchange(ref _dirty, 0, 1) != 1)
                 return;
 
             try

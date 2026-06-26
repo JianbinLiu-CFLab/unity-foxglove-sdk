@@ -71,16 +71,34 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint? excludeClient)
         {
-            _paramSubs.CopySubscribedClientIdsTo(_paramSubScratch);
-            foreach (var subscribedClientId in _paramSubScratch)
+            var matchingClients = new List<uint>();
+            lock (_paramSubScratchLock)
             {
-                if (excludeClient.HasValue && subscribedClientId == excludeClient.Value) continue;
-                foreach (var parameterName in names)
+                _paramSubs.CopySubscribedClientIdsTo(_paramSubScratch);
+                try
                 {
-                    if (_paramSubs.IsSubscribed(subscribedClientId, parameterName))
-                    { yield return subscribedClientId; break; }
+                    foreach (var subscribedClientId in _paramSubScratch)
+                    {
+                        if (excludeClient.HasValue && subscribedClientId == excludeClient.Value)
+                            continue;
+
+                        foreach (var parameterName in names)
+                        {
+                            if (_paramSubs.IsSubscribed(subscribedClientId, parameterName))
+                            {
+                                matchingClients.Add(subscribedClientId);
+                                break;
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    _paramSubScratch.Clear();
                 }
             }
+
+            return matchingClients;
         }
 
         /// <summary>
