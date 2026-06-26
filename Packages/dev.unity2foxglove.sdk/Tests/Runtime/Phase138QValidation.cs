@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesWorkerPayloadTypes()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerPayloads.cs");
 
             Check(helper.Contains("internal sealed class DracoEncodeRequest", StringComparison.Ordinal)
@@ -422,7 +422,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesWorkerEncoders()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var helper = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
 
             Check(helper.Contains("internal static class PointCloudWorkerEncoders", StringComparison.Ordinal)
@@ -440,7 +440,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesBackgroundEncodePipelines()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var pointcloudPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
             var pipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
 
@@ -469,7 +469,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesPublishDiagnostics()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
 
             Check(diagnostics.Contains("internal sealed class PointCloudPublishDiagnostics", StringComparison.Ordinal)
@@ -494,7 +494,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesTransformFallbackBuilder()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var builder = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudTransformFrameBuilder.cs");
 
             Check(builder.Contains("internal sealed class TransformPointCloudSource", StringComparison.Ordinal)
@@ -511,7 +511,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesRosTfMath()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var math = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/RosTransformMath.cs");
 
             Check(math.Contains("public static class RosTransformMath", StringComparison.Ordinal)
@@ -526,7 +526,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesPublishState()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var state = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishState.cs");
 
             Check(state.Contains("internal sealed class PointCloudPublishState", StringComparison.Ordinal)
@@ -548,7 +548,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudPublisherDelegatesPendingFrameSlot()
         {
-            var pointcloud = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var pointcloud = ReadPointCloudPublisherSources();
             var slot = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPendingFrameSlot.cs");
 
             Check(slot.Contains("internal sealed class PointCloudPendingFrameSlot", StringComparison.Ordinal)
@@ -690,6 +690,21 @@ namespace Unity.FoxgloveSDK.Tests
 
             var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
+                output.AppendLine(File.ReadAllText(file));
+            var text = output.ToString();
+            SourceCache[cacheKey] = text;
+            return text;
+        }
+
+        private static string ReadPointCloudPublisherSources()
+        {
+            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            const string cacheKey = "FoxglovePointCloudPublisher*.cs";
+            if (SourceCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
+            var output = new StringBuilder();
+            foreach (var file in Directory.GetFiles(dir, "FoxglovePointCloudPublisher*.cs"))
                 output.AppendLine(File.ReadAllText(file));
             var text = output.ToString();
             SourceCache[cacheKey] = text;

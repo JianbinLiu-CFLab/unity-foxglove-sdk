@@ -464,8 +464,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!managerSource.Contains("FoxgloveWebAppOrigin"),
                 "52A-4: manager does not expose a single hard-coded Foxglove web origin constant");
-            Check(managerSource.Contains($"_allowedBrowserOrigins = new() {{ \"{foxgloveWebOrigin}\" }}"),
-                "52A-4b: new managers allow Foxglove web by default");
+            Check(managerSource.Contains("_allowedBrowserOrigins = new();"),
+                "52A-4b: new managers keep custom browser origins separate from hosted Foxglove web");
             Check(managerSource.Contains("_allowHostedFoxgloveWeb = true"),
                 "52A-4b2: existing managers can allow hosted Foxglove web without serialized list migration");
             Check(managerSource.Contains("_runtime.AddAllowedOrigin(FoxgloveAppUrl.HostedWebBaseUrl)"),

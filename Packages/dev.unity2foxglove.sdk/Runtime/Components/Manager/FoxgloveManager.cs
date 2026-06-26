@@ -46,6 +46,7 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>
     /// Central Unity MonoBehaviour that owns the Foxglove runtime and bridges transport events into the Unity main thread.
     /// </summary>
+    [DisallowMultipleComponent]
     public partial class FoxgloveManager : MonoBehaviour
     {
         /// <summary>
@@ -145,7 +146,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _allowHostedFoxgloveWeb = true;
         /// <summary>Additional Inspector-configured browser origins for CSWSH protection.</summary>
         [Tooltip("Additional browser origins for custom/private WebSocket clients. Full page URLs are accepted and normalized. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
-        [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new() { "https://app.foxglove.dev" };
+        [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new();
         [SerializeField] private string _certificatePfxPath = "";
         [SerializeField] private string _certificatePassword = "";
         [SerializeField] private bool _rootCaDistributorEnabled;
@@ -480,12 +481,13 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Stops the server when the component is disabled without restoring replay-disabled publishers.
+        /// Stops the server when the component is disabled and restores publishers
+        /// that replay mode disabled for this manager session.
         /// </summary>
         private void OnDisable()
         {
             _ros2BridgeRuntime?.Stop();
-            StopServer(restoreLivePublishers: false);
+            StopServer(restoreLivePublishers: true);
             _outputModeWatchInitialized = false;
             FoxgloveProfiler.ResetGlobal(this);
         }
@@ -495,7 +497,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnDestroy()
         {
-            StopServer(restoreLivePublishers: false);
+            StopServer(restoreLivePublishers: true);
             _ros2BridgeRuntime?.Dispose();
             _ros2BridgeRuntime = null;
             _replayCursorEndpoint?.Dispose();

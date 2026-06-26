@@ -211,13 +211,51 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (_manager != null) return;
 
-            _manager = FindFirstObjectByType<FoxgloveManager>();
+            var managers = FindObjectsByType<FoxgloveManager>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            _manager = ResolveManagerFromCandidates(managers);
 
             if (_manager == null && _warnIfManagerMissing && !_warnedManagerMissing)
             {
-                Debug.LogWarning($"[Foxglove] {GetType().Name}: No FoxgloveManager found in scene.");
+                var hasAmbiguousManagers = managers.Length > 1;
+                Debug.LogWarning(hasAmbiguousManagers
+                    ? $"[Foxglove] {GetType().Name}: Multiple FoxgloveManager instances found; assign Manager explicitly."
+                    : $"[Foxglove] {GetType().Name}: No FoxgloveManager found in scene.");
                 _warnedManagerMissing = true;
             }
+        }
+
+        private FoxgloveManager ResolveManagerFromCandidates(FoxgloveManager[] managers)
+        {
+            if (managers == null || managers.Length == 0)
+            {
+                return null;
+            }
+
+            var publisherScene = gameObject.scene;
+            FoxgloveManager sameSceneManager = null;
+            var sameSceneCount = 0;
+            foreach (var candidate in managers)
+            {
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                if (publisherScene.IsValid()
+                    && candidate.gameObject.scene.IsValid()
+                    && candidate.gameObject.scene.handle == publisherScene.handle)
+                {
+                    sameSceneManager = candidate;
+                    sameSceneCount++;
+                }
+            }
+
+            if (sameSceneCount == 1)
+            {
+                return sameSceneManager;
+            }
+
+            return managers.Length == 1 ? managers[0] : null;
         }
 
         /// <summary>True if enough time has elapsed since last publish.</summary>
