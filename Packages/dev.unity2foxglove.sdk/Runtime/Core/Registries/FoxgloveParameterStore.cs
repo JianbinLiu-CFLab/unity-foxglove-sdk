@@ -81,7 +81,15 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         public static string NormalizeParameterType(string type)
-            => string.IsNullOrWhiteSpace(type) ? "number" : type.Trim();
+        {
+            if (string.IsNullOrWhiteSpace(type))
+                return "number";
+
+            var trimmed = type.Trim();
+            return string.Equals(trimmed, "bool", StringComparison.OrdinalIgnoreCase)
+                ? "boolean"
+                : trimmed;
+        }
 
         public static bool IsSupportedParameterType(string type)
         {

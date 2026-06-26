@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             ParameterStoreDoesNotExposeMutableTokens();
             ParameterStoreRejectsUnknownTypes();
+            ParameterStoreKeepsBoolAliasCompatible();
             ChannelRegistryRejectsNullChannels();
             SubscriptionRegistryReportsBudgetFailure();
             ConnectionGraphRegistryRejectsInvalidTopologyValues();
@@ -29,7 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             ServiceDrainReportsNullHandlerResult();
             SourceContractsRemainExplicit();
 
-            Console.WriteLine("Phase 163-4: 10 checks passed.");
+            Console.WriteLine("Phase 163-4: 11 checks passed.");
             Console.WriteLine();
         }
 
@@ -58,6 +59,16 @@ namespace Unity.FoxgloveSDK.Tests
             catch (ArgumentException) { threw = true; }
 
             Check(threw, "163-4C: registering an unknown parameter type fails explicitly");
+        }
+
+        private static void ParameterStoreKeepsBoolAliasCompatible()
+        {
+            var store = new FoxgloveParameterStore();
+            store.Register("/enabled", new JValue(true), "bool", writable: true);
+
+            var parameter = store.GetWireParameter("/enabled");
+            Check(parameter.Type == "boolean" && parameter.Value.Type == JTokenType.Boolean,
+                "163-4C2: legacy bool parameter declarations normalize to boolean");
         }
 
         private static void ChannelRegistryRejectsNullChannels()
