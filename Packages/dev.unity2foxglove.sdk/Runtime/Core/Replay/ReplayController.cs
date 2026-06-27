@@ -95,6 +95,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>
         /// Active replay engine instance; null when not replaying.
         /// <para>The returned engine is a short-lived snapshot. Do not retain it across runtime ticks.</para>
+        /// <para>The engine may be disposed immediately after this property returns if replay is disabled.</para>
         /// </summary>
         public McapReplayEngine Engine
         {
@@ -164,6 +165,10 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Test-only hook to fire a replay message without loading an MCAP file.</summary>
         internal void FireForTests(string topic, byte[] data)
+            => FireForTests(topic, data, replaySessionId: 0UL);
+
+        /// <summary>Test-only hook to fire a replay message for a specific replay session.</summary>
+        internal void FireForTests(string topic, byte[] data, ulong replaySessionId)
         {
             TryQueueReplayCallback(ReplayCallbackDispatch.ForMessage(new ReplayMessageContext(
                 0,
@@ -173,7 +178,8 @@ namespace Unity.FoxgloveSDK.Core
                 string.Empty,
                 0UL,
                 0UL,
-                data ?? Array.Empty<byte>())));
+                data ?? Array.Empty<byte>(),
+                replaySessionId: replaySessionId)));
             DrainReplayCallbacks();
         }
 
@@ -248,24 +254,30 @@ namespace Unity.FoxgloveSDK.Core
             string currentCoordinateMode,
             SchemaIdentityMode identityMode)
         {
-            lock (_replayEngineLock)
-            {
-                // Clean any previous replay state to avoid leaking old engine/stream
-                Disable();
-                Volatile.Write(ref _lastEnableHadSchemaMismatch, false);
-                Volatile.Write(ref _lastEnableBlockedBySchemaMismatch, false);
-                Volatile.Write(ref _lastEnableFailureMessage, string.Empty);
+            McapReplayEngine loadedEngine = null;
+            ulong replayStartTimeNs = 0UL;
+            ulong replayEndTimeNs = 0UL;
 
-                if (recordingEnabled)
+            try
+            {
+                lock (_replayEngineLock)
                 {
-                    const string message = "Recording and Replay cannot both be enabled. Replay disabled.";
-                    Volatile.Write(ref _lastEnableFailureMessage, message);
-                    _logger.LogWarning(message);
-                    return;
-                }
-                try
-                {
+                    // Clean any previous replay state to avoid leaking old engine/stream
+                    Disable();
+                    Volatile.Write(ref _lastEnableHadSchemaMismatch, false);
+                    Volatile.Write(ref _lastEnableBlockedBySchemaMismatch, false);
+                    Volatile.Write(ref _lastEnableFailureMessage, string.Empty);
+
+                    if (recordingEnabled)
+                    {
+                        const string message = "Recording and Replay cannot both be enabled. Replay disabled.";
+                        Volatile.Write(ref _lastEnableFailureMessage, message);
+                        _logger.LogWarning(message);
+                        return;
+                    }
+
                     _replayEngine = new McapReplayEngine(_logger);
+                    loadedEngine = _replayEngine;
                     ValidateReplayFileForLoad(filePath);
                     _replayEngine.Load(filePath);
                     var summary = _replayEngine.Summary;
@@ -323,25 +335,42 @@ namespace Unity.FoxgloveSDK.Core
                                 c.Topic);
                         }
 
-                    _clock?.EnableRange(_replayEngine.StartTimeNs, _replayEngine.EndTimeNs);
+                    replayStartTimeNs = _replayEngine.StartTimeNs;
+                    replayEndTimeNs = _replayEngine.EndTimeNs;
+                }
+
+                _clock?.EnableRange(replayStartTimeNs, replayEndTimeNs);
+
+                lock (_replayEngineLock)
+                {
+                    if (!ReferenceEquals(_replayEngine, loadedEngine))
+                        return;
+
                     _replaySessionId = NextReplaySessionId(_replaySessionId);
-                    _replayEngine.Play();
+                    loadedEngine.Play();
                     Volatile.Write(ref _replayEnabled, true);
                     _hasPanelHistoryTime = false;
                     _lastPanelHistoryTimeNs = 0;
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                lock (_replayEngineLock)
                 {
                     Volatile.Write(ref _lastEnableFailureMessage, ex.Message ?? string.Empty);
-                    _logger.LogError($"Failed to load MCAP replay '{filePath}': {ex.Message}");
-                    _replayEngine?.Dispose();
-                    _replayEngine = null;
-                    _summarySchemas = null;
-                    _channelTopicMap = null;
-                    _channelMap = null;
-                    _channelBehaviorMap = null;
-                    Volatile.Write(ref _replayEnabled, false);
+                    if (ReferenceEquals(_replayEngine, loadedEngine))
+                    {
+                        _replayEngine?.Dispose();
+                        _replayEngine = null;
+                        _summarySchemas = null;
+                        _channelTopicMap = null;
+                        _channelMap = null;
+                        _channelBehaviorMap = null;
+                        Volatile.Write(ref _replayEnabled, false);
+                    }
                 }
+
+                _logger.LogError($"Failed to load MCAP replay '{filePath}': {ex.Message}");
             }
         }
 
@@ -808,10 +837,9 @@ namespace Unity.FoxgloveSDK.Core
             {
                 lock (_replayCallbackDrainGate)
                 {
+                    _drainBuffer.Clear();
                     _isDrainingReplayCallbacks = false;
                 }
-
-                _drainBuffer.Clear();
             }
         }
 
@@ -828,7 +856,8 @@ namespace Unity.FoxgloveSDK.Core
         {
             var nowTicks = DateTime.UtcNow.Ticks;
             var previousTicks = System.Threading.Interlocked.Read(ref _lastReplayCallbackOverflowWarningTicks);
-            if (nowTicks - previousTicks < ReplayCallbackOverflowWarningIntervalTicks)
+            var elapsedTicks = nowTicks >= previousTicks ? nowTicks - previousTicks : ReplayCallbackOverflowWarningIntervalTicks;
+            if (elapsedTicks < ReplayCallbackOverflowWarningIntervalTicks)
                 return;
 
             if (System.Threading.Interlocked.CompareExchange(

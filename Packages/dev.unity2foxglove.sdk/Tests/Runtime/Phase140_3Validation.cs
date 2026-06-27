@@ -127,8 +127,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-3D-2: replay cursor endpoint keeps the hosted Foxglove origin in the default allowlist");
             Check(source.Contains("TryWrite(context, 401", StringComparison.Ordinal)
                   && source.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal)
-                  < source.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal),
-                "140-3D-3: bearer authorization is checked before OPTIONS responses");
+                  > source.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal),
+                "140-3D-3: cursor endpoint answers browser OPTIONS preflight before bearer authorization");
             Check(source.Contains("JsonEscape", StringComparison.Ordinal)
                   && !source.Contains("private static string Escape(string value)\r\n            => (value ?? string.Empty).Replace", StringComparison.Ordinal),
                 "140-3D-4: replay cursor endpoint error JSON uses full JSON string escaping");

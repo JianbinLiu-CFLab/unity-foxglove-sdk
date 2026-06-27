@@ -100,6 +100,8 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _queue.Clear();
                 _queuedBytes = 0;
+                _droppedCount = 0;
+                _droppedBytes = 0;
             }
         }
 

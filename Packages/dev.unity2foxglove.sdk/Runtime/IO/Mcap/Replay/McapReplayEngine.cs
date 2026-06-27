@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.IO
         /// Messages read ahead of their emission time, waiting to be flushed.
         /// </summary>
         private readonly List<McapMessage> _pending = new();
+        private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
         /// <summary>
         /// Logical front of <see cref="_pending"/>. Avoids O(n) RemoveAt(0)
         /// shifts while replay ticks drain due messages.
@@ -333,7 +334,8 @@ namespace Unity.FoxgloveSDK.IO
             if (clampedTime < StartTimeNs)
                 clampedTime = StartTimeNs;
 
-            var latestByChannel = new Dictionary<ushort, McapMessage>();
+            var latestByChannel = _snapshotLatestByChannel;
+            latestByChannel.Clear();
             foreach (var chunkIndex in _summary.ChunkIndexes)
             {
                 if (chunkIndex.MessageStartTime > clampedTime)

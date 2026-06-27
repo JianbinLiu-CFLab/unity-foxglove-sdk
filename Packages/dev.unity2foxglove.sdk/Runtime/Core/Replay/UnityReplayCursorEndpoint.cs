@@ -263,12 +263,6 @@ namespace Unity.FoxgloveSDK.Core
                 return;
             }
 
-            if (!IsAuthorized(context.Request))
-            {
-                TryWrite(context, 401, "{\"error\":\"unauthorized\"}");
-                return;
-            }
-
             if (!IsCorsOriginAllowed(context.Request))
             {
                 TryWrite(context, 403, "{\"error\":\"origin not allowed\"}");
@@ -278,6 +272,12 @@ namespace Unity.FoxgloveSDK.Core
             if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
                 TryWrite(context, 204, string.Empty);
+                return;
+            }
+
+            if (!IsAuthorized(context.Request))
+            {
+                TryWrite(context, 401, "{\"error\":\"unauthorized\"}");
                 return;
             }
 
