@@ -108,6 +108,13 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_recordingFailed || _closed) return;
+                if (_chMap.ContainsKey(fId))
+                {
+                    _log.LogWarning(
+                        $"MCAP: ignoring duplicate server channel id {fId} for topic '{topic}' because the channel id is already registered.");
+                    return;
+                }
+
                 var normalizedEnc = NormalizeMessageEncoding(enc);
                 var signature = CreateTopicSignature(normalizedEnc, sName, sEnc, sContent);
                 if (WouldMixTopicSignature(topic, signature))
@@ -299,37 +306,41 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     FlushChunk();
                 }
-                catch (Exception ex) when (_w.CanSeek && _w.Position == flushStartPosition)
+                catch (Exception ex)
                 {
-                    _log.LogWarning(
-                        $"MCAP recorder dropped the final unflushed chunk during close; writing a minimal valid trailer: {ex.Message}");
-                    WriteMinimalTrailerAfterDroppedFinalChunk();
-                    _closed = true;
-                    return;
-                }
-                catch
-                {
+                    if (TryRecoverAfterFailedFinalChunkFlush(flushStartPosition, ex))
+                    {
+                        _closed = true;
+                        return;
+                    }
+
                     _closed = true;
                     throw;
                 }
 
-                var dataSectionCrc = _options.EnableDataCrcs
-                    ? _w.ComputeCrc32FromStartToCurrent()
-                    : 0;
-                _w.WriteDataEnd(dataSectionCrc);
+                try
+                {
+                    var dataSectionCrc = _options.EnableDataCrcs
+                        ? _w.ComputeCrc32FromStartToCurrent()
+                        : 0;
+                    _w.WriteDataEnd(dataSectionCrc);
 
-                McapSummarySerializer.WriteSummaryAndFooter(
-                    _w,
-                    BuildFinalSummary(),
-                    _options.UseSummaryOffsets,
-                    _options.EnableCrcs);
-                _w.WriteMagic();
-                _w.Flush();
-                _closed = true;
+                    McapSummarySerializer.WriteSummaryAndFooter(
+                        _w,
+                        BuildFinalSummary(includeStatistics: true),
+                        _options.UseSummaryOffsets,
+                        _options.EnableCrcs);
+                    _w.WriteMagic();
+                    _w.Flush();
+                }
+                finally
+                {
+                    _closed = true;
+                }
             }
         }
 
-        private McapFileSummary BuildFinalSummary()
+        private McapFileSummary BuildFinalSummary(bool includeStatistics)
         {
             var summary = new McapFileSummary();
             if (_options.RepeatSchemas)
@@ -361,7 +372,7 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
-            if (_options.UseStatistics)
+            if (includeStatistics && _options.UseStatistics)
             {
                 summary.Statistics = new McapStatistics
                 {
@@ -415,12 +426,39 @@ namespace Unity.FoxgloveSDK.IO
             return summary;
         }
 
-        private void WriteMinimalTrailerAfterDroppedFinalChunk()
+        private void WriteRecoverableTrailerAfterDroppedFinalChunk()
         {
             _w.WriteDataEnd(0);
-            _w.WriteFooter(0, 0, 0);
+            McapSummarySerializer.WriteSummaryAndFooter(
+                _w,
+                BuildFinalSummary(includeStatistics: false),
+                _options.UseSummaryOffsets,
+                _options.EnableCrcs);
             _w.WriteMagic();
             _w.Flush();
+        }
+
+        private bool TryRecoverAfterFailedFinalChunkFlush(long flushStartPosition, Exception flushError)
+        {
+            if (!_w.CanSeek)
+                return false;
+
+            try
+            {
+                if (_w.Position != flushStartPosition)
+                    _w.TruncateToPosition(flushStartPosition);
+
+                _log.LogWarning(
+                    $"MCAP recorder dropped the final unflushed chunk during close; writing a recoverable indexed trailer without final-chunk statistics: {flushError.Message}");
+                WriteRecoverableTrailerAfterDroppedFinalChunk();
+                return true;
+            }
+            catch (Exception recoveryError)
+            {
+                _log.LogWarning(
+                    $"MCAP recorder could not recover after a failed final chunk flush; file may be incomplete: {recoveryError.Message}");
+                return false;
+            }
         }
 
         /// <summary>
@@ -466,6 +504,8 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         // Helpers
+        // Caller must hold _lock. The returned list is an instance scratch buffer
+        // and must not be retained after the locked operation finishes.
         List<ChannelWriteState> AllChannelWriteStates()
         {
             _seenChannelIds.Clear();

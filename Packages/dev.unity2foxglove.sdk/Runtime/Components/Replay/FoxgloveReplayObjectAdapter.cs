@@ -211,8 +211,6 @@ namespace Unity.FoxgloveSDK.Components
                 var warningKey = string.IsNullOrEmpty(context.Topic) ? context.SchemaName : context.Topic;
                 if (_warnedTopics.Add(warningKey ?? string.Empty))
                     Debug.LogWarning($"[Foxglove Replay] Failed to parse replay channel {context.ChannelId} ({warningKey}): {FormatReplayException(ex)}");
-                if (IsTopicFallbackBehavior(context))
-                    _channelBehaviorOverrides[context.ChannelId] = ReplayChannelBehavior.NonPose;
             }
         }
 

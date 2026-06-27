@@ -132,7 +132,7 @@ namespace Unity.FoxgloveSDK.Tests
             using (var indexed = new McapIndexedReader(privateSummary, leaveOpen: true))
             {
                 Check(indexed.ReadMessages().Count == 4,
-                    "117-E1: private and unknown official-range records are skipped safely");
+                    "117-E1: unknown private records are skipped safely");
             }
 
             using var invalid = CreateInvalidOpcodeMcap();
@@ -178,7 +178,7 @@ namespace Unity.FoxgloveSDK.Tests
                 writer.WriteMetadata("phase117.metadata", new Dictionary<string, string> { ["value"] = "ok" });
                 writer.WriteAttachment(25, 0, "phase117.txt", "text/plain", Encoding.UTF8.GetBytes("phase117"));
                 if (includeUnknownRecords)
-                    writer.WriteRecord(0x10, Encoding.UTF8.GetBytes("future-official"));
+                    writer.WriteRecord(0x81, Encoding.UTF8.GetBytes("private-data-2"));
                 writer.WriteMessage(1, 2, 30, 30, Encoding.UTF8.GetBytes("{\"a\":30}"));
                 writer.WriteMessage(2, 2, 40, 40, Encoding.UTF8.GetBytes("{\"b\":40}"));
                 if (includeDataEnd)

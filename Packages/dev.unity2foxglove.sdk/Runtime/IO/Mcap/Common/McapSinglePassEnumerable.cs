@@ -28,7 +28,15 @@ namespace Unity.FoxgloveSDK.IO
             if (Interlocked.Exchange(ref _started, 1) != 0)
                 throw new InvalidOperationException(_name + " is forward-only and can be enumerated only once.");
 
-            return _enumeratorFactory();
+            try
+            {
+                return _enumeratorFactory();
+            }
+            catch
+            {
+                Interlocked.Exchange(ref _started, 0);
+                throw;
+            }
         }
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

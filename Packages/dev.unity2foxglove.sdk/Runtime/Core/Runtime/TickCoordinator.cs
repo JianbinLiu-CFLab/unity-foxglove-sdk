@@ -65,7 +65,7 @@ namespace Unity.FoxgloveSDK.Core
                         RememberExternalCursor(cursor.TimeNs);
                     }
 
-                    if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs, wallClock))
+                    if (TryConsumeReplaySceneSnapshot(out var sceneSnapshotTimeNs))
                         replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true);
                     if (TryConsumeReplaySnapshot(out var snapshotTimeNs, wallClock))
                         replay.PublishSnapshot(session, snapshotTimeNs);
@@ -96,7 +96,7 @@ namespace Unity.FoxgloveSDK.Core
         private void QueueReplaySceneSnapshot(ulong timeNs)
             => _replaySnapshots.RequestSceneSnapshot(timeNs);
 
-        private bool TryConsumeReplaySceneSnapshot(out ulong timeNs, IFoxgloveClock wallClock)
+        private bool TryConsumeReplaySceneSnapshot(out ulong timeNs)
             => _replaySnapshots.TryConsumeSceneSnapshot(out timeNs);
 
         private bool ShouldTreatExternalCursorAsSeek(ReplayCursorRequest cursor)

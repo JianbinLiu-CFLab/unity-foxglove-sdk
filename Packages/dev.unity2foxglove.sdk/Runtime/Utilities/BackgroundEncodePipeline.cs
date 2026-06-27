@@ -27,17 +27,20 @@ namespace Unity.FoxgloveSDK.Util
         private readonly BackgroundWorkerLifecycle _worker = new BackgroundWorkerLifecycle();
         private readonly Queue<TResult> _completed = new Queue<TResult>();
         private readonly Func<TRequest, TResult> _encode;
+        private readonly Action<Exception> _onEncodeError;
         private readonly string _threadName;
         private readonly int _completedCapacity;
         private readonly int _stopWaitMs;
         private TRequest _pending;
         private int _droppedCompletedCount;
+        private int _encodeErrorCount;
 
         public BackgroundEncodePipeline(
             string threadName,
             int completedCapacity,
             int stopWaitMs,
-            Func<TRequest, TResult> encode)
+            Func<TRequest, TResult> encode,
+            Action<Exception> onEncodeError = null)
         {
             if (string.IsNullOrWhiteSpace(threadName))
                 throw new ArgumentException("Thread name is required.", nameof(threadName));
@@ -50,6 +53,7 @@ namespace Unity.FoxgloveSDK.Util
             _completedCapacity = completedCapacity;
             _stopWaitMs = stopWaitMs;
             _encode = encode ?? throw new ArgumentNullException(nameof(encode));
+            _onEncodeError = onEncodeError;
         }
 
         public bool Enqueue(TRequest request, out bool replacedPending, out string startError)
@@ -87,6 +91,9 @@ namespace Unity.FoxgloveSDK.Util
         }
 
         public void Drain(List<TResult> results, out int droppedCompletedResults)
+            => Drain(results, out droppedCompletedResults, out _);
+
+        public void Drain(List<TResult> results, out int droppedCompletedResults, out int encodeErrors)
         {
             if (results == null)
                 throw new ArgumentNullException(nameof(results));
@@ -95,7 +102,9 @@ namespace Unity.FoxgloveSDK.Util
             {
                 results.Clear();
                 droppedCompletedResults = _droppedCompletedCount;
+                encodeErrors = _encodeErrorCount;
                 _droppedCompletedCount = 0;
+                _encodeErrorCount = 0;
                 if (_completed.Count == 0)
                     return;
 
@@ -116,6 +125,7 @@ namespace Unity.FoxgloveSDK.Util
                 {
                     _completed.Clear();
                     _droppedCompletedCount = 0;
+                    _encodeErrorCount = 0;
                 }
             }
 
@@ -170,7 +180,32 @@ namespace Unity.FoxgloveSDK.Util
                     if (request.Generation != workerGeneration)
                         continue;
 
-                    var result = _encode(request);
+                    TResult result;
+                    try
+                    {
+                        result = _encode(request);
+                    }
+                    catch (Exception ex)
+                    {
+                        lock (_worker.Gate)
+                        {
+                            if (!_worker.ShouldStopLocked(workerGeneration)
+                                && request.Generation == workerGeneration)
+                                _encodeErrorCount++;
+                        }
+
+                        try
+                        {
+                            _onEncodeError?.Invoke(ex);
+                        }
+                        catch
+                        {
+                            // Diagnostics callbacks must not terminate the worker.
+                        }
+
+                        continue;
+                    }
+
                     lock (_worker.Gate)
                     {
                         if (_worker.ShouldStopLocked(workerGeneration)

@@ -65,8 +65,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(queue.TryEnqueue(new byte[4], out _), "134-1A-9: queue still accepts payloads that exactly fill byte budget");
             queue.Clear();
             Check(queue.Count == 0 && queue.QueuedBytes == 0, "134-1A-10: queue clear releases retained payload accounting");
-            Check(queue.DroppedCount == 2 && queue.DroppedBytes == 6,
-                "134-1A-11: queue exposes cumulative drop counters for monitoring");
+            Check(queue.DroppedCount == 0 && queue.DroppedBytes == 0,
+                "134-1A-11: queue clear resets session drop counters for fresh diagnostics");
         }
 
         private static void TestBoundedEventQueueUsesEnqueuedByteSnapshot()

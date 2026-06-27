@@ -38,7 +38,6 @@ namespace Unity.FoxgloveSDK.Core
                     if (mcapMode != currentCoordinateMode)
                         return $"MCAP '{Path.GetFileName(filePath)}' was recorded with coordinate_mode '{mcapMode}', " +
                                $"but current mode is '{currentCoordinateMode}'. Mismatch may cause incorrect object transforms.";
-                    break;
                 }
             }
 

@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.IO
             const int minFileBytes =
                 McapWriter.MagicLength + McapWriter.RecordHeaderLength +
                 McapWriter.FooterContentLength + McapWriter.MagicLength;
-            if (_stream.CanSeek && _stream.Length < minFileBytes)
+            if (_stream.Length < minFileBytes)
                 throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
 
             // Verify leading magic

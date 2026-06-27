@@ -75,6 +75,11 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Write a raw MCAP record: 1-byte opcode, 8-byte LE length prefix, then the content payload.</summary>
         public void WriteRecord(byte opcode, byte[] content)
         {
+            if (IsReservedOpcode(opcode))
+                throw new ArgumentOutOfRangeException(
+                    nameof(opcode),
+                    "MCAP record opcodes 0x10-0x7F are reserved; use standard opcodes or private opcodes 0x80-0xFF.");
+
             _stream.WriteByte(opcode);
             WriteU64(_stream, (ulong)(content?.Length ?? 0));
             if (content != null && content.Length > 0) _stream.Write(content, 0, content.Length);
@@ -90,6 +95,19 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         internal static bool IsPrivateOpcode(byte opcode) => opcode >= 0x80;
+
+        internal static bool IsReservedOpcode(byte opcode) => opcode > OpcodeDataEnd && opcode < 0x80;
+
+        internal void TruncateToPosition(long position)
+        {
+            if (!_stream.CanSeek)
+                throw new NotSupportedException("The MCAP output stream does not support truncation.");
+            if (position < 0)
+                throw new ArgumentOutOfRangeException(nameof(position), "Truncation position cannot be negative.");
+
+            _stream.SetLength(position);
+            _stream.Position = position;
+        }
 
         private void WriteRecord(byte opcode, MemoryStream content)
         {

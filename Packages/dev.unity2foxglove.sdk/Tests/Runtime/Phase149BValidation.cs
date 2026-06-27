@@ -99,8 +99,8 @@ namespace Unity.FoxgloveSDK.Tests
                         && reader.Summary.Statistics.MetadataCount == 2
                         && reader.Summary.Statistics.AttachmentCount == 2,
                     "149B-9: summary statistics include amended metadata and attachments");
-                Check(File.Exists(path + ".bak"),
-                    "149B-10: amendment keeps a backup of the original file");
+                Check(FindBackups(path).Count == 1,
+                    "149B-10: amendment keeps a unique backup of the original file");
             }
             finally
             {
@@ -129,8 +129,9 @@ namespace Unity.FoxgloveSDK.Tests
                 var amendedCrc = ReadDataSectionCrc(path);
                 Check(amendedCrc != 0 && amendedCrc != originalCrc,
                     "149B-12: amendment recomputes non-zero DataEnd CRC after appending records");
-                Check(File.Exists(path + ".bak") && ReadDataSectionCrc(path + ".bak") == originalCrc,
-                    "149B-13: backup preserves the original DataEnd CRC");
+                var backups = FindBackups(path);
+                Check(backups.Count == 1 && ReadDataSectionCrc(backups[0]) == originalCrc,
+                    "149B-13: unique backup preserves the original DataEnd CRC");
             }
             finally
             {
@@ -220,7 +221,7 @@ namespace Unity.FoxgloveSDK.Tests
 
                 Check(new FileInfo(path).Length == beforeLength,
                     "149B-18: no-op amendment leaves file length unchanged");
-                Check(!File.Exists(path + ".bak"),
+                Check(FindBackups(path).Count == 0,
                     "149B-19: no-op amendment does not create a backup");
             }
             finally
@@ -398,11 +399,26 @@ namespace Unity.FoxgloveSDK.Tests
                     File.Delete(path);
                 if (!string.IsNullOrEmpty(path) && File.Exists(path + ".bak"))
                     File.Delete(path + ".bak");
+                foreach (var backup in FindBackups(path))
+                    File.Delete(backup);
             }
             catch
             {
                 // Best-effort cleanup for validation temp files.
             }
+        }
+
+        private static List<string> FindBackups(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return new List<string>();
+
+            var directory = Path.GetDirectoryName(path);
+            if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+                return new List<string>();
+
+            var fileName = Path.GetFileName(path);
+            return Directory.GetFiles(directory, fileName + "*.bak").ToList();
         }
 
         private static string ReadRepoText(string relativePath)
