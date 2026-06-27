@@ -266,6 +266,9 @@ namespace Unity.FoxgloveSDK.IO
                 while (_readOffset + 9 <= _currentUncompressed.Length)
                 {
                     var opcode = _currentUncompressed[_readOffset++];
+                    if (opcode == 0x00)
+                        throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
+
                     var len = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
                     if (len > int.MaxValue)
                         throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
@@ -349,6 +352,9 @@ namespace Unity.FoxgloveSDK.IO
                 while (offset + 9 <= uncompressed.Length)
                 {
                     var opcode = uncompressed[offset++];
+                    if (opcode == 0x00)
+                        throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
+
                     var len = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
                     if (len > int.MaxValue)
                         throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
@@ -440,6 +446,9 @@ namespace Unity.FoxgloveSDK.IO
                 while (offset + 9 <= uncompressed.Length)
                 {
                     var opcode = uncompressed[offset++];
+                    if (opcode == 0x00)
+                        throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
+
                     var len = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
                     if (len > int.MaxValue)
                         throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");

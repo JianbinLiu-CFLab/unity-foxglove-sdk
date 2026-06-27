@@ -59,8 +59,8 @@ namespace Unity.FoxgloveSDK.IO
                             $"Uncompressed chunk size mismatch: expected {uncompressedSize}, got {data.Count}");
                     if (data.Count == 0)
                         return Array.Empty<byte>();
-                    if (data.Offset == 0 && data.Array != null && data.Count == data.Array.Length)
-                        return data.Array;
+                    if (data.Array == null)
+                        throw new InvalidDataException("Uncompressed chunk data is null.");
                     var uncompressedCopy = new byte[data.Count];
                     Buffer.BlockCopy(data.Array, data.Offset, uncompressedCopy, 0, data.Count);
                     return uncompressedCopy;

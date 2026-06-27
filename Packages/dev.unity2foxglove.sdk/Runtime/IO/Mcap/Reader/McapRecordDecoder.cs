@@ -343,6 +343,7 @@ namespace Unity.FoxgloveSDK.IO
                 map[key] = value;
             }
 
+            RequireExactSegmentEnd(off, mapEnd, fieldName + " map");
             return map;
         }
 
@@ -407,6 +408,9 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public static McapChunkIndex DecodeChunkIndex(byte[] content)
         {
+            if (content == null)
+                throw new ArgumentNullException(nameof(content));
+
             var off = 0;
             var ci = new McapChunkIndex
             {
@@ -436,6 +440,9 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public static McapStatistics DecodeStatistics(byte[] content)
         {
+            if (content == null)
+                throw new ArgumentNullException(nameof(content));
+
             var off = 0;
             var s = new McapStatistics
             {
@@ -465,6 +472,9 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public static McapMetadataIndex DecodeMetadataIndex(byte[] content)
         {
+            if (content == null)
+                throw new ArgumentNullException(nameof(content));
+
             var off = 0;
             return new McapMetadataIndex
             {
@@ -533,6 +543,9 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public static McapAttachmentIndex DecodeAttachmentIndex(byte[] content)
         {
+            if (content == null)
+                throw new ArgumentNullException(nameof(content));
+
             var off = 0;
             return new McapAttachmentIndex
             {
@@ -551,13 +564,18 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public static McapFooter DecodeFooter(byte[] content)
         {
+            if (content == null)
+                throw new ArgumentNullException(nameof(content));
+
             var off = 0;
-            return new McapFooter
+            var footer = new McapFooter
             {
                 SummaryStart = McapBinaryReader.ReadU64LE(content, ref off),
                 SummaryOffsetStart = McapBinaryReader.ReadU64LE(content, ref off),
                 SummaryCrc = McapBinaryReader.ReadU32LE(content, ref off)
             };
+            RequireExactSegmentEnd(off, content.Length, "footer");
+            return footer;
         }
     }
 }

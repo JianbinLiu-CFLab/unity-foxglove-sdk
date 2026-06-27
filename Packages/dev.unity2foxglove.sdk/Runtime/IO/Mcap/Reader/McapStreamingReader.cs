@@ -68,6 +68,7 @@ namespace Unity.FoxgloveSDK.IO
             dataCrc = Crc32Helper.Update(dataCrc, leadingMagic);
 
             var beforeDataEnd = true;
+            var isFirstRecord = true;
             var retainedPayloadBytes = 0L;
             var retainedMetadataBytes = 0L;
             var retainedAttachmentBytes = 0L;
@@ -83,6 +84,16 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     dataCrc = Crc32Helper.Update(dataCrc, headerBytes);
                     dataCrc = Crc32Helper.Update(dataCrc, content);
+                }
+
+                if (isFirstRecord)
+                {
+                    if (opcode != McapWriter.OpcodeHeader)
+                        throw new InvalidDataException($"Expected Header (0x01) as the first MCAP record, got 0x{opcode:X2}.");
+
+                    McapRecordDecoder.DecodeHeader(content);
+                    isFirstRecord = false;
+                    continue;
                 }
 
                 ProcessRecord(

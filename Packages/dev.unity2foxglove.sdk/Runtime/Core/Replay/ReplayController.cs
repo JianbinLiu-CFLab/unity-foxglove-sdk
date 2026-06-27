@@ -347,7 +347,7 @@ namespace Unity.FoxgloveSDK.Core
                         return;
 
                     _replaySessionId = NextReplaySessionId(_replaySessionId);
-                    loadedEngine.Play();
+                    _replayEngine.Play();
                     Volatile.Write(ref _replayEnabled, true);
                     _hasPanelHistoryTime = false;
                     _lastPanelHistoryTimeNs = 0;

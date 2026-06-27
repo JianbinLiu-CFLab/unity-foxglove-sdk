@@ -321,8 +321,9 @@ namespace Unity.FoxgloveSDK.Core
             _replayOrchestrator.Detach(_replay);
             var session = _session;
             _session = null;
-            _recording.DetachFromSession();
+            session?.SetRecorder(null);
             session?.Dispose();
+            _recording.DetachFromSession();
         }
 
         // ── Channel API ──

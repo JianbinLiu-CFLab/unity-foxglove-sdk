@@ -272,13 +272,37 @@ namespace Unity.FoxgloveSDK.IO
             ThrowIfDisposed();
 
             var yielded = 0;
-            foreach (var message in EnumerateIndexedMessagesInFileOrder(options))
+            foreach (var message in EnumerateMessagesInFileOrder(options))
             {
                 ThrowIfDisposed();
                 yield return message;
                 yielded++;
                 if (options.MaxMessages > 0 && yielded >= options.MaxMessages)
                     yield break;
+            }
+        }
+
+        private IEnumerable<McapMessage> EnumerateMessagesInFileOrder(McapReadOptions options)
+        {
+            var chunkIndexes = _summary.ChunkIndexes;
+            if (chunkIndexes == null || chunkIndexes.Count == 0)
+            {
+                if (!options.AllowLinearFallback)
+                    throw new InvalidOperationException("Lazy MCAP message enumeration requires chunk indexes when AllowLinearFallback=false.");
+
+                return EnumerateSequentialMessagesInFileOrder(options);
+            }
+
+            return EnumerateIndexedMessagesInFileOrder(options);
+        }
+
+        private IEnumerable<McapMessage> EnumerateSequentialMessagesInFileOrder(McapReadOptions options)
+        {
+            var result = ReadSequentialMessages(options, new List<McapMessage>());
+            for (var i = 0; i < result.Count; i++)
+            {
+                ThrowIfDisposed();
+                yield return result[i];
             }
         }
 
@@ -427,7 +451,6 @@ namespace Unity.FoxgloveSDK.IO
             int expectedCount,
             Dictionary<ushort, McapMessage> latestByChannel)
         {
-            _stream.Seek(0, SeekOrigin.Begin);
             _reader.VisitSequentialMessages(
                 _summary.DataSectionEndOffset,
                 message =>
