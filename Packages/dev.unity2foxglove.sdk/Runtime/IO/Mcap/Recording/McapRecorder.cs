@@ -108,6 +108,13 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_recordingFailed || _closed) return;
+                if (_chMap.ContainsKey(fId))
+                {
+                    _log.LogWarning(
+                        $"MCAP: ignoring duplicate server channel id {fId} for topic '{topic}' because the channel id is already registered.");
+                    return;
+                }
+
                 var normalizedEnc = NormalizeMessageEncoding(enc);
                 var signature = CreateTopicSignature(normalizedEnc, sName, sEnc, sContent);
                 if (WouldMixTopicSignature(topic, signature))
@@ -299,16 +306,14 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     FlushChunk();
                 }
-                catch (Exception ex) when (_w.CanSeek && _w.Position == flushStartPosition)
+                catch (Exception ex)
                 {
-                    _log.LogWarning(
-                        $"MCAP recorder dropped the final unflushed chunk during close; writing a recoverable indexed trailer without final-chunk statistics: {ex.Message}");
-                    WriteRecoverableTrailerAfterDroppedFinalChunk();
-                    _closed = true;
-                    return;
-                }
-                catch
-                {
+                    if (TryRecoverAfterFailedFinalChunkFlush(flushStartPosition, ex))
+                    {
+                        _closed = true;
+                        return;
+                    }
+
                     _closed = true;
                     throw;
                 }
@@ -431,6 +436,29 @@ namespace Unity.FoxgloveSDK.IO
                 _options.EnableCrcs);
             _w.WriteMagic();
             _w.Flush();
+        }
+
+        private bool TryRecoverAfterFailedFinalChunkFlush(long flushStartPosition, Exception flushError)
+        {
+            if (!_w.CanSeek)
+                return false;
+
+            try
+            {
+                if (_w.Position != flushStartPosition)
+                    _w.TruncateToPosition(flushStartPosition);
+
+                _log.LogWarning(
+                    $"MCAP recorder dropped the final unflushed chunk during close; writing a recoverable indexed trailer without final-chunk statistics: {flushError.Message}");
+                WriteRecoverableTrailerAfterDroppedFinalChunk();
+                return true;
+            }
+            catch (Exception recoveryError)
+            {
+                _log.LogWarning(
+                    $"MCAP recorder could not recover after a failed final chunk flush; file may be incomplete: {recoveryError.Message}");
+                return false;
+            }
         }
 
         /// <summary>

@@ -289,11 +289,23 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     File.Move(tempPath, _filePath);
                 }
-                catch
+                catch (Exception replaceError)
                 {
-                    if (!File.Exists(_filePath) && File.Exists(backupPath))
-                        File.Move(backupPath, _filePath);
-                    throw;
+                    try
+                    {
+                        if (!File.Exists(_filePath) && File.Exists(backupPath))
+                            File.Move(backupPath, _filePath);
+                    }
+                    catch (Exception restoreError)
+                    {
+                        throw new IOException(
+                            $"MCAP amendment failed after moving the original file to backup '{backupPath}', and restoring that backup also failed.",
+                            new AggregateException(replaceError, restoreError));
+                    }
+
+                    throw new IOException(
+                        $"MCAP amendment failed while replacing the original file; the original file was restored from backup '{backupPath}'.",
+                        replaceError);
                 }
             }
         }

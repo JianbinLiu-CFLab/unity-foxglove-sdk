@@ -139,9 +139,7 @@ namespace Unity.FoxgloveSDK.IO
                     {
                         using (var lz4 = LZ4Stream.Encode(ms, lz4Level, leaveOpen: true))
                             lz4.Write(sourceArray, sourceOffset, sourceCount);
-                        if (!ms.TryGetBuffer(out var compressed))
-                            throw new InvalidOperationException("LZ4 output buffer is not publicly visible.");
-                        return compressed;
+                        return new ArraySegment<byte>(ms.ToArray());
                     }
                 case "zstd":
                     using (var compressor = new Compressor())
