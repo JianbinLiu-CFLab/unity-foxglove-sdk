@@ -31,6 +31,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.False(sidecar.TryDequeueEncodedAccessUnit(out _));
         }
 
+        [Fact]
+        public void SkipSentinelConsumesOnlySkippedTimestamp()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+            PendingTimestamps(sidecar).Enqueue(100UL);
+            PendingTimestamps(sidecar).Enqueue(200UL);
+
+            sidecar.AcceptHelperSkippedAccessUnit();
+            sidecar.AcceptHelperAccessUnit(new byte[] { 4, 5, 6 });
+
+            Assert.Equal(1, sidecar.SkippedAccessUnits);
+            Assert.Contains("skipped", sidecar.LastDiagnosticLine);
+            Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var accessUnit));
+            Assert.Equal(200UL, accessUnit.TimestampNs);
+            Assert.Equal(new byte[] { 4, 5, 6 }, accessUnit.Data);
+            Assert.False(sidecar.TryDequeueEncodedAccessUnit(out _));
+        }
+
         private static ConcurrentQueue<ulong> PendingTimestamps(OpenH264EncoderSidecar sidecar)
         {
             var field = typeof(OpenH264EncoderSidecar).GetField(

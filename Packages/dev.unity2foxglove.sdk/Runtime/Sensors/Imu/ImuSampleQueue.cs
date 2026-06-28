@@ -44,9 +44,13 @@ namespace Unity.FoxgloveSDK.Components
         private ImuSample[] _items = new ImuSample[MinCapacity];
         private int _head;
         private int _count;
+        private long _droppedCount;
 
         /// <summary>Number of samples currently queued.</summary>
         public int Count => _count;
+
+        /// <summary>Total number of oldest samples overwritten since the last resize.</summary>
+        public long DroppedCount => _droppedCount;
 
         /// <summary>Resize the bounded queue while preserving the oldest available samples.</summary>
         public void Resize(int capacity, int minCapacity)
@@ -66,6 +70,7 @@ namespace Unity.FoxgloveSDK.Components
             _items = next;
             _count = copyCount;
             _head = 0;
+            _droppedCount = 0;
         }
 
         /// <summary>Add a sample, dropping the oldest sample when the queue is full.</summary>
@@ -81,6 +86,7 @@ namespace Unity.FoxgloveSDK.Components
 
             _items[_head] = sample;
             _head = (_head + 1) % _items.Length;
+            _droppedCount++;
         }
 
         /// <summary>Remove and return the oldest queued sample.</summary>

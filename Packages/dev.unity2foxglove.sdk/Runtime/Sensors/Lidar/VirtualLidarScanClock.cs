@@ -53,10 +53,18 @@ namespace Unity.FoxgloveSDK.Components
                 return FoxgloveTimeUtil.NowUnixTimeNs();
 
             var deltaSeconds = scanStartPhysSeconds - _epochPhysSeconds;
-            if (deltaSeconds < 0d)
-                deltaSeconds = 0d;
+            if (double.IsNaN(deltaSeconds) || double.IsInfinity(deltaSeconds) || deltaSeconds <= 0d)
+                return _epochUnixNs;
 
-            return checked(_epochUnixNs + (ulong)Math.Round(deltaSeconds * 1e9));
+            var deltaNanoseconds = Math.Round(deltaSeconds * 1e9);
+            if (double.IsNaN(deltaNanoseconds) || double.IsInfinity(deltaNanoseconds) || deltaNanoseconds <= 0d)
+                return _epochUnixNs;
+
+            var maxDelta = ulong.MaxValue - _epochUnixNs;
+            if (deltaNanoseconds >= maxDelta)
+                return ulong.MaxValue;
+
+            return _epochUnixNs + (ulong)deltaNanoseconds;
         }
     }
 }

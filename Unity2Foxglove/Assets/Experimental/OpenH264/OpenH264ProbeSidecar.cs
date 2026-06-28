@@ -182,9 +182,15 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             }
         }
 
-        ScheduleWorkerCleanup(process, stop, stdinTask, stdoutTask, stderrTask);
-        DrainQueues();
-        ClearStoppingFlag();
+        try
+        {
+            CleanupWorkers(process, stop, stdinTask, stdoutTask, stderrTask);
+            DrainQueues();
+        }
+        finally
+        {
+            ClearStoppingFlag();
+        }
     }
 
     public void Dispose()
@@ -200,7 +206,8 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             "--height " + options.Height.ToString(CultureInfo.InvariantCulture),
             "--fps " + options.FrameRate.ToString(CultureInfo.InvariantCulture),
             "--bitrate-kbps " + options.BitrateKbps.ToString(CultureInfo.InvariantCulture),
-            "--keyint " + options.KeyframeInterval.ToString(CultureInfo.InvariantCulture)
+            "--keyint " + options.KeyframeInterval.ToString(CultureInfo.InvariantCulture),
+            "--openh264-dll " + QuoteArgument(options.OpenH264DllPath)
         });
 
         return new ProcessStartInfo
@@ -378,38 +385,35 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
     }
 
-    private static void ScheduleWorkerCleanup(Process process, CancellationTokenSource stop, params Task[] tasks)
+    private static void CleanupWorkers(Process process, CancellationTokenSource stop, params Task[] tasks)
     {
-        _ = Task.Run(() =>
+        try
         {
-            try
-            {
-                if (process != null)
-                {
-                    try
-                    {
-                        process.WaitForExit(200);
-                    }
-                    catch
-                    {
-                    }
-                }
-
-                WaitForWorkerTasks(tasks);
-            }
-            finally
+            if (process != null)
             {
                 try
                 {
-                    process?.Dispose();
+                    process.WaitForExit(200);
                 }
                 catch
                 {
                 }
-
-                stop?.Dispose();
             }
-        });
+
+            WaitForWorkerTasks(tasks);
+        }
+        finally
+        {
+            try
+            {
+                process?.Dispose();
+            }
+            catch
+            {
+            }
+
+            stop?.Dispose();
+        }
     }
 
     private void EnqueueAccessUnit(byte[] accessUnit)
@@ -478,6 +482,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         return true;
     }
 
+    private static string QuoteArgument(string value)
+        => "\"" + (value ?? "").Replace("\"", "\\\"") + "\"";
+
     private void DrainQueues()
     {
         while (_inputFrames.TryDequeue(out _)) { }
@@ -505,6 +512,7 @@ public sealed class OpenH264ProbeSidecarOptions
     public const int MaxFrameBytes = 32 * 1024 * 1024;
 
     public string HelperExecutablePath { get; set; } = "";
+    public string OpenH264DllPath { get; set; } = "";
     public int Width { get; set; } = 640;
     public int Height { get; set; } = 480;
     public int FrameRate { get; set; } = 30;
@@ -535,6 +543,21 @@ public sealed class OpenH264ProbeSidecarOptions
         {
             error = "OpenH264 helper executable does not exist: " + HelperExecutablePath;
             return false;
+        }
+
+        if (RequiresExplicitOpenH264Dll)
+        {
+            if (string.IsNullOrWhiteSpace(OpenH264DllPath))
+            {
+                error = "OpenH264 DLL path is empty.";
+                return false;
+            }
+
+            if (!File.Exists(OpenH264DllPath))
+            {
+                error = "OpenH264 DLL does not exist: " + OpenH264DllPath;
+                return false;
+            }
         }
 
         if (Width <= 0 || Height <= 0 || (Width % 2) != 0 || (Height % 2) != 0)
@@ -582,5 +605,17 @@ public sealed class OpenH264ProbeSidecarOptions
         frameByteCount = (int)bytes;
         error = "";
         return true;
+    }
+
+    private static bool RequiresExplicitOpenH264Dll
+    {
+        get
+        {
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            return true;
+#else
+            return Path.DirectorySeparatorChar == '\\';
+#endif
+        }
     }
 }

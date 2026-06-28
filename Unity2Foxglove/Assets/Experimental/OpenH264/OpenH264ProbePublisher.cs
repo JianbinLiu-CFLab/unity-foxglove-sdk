@@ -25,6 +25,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
 
     [Header("OpenH264 Probe")]
     [SerializeField] private string _helperExecutablePath = "";
+    [SerializeField] private string _openH264DllPath = "";
     [SerializeField] private string _frameId = "unity_camera_openh264_probe";
     [SerializeField, Range(2, OpenH264ProbeSidecarOptions.MaxDimension)] private int _width = 640;
     [SerializeField, Range(2, OpenH264ProbeSidecarOptions.MaxDimension)] private int _height = 480;
@@ -218,6 +219,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         var options = new OpenH264ProbeSidecarOptions
         {
             HelperExecutablePath = _helperExecutablePath,
+            OpenH264DllPath = _openH264DllPath,
             Width = width,
             Height = height,
             FrameRate = Math.Max(1, _targetFrameRate),

@@ -42,6 +42,7 @@ namespace Foxglove.Schemas.Video
         private int _outputCount;
         private long _framesSubmitted;
         private long _accessUnitsReceived;
+        private long _skippedAccessUnits;
         private long _droppedInputFrames;
         private string _lastDiagnosticLine;
         private string _lastError;
@@ -67,6 +68,7 @@ namespace Foxglove.Schemas.Video
 
         public long FramesSubmitted => Interlocked.Read(ref _framesSubmitted);
         public long AccessUnitsReceived => Interlocked.Read(ref _accessUnitsReceived);
+        public long SkippedAccessUnits => Interlocked.Read(ref _skippedAccessUnits);
         public long DroppedInputFrames => Interlocked.Read(ref _droppedInputFrames);
         public string LastDiagnosticLine
         {
@@ -195,7 +197,7 @@ namespace Foxglove.Schemas.Video
                 if (!_outputAccessUnits.TryDequeue(out accessUnit))
                     return false;
 
-                Interlocked.Decrement(ref _outputCount);
+                _outputCount--;
                 return true;
             }
         }
@@ -304,7 +306,13 @@ namespace Foxglove.Schemas.Video
                         break;
 
                     var length = readLength.Length;
-                    if (length <= 0 || length > MaxAccessUnitBytes)
+                    if (length == 0)
+                    {
+                        AcceptHelperSkippedAccessUnit();
+                        continue;
+                    }
+
+                    if (length < 0 || length > MaxAccessUnitBytes)
                     {
                         LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
                         TryKillProcess(process);
@@ -404,12 +412,12 @@ namespace Foxglove.Schemas.Video
         {
             lock (_outputLock)
             {
-                while (Volatile.Read(ref _outputCount) >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
-                    Interlocked.Decrement(ref _outputCount);
+                while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
+                    _outputCount--;
 
                 var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
-                Interlocked.Increment(ref _outputCount);
+                _outputCount++;
                 Interlocked.Increment(ref _accessUnitsReceived);
             }
         }
@@ -423,6 +431,13 @@ namespace Foxglove.Schemas.Video
                 throw new ArgumentException("OpenH264 access unit must not be empty.", nameof(accessUnit));
 
             EnqueueAccessUnit(accessUnit);
+        }
+
+        internal void AcceptHelperSkippedAccessUnit()
+        {
+            _encodedFrameTimestamps.TryDequeue(out _);
+            Interlocked.Increment(ref _skippedAccessUnits);
+            LastDiagnosticLine = "OpenH264 helper skipped an access unit.";
         }
 
         private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, byte[] header, CancellationToken token)
@@ -481,7 +496,7 @@ namespace Foxglove.Schemas.Video
             lock (_outputLock)
             {
                 while (_outputAccessUnits.TryDequeue(out _)) { }
-                Interlocked.Exchange(ref _outputCount, 0);
+                _outputCount = 0;
             }
         }
 

@@ -5,7 +5,7 @@
 # Purpose: Generate direct ROS 2 CDR serializers/deserializers for official Foxglove .msg schemas.
 # Usage: python Scripts/schema/generate_ros2_cdr_serializers.py
 # Inputs: third-party/foxglove-sdk/schemas/ros2/*.msg and generated Foxglove protobuf C# classes.
-# Outputs: Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Msg/Generated/*.g.cs.
+# Outputs: Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/*.g.cs.
 """Generate direct ROS 2 CDR serializers/deserializers for official Foxglove .msg schemas."""
 
 from __future__ import annotations
@@ -37,12 +37,45 @@ DEFAULT_OUTPUT_DIR = (
     / "dev.unity2foxglove.sdk"
     / "Runtime"
     / "Schemas"
-    / "Proto"
     / "Ros2Msg"
     / "Generated"
 )
 
-PRIMITIVE_TYPES = {"bool", "uint8", "uint32", "float64", "string"}
+PRIMITIVE_TYPES = {
+    "bool",
+    "int16",
+    "uint16",
+    "int32",
+    "uint32",
+    "int64",
+    "uint64",
+    "uint8",
+    "float32",
+    "float64",
+    "string",
+}
+SCALAR_TYPE_MAP = {
+    "bool": "bool",
+    "int16": "int",
+    "uint16": "uint",
+    "int32": "int",
+    "uint32": "uint",
+    "int64": "long",
+    "uint64": "ulong",
+    "float32": "float",
+    "float64": "double",
+    "string": "string",
+}
+REPEATED_TYPE_MAP = {
+    "int16": "int",
+    "uint16": "uint",
+    "int32": "int",
+    "uint32": "uint",
+    "int64": "long",
+    "uint64": "ulong",
+    "float32": "float",
+    "float64": "double",
+}
 STANDARD_TYPES = {
     "builtin_interfaces/Time",
     "builtin_interfaces/Duration",
@@ -187,31 +220,32 @@ def validate_property(schema_name: str, field_name: str, ros_type: str, base_typ
             return
         if inner is None:
             fail("pbc::RepeatedField<T>")
-        if base_type == "uint32" and inner != "uint":
-            fail("pbc::RepeatedField<uint>")
-        elif base_type == "float64" and inner != "double":
-            fail("pbc::RepeatedField<double>")
+        expected_repeated = REPEATED_TYPE_MAP.get(base_type)
+        if expected_repeated and inner != expected_repeated:
+            fail(f"pbc::RepeatedField<{expected_repeated}>")
         elif base_type == "geometry_msgs/Point" and inner not in {"global::Foxglove.Point3", "global::Foxglove.Vector3"}:
             fail("pbc::RepeatedField<global::Foxglove.Point3|Vector3>")
+        elif base_type == "geometry_msgs/Vector3" and inner != "global::Foxglove.Vector3":
+            fail("pbc::RepeatedField<global::Foxglove.Vector3>")
+        elif base_type == "geometry_msgs/Quaternion" and inner != "global::Foxglove.Quaternion":
+            fail("pbc::RepeatedField<global::Foxglove.Quaternion>")
         elif base_type == "geometry_msgs/Pose" and inner != "global::Foxglove.Pose":
             fail("pbc::RepeatedField<global::Foxglove.Pose>")
         elif base_type.startswith("foxglove_msgs/") and inner != f"global::Foxglove.{family}":
             fail(f"pbc::RepeatedField<global::Foxglove.{family}>")
-        elif base_type in {"bool", "string", "builtin_interfaces/Time", "builtin_interfaces/Duration", "geometry_msgs/Quaternion", "geometry_msgs/Vector3"}:
+        elif base_type in {"bool", "string", "builtin_interfaces/Time", "builtin_interfaces/Duration"}:
             fail("supported repeated field type")
         return
 
-    expected_scalar = {
-        "bool": "bool",
-        "uint32": "uint",
-        "float64": "double",
-        "string": "string",
+    expected_scalar = dict(SCALAR_TYPE_MAP)
+    expected_scalar.update({
         "builtin_interfaces/Time": "global::Google.Protobuf.WellKnownTypes.Timestamp",
         "builtin_interfaces/Duration": "global::Google.Protobuf.WellKnownTypes.Duration",
         "geometry_msgs/Quaternion": "global::Foxglove.Quaternion",
         "geometry_msgs/Vector3": "global::Foxglove.Vector3",
         "geometry_msgs/Pose": "global::Foxglove.Pose",
-    }.get(base_type)
+    })
+    expected_scalar = expected_scalar.get(base_type)
 
     if base_type == "uint8":
         if property_type != "byte" and not property_type.startswith(f"global::Foxglove.{schema_name}.Types."):
@@ -282,10 +316,22 @@ def writer_for_scalar(field: Field, message_expr: str) -> list[str]:
     access = f"{message_expr}.{field.property_name}"
     if field.base_type == "bool":
         return [f"writer.WriteBool({access});"]
+    if field.base_type == "int16":
+        return [f"writer.WriteInt16((short){access});"]
+    if field.base_type == "uint16":
+        return [f"writer.WriteUInt16((ushort){access});"]
+    if field.base_type == "int32":
+        return [f"writer.WriteInt32({access});"]
     if field.base_type == "uint8":
         return [f"writer.WriteUInt8((byte){access});"]
     if field.base_type == "uint32":
         return [f"writer.WriteUInt32({access});"]
+    if field.base_type == "int64":
+        return [f"writer.WriteInt64({access});"]
+    if field.base_type == "uint64":
+        return [f"writer.WriteUInt64({access});"]
+    if field.base_type == "float32":
+        return [f"writer.WriteFloat32({access});"]
     if field.base_type == "float64":
         return [f"writer.WriteFloat64({access});"]
     if field.base_type == "string":
@@ -314,8 +360,10 @@ def writer_for_field(field: Field) -> list[str]:
     if field.array_kind == "scalar":
         return writer_for_scalar(field, "message")
     if field.base_type == "uint8":
-        return [f"writer.WriteByteArray({access} == null ? ReadOnlySpan<byte>.Empty : {access}.Span);"]
+        return [f"writer.WriteByteArray({access}.Span);"]
     if field.array_kind == "fixed":
+        if not field.fixed_length or field.fixed_length <= 0:
+            raise RuntimeError(f"Fixed array field must declare a positive length: {field}")
         return [f"writer.WriteFloat64Fixed({access}, {field.fixed_length}, {csharp_string(field.name)});"]
     if field.base_type == "float64":
         return [f"writer.WriteFloat64Sequence({access});"]
@@ -325,6 +373,10 @@ def writer_for_field(field: Field) -> list[str]:
     item_writer = None
     if field.base_type == "geometry_msgs/Point":
         item_writer = "WriteProtoPoint(writer, item);"
+    elif field.base_type == "geometry_msgs/Vector3":
+        item_writer = "WriteProtoVector3(writer, item);"
+    elif field.base_type == "geometry_msgs/Quaternion":
+        item_writer = "WriteProtoQuaternion(writer, item);"
     elif field.base_type == "geometry_msgs/Pose":
         item_writer = "WriteProtoPose(writer, item);"
     elif field.base_type.startswith("foxglove_msgs/"):
@@ -347,12 +399,24 @@ def reader_for_scalar(field: Field) -> str:
 
     if field.base_type == "bool":
         return "reader.ReadBool()"
+    if field.base_type == "int16":
+        return "reader.ReadInt16()"
+    if field.base_type == "uint16":
+        return "reader.ReadUInt16()"
+    if field.base_type == "int32":
+        return "reader.ReadInt32()"
     if field.base_type == "uint8":
         if field.property_type == "byte":
             return "reader.ReadUInt8()"
         return f"({field.property_type})reader.ReadUInt8()"
     if field.base_type == "uint32":
         return "reader.ReadUInt32()"
+    if field.base_type == "int64":
+        return "reader.ReadInt64()"
+    if field.base_type == "uint64":
+        return "reader.ReadUInt64()"
+    if field.base_type == "float32":
+        return "reader.ReadFloat32()"
     if field.base_type == "float64":
         return "reader.ReadFloat64()"
     if field.base_type == "string":
@@ -383,6 +447,8 @@ def reader_for_field(field: Field) -> list[str]:
     if field.base_type == "uint8":
         return [f"{access} = global::Google.Protobuf.ByteString.CopyFrom(reader.ReadByteArray());"]
     if field.array_kind == "fixed":
+        if not field.fixed_length or field.fixed_length <= 0:
+            raise RuntimeError(f"Fixed array field must declare a positive length: {field}")
         return [f"{access}.Add(reader.ReadFloat64Fixed({field.fixed_length}));"]
     if field.base_type == "float64":
         return [f"{access}.Add(reader.ReadFloat64Sequence());"]
@@ -392,6 +458,10 @@ def reader_for_field(field: Field) -> list[str]:
     item_reader = None
     if field.base_type == "geometry_msgs/Point":
         item_reader = "ReadProtoPoint(reader)" if repeated_inner(field.property_type) == "global::Foxglove.Point3" else "ReadProtoVector3(reader)"
+    elif field.base_type == "geometry_msgs/Vector3":
+        item_reader = "ReadProtoVector3(reader)"
+    elif field.base_type == "geometry_msgs/Quaternion":
+        item_reader = "ReadProtoQuaternion(reader)"
     elif field.base_type == "geometry_msgs/Pose":
         item_reader = "ReadProtoPose(reader)"
     elif field.base_type.startswith("foxglove_msgs/"):
@@ -414,7 +484,7 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.",
         "// SPDX-License-Identifier: Apache-2.0",
         "//",
-        "// Module: Runtime/Schemas/Proto/Ros2Msg/Generated",
+        "// Module: Runtime/Schemas/Ros2Msg/Generated",
         "// Purpose: Generated direct ROS 2 CDR serializers for official Foxglove .msg schemas.",
         "// Generated by Scripts/schema/generate_ros2_cdr_serializers.py.",
         "",
@@ -453,11 +523,13 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "        {",
         "            if (writer == null)",
         "                throw new ArgumentNullException(nameof(writer));",
+        "            if (value == null)",
+        "                throw new ArgumentNullException(nameof(value));",
         "",
-        "            writer.WriteFloat64(value?.X ?? 0.0);",
-        "            writer.WriteFloat64(value?.Y ?? 0.0);",
-        "            writer.WriteFloat64(value?.Z ?? 0.0);",
-        "            writer.WriteFloat64(value?.W ?? 1.0);",
+        "            writer.WriteFloat64(value.X);",
+        "            writer.WriteFloat64(value.Y);",
+        "            writer.WriteFloat64(value.Z);",
+        "            writer.WriteFloat64(value.W);",
         "        }",
         "",
         "        private static void WriteProtoPose(Ros2CdrWriter writer, global::Foxglove.Pose value)",
@@ -515,7 +587,7 @@ def generate_deserializers(schemas: list[Schema]) -> str:
         "// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.",
         "// SPDX-License-Identifier: Apache-2.0",
         "//",
-        "// Module: Runtime/Schemas/Proto/Ros2Msg/Generated",
+        "// Module: Runtime/Schemas/Ros2Msg/Generated",
         "// Purpose: Generated direct ROS 2 CDR deserializers for official Foxglove .msg schemas.",
         "// Generated by Scripts/schema/generate_ros2_cdr_serializers.py.",
         "",
@@ -622,12 +694,20 @@ def sample_scalar(field: Field, schema_name: str, index: int) -> str:
 
     if field.base_type == "bool":
         return "true"
+    if field.base_type in {"int16", "int32"}:
+        return str(100 + index)
+    if field.base_type in {"uint16", "uint32"}:
+        return f"{100 + index}U"
+    if field.base_type == "int64":
+        return f"{100 + index}L"
+    if field.base_type == "uint64":
+        return f"{100 + index}UL"
     if field.base_type == "uint8":
         if field.property_type == "byte":
             return "(byte)1"
         return f"({field.property_type})1"
-    if field.base_type == "uint32":
-        return f"{100 + index}U"
+    if field.base_type == "float32":
+        return f"{index + 1}.25f"
     if field.base_type == "float64":
         return f"{index + 1}.25"
     if field.base_type == "string":
@@ -661,11 +741,13 @@ def sample_lines_for_field(field: Field, schema_name: str, index: int) -> list[s
         return [f"message.{field.property_name} = {sample_scalar(field, schema_name, index)};"]
     if field.base_type == "uint8":
         return [f"message.{field.property_name} = global::Google.Protobuf.ByteString.CopyFrom(new byte[] {{ 1, 2, 3, 4 }});"]
-    if field.base_type == "uint32":
-        return [f"message.{field.property_name}.Add(1U);", f"message.{field.property_name}.Add(2U);"]
+    if field.base_type in {"int16", "uint16", "int32", "uint32", "int64", "uint64", "float32"}:
+        return [f"message.{field.property_name}.Add({sample_scalar(field, schema_name, index)});"]
     if field.base_type == "float64":
+        if field.array_kind == "fixed" and (field.fixed_length is None or field.fixed_length <= 0):
+            raise RuntimeError(f"Fixed float64 sample field must declare a positive length: {field}")
         count = field.fixed_length if field.array_kind == "fixed" else 2
-        values = ", ".join(f"{i + 1}.0" for i in range(count or 0))
+        values = ", ".join(f"{i + 1}.0" for i in range(count))
         return [f"message.{field.property_name}.Add(new double[] {{ {values} }});"]
     if field.base_type == "geometry_msgs/Point":
         point = "new global::Foxglove.Point3 { X = 1.0, Y = 2.0, Z = 3.0 }"
@@ -673,6 +755,10 @@ def sample_lines_for_field(field: Field, schema_name: str, index: int) -> list[s
             point = "new global::Foxglove.Vector3 { X = 1.0, Y = 2.0, Z = 3.0 }"
         return [f"message.{field.property_name}.Add({point});"]
     if field.base_type == "geometry_msgs/Pose":
+        return [f"message.{field.property_name}.Add({sample_scalar(field, schema_name, index)});"]
+    if field.base_type == "geometry_msgs/Vector3":
+        return [f"message.{field.property_name}.Add({sample_scalar(field, schema_name, index)});"]
+    if field.base_type == "geometry_msgs/Quaternion":
         return [f"message.{field.property_name}.Add({sample_scalar(field, schema_name, index)});"]
     if field.base_type.startswith("foxglove_msgs/"):
         nested = field.base_type.split("/", 1)[1]
@@ -687,7 +773,7 @@ def generate_samples(schemas: list[Schema]) -> str:
         "// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.",
         "// SPDX-License-Identifier: Apache-2.0",
         "//",
-        "// Module: Runtime/Schemas/Proto/Ros2Msg/Generated",
+        "// Module: Runtime/Schemas/Ros2Msg/Generated",
         "// Purpose: Generated deterministic ROS 2 CDR serializer samples.",
         "// Generated by Scripts/schema/generate_ros2_cdr_serializers.py.",
         "",
@@ -731,7 +817,7 @@ def generate_registry(schemas: list[Schema]) -> str:
     return f"""// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Schemas/Proto/Ros2Msg/Generated
+// Module: Runtime/Schemas/Ros2Msg/Generated
 // Purpose: Generated ROS 2 CDR serializer registry.
 // Generated by Scripts/schema/generate_ros2_cdr_serializers.py.
 
@@ -883,7 +969,7 @@ def generate_deserializer_registry(schemas: list[Schema]) -> str:
     return f"""// Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Schemas/Proto/Ros2Msg/Generated
+// Module: Runtime/Schemas/Ros2Msg/Generated
 // Purpose: Generated ROS 2 CDR deserializer registry.
 // Generated by Scripts/schema/generate_ros2_cdr_serializers.py.
 

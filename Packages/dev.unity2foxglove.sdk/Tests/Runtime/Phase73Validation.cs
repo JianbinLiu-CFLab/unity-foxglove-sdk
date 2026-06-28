@@ -136,7 +136,8 @@ namespace Unity.FoxgloveSDK.Tests
                     || IndexOf(preflight, "GetOrRegisterChannel") < IndexOf(preflight, "HasChannelDemand(channelId)"),
                 "73B-9: manager registers/adverts the channel before checking demand");
 
-            Check(IndexOf(pointCloudSource, "ShouldPreparePublishPayload()") < IndexOf(pointCloudSource, "_pendingFrameSlot.Take()"),
+            var pointCloudUpdate = Slice(pointCloudSource, "protected virtual void Update()", "protected virtual void PublishPreparedFrame");
+            Check(IndexOf(pointCloudUpdate, "ShouldPreparePublishPayload()") < IndexOf(pointCloudUpdate, "_pendingFrameSlot.Take()"),
                 "73B-10: point cloud pending frame is not cleared before demand guard");
 
             Check(sessionSource.Contains("CopySubscribersForChannel")

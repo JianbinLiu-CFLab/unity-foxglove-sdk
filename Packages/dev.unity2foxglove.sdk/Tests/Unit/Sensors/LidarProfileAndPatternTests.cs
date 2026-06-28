@@ -42,6 +42,46 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(foundPositiveElevation, "test should find a positive-elevation sample");
         }
 
+        [Fact]
+        public void SpinningPattern_RetainsFinalPartialColumnStep()
+        {
+            var pattern = SpinningScanPattern.FromUniformFov(
+                "test",
+                10.0,
+                0.1,
+                rings: 1,
+                columns: 1024,
+                columnStep: 3,
+                fovTopDeg: 0.0,
+                fovBottomDeg: 0.0);
+
+            Assert.Equal(342, pattern.RayCount);
+            Assert.True(pattern.TryGetRay(pattern.RayCount - 1, 0, out _, out var timeOffset));
+            Assert.Equal(1023d / 1024d, timeOffset, 6);
+        }
+
+        [Fact]
+        public void Rosette_PositiveAzimuth_PointsRightLikeSpinningPattern()
+        {
+            const int beams = 1000;
+            var pattern = new RosetteScanPattern("test", 10.0, 0.1, 30.0, 20.0, beams);
+
+            var foundPositiveAzimuth = false;
+            for (var i = 0; i < beams; i++)
+            {
+                var tau = (double)i / beams * 2.0 * Math.PI * 3.2;
+                if (Math.Sin(7.0 * tau) <= 0.9)
+                    continue;
+
+                foundPositiveAzimuth = true;
+                Assert.True(pattern.TryGetRay(i, 0, out var direction, out _));
+                Assert.True(direction.X > 0f, "positive azimuth should point right in the x-right sensor frame");
+                break;
+            }
+
+            Assert.True(foundPositiveAzimuth, "test should find a positive-azimuth sample");
+        }
+
         /// <summary>140-17E-1: Ouster metadata JSON without min_range_m falls back to model default min range.</summary>
         [Fact]
         public void MetadataJson_WithoutMinRange_UsesModelDefault()

@@ -12,6 +12,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Spinning 360-degree LiDAR scan pattern (Ouster, Velodyne, RoboSense).
     /// Rays are indexed by (column, ring) pairs, derived from beam-angle arrays
     /// or a uniform FOV distribution.
+    /// When <c>columnStep</c> does not evenly divide <c>columns</c>, the final
+    /// partial step is retained so the last physical column is not silently
+    /// dropped from the scan.
     /// </summary>
     public class SpinningScanPattern : ILidarScanPattern
     {
@@ -44,7 +47,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             _columnStep = Math.Max(1, columnStep);
             _altRad = altitudeRad ?? throw new ArgumentNullException(nameof(altitudeRad));
             _azmRad = azimuthRad ?? throw new ArgumentNullException(nameof(azimuthRad));
-            RayCount = _altRad.Length * (_columns / _columnStep);
+            RayCount = _altRad.Length * EffectiveColumnCount(_columns, _columnStep);
         }
 
         /// <summary>
@@ -63,9 +66,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             out Vector3 direction, out float timeOffset)
         {
             var rings = _altRad.Length;
-            var effectiveColumns = _columns / _columnStep;
+            var effectiveColumns = EffectiveColumnCount(_columns, _columnStep);
             var ring = index / effectiveColumns;
-            var column = (index % effectiveColumns) * _columnStep;
+            var column = Math.Min(_columns - 1, (index % effectiveColumns) * _columnStep);
 
             if (ring < 0 || ring >= rings || column < 0 || column >= _columns)
             {
@@ -93,6 +96,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             timeOffset = (float)column / _columns;
             return true;
         }
+
+        private static int EffectiveColumnCount(int columns, int columnStep)
+            => Math.Max(1, (columns + columnStep - 1) / columnStep);
 
         private static double[] UniformAngles(int count, double topDeg, double bottomDeg)
         {

@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -74,20 +75,32 @@ namespace Unity.FoxgloveSDK.Tests
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(start);
-            if (process == null)
-                throw new InvalidOperationException("Could not start git ls-files.");
+            Process process;
+            try
+            {
+                process = Process.Start(start);
+            }
+            catch (FileNotFoundException ex)
+            {
+                throw new InvalidOperationException("git is not in PATH; ROS2 For Unity validation requires git to enumerate tracked files.", ex);
+            }
 
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException("git ls-files failed: " + error);
+            using (process)
+            {
+                if (process == null)
+                    throw new InvalidOperationException("Could not start git ls-files.");
 
-            return output.Replace("\r\n", "\n")
-                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(path => path.Replace('\\', '/'))
-                .ToList();
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                    throw new InvalidOperationException("git ls-files failed: " + error);
+
+                return output.Replace("\r\n", "\n")
+                    .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(path => path.Replace('\\', '/'))
+                    .ToList();
+            }
         }
 
         public static bool AllR2fuReferencesAreGuarded(

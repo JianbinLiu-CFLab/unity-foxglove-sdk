@@ -57,6 +57,30 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             return _data[_offset++];
         }
 
+        /// <summary>Read a signed 16-bit integer.</summary>
+        public short ReadInt16()
+        {
+            Align(2);
+            Ensure(2);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToInt16(_data, _offset)
+                : BitConverter.ToInt16(CopyReversedBytes(2), 0);
+            _offset += 2;
+            return value;
+        }
+
+        /// <summary>Read an unsigned 16-bit integer.</summary>
+        public ushort ReadUInt16()
+        {
+            Align(2);
+            Ensure(2);
+            var value = BitConverter.IsLittleEndian
+                ? BitConverter.ToUInt16(_data, _offset)
+                : BitConverter.ToUInt16(CopyReversedBytes(2), 0);
+            _offset += 2;
+            return value;
+        }
+
         /// <summary>Read a signed 32-bit integer.</summary>
         public int ReadInt32()
         {

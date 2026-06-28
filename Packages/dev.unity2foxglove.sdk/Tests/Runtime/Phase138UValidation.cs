@@ -186,9 +186,9 @@ namespace Unity.FoxgloveSDK.Tests
                     out var referenceResult,
                   out _)
                   && Math.Abs(referenceResult.Points[1].X - 99f) < 0.0001f
-                  && referenceResult.ReferenceUnixNs == 1_000_000_000UL
+                  && referenceResult.ReferenceUnixNs == 1_050_000_000UL
                   && referenceResult.Points[1].TimeOffsetSeconds == 0f,
-                "138U-3H: scan-reference deskew branch publishes closed scan-start visualization XYZ without pose history");
+                "138U-3H: scan-reference deskew branch publishes closed midpoint visualization XYZ without pose history");
         }
 
         /// <summary>

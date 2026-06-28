@@ -43,19 +43,22 @@ namespace Unity.FoxgloveSDK.Editor
 
             var versionDir = OpenH264InstallLocation.GetVersionedDirectory(installRoot);
             var compressedPath = Path.Combine(versionDir, OpenH264OfficialBinaryManifest.AssetName);
+            var compressedDownloadPath = compressedPath + ".download";
             var finalDllPath = OpenH264InstallLocation.GetFinalDllPath(installRoot);
             var finalHelperPath = OpenH264InstallLocation.GetFinalHelperPath(installRoot);
             try
             {
                 Directory.CreateDirectory(versionDir);
-                DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedPath);
+                TryDelete(compressedDownloadPath);
+                DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);
                 if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
-                        compressedPath,
+                        compressedDownloadPath,
                         OpenH264OfficialBinaryManifest.CompressedAssetSha256,
                         "OpenH264 compressed asset",
                         out _,
                         out var compressedHashError))
                 {
+                    TryDelete(compressedDownloadPath);
                     return Fail(
                         compressedHashError
                         + "\nManual fallback: open "
@@ -64,6 +67,11 @@ namespace Unity.FoxgloveSDK.Editor
                         + OpenH264OfficialBinaryManifest.AssetName
                         + ", and compare SHA256 before installing.");
                 }
+
+                if (File.Exists(compressedPath))
+                    File.Delete(compressedPath);
+
+                File.Move(compressedDownloadPath, compressedPath);
 
                 var tempDll = finalDllPath + ".tmp";
                 if (File.Exists(tempDll))
@@ -106,6 +114,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
             catch (Exception ex)
             {
+                TryDelete(compressedDownloadPath);
                 return Fail(
                     ex.Message
                     + "\nManual fallback: open "
@@ -118,17 +127,32 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DownloadFile(string url, string destination)
         {
+            var tempDestination = destination + ".partial";
+            TryDelete(tempDestination);
             using (var client = new HttpClient())
             {
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Unity2Foxglove-OpenH264-Installer/1.0");
-                using (var response = client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult())
+                try
                 {
-                    response.EnsureSuccessStatusCode();
-                    using (var source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
-                    using (var destinationStream = File.Create(destination))
+                    using (var response = client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult())
                     {
-                        source.CopyTo(destinationStream);
+                        response.EnsureSuccessStatusCode();
+                        using (var source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
+                        using (var destinationStream = File.Create(tempDestination))
+                        {
+                            source.CopyTo(destinationStream);
+                        }
                     }
+
+                    if (File.Exists(destination))
+                        File.Delete(destination);
+
+                    File.Move(tempDestination, destination);
+                }
+                catch
+                {
+                    TryDelete(tempDestination);
+                    throw;
                 }
             }
         }

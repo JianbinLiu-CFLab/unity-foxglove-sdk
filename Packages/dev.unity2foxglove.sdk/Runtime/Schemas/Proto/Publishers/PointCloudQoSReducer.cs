@@ -97,7 +97,8 @@ namespace Unity.FoxgloveSDK.Components
             var copy = new PointCloudFrame
             {
                 UnixNs = frame.UnixNs == 0 ? unixNs : frame.UnixNs,
-                FrameId = string.IsNullOrEmpty(frame.FrameId) ? frameId : frame.FrameId
+                FrameId = string.IsNullOrEmpty(frame.FrameId) ? frameId : frame.FrameId,
+                EmitAbsoluteTimeNs = frame.EmitAbsoluteTimeNs
             };
 
             if (useVoxelGrid)

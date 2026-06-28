@@ -43,6 +43,7 @@ namespace Foxglove.Schemas.Video
         private long _framesSubmitted;
         private long _accessUnitsProduced;
         private long _accessUnitsDropped;
+        private long _timestampQueueUnderflows;
         private string _lastStderrLine;
         private string _lastError;
 
@@ -68,6 +69,7 @@ namespace Foxglove.Schemas.Video
         public long FramesSubmitted => Interlocked.Read(ref _framesSubmitted);
         public long AccessUnitsProduced => Interlocked.Read(ref _accessUnitsProduced);
         public long AccessUnitsDropped => Interlocked.Read(ref _accessUnitsDropped);
+        public long TimestampQueueUnderflows => Interlocked.Read(ref _timestampQueueUnderflows);
         public string LastStderrLine
         {
             get => Volatile.Read(ref _lastStderrLine);
@@ -446,7 +448,16 @@ namespace Foxglove.Schemas.Video
                 // and B-frames disabled, output order is expected to match input order;
                 // this queue remains an accepted approximation until a PTS-bearing
                 // sidecar protocol replaces the rawvideo stdin/stdout contract.
-                var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
+                var timestampNs = 0UL;
+                if (_encodedFrameTimestamps.TryDequeue(out var capturedNs))
+                {
+                    timestampNs = capturedNs;
+                }
+                else
+                {
+                    Interlocked.Increment(ref _timestampQueueUnderflows);
+                    LastStderrLine = "FFmpeg H.264 access unit had no queued timestamp.";
+                }
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 _outputCount++;
                 Interlocked.Increment(ref _accessUnitsProduced);

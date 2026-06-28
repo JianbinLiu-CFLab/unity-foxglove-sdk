@@ -124,7 +124,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var referenceOutput = new VirtualLidarPointData[pointCount];
                 CopyReferenceFramePoints(source, pointCount, referenceOutput);
-                result = new PointCloudMotionCompensationResult(referenceOutput, pointCount, firstUnixNs);
+                var scanReferenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
+                result = new PointCloudMotionCompensationResult(referenceOutput, pointCount, scanReferenceUnixNs);
                 return true;
             }
 

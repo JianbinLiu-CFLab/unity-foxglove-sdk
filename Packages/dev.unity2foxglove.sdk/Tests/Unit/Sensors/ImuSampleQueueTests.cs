@@ -5,6 +5,7 @@
 // Purpose: Bounded IMU sample queue behavior checks.
 
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Sensors.Imu;
 using UnityEngine;
 using Xunit;
 
@@ -25,9 +26,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             queue.Enqueue(Sample(3));
 
             Assert.Equal(2, queue.Count);
+            Assert.Equal(1, queue.DroppedCount);
             Assert.Equal(2UL, queue.Dequeue().TimestampNs);
             Assert.Equal(3UL, queue.Dequeue().TimestampNs);
             Assert.Equal(0, queue.Count);
+        }
+
+        [Fact]
+        public void ResizeResetsDroppedCountForNewSessionCapacity()
+        {
+            var queue = new ImuSampleQueue();
+            queue.Resize(2, 2);
+            queue.Enqueue(Sample(1));
+            queue.Enqueue(Sample(2));
+            queue.Enqueue(Sample(3));
+
+            queue.Resize(3, 2);
+
+            Assert.Equal(0, queue.DroppedCount);
+        }
+
+        [Fact]
+        public void SampleTimestampNsRoundsForNonDecimalRates()
+        {
+            var expected = (ulong)System.Math.Round(1_000_000_000d / 333d, System.MidpointRounding.AwayFromZero);
+
+            Assert.Equal(expected, ImuSubStep.SampleTimestampNs(0UL, 1, 333));
         }
 
         [Fact]

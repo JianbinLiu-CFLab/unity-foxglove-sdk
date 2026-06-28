@@ -46,7 +46,8 @@ namespace Foxglove.Schemas.Video
 
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
         private readonly Dictionary<long, ulong> _sampleTimestampNsByTime = new Dictionary<long, ulong>();
-        private readonly Queue<long> _sampleTimestampOrder = new Queue<long>();
+        private readonly Dictionary<long, LinkedListNode<long>> _sampleTimestampNodesByTime = new Dictionary<long, LinkedListNode<long>>();
+        private readonly LinkedList<long> _sampleTimestampOrder = new LinkedList<long>();
         private readonly object _outputLock = new object();
         private readonly H264AccessUnitNormalizer _normalizer = new H264AccessUnitNormalizer();
         private MediaFoundationH264EncoderOptions _options;
@@ -627,8 +628,11 @@ namespace Foxglove.Schemas.Video
                 if (_sampleTimestampNsByTime.Count >= MaxTrackedSampleTimestamps)
                     EvictOldestSampleTimestamp();
 
+                if (_sampleTimestampNodesByTime.TryGetValue(sampleTime, out var existingNode))
+                    _sampleTimestampOrder.Remove(existingNode);
+
                 _sampleTimestampNsByTime[sampleTime] = timestampNs;
-                _sampleTimestampOrder.Enqueue(sampleTime);
+                _sampleTimestampNodesByTime[sampleTime] = _sampleTimestampOrder.AddLast(sampleTime);
             }
         }
 
@@ -644,18 +648,26 @@ namespace Foxglove.Schemas.Video
                     return 0UL;
 
                 _sampleTimestampNsByTime.Remove(sampleTime);
+                if (_sampleTimestampNodesByTime.TryGetValue(sampleTime, out var node))
+                {
+                    _sampleTimestampOrder.Remove(node);
+                    _sampleTimestampNodesByTime.Remove(sampleTime);
+                }
+
                 return timestampNs;
             }
         }
 
         private void EvictOldestSampleTimestamp()
         {
-            while (_sampleTimestampOrder.Count > 0)
-            {
-                var oldestSampleTime = _sampleTimestampOrder.Dequeue();
-                if (_sampleTimestampNsByTime.Remove(oldestSampleTime))
-                    return;
-            }
+            var node = _sampleTimestampOrder.First;
+            if (node == null)
+                return;
+
+            var oldestSampleTime = node.Value;
+            _sampleTimestampOrder.RemoveFirst();
+            _sampleTimestampNodesByTime.Remove(oldestSampleTime);
+            _sampleTimestampNsByTime.Remove(oldestSampleTime);
         }
 
         private void ClearSampleTimestampMap()
@@ -663,6 +675,7 @@ namespace Foxglove.Schemas.Video
             lock (_outputLock)
             {
                 _sampleTimestampNsByTime.Clear();
+                _sampleTimestampNodesByTime.Clear();
                 _sampleTimestampOrder.Clear();
             }
         }

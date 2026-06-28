@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private readonly Func<IRos2BridgeSink> _sinkFactory;
         private readonly object _gate = new object();
         private readonly Queue<Ros2BridgeFrame> _queue;
-        private readonly ManualResetEventSlim _signal = new ManualResetEventSlim(false);
+        private readonly AutoResetEvent _signal = new AutoResetEvent(false);
 
         private Thread _worker;
         private bool _stopRequested;
@@ -199,6 +199,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
         }
 
+        /// <summary>
+        /// Enables the background worker for the configured endpoint. The runtime uses its
+        /// constructor timeout for worker connect attempts; <paramref name="timeoutMs"/> is
+        /// validated for IRos2BridgeSink compatibility.
+        /// </summary>
         public void Connect(string host, int port, int timeoutMs)
         {
             var normalizedHost = NormalizeLoopbackHost(host);
@@ -212,6 +217,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             Start(enabled: true, autoConnect: true);
         }
 
+        /// <summary>
+        /// Enqueues <paramref name="frame"/> for asynchronous worker delivery. The runtime
+        /// uses its constructor timeout for the actual transport send; <paramref name="timeoutMs"/>
+        /// is validated for IRos2BridgeSink compatibility.
+        /// </summary>
         public void Send(Ros2BridgeFrame frame, int timeoutMs)
         {
             if (timeoutMs <= 0)
@@ -220,6 +230,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 throw new InvalidOperationException(reason);
         }
 
+        /// <summary>Stops the background worker and clears queued frames.</summary>
         public void Disconnect()
         {
             Stop();
@@ -242,16 +253,14 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
                     if (!EnsureConnected(generation))
                     {
-                        _signal.Wait(_reconnectIntervalMs);
-                        _signal.Reset();
+                        _signal.WaitOne(_reconnectIntervalMs);
                         continue;
                     }
 
                     var frame = DequeueFrame();
                     if (frame == null)
                     {
-                        _signal.Wait(50);
-                        _signal.Reset();
+                        _signal.WaitOne(50);
                         continue;
                     }
 

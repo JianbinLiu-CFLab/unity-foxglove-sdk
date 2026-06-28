@@ -34,6 +34,9 @@ namespace Unity.FoxgloveSDK.Components
         private static readonly ProfilerMarker PublishMarker = new ProfilerMarker("VirtualImu.Publish");
         private static int _fixedDeltaOverrideUsers;
         private static float _fixedDeltaOverrideOriginal;
+        private static float _fixedDeltaOverrideTarget;
+        private static int _fixedDeltaOverrideTargetHz;
+        private static bool _warnedFixedDeltaOverrideConflict;
 
         private readonly ImuSampleQueue _queue = new ImuSampleQueue();
 
@@ -77,6 +80,7 @@ namespace Unity.FoxgloveSDK.Components
         private ulong _epochUnixNs;
         private double _epochPhysSeconds;
         private long _nextSampleIndex;
+        private long _lastReportedDroppedSamples;
 
         private bool PublishEnabled => _publishing;
 
@@ -134,6 +138,7 @@ namespace Unity.FoxgloveSDK.Components
 
             _maxQueuedSamples = ComputeMaxQueuedSamples();
             _queue.Resize(_maxQueuedSamples, ImuSampleQueue.MinCapacity);
+            _lastReportedDroppedSamples = 0;
             _lastWorldVelocity = _rigidbody.linearVelocity;
             _lastBodyAcceleration = Vector3.zero;
             _lastBodyAngularVelocity = Vector3.zero;
@@ -198,6 +203,7 @@ namespace Unity.FoxgloveSDK.Components
             else
             {
                 var tickEndPhysical = Time.fixedTimeAsDouble;
+                var initializedEpochThisTick = false;
                 if (!_hasEpoch)
                 {
                     _epochUnixNs = _manager == null
@@ -206,6 +212,7 @@ namespace Unity.FoxgloveSDK.Components
                     _epochPhysSeconds = tickEndPhysical - Time.fixedDeltaTime;
                     _nextSampleIndex = 0;
                     _hasEpoch = true;
+                    initializedEpochThisTick = true;
                 }
 
                 var tickStartRel = tickEndPhysical - Time.fixedDeltaTime - _epochPhysSeconds;
@@ -222,13 +229,16 @@ namespace Unity.FoxgloveSDK.Components
                         break;
 
                     var phase = (float)Math.Clamp((sampleRel - tickStartRel) / Time.fixedDeltaTime, 0.0, 1.0);
+                    var startLinearBody = initializedEpochThisTick ? linearBody : _lastBodyAcceleration;
+                    var startAngularBody = initializedEpochThisTick ? angularBody : _lastBodyAngularVelocity;
+                    var startBodyRotation = initializedEpochThisTick ? bodyRotation : _lastBodyRotation;
                     // CreateSample applies the Unity->Foxglove coordinate conversion, matching
                     // the targetHz<=0 path. Interpolate in Unity body frame, then convert.
                     _queue.Enqueue(CreateSample(
                         ImuSubStep.SampleTimestampNs(_epochUnixNs, _nextSampleIndex, targetRateHz),
-                        Vector3.Lerp(_lastBodyAcceleration, linearBody, phase),
-                        Vector3.Lerp(_lastBodyAngularVelocity, angularBody, phase),
-                        Quaternion.Slerp(_lastBodyRotation, bodyRotation, phase)));
+                        Vector3.Lerp(startLinearBody, linearBody, phase),
+                        Vector3.Lerp(startAngularBody, angularBody, phase),
+                        Quaternion.Slerp(startBodyRotation, bodyRotation, phase)));
 
                     _nextSampleIndex++;
                 }
@@ -250,6 +260,8 @@ namespace Unity.FoxgloveSDK.Components
                     return;
 
                 EnsureSchemaRegistered();
+
+                LogDroppedSamplesIfNeeded();
 
                 var queuedAtFrameStart = _queue.Count;
                 var webSocketBudget = ResolveWebSocketSamplesPerFrame(queuedAtFrameStart);
@@ -363,6 +375,16 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _fixedDeltaOverrideOriginal = Time.fixedDeltaTime;
                 Time.fixedDeltaTime = target;
+                _fixedDeltaOverrideTarget = target;
+                _fixedDeltaOverrideTargetHz = targetHz;
+            }
+            else if (Math.Abs(_fixedDeltaOverrideTarget - target) > float.Epsilon
+                     && !_warnedFixedDeltaOverrideConflict)
+            {
+                Debug.LogWarning(
+                    $"[VirtualImu] Global physics rate override is already active at {_fixedDeltaOverrideTargetHz} Hz; ignoring conflicting request for {targetHz} Hz on {name}.",
+                    this);
+                _warnedFixedDeltaOverrideConflict = true;
             }
 
             _fixedDeltaOverrideUsers++;
@@ -383,7 +405,26 @@ namespace Unity.FoxgloveSDK.Components
                 Time.fixedDeltaTime = _fixedDeltaOverrideOriginal;
             }
 
+            if (_fixedDeltaOverrideUsers == 0)
+            {
+                _fixedDeltaOverrideTarget = 0f;
+                _fixedDeltaOverrideTargetHz = 0;
+                _warnedFixedDeltaOverrideConflict = false;
+            }
+
             _didSetFixedDelta = false;
+        }
+
+        private void LogDroppedSamplesIfNeeded()
+        {
+            var dropped = _queue.DroppedCount;
+            if (dropped <= _lastReportedDroppedSamples)
+                return;
+
+            Debug.LogWarning(
+                $"[VirtualImu] IMU sample queue dropped {dropped - _lastReportedDroppedSamples} sample(s) under back-pressure; total dropped={dropped}.",
+                this);
+            _lastReportedDroppedSamples = dropped;
         }
 
         private void EnsureSchemaRegistered()

@@ -182,22 +182,38 @@ namespace Foxglove.Schemas.PointCloud
             try
             {
                 var stdin = process.StandardInput.BaseStream;
-                if (!WaitForTask(stdin.WriteAsync(framePayload, 0, framePayload.Length), deadlineUtc))
-                    return FailAndStop("Timed out writing point-cloud frame to Draco helper.");
-                if (!WaitForTask(stdin.FlushAsync(), deadlineUtc))
-                    return FailAndStop("Timed out flushing point-cloud frame to Draco helper.");
+                if (!WaitForTask(stdin.WriteAsync(framePayload, 0, framePayload.Length), deadlineUtc, out var writeError))
+                {
+                    return FailAndStop(string.IsNullOrEmpty(writeError)
+                        ? "Timed out writing point-cloud frame to Draco helper."
+                        : "Failed writing point-cloud frame to Draco helper: " + writeError);
+                }
+                if (!WaitForTask(stdin.FlushAsync(), deadlineUtc, out var flushError))
+                {
+                    return FailAndStop(string.IsNullOrEmpty(flushError)
+                        ? "Timed out flushing point-cloud frame to Draco helper."
+                        : "Failed flushing point-cloud frame to Draco helper: " + flushError);
+                }
 
-                var readLength = ReadLittleEndianLength(process.StandardOutput.BaseStream, deadlineUtc);
+                var readLength = ReadLittleEndianLength(process.StandardOutput.BaseStream, deadlineUtc, out var readLengthError);
                 if (!readLength.Success)
-                    return FailAndStop("Draco helper stdout ended before payload length.");
+                {
+                    return FailAndStop(string.IsNullOrEmpty(readLengthError)
+                        ? "Draco helper stdout ended before payload length."
+                        : "Failed reading Draco helper payload length: " + readLengthError);
+                }
 
                 var payloadLength = readLength.Length;
                 if (payloadLength <= 0 || payloadLength > MaxPayloadBytes)
                     return FailAndStop("Draco helper emitted an invalid payload length: " + payloadLength);
 
                 var payload = new byte[payloadLength];
-                if (!ReadExact(process.StandardOutput.BaseStream, payload, deadlineUtc))
-                    return FailAndStop("Draco helper stdout ended mid payload.");
+                if (!ReadExact(process.StandardOutput.BaseStream, payload, deadlineUtc, out var readPayloadError))
+                {
+                    return FailAndStop(string.IsNullOrEmpty(readPayloadError)
+                        ? "Draco helper stdout ended mid payload."
+                        : "Failed reading Draco helper payload: " + readPayloadError);
+                }
 
                 dracoPayload = payload;
                 return true;
@@ -290,10 +306,11 @@ namespace Foxglove.Schemas.PointCloud
             Volatile.Write(ref _lastError, value);
         }
 
-        private static LengthReadResult ReadLittleEndianLength(Stream stream, DateTime deadlineUtc)
+        private static LengthReadResult ReadLittleEndianLength(Stream stream, DateTime deadlineUtc, out string error)
         {
+            error = string.Empty;
             var header = new byte[4];
-            if (!ReadExact(stream, header, deadlineUtc))
+            if (!ReadExact(stream, header, deadlineUtc, out error))
                 return new LengthReadResult(false, 0);
 
             var length = header[0]
@@ -303,13 +320,14 @@ namespace Foxglove.Schemas.PointCloud
             return new LengthReadResult(true, length);
         }
 
-        private static bool ReadExact(Stream stream, byte[] buffer, DateTime deadlineUtc)
+        private static bool ReadExact(Stream stream, byte[] buffer, DateTime deadlineUtc, out string error)
         {
+            error = string.Empty;
             var offset = 0;
             while (offset < buffer.Length)
             {
                 var readTask = stream.ReadAsync(buffer, offset, buffer.Length - offset);
-                if (!WaitForTask(readTask, deadlineUtc))
+                if (!WaitForTask(readTask, deadlineUtc, out error))
                     return false;
 
                 var read = readTask.Result;
@@ -324,24 +342,49 @@ namespace Foxglove.Schemas.PointCloud
 
         private static bool WaitForTask(Task task, int timeoutMs)
         {
-            return WaitForTask(task, DateTime.UtcNow.AddMilliseconds(Math.Max(1, timeoutMs)));
+            return WaitForTask(task, DateTime.UtcNow.AddMilliseconds(Math.Max(1, timeoutMs)), out _);
         }
 
         private static bool WaitForTask(Task task, DateTime deadlineUtc)
         {
+            return WaitForTask(task, deadlineUtc, out _);
+        }
+
+        private static bool WaitForTask(Task task, DateTime deadlineUtc, out string error)
+        {
             try
             {
+                error = string.Empty;
                 if (!task.Wait(RemainingMilliseconds(deadlineUtc)))
                 {
                     ObserveFaultedTask(task);
                     return false;
                 }
-                return task.Exception == null;
-            }
-            catch
-            {
+
+                if (task.Exception == null)
+                    return true;
+
+                error = DescribeTaskException(task.Exception);
                 return false;
             }
+            catch (Exception ex)
+            {
+                error = DescribeTaskException(ex);
+                return false;
+            }
+        }
+
+        private static string DescribeTaskException(Exception ex)
+        {
+            if (ex is AggregateException aggregate)
+            {
+                var flattened = aggregate.Flatten();
+                if (flattened.InnerExceptions.Count > 0)
+                    ex = flattened.InnerExceptions[0];
+            }
+
+            var typeName = ex.GetType().FullName ?? ex.GetType().Name;
+            return string.IsNullOrWhiteSpace(ex.Message) ? typeName : typeName + ": " + ex.Message;
         }
 
         private static void ObserveFaultedTask(Task task)

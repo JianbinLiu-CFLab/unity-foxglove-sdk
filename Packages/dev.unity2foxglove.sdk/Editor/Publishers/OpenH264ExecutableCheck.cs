@@ -46,6 +46,8 @@ namespace Unity.FoxgloveSDK.Editor
 
     public static class OpenH264ExecutableCheck
     {
+        private const int MaxProbeAccessUnitBytes = 16 * 1024 * 1024;
+
         public static OpenH264ExecutableCheckResult Check(string helperPath, string dllPath, int timeoutMs = 3000)
         {
             var normalizedHelper = NormalizePath(helperPath);
@@ -108,16 +110,19 @@ namespace Unity.FoxgloveSDK.Editor
 
                     WaitForStreamDrain(stdoutTask, stderrTask, 500);
                     var stdout = GetCompletedOutput(stdoutTask);
-                    var hasLengthPrefix = stdout.Length >= 4;
+                    var hasAccessUnit = TryValidateLengthPrefixedAccessUnit(stdout, out var stdoutError);
                     var stderr = GetCompletedOutput(stderrTask);
                     var diagnostic = LastNonEmptyLine(stderr);
-                    var compatibilityError = BuildCompatibilityError(stderr);
-                    if (!string.IsNullOrEmpty(compatibilityError))
+                    if (process.ExitCode != 0)
                     {
-                        return Invalid(normalizedHelper, normalizedDll, diagnostic, compatibilityError);
+                        var compatibilityError = BuildCompatibilityError(stderr);
+                        if (!string.IsNullOrEmpty(compatibilityError))
+                        {
+                            return Invalid(normalizedHelper, normalizedDll, diagnostic, compatibilityError);
+                        }
                     }
 
-                    if (process.ExitCode == 0 && hasLengthPrefix)
+                    if (process.ExitCode == 0 && hasAccessUnit)
                     {
                         return new OpenH264ExecutableCheckResult(
                             OpenH264ExecutableStatus.Found,
@@ -128,7 +133,7 @@ namespace Unity.FoxgloveSDK.Editor
                     }
 
                     var error = string.IsNullOrWhiteSpace(stderr)
-                        ? "OpenH264 helper did not emit a valid H.264 access unit."
+                        ? stdoutError
                         : stderr.Trim();
                     return Invalid(normalizedHelper, normalizedDll, diagnostic, error);
                 }
@@ -262,10 +267,58 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrWhiteSpace(stderr))
                 return "";
 
-            return stderr.IndexOf("Usage: openh264_probe_encoder", StringComparison.OrdinalIgnoreCase) >= 0
-                   && stderr.IndexOf("--openh264-dll", StringComparison.OrdinalIgnoreCase) < 0
-                ? "Selected OpenH264 helper is outdated. Rebuild or reselect the Phase 81 helper executable; expected usage includes --openh264-dll <path>."
-                : "";
+            var trimmed = stderr.Trim();
+            if (stderr.IndexOf("Usage: openh264_probe_encoder", StringComparison.OrdinalIgnoreCase) >= 0
+                && stderr.IndexOf("--openh264-dll", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return "Selected OpenH264 helper is outdated. Rebuild or reselect the Phase 81 helper executable; expected usage includes --openh264-dll <path>."
+                    + "\nstderr:\n"
+                    + trimmed;
+            }
+
+            return "OpenH264 helper reported stderr during validation:\n" + trimmed;
+        }
+
+        private static bool TryValidateLengthPrefixedAccessUnit(byte[] stdout, out string error)
+        {
+            error = "";
+            if (stdout == null || stdout.Length < 4)
+            {
+                error = "OpenH264 helper did not emit a length-prefixed H.264 access unit.";
+                return false;
+            }
+
+            var length = stdout[0]
+                | (stdout[1] << 8)
+                | (stdout[2] << 16)
+                | (stdout[3] << 24);
+            if (length <= 0)
+            {
+                error = "OpenH264 helper emitted a skip sentinel instead of a validation access unit.";
+                return false;
+            }
+
+            if (length > MaxProbeAccessUnitBytes)
+            {
+                error = "OpenH264 helper emitted an access unit larger than the validation limit.";
+                return false;
+            }
+
+            if (stdout.Length < 4 + length)
+            {
+                error = "OpenH264 helper stdout ended before the advertised access unit payload.";
+                return false;
+            }
+
+            var payload = new byte[length];
+            Buffer.BlockCopy(stdout, 4, payload, 0, length);
+            if (!H264AnnexBAccessUnitPacketizer.LooksLikeDecodableH264AccessUnit(payload))
+            {
+                error = "OpenH264 helper emitted a length-prefixed payload that does not look like a decodable H.264 access unit.";
+                return false;
+            }
+
+            return true;
         }
 
         private static void TryKill(Process process)
