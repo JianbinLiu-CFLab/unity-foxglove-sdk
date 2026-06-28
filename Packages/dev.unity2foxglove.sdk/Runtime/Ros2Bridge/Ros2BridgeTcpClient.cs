@@ -59,27 +59,24 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
             Disconnect();
             var client = new TcpClient();
-            var task = client.ConnectAsync(host, port);
-            if (!task.Wait(timeoutMs))
-            {
-                client.Dispose();
-                throw new TimeoutException("Timed out connecting to ROS 2 bridge sidecar.");
-            }
-
             try
             {
+                var task = client.ConnectAsync(host, port);
+                if (!task.Wait(timeoutMs))
+                    throw new TimeoutException("Timed out connecting to ROS 2 bridge sidecar.");
+
                 task.GetAwaiter().GetResult();
+                client.NoDelay = true;
+                client.Client.SendTimeout = timeoutMs;
+                _sendTimeoutMs = timeoutMs;
+                _client = client;
+                client = null;
             }
             catch
             {
-                client.Dispose();
+                client?.Dispose();
                 throw;
             }
-
-            client.NoDelay = true;
-            client.Client.SendTimeout = timeoutMs;
-            _sendTimeoutMs = timeoutMs;
-            _client = client;
         }
 
         public void Send(Ros2BridgeFrame frame, int timeoutMs)

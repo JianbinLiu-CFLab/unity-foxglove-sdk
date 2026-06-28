@@ -69,6 +69,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, false);
             StopPlayModeBeforeNativeReload("script compilation assembly reload");
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                Debug.LogError(
+                    "Unity2Foxglove ROS2 For Unity assembly reload is continuing before Play Mode fully exited. Native ROS2/RMW DLLs may still be loaded; restart Unity before entering Play Mode again.");
+            }
         }
 
         private static bool StopPlayModeBeforeNativeReload(string reason)

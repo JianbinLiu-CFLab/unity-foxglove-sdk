@@ -56,8 +56,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("DiscoverCandidateRuntimes", StringComparison.Ordinal),
                 "146A-A1: runtime selector discovers runtime packages by package-id convention");
             Check(source.Contains("RepositoryPackagesDirectory", StringComparison.Ordinal)
-                  && source.Contains("file:../../Packages/", StringComparison.Ordinal),
-                "146A-A2: runtime selector searches the repository Packages directory used by manifest file references");
+                  && source.Contains("BuildRuntimePackageReference", StringComparison.Ordinal)
+                  && source.Contains("GetRelativePath(projectPackagesDirectory, runtimePackageDirectory)", StringComparison.Ordinal),
+                "146A-A2: runtime selector derives manifest file references from the repository Packages directory");
             Check(!source.Contains("KnownRuntimes", StringComparison.Ordinal)
                   && !source.Contains("KnownRuntimeDescriptors", StringComparison.Ordinal),
                 "146A-A3: runtime selector no longer hardcodes known runtime descriptors");

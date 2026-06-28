@@ -14,6 +14,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 {
     public static class Ros2ForUnityRuntimeSelectorInspector
     {
+        private static string _pendingResolveMessage = string.Empty;
+
         public static void DrawActiveRuntimeSelector()
         {
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
@@ -30,6 +32,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
 
             DrawRuntimePopup(projectDirectory, status, installed);
+            DrawPendingResolveMessage();
 
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
                 EditorGUILayout.HelpBox(status.Diagnostic, MessageType.Info);
@@ -156,7 +159,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             Ros2ForUnityRuntimeSelection.SwitchActiveRuntimePackage(projectDirectory, runtime.PackageName);
             Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
-            EditorGUILayout.HelpBox("Unity is resolving the selected runtime package. Restart Unity only if this Editor session already entered Play Mode with a different ROS2 runtime.", MessageType.Info);
+            EditorApplication.delayCall += () =>
+            {
+                _pendingResolveMessage =
+                    "Unity is resolving the selected runtime package. Restart Unity only if this Editor session already entered Play Mode with a different ROS2 runtime.";
+            };
+        }
+
+        private static void DrawPendingResolveMessage()
+        {
+            if (string.IsNullOrWhiteSpace(_pendingResolveMessage))
+                return;
+
+            EditorGUILayout.HelpBox(_pendingResolveMessage, MessageType.Info);
         }
     }
 }

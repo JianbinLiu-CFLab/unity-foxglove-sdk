@@ -85,7 +85,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public string Encoding { get; }
         public ulong LogTimeNs { get; }
         public ulong Sequence { get; }
-        [Obsolete("Payload returns a defensive copy on every call. Internal writers use PayloadLength and WritePayloadTo; external callers should cache Payload if repeated access is needed.")]
+        /// <summary>Read-only view of the serialized payload without allocating a defensive copy.</summary>
+        public ReadOnlyMemory<byte> PayloadMemory => _payload;
+        [Obsolete("Payload returns a defensive copy on every call. Use PayloadMemory for a non-allocating read-only view, or cache Payload if a mutable copy is required.")]
         public byte[] Payload => (byte[])_payload.Clone();
         public string ProfileName { get; }
         public Ros2BridgeQosProfile? Qos { get; }

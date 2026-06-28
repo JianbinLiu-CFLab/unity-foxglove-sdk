@@ -150,6 +150,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 return false;
 
             var tokenHasCharacters = false;
+            var tokenStart = true;
             for (var i = 1; i < value.Length; i++)
             {
                 var ch = value[i];
@@ -158,12 +159,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     if (!tokenHasCharacters)
                         return false;
                     tokenHasCharacters = false;
+                    tokenStart = true;
                     continue;
                 }
 
                 if (!IsRos2TopicTokenCharacter(ch))
                     return false;
+                if (tokenStart && !IsRos2TopicTokenStartCharacter(ch))
+                    return false;
                 tokenHasCharacters = true;
+                tokenStart = false;
             }
 
             return tokenHasCharacters;
@@ -202,5 +207,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private static bool IsRos2TopicTokenCharacter(char ch)
             => ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+
+        private static bool IsRos2TopicTokenStartCharacter(char ch)
+            => ch == '_' || (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
     }
 }

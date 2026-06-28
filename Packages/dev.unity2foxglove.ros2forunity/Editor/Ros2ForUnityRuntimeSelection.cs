@@ -165,8 +165,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             var manifest = File.ReadAllText(manifestPath);
             manifest = RemoveRuntimePackageDependencies(manifest);
-            manifest = AddRuntimePackageDependency(manifest, candidate.PackageName);
-            File.WriteAllText(manifestPath, manifest);
+            manifest = AddRuntimePackageDependency(manifest, candidate.PackageName, projectDirectory);
+            WriteManifestAtomically(manifestPath, manifest);
             Client.Resolve();
         }
 
@@ -229,6 +229,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public static void ApplyCommunicationModeEnvironment(string projectDirectory)
         {
             var status = GetStatus(projectDirectory);
+            if (status.SelectedRuntime == null)
+                return;
+
             var mode = GetCommunicationModeForRuntime(status.SelectedRuntime);
             Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", GetRmwImplementationForCommunicationMode(mode));
         }
@@ -423,19 +426,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static string RemoveRuntimePackageDependencies(string manifest)
         {
-            var lines = Regex.Split(manifest ?? string.Empty, "\r\n|\n|\r");
-            return string.Join(
-                Environment.NewLine,
-                lines.Where(line => !Regex.IsMatch(
-                    line,
+            var lines = Regex.Split(manifest ?? string.Empty, "\r\n|\n|\r").ToList();
+            var removed = false;
+            for (var i = lines.Count - 1; i >= 0; i--)
+            {
+                if (!Regex.IsMatch(
+                    lines[i],
                     "^\\s*\"" + Regex.Escape(RuntimePackagePrefix) + "[^\"]+\"\\s*:\\s*\"[^\"]+\",?\\s*$",
-                    RegexOptions.CultureInvariant))) + Environment.NewLine;
+                    RegexOptions.CultureInvariant))
+                {
+                    continue;
+                }
+
+                lines.RemoveAt(i);
+                removed = true;
+            }
+
+            if (removed)
+                RemoveTrailingDependencyComma(lines);
+
+            return string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine;
         }
 
-        private static string AddRuntimePackageDependency(string manifest, string packageName)
+        private static string AddRuntimePackageDependency(string manifest, string packageName, string projectDirectory)
         {
             var lines = Regex.Split(manifest ?? string.Empty, "\r\n|\n|\r").ToList();
-            var dependencyLine = "    \"" + packageName + "\": \"file:../../Packages/" + packageName + "\",";
+            var dependencyLine = "    \"" + packageName + "\": \"" + BuildRuntimePackageReference(projectDirectory, packageName) + "\",";
             var insertIndex = lines.FindIndex(line => line.Contains("\"dev.unity2foxglove.ros2forunity\"", StringComparison.Ordinal));
             if (insertIndex < 0)
                 insertIndex = lines.FindIndex(line => line.Contains("\"dev.unity2foxglove.sdk\"", StringComparison.Ordinal));
@@ -451,9 +467,111 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 lines.Insert(insertIndex + 1, dependencyLine);
             }
 
+            RemoveTrailingDependencyComma(lines);
             return string.Join(Environment.NewLine, lines).TrimEnd() + Environment.NewLine;
         }
 
+        private static string BuildRuntimePackageReference(string projectDirectory, string packageName)
+        {
+            var projectPackagesDirectory = Path.Combine(projectDirectory, "Packages");
+            var runtimePackageDirectory = Path.Combine(RepositoryPackagesDirectory(projectDirectory), packageName);
+            var relativePath = GetRelativePath(projectPackagesDirectory, runtimePackageDirectory)
+                .Replace('\\', '/')
+                .TrimStart('/');
+            return "file:" + relativePath;
+        }
+
+        private static string GetRelativePath(string fromDirectory, string toPath)
+        {
+            var fromUri = new Uri(AppendDirectorySeparator(Path.GetFullPath(fromDirectory)));
+            var toUri = new Uri(Path.GetFullPath(toPath));
+            return Uri.UnescapeDataString(fromUri.MakeRelativeUri(toUri).ToString());
+        }
+
+        private static string AppendDirectorySeparator(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return Path.DirectorySeparatorChar.ToString();
+
+            return path.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+                   || path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+                ? path
+                : path + Path.DirectorySeparatorChar;
+        }
+
+        private static void RemoveTrailingDependencyComma(List<string> lines)
+        {
+            var inDependencies = false;
+            var depth = 0;
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var line = lines[i];
+                if (!inDependencies && line.Contains("\"dependencies\"", StringComparison.Ordinal))
+                    inDependencies = true;
+
+                if (!inDependencies)
+                    continue;
+
+                for (var j = 0; j < line.Length; j++)
+                {
+                    var ch = line[j];
+                    if (ch == '{')
+                    {
+                        depth++;
+                    }
+                    else if (ch == '}')
+                    {
+                        if (depth == 1)
+                        {
+                            RemoveTrailingCommaFromPreviousLine(lines, i);
+                            return;
+                        }
+
+                        depth = Math.Max(0, depth - 1);
+                    }
+                }
+            }
+        }
+
+        private static void RemoveTrailingCommaFromPreviousLine(List<string> lines, int beforeIndex)
+        {
+            for (var i = beforeIndex - 1; i >= 0; i--)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                var trimmed = line.TrimEnd();
+                if (trimmed.EndsWith(",", StringComparison.Ordinal))
+                    lines[i] = trimmed.Substring(0, trimmed.Length - 1) + line.Substring(trimmed.Length);
+                return;
+            }
+        }
+
+        private static void WriteManifestAtomically(string manifestPath, string manifest)
+        {
+            var directory = Path.GetDirectoryName(manifestPath);
+            var tempPath = Path.Combine(directory ?? string.Empty, Path.GetFileName(manifestPath) + "." + Guid.NewGuid().ToString("N") + ".tmp");
+            File.WriteAllText(tempPath, manifest);
+            try
+            {
+                File.Replace(tempPath, manifestPath, null);
+            }
+            catch (PlatformNotSupportedException)
+            {
+                File.Copy(tempPath, manifestPath, overwrite: true);
+                File.Delete(tempPath);
+            }
+            catch (IOException) when (!File.Exists(manifestPath))
+            {
+                File.Move(tempPath, manifestPath);
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+        }
     }
 }
 #endif
