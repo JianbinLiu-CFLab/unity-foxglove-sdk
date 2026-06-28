@@ -31,6 +31,7 @@ namespace Unity2Foxglove.Ros2ForUnity
         private readonly IRos2TopicPublisherFactory _factory;
         private readonly Action<string> _log;
         private readonly IUnity2FoxgloveRos2Node _node;
+        private readonly object _gate = new object();
         private readonly Dictionary<string, IRos2TopicPublisher> _publishers = new Dictionary<string, IRos2TopicPublisher>(StringComparer.Ordinal);
         private readonly HashSet<string> _reported = new HashSet<string>(StringComparer.Ordinal);
         private bool _disposed;
@@ -57,10 +58,13 @@ namespace Unity2Foxglove.Ros2ForUnity
         /// </summary>
         public void Register(FoxTopicContract contract)
         {
-            if (_disposed || contract == null)
-                return;
-            if (_publishers.ContainsKey(contract.Topic))
-                return;
+            lock (_gate)
+            {
+                if (_disposed || contract == null)
+                    return;
+                if (_publishers.ContainsKey(contract.Topic))
+                    return;
+            }
 
             if (!_context.IsAvailable)
             {
@@ -70,7 +74,33 @@ namespace Unity2Foxglove.Ros2ForUnity
 
             if (_factory.TryCreate(contract, _node, out var publisher, out var reason) && publisher != null)
             {
-                _publishers[contract.Topic] = publisher;
+                IRos2TopicPublisher duplicate = null;
+                lock (_gate)
+                {
+                    if (_disposed)
+                    {
+                        duplicate = publisher;
+                    }
+                    else if (_publishers.ContainsKey(contract.Topic))
+                    {
+                        duplicate = publisher;
+                    }
+                    else
+                    {
+                        _publishers[contract.Topic] = publisher;
+                    }
+                }
+
+                if (duplicate != null)
+                {
+                    try { duplicate.Dispose(); }
+                    catch (Exception ex)
+                    {
+                        ReportOnce("dispose:duplicate:" + ex.GetType().FullName, "ROS2 duplicate publisher teardown failed: "
+                            + ex.GetType().Name + ": " + ex.Message);
+                    }
+                }
+
                 return;
             }
 
@@ -84,10 +114,14 @@ namespace Unity2Foxglove.Ros2ForUnity
         /// </summary>
         public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
         {
-            if (_disposed || contract == null)
-                return;
-            if (!_publishers.TryGetValue(contract.Topic, out var publisher))
-                return;
+            IRos2TopicPublisher publisher;
+            lock (_gate)
+            {
+                if (_disposed || contract == null)
+                    return;
+                if (!_publishers.TryGetValue(contract.Topic, out publisher))
+                    return;
+            }
 
             if (payload == null)
             {
@@ -106,11 +140,18 @@ namespace Unity2Foxglove.Ros2ForUnity
 
         public void Dispose()
         {
-            if (_disposed)
-                return;
+            List<IRos2TopicPublisher> publishers;
+            lock (_gate)
+            {
+                if (_disposed)
+                    return;
 
-            _disposed = true;
-            foreach (var publisher in _publishers.Values)
+                _disposed = true;
+                publishers = new List<IRos2TopicPublisher>(_publishers.Values);
+                _publishers.Clear();
+            }
+
+            foreach (var publisher in publishers)
             {
                 try { publisher.Dispose(); }
                 catch (Exception ex)
@@ -120,7 +161,6 @@ namespace Unity2Foxglove.Ros2ForUnity
                 }
             }
 
-            _publishers.Clear();
             try { _node?.Dispose(); }
             catch (Exception ex)
             {
@@ -131,8 +171,11 @@ namespace Unity2Foxglove.Ros2ForUnity
 
         private void ReportOnce(string key, string message)
         {
-            if (!_reported.Add(key))
-                return;
+            lock (_gate)
+            {
+                if (!_reported.Add(key))
+                    return;
+            }
 
             _log?.Invoke("[Ros2TopicSink] " + message);
         }

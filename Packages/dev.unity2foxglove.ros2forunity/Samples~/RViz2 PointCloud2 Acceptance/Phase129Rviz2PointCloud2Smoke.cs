@@ -56,8 +56,12 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
     private bool _runtimeRootLogged;
     private bool _endpointsLogged;
     private bool _firstPublishLogged;
-    private bool _initializationBlocked;
+    private bool _readyInitializationBlocked;
+    private float _nextReadyRetryTime;
+    private bool _postReadyInitializationBlocked;
+    private float _nextPostReadyRetryTime;
     private bool _warnedMissingStartExecutor;
+    private bool _previousRunInBackground;
     private double _realtimeStartSeconds;
     private long _unixStartSeconds;
     private double _lastStampSeconds;
@@ -74,6 +78,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
     private void OnEnable()
     {
+        _previousRunInBackground = Application.runInBackground;
         Application.runInBackground = true;
         _nextPublishAt = 0f;
         _publishedTfCount = 0;
@@ -89,7 +94,10 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         _runtimeRootLogged = false;
         _endpointsLogged = false;
         _firstPublishLogged = false;
-        _initializationBlocked = false;
+        _readyInitializationBlocked = false;
+        _nextReadyRetryTime = 0f;
+        _postReadyInitializationBlocked = false;
+        _nextPostReadyRetryTime = 0f;
         _warnedMissingStartExecutor = false;
         _unixStartSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         _realtimeStartSeconds = RealtimeSeconds();
@@ -109,8 +117,8 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         if (!TryEnsureReady())
             return;
 
-        EnsureExecutorStarted();
-        EnsureEndpoints();
+        if (!TryEnsurePostReadySetup())
+            return;
         PublishIfDue();
 #else
         WarnMissingDefine();
@@ -119,6 +127,7 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
     private void OnDisable()
     {
+        Application.runInBackground = _previousRunInBackground;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         CleanupRuntime();
 #endif
@@ -199,9 +208,10 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
 
     private bool TryEnsureReady()
     {
-        if (_initializationBlocked)
+        if (_readyInitializationBlocked && Time.time < _nextReadyRetryTime)
             return false;
 
+        _readyInitializationBlocked = false;
         try
         {
             EnsureRos2UnityComponent();
@@ -217,10 +227,34 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         }
         catch (Exception ex)
         {
-            _initializationBlocked = true;
+            _readyInitializationBlocked = true;
+            _nextReadyRetryTime = Time.time + 5f;
             _lastError = ex.GetType().Name + ": " + ex.Message;
             _statusMessage = _lastError;
             Debug.LogWarning(LogPrefix + " ROS2 For Unity initialization failed: " + _lastError);
+            return false;
+        }
+    }
+
+    private bool TryEnsurePostReadySetup()
+    {
+        if (_postReadyInitializationBlocked && Time.time < _nextPostReadyRetryTime)
+            return false;
+
+        _postReadyInitializationBlocked = false;
+        try
+        {
+            EnsureExecutorStarted();
+            EnsureEndpoints();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _postReadyInitializationBlocked = true;
+            _nextPostReadyRetryTime = Time.time + 5f;
+            _lastError = ex.GetType().Name + ": " + ex.Message;
+            _statusMessage = _lastError;
+            Debug.LogWarning(LogPrefix + " ROS2 For Unity endpoint setup failed: " + _lastError);
             return false;
         }
     }
@@ -445,8 +479,9 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
             {
                 _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("tf publisher", ex);
             }
         }
 
@@ -456,8 +491,9 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
             {
                 _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(_pointCloudPublisher);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("point cloud publisher", ex);
             }
         }
 
@@ -467,8 +503,9 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
             {
                 _ros2Unity.RemoveNode(_node);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("node", ex);
             }
         }
 
@@ -480,15 +517,22 @@ public sealed class Phase129Rviz2PointCloud2Smoke : MonoBehaviour
         _ros2Unity = null;
         _ownsRos2UnityComponent = false;
         _executorStarted = false;
-        _initializationBlocked = false;
+        _readyInitializationBlocked = false;
+        _postReadyInitializationBlocked = false;
         _warnedMissingStartExecutor = false;
+    }
+
+    private static void WarnCleanupFailure(string resource, Exception ex)
+    {
+        Debug.LogWarning(LogPrefix + " cleanup failed for " + resource + ": " + ex.GetType().Name + ": " + ex.Message);
     }
 #endif
 
     private static bool IsPackageRuntimeRoot(string path)
     {
         var normalized = NormalizePath(path);
-        return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/runtime/ros2forunity")
+        return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.")
+               && normalized.Contains("/runtime/ros2forunity")
                && !normalized.Contains("/unity2foxglove/assets/ros2forunity");
     }
 

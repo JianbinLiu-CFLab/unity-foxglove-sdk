@@ -65,6 +65,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private bool _greenLogged;
     private int _loggedReceivedCount;
     private bool _previousRunInBackground;
+    private bool _cleanedUp = true;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     private ROS2UnityComponent _ros2Unity;
@@ -93,6 +94,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         _endpointsLogged = false;
         _firstPublishLogged = false;
         _greenLogged = false;
+        _cleanedUp = false;
         _initialPathClean = !ContainsMachineRosPath(Environment.GetEnvironmentVariable("PATH") ?? string.Empty);
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -350,14 +352,19 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
 
     private void CleanupManualRuntime()
     {
+        if (_cleanedUp)
+            return;
+
+        _cleanedUp = true;
         if (_node != null && _subscription != null)
         {
             try
             {
                 _node.RemoveSubscription<std_msgs.msg.String>(_subscription);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("subscription", ex);
             }
         }
 
@@ -367,8 +374,9 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
             {
                 _node.RemovePublisher<std_msgs.msg.String>(_publisher);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("publisher", ex);
             }
         }
 
@@ -378,8 +386,9 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
             {
                 _ros2Unity.RemoveNode(_node);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("node", ex);
             }
         }
 
@@ -396,6 +405,11 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         _initializationBlocked = false;
     }
 
+    private static void WarnCleanupFailure(string resource, Exception ex)
+    {
+        Debug.LogWarning(LogPrefix + " cleanup failed for " + resource + ": " + ex.GetType().Name + ": " + ex.Message);
+    }
+
     private static string ResolveRuntimeRoot()
     {
         var type = typeof(ROS2UnityComponent).Assembly.GetType("ROS2.ROS2ForUnity");
@@ -409,7 +423,8 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private static bool IsPackageRuntimeRoot(string path)
     {
         var normalized = NormalizePath(path);
-        return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/runtime/ros2forunity")
+        return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.")
+               && normalized.Contains("/runtime/ros2forunity")
                && !normalized.Contains("/unity2foxglove/assets/ros2forunity");
     }
 
@@ -708,33 +723,36 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
                 try
                 {
                     _node.RemoveSubscription<std_msgs.msg.String>(_subscription);
-                }
-                catch (Exception)
-                {
-                }
             }
-
-            if (_node != null && _publisher != null)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("subscription", ex);
+            }
+        }
+
+        if (_node != null && _publisher != null)
+        {
                 try
                 {
-                    _node.RemovePublisher<std_msgs.msg.String>(_publisher);
-                }
-                catch (Exception)
-                {
-                }
+                _node.RemovePublisher<std_msgs.msg.String>(_publisher);
             }
-
-            if (_node != null)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("publisher", ex);
+            }
+        }
+
+        if (_node != null)
+        {
                 try
                 {
-                    _ros2Unity.RemoveNode(_node);
-                }
-                catch (Exception)
-                {
-                }
+                _ros2Unity.RemoveNode(_node);
             }
+            catch (Exception ex)
+            {
+                WarnCleanupFailure("node", ex);
+            }
+        }
 
             _subscription = null;
             _publisher = null;
@@ -801,7 +819,8 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         private static bool IsPackageRuntimeRoot(string path)
         {
             var normalized = NormalizePath(path);
-            return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/runtime/ros2forunity")
+            return normalized.Contains("/packages/dev.unity2foxglove.ros2forunity.runtime.")
+                   && normalized.Contains("/runtime/ros2forunity")
                    && !normalized.Contains("/unity2foxglove/assets/ros2forunity");
         }
 

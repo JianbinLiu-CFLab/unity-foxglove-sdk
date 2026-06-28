@@ -106,7 +106,14 @@ def ros2_opt_bin_paths(ros2_root: pathlib.Path) -> list[pathlib.Path]:
     opt_root = ros2_root / "opt"
     if not opt_root.is_dir():
         return []
-    return sorted(path for path in opt_root.glob("*/bin") if path.is_dir())
+    priority_vendors = ("rviz_ogre_vendor", "gz_math_vendor")
+    priority_paths = [opt_root / name / "bin" for name in priority_vendors]
+    discovered = sorted(path for path in opt_root.glob("*/bin") if path.is_dir())
+    result: list[pathlib.Path] = []
+    for path in (*priority_paths, *discovered):
+        if path.is_dir() and path not in result:
+            result.append(path)
+    return result
 
 
 def build_ros_env(

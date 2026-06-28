@@ -77,7 +77,7 @@ public sealed class Phase132StandardCameraSource : MonoBehaviour
             Height = checked((uint)height),
             Width = checked((uint)width),
             Distortion_model = string.IsNullOrWhiteSpace(_distortionModel) ? "plumb_bob" : _distortionModel.Trim(),
-            D = Array.Empty<double>(),
+            D = new double[5],
             Binning_x = 0u,
             Binning_y = 0u,
             Roi = new sensor_msgs.msg.RegionOfInterest
