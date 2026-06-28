@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.SceneManagement;
@@ -75,7 +76,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string SessionRuntimeKey = "Unity2Foxglove.R2FU.SessionRuntime";
         private const string SessionCommunicationModeKey = "Unity2Foxglove.R2FU.SessionCommunicationMode";
         private const string CommunicationModeEditorUserSettingsKey =
-            "Unity2Foxglove.R2FU.LyricalCommunicationMode";
+            "Unity2Foxglove.R2FU.CommunicationMode";
 
         public static string ProjectDirectoryFromApplication()
         {
@@ -164,8 +165,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 throw new FileNotFoundException("Unity package manifest was not found.", manifestPath);
 
             var manifest = File.ReadAllText(manifestPath);
+            ValidateManifestJson(manifest, manifestPath);
             manifest = RemoveRuntimePackageDependencies(manifest);
             manifest = AddRuntimePackageDependency(manifest, candidate.PackageName, projectDirectory);
+            ValidateManifestJson(manifest, manifestPath);
             WriteManifestAtomically(manifestPath, manifest);
             ApplyCommunicationModeEnvironment(projectDirectory);
             Client.Resolve();
@@ -339,12 +342,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!File.Exists(manifestPath))
                 return Array.Empty<string>();
 
-            var matches = Regex.Matches(
-                File.ReadAllText(manifestPath),
-                "\"(" + Regex.Escape(RuntimePackagePrefix) + "[^\"]+)\"\\s*:");
-            return matches
-                .Cast<Match>()
-                .Select(match => match.Groups[1].Value)
+            var dependencies = ReadManifestDependencies(File.ReadAllText(manifestPath), manifestPath);
+            if (dependencies == null)
+                return Array.Empty<string>();
+
+            return dependencies
+                .Properties()
+                .Select(property => property.Name)
+                .Where(name => name.StartsWith(RuntimePackagePrefix, StringComparison.Ordinal))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
         }
@@ -423,10 +428,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static bool ContainsPackageName(string json, string packageName)
         {
-            return Regex.IsMatch(
-                json ?? string.Empty,
-                "\"name\"\\s*:\\s*\"" + Regex.Escape(packageName) + "\"",
-                RegexOptions.CultureInvariant);
+            try
+            {
+                return string.Equals((string)JObject.Parse(json ?? string.Empty)["name"], packageName, StringComparison.Ordinal);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         private static string ToDisplayName(string value)
@@ -442,6 +451,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static string ManifestPath(string projectDirectory)
             => Path.Combine(projectDirectory, "Packages", "manifest.json");
+
+        private static JObject ReadManifestJson(string manifest, string manifestPath)
+        {
+            try
+            {
+                return JObject.Parse(manifest ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("Unity package manifest is not valid JSON: " + manifestPath, ex);
+            }
+        }
+
+        private static JObject ReadManifestDependencies(string manifest, string manifestPath)
+        {
+            return ReadManifestJson(manifest, manifestPath)["dependencies"] as JObject;
+        }
+
+        private static void ValidateManifestJson(string manifest, string manifestPath)
+        {
+            ReadManifestJson(manifest, manifestPath);
+        }
 
         private static string RemoveRuntimePackageDependencies(string manifest)
         {

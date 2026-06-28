@@ -1,7 +1,9 @@
 {
   "name": "Unity2Foxglove.Ros2ForUnity.Editor",
   "rootNamespace": "Unity2Foxglove.Ros2ForUnity.Editor",
-  "references": [],
+  "references": [
+    "Newtonsoft.Json"
+  ],
   "includePlatforms": [
     "Editor"
   ],
