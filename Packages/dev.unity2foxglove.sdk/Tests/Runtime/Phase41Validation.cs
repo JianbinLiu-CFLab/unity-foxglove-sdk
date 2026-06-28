@@ -34,7 +34,8 @@ namespace Unity.FoxgloveSDK.Tests
             TestHeartbeatDisabled();
             TestEpsilonSuppressesSmallChange();
             TestEpsilonAllowsLargeChange();
-            TestRepeatedNaNNoSpam();
+            TestRepeatedFloatNaNNoSpam();
+            TestRepeatedDoubleNaNNoSpam();
             TestEmitterOutputPolicyMetadata();
             TestBackwardCompatConstructor();
             TestEnumValuesAreDistinct();
@@ -113,12 +114,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(changed && shouldPublish, "41A-8: epsilon 0.1 allows diff 0.2 through publish policy");
         }
 
-        private static void TestRepeatedNaNNoSpam()
+        private static void TestRepeatedFloatNaNNoSpam()
         {
-            var a = float.NaN;
-            var b = float.NaN;
-            var changed = !a.Equals(b);
-            Check(!changed, "41A-9: repeated NaN does not spam publishes (NaN.Equals(NaN) is true)");
+            var changed = FoxRunChangeHelper.FloatChanged(float.NaN, float.NaN, 0f);
+            Check(!changed, "41A-9: repeated float NaN does not spam publishes");
+        }
+
+        private static void TestRepeatedDoubleNaNNoSpam()
+        {
+            var changed = FoxRunChangeHelper.DoubleChanged(double.NaN, double.NaN, 0d);
+            Check(!changed, "41A-10: repeated double NaN does not spam publishes");
         }
 
         // 鈹€鈹€ Emitter / Backward Compat 鈹€鈹€

@@ -220,6 +220,7 @@ namespace Unity.FoxgloveSDK.Tests
             var receiveLoop = typeof(ManagedWsBackend).GetMethod(
                 "ReceiveLoop",
                 BindingFlags.Instance | BindingFlags.NonPublic);
+            Check(receiveLoop != null, "144: ReceiveLoop private method exists for protocol edge harness");
             receiveLoop.Invoke(backend, new object[] { 1u, conn, CancellationToken.None });
 
             return result;
@@ -260,18 +261,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string RepoPath(string relativePath)
-        {
-            var dir = AppContext.BaseDirectory;
-            for (var i = 0; i < 8 && dir != null; i++)
-            {
-                var candidate = Path.GetFullPath(Path.Combine(dir, relativePath));
-                if (File.Exists(candidate))
-                    return candidate;
-                dir = Directory.GetParent(dir)?.FullName;
-            }
-
-            return Path.GetFullPath(relativePath);
-        }
+            => PhaseValidationSourceHelpers.RepoPath(relativePath);
 
         private static void Check(bool condition, string message)
         {
@@ -328,7 +318,6 @@ namespace Unity.FoxgloveSDK.Tests
         {
             public int ErrorCount { get; private set; }
 
-            public void Log(string message) { }
             public void LogWarning(string message) { }
             public void LogError(string message) => ErrorCount++;
         }

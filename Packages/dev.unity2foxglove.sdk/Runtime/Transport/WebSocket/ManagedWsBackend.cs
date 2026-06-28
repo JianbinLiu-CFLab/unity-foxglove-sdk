@@ -256,7 +256,11 @@ namespace Unity.FoxgloveSDK.Transport
             get { lock (_allowedOriginsLock) return _allowedOrigins.ToArray(); }
         }
 
-        /// <summary>Add an origin to the allowlist (case-insensitive). Full page URLs are normalized to their browser Origin.</summary>
+        /// <summary>
+        /// Add an origin to the allowlist (case-insensitive). Full page URLs are
+        /// normalized to their browser Origin; local file origins are accepted by
+        /// the handshake guard without adding them here.
+        /// </summary>
         public void AddAllowedOrigin(string origin)
         {
             var normalized = NormalizeAllowedOrigin(origin);
