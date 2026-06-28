@@ -106,6 +106,45 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("/health", faults[0].Topic);
         }
 
+        [Fact]
+        public void UnsubscribeRemovesMatchingTypedCallbackOnly()
+        {
+            var bus = new FoxTopicBus();
+            var contract = Contract("/health");
+            var received = 0;
+            Action<FoxTopicEnvelope<int>> callback = _ => received++;
+
+            bus.Subscribe("/health", callback);
+            Assert.True(bus.HasSubscribers("/health"));
+
+            var payload = 1;
+            bus.Publish(contract, 1UL, in payload, "source-a");
+            Assert.True(bus.Unsubscribe("/health", callback));
+            bus.Publish(contract, 2UL, in payload, "source-a");
+
+            Assert.Equal(1, received);
+            Assert.False(bus.HasSubscribers("/health"));
+        }
+
+        [Fact]
+        public void TypeMismatchedSubscriberIsReportedInsteadOfSilentlySkipped()
+        {
+            var bus = new FoxTopicBus();
+            var contract = Contract("/health");
+            var faults = new List<FoxTopicSubscriberFault>();
+            bus.SubscriberFaulted += fault => faults.Add(fault);
+
+            bus.Subscribe<string>("/health", _ => { });
+            var payload = 1;
+
+            bus.Publish(contract, 1UL, in payload, "source-a");
+            bus.Publish(contract, 2UL, in payload, "source-a");
+
+            Assert.Single(faults);
+            Assert.Equal("/health", faults[0].Topic);
+            Assert.Contains("incompatible subscriber type", faults[0].Exception.Message, StringComparison.Ordinal);
+        }
+
         private static FoxTopicContract Contract(string topic)
             => new FoxTopicContract(topic, "foxrun.Test", "json", "foxrun.Test", "abc123", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
     }

@@ -18,6 +18,8 @@ namespace Unity.FoxgloveSDK.Components
         private static string _conflictMessage = string.Empty;
         private static string _conflictingHash = string.Empty;
 
+        public static event Action<string, Exception> GeneratedSchemaRegistrationFailed;
+
         public static bool HasGeneratedSchemaInfo { get { lock (Sync) return _current != null; } }
         public static bool HasConflict { get { lock (Sync) return _hasConflict; } }
         public static string ConflictMessage { get { lock (Sync) return _conflictMessage; } }
@@ -86,14 +88,39 @@ namespace Unity.FoxgloveSDK.Components
                         continue;
                     }
 
-                    registry.Register(new SchemaEntry
+                    try
                     {
-                        Name = contract.SchemaName,
-                        Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
-                        Content = FoxRunJsonSchemaBuilder.Build(contract)
-                    });
+                        registry.Register(new SchemaEntry
+                        {
+                            Name = contract.SchemaName,
+                            Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
+                            Content = FoxRunJsonSchemaBuilder.Build(contract)
+                        });
+                    }
+                    catch (Exception ex) when (IsRecoverableSchemaException(ex))
+                    {
+                        var message =
+                            "Failed to register generated FoxRun JSON schema for topic '"
+                            + (contract.Topic ?? string.Empty)
+                            + "' and schema '"
+                            + (contract.SchemaName ?? string.Empty)
+                            + "': "
+                            + ex.Message;
+                        GeneratedSchemaRegistrationFailed?.Invoke(message, ex);
+#if UNITY_5_3_OR_NEWER
+                        UnityEngine.Debug.LogWarning("[FoxRun] " + message);
+#endif
+                    }
                 }
             }
+        }
+
+        private static bool IsRecoverableSchemaException(Exception ex)
+        {
+            return !(ex is OutOfMemoryException)
+                   && !(ex is StackOverflowException)
+                   && !(ex is AccessViolationException)
+                   && !(ex is AppDomainUnloadedException);
         }
 
         private static bool IsGeneratedAggregateContract(FoxRunSchemaContractInfo contract)
@@ -124,6 +151,7 @@ namespace Unity.FoxgloveSDK.Components
                 _hasConflict = false;
                 _conflictMessage = string.Empty;
                 _conflictingHash = string.Empty;
+                GeneratedSchemaRegistrationFailed = null;
             }
         }
     }

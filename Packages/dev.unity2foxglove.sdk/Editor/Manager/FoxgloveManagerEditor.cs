@@ -584,13 +584,13 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
+            Undo.RecordObject(target, "Generate Local Dev WSS Certificate");
             serializedObject.ApplyModifiedProperties();
             var host = GetString("_host", "127.0.0.1");
             try
             {
                 var result = FoxgloveLocalDevCertificateGenerator.Generate(host, BuildCertificateGeneratorOptions());
 
-                Undo.RecordObject(target, "Generate Local Dev WSS Certificate");
                 serializedObject.Update();
                 SetString("_certificatePfxPath", MakeRelative(result.PfxPath));
                 SetString("_certificatePassword", result.CertificatePassword);

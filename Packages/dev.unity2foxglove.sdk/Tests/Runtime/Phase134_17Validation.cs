@@ -175,7 +175,11 @@ namespace Unity.FoxgloveSDK.Tests
                         float.NegativeInfinity,
                         "Test",
                         0,
-                        string.Empty)
+                        string.Empty,
+                        when: "isReady",
+                        unless: "isPaused",
+                        isAggregateMember: true,
+                        jsonFieldName: "values")
                 })
             });
 
@@ -191,20 +195,30 @@ namespace Unity.FoxgloveSDK.Tests
 
             var reread = FoxRunGenerationDescriptorJsonReader.Read(json);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, reread);
-            Check(comparison.IsSemanticEqual,
-                "134-17-F3: descriptor reader round-trips array metadata for semantic comparison");
+            var rereadMember = reread.Types[0].Members[0];
+            Check(comparison.IsSemanticEqual
+                  && rereadMember.When == "isReady"
+                  && rereadMember.Unless == "isPaused"
+                  && rereadMember.IsAggregateMember
+                  && rereadMember.JsonFieldName == "values",
+                "134-17-F3: descriptor reader round-trips array, condition, aggregate, and JSON field metadata");
 
-            var duplicates = new FoxRunGenerationModel(new[]
+            var canonicalDriftLeft = new FoxRunGenerationModel(new[]
             {
                 new FoxRunGenerationType("Demo", "DuplicateProbe", new[]
                 {
-                    Member("Demo", "DuplicateProbe", "value", "/same", "float"),
+                    Member("Demo", "DuplicateProbe", "value", "/same", "float")
+                })
+            });
+            var canonicalDriftRight = new FoxRunGenerationModel(new[]
+            {
+                new FoxRunGenerationType("Demo", "DuplicateProbe", new[]
+                {
                     Member("Demo", "DuplicateProbe", "value", "/same", "double")
                 })
             });
-            Check(FoxRunGenerationDescriptorComparer.Compare(duplicates, duplicates)
-                .SemanticDifferences.Any(diff => diff.Contains("Duplicate", StringComparison.Ordinal)),
-                "134-17-F4: descriptor comparer reports duplicate flattened keys");
+            Check(!FoxRunGenerationDescriptorComparer.Compare(canonicalDriftLeft, canonicalDriftRight).IsSemanticEqual,
+                "134-17-F4: descriptor comparer reports same-member canonical type drift");
             Check(comparison.IsProvenanceEqual,
                 "134-17-F5: descriptor comparison exposes provenance equality");
 

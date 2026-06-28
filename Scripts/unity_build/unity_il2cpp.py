@@ -40,6 +40,7 @@ REPO_ROOT_PARENT_DEPTH = 2
 
 # Process exit codes returned by this build CLI.
 EXIT_SUCCESS = 0
+EXIT_PREFLIGHT_FAILURE = 1
 EXIT_USAGE_ERROR = 2
 EXIT_TIMEOUT = 124
 
@@ -61,6 +62,23 @@ PROJECT_VERSION_VALUE_INDEX = 1
 # Initial offsets and command indexes used for log tailing and diagnostics.
 INITIAL_LOG_OFFSET = 0
 UNITY_EXECUTABLE_COMMAND_INDEX = 0
+
+# Generated artifacts required before Unity can compile the package in IL2CPP.
+REQUIRED_GENERATED_ARTIFACTS = (
+    "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated.meta",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs.meta",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedDeserializers.g.cs",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedDeserializers.g.cs.meta",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrSerializerRegistry.g.cs",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrSerializerRegistry.g.cs.meta",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrDeserializerRegistry.g.cs",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrDeserializerRegistry.g.cs.meta",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrSampleFactory.g.cs",
+    "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrSampleFactory.g.cs.meta",
+)
 
 # Log markers that indicate important Unity/Bee/IL2CPP build progress or failures.
 IMPORTANT_LOG_MARKERS = (
@@ -224,6 +242,18 @@ def relative_to_root(path: Path, root: Path) -> str:
         return str(path.resolve().relative_to(root.resolve()))
     except ValueError:
         return str(path)
+
+
+def validate_generated_artifacts(root: Path) -> List[str]:
+    """Return missing or empty generated artifacts needed for Unity compilation."""
+    failures: List[str] = []
+    for relative in REQUIRED_GENERATED_ARTIFACTS:
+        path = root / relative
+        if not path.exists():
+            failures.append(f"missing generated artifact: {relative}")
+        elif path.is_file() and path.stat().st_size == 0:
+            failures.append(f"empty generated artifact: {relative}")
+    return failures
 
 
 def resolve_unity_for_command(args: argparse.Namespace, project_path: Path) -> str:
@@ -462,6 +492,17 @@ def main() -> int:
     print(f"[build_unity_il2cpp] Target:    {args.target}")
     print(f"[build_unity_il2cpp] Log:       {relative_to_root(log_path, root)}")
     print(f"[build_unity_il2cpp] Output:    {relative_to_root(output_path, root)}")
+
+    generated_failures = validate_generated_artifacts(root)
+    if generated_failures:
+        print("[build_unity_il2cpp] Generated artifact preflight failed:", file=sys.stderr)
+        for failure in generated_failures:
+            print(f"  {failure}", file=sys.stderr)
+        print(
+            "[build_unity_il2cpp] Regenerate schema/source-generator artifacts before invoking Unity.",
+            file=sys.stderr,
+        )
+        return EXIT_PREFLIGHT_FAILURE
 
     if args.dry_run:
         print("[build_unity_il2cpp] Dry run only; Unity was not started.")

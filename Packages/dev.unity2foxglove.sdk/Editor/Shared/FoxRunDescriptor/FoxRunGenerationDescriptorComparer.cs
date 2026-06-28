@@ -105,7 +105,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 foreach (var member in type.Members)
                 {
-                    var key = type.DeclaringType + "|" + member.Topic + "|" + member.MemberName + "|" + member.SchemaName;
+                    var key = type.DeclaringType + "|" + member.Topic + "|" + member.MemberName + "|" + member.SchemaName + "|" + member.CanonicalType;
                     if (result.ContainsKey(key))
                     {
                         semantic.Add("Duplicate " + side + " member key: " + key);
@@ -135,6 +135,10 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "mode", left.ModeName, right.ModeName, semantic);
             CompareSemantic(key, "changeEpsilon", left.ChangeEpsilon, right.ChangeEpsilon, semantic);
             CompareSemantic(key, "forceIntervalSeconds", left.ForceIntervalSeconds, right.ForceIntervalSeconds, semantic);
+            CompareSemantic(key, "when", left.When, right.When, semantic);
+            CompareSemantic(key, "unless", left.Unless, right.Unless, semantic);
+            CompareSemantic(key, "isAggregateMember", left.IsAggregateMember ? "true" : "false", right.IsAggregateMember ? "true" : "false", semantic);
+            CompareSemantic(key, "jsonFieldName", left.JsonFieldName, right.JsonFieldName, semantic);
             CompareProvenance(key, "hostKind", left.HostKind, right.HostKind, provenance);
             CompareProvenance(key, "rawTypeName", left.RawTypeName, right.RawTypeName, provenance);
             CompareProvenance(key, "rawMemberOrder", left.RawMemberOrder.ToString(), right.RawMemberOrder.ToString(), provenance);

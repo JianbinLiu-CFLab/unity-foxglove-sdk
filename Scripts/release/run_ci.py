@@ -27,6 +27,7 @@ SOURCE_GENERATOR_PROJ = (
     "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj"
 )
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
+SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
 
 
 def green(msg: str) -> str:
@@ -205,6 +206,10 @@ def main() -> int:
         results["validate-entrypoints"] = run(
             ["python", "Scripts/package/validate_local_entrypoints.py"],
             "validate_local_entrypoints.py"
+        )
+        results["validate-schema-generated"] = run(
+            ["python", SCHEMA_GENERATED_OUTPUT_VALIDATOR],
+            "validate_schema_generated_outputs.py"
         )
         results["validate-r2fu"] = run(
             ["python", "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],

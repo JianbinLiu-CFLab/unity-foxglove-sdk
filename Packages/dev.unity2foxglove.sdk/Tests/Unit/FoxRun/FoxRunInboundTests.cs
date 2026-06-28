@@ -46,6 +46,50 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void JsonDecoderRejectsExcessiveNestingBeforeRecursiveScanOverflows()
+        {
+            var sb = new StringBuilder("{\"value\":");
+            for (var i = 0; i < 40; i++)
+                sb.Append('[');
+            sb.Append('1');
+            for (var i = 0; i < 40; i++)
+                sb.Append(']');
+            sb.Append('}');
+
+            var ok = FoxRunInboundJson.TryRead(
+                Encoding.UTF8.GetBytes(sb.ToString()),
+                "value",
+                out int _,
+                out var error);
+
+            Assert.False(ok);
+            Assert.Contains("nesting", error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void JsonDecoderReadsGeneratedDecimalAndCharInputs()
+        {
+            var payload = Encoding.UTF8.GetBytes("{\"amount\":12.5,\"key\":\"A\"}");
+
+            Assert.True(FoxRunInboundJson.TryRead(payload, "amount", out decimal amount, out var decimalError), decimalError);
+            Assert.True(FoxRunInboundJson.TryRead(payload, "key", out char key, out var charError), charError);
+
+            Assert.Equal(12.5m, amount);
+            Assert.Equal('A', key);
+        }
+
+        [Fact]
+        public void JsonDecoderRejectsMultiCharacterCharInputs()
+        {
+            var payload = Encoding.UTF8.GetBytes("{\"key\":\"AB\"}");
+
+            var ok = FoxRunInboundJson.TryRead(payload, "key", out char _, out var error);
+
+            Assert.False(ok);
+            Assert.Contains("single character", error, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RouterUsesGeneratedAllowlistAndRegistrationOrder()
         {
             var first = new RecordingInput("/phase157/cmd", 0);

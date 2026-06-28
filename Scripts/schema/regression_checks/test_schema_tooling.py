@@ -11,6 +11,7 @@ import importlib.util
 import io
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -157,6 +158,23 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertEqual("", commit)
         self.assertIn("warning", stderr.getvalue().lower())
         self.assertIn("source commit", stderr.getvalue().lower())
+
+    def test_generated_output_validator_reports_stale_committed_files(self) -> None:
+        """Fresh generator output should be byte-compared against committed files."""
+        module = load_module("schema_generated_validator", "Scripts/schema/validate_schema_generated_outputs.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            committed = root / "Committed.cs"
+            fresh = root / "Fresh.cs"
+            committed.write_text("old\n", encoding="utf-8")
+            fresh.write_text("new\n", encoding="utf-8")
+
+            failures: list[str] = []
+            module.compare_file(committed, fresh, failures)
+
+        self.assertEqual(1, len(failures))
+        self.assertIn("stale generated output", failures[0])
 
 
 if __name__ == "__main__":

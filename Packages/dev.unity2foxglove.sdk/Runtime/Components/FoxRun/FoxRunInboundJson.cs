@@ -14,6 +14,8 @@ namespace Unity.FoxgloveSDK.Components
 {
     public static class FoxRunInboundJson
     {
+        private const int MaxTypeHintScanDepth = 32;
+
         private static bool TryToken(byte[] payload, string field, out JToken token, out string error)
         {
             token = null;
@@ -33,9 +35,9 @@ namespace Unity.FoxgloveSDK.Components
                     DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
                 };
                 var root = JToken.Parse(json, settings);
-                if (ContainsTypeHint(root))
+                if (ContainsForbiddenTypeHint(root, 0, out var typeHintError))
                 {
-                    error = "FoxRun inbound payload contains a forbidden $type hint.";
+                    error = typeHintError;
                     return false;
                 }
 
@@ -53,22 +55,32 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private static bool ContainsTypeHint(JToken token)
+        private static bool ContainsForbiddenTypeHint(JToken token, int depth, out string error)
         {
+            error = string.Empty;
+            if (depth > MaxTypeHintScanDepth)
+            {
+                error = "FoxRun inbound payload nesting exceeds the maximum supported depth.";
+                return true;
+            }
+
             if (token is JObject obj)
             {
                 foreach (var property in obj.Properties())
                 {
                     if (string.Equals(property.Name, "$type", StringComparison.Ordinal))
+                    {
+                        error = "FoxRun inbound payload contains a forbidden $type hint.";
                         return true;
-                    if (ContainsTypeHint(property.Value))
+                    }
+                    if (ContainsForbiddenTypeHint(property.Value, depth + 1, out error))
                         return true;
                 }
             }
             else if (token is JArray array)
             {
                 foreach (var item in array)
-                    if (ContainsTypeHint(item))
+                    if (ContainsForbiddenTypeHint(item, depth + 1, out error))
                         return true;
             }
             return false;
@@ -120,6 +132,22 @@ namespace Unity.FoxgloveSDK.Components
             TryScalar(payload, field, JTokenType.Float, out value, out error);
         public static bool TryRead(byte[] payload, string field, out double value, out string error) =>
             TryScalar(payload, field, JTokenType.Float, out value, out error);
+        public static bool TryRead(byte[] payload, string field, out decimal value, out string error) =>
+            TryScalar(payload, field, JTokenType.Float, out value, out error);
+        public static bool TryRead(byte[] payload, string field, out char value, out string error)
+        {
+            value = default;
+            if (!TryScalar(payload, field, JTokenType.String, out string text, out error))
+                return false;
+            if (text != null && text.Length == 1)
+            {
+                value = text[0];
+                return true;
+            }
+
+            error = "FoxRun inbound field '" + field + "' must be a single character.";
+            return false;
+        }
 
         public static bool TryRead(byte[] payload, string field, out Vector2 value, out string error)
         {
@@ -180,8 +208,16 @@ namespace Unity.FoxgloveSDK.Components
                 error = "FoxRun inbound vector field is missing numeric component '" + name + "'.";
                 return false;
             }
-            value = token.Value<float>();
-            return true;
+            try
+            {
+                value = token.Value<float>();
+                return true;
+            }
+            catch (Exception ex) when (ex is FormatException || ex is OverflowException || ex is InvalidCastException)
+            {
+                error = "FoxRun inbound vector component '" + name + "' cannot be converted: " + ex.Message;
+                return false;
+            }
         }
     }
 }

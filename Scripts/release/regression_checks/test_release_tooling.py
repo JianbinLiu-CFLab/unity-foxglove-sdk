@@ -18,6 +18,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 BUMP_VERSION_PATH = ROOT / "Scripts" / "release" / "bump_version.py"
 RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
+UNITY_IL2CPP_PATH = ROOT / "Scripts" / "unity_build" / "unity_il2cpp.py"
 
 
 def load_module(name: str, path: Path):
@@ -131,6 +132,29 @@ class RunCiTests(unittest.TestCase):
         failed = subprocess.CompletedProcess(args=["git"], returncode=128, stdout="", stderr="fatal")
         with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
             self.assertFalse(self.run_ci._check_boundary())
+
+    def test_run_ci_includes_schema_generated_output_freshness(self) -> None:
+        """Local CI should reject stale committed schema generator outputs."""
+        self.assertEqual(
+            "Scripts/schema/validate_schema_generated_outputs.py",
+            self.run_ci.SCHEMA_GENERATED_OUTPUT_VALIDATOR,
+        )
+
+
+class UnityIl2CppBuildTests(unittest.TestCase):
+    """Regression coverage for Unity build preflight checks."""
+
+    def setUp(self) -> None:
+        """Load a fresh unity_il2cpp module for each test."""
+        self.unity_il2cpp = load_module("unity_il2cpp_under_test", UNITY_IL2CPP_PATH)
+
+    def test_generated_artifact_preflight_reports_missing_files(self) -> None:
+        """Missing generated files should fail before Unity is started."""
+        with tempfile.TemporaryDirectory() as temp:
+            failures = self.unity_il2cpp.validate_generated_artifacts(Path(temp))
+
+        self.assertTrue(failures)
+        self.assertTrue(any("missing generated artifact" in failure for failure in failures))
 
 
 if __name__ == "__main__":

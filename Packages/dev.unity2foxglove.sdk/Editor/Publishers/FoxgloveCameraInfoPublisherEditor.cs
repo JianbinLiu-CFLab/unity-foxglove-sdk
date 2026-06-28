@@ -97,7 +97,8 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var publishCameraTfAnchor = serializedObject.FindProperty("_publishCameraTfAnchor");
                 DrawBoolField(publishCameraTfAnchor, "Publish Camera TF Anchor");
-                using (new EditorGUI.DisabledScope(!publishCameraTfAnchor.boolValue))
+                var tfAnchorEnabled = publishCameraTfAnchor != null && publishCameraTfAnchor.boolValue;
+                using (new EditorGUI.DisabledScope(!tfAnchorEnabled))
                 {
                     DrawStringField(serializedObject.FindProperty("_cameraTfParentFrame"), "TF Parent Frame");
                 }
@@ -117,8 +118,15 @@ namespace Unity.FoxgloveSDK.Editor
 
             using (new EditorGUI.IndentLevelScope())
             {
-                DrawEnumField(serializedObject.FindProperty("_publishRateSource"), "Publish Rate Source");
-                DrawFloatField(serializedObject.FindProperty("_publishRateHz"), "Publish Rate Hz");
+                var publishRateSource = serializedObject.FindProperty("_publishRateSource");
+                DrawEnumField(publishRateSource, "Publish Rate Source");
+                var usesLocalRate = publishRateSource == null
+                    || publishRateSource.enumValueIndex == (int)PublisherRateSource.OverrideLocal;
+                using (new EditorGUI.DisabledScope(!usesLocalRate))
+                {
+                    DrawFloatField(serializedObject.FindProperty("_publishRateHz"), "Publish Rate Hz");
+                }
+
                 DrawEnumField(serializedObject.FindProperty("_encodingOverride"), "Encoding Override");
                 DrawEnumField(serializedObject.FindProperty("_ros2BridgeOutput"), "ROS2 Bridge Output");
                 DrawStringField(serializedObject.FindProperty("_ros2BridgeTopicOverride"), "Bridge Topic Override");

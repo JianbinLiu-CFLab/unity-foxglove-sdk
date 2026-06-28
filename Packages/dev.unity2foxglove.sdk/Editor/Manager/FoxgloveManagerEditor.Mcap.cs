@@ -83,9 +83,7 @@ namespace Unity.FoxgloveSDK.Editor
             var remoteFileServerEnabled = GetBool("_enableRemoteMcapFileServer");
             if (remoteFileServerEnabled && replayAutoPlay.boolValue)
             {
-                Undo.RecordObject(target, "Disable Replay Auto Play");
                 replayAutoPlay.boolValue = false;
-                EditorUtility.SetDirty(target);
             }
 
             using (new EditorGUI.DisabledScope(remoteFileServerEnabled))
