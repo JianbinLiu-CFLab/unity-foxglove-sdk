@@ -107,12 +107,20 @@ namespace Unity2Foxglove.Ros2ForUnity
             foreach (var publisher in _publishers.Values)
             {
                 try { publisher.Dispose(); }
-                catch { /* best-effort teardown */ }
+                catch (Exception ex)
+                {
+                    ReportOnce("dispose:publisher:" + ex.GetType().FullName, "ROS2 publisher teardown failed: "
+                        + ex.GetType().Name + ": " + ex.Message);
+                }
             }
 
             _publishers.Clear();
             try { _node?.Dispose(); }
-            catch { /* best-effort teardown */ }
+            catch (Exception ex)
+            {
+                ReportOnce("dispose:node:" + ex.GetType().FullName, "ROS2 node teardown failed: "
+                    + ex.GetType().Name + ": " + ex.Message);
+            }
         }
 
         private void ReportOnce(string key, string message)

@@ -131,11 +131,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("EditorGUI.EndChangeCheck()", StringComparison.Ordinal),
                 "146A-E2: dropdown switches runtime only after a user-driven change");
             Check(source.Contains("EditorApplication.isPlayingOrWillChangePlaymode", StringComparison.Ordinal)
-                  && source.Contains("SwitchAndResolve(projectDirectory, installed[changedIndex])", StringComparison.Ordinal)
+                  && source.Contains("SwitchAndResolve(projectDirectory, installed[runtimeIndex])", StringComparison.Ordinal)
                   && !source.Contains("GUILayout.Button(\"Use", StringComparison.Ordinal),
                 "146A-E3: selector has no extra confirmation button and refuses unsafe Play Mode switching");
-            Check(!source.Contains("Select active runtime...", StringComparison.Ordinal),
-                "146A-E4: runtime selector does not add a placeholder confirmation step");
+            Check(source.Contains("No active runtime", StringComparison.Ordinal),
+                "146A-E4: runtime selector shows a neutral placeholder when no runtime is active");
         }
 
         private static void RuntimeSwitchRequiresEditorRestart()

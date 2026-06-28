@@ -27,6 +27,7 @@ namespace Unity2Foxglove.Ros2ForUnity
         private Ros2R2FUTopicSink _sink;
         private IUnity2FoxgloveRos2Context _context;
         private FoxTopicSinkRouter _router;
+        private bool _disposed;
 
         public Ros2TopicSinkBootstrap(
             string nodeName,
@@ -49,6 +50,9 @@ namespace Unity2Foxglove.Ros2ForUnity
         /// </summary>
         public bool TryAttach()
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(Ros2TopicSinkBootstrap));
+
             if (_sink != null)
                 return true;
 
@@ -80,6 +84,13 @@ namespace Unity2Foxglove.Ros2ForUnity
             _router = null;
         }
 
-        public void Dispose() => Detach();
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            Detach();
+        }
     }
 }

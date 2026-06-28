@@ -87,9 +87,10 @@ namespace Unity.FoxgloveSDK.Tests
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
             var switchMethod = ExtractMethod(inspector, "SwitchAndResolve");
 
-            Check(inspector.Contains("EditorApplication.delayCall", StringComparison.Ordinal)
-                  && inspector.Contains("DrawPendingResolveMessage", StringComparison.Ordinal),
-                "163-20D-1: R2FU selector stores durable resolve feedback for a later IMGUI pass");
+            Check(inspector.Contains("DrawPendingResolveMessage", StringComparison.Ordinal)
+                  && switchMethod.IndexOf("_pendingResolveMessage =", StringComparison.Ordinal)
+                     < switchMethod.IndexOf("SwitchActiveRuntimePackage", StringComparison.Ordinal),
+                "163-20D-1: R2FU selector stores durable resolve feedback before package resolution");
             Check(!switchMethod.Contains("EditorGUILayout.HelpBox", StringComparison.Ordinal),
                 "163-20D-2: R2FU selector does not emit HelpBox controls inside the change handler");
         }
@@ -136,7 +137,23 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ExtractMethod(string source, string methodName)
         {
-            var signature = source.IndexOf(methodName, StringComparison.Ordinal);
+            var signature = source.IndexOf("private static", StringComparison.Ordinal);
+            while (signature >= 0)
+            {
+                var nameIndex = source.IndexOf(methodName, signature, StringComparison.Ordinal);
+                if (nameIndex >= 0)
+                {
+                    var openParen = source.IndexOf('(', nameIndex);
+                    var nextBrace = source.IndexOf('{', signature);
+                    if (openParen >= 0 && nextBrace >= 0 && openParen < nextBrace)
+                        break;
+                }
+
+                signature = source.IndexOf("private static", signature + 1, StringComparison.Ordinal);
+            }
+
+            if (signature < 0)
+                signature = source.IndexOf("public static", StringComparison.Ordinal);
             if (signature < 0)
                 return string.Empty;
 
