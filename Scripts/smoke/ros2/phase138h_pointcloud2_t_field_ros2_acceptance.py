@@ -166,13 +166,12 @@ def validate_fields(fields: list[dict[str, str]], expected: str) -> dict[str, ob
     """Validate `t` field existence and expected datatype."""
 
     normalized_expected = normalize_datatype(expected)
-    lookup = {f.get("name"): normalize_datatype(f.get("datatype", "")) for f in fields if "name" in f}
-    found = {k: v for k, v in lookup.items()}
+    found = {f.get("name"): normalize_datatype(f.get("datatype", "")) for f in fields if "name" in f}
     if EXPECTED_FIELD not in found:
         raise RuntimeError(f"PointCloud2 fields missing expected '{EXPECTED_FIELD}': {sorted(found.keys())}")
 
     actual = found[EXPECTED_FIELD]
-    if actual != normalized_expected and normalized_expected not in actual and actual not in normalized_expected:
+    if actual != normalized_expected:
         raise RuntimeError(
             f"Field '{EXPECTED_FIELD}' has datatype '{actual}', expected '{normalized_expected}'."
         )

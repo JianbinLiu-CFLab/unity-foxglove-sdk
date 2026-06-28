@@ -272,13 +272,13 @@ def cleanup_stale_processes(script_path: pathlib.Path, rviz_config: pathlib.Path
     if sys.platform != "win32":
         return
 
-    escaped_script = str(script_path).replace("'", "''")
-    escaped_config = str(rviz_config).replace("'", "''")
-    escaped_camera = camera_parent_frame.replace("'", "''")
+    escaped_script = powershell_single_quote(str(script_path))
+    escaped_config = powershell_single_quote(str(rviz_config))
+    escaped_camera = powershell_single_quote(camera_parent_frame)
     command = f"""
-$script = '{escaped_script}'
-$config = '{escaped_config}'
-$camera = '{escaped_camera}'
+$script = [System.Management.Automation.WildcardPattern]::Escape('{escaped_script}')
+$config = [System.Management.Automation.WildcardPattern]::Escape('{escaped_config}')
+$camera = [System.Management.Automation.WildcardPattern]::Escape('{escaped_camera}')
 $matches = Get-CimInstance Win32_Process | Where-Object {{
     $cmd = $_.CommandLine
     if ([string]::IsNullOrWhiteSpace($cmd)) {{ return $false }}
@@ -296,16 +296,23 @@ foreach ($p in $matches) {{
 }}
 """
     result = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         check=False,
+        timeout=10.0,
     )
     output = result.stdout.strip()
     if output:
         print("[phase138t-rviz] Stopped stale helper processes:")
         print(output)
+
+
+def powershell_single_quote(value: str) -> str:
+    """Escape a string for a PowerShell single-quoted literal."""
+
+    return value.replace("'", "''")
 
 
 def probe_topic(

@@ -5,6 +5,8 @@
 # Module: Scripts/smoke
 # Purpose: ROS2-side acceptance helper for Phase 138T raw Image DDS output.
 
+"""Validate the raw camera Image native DDS topic from a running Unity/R2FU scene."""
+
 from __future__ import annotations
 
 import argparse

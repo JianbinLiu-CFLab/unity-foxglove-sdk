@@ -414,9 +414,9 @@ for topic in (raw_topic, deskewed_topic):
     subs.append(node.create_subscription(PointCloud2, topic, lambda msg, t=topic: capture(t, msg), qos_best_effort))
 print("PHASE138U_SUBSCRIBER_STAGE=after_create_subscriptions", flush=True)
 
-deadline = time.time() + spin_seconds
+deadline = time.monotonic() + spin_seconds
 print("PHASE138U_SUBSCRIBER_STAGE=before_spin", flush=True)
-while rclpy.ok() and len(samples) < 2 and time.time() < deadline:
+while rclpy.ok() and len(samples) < 2 and time.monotonic() < deadline:
     rclpy.spin_once(node, timeout_sec=0.2)
 print("PHASE138U_SUBSCRIBER_STAGE=after_spin samples=" + str(len(samples)), flush=True)
 

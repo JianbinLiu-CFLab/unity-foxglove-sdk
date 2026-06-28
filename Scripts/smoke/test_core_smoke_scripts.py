@@ -351,7 +351,11 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
     def test_phase138_inline_subscribers_use_monotonic_deadlines(self) -> None:
         """Inline ROS2 subscriber deadlines should use monotonic time."""
-        for relative in ("ros2/phase138s_imu_native_dds_acceptance.py", "ros2/phase138t_camera_raw_image_dds_acceptance.py"):
+        for relative in (
+            "ros2/phase138s_imu_native_dds_acceptance.py",
+            "ros2/phase138t_camera_raw_image_dds_acceptance.py",
+            "ros2/phase138u_lidar_deskew_rviz2_acceptance.py",
+        ):
             with self.subTest(relative=relative):
                 source = (SMOKE / relative).read_text(encoding="utf-8")
                 self.assertNotIn("deadline = time.time() + spin_seconds", source)
@@ -380,6 +384,31 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertNotIn("--child-frame-id os_sensor", source)
         self.assertNotIn("child_frame_id: 'os_sensor'", source)
+
+    def test_phase138t_cleanup_escapes_powershell_wildcards(self) -> None:
+        """Phase138T cleanup should mirror the bounded wildcard-safe Phase138M cleanup."""
+        module = load_smoke_module("phase138t_cleanup_under_test", "ros2/launch_phase138t_camera_raw_rviz2.py")
+        calls: list[tuple[list[str], dict]] = []
+
+        def capture_run(args, **kwargs):
+            """Capture PowerShell cleanup invocation."""
+            calls.append((args, kwargs))
+            return SimpleNamespace(stdout="", returncode=0)
+
+        with mock.patch.object(module.sys, "platform", "win32"):
+            with mock.patch.object(module.subprocess, "run", side_effect=capture_run):
+                module.cleanup_stale_processes(Path("C:/project[1]/script.py"), Path("C:/project[1]/view.rviz"), "cam[1]")
+
+        self.assertEqual(1, len(calls))
+        self.assertIn("WildcardPattern", calls[0][0][-1])
+        self.assertEqual(10.0, calls[0][1].get("timeout"))
+
+    def test_phase138h_t_field_requires_exact_datatype_match(self) -> None:
+        """PointCloud2 t-field validation should not accept substring datatype matches."""
+        module = load_smoke_module("phase138h_t_field_under_test", "ros2/phase138h_pointcloud2_t_field_ros2_acceptance.py")
+
+        with self.assertRaises(RuntimeError):
+            module.validate_fields([{"name": "t", "datatype": "uint32_extra"}], "uint32")
 
 
 if __name__ == "__main__":

@@ -363,7 +363,6 @@ def launch_image_republisher(
     time.sleep(0.5)
     exit_code = process.poll()
     if exit_code is not None:
-        log_file.close()
         details = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
         raise RuntimeError(f"Image republisher exited immediately with code {exit_code}.\n{details}")
     print(f"[phase138m-rviz] Image republisher running pid={process.pid}: {source_topic} -> {raw_topic}")
