@@ -78,6 +78,17 @@ ZENOH_CONFIG_FILES = (
     RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
 )
 
+ZENOH_CONFIG_MIRRORS = (
+    (
+        RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+        RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+    ),
+    (
+        RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+        RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+    ),
+)
+
 RMW_DEPENDENCY_CLOSURE_SEEDS = (
     "rmw_fastrtps_cpp.dll",
     "rmw_zenoh_cpp.dll",
@@ -600,6 +611,15 @@ def check_runtime_files(results: list[CheckResult]) -> None:
     )
     for path in ZENOH_CONFIG_FILES:
         add(results, f"Zenoh config present: {path.name}", path.exists(), rel(path))
+    for plugin_config, streaming_assets_config in ZENOH_CONFIG_MIRRORS:
+        add(
+            results,
+            f"Zenoh config mirror matches StreamingAssets: {plugin_config.name}",
+            plugin_config.exists()
+            and streaming_assets_config.exists()
+            and plugin_config.read_bytes() == streaming_assets_config.read_bytes(),
+            f"{rel(plugin_config)} <-> {rel(streaming_assets_config)}",
+        )
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 700, f"dll_count={len(dlls)}")

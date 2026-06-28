@@ -379,6 +379,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private sealed class Binding : IDisposable
         {
+            private static bool _warnedTimestampClamp;
+
             private readonly Ros2ForUnityTransformNativeBridge _owner;
             private readonly FoxgloveTransformPublisher _source;
             private ROS2Node _node;
@@ -515,7 +517,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                             {
                                 Stamp = new builtin_interfaces.msg.Time
                                 {
-                                    Sec = sec > int.MaxValue ? int.MaxValue : (int)sec,
+                                    Sec = ClampRosTimeSeconds(sec),
                                     Nanosec = nsec
                                 },
                                 Frame_id = frame.ParentFrameId
@@ -540,6 +542,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         }
                     }
                 };
+            }
+
+            private static int ClampRosTimeSeconds(ulong seconds)
+            {
+                if (seconds <= int.MaxValue)
+                    return (int)seconds;
+
+                if (!_warnedTimestampClamp)
+                {
+                    _warnedTimestampClamp = true;
+                    Debug.LogWarning(
+                        "[Foxglove][R2FU] Transform timestamp seconds exceeded ROS2 builtin_interfaces/Time int32 range; clamping to int.MaxValue.");
+                }
+
+                return int.MaxValue;
             }
 
             private static string DescribeFrame(FrameTransformMessage frame)

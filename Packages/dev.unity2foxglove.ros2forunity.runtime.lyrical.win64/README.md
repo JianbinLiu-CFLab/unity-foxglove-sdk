@@ -45,7 +45,7 @@ This patch is limited to locating runtime files from a Unity package. It does no
 
 ## Network Acceptance Notes
 
-WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies.
+WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies. Zenoh config files are mirrored under `Plugins/Windows/x86_64/share` for native runtime closure and `StreamingAssets/Ros2ForUnity/share` for Unity player access; package validation requires the mirrored files to stay byte-identical.
 
 ## Support Boundary
 

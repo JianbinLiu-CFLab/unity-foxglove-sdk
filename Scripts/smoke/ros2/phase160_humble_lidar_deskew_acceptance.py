@@ -120,14 +120,16 @@ def suffix(value: str) -> str:
 def pointcloud_display(name: str, topic: str, color: str, size: int) -> str:
     """Return one RViz2 PointCloud2 display YAML fragment."""
 
+    # Match the R2FU sensor-data PointCloud2 publisher QoS. A Reliable RViz2
+    # subscriber is incompatible with a Best Effort DDS publisher.
     return f"""    - Class: rviz_default_plugins/PointCloud2
       Enabled: true
       Name: {name} {topic}
       Topic:
-        Depth: 10
+        Depth: 1
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: {topic}
       Style: Points
       Size (Pixels): {size}
