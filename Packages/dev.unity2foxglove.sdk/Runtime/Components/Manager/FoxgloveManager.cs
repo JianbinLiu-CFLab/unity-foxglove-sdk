@@ -170,6 +170,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _nextChannelId = FirstAutoChannelId;
         private bool _warnedNotRunning;
         private string _lastInvalidPublishTopicWarningKey;
+        private string _lastInvalidRos2SchemaWarningKey;
         private string _lastRos2BridgePublishWarningKey;
         private long _lastRos2BridgePublishWarningTicks;
         private readonly object _ros2BridgePublishWarningGate = new();

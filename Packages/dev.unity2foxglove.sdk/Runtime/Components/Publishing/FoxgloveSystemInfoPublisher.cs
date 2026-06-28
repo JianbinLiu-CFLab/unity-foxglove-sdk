@@ -23,6 +23,8 @@ namespace Unity.FoxgloveSDK.Components
         private const float DefaultPublishRateHz = 0.2f;
         private const float MaxPublishRateHz = 5f;
 
+        // SystemInfo applies its own 5 Hz effective-rate cap, so it keeps a
+        // dedicated cadence state instead of using the base publisher state.
         private FixedRatePublishState _systemInfoRateState;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.SystemInfoSchemaName;
@@ -40,13 +42,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Awake()
         {
-            ApplySystemInfoDefaults();
+            ApplySystemInfoDefaults(clampSerializedRate: false);
         }
 
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            ApplySystemInfoDefaults();
+            ApplySystemInfoDefaults(clampSerializedRate: true);
         }
 #endif
 
@@ -54,7 +56,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             base.OnEnable();
             _systemInfoRateState = default;
-            ApplySystemInfoDefaults();
+            ApplySystemInfoDefaults(clampSerializedRate: false);
         }
 
         private void Update()
@@ -82,13 +84,14 @@ namespace Unity.FoxgloveSDK.Components
             Publish(CreateMessage(nowNs), nowNs, resolution);
         }
 
-        private void ApplySystemInfoDefaults()
+        private void ApplySystemInfoDefaults(bool clampSerializedRate)
         {
             if (string.IsNullOrWhiteSpace(_topic))
                 _topic = DefaultTopic;
             if (_publishRateHz <= 0f)
                 _publishRateHz = DefaultPublishRateHz;
-            _publishRateHz = Mathf.Min(_publishRateHz, MaxPublishRateHz);
+            if (clampSerializedRate)
+                _publishRateHz = Mathf.Min(_publishRateHz, MaxPublishRateHz);
         }
 
         private static FoxgloveSystemInfoMessage CreateMessage(ulong unixNs)

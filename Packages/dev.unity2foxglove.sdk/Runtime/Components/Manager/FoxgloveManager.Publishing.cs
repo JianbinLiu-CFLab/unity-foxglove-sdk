@@ -163,10 +163,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!IsRunning)
                 return false;
 
-            if (!TryValidatePublishTopic(topic, "prepare ROS2 publish"))
+            if (!TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out channelId, "prepare ROS2 publish"))
                 return false;
 
-            channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
             return !requireDemand || _runtime.HasChannelDemand(channelId);
         }
 
@@ -451,10 +450,9 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            if (!TryValidatePublishTopic(topic, "publish ROS2"))
+            if (!TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out var channelId, "publish ROS2"))
                 return;
 
-            var channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
             _runtime.PublishRos2Cdr(channelId, payload, logTimeNs);
             RecordPublishCadence(topic, CdrEncoding);
 #if UNITY_2020_3_OR_NEWER
@@ -482,6 +480,50 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return false;
+        }
+
+        private bool TryGetOrRegisterRos2MsgSchemaChannel(
+            string topic,
+            string schemaName,
+            out uint channelId,
+            string operation)
+        {
+            channelId = 0;
+            if (!TryValidatePublishTopic(topic, operation))
+                return false;
+
+            if (!TryValidateRos2SchemaName(schemaName, operation))
+                return false;
+
+            channelId = GetOrRegisterRos2MsgSchemaChannel(topic, schemaName);
+            return true;
+        }
+
+        private bool TryValidateRos2SchemaName(string schemaName, string operation)
+        {
+            if (string.IsNullOrWhiteSpace(schemaName))
+            {
+                WarnInvalidRos2Schema(operation, "ROS2 schema channels require a schema name.");
+                return false;
+            }
+
+            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
+            {
+                WarnInvalidRos2Schema(operation, $"Unknown ROS2 schema '{schemaName}'.");
+                return false;
+            }
+
+            return true;
+        }
+
+        private void WarnInvalidRos2Schema(string operation, string reason)
+        {
+            var key = operation + ":" + reason;
+            if (_lastInvalidRos2SchemaWarningKey == key)
+                return;
+
+            _lastInvalidRos2SchemaWarningKey = key;
+            Debug.LogWarning($"[Foxglove] Cannot {operation}: {reason}");
         }
 
         /// <summary>
