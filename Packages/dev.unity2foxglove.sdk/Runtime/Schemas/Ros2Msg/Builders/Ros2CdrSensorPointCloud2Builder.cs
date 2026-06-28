@@ -11,7 +11,11 @@ using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 {
-    /// <summary>Builds CDR payloads for standard ROS 2 sensor_msgs/msg/PointCloud2.</summary>
+    /// <summary>
+    /// Builds little-endian CDR payloads for standard ROS 2 sensor_msgs/msg/PointCloud2.
+    /// The packed point body is emitted in the host .NET little-endian layout and
+    /// the PointCloud2 is_bigendian flag is serialized as false.
+    /// </summary>
     public static class Ros2CdrSensorPointCloud2Builder
     {
         /// <summary>ROS2 schema name serialized by this PointCloud2 CDR builder.</summary>
@@ -75,6 +79,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             fields ??= Array.Empty<PointCloudPackedField>();
             data ??= Array.Empty<byte>();
             ValidateLayout(height, width, pointStep, data);
+            EnsureLittleEndianRuntime();
 
             FoxgloveProfiler.Global.BeginSample("CdrBuild.PointCloud2");
             try
@@ -150,6 +155,15 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 throw new ArgumentException(
                     $"PointCloud2 data length must equal height * width * point_step ({expectedBytes} bytes expected, {data.LongLength} provided).",
                     nameof(data));
+            }
+        }
+
+        private static void EnsureLittleEndianRuntime()
+        {
+            if (!BitConverter.IsLittleEndian)
+            {
+                throw new PlatformNotSupportedException(
+                    "PointCloud2 CDR builder writes little-endian packed point data and sets is_bigendian=false.");
             }
         }
     }

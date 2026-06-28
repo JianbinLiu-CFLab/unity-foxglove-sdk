@@ -199,6 +199,7 @@ namespace Unity.FoxgloveSDK.Components
             _lastNativeDracoPublishUnixNs = 0UL;
             _motionCompensationWarningCount = 0;
             _motionPoseHistory.Clear();
+            _pendingFrameSlot.Take();
             _publishState.ResetSourceDriven();
             _publishState.ClearPreparedDemand();
             _dracoEncodePipeline?.Stop(clearCompleted: true);
@@ -417,19 +418,6 @@ namespace Unity.FoxgloveSDK.Components
         private bool ShouldPreparePointCloud2NativeFrame()
             => _outputMode == PointCloudOutputMode.PointCloud2Native
                && PointCloud2NativeFrameReady != null;
-
-        private void LogPointCloudDiagnosticMessage(string format, object[] args)
-        {
-            Debug.LogFormat(
-                LogType.Log,
-                LogOption.NoStacktrace,
-                this,
-                format,
-                args);
-        }
-
-
-
 
         private void EnsureEncodePipelines()
         {

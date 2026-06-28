@@ -43,7 +43,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("TryQueueVirtualLidarPointCloud2NativeFrame", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs"), StringComparison.Ordinal);
             Assert.Contains("ResolveMotionCompensationSettings", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs"), StringComparison.Ordinal);
             Assert.Contains("PublishRawFrame", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Raw.cs"), StringComparison.Ordinal);
-            Assert.Contains("LogPointCloudDiagnosticMessage", core, StringComparison.Ordinal);
+            Assert.Contains("LogPointCloudDiagnosticMessage", Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs"), StringComparison.Ordinal);
+            Assert.DoesNotContain("private void LogPointCloudDiagnosticMessage", core, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -4,6 +4,8 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Tracks point-cloud source/fallback and prepared-publish demand state.
 
+using System.Threading;
+
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
@@ -14,22 +16,22 @@ namespace Unity.FoxgloveSDK.Components
         private bool _hasPreparedPublishDemand;
         private bool _preparedPublishWebSocket;
         private bool _preparedPublishBridge;
-        private bool _hasSourceDrivenFrames;
+        private int _hasSourceDrivenFrames;
         private bool _warnedTransformFallbackSuppressed;
 
         public void MarkSourceDriven()
         {
-            _hasSourceDrivenFrames = true;
+            Interlocked.Exchange(ref _hasSourceDrivenFrames, 1);
         }
 
         public void ResetSourceDriven()
         {
-            _hasSourceDrivenFrames = false;
+            Interlocked.Exchange(ref _hasSourceDrivenFrames, 0);
             _warnedTransformFallbackSuppressed = false;
         }
 
         public bool ShouldSuppressTransformFallback(bool suppressAfterSourceFrames)
-            => suppressAfterSourceFrames && _hasSourceDrivenFrames;
+            => suppressAfterSourceFrames && Volatile.Read(ref _hasSourceDrivenFrames) != 0;
 
         public bool ShouldLogTransformFallbackSuppressedWarning()
         {

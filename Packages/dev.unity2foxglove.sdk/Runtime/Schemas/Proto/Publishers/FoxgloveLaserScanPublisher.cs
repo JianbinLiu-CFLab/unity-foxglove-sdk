@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.Components
 
             TryPublishScan(
                 logTimeNs,
-                frameId,
+                SanitizeNonEmptyFrameId(frameId, "laser"),
                 startAngleRadians,
                 endAngleRadians,
                 ranges,
@@ -147,7 +147,15 @@ namespace Unity.FoxgloveSDK.Components
 
             var unixNs = CurrentLogTimeNs;
             RefreshCachedAngles();
-            TryPublishScan(unixNs, _frameId, _cachedStartAngleRadians, _cachedEndAngleRadians, ranges, intensities, publishWebSocket, publishBridge);
+            TryPublishScan(
+                unixNs,
+                SanitizeNonEmptyFrameId(_frameId, "laser"),
+                _cachedStartAngleRadians,
+                _cachedEndAngleRadians,
+                ranges,
+                intensities,
+                publishWebSocket,
+                publishBridge);
         }
 
         private void RefreshCachedAngles()
@@ -313,6 +321,12 @@ namespace Unity.FoxgloveSDK.Components
             if (values == null)
                 return Array.Empty<double>();
             return values is double[] array ? (double[])array.Clone() : values.ToArray();
+        }
+
+        private static string SanitizeNonEmptyFrameId(string raw, string fallback)
+        {
+            var value = string.IsNullOrWhiteSpace(raw) ? fallback : raw.Trim();
+            return SanitizeFrameId(value, fallback);
         }
 
         private static bool IsRecoverablePublishException(Exception ex)
