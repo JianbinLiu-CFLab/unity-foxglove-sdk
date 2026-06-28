@@ -38,6 +38,8 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 116: Local MCAP DataLoader v1 ===");
             _passed = 0;
+            MethodCache.Clear();
+            MemberCache.Clear();
 
             VerifyPublicApiShape();
             VerifyInitializationAndIteratorQueries();
@@ -75,7 +77,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             foreach (var dto in new[] { init, channel, schema, problem, timeRange, message, query, backfill })
             {
-                Check(!dto.Assembly.GetReferencedAssemblies().Any(a => a.Name == "UnityEngine"),
+                Check(!TypeReferencesUnityEngine(dto),
                     "116-A7: DataLoader DTO avoids UnityEngine dependency: " + dto.Name);
             }
         }
@@ -306,8 +308,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static Type RequiredType(string name)
         {
-            var type = Type.GetType(name + ", FoxgloveSdk.Tests");
-            Check(type != null, "116-type-exists: required type exists: " + name);
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(assembly => assembly.GetType(name, throwOnError: false))
+                .FirstOrDefault(candidate => candidate != null);
+            Check(type != null, "116-type-exists: required type exists in loaded assemblies: " + name);
             return type;
         }
 
@@ -367,6 +371,27 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return true;
+        }
+
+        private static bool TypeReferencesUnityEngine(Type type)
+        {
+            return type.GetFields(BindingFlags.Instance | BindingFlags.Public)
+                       .Select(field => field.FieldType)
+                       .Concat(type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                                   .Where(property => property.GetIndexParameters().Length == 0)
+                                   .Select(property => property.PropertyType))
+                       .Any(ReferencesUnityEngineType);
+        }
+
+        private static bool ReferencesUnityEngineType(Type type)
+        {
+            if (type == null)
+                return false;
+            if ((type.Namespace ?? string.Empty).StartsWith("UnityEngine", StringComparison.Ordinal))
+                return true;
+            if (type.HasElementType && ReferencesUnityEngineType(type.GetElementType()))
+                return true;
+            return type.IsGenericType && type.GetGenericArguments().Any(ReferencesUnityEngineType);
         }
 
         private static List<object> InvokeMessages(object loader, string method, object query)

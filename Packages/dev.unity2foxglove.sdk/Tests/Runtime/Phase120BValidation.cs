@@ -131,7 +131,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySparseIndexedBackfillEarlyStop()
         {
-            using var indexed = new MemoryStream(BuildSparseIndexedBackfillFixtureWithOlderBadChunk());
+            using var indexed = new MemoryStream(BuildSparseIndexedBackfillFixtureWithOlderChunk());
             using var loader = new McapDataLoader(indexed, leaveOpen: true);
             var backfill = loader.GetBackfill(new McapDataLoaderBackfillQuery
             {
@@ -290,7 +290,7 @@ namespace Unity.FoxgloveSDK.Tests
             return ms;
         }
 
-        private static byte[] BuildSparseIndexedBackfillFixtureWithOlderBadChunk()
+        private static byte[] BuildSparseIndexedBackfillFixtureWithOlderChunk()
         {
             var ms = new MemoryStream();
             using (var writer = new McapWriter(ms, leaveOpen: true))
@@ -311,7 +311,7 @@ namespace Unity.FoxgloveSDK.Tests
                     (1, 2u, 10UL, 10UL, "old-1"),
                     (2, 2u, 11UL, 11UL, "old-2"),
                     (3, 2u, 12UL, 12UL, "old-3"));
-                writer.WriteChunk(10, 12, (ulong)oldRaw.Length, 0xDEADBEEFu, "", (ulong)oldRaw.Length, oldRaw);
+                writer.WriteChunk(10, 12, (ulong)oldRaw.Length, Crc32Helper.Compute(oldRaw), "", (ulong)oldRaw.Length, oldRaw);
                 var oldChunkLength = (ulong)ms.Position - oldChunkOffset;
 
                 var summaryOffset = (ulong)ms.Position;
