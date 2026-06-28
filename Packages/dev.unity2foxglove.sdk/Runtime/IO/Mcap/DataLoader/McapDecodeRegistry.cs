@@ -15,9 +15,8 @@ namespace Unity.FoxgloveSDK.IO
 {
     internal sealed class McapDecodeRegistry
     {
-        // BuiltInFactories intentionally initializes once per AppDomain; diagnostics are reset on Unity runtime reload.
-        private static readonly Lazy<List<IMcapMessageDecoderFactory>> BuiltInFactories =
-            new Lazy<List<IMcapMessageDecoderFactory>>(BuildBuiltInFactories);
+        private static readonly object BuiltInFactoriesGate = new object();
+        private static Lazy<List<IMcapMessageDecoderFactory>> BuiltInFactories = CreateBuiltInFactoriesLazy();
         private static readonly object FactoryDiagnosticsGate = new object();
         private static readonly List<string> FactoryDiagnostics = new List<string>();
 
@@ -31,7 +30,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             get
             {
-                _ = BuiltInFactories.Value;
+                _ = GetBuiltInFactories();
                 lock (FactoryDiagnosticsGate)
                     return new List<string>(FactoryDiagnostics);
             }
@@ -41,6 +40,8 @@ namespace Unity.FoxgloveSDK.IO
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetFactoryDiagnosticsForRuntimeLoad()
         {
+            lock (BuiltInFactoriesGate)
+                BuiltInFactories = CreateBuiltInFactoriesLazy();
             lock (FactoryDiagnosticsGate)
                 FactoryDiagnostics.Clear();
         }
@@ -183,9 +184,20 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             if (options.UseBuiltInDecoders)
-                factories.AddRange(BuiltInFactories.Value);
+                factories.AddRange(GetBuiltInFactories());
 
             return factories;
+        }
+
+        private static List<IMcapMessageDecoderFactory> GetBuiltInFactories()
+        {
+            lock (BuiltInFactoriesGate)
+                return BuiltInFactories.Value;
+        }
+
+        private static Lazy<List<IMcapMessageDecoderFactory>> CreateBuiltInFactoriesLazy()
+        {
+            return new Lazy<List<IMcapMessageDecoderFactory>>(BuildBuiltInFactories);
         }
 
         private static List<IMcapMessageDecoderFactory> BuildBuiltInFactories()

@@ -17,6 +17,9 @@ namespace Unity.FoxgloveSDK.IO
     /// MCAP replay engine. Loads an .mcap file via McapReader, extracts
     /// channels and messages, and replays them in log-time order into
     /// a live FoxgloveSession. Supports play, pause, and seek.
+    /// Instances are not thread-safe; call Load, Tick, Seek, Play, Pause,
+    /// Snapshot, and History from one owner thread, normally Unity's main
+    /// thread.
     /// </summary>
     public class McapReplayEngine : IDisposable
     {
@@ -75,7 +78,9 @@ namespace Unity.FoxgloveSDK.IO
         /// Best-effort maximum number of messages emitted per Tick call.
         /// Set to <c>0</c> to preserve the legacy unlimited-per-tick behavior.
         /// A single log-time group may exceed this soft cap so logically
-        /// simultaneous scene and transform messages are not split across ticks.
+        /// simultaneous scene and transform messages are not split across ticks;
+        /// pathological files with very large same-timestamp groups can therefore
+        /// exceed this value in one tick by design.
         /// </summary>
         private int _maxMessagesPerTick = 8;
 

@@ -77,7 +77,8 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
 
                 schemas.TryGetValue(channel.SchemaId, out var schema);
-                recorder.AddChannel(
+                recorder.AddChannelPreservingMcapId(
+                    channel.ChannelId,
                     channel.ChannelId,
                     channel.Topic,
                     channel.MessageEncoding,

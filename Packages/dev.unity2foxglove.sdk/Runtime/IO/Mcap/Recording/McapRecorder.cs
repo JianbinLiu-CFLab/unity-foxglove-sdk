@@ -105,6 +105,16 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void AddChannel(uint fId, string topic, string enc, string sName, string sEnc, string sContent)
         {
+            AddChannelCore(fId, topic, enc, sName, sEnc, sContent, null);
+        }
+
+        internal void AddChannelPreservingMcapId(uint fId, ushort mcapChannelId, string topic, string enc, string sName, string sEnc, string sContent)
+        {
+            AddChannelCore(fId, topic, enc, sName, sEnc, sContent, mcapChannelId);
+        }
+
+        private void AddChannelCore(uint fId, string topic, string enc, string sName, string sEnc, string sContent, ushort? explicitMcapChannelId)
+        {
             lock (_lock)
             {
                 if (_recordingFailed || _closed) return;
@@ -125,8 +135,24 @@ namespace Unity.FoxgloveSDK.IO
                 }
                 var sid = GetOrCreateSchema(sName, sEnc, sContent);
                 if (_recordingFailed) return;
-                if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
-                var mCid = _nextCid++;
+                ushort mCid;
+                if (explicitMcapChannelId.HasValue)
+                {
+                    mCid = explicitMcapChannelId.Value;
+                    if (mCid == 0 || IsMcapChannelIdRegistered(mCid))
+                    {
+                        Fail("MCAP channel ID collision");
+                        return;
+                    }
+
+                    if (mCid >= _nextCid)
+                        _nextCid = (ushort)(mCid == ushort.MaxValue ? 0 : mCid + 1);
+                }
+                else
+                {
+                    if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
+                    mCid = _nextCid++;
+                }
                 var state = new ChannelWriteState { McapId = mCid, Topic = topic };
                 _chMap[fId] = state;
                 if (!_topicChannelWriteState.ContainsKey(topic))
@@ -139,6 +165,17 @@ namespace Unity.FoxgloveSDK.IO
                 _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = new Dictionary<string, string>(meta) });
                 RecordTopicSignature(topic, signature);
             }
+        }
+
+        private bool IsMcapChannelIdRegistered(ushort mcapChannelId)
+        {
+            foreach (var state in _chMap.Values)
+                if (state.McapId == mcapChannelId)
+                    return true;
+            foreach (var state in _clientChannelWriteState.Values)
+                if (state.McapId == mcapChannelId)
+                    return true;
+            return false;
         }
 
         /// <summary>
