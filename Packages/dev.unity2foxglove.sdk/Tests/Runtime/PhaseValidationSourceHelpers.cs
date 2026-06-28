@@ -35,31 +35,159 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         public static bool SourceMethodContains(string source, string methodName, string needle)
-            => SourceMethod(source, methodName).Contains(needle);
+            => SourceMethod(source, methodName).Contains(needle, StringComparison.Ordinal);
 
         public static string SourceMethod(string source, string methodName)
         {
             var start = source.IndexOf(methodName, StringComparison.Ordinal);
             if (start < 0)
                 return string.Empty;
-            var braceStart = source.IndexOf('{', start);
+
+            var braceStart = FindNextCodeChar(source, start, '{');
             if (braceStart < 0)
                 return string.Empty;
 
             var depth = 0;
+            var state = SourceScanState.Code;
             for (var i = braceStart; i < source.Length; i++)
             {
-                if (source[i] == '{')
-                    depth++;
-                else if (source[i] == '}')
+                if (!TryAdvanceSourceScanState(source, ref i, ref state))
+                    continue;
+
+                if (state != SourceScanState.Code)
+                    continue;
+
+                var current = source[i];
+                if (current == '{')
                 {
-                    depth--;
-                    if (depth == 0)
-                        return source.Substring(start, i - start + 1);
+                    depth++;
+                    continue;
                 }
+
+                if (current != '}')
+                    continue;
+
+                depth--;
+                if (depth == 0)
+                    return source.Substring(start, i - start + 1);
             }
 
-            return source.Substring(start);
+            return string.Empty;
+        }
+
+        private static int FindNextCodeChar(string source, int start, char target)
+        {
+            var state = SourceScanState.Code;
+            for (var i = start; i < source.Length; i++)
+            {
+                if (!TryAdvanceSourceScanState(source, ref i, ref state))
+                    continue;
+
+                if (state == SourceScanState.Code && source[i] == target)
+                    return i;
+            }
+
+            return -1;
+        }
+
+        private static bool TryAdvanceSourceScanState(string source, ref int index, ref SourceScanState state)
+        {
+            var current = source[index];
+            var next = index + 1 < source.Length ? source[index + 1] : '\0';
+
+            switch (state)
+            {
+                case SourceScanState.LineComment:
+                    if (current == '\n' || current == '\r')
+                        state = SourceScanState.Code;
+                    return false;
+
+                case SourceScanState.BlockComment:
+                    if (current == '*' && next == '/')
+                    {
+                        index++;
+                        state = SourceScanState.Code;
+                    }
+                    return false;
+
+                case SourceScanState.String:
+                    if (current == '\\')
+                    {
+                        index++;
+                        return false;
+                    }
+
+                    if (current == '"')
+                        state = SourceScanState.Code;
+                    return false;
+
+                case SourceScanState.VerbatimString:
+                    if (current == '"' && next == '"')
+                    {
+                        index++;
+                        return false;
+                    }
+
+                    if (current == '"')
+                        state = SourceScanState.Code;
+                    return false;
+
+                case SourceScanState.Character:
+                    if (current == '\\')
+                    {
+                        index++;
+                        return false;
+                    }
+
+                    if (current == '\'')
+                        state = SourceScanState.Code;
+                    return false;
+            }
+
+            if (current == '/' && next == '/')
+            {
+                index++;
+                state = SourceScanState.LineComment;
+                return false;
+            }
+
+            if (current == '/' && next == '*')
+            {
+                index++;
+                state = SourceScanState.BlockComment;
+                return false;
+            }
+
+            if (current == '@' && next == '"')
+            {
+                index++;
+                state = SourceScanState.VerbatimString;
+                return false;
+            }
+
+            if (current == '"')
+            {
+                state = SourceScanState.String;
+                return false;
+            }
+
+            if (current == '\'')
+            {
+                state = SourceScanState.Character;
+                return false;
+            }
+
+            return true;
+        }
+
+        private enum SourceScanState
+        {
+            Code,
+            LineComment,
+            BlockComment,
+            String,
+            VerbatimString,
+            Character
         }
     }
 }

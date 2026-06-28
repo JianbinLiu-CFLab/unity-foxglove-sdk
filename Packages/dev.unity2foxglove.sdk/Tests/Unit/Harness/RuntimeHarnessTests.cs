@@ -91,6 +91,63 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void MainCleansTempMcapHelperInFinallyForAllEntrypoints()
+        {
+            var method = LoadProgramTree()
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "Main");
+
+            var tryStatement = method.DescendantNodes().OfType<TryStatementSyntax>().SingleOrDefault();
+            Assert.NotNull(tryStatement);
+            Assert.Contains(
+                tryStatement!.Finally?.Block.DescendantNodes().OfType<InvocationExpressionSyntax>() ?? Enumerable.Empty<InvocationExpressionSyntax>(),
+                invocation => invocation.ToString().Contains("TempMcapHelper.Cleanup()", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void RuntimeServerDisposesTimersWithCallbackDrain()
+        {
+            var text = LoadRuntimeSource("Program.cs");
+
+            Assert.Contains("Interlocked.Exchange(ref stopping, 1)", text, StringComparison.Ordinal);
+            Assert.Contains("DisposeTimerAndWait(heartbeat)", text, StringComparison.Ordinal);
+            Assert.Contains("timer.Dispose(disposed)", text, StringComparison.Ordinal);
+            Assert.Contains("Volatile.Read(ref stopping)", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task DemoFlagsRequireServe()
+        {
+            var result = await RunHarnessAsync(new[] { "--demo" }, timeoutMilliseconds: 20_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("--serve", result.StandardError, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RuntimeGitLsFilesDrainsPipesBeforeTimedWait()
+        {
+            var text = LoadRuntimeSource("PhaseRos2ForUnityValidationHelpers.cs");
+
+            Assert.Contains("ReadToEndAsync()", text, StringComparison.Ordinal);
+            Assert.Contains("GitLsFilesTimeoutMilliseconds", text, StringComparison.Ordinal);
+            Assert.Contains("process.Kill(entireProcessTree: true)", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RuntimeSourceMethodScannerIgnoresTrivia()
+        {
+            var text = LoadRuntimeSource("PhaseValidationSourceHelpers.cs");
+
+            Assert.Contains("SourceScanState.String", text, StringComparison.Ordinal);
+            Assert.Contains("SourceScanState.LineComment", text, StringComparison.Ordinal);
+            Assert.Contains("SourceScanState.BlockComment", text, StringComparison.Ordinal);
+            Assert.Contains("return string.Empty;", text, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RegistryChecksDuplicateValidationNames()
         {
             var constructor = LoadRuntimeSyntax("PhaseValidationRegistry.cs")
