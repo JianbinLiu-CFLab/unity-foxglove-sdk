@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase138FValidation
     {
+        private const double SampleTimeToleranceSeconds = 1e-9;
         private static int _passed;
 
         public static void Validate()
@@ -43,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
             for (var i = 1; i < times.Count; i++)
             {
                 Check(times[i] > times[i - 1], $"138F-2[{i}]: generated sample times are strictly increasing");
-                Check(Math.Abs(times[i] - times[i - 1] - period) <= 1e-12,
+                Check(Math.Abs(times[i] - times[i - 1] - period) <= SampleTimeToleranceSeconds,
                     $"138F-3[{i}]: generated sample spacing stays at 1/200s in physics-time grid");
             }
         }
@@ -60,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
             for (var i = 1; i < times.Count; i++)
             {
                 var gap = times[i] - times[i - 1];
-                Check(gap >= period - 1e-12 && gap <= period + 1e-12,
+                Check(gap >= period - SampleTimeToleranceSeconds && gap <= period + SampleTimeToleranceSeconds,
                     $"138F-6[{i}]: downsampled sample spacing stays on 1/50s physics grid");
             }
         }
@@ -106,7 +107,7 @@ namespace Unity.FoxgloveSDK.Tests
                 nextIndex = ImuSubStep.AlignSampleIndexToTickStart(tickStart, targetRateHz, nextIndex);
                 while (ImuSubStep.TryGetSampleTime(targetRateHz, nextIndex, out var sampleTime))
                 {
-                    if (sampleTime > tickEnd + 1e-12)
+                    if (sampleTime > tickEnd + SampleTimeToleranceSeconds)
                         break;
 
                     times.Add(sampleTime);

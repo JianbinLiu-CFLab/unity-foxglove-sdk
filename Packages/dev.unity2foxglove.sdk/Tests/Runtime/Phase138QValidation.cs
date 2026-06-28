@@ -674,16 +674,17 @@ namespace Unity.FoxgloveSDK.Tests
             if (SourceCache.TryGetValue(relativePath, out var cached))
                 return cached;
 
-            if (!File.Exists(relativePath))
-                throw new InvalidOperationException("Phase 138Q cannot find expected file: " + Path.GetFullPath(relativePath));
-            var text = File.ReadAllText(relativePath);
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new InvalidOperationException("Phase 138Q cannot find expected file: " + path);
+            var text = File.ReadAllText(path);
             SourceCache[relativePath] = text;
             return text;
         }
 
         private static string ReadCameraPublisherSources()
         {
-            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
             const string cacheKey = "FoxgloveCameraPublisher*.cs";
             if (SourceCache.TryGetValue(cacheKey, out var cached))
                 return cached;
@@ -698,7 +699,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadPointCloudPublisherSources()
         {
-            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
             const string cacheKey = "FoxglovePointCloudPublisher*.cs";
             if (SourceCache.TryGetValue(cacheKey, out var cached))
                 return cached;
@@ -709,6 +710,13 @@ namespace Unity.FoxgloveSDK.Tests
             var text = output.ToString();
             SourceCache[cacheKey] = text;
             return text;
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot()
+                ?? throw new DirectoryNotFoundException("Could not find repository root for Phase138Q validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static int IndexOf(string text, string pattern)

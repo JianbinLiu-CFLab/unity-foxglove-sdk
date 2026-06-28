@@ -135,7 +135,14 @@ namespace Unity.FoxgloveSDK.Tests
             return source.Substring(start);
         }
 
-        private static string Read(string path) => File.ReadAllText(path);
+        private static string Read(string path) => File.ReadAllText(RepoPath(path));
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot()
+                ?? throw new DirectoryNotFoundException("Could not find repository root for Phase138K validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
 
         private static string ReadCameraPublisherPartials()
             => Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs")

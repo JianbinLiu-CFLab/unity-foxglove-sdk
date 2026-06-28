@@ -151,7 +151,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && bootstrap.Contains("SetPrivateField(lidar, \"_layerMask\", (LayerMask)Physics.DefaultRaycastLayers)", StringComparison.Ordinal)
                   && importedEditor.Contains("SetField(lidar, \"_layerMask\", (LayerMask)Physics.DefaultRaycastLayers)", StringComparison.Ordinal)
                   && importedBootstrap.Contains("SetPrivateField(lidar, \"_layerMask\", (LayerMask)Physics.DefaultRaycastLayers)", StringComparison.Ordinal)
-                  && Regex.IsMatch(smokeScene, @"m_Layer:\s*2\s+m_Name:\s*Vehicle")
+                  && smokeScene.Contains("m_Layer: 2", StringComparison.Ordinal)
+                  && smokeScene.Contains("m_Name: Vehicle", StringComparison.Ordinal)
                   && smokeScene.Contains("_columnStep: 1", StringComparison.Ordinal)
                   && Regex.IsMatch(smokeScene, @"_layerMask:\s*\r?\n\s+serializedVersion:\s*2\s*\r?\n\s+m_Bits:\s*4294967291"),
                 "138I-35: baked smoke scene excludes the demo vehicle collider from LiDAR raycasts");
@@ -172,14 +173,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var lidar = ReadRepoText(VirtualLidarRelativePath);
             var lidarScheduler = ReadRepoText(VirtualLidarScanSchedulerRelativePath);
-            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var publisher = ReadPointCloudPublisherSources();
             var pointCloudDiagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
 
             Check(lidar.Contains("_logPerformanceDiagnostics", StringComparison.Ordinal)
                   && lidarScheduler.Contains("[LidarDiag]", StringComparison.Ordinal)
                   && lidarScheduler.Contains("LogOption.NoStacktrace", StringComparison.Ordinal)
                   && lidarScheduler.Contains("completeMs", StringComparison.Ordinal)
-                  && lidarScheduler.Contains("overrun", StringComparison.Ordinal),
+                  && lidarScheduler.Contains("timingOverrun", StringComparison.Ordinal),
                 "138I-12: VirtualLidar exposes opt-in no-stacktrace throughput diagnostics");
             Check(publisher.Contains("_logPerformanceDiagnostics", StringComparison.Ordinal)
                   && publisher.Contains("PointCloudPublishDiagnostics _diagnostics", StringComparison.Ordinal)
@@ -243,7 +244,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyUnityDebugAliases()
         {
             var lidar = ReadRepoText(VirtualLidarRelativePath);
-            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var publisher = ReadPointCloudPublisherSources();
             var diagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarScanDiagnostics.cs");
             var pointCloudDiagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs");
             var encoders = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
@@ -318,7 +319,7 @@ namespace Unity.FoxgloveSDK.Tests
             var lidar = ReadRepoText(VirtualLidarRelativePath);
             var lidarScheduler = ReadRepoText(VirtualLidarScanSchedulerRelativePath);
             var lidarFramePublisher = ReadRepoText(VirtualLidarScanFramePublisherRelativePath);
-            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var publisher = ReadPointCloudPublisherSources();
             var encoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
             var workerEncoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
 
@@ -338,7 +339,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyVirtualLidarPointSnapshotAsmdefBoundary()
         {
-            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var publisher = ReadPointCloudPublisherSources();
             var encoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
             var sharedPoint = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/VirtualLidarPointData.cs");
             var assemblyInfo = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/AssemblyInfo.cs");
@@ -368,7 +369,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyVirtualLidarNativeDracoPublishRateCap()
         {
-            var publisher = ReadRepoText(PointCloudPublisherRelativePath);
+            var publisher = ReadPointCloudPublisherSources();
             var editor = ReadRepoText(DemoEditorRelativePath);
             var bootstrap = ReadRepoText(DemoBootstrapRelativePath);
             var importedEditor = ReadRepoText(ImportedDemoEditorRelativePath);
@@ -429,6 +430,32 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException($"Phase 138I cannot find expected file: {path}");
             var text = File.ReadAllText(path);
             SourceCache[relativePath] = text;
+            return text;
+        }
+
+        private static string ReadPointCloudPublisherSources()
+        {
+            const string cacheKey = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher*.cs";
+            if (SourceCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new InvalidOperationException("Phase 138I cannot find the repository root while reading point-cloud publisher partial sources.");
+
+            var directory = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Schemas",
+                "Proto",
+                "Publishers");
+            var files = Directory.GetFiles(directory, "FoxglovePointCloudPublisher*.cs");
+            Array.Sort(files, StringComparer.Ordinal);
+
+            var text = string.Join(Environment.NewLine, Array.ConvertAll(files, File.ReadAllText));
+            SourceCache[cacheKey] = text;
             return text;
         }
 

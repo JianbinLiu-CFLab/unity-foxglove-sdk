@@ -399,7 +399,14 @@ namespace Unity.FoxgloveSDK.Tests
             return false;
         }
 
-        private static string Read(string path) => File.ReadAllText(path);
+        private static string Read(string path) => File.ReadAllText(RepoPath(path));
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot()
+                ?? throw new DirectoryNotFoundException("Could not find repository root for Phase138L validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
 
         private static void Check(bool condition, string label)
         {
