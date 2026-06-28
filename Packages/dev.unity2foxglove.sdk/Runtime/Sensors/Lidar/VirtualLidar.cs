@@ -97,6 +97,7 @@ namespace Unity.FoxgloveSDK.Components
                  "Set a value > 0 to cap rays per scan for performance; excess rays are " +
                  "uniformly subsampled. Raycasts run in parallel via RaycastCommand.")]
         [SerializeField, Min(0)] private int _maxRaysPerScan = 0;
+        [Tooltip("Physics layers included in LiDAR raycasts. Exclude the sensor/vehicle's own layer to avoid self-collision returns; Min Range is not a replacement for self-layer exclusion.")]
         [SerializeField] private LayerMask _layerMask = Physics.DefaultRaycastLayers;
         [SerializeField] private bool _publishEmptyFrames;
         [SerializeField] private bool _drawDebugRays;
@@ -233,6 +234,8 @@ namespace Unity.FoxgloveSDK.Components
                 _manager = _sensorUnitProfile != null && _sensorUnitProfile.Manager != null
                     ? _sensorUnitProfile.Manager
                     : FindFirstObjectByType<FoxgloveManager>();
+
+            WarnIfOwnLayerIncludedInRaycastMask();
 
             if (_sensorUnitProfile != null)
             {
@@ -530,6 +533,18 @@ namespace Unity.FoxgloveSDK.Components
             _maxRangeMeters = Math.Max(0f, _maxRangeMeters);
             if (_maxRaycastCommandsPerFixedUpdate < 256)
                 _maxRaycastCommandsPerFixedUpdate = 256;
+        }
+
+        private void WarnIfOwnLayerIncludedInRaycastMask()
+        {
+            var ownLayerMask = 1 << gameObject.layer;
+            if ((_layerMask.value & ownLayerMask) == 0)
+                return;
+
+            Debug.LogWarning(
+                "[VirtualLidar] LiDAR raycast Layer Mask includes this GameObject's layer. " +
+                "Move the sensor/vehicle to an excluded layer or remove that layer from the mask to avoid self-collision point-cloud returns.",
+                this);
         }
     }
 }

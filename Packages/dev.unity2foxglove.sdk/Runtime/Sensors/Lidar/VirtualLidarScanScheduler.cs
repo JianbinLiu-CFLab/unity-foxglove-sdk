@@ -87,6 +87,7 @@ namespace Unity.FoxgloveSDK.Components
                         0d,
                         0d,
                         asyncOverrun: true,
+                        profileInvalidation: false,
                         fixedDeltaTimeSeconds);
                     return;
                 }
@@ -110,6 +111,9 @@ namespace Unity.FoxgloveSDK.Components
                 for (var c = 0; c < columnsToEmit && batchCount < scanBuffers.EffectiveRayCount; c++)
                 {
                     var rays = scanBuffers.ColumnRays[scanColumnCursor];
+                    if (batchCount > 0 && batchCount + rays.Length > scanBuffers.EffectiveRayCount)
+                        break;
+
                     for (var r = 0; r < rays.Length && batchCount < scanBuffers.EffectiveRayCount; r++)
                     {
                         var k = rays[r];
@@ -210,7 +214,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_pendingProfileHash != scanBuffers.ComputeProfileHash())
             {
-                RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: true, fixedDeltaTime);
+                RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: false, profileInvalidation: true, fixedDeltaTime);
                 ClearPendingScan();
                 return;
             }
@@ -262,7 +266,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var appendMs = DiagnosticElapsedMs(appendStart);
-            RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, validPoints, completeMs, buildMs, appendMs, asyncOverrun: false, fixedDeltaTime);
+            RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, validPoints, completeMs, buildMs, appendMs, asyncOverrun: false, profileInvalidation: false, fixedDeltaTime);
             ClearPendingScan();
         }
 
@@ -387,6 +391,7 @@ namespace Unity.FoxgloveSDK.Components
             double buildMs,
             double appendMs,
             bool asyncOverrun,
+            bool profileInvalidation,
             float fixedDeltaTimeSeconds)
         {
             if (!_scanDiagnostics.Record(
@@ -398,6 +403,7 @@ namespace Unity.FoxgloveSDK.Components
                     buildMs,
                     appendMs,
                     asyncOverrun,
+                    profileInvalidation,
                     fixedDeltaTimeSeconds,
                     out var snapshot))
                 return;
@@ -406,7 +412,7 @@ namespace Unity.FoxgloveSDK.Components
                 LogType.Log,
                 LogOption.NoStacktrace,
                 _logContext,
-                "[LidarDiag] scanId={0} scans={1} rays={2} valid={3} completeMs avg={4:F2} max={5:F2} buildMs avg={6:F2} appendMs avg={7:F2} overrun={8}",
+                "[LidarDiag] scanId={0} scans={1} rays={2} valid={3} completeMs avg={4:F2} max={5:F2} buildMs avg={6:F2} appendMs avg={7:F2} timingOverrun={8} profileInvalidation={9}",
                 snapshot.ScanId,
                 snapshot.Scans,
                 snapshot.Rays,
@@ -415,7 +421,8 @@ namespace Unity.FoxgloveSDK.Components
                 snapshot.CompleteMsMax,
                 snapshot.BuildMsAverage,
                 snapshot.AppendMsAverage,
-                snapshot.Overruns);
+                snapshot.TimingOverruns,
+                snapshot.ProfileInvalidations);
         }
     }
 }

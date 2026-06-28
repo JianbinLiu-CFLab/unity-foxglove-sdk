@@ -19,7 +19,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         private int _scans;
         private long _rays;
         private long _validPoints;
-        private int _overruns;
+        private int _timingOverruns;
+        private int _profileInvalidations;
         private double _completeMsTotal;
         private double _completeMsMax;
         private double _buildMsTotal;
@@ -45,6 +46,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             double buildMs,
             double appendMs,
             bool asyncOverrun,
+            bool profileInvalidation,
             double fixedDeltaTimeSeconds,
             out LidarScanDiagnosticSnapshot snapshot)
         {
@@ -61,7 +63,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             _buildMsTotal += buildMs;
             _appendMsTotal += appendMs;
             if (asyncOverrun || completeMs > fixedDeltaTimeSeconds * 1000d)
-                _overruns++;
+                _timingOverruns++;
+            if (profileInvalidation)
+                _profileInvalidations++;
 
             if (_ticks < LogIntervalTicks)
                 return false;
@@ -76,7 +80,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 _completeMsMax,
                 _buildMsTotal / divisor,
                 _appendMsTotal / divisor,
-                _overruns);
+                _timingOverruns,
+                _profileInvalidations);
 
             Reset();
             return true;
@@ -89,7 +94,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             _scans = 0;
             _rays = 0;
             _validPoints = 0;
-            _overruns = 0;
+            _timingOverruns = 0;
+            _profileInvalidations = 0;
             _completeMsTotal = 0d;
             _completeMsMax = 0d;
             _buildMsTotal = 0d;
@@ -109,7 +115,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             double completeMsMax,
             double buildMsAverage,
             double appendMsAverage,
-            int overruns)
+            int timingOverruns,
+            int profileInvalidations)
         {
             ScanId = scanId;
             Scans = scans;
@@ -119,7 +126,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             CompleteMsMax = completeMsMax;
             BuildMsAverage = buildMsAverage;
             AppendMsAverage = appendMsAverage;
-            Overruns = overruns;
+            TimingOverruns = timingOverruns;
+            ProfileInvalidations = profileInvalidations;
         }
 
         public int ScanId { get; }
@@ -130,6 +138,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public double CompleteMsMax { get; }
         public double BuildMsAverage { get; }
         public double AppendMsAverage { get; }
-        public int Overruns { get; }
+        public int TimingOverruns { get; }
+        public int ProfileInvalidations { get; }
     }
 }

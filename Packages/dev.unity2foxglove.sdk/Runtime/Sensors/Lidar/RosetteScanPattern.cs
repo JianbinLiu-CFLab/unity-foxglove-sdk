@@ -12,6 +12,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// Non-repetitive Livox-style scan pattern using a Lissajous sweep.
     /// Coverage fills in across frames via a golden-angle per-frame rotation.
     /// This is a coverage approximation, not an exact Livox trajectory.
+    /// Uses the same x-right, y-up, z-forward positive-azimuth convention as
+    /// <see cref="SpinningScanPattern"/>.
     /// </summary>
     public class RosetteScanPattern : ILidarScanPattern
     {
@@ -61,7 +63,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             var elRad = elDeg * Math.PI / 180.0;
 
             direction = new Vector3(
-                (float)(Math.Cos(elRad) * Math.Sin(-azRad)),
+                (float)(Math.Cos(elRad) * Math.Sin(azRad)),
                 (float)(Math.Sin(elRad)),
                 (float)(Math.Cos(elRad) * Math.Cos(azRad)));
 

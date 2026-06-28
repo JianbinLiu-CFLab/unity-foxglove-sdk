@@ -49,8 +49,17 @@ namespace Unity.FoxgloveSDK.Sensors.Imu
             if (sampleIndex < 0)
                 sampleIndex = 0;
 
-            var nanosFromEpoch = (ulong)sampleIndex * NanosPerSecond / (ulong)targetRateHz;
-            return epochUnixNs + nanosFromEpoch;
+            var nanosFromEpoch = Math.Round(
+                (double)sampleIndex * NanosPerSecond / targetRateHz,
+                MidpointRounding.AwayFromZero);
+            if (nanosFromEpoch <= 0d)
+                return epochUnixNs;
+
+            var maxDelta = ulong.MaxValue - epochUnixNs;
+            if (nanosFromEpoch >= maxDelta)
+                return ulong.MaxValue;
+
+            return epochUnixNs + (ulong)nanosFromEpoch;
         }
 
         public static int ComputeQueueCapacity(int targetRateHz, int minSamples, int maxSamples)
