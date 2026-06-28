@@ -18,7 +18,11 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("host", default_value="127.0.0.1"),
             DeclareLaunchArgument("port", default_value="8767"),
-            DeclareLaunchArgument("payload_format", default_value="cdr-with-encapsulation"),
+            DeclareLaunchArgument(
+                "payload_format",
+                default_value="cdr-with-encapsulation",
+                choices=["cdr-with-encapsulation", "cdr-body-only"],
+            ),
             LogInfo(msg=["Starting Unity2Foxglove ROS2 Bridge on ", host, ":", port]),
             Node(
                 package="unity2foxglove_ros2_bridge",

@@ -41,6 +41,14 @@ if(BUILD_TESTING)
   ament_add_gtest(test_bridge_smoke
     test/test_bridge_smoke.cpp
   )
+  target_compile_features(test_bridge_smoke PUBLIC cxx_std_17)
+  ament_target_dependencies(test_bridge_smoke
+    rclcpp
+    foxglove_msgs
+  )
+  target_link_libraries(test_bridge_smoke
+    nlohmann_json::nlohmann_json
+  )
 endif()
 
 ament_package()

@@ -35,6 +35,7 @@ constexpr uint16_t kFlags = 0;
 constexpr uint32_t kMaxHeaderBytes = 64U * 1024U;
 constexpr uint32_t kMaxPayloadBytes = 64U * 1024U * 1024U;
 constexpr uint8_t kCdrLittleEndianHeader[4] = {0x00, 0x01, 0x00, 0x00};
+constexpr auto kReadStallTimeout = std::chrono::seconds(5);
 constexpr int kHealthProtocolVersion = 1;
 constexpr const char * kSidecarName = "unity2foxglove_ros2_bridge";
 constexpr const char * kSidecarVersion = "0.1.0";
@@ -110,6 +111,25 @@ public:
 
 private:
   int fd_;
+};
+
+class ClientClosedException : public std::runtime_error
+{
+public:
+  ClientClosedException()
+  : std::runtime_error("client closed")
+  {
+  }
+};
+
+class ClientReadTimeoutException : public std::runtime_error
+{
+public:
+  explicit ClientReadTimeoutException(size_t expected_bytes)
+  : std::runtime_error(
+      "bridge client stalled while sending " + std::to_string(expected_bytes) + " bytes")
+  {
+  }
 };
 
 uint16_t read_u16_le(const uint8_t * data)
@@ -261,7 +281,7 @@ Options parse_args(const std::vector<std::string> & args)
   return options;
 }
 
-int create_listen_socket(const std::string & host, int port)
+int create_listen_socket(const std::string & host, int port, const rclcpp::Logger & logger)
 {
   const auto resolved = resolve_loopback_ipv4(host);
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -270,7 +290,12 @@ int create_listen_socket(const std::string & host, int port)
   }
 
   int opt = 1;
-  ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+  if (::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) != 0) {
+    RCLCPP_WARN(
+      logger,
+      "[unity2foxglove_ros2_bridge] SO_REUSEADDR failed, rapid restart may fail: %s",
+      std::strerror(errno));
+  }
 
   sockaddr_in address {};
   address.sin_family = AF_INET;
@@ -335,25 +360,34 @@ bool read_exact(
 {
   buffer.assign(count, 0);
   size_t offset = 0;
+  auto stalled_since = std::chrono::steady_clock::time_point {};
   while (offset < count) {
     const ssize_t received = ::recv(fd, buffer.data() + offset, count - offset, 0);
     if (received == 0) {
       if (offset == 0) {
         return false;
       }
-      throw std::runtime_error("short read from bridge client");
+      throw ClientClosedException();
     }
     if (received < 0) {
       if (errno == EINTR) {
         continue;
       }
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        const auto now = std::chrono::steady_clock::now();
+        if (stalled_since == std::chrono::steady_clock::time_point {}) {
+          stalled_since = now;
+        }
+        if (now - stalled_since >= kReadStallTimeout) {
+          throw ClientReadTimeoutException(count);
+        }
         rclcpp::spin_some(node);
         continue;
       }
       throw std::runtime_error("socket read failed");
     }
     offset += static_cast<size_t>(received);
+    stalled_since = std::chrono::steady_clock::time_point {};
   }
   return true;
 }
@@ -402,7 +436,7 @@ RawFrame read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)
 {
   std::vector<uint8_t> fixed_header;
   if (!read_exact(fd, fixed_header, 16, node)) {
-    throw std::runtime_error("client closed");
+    throw ClientClosedException();
   }
 
   if (fixed_header[0] != 'U' || fixed_header[1] != '2' || fixed_header[2] != 'R' || fixed_header[3] != '2') {
@@ -426,11 +460,11 @@ RawFrame read_raw_frame(int fd, const rclcpp::Node::SharedPtr & node)
 
   std::vector<uint8_t> header_bytes;
   if (!read_exact(fd, header_bytes, header_length, node)) {
-    throw std::runtime_error("unexpected EOF while reading JSON header");
+    throw ClientClosedException();
   }
   std::vector<uint8_t> payload;
   if (payload_length > 0 && !read_exact(fd, payload, payload_length, node)) {
-    throw std::runtime_error("unexpected EOF while reading payload");
+    throw ClientClosedException();
   }
 
   nlohmann::json header;
@@ -547,18 +581,25 @@ void handle_health_ping(int fd, const RawFrame & raw)
   write_health_pong_ok(fd, request_id);
 }
 
-PayloadView payload_for_publish(const BridgeFrame & frame, PayloadFormat format)
+PayloadView payload_for_publish(
+  const BridgeFrame & frame,
+  PayloadFormat format,
+  std::vector<uint8_t> & scratch)
 {
   if (format == PayloadFormat::CdrWithEncapsulation) {
+    scratch.clear();
     return PayloadView{frame.payload.data(), frame.payload.size()};
   }
 
-  if (frame.payload.size() < 4 ||
-    !std::equal(std::begin(kCdrLittleEndianHeader), std::end(kCdrLittleEndianHeader), frame.payload.begin()))
+  if (frame.payload.size() >= 4 &&
+    std::equal(std::begin(kCdrLittleEndianHeader), std::end(kCdrLittleEndianHeader), frame.payload.begin()))
   {
-    throw std::runtime_error("reject frame: cdr-body-only requires 00 01 00 00 encapsulation header");
+    throw std::runtime_error("reject frame: cdr-body-only expects payload without CDR encapsulation header");
   }
-  return PayloadView{frame.payload.data() + 4, frame.payload.size() - 4};
+
+  scratch.assign(std::begin(kCdrLittleEndianHeader), std::end(kCdrLittleEndianHeader));
+  scratch.insert(scratch.end(), frame.payload.begin(), frame.payload.end());
+  return PayloadView{scratch.data(), scratch.size()};
 }
 
 class BridgeNode
@@ -574,7 +615,10 @@ public:
     const auto signature = qos_signature(frame);
     auto topic_signature = topic_signature_.emplace(frame.topic, signature);
     if (!topic_signature.second && topic_signature.first->second != signature) {
-      throw std::runtime_error("reject frame: topic reused with different schemaName or QoS");
+      throw std::runtime_error(
+              "reject frame: topic '" + frame.topic +
+              "' reused with different schemaName or QoS: was [" +
+              topic_signature.first->second + "] got [" + signature + "]");
     }
 
     auto topic_key = topic_keys_.find(frame.topic);
@@ -598,7 +642,7 @@ public:
         frame.depth);
     }
 
-    const auto payload = payload_for_publish(frame, payload_format_);
+    const auto payload = payload_for_publish(frame, payload_format_, payload_scratch_);
     rclcpp::SerializedMessage serialized(payload.size);
     auto & ros_message = serialized.get_rcl_serialized_message();
     if (ros_message.buffer_capacity < payload.size) {
@@ -625,6 +669,7 @@ private:
   std::unordered_map<std::string, std::string> topic_keys_;
   std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers_;
   std::unordered_map<std::string, size_t> counts_;
+  std::vector<uint8_t> payload_scratch_;
 };
 
 void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::SharedPtr & node)
@@ -645,18 +690,20 @@ void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::Shar
         throw std::runtime_error("reject frame: unsupported op '" + op + "'");
       }
       rclcpp::spin_some(node);
+    } catch (const ClientClosedException &) {
+      break;
+    } catch (const ClientReadTimeoutException & ex) {
+      RCLCPP_WARN(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+      break;
     } catch (const std::runtime_error & ex) {
-      const std::string message = ex.what();
-      if (message == "client closed") {
-        break;
-      }
-      RCLCPP_WARN(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", message.c_str());
+      RCLCPP_WARN(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
       break;
     }
   }
 }
 }  // namespace
 
+#ifndef UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
 int main(int argc, char ** argv)
 {
   auto non_ros_args = rclcpp::init_and_remove_ros_arguments(argc, argv);
@@ -664,7 +711,7 @@ int main(int argc, char ** argv)
 
   try {
     const auto options = parse_args(non_ros_args);
-    ScopedFd listen_fd(create_listen_socket(options.host, options.port));
+    ScopedFd listen_fd(create_listen_socket(options.host, options.port, node->get_logger()));
 
     RCLCPP_INFO(
       node->get_logger(),
@@ -693,3 +740,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif

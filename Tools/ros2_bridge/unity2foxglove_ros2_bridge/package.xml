@@ -10,7 +10,7 @@
 
   <depend>rclcpp</depend>
   <depend>foxglove_msgs</depend>
-  <depend>nlohmann_json</depend>
+  <build_depend>nlohmann_json</build_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <test_depend>ament_cmake_gtest</test_depend>
