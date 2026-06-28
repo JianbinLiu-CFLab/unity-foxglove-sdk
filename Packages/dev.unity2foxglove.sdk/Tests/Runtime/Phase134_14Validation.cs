@@ -73,14 +73,19 @@ namespace Unity.FoxgloveSDK.Tests
             var source = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
             var tryEncodeIndex = source.IndexOf("public static bool TryEncode", StringComparison.Ordinal);
-            var validateIndex = Math.Max(
-                source.IndexOf("ValidateInputBudget(frame.Points.Count", tryEncodeIndex, StringComparison.Ordinal),
-                Math.Max(
-                    source.IndexOf("ValidateInputBudget(frame.GetPointCount", tryEncodeIndex, StringComparison.Ordinal),
-                    source.IndexOf("ValidateInputBudget(pointCount", tryEncodeIndex, StringComparison.Ordinal)));
-            var buildIndex = Math.Min(
-                PositiveOrMax(source.IndexOf("ArrayPool<float>.Shared.Rent", tryEncodeIndex, StringComparison.Ordinal)),
-                PositiveOrMax(source.IndexOf("FillXyzArray(frame", tryEncodeIndex, StringComparison.Ordinal)));
+            var validateIndex = -1;
+            var buildIndex = int.MaxValue;
+            if (tryEncodeIndex >= 0)
+            {
+                validateIndex = Math.Max(
+                    source.IndexOf("ValidateInputBudget(frame.Points.Count", tryEncodeIndex, StringComparison.Ordinal),
+                    Math.Max(
+                        source.IndexOf("ValidateInputBudget(frame.GetPointCount", tryEncodeIndex, StringComparison.Ordinal),
+                        source.IndexOf("ValidateInputBudget(pointCount", tryEncodeIndex, StringComparison.Ordinal)));
+                buildIndex = Math.Min(
+                    PositiveOrMax(source.IndexOf("ArrayPool<float>.Shared.Rent", tryEncodeIndex, StringComparison.Ordinal)),
+                    PositiveOrMax(source.IndexOf("FillXyzArray(frame", tryEncodeIndex, StringComparison.Ordinal)));
+            }
 
             Check(tryEncodeIndex >= 0 && validateIndex > tryEncodeIndex && buildIndex != int.MaxValue && buildIndex > validateIndex,
                 "134-14C-1: TryEncode validates input budget before allocating XYZ scratch");

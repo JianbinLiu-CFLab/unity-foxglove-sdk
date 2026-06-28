@@ -67,9 +67,9 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var f in PartialFiles)
             {
                 var content = File.ReadAllText(Path.Combine(Dir, f));
-                Check(content.Contains("public partial class FoxgloveManagerEditor"),
+                Check(content.Contains("public partial class FoxgloveManagerEditor", StringComparison.Ordinal),
                     "137E-2: partial class declaration in " + f);
-                Check(content.Contains("namespace Unity.FoxgloveSDK.Editor"),
+                Check(content.Contains("namespace Unity.FoxgloveSDK.Editor", StringComparison.Ordinal),
                     "137E-3: namespace in " + f);
             }
         }
@@ -77,13 +77,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCustomEditorOnlyOnMain()
         {
             var main = File.ReadAllText(Path.Combine(Dir, "FoxgloveManagerEditor.cs"));
-            Check(main.Contains("[CustomEditor(typeof(Components.FoxgloveManager))]"),
+            Check(main.Contains("[CustomEditor(typeof(Components.FoxgloveManager))]", StringComparison.Ordinal),
                 "137E-4: CustomEditor only on main file");
 
             foreach (var f in PartialFiles)
             {
                 if (f == "FoxgloveManagerEditor.cs") continue;
-                Check(!File.ReadAllText(Path.Combine(Dir, f)).Contains("[CustomEditor"),
+                Check(!File.ReadAllText(Path.Combine(Dir, f)).Contains("[CustomEditor", StringComparison.Ordinal),
                     "137E-5: no CustomEditor on " + f);
             }
         }
@@ -94,7 +94,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var count = 0;
                 foreach (var f in PartialFiles)
-                    if (File.ReadAllText(Path.Combine(Dir, f)).Contains("private bool " + field + ";"))
+                    if (File.ReadAllText(Path.Combine(Dir, f)).Contains("private bool " + field + ";", StringComparison.Ordinal))
                         count++;
                 Check(count == 1, "137E-6: " + field + " declared exactly once (found " + count + ")");
             }
@@ -128,12 +128,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyAssetRootDefinitionDrawerPlacement()
         {
             var main = File.ReadAllText(Path.Combine(Dir, "FoxgloveManagerEditor.cs"));
-            Check(main.Contains("class AssetRootDefinitionDrawer"),
+            Check(main.Contains("class AssetRootDefinitionDrawer", StringComparison.Ordinal),
                 "137E-8: AssetRootDefinitionDrawer in main file");
             foreach (var f in PartialFiles)
             {
                 if (f == "FoxgloveManagerEditor.cs") continue;
-                Check(!File.ReadAllText(Path.Combine(Dir, f)).Contains("AssetRootDefinitionDrawer"),
+                Check(!File.ReadAllText(Path.Combine(Dir, f)).Contains("AssetRootDefinitionDrawer", StringComparison.Ordinal),
                     "137E-9: AssetRootDefinitionDrawer NOT in " + f);
             }
         }

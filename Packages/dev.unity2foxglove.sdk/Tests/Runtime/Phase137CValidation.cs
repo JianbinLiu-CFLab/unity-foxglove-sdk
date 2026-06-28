@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySubEmitterFiles()
         {
-            var dir = "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter";
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter");
             Check(Directory.Exists(dir), "137C-1: FoxgloveSourceEmitter/ directory exists");
 
             var files = new[] {
@@ -52,7 +52,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(File.Exists(path), "137C-2: sub-emitter exists: " + f);
             }
 
-            Check(!File.Exists("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter.cs"),
+            Check(!File.Exists(RepoPath("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter.cs")),
                 "137C-3: old flat file removed");
         }
 
@@ -68,39 +68,49 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyIsAnonymousPropertyNameRemoved()
         {
-            var dir = "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter";
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter");
             var allSource = string.Join("\n",
                 Directory.GetFiles(dir, "*.cs").Select(File.ReadAllText));
-            Check(!allSource.Contains("IsAnonymousPropertyName"), "137C-6: IsAnonymousPropertyName removed");
+            Check(!allSource.Contains("IsAnonymousPropertyName", StringComparison.Ordinal), "137C-6: IsAnonymousPropertyName removed");
         }
 
         private static void VerifyTopicPublishModeFixed()
         {
-            var entry = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs");
-            Check(!entry.Contains("fields.Max(f => f.PublishMode)"), "137C-7: unreachable Max call replaced");
-            Check(entry.Contains("return 0;"), "137C-8: TopicPublishMode returns explicit 0");
+            var entryPath = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs");
+            Check(File.Exists(entryPath), "137C-7: FoxgloveSourceEmitter entry source exists");
+            var entry = File.ReadAllText(entryPath);
+            Check(!entry.Contains("fields.Max(f => f.PublishMode)", StringComparison.Ordinal), "137C-8: unreachable Max call replaced");
+            Check(entry.Contains("return 0;", StringComparison.Ordinal), "137C-9: TopicPublishMode returns explicit 0");
         }
 
         private static void VerifyCsprojGlobs()
         {
-            var testCsproj = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            Check(testCsproj.Contains("FoxgloveSourceEmitter/**/*.cs"), "137C-9: test csproj uses wildcard glob");
+            var testCsprojPath = RepoPath("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            Check(File.Exists(testCsprojPath), "137C-10: runtime validation csproj exists");
+            var testCsproj = File.ReadAllText(testCsprojPath);
+            Check(testCsproj.Contains("FoxgloveSourceEmitter/**/*.cs", StringComparison.Ordinal), "137C-11: test csproj uses wildcard glob");
 
-            var sgCsproj = File.ReadAllText(
-                "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj");
-            Check(sgCsproj.Contains("FoxgloveSourceEmitter\\**\\*.cs"), "137C-10: SG csproj uses wildcard glob");
+            var sgCsprojPath = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj");
+            Check(File.Exists(sgCsprojPath), "137C-12: source generator csproj exists");
+            var sgCsproj = File.ReadAllText(sgCsprojPath);
+            Check(sgCsproj.Contains("FoxgloveSourceEmitter\\**\\*.cs", StringComparison.Ordinal), "137C-13: SG csproj uses wildcard glob");
         }
 
         private static void VerifyPublicApiPreserved()
         {
             Check(typeof(FoxgloveSourceEmitter).GetMethod("ChangeExpr") != null,
-                "137C-11: ChangeExpr still on FoxgloveSourceEmitter");
+                "137C-14: ChangeExpr still on FoxgloveSourceEmitter");
             Check(typeof(FoxgloveSourceEmitter).GetMethod("ValueExpr") != null,
-                "137C-12: ValueExpr still on FoxgloveSourceEmitter");
+                "137C-15: ValueExpr still on FoxgloveSourceEmitter");
             Check(typeof(FoxgloveSourceEmitter).GetMethod("EmitClass", new[] { typeof(FoxRunGenerationType) }) != null,
-                "137C-13: EmitClass(FoxRunGenerationType) preserved");
+                "137C-16: EmitClass(FoxRunGenerationType) preserved");
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var repoRoot = Phase16Validation.FindRepoRoot()
+                ?? throw new DirectoryNotFoundException("Could not find repository root for Phase137C validation.");
+            return Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static void Check(bool condition, string label)

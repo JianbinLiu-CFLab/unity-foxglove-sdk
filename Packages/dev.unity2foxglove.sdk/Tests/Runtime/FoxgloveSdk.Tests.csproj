@@ -196,6 +196,7 @@
     <Compile Include="Phase163_50Validation.cs" />
     <Compile Include="Phase163_51Validation.cs" />
     <Compile Include="Phase163_52Validation.cs" />
+    <Compile Include="Phase163_53Validation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />

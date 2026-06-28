@@ -132,7 +132,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             // Verify try/catch with Detach rollback
             var catchIndex = content.IndexOf("catch", subscribeIndex, StringComparison.Ordinal);
-            var detachRollback = content.IndexOf("Detach(replay);", catchIndex, StringComparison.Ordinal);
+            var detachRollback = catchIndex >= 0
+                ? content.IndexOf("Detach(replay);", catchIndex, StringComparison.Ordinal)
+                : -1;
             Check(catchIndex >= 0 && detachRollback >= 0,
                 "137F-21: Attach rolls back with Detach on subscription failure");
 

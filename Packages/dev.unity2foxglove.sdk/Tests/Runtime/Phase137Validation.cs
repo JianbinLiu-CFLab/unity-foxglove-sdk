@@ -139,6 +139,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             var repoRoot = Phase16Validation.FindRepoRoot();
+            Check(repoRoot != null, "137-0: repository root located");
 
             VerifyFoldersExist(repoRoot);
             VerifyFolderMetaFiles(repoRoot);
@@ -208,7 +209,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             foreach (var typeName in ExpectedDtoTypes)
             {
-                var type = Type.GetType(typeName);
+                var type = AppDomain.CurrentDomain.GetAssemblies()
+                    .Select(assembly => assembly.GetType(typeName, throwOnError: false, ignoreCase: false))
+                    .FirstOrDefault(foundType => foundType != null);
                 Check(type != null && type.FullName == typeName,
                     "137-8: DTO type unchanged: " + typeName);
             }
@@ -217,9 +220,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCsprojGlob(string repoRoot)
         {
             var csprojPath = Path.Combine(repoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            Check(File.Exists(csprojPath), "137-9: runtime validation csproj exists");
             var csproj = File.ReadAllText(csprojPath);
             Check(csproj.Contains("Runtime/Protocol/**/*.cs", StringComparison.Ordinal),
-                "137-9: csproj uses recursive Protocol/**/*.cs glob");
+                "137-10: csproj uses recursive Protocol/**/*.cs glob");
         }
 
         private static void Check(bool condition, string label)
