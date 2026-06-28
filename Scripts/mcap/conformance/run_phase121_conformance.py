@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Purpose: Run the Phase 121 MCAP conformance baseline through a cross-platform Python entry point.
-# Usage: python Scripts/mcap/conformance/run_phase121_conformance.py [--release-blocking]
+# Usage: python Scripts/mcap/conformance/run_phase121_conformance.py [--release-blocking] [--ci-smoke]
 # Inputs: third-party/mcap checkout, C# conformance console project, and csharp runner overlay sources.
 # Outputs: phase121 conformance report (default under build/mcap-conformance)
 # and overlay/test artifacts under build/mcap-conformance.
@@ -66,6 +66,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--report-path",
         help="Optional report output path. Defaults to build/mcap-conformance/phase121-conformance-report.json.",
+    )
+    parser.add_argument(
+        "--ci-smoke",
+        action="store_true",
+        help="Write the conformance report schema without running the official TypeScript harness.",
     )
     return parser.parse_args(argv)
 
@@ -204,6 +209,40 @@ def write_skipped_report(reason: str) -> None:
         tooling=[{"name": "external-tooling", "status": "skipped", "details": reason}],
     )
     print(f"Phase 121 conformance skipped: {reason}")
+
+
+def write_ci_smoke_report() -> None:
+    """Write a bounded CI report without invoking the official TypeScript harness."""
+
+    project_exists = PROJECT_PATH.exists()
+    official_status = "present" if OFFICIAL_CONFORMANCE.exists() else "not-present"
+    write_phase121_report(
+        external_tooling_status="ci-smoke",
+        verdict="CI SMOKE ONLY",
+        generated_variant_count=0,
+        runners=[
+            new_runner_report(
+                name="csharp-streamed-reader",
+                kind="streamed-reader",
+                skips=[{"reason": "CI smoke validates wrapper/report wiring only; run without --ci-smoke for official conformance."}],
+            ),
+            new_runner_report(
+                name="csharp-indexed-reader",
+                kind="indexed-reader",
+                skips=[{"reason": "CI smoke validates wrapper/report wiring only; run without --ci-smoke for official conformance."}],
+            ),
+            new_runner_report(
+                name="csharp-writer",
+                kind="writer",
+                skips=[{"reason": "CI smoke validates wrapper/report wiring only; run without --ci-smoke for official conformance."}],
+            ),
+        ],
+        tooling=[
+            {"name": "csharp-conformance-project", "status": "present" if project_exists else "missing", "details": str(PROJECT_PATH)},
+            {"name": "official-conformance-harness", "status": official_status, "details": str(OFFICIAL_CONFORMANCE)},
+        ],
+    )
+    print(f"Phase 121 conformance CI smoke report: {REPORT_PATH}")
 
 
 def copy_directory_without_local_state(source: Path, destination: Path) -> None:
@@ -435,6 +474,9 @@ def main(argv: list[str]) -> int:
     args = parse_args(argv)
     if args.report_path:
         REPORT_PATH = Path(args.report_path).resolve()
+    if args.ci_smoke:
+        write_ci_smoke_report()
+        return 0
     return run_conformance(bool(args.release_blocking))
 
 

@@ -54,6 +54,12 @@ class Program
 
             var demo = argList.Contains("--demo");
             var demo3d = argList.Contains("--demo3d");
+            if (IsCiEnvironment())
+            {
+                Console.Error.WriteLine("--serve is manual-only and is disabled when CI-like environment variables are set.");
+                return 1;
+            }
+
             return RunServer(port, demo, demo3d);
         }
 
@@ -237,6 +243,20 @@ class Program
     {
         return arg.StartsWith("--", StringComparison.Ordinal)
             && !string.Equals(arg, "--local-evidence", StringComparison.Ordinal);
+    }
+
+    private static bool IsCiEnvironment()
+    {
+        foreach (var name in new[] { "CI", "GITHUB_ACTIONS", "TF_BUILD", "BUILD_BUILDID" })
+        {
+            var value = Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrWhiteSpace(value)
+                && !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(value, "0", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     private static int RunValidation(PhaseValidationCase validation)

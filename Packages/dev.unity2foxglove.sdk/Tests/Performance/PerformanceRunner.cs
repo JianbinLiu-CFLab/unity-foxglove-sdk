@@ -27,6 +27,8 @@ namespace Unity.FoxgloveSDK.Performance
 {
     public static class PerformanceRunner
     {
+        public const string DefaultTransportScope = "FakePerformanceTransport serialization/dispatch path only; excludes ManagedWsBackend sockets and TLS";
+
         private static string RepoRoot
         {
             get
@@ -50,6 +52,8 @@ namespace Unity.FoxgloveSDK.Performance
             return new PerformanceThresholdConfig
             {
                 enabled = true,
+                transportScope = DefaultTransportScope,
+                calibratedOn = "Built-in conservative defaults; review thresholds when runner class or workload changes.",
                 defaults = new PerformanceScenarioThreshold
                 {
                     maxElapsedMs = isFull ? 600000 : 120000,
@@ -158,6 +162,12 @@ namespace Unity.FoxgloveSDK.Performance
                 }
 
                 resolved.enabled = modeConfig.enabled && config.enabled;
+                resolved.transportScope = string.IsNullOrWhiteSpace(modeConfig.transportScope)
+                    ? resolved.transportScope
+                    : modeConfig.transportScope;
+                resolved.calibratedOn = string.IsNullOrWhiteSpace(modeConfig.calibratedOn)
+                    ? resolved.calibratedOn
+                    : modeConfig.calibratedOn;
             }
 
             resolved.modes = null;
@@ -169,6 +179,8 @@ namespace Unity.FoxgloveSDK.Performance
             return new PerformanceThresholdConfig
             {
                 enabled = source?.enabled ?? true,
+                transportScope = source?.transportScope ?? DefaultTransportScope,
+                calibratedOn = source?.calibratedOn,
                 defaults = CloneThreshold(source?.defaults),
                 scenarios = CloneThresholdMap(source?.scenarios)
             };

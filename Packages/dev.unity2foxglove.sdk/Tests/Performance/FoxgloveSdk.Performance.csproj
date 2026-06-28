@@ -14,5 +14,6 @@
     <Compile Include="PerformanceResult.cs" />
     <Compile Include="PerformanceRunner.cs" />
     <Compile Include="FakePerformanceTransport.cs" />
+    <Compile Include="../Unit/Fixtures/UnityEngineMathTypes.cs" Link="Fixtures/UnityEngineMathTypes.cs" />
   </ItemGroup>
 </Project>

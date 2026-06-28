@@ -9,6 +9,8 @@ namespace Unity.FoxgloveSDK.Performance
     public sealed class PerformanceThresholdConfig
     {
         public bool enabled { get; set; } = true;
+        public string transportScope { get; set; }
+        public string calibratedOn { get; set; }
         public PerformanceScenarioThreshold defaults { get; set; }
         public System.Collections.Generic.Dictionary<string, PerformanceScenarioThreshold> scenarios { get; set; }
         public System.Collections.Generic.Dictionary<string, PerformanceThresholdConfig> modes { get; set; }

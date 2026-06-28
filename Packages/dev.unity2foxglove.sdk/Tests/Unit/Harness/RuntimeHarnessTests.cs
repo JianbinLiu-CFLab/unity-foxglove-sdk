@@ -5,6 +5,7 @@
 // Purpose: Runtime validation harness behavior and source-structure checks.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -43,6 +44,19 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("--port", result.StandardError, StringComparison.Ordinal);
             Assert.Contains("integer", result.StandardError, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public async Task ServeIsDisabledInCiEnvironment()
+        {
+            var result = await RunHarnessAsync(
+                new[] { "--serve" },
+                timeoutMilliseconds: 10_000,
+                environment: new Dictionary<string, string> { ["CI"] = "true" });
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("--serve", result.StandardError, StringComparison.Ordinal);
+            Assert.Contains("CI", result.StandardError, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -207,7 +221,10 @@ namespace Unity.FoxgloveSDK.UnitTests
         private static async Task<ProcessResult> RunHarnessAsync(params string[] args)
             => await RunHarnessAsync(args, timeoutMilliseconds: 20_000);
 
-        private static async Task<ProcessResult> RunHarnessAsync(string[] args, int timeoutMilliseconds)
+        private static async Task<ProcessResult> RunHarnessAsync(
+            string[] args,
+            int timeoutMilliseconds,
+            IReadOnlyDictionary<string, string> environment = null)
         {
             var repoRoot = FindRepoRoot();
             var project = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "FoxgloveSdk.Tests.csproj");
@@ -216,7 +233,12 @@ namespace Unity.FoxgloveSDK.UnitTests
             if (!File.Exists(harnessDll))
                 throw new FileNotFoundException("Runtime harness build did not produce the expected DLL.", harnessDll);
 
-            return await RunProcessAsync("dotnet", repoRoot, timeoutMilliseconds, new[] { harnessDll }.Concat(args).ToArray());
+            return await RunProcessAsync(
+                "dotnet",
+                repoRoot,
+                timeoutMilliseconds,
+                new[] { harnessDll }.Concat(args).ToArray(),
+                environment);
         }
 
         private static async Task EnsureHarnessBuiltAsync(string repoRoot, string project)
@@ -241,7 +263,12 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
         }
 
-        private static async Task<ProcessResult> RunProcessAsync(string fileName, string workingDirectory, int timeoutMilliseconds, string[] args)
+        private static async Task<ProcessResult> RunProcessAsync(
+            string fileName,
+            string workingDirectory,
+            int timeoutMilliseconds,
+            string[] args,
+            IReadOnlyDictionary<string, string> environment = null)
         {
             var startInfo = new ProcessStartInfo(fileName)
             {
@@ -252,6 +279,11 @@ namespace Unity.FoxgloveSDK.UnitTests
             };
             foreach (var arg in args)
                 startInfo.ArgumentList.Add(arg);
+            if (environment != null)
+            {
+                foreach (var pair in environment)
+                    startInfo.Environment[pair.Key] = pair.Value;
+            }
 
             using var process = Process.Start(startInfo);
             if (process == null)
