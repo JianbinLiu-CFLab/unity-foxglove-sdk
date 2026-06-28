@@ -60,6 +60,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.AddSink(good);
 
             var contract = Exported("/telemetry");
+            router.Register(contract);
             router.Publish(contract, 1UL, Bytes("{}"), "source-a");
             router.Publish(contract, 2UL, Bytes("{}"), "source-a");
 
@@ -80,6 +81,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.AddSink(b);
 
             var contract = Exported("/telemetry");
+            router.Register(contract);
             var payload = Bytes("{\"v\":1}");
             router.Publish(contract, 1UL, payload, "source-a");
 
@@ -114,6 +116,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.AddSink(late);
 
             Assert.Empty(late.Registered);
+        }
+
+        [Fact]
+        public void UnregisteredContractCannotPublishWithStaleReference()
+        {
+            var router = new FoxTopicSinkRouter();
+            var sink = new RecordingSink("a", new List<string>());
+            router.AddSink(sink);
+            var contract = Exported("/telemetry");
+            router.Register(contract);
+
+            Assert.True(router.Unregister(contract.Topic));
+            router.Publish(contract, 1UL, Bytes("{}"), "source-a");
+
+            Assert.Empty(sink.Published);
         }
 
         [Fact]

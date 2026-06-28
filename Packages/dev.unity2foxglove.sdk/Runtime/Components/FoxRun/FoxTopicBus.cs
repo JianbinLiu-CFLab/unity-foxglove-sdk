@@ -110,6 +110,28 @@ namespace Unity.FoxgloveSDK.Components
             list.Add(new Subscription<T>(++_nextSubscriptionId, callback));
         }
 
+        public bool Unsubscribe<T>(string topic, Action<FoxTopicEnvelope<T>> callback)
+        {
+            if (string.IsNullOrWhiteSpace(topic) || callback == null)
+                return false;
+            if (!_subscriptions.TryGetValue(topic, out var list))
+                return false;
+
+            for (var i = list.Count - 1; i >= 0; i--)
+            {
+                if (list[i] is Subscription<T> typedSubscription
+                    && typedSubscription.Matches(callback))
+                {
+                    list.RemoveAt(i);
+                    if (list.Count == 0)
+                        _subscriptions.Remove(topic);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public bool HasSubscribers(string topic)
             => topic != null
                && _subscriptions.TryGetValue(topic, out var list)
@@ -130,6 +152,17 @@ namespace Unity.FoxgloveSDK.Components
                 if (subscription is Subscription<T> typedSubscription
                     && !typedSubscription.TryInvoke(envelope, out var exception))
                     ReportSubscriberFault(typedSubscription.Id, contract.Topic, origin, exception);
+                else if (!(subscription is Subscription<T>))
+                {
+                    ReportSubscriberFault(
+                        subscription.Id,
+                        contract.Topic,
+                        origin,
+                        new InvalidOperationException(
+                            "FoxRun topic '" + contract.Topic + "' published payload type '"
+                            + typeof(T).FullName + "' to incompatible subscriber type '"
+                            + subscription.PayloadType.FullName + "'."));
+                }
             }
         }
 
@@ -145,6 +178,7 @@ namespace Unity.FoxgloveSDK.Components
         private interface ISubscription
         {
             int Id { get; }
+            Type PayloadType { get; }
         }
 
         private sealed class Subscription<T> : ISubscription
@@ -158,6 +192,10 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             public int Id { get; }
+            public Type PayloadType => typeof(T);
+
+            public bool Matches(Action<FoxTopicEnvelope<T>> callback)
+                => _callback == callback;
 
             public bool TryInvoke(FoxTopicEnvelope<T> envelope, out Exception exception)
             {

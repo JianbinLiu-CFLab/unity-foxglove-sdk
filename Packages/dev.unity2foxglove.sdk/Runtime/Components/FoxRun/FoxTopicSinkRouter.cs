@@ -131,6 +131,9 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             if (_sinks.Count == 0)
                 return;
+            if (!_contracts.TryGetValue(contract.Topic, out var registeredContract)
+                || !ReferenceEquals(registeredContract, contract))
+                return;
 
             payload ??= Array.Empty<byte>();
             for (var i = 0; i < _sinks.Count; i++)
