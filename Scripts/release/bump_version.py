@@ -41,6 +41,16 @@ VERSION_PROPERTY_PREFIX_GROUP = 1
 VERSION_PROPERTY_SUFFIX_GROUP = 3
 
 
+def resolve_repo_root() -> Path:
+    """Return the repository root and fail loudly if the script is moved."""
+    root = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+    package_json = root / "Packages/dev.unity2foxglove.sdk/package.json"
+    changelog = root / "CHANGELOG.md"
+    if not package_json.exists() or not changelog.exists():
+        raise SystemExit(f"Unexpected repository root for bump_version.py: {root}")
+    return root
+
+
 @dataclass
 class PlannedChange:
     """Records one file that would be changed, or was changed, by the bump."""
@@ -136,8 +146,21 @@ class VersionBump:
         """Update root README badges and release-note links for the target version."""
         path = self.root / "README.md"
         text = self.read(path)
-        text = text.replace(f"release-v{old_version}", f"release-v{self.version}")
-        text = text.replace(f"verified for v{old_version}", f"verified for v{self.version}")
+        old = re.escape(old_version)
+        text = self.sub_exactly_once(
+            path,
+            text,
+            rf"(?m)^(\[!\[Release\]\(https://img\.shields\.io/badge/release-)v{old}(-green\)\]\([^)]+\))$",
+            rf"\g<1>v{self.version}\g<2>",
+            "README release badge",
+        )
+        text = self.sub_exactly_once(
+            path,
+            text,
+            rf"(?m)^(.*Windows is verified for )v{old}(;.*)$",
+            rf"\g<1>v{self.version}\g<2>",
+            "README verified Windows version note",
+        )
 
         release_note_line = (
             r"^- \[v(?P<ver>\d+\.\d+\.\d+) release notes\]"
@@ -174,7 +197,13 @@ class VersionBump:
         """Update the package README verified-version note."""
         path = self.root / "Packages/dev.unity2foxglove.sdk/README.md"
         text = self.read(path)
-        text = text.replace(f"verified for v{old_version}", f"verified for v{self.version}")
+        text = self.sub_exactly_once(
+            path,
+            text,
+            rf"(?m)^(- Editor \+ Standalone Player\. Windows is verified for )v{re.escape(old_version)}(;.*)$",
+            rf"\g<1>v{self.version}\g<2>",
+            "package README verified Windows version note",
+        )
         self.write_if_changed(path, text, f"update package README verified version to {self.version}")
 
     def update_citation(self) -> None:
@@ -216,10 +245,10 @@ class VersionBump:
             "- Release package validation should be run before tagging this release.\n\n"
         )
 
-        delimiter = "---\n\n"
-        if delimiter not in text:
+        insertion = re.search(r"(?m)^---\n\n(?=## \d+\.\d+\.\d+ - )", text)
+        if insertion is None:
             raise ValueError(f"Cannot find changelog insertion point in {self.rel(path)}")
-        text = text.replace(delimiter, delimiter + entry, SINGLE_REPLACEMENT)
+        text = text[: insertion.end()] + entry + text[insertion.end() :]
         self.write_if_changed(path, text, f"insert changelog section for {self.version}")
 
     def create_release_notes(self) -> None:
@@ -284,7 +313,7 @@ def main() -> int:
     if not VERSION_RE.match(args.version):
         raise SystemExit(f"Invalid version '{args.version}'. Expected MAJOR.MINOR.PATCH.")
 
-    root = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+    root = resolve_repo_root()
     return VersionBump(root, args.version, args.date, args.dry_run).run()
 
 

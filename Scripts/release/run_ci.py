@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -45,7 +46,7 @@ def cyan(msg: str) -> str:
     return f"\033[36m{msg}\033[0m"
 
 
-def run(cmd: list[str], label: str, *, fatal: bool = True) -> bool:
+def run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
     """Run a subprocess command and return True on success."""
     print(f"\n{cyan('--- ' + label + ' ---')}")
     result = subprocess.run(cmd, cwd=REPO_ROOT)
@@ -54,8 +55,8 @@ def run(cmd: list[str], label: str, *, fatal: bool = True) -> bool:
         print(green(f"{PASS} {label}"))
     else:
         print(red(f"{FAIL} {label} (exit {result.returncode})"))
-        if not fatal:
-            return False
+        if fatal:
+            raise SystemExit(result.returncode)
     return ok
 
 
@@ -71,7 +72,7 @@ def run_with_restore_fallback(
     label: str,
 ) -> bool:
     """Run command with --no-restore first, then retry with restore."""
-    if run(project_cmd, label):
+    if run(project_cmd, label, fatal=False):
         return True
 
     return run(fallback_cmd, f"{label} (retry with restore)")
@@ -151,7 +152,7 @@ def main() -> int:
                 "Build Roslyn analyzer DLL",
             )
             results["analyzer-dll"] = run(
-                ["python", SOURCE_GENERATOR_VALIDATOR],
+                [sys.executable, SOURCE_GENERATOR_VALIDATOR],
                 "Source generator DLL freshness"
             )
             if results.get("analyzer-build"):
@@ -200,23 +201,23 @@ def main() -> int:
     # --- package validators ---
     if args.only in (None, "packages"):
         results["validate-package"] = run(
-            ["python", "Scripts/package/validate_unity_package.py"],
+            [sys.executable, "Scripts/package/validate_unity_package.py"],
             "validate_unity_package.py"
         )
         results["validate-entrypoints"] = run(
-            ["python", "Scripts/package/validate_local_entrypoints.py"],
+            [sys.executable, "Scripts/package/validate_local_entrypoints.py"],
             "validate_local_entrypoints.py"
         )
         results["validate-schema-generated"] = run(
-            ["python", SCHEMA_GENERATED_OUTPUT_VALIDATOR],
+            [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR],
             "validate_schema_generated_outputs.py"
         )
         results["validate-r2fu"] = run(
-            ["python", "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],
+            [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],
             "validate_r2fu_runtime_package.py"
         )
         results["validate-adapter"] = run(
-            ["python", "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"],
+            [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"],
             "validate_ros2forunity_package.py"
         )
 

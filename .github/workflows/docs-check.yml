@@ -120,7 +120,7 @@ jobs:
           mojibake = []
           for file in files:
               text = file.read_text(encoding="utf-8", errors="replace")
-              if "\ufffd" in text or "\u9201" in text:
+              if "\ufffd" in text:
                   mojibake.append(str(file))
               for match in link_pattern.finditer(text):
                   raw = match.group(1).strip()

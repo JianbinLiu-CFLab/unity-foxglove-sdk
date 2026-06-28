@@ -16,6 +16,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_ROOT = REPO_ROOT / "Scripts"
+THIS_SCRIPT = Path(__file__).resolve()
 
 FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Windows ROS2 install root", re.compile(r"C:[\\/]+ros2_[A-Za-z0-9_-]+[\\/]+ros2-windows", re.IGNORECASE)),
@@ -43,9 +44,9 @@ def main() -> int:
 
     failures: list[str] = []
     for path in tracked_python_scripts():
-        rel = path.relative_to(REPO_ROOT).as_posix()
-        if rel == "Scripts/package/validate_local_entrypoints.py":
+        if path.resolve() == THIS_SCRIPT:
             continue
+        rel = path.relative_to(REPO_ROOT).as_posix()
 
         text = path.read_text(encoding="utf-8", errors="replace")
         for label, pattern in FORBIDDEN_PATTERNS:
