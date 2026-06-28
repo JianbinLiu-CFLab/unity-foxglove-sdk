@@ -457,6 +457,9 @@ namespace Unity.FoxgloveSDK.Tests
                 using var process = Process.Start(startInfo);
                 if (process == null)
                     return "unknown";
+
+                var stdoutTask = process.StandardOutput.ReadToEndAsync();
+                var stderrTask = process.StandardError.ReadToEndAsync();
                 if (!process.WaitForExit(3000))
                 {
                     try
@@ -471,9 +474,10 @@ namespace Unity.FoxgloveSDK.Tests
                     return "unknown";
                 }
 
+                _ = stderrTask.GetAwaiter().GetResult();
                 if (process.ExitCode != 0)
                     return "unknown";
-                return process.StandardOutput.ReadToEnd().Trim();
+                return stdoutTask.GetAwaiter().GetResult().Trim();
             }
             catch
             {

@@ -224,6 +224,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && i420[2] == ComputeY(0, 0, 255)
                   && i420[3] == ComputeY(255, 255, 255),
                 "81G-5: converter preserves row order when flipVertical=false");
+            Check(i420[4] == ComputeU(127, 127, 127)
+                  && i420[5] == ComputeV(127, 127, 127),
+                "81G-5b: converter writes averaged U and V chroma planes");
 
             var flipped = new byte[6];
             args = new object[] { rgb, 2, 2, flipped, true, "" };
@@ -235,19 +238,19 @@ namespace Unity.FoxgloveSDK.Tests
                 "81G-7: converter vertically flips source rows when requested");
 
             args = new object[] { new byte[3 * 3 * 2], 3, 2, new byte[9], false, "" };
-            Check(!(bool)method.Invoke(null, args) && ((string)args[5]).Contains("even"),
+            Check(!(bool)method.Invoke(null, args) && ErrorContains(args, 5, "even"),
                 "81G-8: converter rejects odd width with clear error");
 
             args = new object[] { new byte[2 * 3 * 3], 2, 3, new byte[9], false, "" };
-            Check(!(bool)method.Invoke(null, args) && ((string)args[5]).Contains("even"),
+            Check(!(bool)method.Invoke(null, args) && ErrorContains(args, 5, "even"),
                 "81G-9: converter rejects odd height with clear error");
 
             args = new object[] { new byte[1], 2, 2, new byte[6], false, "" };
-            Check(!(bool)method.Invoke(null, args) && ((string)args[5]).Contains("RGB24"),
+            Check(!(bool)method.Invoke(null, args) && ErrorContains(args, 5, "RGB24"),
                 "81G-10: converter rejects short RGB24 buffers");
 
             args = new object[] { rgb, 2, 2, new byte[5], false, "" };
-            Check(!(bool)method.Invoke(null, args) && ((string)args[5]).Contains("I420"),
+            Check(!(bool)method.Invoke(null, args) && ErrorContains(args, 5, "I420"),
                 "81G-11: converter rejects short I420 buffers");
         }
 
@@ -295,12 +298,25 @@ namespace Unity.FoxgloveSDK.Tests
         private static byte ComputeY(int r, int g, int b)
             => ClampToByte(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
 
+        private static byte ComputeU(int r, int g, int b)
+            => ClampToByte(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
+
+        private static byte ComputeV(int r, int g, int b)
+            => ClampToByte(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+
         private static byte ClampToByte(int value)
         {
             if (value < 0) return 0;
             if (value > 255) return 255;
             return (byte)value;
         }
+
+        private static bool ErrorContains(object[] args, int index, string needle)
+            => args != null
+               && index >= 0
+               && index < args.Length
+               && args[index] is string error
+               && error.Contains(needle);
 
         private static bool ContainsAll(string text, params string[] needles)
             => needles.All(needle => text.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0);

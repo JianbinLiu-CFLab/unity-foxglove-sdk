@@ -132,12 +132,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var startIndex = text.IndexOf(start, StringComparison.Ordinal);
             if (startIndex < 0)
-                return string.Empty;
+                throw new InvalidOperationException("[FAIL] missing source marker: " + start);
 
             var endIndex = text.IndexOf(end, startIndex + start.Length, StringComparison.Ordinal);
-            return endIndex < 0
-                ? string.Empty
-                : text.Substring(startIndex, endIndex - startIndex);
+            if (endIndex < 0)
+                throw new InvalidOperationException("[FAIL] missing source marker: " + end);
+
+            return text.Substring(startIndex, endIndex - startIndex);
         }
 
         private static void Check(bool condition, string name)

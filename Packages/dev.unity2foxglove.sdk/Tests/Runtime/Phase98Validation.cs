@@ -347,6 +347,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(ToSampleTopic("foxglove_msgs/msg/FrameTransform") == "/unity2foxglove/samples/frame_transform",
                 "98D-7: schema-to-topic conversion uses snake_case");
+            Check(ToSampleTopic("foxglove_msgs/msg/IMU") == "/unity2foxglove/samples/imu",
+                "98D-8: schema-to-topic conversion preserves IMU acronym as one snake_case token");
+            Check(ToSampleTopic("sensor_msgs/msg/PointCloud2") == "/unity2foxglove/samples/point_cloud2",
+                "98D-9: schema-to-topic conversion handles trailing numeric schema names");
+            Check(ToSampleTopic("foxglove_msgs/msg/CompressedPointCloud") == "/unity2foxglove/samples/compressed_point_cloud",
+                "98D-10: schema-to-topic conversion handles compressed point cloud names");
+            Check(ToSampleTopic("foxglove_msgs/msg/CameraCalibration") == "/unity2foxglove/samples/camera_calibration",
+                "98D-11: schema-to-topic conversion handles camera calibration names");
         }
 
         private static void VerifyProductSampleFrameGeneration()
