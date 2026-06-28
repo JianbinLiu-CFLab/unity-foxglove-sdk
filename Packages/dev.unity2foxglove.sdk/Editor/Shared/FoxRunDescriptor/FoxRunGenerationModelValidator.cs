@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN015", target, member.MemberName, "FoxRun When condition member name is invalid or missing."));
 
             if (IsInvalidConditionName(member.Unless))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN016", target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN015", target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
 
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
             {

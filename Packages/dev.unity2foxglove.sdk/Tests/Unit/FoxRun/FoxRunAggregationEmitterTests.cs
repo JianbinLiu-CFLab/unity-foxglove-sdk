@@ -172,6 +172,28 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void NullableIntegralFieldEmitsNumericJsonForSinkFanout()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "NullableTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "NullableTelemetry", "_optionalCount", "field", "System.Nullable<System.Int32>",
+                        false, false, "", "/phase163/nullable", 10f, "",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false, jsonFieldName: "optionalCount")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("this._optionalCount == null", source, StringComparison.Ordinal);
+            Assert.Contains("this._optionalCount.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("__AppendFoxRunJsonString(__json, this._optionalCount == null ? null : this._optionalCount", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedFoxRunSchemaInfoContinuesAfterInvalidAggregateContract()
         {
             FoxRunSchemaInfoRegistry.ClearForTests();

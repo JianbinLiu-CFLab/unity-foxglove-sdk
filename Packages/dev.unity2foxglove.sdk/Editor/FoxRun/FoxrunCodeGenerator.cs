@@ -343,9 +343,7 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var a in attrs)
                 {
                     if (a.Mode != FoxRunMode.PublishOnly && fi.IsInitOnly)
-                        throw new InvalidOperationException(
-                            "FOXRUN028: " + type.FullName + "." + fi.Name
-                            + ": FoxRun inbound fields must not be readonly.");
+                        throw CreateInboundTargetNotWritableException(type, fi.Name, "field", "readonly fields");
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
@@ -367,9 +365,7 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var a in attrs)
                 {
                     if (a.Mode != FoxRunMode.PublishOnly && !pi.CanWrite)
-                        throw new InvalidOperationException(
-                            "FOXRUN028: " + type.FullName + "." + pi.Name
-                            + ": FoxRun inbound properties must have a setter.");
+                        throw CreateInboundTargetNotWritableException(type, pi.Name, "property", "properties without setters");
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
@@ -386,6 +382,20 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
             return result;
+        }
+
+        private static InvalidOperationException CreateInboundTargetNotWritableException(
+            Type type,
+            string memberName,
+            string memberKind,
+            string unsupportedShape)
+        {
+            var target = (type == null ? "<unknown>" : type.FullName) + "." + (memberName ?? "<unknown>");
+            return new InvalidOperationException(
+                "FOXRUN028 Error: " + target
+                + ": FoxRun inbound " + memberKind
+                + " target must be writable; " + unsupportedShape
+                + " cannot receive SubscribeOnly or PublishAndSubscribe messages.");
         }
 
         private static FoxServiceScanResult ScanFoxServiceMethods(bool ignoreReflectionTypeLoadExceptions)

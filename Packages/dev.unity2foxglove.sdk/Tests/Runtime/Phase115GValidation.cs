@@ -254,11 +254,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAnalyzerDllRefreshEvidence()
         {
-            var releaseNotes = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
+            var releaseNotes = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
             var dllPath = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll");
 
             Check(releaseNotes.Contains("FOXRUN006 | FoxRun | Error", StringComparison.Ordinal),
-                "115G-G1: analyzer release notes record FOXRUN006 severity as Error");
+                "115G-G1: shipped analyzer release notes record FOXRUN006 severity as Error");
             Check(File.Exists(dllPath) && new FileInfo(dllPath).Length > 0,
                 "115G-G2: checked-in Unity analyzer DLL exists after source-generator changes");
         }

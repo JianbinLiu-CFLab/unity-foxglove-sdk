@@ -277,6 +277,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void EmitScalarOrObjectJsonValueAppend(StringBuilder sb, string type, string access, string pad)
         {
+            if (TryUnwrapNullableType(type, out var nullableType))
+            {
+                EmitNullableJsonValueAppend(sb, nullableType, access, pad);
+                return;
+            }
+
             switch (type)
             {
                 case "bool":
@@ -316,6 +322,34 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}__json.Append({access}.ToString(global::System.Globalization.CultureInfo.InvariantCulture));");
                     else
                         sb.AppendLine($"{pad}__AppendFoxRunJsonString(__json, {access} == null ? null : {access}.ToString());");
+                    break;
+            }
+        }
+
+        private static void EmitNullableJsonValueAppend(StringBuilder sb, string type, string access, string pad)
+        {
+            switch (type)
+            {
+                case "bool":
+                case "Boolean":
+                case "System.Boolean":
+                    sb.AppendLine($"{pad}if ({access} == null) __json.Append(\"null\"); else __json.Append({access}.Value ? \"true\" : \"false\");");
+                    break;
+                case "float":
+                case "Single":
+                case "System.Single":
+                    sb.AppendLine($"{pad}if ({access} == null || float.IsNaN({access}.Value) || float.IsInfinity({access}.Value)) __json.Append(\"null\"); else __json.Append({access}.Value.ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
+                    break;
+                case "double":
+                case "Double":
+                case "System.Double":
+                    sb.AppendLine($"{pad}if ({access} == null || double.IsNaN({access}.Value) || double.IsInfinity({access}.Value)) __json.Append(\"null\"); else __json.Append({access}.Value.ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
+                    break;
+                default:
+                    if (IsIntegralType(type))
+                        sb.AppendLine($"{pad}if ({access} == null) __json.Append(\"null\"); else __json.Append({access}.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture));");
+                    else
+                        sb.AppendLine($"{pad}__AppendFoxRunJsonString(__json, {access} == null ? null : {access}.Value.ToString());");
                     break;
             }
         }
@@ -394,6 +428,20 @@ namespace Unity.FoxgloveSDK.Editor
             return type.StartsWith("UnityEngine.", System.StringComparison.Ordinal)
                 ? type.Substring("UnityEngine.".Length)
                 : type;
+        }
+
+        private static bool TryUnwrapNullableType(string type, out string innerType)
+        {
+            innerType = string.Empty;
+            type = (type ?? string.Empty).Trim();
+            if (type.EndsWith("?", System.StringComparison.Ordinal))
+            {
+                innerType = NormalizeType(type.Substring(0, type.Length - 1).Trim());
+                return innerType.Length > 0;
+            }
+
+            return TryGetSingleGenericArgument(type, "Nullable<", out innerType)
+                   || TryGetSingleGenericArgument(type, "System.Nullable<", out innerType);
         }
 
         private static bool IsIntegralType(string type)

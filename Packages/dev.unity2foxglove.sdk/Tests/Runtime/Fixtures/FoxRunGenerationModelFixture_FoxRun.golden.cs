@@ -37,9 +37,9 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             switch (index)
             {
-                case 0: return new FoxTopicContract("/debug/array", "", "json", "topic=/debug/array\nencoding=json\nschema=\nfields=samples:float[]", "a0af5045296f2ac5e426b6ba74e3da823e843e7c5ddc23c3820bee52b721a07a", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 0: return new FoxTopicContract("/debug/array", "", "json", "topic=/debug/array\nencoding=json\nschema=\nfields=samples:float32", "3e4ca452e3b6bd0753a04470cd61470ea28642b47c140e50db6a6b2760055994", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
                 case 1: return new FoxTopicContract("/debug/extra", "", "json", "topic=/debug/extra\nencoding=json\nschema=\nfields=extra:string", "8eb01177533ef20403fa1743e727a4ec4b3aa9c530d3f8ea443e5df3ab889e1a", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
-                case 2: return new FoxTopicContract("/debug/list", "", "json", "topic=/debug/list\nencoding=json\nschema=\nfields=sampleList:System.Collections.Generic.List<float>", "d14f9ccdea31a1dd1abafa83d51595e03512a97ba6f6a11ed37f091e85224d0c", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+                case 2: return new FoxTopicContract("/debug/list", "", "json", "topic=/debug/list\nencoding=json\nschema=\nfields=sampleList:float32", "939a7532a710f56b97de80889f8d10b48ac283c5170d91710d4ed9b8e5c529ea", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
                 case 3: return new FoxTopicContract("/debug/nullable", "", "json", "topic=/debug/nullable\nencoding=json\nschema=\nfields=optionalCount:int32", "402b6d6df7b236e18d1923d2386e4124ed4d08bb25b9fe39a07c50e7e16fdd09", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
                 case 4: return new FoxTopicContract("/debug/trigger", "", "json", "topic=/debug/trigger\nencoding=json\nschema=\nfields=trigger:int32", "efe12de12cc6551edee33af19c945963c1f1b86731e6a9d267cbaea703178b5d", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
                 case 5: return new FoxTopicContract("/debug/value", "", "json", "topic=/debug/value\nencoding=json\nschema=\nfields=value:float32;valueMirror:float32", "035e0b0d62cfd4f916911c6743e474359c4fd9fc48b037316cda28fc9f60f9fc", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             __json.Append('{');
             __json.Append("\"optionalCount\":");
-            __AppendFoxRunJsonString(__json, this._optionalCount == null ? null : this._optionalCount.ToString());
+            if (this._optionalCount == null) __json.Append("null"); else __json.Append(this._optionalCount.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture));
             __json.Append('}');
         }
 

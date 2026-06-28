@@ -143,9 +143,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAnalyzerReleaseSeverity()
         {
-            var unshipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
-            Check(unshipped.Contains("FOXRUN008 | FoxRun | Error |", StringComparison.Ordinal),
-                "134-18-D1: analyzer release notes record FOXRUN008 as Error");
+            var shipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
+            Check(shipped.Contains("FOXRUN008 | FoxRun | Error |", StringComparison.Ordinal),
+                "134-18-D1: shipped analyzer release notes record FOXRUN008 as Error");
         }
 
         private static void VerifyEmitSourceFileRejectsEmptyMembers()
@@ -164,8 +164,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("case \"FOXRUN012\": return MissingMemberName;", StringComparison.Ordinal)
                   && source.Contains("case \"FOXRUN013\": return InvalidPublishMode;", StringComparison.Ordinal),
                 "134-18-F1: Roslyn shared diagnostic map covers every shared validator error id");
-            Check(source.Contains("throw new ArgumentOutOfRangeException(nameof(id), id", StringComparison.Ordinal),
-                "134-18-F2: Roslyn shared diagnostic map fails loudly for unmapped ids");
+            Check(source.Contains("return UnknownFoxRunDiagnostic(id);", StringComparison.Ordinal)
+                  && source.Contains("return UnknownFoxServiceDiagnostic(id);", StringComparison.Ordinal)
+                  && !source.Contains("throw new ArgumentOutOfRangeException(nameof(id), id", StringComparison.Ordinal),
+                "134-18-F2: Roslyn shared diagnostic map uses fallback descriptors for unmapped ids");
         }
 
         private static void VerifySchemaInfoWriterIsAtomicAndEscapeAware()
