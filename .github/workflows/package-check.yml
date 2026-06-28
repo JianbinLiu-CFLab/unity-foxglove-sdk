@@ -21,6 +21,9 @@ jobs:
       - name: Validate release package
         run: python3 Scripts/package/validate_unity_package.py
 
+      - name: Validate local ROS2/R2FU entrypoints
+        run: python3 Scripts/package/validate_local_entrypoints.py
+
       - name: Validate ROS2 For Unity runtime package
         run: python3 Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py
 
