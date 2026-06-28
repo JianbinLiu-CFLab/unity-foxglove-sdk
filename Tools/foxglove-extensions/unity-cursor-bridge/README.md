@@ -33,6 +33,11 @@ Hosted Foxglove Web is not the primary target for this panel. Browser security
 features such as mixed-content blocking, Private Network Access, and CORS may
 block direct localhost access.
 
+Bearer-token authentication is intended for Foxglove Desktop and other trusted
+local clients. Browser-hosted Foxglove clients send an unauthenticated OPTIONS
+preflight before the POST; Unity answers that preflight but still requires the
+token on the actual cursor request.
+
 ## Install The Panel
 
 From a repository checkout:
@@ -205,6 +210,7 @@ It does not send MCAP bytes, scene data, or sensor payloads.
 ```powershell
 cd Tools\foxglove-extensions\unity-cursor-bridge
 npm install
+npm run typecheck
 npm run build
 npm run package
 ```

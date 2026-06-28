@@ -10,6 +10,7 @@
     "build": "foxglove-extension build",
     "package": "foxglove-extension package",
     "local-install": "foxglove-extension install",
+    "typecheck": "node -e \"require('fs').mkdirSync('../../../build/foxglove-extensions/unity-cursor-bridge',{recursive:true})\" && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run"
   },
   "dependencies": {

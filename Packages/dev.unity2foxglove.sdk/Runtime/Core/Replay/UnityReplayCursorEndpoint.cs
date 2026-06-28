@@ -145,7 +145,7 @@ namespace Unity.FoxgloveSDK.Core
     public sealed class UnityReplayCursorEndpoint : IDisposable
     {
         private readonly IFoxgloveLogger _logger;
-        private HttpListener _listener;
+        private volatile HttpListener _listener;
         private Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> _queue;
         private Func<ReplayCursorState> _stateProvider;
         private volatile bool _running;
@@ -357,15 +357,23 @@ namespace Unity.FoxgloveSDK.Core
 
         private string ReadBody(HttpListenerRequest request)
         {
-            using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
-            var buffer = new char[_options.MaxBodyBytes + 1];
-            var read = reader.ReadBlock(buffer, 0, buffer.Length);
-            if (read > _options.MaxBodyBytes)
+            var encoding = request.ContentEncoding ?? Encoding.UTF8;
+            using var memory = new MemoryStream();
+            var buffer = new byte[Math.Min(_options.MaxBodyBytes + 1, 4096)];
+            var total = 0;
+            int read;
+            while ((read = request.InputStream.Read(buffer, 0, buffer.Length)) > 0)
             {
-                return null;
+                total += read;
+                if (total > _options.MaxBodyBytes)
+                {
+                    return null;
+                }
+
+                memory.Write(buffer, 0, read);
             }
 
-            return new string(buffer, 0, read);
+            return encoding.GetString(memory.ToArray());
         }
 
         private void TryWrite(HttpListenerContext context, int statusCode, string body)
@@ -385,6 +393,7 @@ namespace Unity.FoxgloveSDK.Core
 
                 context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
                 context.Response.Headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+                context.Response.Headers["Access-Control-Allow-Private-Network"] = "true";
                 context.Response.Headers["Cache-Control"] = "no-store";
                 context.Response.ContentLength64 = bytes.Length;
                 if (bytes.Length > 0)
