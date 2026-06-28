@@ -9,7 +9,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.PackageManager;
@@ -26,7 +25,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             string runtimeId,
             string rosDistro,
             string platform,
-            bool supportsZenoh)
+            bool supportsZenoh,
+            string zenohPayloadDiagnostic)
         {
             DisplayName = displayName ?? string.Empty;
             PackageName = packageName ?? string.Empty;
@@ -34,6 +34,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             RosDistro = rosDistro ?? string.Empty;
             Platform = platform ?? string.Empty;
             SupportsZenoh = supportsZenoh;
+            ZenohPayloadDiagnostic = zenohPayloadDiagnostic ?? string.Empty;
         }
 
         public string DisplayName { get; }
@@ -42,6 +43,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public string RosDistro { get; }
         public string Platform { get; }
         public bool SupportsZenoh { get; }
+        public string ZenohPayloadDiagnostic { get; }
     }
 
     internal sealed class Ros2ForUnityRuntimeSelectionStatus
@@ -206,7 +208,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (runtime == null || !runtime.SupportsZenoh)
                 return FastDdsCommunicationMode;
 
-            var saved = EditorUserSettings.GetConfigValue(CommunicationModeEditorUserSettingsKey);
+            var saved = EditorUserSettings.GetConfigValue(GetCommunicationModeSettingsKey(runtime));
+            if (string.IsNullOrWhiteSpace(saved))
+                saved = EditorUserSettings.GetConfigValue(CommunicationModeEditorUserSettingsKey);
             return string.Equals(saved, ZenohCommunicationMode, StringComparison.Ordinal)
                 ? ZenohCommunicationMode
                 : FastDdsCommunicationMode;
@@ -226,7 +230,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!GetCommunicationModeIds(runtime).Contains(mode, StringComparer.Ordinal))
                 throw new InvalidOperationException("Communication mode is not supported by the active runtime: " + mode);
 
-            EditorUserSettings.SetConfigValue(CommunicationModeEditorUserSettingsKey, mode);
+            EditorUserSettings.SetConfigValue(GetCommunicationModeSettingsKey(runtime), mode);
             ApplyCommunicationModeEnvironment(projectDirectory);
         }
 
@@ -373,6 +377,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var platform = string.Join(".", parts.Skip(1));
             var runtimeId = "r2fu-" + rosDistro + "-" + platform.Replace('.', '-');
             var displayName = ToDisplayName(rosDistro) + " " + ToDisplayName(platform.Replace('.', ' '));
+            var zenohPayloadDiagnostic = GetZenohPayloadDiagnostic(packageDirectory, rosDistro);
 
             return new Ros2ForUnityRuntimeDescriptor(
                 displayName,
@@ -380,11 +385,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 runtimeId,
                 rosDistro,
                 platform,
-                HasZenohPayload(packageDirectory));
+                IsZenohCapableDistro(rosDistro) && string.IsNullOrWhiteSpace(zenohPayloadDiagnostic),
+                zenohPayloadDiagnostic);
         }
 
-        private static bool HasZenohPayload(string packageDirectory)
+        private static bool IsZenohCapableDistro(string rosDistro)
+            => string.Equals(rosDistro, "lyrical", StringComparison.Ordinal);
+
+        private static string GetZenohPayloadDiagnostic(string packageDirectory, string rosDistro)
         {
+            if (!IsZenohCapableDistro(rosDistro))
+                return string.Empty;
+
             var pluginsRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Plugins");
             var streamingAssetsShare = Path.Combine(
                 packageDirectory,
@@ -396,20 +408,37 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 "rmw_zenoh_cpp",
                 "config");
             if (!Directory.Exists(pluginsRoot))
-                return false;
+                return "Zenoh communication mode is unavailable because this runtime package has no native plugin directory.";
 
-            return Directory
+            var pluginRoots = Directory
                 .EnumerateDirectories(pluginsRoot, "*", SearchOption.AllDirectories)
-                .Any(pluginRoot =>
+                .ToArray();
+            var missing = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var pluginRoot in pluginRoots)
+            {
+                var pluginShare = Path.Combine(pluginRoot, "share", "rmw_zenoh_cpp", "config");
+                var required = new[]
                 {
-                    var pluginShare = Path.Combine(pluginRoot, "share", "rmw_zenoh_cpp", "config");
-                    return HasNativeLibrary(pluginRoot, "rmw_zenoh_cpp")
-                           && HasNativeLibrary(pluginRoot, "zenohc")
-                           && File.Exists(Path.Combine(pluginShare, "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"))
-                           && File.Exists(Path.Combine(pluginShare, "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"))
-                           && File.Exists(Path.Combine(streamingAssetsShare, "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"))
-                           && File.Exists(Path.Combine(streamingAssetsShare, "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"));
-                });
+                    (Present: HasNativeLibrary(pluginRoot, "rmw_zenoh_cpp"), Name: "rmw_zenoh_cpp native library"),
+                    (Present: HasNativeLibrary(pluginRoot, "zenohc"), Name: "zenohc native library"),
+                    (Present: File.Exists(Path.Combine(pluginShare, "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5")), Name: "plugin Zenoh session config"),
+                    (Present: File.Exists(Path.Combine(pluginShare, "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5")), Name: "plugin Zenoh router config"),
+                    (Present: File.Exists(Path.Combine(streamingAssetsShare, "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5")), Name: "StreamingAssets Zenoh session config"),
+                    (Present: File.Exists(Path.Combine(streamingAssetsShare, "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5")), Name: "StreamingAssets Zenoh router config"),
+                };
+                if (required.All(item => item.Present))
+                    return string.Empty;
+
+                foreach (var item in required.Where(item => !item.Present))
+                    missing.Add(item.Name);
+            }
+
+            if (missing.Count == 0)
+                missing.Add("complete Zenoh native payload");
+
+            return "Zenoh communication mode is unavailable for this runtime package. Missing: "
+                   + string.Join(", ", missing)
+                   + ". Rebuild or re-import the Lyrical runtime ZIP with rmw_zenoh_cpp and config assets.";
         }
 
         private static bool HasNativeLibrary(string directory, string libraryName)
@@ -423,7 +452,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             var embeddedRoot = Path.GetFullPath(Path.Combine(projectDirectory, "Packages"));
             var candidate = Path.GetFullPath(packageDirectory);
-            return candidate.StartsWith(embeddedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            var comparison = Application.platform == RuntimePlatform.WindowsEditor
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return candidate.StartsWith(embeddedRoot + Path.DirectorySeparatorChar, comparison);
         }
 
         private static bool ContainsPackageName(string json, string packageName)
@@ -476,51 +508,42 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static string RemoveRuntimePackageDependencies(string manifest)
         {
-            var lineEnding = DetectLineEnding(manifest);
-            var lines = Regex.Split(manifest ?? string.Empty, "\r\n|\n|\r").ToList();
-            var removed = false;
-            for (var i = lines.Count - 1; i >= 0; i--)
+            var root = ReadManifestJson(manifest, "Unity package manifest");
+            var dependencies = root["dependencies"] as JObject
+                ?? throw new InvalidOperationException("Unity package manifest is missing a dependencies object.");
+            foreach (var property in dependencies.Properties()
+                         .Where(property => property.Name.StartsWith(RuntimePackagePrefix, StringComparison.Ordinal))
+                         .ToArray())
             {
-                if (!Regex.IsMatch(
-                    lines[i],
-                    "^\\s*\"" + Regex.Escape(RuntimePackagePrefix) + "[^\"]+\"\\s*:\\s*\"[^\"]+\",?\\s*$",
-                    RegexOptions.CultureInvariant))
-                {
-                    continue;
-                }
-
-                lines.RemoveAt(i);
-                removed = true;
+                property.Remove();
             }
 
-            if (removed)
-                RemoveTrailingDependencyComma(lines);
-
-            return string.Join(lineEnding, lines).TrimEnd() + lineEnding;
+            return SerializeManifest(root, DetectLineEnding(manifest));
         }
 
         private static string AddRuntimePackageDependency(string manifest, string packageName, string projectDirectory)
         {
             var lineEnding = DetectLineEnding(manifest);
-            var lines = Regex.Split(manifest ?? string.Empty, "\r\n|\n|\r").ToList();
-            var dependencyLine = "    \"" + packageName + "\": \"" + BuildRuntimePackageReference(projectDirectory, packageName) + "\",";
-            var insertIndex = lines.FindIndex(line => line.Contains("\"dev.unity2foxglove.ros2forunity\"", StringComparison.Ordinal));
-            if (insertIndex < 0)
-                insertIndex = lines.FindIndex(line => line.Contains("\"dev.unity2foxglove.sdk\"", StringComparison.Ordinal));
-            if (insertIndex < 0)
-                insertIndex = lines.FindIndex(line => line.Contains("\"dependencies\"", StringComparison.Ordinal));
+            var root = ReadManifestJson(manifest, "Unity package manifest");
+            var dependencies = root["dependencies"] as JObject
+                ?? throw new InvalidOperationException("Unity package manifest is missing a dependencies object.");
+            var anchor = dependencies.Property("dev.unity2foxglove.ros2forunity")
+                         ?? dependencies.Property("dev.unity2foxglove.sdk")
+                         ?? dependencies.Properties().FirstOrDefault();
+            if (anchor == null)
+                throw new InvalidOperationException("Unity package manifest dependencies object is empty; cannot anchor the ROS2 For Unity runtime package.");
 
-            if (insertIndex < 0)
-            {
-                lines.Add(dependencyLine);
-            }
-            else
-            {
-                lines.Insert(insertIndex + 1, dependencyLine);
-            }
+            anchor.AddAfterSelf(new JProperty(packageName, BuildRuntimePackageReference(projectDirectory, packageName)));
+            return SerializeManifest(root, lineEnding);
+        }
 
-            RemoveTrailingDependencyComma(lines);
-            return string.Join(lineEnding, lines).TrimEnd() + lineEnding;
+        private static string SerializeManifest(JObject root, string lineEnding)
+        {
+            var serialized = root.ToString(Newtonsoft.Json.Formatting.Indented)
+                .Replace("\r\n", "\n")
+                .Replace("\r", "\n")
+                .Replace("\n", lineEnding);
+            return serialized.TrimEnd() + lineEnding;
         }
 
         private static string DetectLineEnding(string text)
@@ -568,54 +591,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 : path + Path.DirectorySeparatorChar;
         }
 
-        private static void RemoveTrailingDependencyComma(List<string> lines)
-        {
-            var inDependencies = false;
-            var depth = 0;
-            for (var i = 0; i < lines.Count; i++)
-            {
-                var line = lines[i];
-                if (!inDependencies && line.Contains("\"dependencies\"", StringComparison.Ordinal))
-                    inDependencies = true;
-
-                if (!inDependencies)
-                    continue;
-
-                for (var j = 0; j < line.Length; j++)
-                {
-                    var ch = line[j];
-                    if (ch == '{')
-                    {
-                        depth++;
-                    }
-                    else if (ch == '}')
-                    {
-                        if (depth == 1)
-                        {
-                            RemoveTrailingCommaFromPreviousLine(lines, i);
-                            return;
-                        }
-
-                        depth = Math.Max(0, depth - 1);
-                    }
-                }
-            }
-        }
-
-        private static void RemoveTrailingCommaFromPreviousLine(List<string> lines, int beforeIndex)
-        {
-            for (var i = beforeIndex - 1; i >= 0; i--)
-            {
-                var line = lines[i];
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                var trimmed = line.TrimEnd();
-                if (trimmed.EndsWith(",", StringComparison.Ordinal))
-                    lines[i] = trimmed.Substring(0, trimmed.Length - 1) + line.Substring(trimmed.Length);
-                return;
-            }
-        }
+        private static string GetCommunicationModeSettingsKey(Ros2ForUnityRuntimeDescriptor runtime)
+            => runtime == null || string.IsNullOrWhiteSpace(runtime.PackageName)
+                ? CommunicationModeEditorUserSettingsKey
+                : CommunicationModeEditorUserSettingsKey + "." + runtime.PackageName;
 
         private static void WriteManifestAtomically(string manifestPath, string manifest)
         {

@@ -287,8 +287,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var selector = ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs");
             Check(selector.Contains("SupportsZenoh", StringComparison.Ordinal)
-                  && selector.Contains("HasZenohPayload", StringComparison.Ordinal)
-                  && selector.Contains("rmw_zenoh_cpp.dll", StringComparison.Ordinal)
+                  && selector.Contains("GetZenohPayloadDiagnostic", StringComparison.Ordinal)
+                  && selector.Contains("HasNativeLibrary(pluginRoot, \"rmw_zenoh_cpp\")", StringComparison.Ordinal)
                   && selector.Contains("DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5", StringComparison.Ordinal),
                 "162-C1: runtime descriptor uses Zenoh payload capability detection");
             Check(selector.Contains("FastDdsCommunicationMode", StringComparison.Ordinal)
@@ -396,8 +396,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && componentSource.Contains("instances.Remove(this)", StringComparison.Ordinal)
                   && componentSource.Contains("public static void StopAllExecutorsForRosShutdown()", StringComparison.Ordinal),
                 "162-E7: Lyrical ROS2UnityComponent tracks active components for cooperative native shutdown");
+            Check(componentSource.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
+                  && componentSource.Contains("MarkRuntimeShutdown()", StringComparison.Ordinal)
+                  && componentSource.Contains("component.MarkRuntimeShutdown();", StringComparison.Ordinal)
+                  && componentSource.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
+                  && componentSource.Contains("ros2forUnity == null", StringComparison.Ordinal),
+                "162-E8: Lyrical ROS2UnityComponent does not reinitialize after shared runtime shutdown starts");
             Check(runtimeSource.Contains("if (!isInitialized || shutdownInProgress)", StringComparison.Ordinal),
-                "162-E8: Lyrical runtime reports not-ready while native shutdown is in progress");
+                "162-E9: Lyrical runtime reports not-ready while native shutdown is in progress");
         }
 
         private static void Phase162PointCloud2UsesSensorDataQos()
@@ -431,8 +437,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "162-F5: Phase138 smoke scene enables map-to-lidar TF for RViz fixed-frame acceptance");
 
             var localPlaySetup = ReadRepoText("Unity2Foxglove/Assets/Editor/Phase162LocalZenohPlaySetup.cs");
-            Check(localPlaySetup.Contains("SetField(publisher, \"_publishPointCloud2NativeTfAnchor\", true)", StringComparison.Ordinal)
-                  && localPlaySetup.Contains("SetField(publisher, \"_frameId\", \"os_lidar\")", StringComparison.Ordinal),
+            Check(localPlaySetup.Contains("SetField(publisher, \"_publishPointCloud2NativeTfAnchor\", true", StringComparison.Ordinal)
+                  && localPlaySetup.Contains("SetField(publisher, \"_frameId\", \"os_lidar\"", StringComparison.Ordinal),
                 "162-F6: local Lyrical Zenoh play setup enables TF anchor for moving RViz acceptance");
             Check(localPlaySetup.Contains("PlayRequestedKey", StringComparison.Ordinal)
                   && localPlaySetup.Contains("SessionState.GetBool(PlayRequestedKey", StringComparison.Ordinal)
@@ -475,7 +481,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string RepoPath(string relativePath)
-            => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", relativePath);
+            => Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
         private static string[] RuntimePackageKeys(string json)
         {

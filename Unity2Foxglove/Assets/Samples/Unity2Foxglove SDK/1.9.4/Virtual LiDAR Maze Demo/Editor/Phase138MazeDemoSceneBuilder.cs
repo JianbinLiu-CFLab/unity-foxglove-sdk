@@ -120,6 +120,8 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             // falls out of it automatically from rings-per-column, trading cloud Hz for
             // a steady main thread and a continuous, non-flickering point cloud.
             SetField(lidar, "_maxRaycastCommandsPerFixedUpdate", 6144);
+            SetField(lidar, "_publishEmptyFrames", false);
+            SetField(lidar, "_drawDebugRays", false);
             ApplySensorChildTransform(lidarMount, sensorUnit.EffectiveLidarToSensor);
 
             // 4. IMU on the shared Ouster-style sensor unit frame.
@@ -133,6 +135,12 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(imu, "_rigidbody", rb);
             SetField(imu, "_frameId", "os_imu");
             SetField(imu, "_topic", "/imu/data");
+            SetField(imu, "_publishOnStart", true);
+            SetField(imu, "_includeOrientation", true);
+            SetField(imu, "_globalPhysicsRateHzOverride", 0);
+            SetField(imu, "_enableNoise", false);
+            SetField(imu, "_accelNoiseStdDev", 0f);
+            SetField(imu, "_gyroNoiseStdDev", 0f);
 
             var unitPub = lidarImuUnit.gameObject.AddComponent<FoxgloveTransformPublisher>();
             SetField(unitPub, "_manager", manager);
@@ -213,6 +221,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             camGo.transform.LookAt(Vector3.zero);
 
             var demoCameraPublisher = camGo.AddComponent<FoxgloveCameraPublisher>();
+            SetField(demoCameraPublisher, "_manager", manager);
             SetField(demoCameraPublisher, "_topic", "/unity/camera");
             SetField(demoCameraPublisher, "_frameId", "unity_camera");
             SetField(demoCameraPublisher, "_width", 640);
@@ -282,10 +291,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
                 type = type.BaseType;
             }
 
-            if (field != null)
-                field.SetValue(target, value);
-            else
-                Debug.LogWarning($"[LidarMaze] Failed to set private field '{fieldName}' on {target.GetType().Name}");
+            if (field == null)
+                throw new System.MissingFieldException(target.GetType().FullName, fieldName);
+
+            field.SetValue(target, value);
         }
 
     }

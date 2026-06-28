@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         private Rigidbody _rb;
         private Vector3 _wanderDirection = Vector3.forward;
         private float _nextWanderChange;
+        private float _suppressJitterUntil;
 
         private void Start()
         {
@@ -83,16 +84,17 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             if (Time.time >= _nextWanderChange)
             {
                 var hitForward = Physics.Raycast(transform.position,
-                    _wanderDirection, 1.2f, ~0, QueryTriggerInteraction.Ignore);
+                    _wanderDirection, 1.2f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
                 if (hitForward)
                 {
                     var angle = (Random.value > 0.5f ? 90f : -90f) * (1f + Random.value * 0.3f);
                     SetWanderDirection(Quaternion.Euler(0f, angle, 0f) * _wanderDirection);
                     _nextWanderChange = Time.time + 1.5f;
+                    _suppressJitterUntil = _nextWanderChange;
                 }
             }
 
-            if (Time.time >= _nextWanderChange - 1.0f)
+            if (Time.time >= _nextWanderChange - 1.0f && Time.time >= _suppressJitterUntil)
             {
                 var jitter = Random.Range(-15f, 15f);
                 SetWanderDirection(Quaternion.Euler(0f, jitter, 0f) * _wanderDirection);
@@ -264,14 +266,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             var renderer = go.GetComponent<Renderer>();
             if (renderer == null) return;
 
-            // Clone the primitive's default material so we inherit a shader that
-            // matches the active render pipeline (URP/HDRP/Built-in). Picking a
-            // hard-coded "Standard" shader renders magenta under URP. Tint via the
-            // built-in (_Color) and URP/HDRP (_BaseColor) main-color properties.
-            var mat = new Material(renderer.sharedMaterial) { color = color };
-            if (mat.HasProperty("_BaseColor"))
-                mat.SetColor("_BaseColor", color);
-            renderer.sharedMaterial = mat;
+            var block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block);
+            block.SetColor("_Color", color);
+            block.SetColor("_BaseColor", color);
+            renderer.SetPropertyBlock(block);
         }
 
         private static void SetLayerRecursively(GameObject go, int layer)

@@ -686,7 +686,7 @@ This patch is limited to locating runtime files from a Unity package. It does no
 
 ## Network Acceptance Notes
 
-WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies.
+WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies. Zenoh config files are mirrored under `Plugins/Windows/x86_64/share` for native runtime closure and `StreamingAssets/Ros2ForUnity/share` for Unity player access; package validation requires the mirrored files to stay byte-identical.
 
 ## Support Boundary
 
@@ -892,6 +892,20 @@ def patch_rmw_guard(text: str) -> str:
 
 def patch_standalone_environment_isolation(text: str) -> str:
     """Patch standalone startup so sourced ROS2 shells do not poison Unity."""
+    old_check_signature = '''    public void CheckIntegrity()
+    {
+        string ros2SourcedCodename = GetROSVersionSourced();
+'''
+    new_check_signature = '''    public void CheckIntegrity()
+    {
+        CheckIntegrity(GetROSVersionSourced());
+    }
+
+    private void CheckIntegrity(string ros2SourcedCodename)
+    {
+'''
+    text = text.replace(old_check_signature, new_check_signature, 1)
+
     old_prefix = '''        string currentPrefixPath = Environment.GetEnvironmentVariable("AMENT_PREFIX_PATH");
         char envPathSep = GetOS() == Platform.Windows ? ';' : ':';
 
@@ -968,6 +982,7 @@ def patch_standalone_environment_isolation(text: str) -> str:
     startup_marker = "            // Load metadata\n            LoadMetadata();\n"
     startup_patch = '''            // Load metadata
             LoadMetadata();
+            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
             if (IsStandalone())
             {
                 string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
@@ -979,6 +994,18 @@ def patch_standalone_environment_isolation(text: str) -> str:
 '''
     if "packagedRos2Version = GetMetadataValue" not in text and startup_marker in text:
         text = text.replace(startup_marker, startup_patch, 1)
+    elif "sourcedRosDistroBeforeStandalonePatch" not in text:
+        text = text.replace(
+            startup_marker,
+            startup_marker + "            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n",
+            1,
+        )
+
+    text = text.replace(
+        "            CheckIntegrity();\n",
+        "            CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);\n",
+        1,
+    )
 
     return text
 

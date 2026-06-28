@@ -16,6 +16,12 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         [SerializeField] private Vector3 _offset = new Vector3(0, 15, 0);
         [SerializeField] private bool _chaseMode;
 
+        private void Start()
+        {
+            if (_target == null)
+                Debug.LogWarning("[LidarMaze] Camera follow target is not assigned.", this);
+        }
+
         private void LateUpdate()
         {
             if (_target == null)
@@ -36,4 +42,3 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         }
     }
 }
-

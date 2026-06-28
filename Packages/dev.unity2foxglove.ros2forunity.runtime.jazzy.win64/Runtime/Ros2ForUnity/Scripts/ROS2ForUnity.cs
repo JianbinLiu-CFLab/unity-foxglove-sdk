@@ -310,30 +310,46 @@ internal class ROS2ForUnity
     /// </summary>
     public void CheckIntegrity()
     {
-        string ros2SourcedCodename = GetROSVersionSourced();
+        CheckIntegrity(GetROSVersionSourced());
+    }
+
+    private void CheckIntegrity(string ros2SourcedCodename)
+    {
         string ros2FromRos2csMetadata = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
         string ros2FromRos4UMetadata = GetMetadataValue(ros2ForUnityMetadata, "/ros2_for_unity/ros2");
 
         if (ros2FromRos4UMetadata != ros2FromRos2csMetadata) {
-            Debug.LogError(
+            FailIntegrity(
                 "ROS2 versions in 'ros2cs' and 'ros2-for-unity' metadata files are not the same. " +
-                "This is caused by mixing versions/builds. Plugin might not work correctly."
-            );
+                "This is caused by mixing versions/builds.");
         }
 
         if(!IsStandalone() && ros2SourcedCodename != ros2FromRos2csMetadata) {
-            Debug.LogError(
+            FailIntegrity(
                 "ROS2 version in 'ros2cs' metadata doesn't match currently sourced version. " +
-                "This is caused by mixing versions/builds. Plugin might not work correctly."
-            );
+                "This is caused by mixing versions/builds.");
         }
 
-        if (IsStandalone() && !string.IsNullOrEmpty(ros2SourcedCodename)) {
-            Debug.LogError(
-                "You should not source ROS2 in 'ros2-for-unity' standalone build. " +
-                "Plugin might not work correctly."
-            );
+        if (IsStandalone()
+            && !string.IsNullOrEmpty(ros2SourcedCodename)
+            && ros2SourcedCodename != ros2FromRos2csMetadata) {
+            FailIntegrity(
+                "ROS2 version in standalone process environment does not match this runtime package. " +
+                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".");
         }
+    }
+
+    private static void FailIntegrity(string errMessage)
+    {
+        Debug.LogError(errMessage);
+#if UNITY_EDITOR
+        EditorApplication.isPlaying = false;
+        throw new InvalidOperationException(errMessage);
+#else
+        const int ROS_METADATA_MISMATCH_ERROR_CODE = 35;
+        Application.Quit(ROS_METADATA_MISMATCH_ERROR_CODE);
+        throw new InvalidOperationException(errMessage);
+#endif
     }
 
     public string GetROSVersionSourced()
@@ -507,22 +523,23 @@ internal class ROS2ForUnity
     {
         // Load metadata
         LoadMetadata();
-        string currentRos2Version = GetROSVersion();
-        string standalone = IsStandalone() ? "standalone" : "non-standalone";
-
-        // Self checks
-        if (!IsStandalone())
-        {
-            CheckROSSupport(currentRos2Version);
-        }
-        CheckIntegrity();
-
-        // Library loading
-        if (IsStandalone())
+        string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
+        bool standaloneBuild = IsStandalone();
+        if (standaloneBuild)
         {
             SetStandalonePrefixPath();
             SetStandaloneRmwImplementation();
         }
+
+        string currentRos2Version = standaloneBuild
+            ? GetMetadataValue(ros2csMetadata, "/ros2cs/ros2")
+            : GetROSVersion();
+        string standalone = standaloneBuild ? "standalone" : "non-standalone";
+
+        // Self checks
+        CheckROSSupport(currentRos2Version);
+        CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);
+
         if (GetOS() == Platform.Windows) {
             // Windows version can run standalone, modifies PATH to ensure all plugins visibility
             SetEnvPathVariable();
@@ -617,6 +634,7 @@ internal class ROS2ForUnity
         if (shouldShutdown)
         {
             Debug.Log("Shutting down Ros2 For Unity");
+            ROS2UnityComponent.StopAllExecutorsForRosShutdown();
             SuppressRos2csFinalizer();
             Ros2cs.Shutdown();
         }

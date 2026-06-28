@@ -62,9 +62,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("exception is XmlException", StringComparison.Ordinal)
                   && source.Contains("Could not load ROS2 For Unity metadata files", StringComparison.Ordinal),
                 "134-22-D4: metadata load failures include malformed XML diagnostics");
-            Check(source.Contains("if (!IsStandalone())", StringComparison.Ordinal)
-                  && source.Contains("CheckROSSupport(currentRos2Version)", StringComparison.Ordinal),
-                "134-22-D5: sourced ROS distro validation is scoped to non-standalone runtime");
+            Check(source.Contains("string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();", StringComparison.Ordinal)
+                  && source.Contains("bool standaloneBuild = IsStandalone();", StringComparison.Ordinal)
+                  && source.Contains("string currentRos2Version = standaloneBuild", StringComparison.Ordinal)
+                  && source.Contains("? GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")", StringComparison.Ordinal)
+                  && source.Contains(": GetROSVersion();", StringComparison.Ordinal)
+                  && source.Contains("CheckROSSupport(currentRos2Version)", StringComparison.Ordinal)
+                  && source.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal),
+                "134-22-D5: standalone runtime support checks use packaged metadata while sourced ROS distro stays integrity-only");
         }
 
         private static void VerifySensorInitialPublishingContract()

@@ -35,12 +35,13 @@ namespace Unity.FoxgloveSDK.Tests
             var selection = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
 
             Check(selection.Contains("WriteManifestAtomically", StringComparison.Ordinal)
-                  && selection.Contains("RemoveTrailingDependencyComma(lines)", StringComparison.Ordinal),
-                "163-27A-1: runtime package switching keeps atomic manifest writes and repairs trailing commas");
+                  && selection.Contains("ReadManifestJson(manifest", StringComparison.Ordinal)
+                  && selection.Contains("new JProperty(packageName", StringComparison.Ordinal),
+                "163-27A-1: runtime package switching keeps atomic manifest writes and edits dependencies as JSON");
             Check(selection.Contains("DetectLineEnding(manifest)", StringComparison.Ordinal)
-                  && selection.Contains("return string.Join(lineEnding, lines).TrimEnd() + lineEnding;", StringComparison.Ordinal)
+                  && selection.Contains("SerializeManifest", StringComparison.Ordinal)
                   && !selection.Contains("string.Join(Environment.NewLine, lines)", StringComparison.Ordinal),
-                "163-27A-2: runtime package switching preserves the manifest line ending style");
+                "163-27A-2: runtime package switching preserves manifest line endings after JSON serialization");
             Check(selection.Contains("ApplyCommunicationModeEnvironment(projectDirectory);", StringComparison.Ordinal)
                   && selection.IndexOf("ApplyCommunicationModeEnvironment(projectDirectory);", StringComparison.Ordinal)
                      < selection.IndexOf("Client.Resolve();", StringComparison.Ordinal),

@@ -37,6 +37,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
                 EditorGUILayout.HelpBox(status.Diagnostic, MessageType.Info);
 
+            if (status.SelectedRuntime != null && !string.IsNullOrWhiteSpace(status.SelectedRuntime.ZenohPayloadDiagnostic))
+                EditorGUILayout.HelpBox(status.SelectedRuntime.ZenohPayloadDiagnostic, MessageType.Warning);
+
             if (status.SelectedRuntime != null && status.SelectedRuntime.SupportsZenoh)
                 DrawCommunicationModePopup(projectDirectory, status);
 

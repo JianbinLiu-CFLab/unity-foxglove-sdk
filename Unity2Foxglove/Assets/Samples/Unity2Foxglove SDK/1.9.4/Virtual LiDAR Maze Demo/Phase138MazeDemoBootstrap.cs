@@ -187,6 +187,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             cameraGo.transform.LookAt(Vector3.zero);
 
             var demoCameraPublisher = cameraGo.AddComponent<FoxgloveCameraPublisher>();
+            SetPrivateField(demoCameraPublisher, "_manager", manager);
             SetPrivateField(demoCameraPublisher, "_topic", "/unity/camera");
             SetPrivateField(demoCameraPublisher, "_frameId", "unity_camera");
             SetPrivateField(demoCameraPublisher, "_width", 640);
@@ -260,10 +261,10 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                 type = type.BaseType;
             }
 
-            if (field != null)
-                field.SetValue(target, value);
-            else
-                Debug.LogWarning($"[LidarMaze] Failed to set private field '{fieldName}' on {target.GetType().Name}");
+            if (field == null)
+                throw new System.MissingFieldException(target.GetType().FullName, fieldName);
+
+            field.SetValue(target, value);
         }
     }
 }

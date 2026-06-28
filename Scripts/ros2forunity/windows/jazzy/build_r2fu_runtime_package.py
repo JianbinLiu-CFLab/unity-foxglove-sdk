@@ -944,6 +944,114 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
             1,
         )
 
+    old_check_signature = '''    public void CheckIntegrity()
+    {
+        string ros2SourcedCodename = GetROSVersionSourced();
+'''
+    new_check_signature = '''    public void CheckIntegrity()
+    {
+        CheckIntegrity(GetROSVersionSourced());
+    }
+
+    private void CheckIntegrity(string ros2SourcedCodename)
+    {
+'''
+    text = text.replace(old_check_signature, new_check_signature)
+
+    old_metadata_mismatch = '''        if (ros2FromRos4UMetadata != ros2FromRos2csMetadata) {
+            Debug.LogError(
+                "ROS2 versions in 'ros2cs' and 'ros2-for-unity' metadata files are not the same. " +
+                "This is caused by mixing versions/builds. Plugin might not work correctly."
+            );
+        }
+'''
+    new_metadata_mismatch = '''        if (ros2FromRos4UMetadata != ros2FromRos2csMetadata) {
+            FailIntegrity(
+                "ROS2 versions in 'ros2cs' and 'ros2-for-unity' metadata files are not the same. " +
+                "This is caused by mixing versions/builds.");
+        }
+'''
+    text = text.replace(old_metadata_mismatch, new_metadata_mismatch)
+    old_non_standalone_mismatch = '''        if(!IsStandalone() && ros2SourcedCodename != ros2FromRos2csMetadata) {
+            Debug.LogError(
+                "ROS2 version in 'ros2cs' metadata doesn't match currently sourced version. " +
+                "This is caused by mixing versions/builds. Plugin might not work correctly."
+            );
+        }
+'''
+    new_non_standalone_mismatch = '''        if(!IsStandalone() && ros2SourcedCodename != ros2FromRos2csMetadata) {
+            FailIntegrity(
+                "ROS2 version in 'ros2cs' metadata doesn't match currently sourced version. " +
+                "This is caused by mixing versions/builds.");
+        }
+'''
+    text = text.replace(old_non_standalone_mismatch, new_non_standalone_mismatch)
+    old_standalone_sourced = '''        if (IsStandalone() && !string.IsNullOrEmpty(ros2SourcedCodename)) {
+            Debug.LogError(
+                "You should not source ROS2 in 'ros2-for-unity' standalone build. " +
+                "Plugin might not work correctly."
+            );
+        }
+    }
+'''
+    new_standalone_sourced = '''        if (IsStandalone()
+            && !string.IsNullOrEmpty(ros2SourcedCodename)
+            && ros2SourcedCodename != ros2FromRos2csMetadata) {
+            FailIntegrity(
+                "ROS2 version in standalone process environment does not match this runtime package. " +
+                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".");
+        }
+    }
+
+    private static void FailIntegrity(string errMessage)
+    {
+        Debug.LogError(errMessage);
+#if UNITY_EDITOR
+        EditorApplication.isPlaying = false;
+        throw new InvalidOperationException(errMessage);
+#else
+        const int ROS_METADATA_MISMATCH_ERROR_CODE = 35;
+        Application.Quit(ROS_METADATA_MISMATCH_ERROR_CODE);
+        throw new InvalidOperationException(errMessage);
+#endif
+    }
+'''
+    text = text.replace(old_standalone_sourced, new_standalone_sourced)
+
+    if "sourcedRosDistroBeforeStandalonePatch" not in text:
+        old_startup = '''        // Load metadata
+        LoadMetadata();
+        string currentRos2Version = GetROSVersion();
+        string standalone = IsStandalone() ? "standalone" : "non-standalone";
+
+        // Self checks
+        if (!IsStandalone())
+        {
+            CheckROSSupport(currentRos2Version);
+        }
+        CheckIntegrity();
+'''
+        new_startup = '''        // Load metadata
+        LoadMetadata();
+        string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
+        bool standaloneBuild = IsStandalone();
+        if (standaloneBuild)
+        {
+            SetStandalonePrefixPath();
+            SetStandaloneRmwImplementation();
+        }
+
+        string currentRos2Version = standaloneBuild
+            ? GetMetadataValue(ros2csMetadata, "/ros2cs/ros2")
+            : GetROSVersion();
+        string standalone = standaloneBuild ? "standalone" : "non-standalone";
+
+        // Self checks
+        CheckROSSupport(currentRos2Version);
+        CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);
+'''
+        text = text.replace(old_startup, new_startup)
+
     if "SetStandalonePrefixPath();" not in text:
         text = text.replace(
             "        // Library loading\n"
@@ -958,7 +1066,14 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
             1,
         )
 
-    for token in ("_wputenv_s", "SetStandalonePrefixPath", "AMENT_PREFIX_PATH", "SetStandaloneRmwImplementation"):
+    for token in (
+        "_wputenv_s",
+        "SetStandalonePrefixPath",
+        "AMENT_PREFIX_PATH",
+        "SetStandaloneRmwImplementation",
+        "sourcedRosDistroBeforeStandalonePatch",
+        "FailIntegrity",
+    ):
         if token not in text:
             raise ValueError(f"Could not patch ROS2ForUnity standalone environment bootstrap token: {token}")
     return text

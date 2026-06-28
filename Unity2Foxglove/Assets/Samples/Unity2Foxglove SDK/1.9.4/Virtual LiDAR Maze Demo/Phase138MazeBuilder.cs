@@ -60,17 +60,15 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             BuildWall(mazeRoot, new Vector3(halfW, wallHeight * 0.5f, 0f),
                 new Vector3(wallThickness, wallHeight, cellsZ * cellSize));
 
-            // Iterative DFS maze generation
-            // Each wall is identified by (cellX, cellZ, side): 0=+X, 1=-X, 2=+Z, 3=-Z
+            // Iterative DFS maze generation. Store each internal wall once:
+            // side 0 is the wall to +X, side 2 is the wall to +Z.
             var walls = new HashSet<(int, int, int)>();
             for (var x = 0; x < cellsX; x++)
             {
                 for (var z = 0; z < cellsZ; z++)
                 {
                     if (x < cellsX - 1) walls.Add((x, z, 0)); // +X wall between (x,z) and (x+1,z)
-                    if (x > 0)          walls.Add((x, z, 1)); // -X wall between (x,z) and (x-1,z)
                     if (z < cellsZ - 1) walls.Add((x, z, 2)); // +Z wall between (x,z) and (x,z+1)
-                    if (z > 0)          walls.Add((x, z, 3)); // -Z wall between (x,z) and (x,z-1)
                 }
             }
 
@@ -109,25 +107,19 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                 visited.Add((nx2, nz2));
                 stack.Push((nx2, nz2));
 
-                // Remove the wall between cx,cz and nx2,nz2.
-                // Each shared wall is registered with two symmetric keys
-                // (one per cell) — must remove BOTH or the wall persists.
+                // Remove the canonical wall between cx,cz and nx2,nz2.
                 switch (dir)
                 {
-                    case 0: // +X move: shared wall = (cx,cz,+X) and (nx2,nz2,-X)
+                    case 0: // +X move: wall is stored on current cell's +X side
                         walls.Remove((cx, cz, 0));
-                        walls.Remove((nx2, nz2, 1));
                         break;
-                    case 1: // -X move: shared wall = (cx,cz,-X) and (nx2,nz2,+X)
-                        walls.Remove((cx, cz, 1));
+                    case 1: // -X move: wall is stored on neighbour cell's +X side
                         walls.Remove((nx2, nz2, 0));
                         break;
-                    case 2: // +Z move: shared wall = (cx,cz,+Z) and (nx2,nz2,-Z)
+                    case 2: // +Z move: wall is stored on current cell's +Z side
                         walls.Remove((cx, cz, 2));
-                        walls.Remove((nx2, nz2, 3));
                         break;
-                    case 3: // -Z move: shared wall = (cx,cz,-Z) and (nx2,nz2,+Z)
-                        walls.Remove((cx, cz, 3));
+                    case 3: // -Z move: wall is stored on neighbour cell's +Z side
                         walls.Remove((nx2, nz2, 2));
                         break;
                 }
@@ -148,21 +140,13 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
                             wallHeight * 0.5f, cellWorldZ);
                         scale = new Vector3(wallThickness, wallHeight, cellSize);
                         break;
-                    case 1: // -X
-                        pos = new Vector3(cellWorldX - cellSize * 0.5f,
-                            wallHeight * 0.5f, cellWorldZ);
-                        scale = new Vector3(wallThickness, wallHeight, cellSize);
-                        break;
                     case 2: // +Z
                         pos = new Vector3(cellWorldX,
                             wallHeight * 0.5f, cellWorldZ + cellSize * 0.5f);
                         scale = new Vector3(cellSize, wallHeight, wallThickness);
                         break;
-                    default: // 3 = -Z
-                        pos = new Vector3(cellWorldX,
-                            wallHeight * 0.5f, cellWorldZ - cellSize * 0.5f);
-                        scale = new Vector3(cellSize, wallHeight, wallThickness);
-                        break;
+                    default:
+                        continue;
                 }
 
                 BuildWall(mazeRoot, pos, scale);
@@ -255,12 +239,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         private static void SetColor(Renderer renderer, Color color)
         {
             if (renderer == null) return;
-            // Clone the default material so the shader matches the active render
-            // pipeline; a hard-coded "Standard" shader renders magenta under URP.
-            var mat = new Material(renderer.sharedMaterial) { color = color };
-            if (mat.HasProperty("_BaseColor"))
-                mat.SetColor("_BaseColor", color);
-            renderer.sharedMaterial = mat;
+            var block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block);
+            block.SetColor("_Color", color);
+            block.SetColor("_BaseColor", color);
+            renderer.SetPropertyBlock(block);
         }
 
         /// <summary>World position of a maze cell centre, with the maze centred on the origin.</summary>

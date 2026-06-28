@@ -179,6 +179,9 @@
     <Compile Include="Phase163_28Validation.cs" />
     <Compile Include="Phase163_29Validation.cs" />
     <Compile Include="Phase163_30Validation.cs" />
+    <Compile Include="Phase163_31Validation.cs" />
+    <Compile Include="Phase163_32Validation.cs" />
+    <Compile Include="Phase163_35Validation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />
@@ -301,6 +304,7 @@
     <Compile Include="Phase134_33Validation.cs" />
     <Compile Include="Phase134_34Validation.cs" />
     <Compile Include="Phase134_35Validation.cs" />
+    <Compile Include="Phase163_33Validation.cs" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="TempMcapHelper.cs" />

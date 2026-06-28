@@ -70,9 +70,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(selection.Contains("WriteManifestAtomically", StringComparison.Ordinal)
                   && selection.Contains("File.Replace(tempPath, manifestPath, null)", StringComparison.Ordinal),
                 "163-20C-1: R2FU runtime selection writes manifest.json through an atomic replace path");
-            Check(selection.Contains("RemoveTrailingDependencyComma(lines)", StringComparison.Ordinal)
-                  && selection.Contains("RemoveTrailingCommaFromPreviousLine", StringComparison.Ordinal),
-                "163-20C-2: R2FU runtime removal repairs dependency trailing commas");
+            Check(selection.Contains("ReadManifestJson(manifest", StringComparison.Ordinal)
+                  && selection.Contains("dependencies.Properties()", StringComparison.Ordinal)
+                  && selection.Contains("property.Remove();", StringComparison.Ordinal)
+                  && selection.Contains("new JProperty(packageName", StringComparison.Ordinal),
+                "163-20C-2: R2FU runtime removal and insertion use parsed JSON instead of line surgery");
             Check(selection.Contains("BuildRuntimePackageReference", StringComparison.Ordinal)
                   && selection.Contains("GetRelativePath(projectPackagesDirectory, runtimePackageDirectory)", StringComparison.Ordinal)
                   && !selection.Contains("\"file:../../Packages/\" + packageName", StringComparison.Ordinal),

@@ -34,6 +34,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             "Packages/dev.unity2foxglove.sdk/Samples~/FullDemoVisualization/Settings/UniversalRenderPipelineGlobalSettings.asset"
         };
 
+        private static readonly string[] MazeDemoRoots =
+        {
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo",
+            "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo"
+        };
+
         [Fact]
         public void FoxRunLinkXmlUsesOneAssemblyBlockPerAssembly()
         {
@@ -107,6 +113,132 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         {
             foreach (var relativePath in UrpGlobalSettingsPaths)
                 Assert.DoesNotContain("m_ValidRenderingLayers: 0", Text(relativePath), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void MazeDemoStoresEachInternalWallOnce()
+        {
+            foreach (var root in MazeDemoRoots)
+            {
+                var source = Text($"{root}/Phase138MazeBuilder.cs");
+
+                Assert.Contains("Store each internal wall once", source, StringComparison.Ordinal);
+                Assert.Contains("walls.Add((x, z, 0))", source, StringComparison.Ordinal);
+                Assert.Contains("walls.Add((x, z, 2))", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("walls.Add((x, z, 1))", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("walls.Add((x, z, 3))", source, StringComparison.Ordinal);
+                Assert.Contains("walls.Remove((nx2, nz2, 0))", source, StringComparison.Ordinal);
+                Assert.Contains("walls.Remove((nx2, nz2, 2))", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("cellWorldX - cellSize * 0.5f", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("cellWorldZ - cellSize * 0.5f", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void MazeDemoPrimitiveColoringDoesNotCloneMaterials()
+        {
+            foreach (var root in MazeDemoRoots)
+            {
+                foreach (var fileName in new[] { "Phase138MazeBuilder.cs", "Phase138LidarVehicleController.cs" })
+                {
+                    var source = Text($"{root}/{fileName}");
+
+                    Assert.Contains("new MaterialPropertyBlock()", source, StringComparison.Ordinal);
+                    Assert.DoesNotContain("new Material(renderer.sharedMaterial)", source, StringComparison.Ordinal);
+                    Assert.DoesNotContain("renderer.sharedMaterial = ", source, StringComparison.Ordinal);
+                }
+            }
+        }
+
+        [Fact]
+        public void MazeDemoVehicleAutoWanderDoesNotRaycastAgainstItself()
+        {
+            foreach (var root in MazeDemoRoots)
+            {
+                var source = Text($"{root}/Phase138LidarVehicleController.cs");
+
+                Assert.Contains("Physics.DefaultRaycastLayers", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("~0, QueryTriggerInteraction.Ignore", source, StringComparison.Ordinal);
+                Assert.Contains("_suppressJitterUntil", source, StringComparison.Ordinal);
+                Assert.Contains("SetWanderDirection(Quaternion.Euler", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void MazeDemoOverviewCameraPublisherHasExplicitManager()
+        {
+            foreach (var root in MazeDemoRoots)
+            {
+                var bootstrap = Text($"{root}/Phase138MazeDemoBootstrap.cs");
+                Assert.Contains("SetPrivateField(demoCameraPublisher, \"_manager\", manager);", bootstrap, StringComparison.Ordinal);
+
+                var sceneBuilder = Text($"{root}/Editor/Phase138MazeDemoSceneBuilder.cs");
+                Assert.Contains("SetField(demoCameraPublisher, \"_manager\", manager);", sceneBuilder, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void MazeDemoBootstrapAndSceneBuilderUseTheSameSensorFieldOverrides()
+        {
+            var lidarFields = new[]
+            {
+                "_manager",
+                "_sensorUnitProfile",
+                "_frameId",
+                "_pointCloudPublisher",
+                "_columnStep",
+                "_maxRaysPerScan",
+                "_layerMask",
+                "_maxRaycastCommandsPerFixedUpdate",
+                "_publishEmptyFrames",
+                "_drawDebugRays"
+            };
+            var imuFields = new[]
+            {
+                "_manager",
+                "_rigidbody",
+                "_frameId",
+                "_topic",
+                "_publishOnStart",
+                "_includeOrientation",
+                "_globalPhysicsRateHzOverride",
+                "_enableNoise",
+                "_accelNoiseStdDev",
+                "_gyroNoiseStdDev"
+            };
+
+            foreach (var root in MazeDemoRoots)
+            {
+                var bootstrap = Text($"{root}/Phase138MazeDemoBootstrap.cs");
+                var sceneBuilder = Text($"{root}/Editor/Phase138MazeDemoSceneBuilder.cs");
+
+                foreach (var field in lidarFields)
+                {
+                    Assert.Contains($"SetPrivateField(lidar, \"{field}\"", bootstrap, StringComparison.Ordinal);
+                    Assert.Contains($"SetField(lidar, \"{field}\"", sceneBuilder, StringComparison.Ordinal);
+                }
+
+                foreach (var field in imuFields)
+                {
+                    Assert.Contains($"SetPrivateField(imu, \"{field}\"", bootstrap, StringComparison.Ordinal);
+                    Assert.Contains($"SetField(imu, \"{field}\"", sceneBuilder, StringComparison.Ordinal);
+                }
+            }
+        }
+
+        [Fact]
+        public void MazeDemoReflectionHelpersFailClosedOnMissingFields()
+        {
+            foreach (var root in MazeDemoRoots)
+            {
+                foreach (var fileName in new[] { "Phase138MazeDemoBootstrap.cs", "Editor/Phase138MazeDemoSceneBuilder.cs" })
+                {
+                    var source = Text($"{root}/{fileName}");
+
+                    Assert.Contains("throw new System.MissingFieldException", source, StringComparison.Ordinal);
+                    Assert.DoesNotContain("Failed to set private field", source, StringComparison.Ordinal);
+                }
+            }
         }
 
         private static string Text(string relativePath)

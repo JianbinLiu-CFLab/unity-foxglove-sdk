@@ -321,7 +321,11 @@ internal class ROS2ForUnity : IDisposable
     /// </summary>
     public void CheckIntegrity()
     {
-        string ros2SourcedCodename = GetROSVersionSourced();
+        CheckIntegrity(GetROSVersionSourced());
+    }
+
+    private void CheckIntegrity(string ros2SourcedCodename)
+    {
         string ros2FromRos2csMetadata = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
         string ros2FromRos4UMetadata = GetMetadataValue(ros2ForUnityMetadata, "/ros2_for_unity/ros2");
 
@@ -540,6 +544,7 @@ internal class ROS2ForUnity : IDisposable
 
             // Load metadata
             LoadMetadata();
+            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
             if (IsStandalone())
             {
                 string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
@@ -553,7 +558,7 @@ internal class ROS2ForUnity : IDisposable
 
             // Self checks
             CheckROSSupport(currentRos2Version);
-            CheckIntegrity();
+            CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);
 
             // Library loading
             if (GetOS() == Platform.Windows) {

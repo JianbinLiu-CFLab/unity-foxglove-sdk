@@ -78,6 +78,17 @@ ZENOH_CONFIG_FILES = (
     RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
 )
 
+ZENOH_CONFIG_MIRRORS = (
+    (
+        RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+        RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+    ),
+    (
+        RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+        RUNTIME_ROOT / "StreamingAssets" / "Ros2ForUnity" / "share" / "rmw_zenoh_cpp" / "config" / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+    ),
+)
+
 RMW_DEPENDENCY_CLOSURE_SEEDS = (
     "rmw_fastrtps_cpp.dll",
     "rmw_zenoh_cpp.dll",
@@ -600,6 +611,15 @@ def check_runtime_files(results: list[CheckResult]) -> None:
     )
     for path in ZENOH_CONFIG_FILES:
         add(results, f"Zenoh config present: {path.name}", path.exists(), rel(path))
+    for plugin_config, streaming_assets_config in ZENOH_CONFIG_MIRRORS:
+        add(
+            results,
+            f"Zenoh config mirror matches StreamingAssets: {plugin_config.name}",
+            plugin_config.exists()
+            and streaming_assets_config.exists()
+            and plugin_config.read_bytes() == streaming_assets_config.read_bytes(),
+            f"{rel(plugin_config)} <-> {rel(streaming_assets_config)}",
+        )
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 700, f"dll_count={len(dlls)}")
@@ -665,9 +685,10 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     add(
         results,
         "PackageManager lookup guarded",
-        "#if UNITY_EDITOR" in text
-        and "UnityEditor.PackageManager.PackageInfo.FindForAssetPath" in text
-        and text.index("#if UNITY_EDITOR") < text.index("UnityEditor.PackageManager.PackageInfo.FindForAssetPath"),
+        re.search(
+            r"#if\s+UNITY_EDITOR[\s\S]{0,1200}UnityEditor\.PackageManager\.PackageInfo\.FindForAssetPath[\s\S]{0,1200}#endif",
+            text,
+        ) is not None,
         "ROS2ForUnity.cs",
     )
 
@@ -797,9 +818,21 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         and "standalone runtime owns its RMW selection while allowing Lyrical Zenoh" in runtime
         and "selectedRmwImplementation" in runtime
         and "hide any externally sourced ROS_DISTRO" in runtime
+        and "sourcedRosDistroBeforeStandalonePatch" in runtime
+        and "CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)" in runtime
         and "packagedRos2Version = GetMetadataValue" in runtime
         and "ROS2 version in standalone process environment does not match this runtime package" in runtime,
         "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "ROS2UnityComponent prevents restart during shared ROS shutdown",
+        "runtimeShutdownRequested" in component
+        and "MarkRuntimeShutdown()" in component
+        and "component.MarkRuntimeShutdown();" in component
+        and "throw new ObjectDisposedException(nameof(ROS2UnityComponent))" in component
+        and "ros2forUnity == null" in component,
+        "ROS2UnityComponent.cs",
     )
 
     dotnet_time = read_optional_text(scripts / "Time" / "DotnetTimeSource.cs")
