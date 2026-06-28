@@ -122,6 +122,13 @@ namespace Unity.FoxgloveSDK.Performance
             else
                 Console.WriteLine("Performance thresholds: disabled");
 
+            var transportScope = string.IsNullOrWhiteSpace(thresholds.transportScope)
+                ? PerformanceRunner.DefaultTransportScope
+                : thresholds.transportScope;
+            Console.WriteLine("Performance transport: " + transportScope);
+            if (!string.IsNullOrWhiteSpace(thresholds.calibratedOn))
+                Console.WriteLine("Performance thresholds calibrated on: " + thresholds.calibratedOn);
+
             var results = PerformanceRunner.RunAll(mode, thresholds);
 
             var output = new
@@ -134,6 +141,8 @@ namespace Unity.FoxgloveSDK.Performance
                 commit,
                 thresholdsEnabled = thresholds.enabled,
                 thresholdPath = resolvedThresholdPath,
+                transportScope,
+                thresholdCalibratedOn = thresholds.calibratedOn,
                 scenarios = results
             };
 

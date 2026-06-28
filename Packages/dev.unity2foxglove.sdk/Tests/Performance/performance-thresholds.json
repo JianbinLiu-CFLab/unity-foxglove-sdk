@@ -1,5 +1,7 @@
 {
   "enabled": true,
+  "transportScope": "FakePerformanceTransport serialization/dispatch path only; excludes ManagedWsBackend sockets and TLS",
+  "calibratedOn": "GitHub Actions ubuntu-latest and local quick-mode baselines; review thresholds when runner class or workload changes.",
   "defaults": {
     "maxElapsedMs": 120000,
     "minMessagesPerSecond": 1.0,

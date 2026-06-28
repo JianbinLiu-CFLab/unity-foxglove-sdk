@@ -184,6 +184,16 @@ def main() -> int:
             ["dotnet", "run", "--project", RUNTIME_TESTS_PROJ],
             "Dotnet validation suite (default CI)",
         )
+        results["mcap-conformance-ci-smoke"] = run(
+            [
+                sys.executable,
+                "Scripts/mcap/conformance/run_phase121_conformance.py",
+                "--ci-smoke",
+                "--report-path",
+                "build/mcap-conformance/phase121-conformance-ci-smoke.json",
+            ],
+            "MCAP conformance wrapper CI smoke",
+        )
         results["xunit-restore"] = restore_with_ignoring_failed_sources(
             UNIT_TESTS_PROJ, "Restore xUnit unit test project"
         )
