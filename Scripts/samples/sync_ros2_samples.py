@@ -47,8 +47,6 @@ def default_imported_root(root: Path = ROOT) -> Path:
     )
 
 
-DEFAULT_IMPORTED_ROOT = default_imported_root(ROOT)
-
 # The imported demo project extends the original string smoke with batch
 # acceptance hooks. Keep that file intentionally imported-owned.
 ALLOWLISTED_RELATIVE_FILES = {
@@ -175,7 +173,8 @@ def main() -> int:
 
     args = parse_args()
     package_root = resolve_cli_path(args.package_root, DEFAULT_PACKAGE_ROOT)
-    imported_root = resolve_cli_path(args.imported_root, DEFAULT_IMPORTED_ROOT)
+    default_imported = default_imported_root(ROOT)
+    imported_root = resolve_cli_path(args.imported_root, default_imported)
     dry_run = not args.apply
 
     if not package_root.exists():

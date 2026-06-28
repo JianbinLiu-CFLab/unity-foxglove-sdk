@@ -318,7 +318,6 @@ def check_forbidden_public_content(results: list[CheckResult]) -> None:
             for label, pattern in FORBIDDEN_PUBLIC_PATTERNS:
                 if pattern.search(text):
                     offenders.append(f"{rel(path)} ({label})")
-                    break
     add(
         results,
         "public docs/samples have no forbidden markers",

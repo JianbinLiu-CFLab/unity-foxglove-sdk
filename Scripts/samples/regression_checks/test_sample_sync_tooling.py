@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -64,6 +65,29 @@ class SampleSyncToolingTests(unittest.TestCase):
             module.validate_portable_full_demo_scene_payload(
                 b"  _sharedToken: secret\n  _certificatePfxPath: C:/Users/Alice/cert.pfx\n"
             )
+
+    def test_validate_file_maps_reports_invalid_portable_scene_source(self) -> None:
+        """Validate mode should collect portable-scene errors instead of throwing."""
+        module = load_module("sync_full_demo_validate_collect_under_test", "Scripts/samples/sync_full_demo.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            src = root / "Unity2Foxglove" / "Assets" / "Scenes" / "SampleScene.unity"
+            dst = root / "Packages" / "dev.unity2foxglove.sdk" / "Samples~" / "FullDemoVisualization" / "Scenes" / "FullDemoVisualization.unity"
+            src.parent.mkdir(parents=True)
+            dst.parent.mkdir(parents=True)
+            src.write_text("  _sharedToken: secret\n", encoding="utf-8")
+            dst.write_text("placeholder\n", encoding="utf-8")
+            with mock.patch.object(module, "DEMO_ASSETS", root / "Unity2Foxglove" / "Assets"):
+                with mock.patch.object(
+                    module,
+                    "portable_full_demo_scene_payload",
+                    side_effect=ValueError("portable scene still has local value"),
+                ):
+                    errors = module.validate_file_maps([(src, dst)])
+
+        self.assertEqual(1, len(errors))
+        self.assertIn("invalid source", errors[0])
 
     def test_ros2_sample_default_imported_root_uses_package_manifest_version(self) -> None:
         """Sample sync should not hardcode the imported sample package version."""
