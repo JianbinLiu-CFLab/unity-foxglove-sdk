@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -27,10 +26,10 @@ namespace Foxglove.Schemas
             IEnumerable<double> r,
             IEnumerable<double> p)
         {
-            var dList = ToListOrEmpty(d);
-            var kList = ToListOrEmpty(k);
-            var rList = ToListOrEmpty(r);
-            var pList = ToListOrEmpty(p);
+            var dList = ToReadOnlyListOrEmpty(d);
+            var kList = ToReadOnlyListOrEmpty(k);
+            var rList = ToReadOnlyListOrEmpty(r);
+            var pList = ToReadOnlyListOrEmpty(p);
             ValidateMatrices(kList, rList, pList);
 
             return new CameraCalibrationMessage
@@ -40,10 +39,10 @@ namespace Foxglove.Schemas
                 Width = width,
                 Height = height,
                 DistortionModel = distortionModel ?? "",
-                D = dList,
-                K = kList,
-                R = rList,
-                P = pList
+                D = ToJsonList(dList),
+                K = ToJsonList(kList),
+                R = ToJsonList(rList),
+                P = ToJsonList(pList)
             };
         }
 
@@ -103,11 +102,7 @@ namespace Foxglove.Schemas
             uint height,
             double verticalFovDegrees)
         {
-            var fovRad = Math.Max(0.001, verticalFovDegrees) * Math.PI / 180.0;
-            var fy = height / (2.0 * Math.Tan(fovRad / 2.0));
-            var fx = fy;
-            var cx = width / 2.0;
-            var cy = height / 2.0;
+            var intrinsics = CreateAutoIntrinsicsArrays(width, height, verticalFovDegrees);
 
             return CreateJson(
                 unixNs,
@@ -116,21 +111,64 @@ namespace Foxglove.Schemas
                 height,
                 "plumb_bob",
                 Array.Empty<double>(),
+                intrinsics.K,
+                intrinsics.R,
+                intrinsics.P);
+        }
+
+        /// <summary>Create pinhole intrinsics as an official protobuf CameraCalibration message.</summary>
+        public static Foxglove.CameraCalibration CreateAutoIntrinsicsProtobuf(
+            ulong unixNs,
+            string frameId,
+            uint width,
+            uint height,
+            double verticalFovDegrees)
+        {
+            var intrinsics = CreateAutoIntrinsicsArrays(width, height, verticalFovDegrees);
+
+            return CreateProtobuf(
+                unixNs,
+                frameId,
+                width,
+                height,
+                "plumb_bob",
+                Array.Empty<double>(),
+                intrinsics.K,
+                intrinsics.R,
+                intrinsics.P);
+        }
+
+        private static (double[] K, double[] R, double[] P) CreateAutoIntrinsicsArrays(
+            uint width,
+            uint height,
+            double verticalFovDegrees)
+        {
+            var fovRad = Math.Max(0.001, verticalFovDegrees) * Math.PI / 180.0;
+            var fy = height / (2.0 * Math.Tan(fovRad / 2.0));
+            var fx = fy;
+            var cx = width / 2.0;
+            var cy = height / 2.0;
+
+            return (
                 new[] { fx, 0, cx, 0, fy, cy, 0, 0, 1 },
                 new[] { 1.0, 0, 0, 0, 1, 0, 0, 0, 1 },
                 new[] { fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0 });
-        }
-
-        private static List<double> ToListOrEmpty(IEnumerable<double> values)
-        {
-            return values == null ? new List<double>() : values.ToList();
         }
 
         private static IReadOnlyList<double> ToReadOnlyListOrEmpty(IEnumerable<double> values)
         {
             if (values == null)
                 return Array.Empty<double>();
-            return values as IReadOnlyList<double> ?? values.ToArray();
+            if (values is IReadOnlyList<double> list)
+                return list;
+            return new List<double>(values);
+        }
+
+        private static List<double> ToJsonList(IReadOnlyList<double> values)
+        {
+            return values == null || values.Count == 0
+                ? new List<double>()
+                : new List<double>(values);
         }
 
         private static void ValidateMatrices(IReadOnlyCollection<double> k, IReadOnlyCollection<double> r, IReadOnlyCollection<double> p)

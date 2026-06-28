@@ -56,8 +56,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemaRegistry.cs");
 
-            Check(source.Contains("neededFiles.OrderBy(name => name, StringComparer.Ordinal)", StringComparison.Ordinal),
-                "140-13B-1: protobuf descriptor subsets keep deterministic dependency ordering");
+            Check(source.Contains("ordered.Add(fileName);", StringComparison.Ordinal)
+                  && !source.Contains("neededFiles.OrderBy", StringComparison.Ordinal),
+                "140-13B-1: protobuf descriptor subsets keep deterministic dependency-first ordering");
         }
 
         private static void LegacyVideoRenderTextureIsDestroyed()
