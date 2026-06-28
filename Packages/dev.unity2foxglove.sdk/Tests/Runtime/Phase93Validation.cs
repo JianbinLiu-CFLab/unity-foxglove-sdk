@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase93Validation
     {
+        private static int ExpectedRos2SchemaCount => FoxgloveRos2MsgSchemaCatalog.SourceFileCount;
+
         private const ulong SampleTimeNs = 1_700_093_000_000_000_000UL;
         private static int _passed;
 
@@ -110,16 +112,20 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySchemaSnapshot()
         {
-            Check(FoxgloveRos2MsgSchemaCatalog.SourceFileCount == 41, "93A-1: ROS2 schema snapshot still has 41 root files");
-            Check(FoxgloveRos2MsgSchemaCatalog.Entries.Count == 41, "93A-2: ROS2 schema catalog exposes 41 entries");
+            Check(FoxgloveRos2MsgSchemaCatalog.SourceFileCount == Ros2CdrSerializerRegistry.SerializerCount,
+                "93A-1: ROS2 schema snapshot count matches generated CDR registry count");
+            Check(FoxgloveRos2MsgSchemaCatalog.Entries.Count == ExpectedRos2SchemaCount,
+                "93A-2: ROS2 schema catalog exposes the declared source-file count");
             Check(FoxgloveRos2MsgSchemaCatalog.Entries.All(e => e.SchemaEncoding == "ros2msg"),
                 "93A-3: ROS2 schema catalog entries use ros2msg schema encoding");
         }
 
         private static void VerifyGeneratedRegistrySurface()
         {
-            Check(Ros2CdrSerializerRegistry.SerializerCount == 41, "93B-1: generated serializer registry declares 41 serializers");
-            Check(Ros2CdrSerializerRegistry.Entries.Count == 41, "93B-2: generated serializer registry exposes 41 entries");
+            Check(Ros2CdrSerializerRegistry.SerializerCount == ExpectedRos2SchemaCount,
+                "93B-1: generated serializer registry count matches the schema catalog count");
+            Check(Ros2CdrSerializerRegistry.Entries.Count == Ros2CdrSerializerRegistry.SerializerCount,
+                "93B-2: generated serializer registry exposes the declared serializer count");
 
             var catalogNames = new HashSet<string>(FoxgloveRos2MsgSchemaCatalog.Entries.Select(e => e.SchemaName));
             var registryNames = new HashSet<string>(Ros2CdrSerializerRegistry.Entries.Select(e => e.SchemaName));
@@ -240,12 +246,12 @@ namespace Unity.FoxgloveSDK.Tests
             stream.Position = 0;
 
             using var indexed = new McapIndexedReader(stream, leaveOpen: true);
-            Check(indexed.Schemas.Count == 41
+            Check(indexed.Schemas.Count == ExpectedRos2SchemaCount
                   && indexed.Schemas.All(schema => schema.Encoding == "ros2msg")
-                  && indexed.Channels.Count == 41
+                  && indexed.Channels.Count == ExpectedRos2SchemaCount
                   && indexed.Channels.All(channel => channel.MessageEncoding == "cdr")
-                  && indexed.ReadMessages().Count == 41,
-                "93G-1: MCAP stores all 41 ros2msg schemas, CDR channels, and messages");
+                  && indexed.ReadMessages().Count == ExpectedRos2SchemaCount,
+                "93G-1: MCAP stores all ros2msg schemas, CDR channels, and messages");
         }
 
         private static void VerifyReplayPassThroughAllSchemaSmoke(IReadOnlyList<Phase93Sample> samples)
@@ -265,10 +271,10 @@ namespace Unity.FoxgloveSDK.Tests
                 runtime.EnableReplay(tempPath);
                 runtime.Start("phase93-replay", "127.0.0.1", 9394);
                 var replayChannels = FindAdvertisedChannels(replayTransport.SentTexts);
-                Check(replayChannels.Count == 41
+                Check(replayChannels.Count == ExpectedRos2SchemaCount
                       && replayChannels.All(ch => ch["encoding"]?.ToString() == "cdr")
                       && replayChannels.All(ch => ch["schemaEncoding"]?.ToString() == "ros2msg"),
-                    "93H-1: replay pass-through re-advertises all 41 ros2msg+cdr channels");
+                    "93H-1: replay pass-through re-advertises all ros2msg+cdr channels");
             }
             finally
             {

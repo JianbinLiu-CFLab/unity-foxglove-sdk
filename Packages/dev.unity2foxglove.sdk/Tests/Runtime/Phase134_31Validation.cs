@@ -135,7 +135,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRos2SchemaGenerators()
         {
             var serializerGenerator = ReadRepoText("Scripts/schema/generate_ros2_cdr_serializers.py");
-            var serializerRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Msg/Generated/Ros2CdrSerializerRegistry.g.cs");
+            var serializerRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrSerializerRegistry.g.cs");
             var catalogGenerator = ReadRepoText("Scripts/schema/generate_ros2_msg_schema_catalog.py");
             var catalog = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs");
 

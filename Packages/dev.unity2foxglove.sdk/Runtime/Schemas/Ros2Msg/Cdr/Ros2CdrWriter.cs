@@ -56,6 +56,24 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             _buffer[_position++] = value;
         }
 
+        /// <summary>Write a signed 16-bit integer.</summary>
+        public void WriteInt16(short value)
+        {
+            Align(2);
+            EnsureCapacity(2);
+            BinaryPrimitives.WriteInt16LittleEndian(_buffer.AsSpan(_position, 2), value);
+            _position += 2;
+        }
+
+        /// <summary>Write an unsigned 16-bit integer.</summary>
+        public void WriteUInt16(ushort value)
+        {
+            Align(2);
+            EnsureCapacity(2);
+            BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_position, 2), value);
+            _position += 2;
+        }
+
         /// <summary>Write a signed 32-bit integer.</summary>
         public void WriteInt32(int value)
         {
@@ -121,10 +139,13 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             _buffer[_position++] = 0x00;
         }
 
-        /// <summary>Write a uint8 sequence. Null arrays are encoded as empty sequences; builders must reject null when the field is required.</summary>
+        /// <summary>Write a required uint8 sequence from an array.</summary>
         public void WriteByteArray(byte[] value)
         {
-            WriteByteArray(value == null ? ReadOnlySpan<byte>.Empty : value.AsSpan());
+            if (value == null)
+                throw new ArgumentNullException(nameof(value));
+
+            WriteByteArray(value.AsSpan());
         }
 
         /// <summary>Write a uint8 sequence from a span without requiring an intermediate array.</summary>
@@ -136,10 +157,12 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             _position += value.Length;
         }
 
-        /// <summary>Write a float64 sequence. Null lists are encoded as empty sequences; builders must reject null when the field is required.</summary>
+        /// <summary>Write a required float64 sequence.</summary>
         public void WriteFloat64Sequence(IReadOnlyList<double> values)
         {
-            values ??= Array.Empty<double>();
+            if (values == null)
+                throw new ArgumentNullException(nameof(values));
+
             WriteUInt32(checked((uint)values.Count));
             for (var i = 0; i < values.Count; i++)
                 WriteFloat64(values[i]);

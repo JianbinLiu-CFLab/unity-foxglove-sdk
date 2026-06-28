@@ -201,7 +201,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void GeneratedAndManualCdrBuildersUseSpanAndCapacityPatterns()
         {
-            var generated = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
+            var generated = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2CdrGeneratedSerializers.g.cs");
             var generator = TestSources.Text("Scripts/schema/generate_ros2_cdr_serializers.py");
             var generatorTests = TestSources.Text("Scripts/schema/regression_checks/test_schema_tooling.py");
             var frame = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrFrameTransformBuilder.cs");
@@ -209,14 +209,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var camera = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrCameraCalibrationBuilder.cs");
 
             Assert.DoesNotContain(".ToByteArray()", generated, StringComparison.Ordinal);
-            Assert.Contains("ReadOnlySpan<byte>.Empty", generated, StringComparison.Ordinal);
             Assert.Contains(".Data.Span", generated, StringComparison.Ordinal);
-            Assert.Contains("ReadOnlySpan<byte>.Empty", generator, StringComparison.Ordinal);
             Assert.Contains(".Span", generator, StringComparison.Ordinal);
             Assert.DoesNotContain("?.ToByteArray() ?? Array.Empty<byte>()", generator, StringComparison.Ordinal);
             Assert.Contains("var writer = new Ros2CdrWriter(256)", generated, StringComparison.Ordinal);
             Assert.Contains("var writer = new Ros2CdrWriter(256)", generator, StringComparison.Ordinal);
-            Assert.Contains("writer.WriteByteArray(message.Data == null ? ReadOnlySpan<byte>.Empty : message.Data.Span)", generatorTests, StringComparison.Ordinal);
+            Assert.Contains("writer.WriteByteArray(message.Data.Span)", generatorTests, StringComparison.Ordinal);
             Assert.Contains("new Ros2CdrWriter(128)", frame, StringComparison.Ordinal);
             Assert.Contains("new Ros2CdrWriter(EstimateCapacity(message))", scene, StringComparison.Ordinal);
             Assert.Contains("private static IReadOnlyList<double> ToListOrEmpty", camera, StringComparison.Ordinal);
