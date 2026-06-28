@@ -26,6 +26,15 @@ Use this project when you want a complete, ready-to-run demo instead of installi
 - **IL2CPP builds**: requires installation of the corresponding **Windows IL2CPP / Linux IL2CPP / macOS IL2CPP** Build Support modules
 - **Python 3.8+** (only needed for command-line IL2CPP builds)
 
+The base SDK sample paths are cross-platform. The checked-in demo project also
+includes the optional ROS2 For Unity adapter package and currently resolves the
+Lyrical Win64 runtime package in `Packages/manifest.json` for Windows ROS2
+native acceptance. To use Humble or Jazzy instead, exit Play Mode, select the
+runtime in the Foxglove Manager Inspector, let Unity reimport packages, and
+restart the Editor if another ROS2 runtime has already entered Play Mode in the
+current process. Non-Windows users can remove the optional ROS2 runtime package
+from the demo manifest when they only need the core SDK demos.
+
 ## Sample scene contents
 
 Sample scene file: `Assets/Scenes/SampleScene.unity`
@@ -125,6 +134,10 @@ python Scripts/unity_build/unity_il2cpp.py --target win64
 After building, run the generated Player and connect Foxglove to `ws://127.0.0.1:8765` to verify all features.
 
 For detailed build instructions, see **[Docs/03 Building IL2CPP Standalone](Docs/03%20Building%20IL2CPP%20Standalone.md)**.
+
+Only `Assets/Scenes/SampleScene.unity` is included in the demo project's build
+scene list. ROS2 and RViz2 acceptance scenes are Editor/manual smoke scenes and
+are intentionally not part of the default standalone player.
 
 ## Troubleshooting
 

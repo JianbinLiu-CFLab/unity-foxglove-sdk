@@ -185,6 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
             ScanNoAbsolutePaths(Path.Combine(demoDir, "README.md"), repoRoot, "Unity2Foxglove/README.md");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Assets"), repoRoot, "Unity2Foxglove/Assets");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Packages"), repoRoot, "Unity2Foxglove/Packages");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "ProjectSettings"), repoRoot, "Unity2Foxglove/ProjectSettings");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Configs"), repoRoot, "Unity2Foxglove/Configs");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Docs"), repoRoot, "Unity2Foxglove/Docs");
 
