@@ -5,6 +5,7 @@
 // Purpose: Captures camera frames and publishes H.264 foxglove.CompressedVideo protobuf frames.
 
 using System;
+using System.Threading;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using UnityEngine;
@@ -66,7 +67,7 @@ namespace Unity.FoxgloveSDK.Components
             _warnedEncoderUnavailable = false;
             _lastLoggedStderr = null;
             _cleanupWhenReadbacksDrain = false;
-            _captureGeneration++;
+            Interlocked.Increment(ref _captureGeneration);
             _sourceCam = GetComponent<Camera>();
             EnsureCaptureResources();
         }
@@ -92,31 +93,36 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs)
         {
-            CompletePendingReadback();
-
-            if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration) return;
-            if (req.hasError)
+            try
             {
-                Debug.LogWarning("[Foxglove] H.264 camera AsyncGPUReadback failed.");
-                return;
-            }
+                if (_destroyed || !isActiveAndEnabled || generation != Volatile.Read(ref _captureGeneration)) return;
+                if (req.hasError)
+                {
+                    Debug.LogWarning("[Foxglove] H.264 camera AsyncGPUReadback failed.");
+                    return;
+                }
 
-            var sidecar = _sidecar;
-            if (sidecar == null || !sidecar.IsRunning)
+                var sidecar = _sidecar;
+                if (sidecar == null || !sidecar.IsRunning)
+                {
+                    LogEncoderUnavailable("FFmpeg encoder is not running.");
+                    return;
+                }
+
+                var frameBytes = req.GetData<byte>().ToArray();
+                if (!sidecar.TrySubmitFrame(frameBytes, renderUnixNs))
+                    LogEncoderUnavailable(sidecar.LastError ?? "FFmpeg encoder refused the frame.");
+            }
+            finally
             {
-                LogEncoderUnavailable("FFmpeg encoder is not running.");
-                return;
+                CompletePendingReadback();
             }
-
-            var frameBytes = req.GetData<byte>().ToArray();
-            if (!sidecar.TrySubmitFrame(frameBytes, renderUnixNs))
-                LogEncoderUnavailable(sidecar.LastError ?? "FFmpeg encoder refused the frame.");
         }
 
         protected override void OnDisable()
         {
             base.OnDisable();
-            _captureGeneration++;
+            Interlocked.Increment(ref _captureGeneration);
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopSidecar();
             if (_pendingRequests == 0)
@@ -126,9 +132,9 @@ namespace Unity.FoxgloveSDK.Components
         private void OnDestroy()
         {
             _destroyed = true;
-            _captureGeneration++;
-            StopSidecar();
+            Interlocked.Increment(ref _captureGeneration);
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
+            StopSidecar();
             if (_pendingRequests == 0)
                 CleanupResources();
         }

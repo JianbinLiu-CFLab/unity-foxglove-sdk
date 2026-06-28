@@ -16,11 +16,14 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const int MaxSkipWarnings = 10;
         private const string CooldownWarning = "[Foxglove] Camera capture skipped by backpressure cooldown.";
+        private const string StatsUnsupportedWarning =
+            "[Foxglove] Camera backpressure adaptation is enabled but the transport does not support drop stats; adaptation is inactive.";
 
         private long _lastDropCount;
         private double _cooldownUntilSec;
         private int _skipWarningCount;
         private bool _baselineInitialized;
+        private bool _warnedStatsUnsupported;
 
         public bool AllowCapture(
             bool enabled,
@@ -35,11 +38,23 @@ namespace Unity.FoxgloveSDK.Components
             if (!enabled)
             {
                 _baselineInitialized = false;
+                _warnedStatsUnsupported = false;
                 return true;
             }
 
-            var currentDrop = statsSupported ? totalDroppedDataFrames : _lastDropCount;
-            if (statsSupported && !_baselineInitialized)
+            if (!statsSupported)
+            {
+                if (!_warnedStatsUnsupported)
+                {
+                    _warnedStatsUnsupported = true;
+                    warning = StatsUnsupportedWarning;
+                }
+
+                return true;
+            }
+
+            var currentDrop = totalDroppedDataFrames;
+            if (!_baselineInitialized)
             {
                 _lastDropCount = currentDrop;
                 _cooldownUntilSec = currentTimeSec;
@@ -70,6 +85,7 @@ namespace Unity.FoxgloveSDK.Components
             _cooldownUntilSec = 0;
             _skipWarningCount = 0;
             _baselineInitialized = false;
+            _warnedStatsUnsupported = false;
         }
 
         public void ResetSkipLogCount()

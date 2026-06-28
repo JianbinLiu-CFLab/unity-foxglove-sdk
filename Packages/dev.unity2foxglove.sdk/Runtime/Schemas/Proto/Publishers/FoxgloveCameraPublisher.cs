@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _useSharedSensorClock = true;
         [Tooltip("Publish JPEG as the standard ROS2 compressed camera image schema when ROS2 encoding is selected.")]
         [SerializeField] private bool _publishStandardRos2CompressedImage;
-        [Tooltip("Publish raw standard ROS2 Image frames for native ROS2 output when enabled.")]
+        [Tooltip("Publish raw standard ROS2 Image frames when enabled and an optional R2FU/native ROS2 adapter subscribes to the raw image event.")]
         [SerializeField] private bool _publishStandardRos2RawImage;
         [Tooltip("Default raw topic when no override profile topic is set.")]
         [SerializeField] private string _sensorCameraRawImageTopic = "/unity/sensor/camera/image";
@@ -210,12 +210,13 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == null) return;
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
-            if (!profile.IsVideo && !AllowJpegCaptureByBackpressure()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             var publishNativeFrame = HasSensorCompressedImageDemand(profile);
             var publishRawFrame = HasSensorRawImageDemand();
             if (!publishWebSocket && !publishBridge && !publishNativeFrame && !publishRawFrame) return;
+            var publishJpegOutput = !profile.IsVideo && (publishWebSocket || publishBridge || publishNativeFrame);
+            if (publishJpegOutput && !AllowJpegCaptureByBackpressure()) return;
             LogRawBandwidthWarningIfNeeded();
 
             var requestVideoOutput = profile.IsVideo && (publishWebSocket || publishBridge);
@@ -349,9 +350,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             _destroyed = true;
             Interlocked.Increment(ref _captureGeneration);
+            _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
             StopJpegWorker(clearQueues: true);
-            _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             if (_pendingRequests == 0)
                 CleanupResources();
             UnlockRuntimeOutputMode();

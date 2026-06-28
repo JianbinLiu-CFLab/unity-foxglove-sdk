@@ -213,6 +213,8 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
 
+            Debug.LogWarning(
+                $"[Foxglove] CameraInfo Inspector could not resolve ObjectField type '{typeName}' for '{property.name}'; using UnityEngine.Object fallback.");
             ObjectFieldTypeCache[typeName] = typeof(UnityEngine.Object);
             return typeof(UnityEngine.Object);
         }

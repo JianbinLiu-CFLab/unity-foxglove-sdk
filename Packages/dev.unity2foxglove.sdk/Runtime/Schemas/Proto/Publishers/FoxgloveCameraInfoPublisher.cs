@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private double _cxOverride;
         [SerializeField] private double _cyOverride;
         [SerializeField] private string _distortionModel = "plumb_bob";
+        private bool _warnedScreenDimensionFallback;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.CameraCalibrationSchemaName;
         public override bool SupportsJsonEncoding => false;
@@ -145,7 +146,7 @@ namespace Unity.FoxgloveSDK.Components
             var verticalFov = cam != null ? cam.fieldOfView : 60.0;
             var fovRad = Math.Max(0.001, verticalFov) * Math.PI / 180.0;
             var fy = height / (2.0 * Math.Tan(fovRad / 2.0));
-            var fx = fy;
+            var fx = fy * ((double)width / Math.Max(1.0, height));
             var cx = width / 2.0;
             var cy = height / 2.0;
 
@@ -178,19 +179,28 @@ namespace Unity.FoxgloveSDK.Components
                 : CurrentLogTimeNs;
 
         private string ResolveFrameId()
-            => ResolveSensorProfile() != null
-                ? ResolveSensorProfile().CameraFrameId
+        {
+            var profile = ResolveSensorProfile();
+            return profile != null
+                ? profile.CameraFrameId
                 : SanitizeFrameId(_frameId, "os_camera");
+        }
 
         private string ResolveSensorCameraInfoTopic()
-            => ResolveSensorProfile() != null
-                ? ResolveSensorProfile().CameraInfoTopic
+        {
+            var profile = ResolveSensorProfile();
+            return profile != null
+                ? profile.CameraInfoTopic
                 : (string.IsNullOrWhiteSpace(_topic) ? "/unity/sensor/camera/camera_info" : _topic);
+        }
 
         private string ResolveTfParentFrame()
-            => ResolveSensorProfile() != null
-                ? ResolveSensorProfile().SensorFrameId
+        {
+            var profile = ResolveSensorProfile();
+            return profile != null
+                ? profile.SensorFrameId
                 : SanitizeFrameId(_cameraTfParentFrame, "os_sensor");
+        }
 
         private CameraPose ResolveCameraPoseInParent()
         {
@@ -216,7 +226,7 @@ namespace Unity.FoxgloveSDK.Components
             if (profile == null)
                 return;
 
-            if (string.IsNullOrWhiteSpace(_topic) || _topic == "/unity/camera/info")
+            if (string.IsNullOrWhiteSpace(_topic) || _topic == "/unity/sensor/camera/camera_info")
                 _topic = profile.CameraInfoTopic;
             if (string.IsNullOrWhiteSpace(_frameId) || _frameId == "os_camera")
                 _frameId = profile.CameraFrameId;
@@ -224,20 +234,31 @@ namespace Unity.FoxgloveSDK.Components
                 _cameraTfParentFrame = profile.SensorFrameId;
         }
 
-        private static uint ResolveWidth(Camera cam, FoxgloveCameraPublisher imagePublisher)
+        private uint ResolveWidth(Camera cam, FoxgloveCameraPublisher imagePublisher)
         {
             if (imagePublisher != null)
                 return checked((uint)imagePublisher.SensorCameraCaptureWidth);
             if (cam != null && cam.pixelWidth > 0) return (uint)cam.pixelWidth;
+            WarnScreenDimensionFallback();
             return (uint)Mathf.Max(1, Screen.width);
         }
 
-        private static uint ResolveHeight(Camera cam, FoxgloveCameraPublisher imagePublisher)
+        private uint ResolveHeight(Camera cam, FoxgloveCameraPublisher imagePublisher)
         {
             if (imagePublisher != null)
                 return checked((uint)imagePublisher.SensorCameraCaptureHeight);
             if (cam != null && cam.pixelHeight > 0) return (uint)cam.pixelHeight;
+            WarnScreenDimensionFallback();
             return (uint)Mathf.Max(1, Screen.height);
+        }
+
+        private void WarnScreenDimensionFallback()
+        {
+            if (_warnedScreenDimensionFallback)
+                return;
+
+            _warnedScreenDimensionFallback = true;
+            Debug.LogWarning("[Foxglove] CameraInfo publisher has no Source Camera or Image Publisher; falling back to Screen dimensions for calibration.");
         }
 
         private readonly struct CameraPose

@@ -129,6 +129,10 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public static class CameraOutputModeDefaults
     {
+        // Camera output modes intentionally share the same default topic so
+        // mode switches change schema/encoding without forcing topic churn.
+        // Inspector topic migration only becomes active for future modes that
+        // introduce distinct defaults.
         /// <summary>Default topic for JPEG camera output.</summary>
         public const string JpegTopic = "/unity/camera";
         /// <summary>Default topic for H.264 camera output.</summary>

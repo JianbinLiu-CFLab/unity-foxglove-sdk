@@ -77,7 +77,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("if (!ValidateConfiguredTopic(\"ROS2 Bridge publish\")) return;", StringComparison.Ordinal),
                 "134-4B-3: publisher base validates topic before direct publish helpers");
             Check(source.Contains("Configure a non-empty topic before publishing", StringComparison.Ordinal)
-                  && source.Contains("_lastTopicWarningKey", StringComparison.Ordinal),
+                  && source.Contains("_lastPublishTopicWarningKey", StringComparison.Ordinal)
+                  && source.Contains("_lastRos2BridgeTopicWarningKey", StringComparison.Ordinal)
+                  && source.Contains("GetTopicWarningKey(operation)", StringComparison.Ordinal),
                 "134-4B-4: invalid topic warnings are actionable and de-duplicated per publisher");
         }
 
@@ -91,11 +93,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("!string.IsNullOrWhiteSpace(topic)", StringComparison.Ordinal),
                 "134-4C-2: manager has a whitespace-aware topic predicate");
             Check(source.Contains("if (!TryValidatePublishTopic(topic, \"prepare schema publish\"))", StringComparison.Ordinal)
-                  && source.Contains("if (!TryValidatePublishTopic(topic, \"prepare ROS2 publish\"))", StringComparison.Ordinal),
+                  && (source.Contains("if (!TryValidatePublishTopic(topic, \"prepare ROS2 publish\"))", StringComparison.Ordinal)
+                      || source.Contains("TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out channelId, \"prepare ROS2 publish\")", StringComparison.Ordinal)),
                 "134-4C-3: manager preflight rejects invalid topics before channel registration");
             Check(source.Contains("if (!TryValidatePublishTopic(topic, \"publish JSON\"))", StringComparison.Ordinal)
                   && source.Contains("if (!TryValidatePublishTopic(topic, \"publish Protobuf\"))", StringComparison.Ordinal)
-                  && source.Contains("if (!TryValidatePublishTopic(topic, \"publish ROS2\"))", StringComparison.Ordinal),
+                  && (source.Contains("if (!TryValidatePublishTopic(topic, \"publish ROS2\"))", StringComparison.Ordinal)
+                      || source.Contains("TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out var channelId, \"publish ROS2\")", StringComparison.Ordinal)),
                 "134-4C-4: manager direct publish APIs reject invalid topics before channel registration");
             Check(source.Contains("throw new System.InvalidOperationException(\"Foxglove publisher topic must be non-empty.\")", StringComparison.Ordinal)
                   && source.Contains("private uint GetOrRegisterChannel(string topic, string encoding)", StringComparison.Ordinal)
