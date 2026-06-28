@@ -380,8 +380,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 runtimeId,
                 rosDistro,
                 platform,
-                HasZenohPayload(packageDirectory));
+                IsZenohCapableDistro(rosDistro) && HasZenohPayload(packageDirectory));
         }
+
+        private static bool IsZenohCapableDistro(string rosDistro)
+            => string.Equals(rosDistro, "lyrical", StringComparison.Ordinal);
 
         private static bool HasZenohPayload(string packageDirectory)
         {
@@ -423,7 +426,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             var embeddedRoot = Path.GetFullPath(Path.Combine(projectDirectory, "Packages"));
             var candidate = Path.GetFullPath(packageDirectory);
-            return candidate.StartsWith(embeddedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            var comparison = Application.platform == RuntimePlatform.WindowsEditor
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return candidate.StartsWith(embeddedRoot + Path.DirectorySeparatorChar, comparison);
         }
 
         private static bool ContainsPackageName(string json, string packageName)

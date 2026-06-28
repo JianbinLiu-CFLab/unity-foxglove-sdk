@@ -34,6 +34,9 @@ namespace ROS2
 [DisallowMultipleComponent]
 public class ROS2UnityComponent : MonoBehaviour
 {
+    private static readonly HashSet<ROS2UnityComponent> instances = new HashSet<ROS2UnityComponent>();
+    private static readonly object instancesMutex = new object();
+
     private ROS2ForUnity ros2forUnity;
     private List<ROS2Node> nodes;
     private List<INode> ros2csNodes; // For performance in spinning
@@ -41,6 +44,7 @@ public class ROS2UnityComponent : MonoBehaviour
     private HashSet<Action> executableActionSet;
     private bool initialized = false;
     private volatile bool quitting = false;
+    private bool runtimeShutdownRequested = false;
     private bool disposed = false;
     private Thread executorThread;
     private int interval = 2;  // Spinning / executor interval in ms
@@ -80,14 +84,43 @@ public class ROS2UnityComponent : MonoBehaviour
         lock (mutex)
         {
             ThrowIfDisposed();
+            if (runtimeShutdownRequested)
+            {
+                throw new ObjectDisposedException(nameof(ROS2UnityComponent));
+            }
+
             if (ros2forUnity != null)
                 return;
 
             ros2forUnity = new ROS2ForUnity();
+            runtimeShutdownRequested = false;
             nodes = new List<ROS2Node>();
             ros2csNodes = new List<INode>();
             executableActions = new List<Action>();
             executableActionSet = new HashSet<Action>();
+
+            lock (instancesMutex)
+            {
+                instances.Add(this);
+            }
+        }
+    }
+
+    public static void StopAllExecutorsForRosShutdown()
+    {
+        List<ROS2UnityComponent> snapshot;
+        lock (instancesMutex)
+        {
+            snapshot = new List<ROS2UnityComponent>(instances);
+        }
+
+        foreach (ROS2UnityComponent component in snapshot)
+        {
+            if (component != null)
+            {
+                component.StopExecutor();
+                component.MarkRuntimeShutdown();
+            }
         }
     }
 
@@ -237,7 +270,7 @@ public class ROS2UnityComponent : MonoBehaviour
         Thread threadToStart = null;
         lock (mutex)
         {
-            if (initialized || disposed)
+            if (initialized || disposed || runtimeShutdownRequested || ros2forUnity == null || nodes == null)
             {
                 return;
             }
@@ -250,6 +283,15 @@ public class ROS2UnityComponent : MonoBehaviour
         }
 
         threadToStart.Start();
+    }
+
+    private void MarkRuntimeShutdown()
+    {
+        lock (mutex)
+        {
+            ros2forUnity = null;
+            runtimeShutdownRequested = true;
+        }
     }
 
     private bool StopExecutor()
@@ -365,6 +407,12 @@ public class ROS2UnityComponent : MonoBehaviour
             executableActionSet = null;
             nodes = null;
             ros2csNodes = null;
+
+            lock (instancesMutex)
+            {
+                instances.Remove(this);
+            }
+
             return true;
         }
         finally
