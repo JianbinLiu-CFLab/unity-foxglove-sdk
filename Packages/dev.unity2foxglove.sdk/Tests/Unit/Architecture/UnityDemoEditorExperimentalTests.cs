@@ -25,15 +25,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         private const string BuildPath = "Unity2Foxglove/Assets/Editor/FoxgloveBuild.cs";
 
         [Fact]
-        public void ProbeSidecarStopDoesNotSynchronouslyWaitForWorkerTasks()
+        public void ProbeSidecarStopWaitsForCapturedWorkerTasksBeforeRestart()
         {
             var sidecar = Source(SidecarPath);
             var stop = Method(sidecar, "Stop").ToFullString();
 
-            Assert.DoesNotContain("WaitForWorkerTasks", stop);
-            Assert.DoesNotContain(".Wait(500)", sidecar.Text);
-            Assert.DoesNotContain("WaitForExit(200)", stop);
-            Assert.Contains("ScheduleWorkerCleanup", stop);
+            Assert.Contains("CleanupWorkers(process, stop, stdinTask, stdoutTask, stderrTask);", stop);
+            Assert.Contains("WaitForWorkerTasks", sidecar.Text);
+            Assert.Contains("process.WaitForExit(200)", sidecar.Text);
+            Assert.DoesNotContain("ScheduleWorkerCleanup", sidecar.Text);
         }
 
         [Fact]

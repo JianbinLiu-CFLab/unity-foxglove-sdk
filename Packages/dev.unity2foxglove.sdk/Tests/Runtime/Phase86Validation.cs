@@ -47,8 +47,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("Interlocked.Increment(ref _accessUnitsReceived)")
                   && source.Contains("Interlocked.Increment(ref _droppedInputFrames)"),
                 "86A-2: OpenH264 diagnostic counters use Interlocked");
-            Check(source.Contains("length <= 0") && source.Contains("MaxAccessUnitBytes"),
-                "86A-3: OpenH264 helper packet length rejects non-positive values");
+            Check(source.Contains("length == 0")
+                  && source.Contains("AcceptHelperSkippedAccessUnit")
+                  && source.Contains("length < 0")
+                  && source.Contains("MaxAccessUnitBytes"),
+                "86A-3: OpenH264 helper treats zero as a skip sentinel and rejects negative/oversized lengths");
         }
 
         private static void VerifySidecarLifecycle()
