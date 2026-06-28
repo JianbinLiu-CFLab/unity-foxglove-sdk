@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             PlaybackControlResponseTargetsRequestingClient();
             PlaybackControlRequestIdsDoNotCrossClients();
             PlaybackControlBurstUsesTargetedControlFrames();
+            InterleavedPlaybackControlBurstsKeepRequestIdsPerClient();
 
             Console.WriteLine($"Phase 65: {_passed} checks passed.");
         }
@@ -111,6 +112,38 @@ namespace Unity.FoxgloveSDK.Tests
                 "65C-2: burst responses do not leak to other clients");
             Check(transport.BroadcastPlaybackStateCount == 0,
                 "65C-3: burst responses do not use BroadcastBinary");
+        }
+
+        private static void InterleavedPlaybackControlBurstsKeepRequestIdsPerClient()
+        {
+            var transport = new Phase65FakeTransport();
+            using var session = CreatePlaybackSession(transport);
+
+            transport.Connect(DesktopClientId);
+            transport.Connect(WebClientId);
+            transport.ClearBinary();
+
+            for (var i = 0; i < 3; i++)
+            {
+                transport.Binary(DesktopClientId, BuildPlaybackControlFrame("desktop-mixed-" + i, hasSeek: true));
+                transport.Binary(WebClientId, BuildPlaybackControlFrame("web-mixed-" + i, hasSeek: true));
+            }
+
+            session.DrainPlaybackControls();
+
+            var desktopIds = PlaybackStateFramesFor(transport, DesktopClientId)
+                .Select(DecodePlaybackStateRequestId)
+                .ToList();
+            var webIds = PlaybackStateFramesFor(transport, WebClientId)
+                .Select(DecodePlaybackStateRequestId)
+                .ToList();
+
+            Check(desktopIds.SequenceEqual(new[] { "desktop-mixed-0", "desktop-mixed-1", "desktop-mixed-2" }),
+                "65D-1: interleaved desktop burst receives only desktop requestIds");
+            Check(webIds.SequenceEqual(new[] { "web-mixed-0", "web-mixed-1", "web-mixed-2" }),
+                "65D-2: interleaved web burst receives only web requestIds");
+            Check(transport.BroadcastPlaybackStateCount == 0,
+                "65D-3: interleaved burst responses do not use BroadcastBinary");
         }
 
         private static FoxgloveSession CreatePlaybackSession(Phase65FakeTransport transport)
