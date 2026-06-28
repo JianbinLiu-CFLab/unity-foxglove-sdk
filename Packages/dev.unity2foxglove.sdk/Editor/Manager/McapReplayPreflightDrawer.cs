@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
     /// Draws advisory MCAP Replay preflight controls before Play Mode starts,
     /// keeping summaries out of the main FoxgloveManager Inspector.
     /// </summary>
-    internal sealed class McapReplayPreflightDrawer
+    internal sealed class McapReplayPreflightDrawer : IDisposable
     {
         private string _mcapPreflightSummary;
         private string _mcapPreflightTopics;
@@ -36,6 +36,17 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedObject _pendingLatestSerializedObject;
         private UnityEngine.Object _pendingLatestTargetObject;
         private SerializedProperty _pendingLatestReplayPath;
+
+        public McapReplayPreflightDrawer()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += CancelPendingWork;
+        }
+
+        public void Dispose()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload -= CancelPendingWork;
+            CancelPendingWork();
+        }
 
         /// <summary>
         /// Draws latest-recording selection, replay-file analysis, and the
@@ -126,6 +137,17 @@ namespace Unity.FoxgloveSDK.Editor
             _analyzeReplayTask = Task.Run(() => AnalyzeReplayMcapWorker(path));
             EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
             EditorApplication.update += CompleteAnalyzeReplayMcapIfReady;
+        }
+
+        private void CancelPendingWork()
+        {
+            EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
+            EditorApplication.update -= CompleteFindLatestRecordingIfReady;
+            _analyzeReplayTask = null;
+            _findLatestRecordingTask = null;
+            _pendingLatestSerializedObject = null;
+            _pendingLatestTargetObject = null;
+            _pendingLatestReplayPath = null;
         }
 
         private void CompleteAnalyzeReplayMcapIfReady()

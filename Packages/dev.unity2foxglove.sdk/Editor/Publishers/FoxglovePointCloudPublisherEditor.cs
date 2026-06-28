@@ -327,7 +327,13 @@ namespace Unity.FoxgloveSDK.Editor
 
             var currentIndex = outputMode.enumValueIndex;
             if (currentIndex < 0 || currentIndex >= PointCloudOutputModeLabels.Length)
-                currentIndex = 0;
+            {
+                EditorGUILayout.HelpBox(
+                    "Point cloud output mode is outside the supported enum range. Update the SDK Inspector labels before editing this value.",
+                    MessageType.Error);
+                EditorGUILayout.Popup("Point Cloud Output Mode", 0, PointCloudOutputModeLabels);
+                return;
+            }
 
             outputMode.enumValueIndex = EditorGUILayout.Popup("Point Cloud Output Mode", currentIndex, PointCloudOutputModeLabels);
         }

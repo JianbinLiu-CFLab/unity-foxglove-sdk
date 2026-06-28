@@ -26,9 +26,9 @@ namespace Unity.FoxgloveSDK.Editor
         private const string FfmpegRecoveryHint =
             "Use ... to browse to an existing executable, leave FFmpeg Path empty for system PATH, or open FFmpeg Help... for manual setup and licensing notes.";
         private const string OpenH264Attribution = "OpenH264 Video Codec provided by Cisco Systems, Inc.";
-        private static bool _showRos2Outputs;
-        private static bool _showAdvancedJpeg;
-        private static bool _showDiagnostics;
+        private bool _showRos2Outputs;
+        private bool _showAdvancedJpeg;
+        private bool _showDiagnostics;
 
         private static readonly string[] CameraOutputModeLabels = BuildCameraOutputModeLabels();
         private static readonly Dictionary<string, GUIContent> GuiContentCache =
@@ -232,6 +232,7 @@ namespace Unity.FoxgloveSDK.Editor
         private void OnDisable()
         {
             EditorApplication.update -= CompleteOpenH264CheckIfReady;
+            _openH264CheckTask = null;
         }
 
         private static GUIContent Label(string text)
