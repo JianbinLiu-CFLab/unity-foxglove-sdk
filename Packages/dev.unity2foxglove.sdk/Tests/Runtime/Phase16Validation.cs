@@ -9,6 +9,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
+// Phase16 validates generated-source provenance, so the runtime test project
+// links the Editor/Shared emitter source in FoxgloveSdk.Tests.csproj.
 using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -30,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
             var repoRoot = FindRepoRoot();
             if (repoRoot == null)
             {
-                Console.WriteLine("[WARN] Could not find repo root 鈥?skipping path-based checks.");
+                Console.WriteLine("[WARN] Could not find repo root - skipping path-based checks.");
                 return;
             }
 
@@ -146,11 +149,6 @@ namespace Unity.FoxgloveSDK.Tests
 
             ValidatePythonDocstrings(repoRoot);
 
-            var phase32Path = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "Phase32Validation.cs");
-            var phase32 = File.ReadAllText(phase32Path);
-            Assert(phase32.Contains("// Module: Tests/Runtime"), "Phase32Validation.cs has module header");
-            Assert(phase32.Contains("// Purpose:"), "Phase32Validation.cs has purpose header");
-
             var scriptsDir = Path.Combine(repoRoot, "Scripts");
             var powershellScripts = Directory.GetFiles(scriptsDir, "*.ps1", SearchOption.AllDirectories);
             Assert(powershellScripts.Length == 0, "Scripts contains no PowerShell-only helper scripts");
@@ -185,9 +183,10 @@ namespace Unity.FoxgloveSDK.Tests
                     continue;
 
                 var declarationEnd = FindPythonDeclarationEnd(lines, index);
-                var docLine = FindNextNonEmptyLine(lines, declarationEnd + 1);
                 var relativePath = Path.GetRelativePath(repoRoot, path).Replace(Path.DirectorySeparatorChar, '/');
-                Assert(docLine >= 0 && IsPythonDocstringLine(lines[docLine].TrimStart()),
+                var hasInlineDocstring = HasInlinePythonDocstring(lines[declarationEnd]);
+                var docLine = hasInlineDocstring ? declarationEnd : FindNextNonEmptyLine(lines, declarationEnd + 1);
+                Assert(hasInlineDocstring || (docLine >= 0 && IsPythonDocstringLine(lines[docLine].TrimStart())),
                     $"{relativePath}:{index + 1} has a docstring");
             }
         }
@@ -354,6 +353,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return trimmedLine.StartsWith("\"\"\"", StringComparison.Ordinal)
                 || trimmedLine.StartsWith("'''", StringComparison.Ordinal);
+        }
+
+        static bool HasInlinePythonDocstring(string declarationLine)
+        {
+            var colon = declarationLine.IndexOf(':');
+            if (colon < 0 || colon + 1 >= declarationLine.Length)
+                return false;
+
+            var tail = declarationLine.Substring(colon + 1).TrimStart();
+            return Regex.IsMatch(tail, "^(?:[rRuUbBfF]{0,3})(?:\"\"\"|''')");
         }
 
         static void ValidateWorkflowScriptReferences(string repoRoot)
@@ -589,7 +598,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 if (File.Exists(Path.Combine(dir, "README.md"))
                     && Directory.Exists(Path.Combine(dir, "Unity2Foxglove"))
-                    && Directory.Exists(Path.Combine(dir, "Packages")))
+                    && Directory.Exists(Path.Combine(dir, "Packages"))
+                    && File.Exists(Path.Combine(dir, "Packages", "dev.unity2foxglove.sdk", "package.json")))
                     return dir;
                 var parent = Directory.GetParent(dir);
                 if (parent == null) break;

@@ -212,7 +212,9 @@ namespace Unity.FoxgloveSDK.Tests
             clock.EnableRange(0, 10_000_000_000);
             Assert(clock.NowNs == 0, "Starts paused at 0");
             clock.Apply(0, 1f, false, 0); // Play
+            clock.Tick(DateTime.UtcNow.AddMilliseconds(20));
             var t1 = clock.NowNs;
+            Assert(t1 > 0, "Playing clock advances before pause");
             clock.Apply(1, 0, false, 0); // Pause
             var t2 = clock.NowNs;
             Assert(t2 == t1, "Paused time fixed");
@@ -389,8 +391,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "fetchAsset response frame decodes");
             Assert(requestId == 1, "fetchAsset response preserves requestId");
             Assert(status == 1, "fetchAsset response reports error status for unsupported URI");
-            Assert(System.Text.Encoding.UTF8.GetString(data).Contains("No asset root", StringComparison.OrdinalIgnoreCase)
-                || System.Text.Encoding.UTF8.GetString(data).Contains("Asset", StringComparison.OrdinalIgnoreCase),
+            var errorPayload = System.Text.Encoding.UTF8.GetString(data);
+            Assert(errorPayload.Contains("No asset root", StringComparison.OrdinalIgnoreCase)
+                && errorPayload.Contains("http://somewhere/file", StringComparison.OrdinalIgnoreCase),
                 "fetchAsset response carries an error payload");
         }
 

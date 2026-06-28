@@ -127,14 +127,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var transport = new LifecycleFakeTransport();
             var session = new FoxgloveSession("S1", transport);
+            Assert(transport.SubscriberCount > 0, "Session registers transport event handlers");
             session.Dispose();
+            Assert(transport.SubscriberCount == 0, "Session dispose unbinds transport event handlers");
 
             // After dispose, triggering transport events should not invoke session handlers
-            // (no throw = pass, since old handlers would crash on disposed state)
             transport.SimulateConnect(1);
             transport.SimulateText(1, "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":100,\"channelId\":1}]}");
             transport.SimulateDisconnect(1);
-            Assert(true, "Session dispose does not leak event handlers");
+            Assert(transport.SubscriberCount == 0, "Disposed session remains unbound after simulated events");
         }
 
         /// <summary>
@@ -149,6 +150,11 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint> OnClientDisconnected;
             public event Action<uint, string> OnTextReceived;
             public event Action<uint, byte[]> OnBinaryReceived;
+            public int SubscriberCount =>
+                (OnClientConnected?.GetInvocationList().Length ?? 0)
+                + (OnClientDisconnected?.GetInvocationList().Length ?? 0)
+                + (OnTextReceived?.GetInvocationList().Length ?? 0)
+                + (OnBinaryReceived?.GetInvocationList().Length ?? 0);
 
             public void Start(string host, int port) { }
             public void Stop() { }

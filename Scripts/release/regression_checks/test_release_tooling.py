@@ -167,6 +167,7 @@ class RunCiTests(unittest.TestCase):
         calls: list[list[str]] = []
 
         def fake_run(cmd, **_kwargs):
+            """Return canned git outputs for the boundary check."""
             calls.append(cmd)
             if cmd == ["git", "ls-files", "--", "Plan/**", "Developer/**"]:
                 return subprocess.CompletedProcess(cmd, 0, "", "")

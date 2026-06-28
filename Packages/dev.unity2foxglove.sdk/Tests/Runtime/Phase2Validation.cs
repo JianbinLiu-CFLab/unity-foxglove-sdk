@@ -303,6 +303,8 @@ namespace Unity.FoxgloveSDK.Tests
             session.Publish(1, Encoding.UTF8.GetBytes("{}"));
             var binaries = fake.SentBinaries(1);
             Assert(binaries.Count == 1, "Publish after re-register still sends to existing subscription");
+            AssertEqual(100u, BitConverter.ToUInt32(binaries[0], 1),
+                "Publish after re-register preserves original subscriptionId");
         }
 
         /// <summary>

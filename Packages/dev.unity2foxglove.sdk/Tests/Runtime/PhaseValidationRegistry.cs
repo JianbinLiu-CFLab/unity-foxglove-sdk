@@ -36,6 +36,8 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase12", "Phase 12", Phase12Validation.Validate),
             Ci("--phase13", "Phase 13", Phase13Validation.Validate),
             Ci("--phase14", "Phase 14", Phase14Validation.Validate),
+            // Phase 15 had no standalone validation file in the historical
+            // sequence; package/repository hygiene coverage continues in Phase 16.
             Ci("--phase16", "Phase 16", Phase16Validation.Validate),
             Ci("--phase17", "Phase 17", Phase17Validation.Validate),
             Ci("--phase24d", "Phase 24D", Phase24DValidation.Validate),
@@ -232,6 +234,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-39", "Phase 163-39", Phase163_39Validation.Validate, includeInDefault: false),
             Ci("--phase163-40", "Phase 163-40", Phase163_40Validation.Validate, includeInDefault: false),
             Ci("--phase163-44", "Phase 163-44", Phase163_44Validation.Validate, includeInDefault: false),
+            Ci("--phase163-45", "Phase 163-45", Phase163_45Validation.Validate, includeInDefault: false),
             Local("--phase138", "Phase 138", Phase138Validation.Validate),
             Local("--phase138b", "Phase 138B", Phase138BValidation.Validate),
             Local("--phase138c2", "Phase 138C2", Phase138C2Validation.Validate),
