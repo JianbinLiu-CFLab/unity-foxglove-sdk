@@ -118,8 +118,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "94B-4: frame rejects non-cdr encoding");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, Array.Empty<byte>())),
                 "94B-5: frame rejects empty payload");
+            Check(Ros2BridgeFrameWriter.MaxPayloadBytes < 128 * 1024 * 1024,
+                "94B-6a: oversized-payload validation stays within a safe allocation threshold");
             Check(Throws<ArgumentException>(() => Ros2BridgeFrameWriter.Write(new Ros2BridgeFrame("/unity/tf", "foxglove_msgs/msg/FrameTransform", "cdr", 1, 1, new byte[Ros2BridgeFrameWriter.MaxPayloadBytes + 1]))),
-                "94B-6: frame writer rejects oversized payloads");
+                "94B-6b: frame writer rejects oversized payloads");
             Check(Throws<ArgumentException>(() => Ros2BridgeTcpClient.ValidateLoopbackHost("0.0.0.0")),
                 "94B-7: bridge rejects wildcard host");
             Check(Throws<ArgumentException>(() => Ros2BridgeTcpClient.ValidateLoopbackHost("192.168.1.10")),

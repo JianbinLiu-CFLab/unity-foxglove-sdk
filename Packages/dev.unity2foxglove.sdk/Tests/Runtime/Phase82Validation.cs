@@ -107,6 +107,11 @@ namespace Unity.FoxgloveSDK.Tests
 
                 // Media Foundation low-latency mode is expected to emit the first access unit within
                 // two submitted frames and to drain nearly all submitted frames before Stop().
+                if (accessUnits == 0)
+                    throw new InvalidOperationException(
+                        "Native H.264 produced zero access units for "
+                        + NativeSmokeSubmittedFrames
+                        + " input frames.");
                 if (firstOutputAfterInput < 0 || firstOutputAfterInput > NativeSmokeMaxFirstOutputInput)
                     throw new InvalidOperationException(
                         "Native H.264 first output was delayed until input "
@@ -360,7 +365,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             try
             {
-                var fields = guidTable.GetFields(BindingFlags.Public | BindingFlags.Static);
+                var fields = guidTable.GetFields(BindingFlags.Public | BindingFlags.Static)
+                    .OrderBy(field => field.Name, StringComparer.Ordinal);
                 var count = 0;
                 foreach (var field in fields)
                 {
@@ -368,7 +374,8 @@ namespace Unity.FoxgloveSDK.Tests
                         continue;
 
                     var value = (Guid)field.GetValue(null);
-                    Check(value != Guid.Empty, "82C-31-" + field.Name + ": Media Foundation GUID is valid");
+                    Check(value != Guid.Empty,
+                        "82C-31-" + count.ToString("D2") + ": Media Foundation GUID " + field.Name + " is valid");
                     count++;
                 }
 

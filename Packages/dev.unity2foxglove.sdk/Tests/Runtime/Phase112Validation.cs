@@ -176,7 +176,7 @@ namespace Unity.FoxgloveSDK.Tests
             finally
             {
                 if (Directory.Exists(tempRoot))
-                    Directory.Delete(tempRoot, recursive: true);
+                    TryDeleteDirectory(tempRoot);
             }
         }
 
@@ -363,6 +363,23 @@ namespace Unity.FoxgloveSDK.Tests
             if (string.IsNullOrEmpty(root))
                 throw new DirectoryNotFoundException("Could not find repository root for Phase112 validation.");
             return root;
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, recursive: true);
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine("[WARN] Failed to delete temporary directory '" + path + "': " + ex.Message);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Console.WriteLine("[WARN] Failed to delete temporary directory '" + path + "': " + ex.Message);
+            }
         }
 
         private static void Check(bool condition, string message)

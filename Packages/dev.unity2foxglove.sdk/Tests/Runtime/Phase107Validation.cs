@@ -110,16 +110,24 @@ namespace Unity.FoxgloveSDK.Tests
             var selectionText = File.Exists(selection) ? File.ReadAllText(selection) : string.Empty;
             var compileSymbolSurface = installerText + Environment.NewLine + selectionText;
 
-            Check(invalidFiles.Count == 0
-                  && tokenHits.Count == 0
-                  && selectionText.Contains("RuntimePackagePrefix", StringComparison.Ordinal)
-                  && selectionText.Contains("DiscoverCandidateRuntimes", StringComparison.Ordinal)
-                  && compileSymbolSurface.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
-                  && installerText.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal)
-                  && !installerText.Contains("RuntimeCompileSymbols", StringComparison.Ordinal)
-                  && installerText.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal),
-                "107-A8: optional package Editor surface only auto-enables the runtime compile symbol"
-                + (invalidFiles.Count == 0 && tokenHits.Count == 0 ? string.Empty : " (" + string.Join(", ", invalidFiles.Concat(tokenHits)) + ")"));
+            Check(invalidFiles.Count == 0,
+                "107-A8a: optional package Editor surface contains only text/meta files"
+                + (invalidFiles.Count == 0 ? string.Empty : " (" + string.Join(", ", invalidFiles) + ")"));
+            Check(tokenHits.Count == 0,
+                "107-A8b: optional package Editor surface avoids forbidden runtime tokens"
+                + (tokenHits.Count == 0 ? string.Empty : " (" + string.Join(", ", tokenHits) + ")"));
+            Check(selectionText.Contains("RuntimePackagePrefix", StringComparison.Ordinal),
+                "107-A8c: runtime selection declares package prefix");
+            Check(selectionText.Contains("DiscoverCandidateRuntimes", StringComparison.Ordinal),
+                "107-A8d: runtime selection discovers candidate runtimes");
+            Check(compileSymbolSurface.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal),
+                "107-A8e: optional package Editor surface auto-enables only the R2FU compile symbol");
+            Check(installerText.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal),
+                "107-A8f: compile-symbol installer reads runtime selection status");
+            Check(!installerText.Contains("RuntimeCompileSymbols", StringComparison.Ordinal),
+                "107-A8g: compile-symbol installer avoids broad runtime symbol mutation");
+            Check(installerText.Contains("NamedBuildTarget.Standalone", StringComparison.Ordinal),
+                "107-A8h: compile-symbol installer scopes changes to standalone build target");
         }
 
         private static void VerifyAdoptionManifest()

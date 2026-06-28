@@ -58,6 +58,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "72A-7: scheduler types are compiled");
             if (_stateType == null || schedulerType == null)
                 throw new Exception("[FAIL] 72A-7: scheduler types are compiled");
+            Check(!_stateType.IsByRefLike,
+                "72A-7b: reflection-based cadence simulation requires FixedRatePublishState to remain non-ref-struct");
 
             _shouldPublishMethod = schedulerType.GetMethod(
                 "ShouldPublish",
@@ -177,6 +179,8 @@ namespace Unity.FoxgloveSDK.Tests
             if (_shouldPublishMethod == null)
                 throw new InvalidOperationException("Phase72 scheduler method was not resolved.");
 
+            // This reflection path boxes FixedRatePublishState to read back the ref mutation.
+            // If the state ever becomes a ref struct, 72A-7b should fail before this runtime invoke path.
             var args = new object[] { nowSec, rateHz, state, nonPositivePublishesEveryFrame };
             var result = (bool)_shouldPublishMethod.Invoke(null, args);
             state = args[2];

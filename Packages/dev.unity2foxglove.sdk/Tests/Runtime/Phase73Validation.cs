@@ -199,7 +199,16 @@ namespace Unity.FoxgloveSDK.Tests
             session.SetRecorder(recorder);
             Check(InvokeChannelDemand(method, session, 73),
                 "73C-6: attached MCAP recorder counts as demand");
-            session.SetRecorder(null);
+            try
+            {
+                session.SetRecorder(null);
+                Check(!InvokeChannelDemand(method, session, 73),
+                    "73C-7: clearing MCAP recorder demand is accepted and removes recorder-only demand");
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("[FAIL] 73C-7: clearing MCAP recorder demand is accepted: " + ex.Message, ex);
+            }
         }
 
         private static void VerifyCompiledRuntimeDemandSurface()

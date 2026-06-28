@@ -59,9 +59,10 @@ namespace Unity.FoxgloveSDK.Editor
         {
             try
             {
-                return member.MetadataToken;
+                var token = member.MetadataToken;
+                return token > 0 ? token : int.MaxValue;
             }
-            catch (InvalidOperationException)
+            catch (Exception ex) when (ex is InvalidOperationException || ex is NotSupportedException)
             {
                 return int.MaxValue;
             }

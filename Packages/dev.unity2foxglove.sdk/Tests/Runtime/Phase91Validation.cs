@@ -16,6 +16,7 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using Unity.FoxgloveSDK.Transport;
+using Unity.FoxgloveSDK.Util;
 using Foxglove.Schemas;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -264,12 +265,17 @@ namespace Unity.FoxgloveSDK.Tests
             var payload = Ros2CdrPointCloudBuilder.Serialize(frame);
             var reader = new Ros2CdrTestReader(payload);
             var time = ReadTime(reader);
+            var frameId = reader.ReadString();
+            var poseOk = ReadPose(reader);
+            var actualStride = reader.ReadUInt32();
+            var expectedStride = (uint)PointCloudQoS.ComputePackedStride(frame);
             Check(time.sec == (int)(frame.UnixNs / 1_000_000_000UL)
                   && time.nsec == (uint)(frame.UnixNs % 1_000_000_000UL)
-                  && reader.ReadString() == "lidar"
-                  && ReadPose(reader)
-                  && reader.ReadUInt32() == 18,
-                "91D-7: PointCloud CDR prefix matches timestamp/frame/identity pose/stride");
+                  && frameId == "lidar"
+                  && poseOk
+                  && actualStride == expectedStride,
+                "91D-7: PointCloud CDR prefix matches timestamp/frame/identity pose/stride; expected stride "
+                + expectedStride + ", got " + actualStride);
 
             Check(reader.ReadUInt32() == 5
                   && ReadPackedField(reader, "x", 0, PointCloudPackedNumericType.Float32)

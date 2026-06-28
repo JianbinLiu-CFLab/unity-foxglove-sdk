@@ -229,22 +229,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ExtractMethodBody(string source, string methodName)
         {
             var signatureIndex = FindMethodSignature(source, methodName);
-            if (signatureIndex < 0) return "";
-            var start = source.IndexOf('{', signatureIndex);
-            if (start < 0) return "";
-            var depth = 0;
-            for (var i = start; i < source.Length; i++)
-            {
-                if (source[i] == '{') depth++;
-                else if (source[i] == '}')
-                {
-                    depth--;
-                    if (depth == 0)
-                        return source.Substring(start, i - start + 1);
-                }
-            }
-
-            return "";
+            return signatureIndex < 0
+                ? string.Empty
+                : PhaseValidationSourceHelpers.SourceMethod(source.Substring(signatureIndex), methodName);
         }
 
         private static int FindMethodSignature(string source, string methodName)

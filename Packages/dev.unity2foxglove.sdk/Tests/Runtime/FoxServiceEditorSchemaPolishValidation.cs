@@ -53,6 +53,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(generated.Contains("\"/phase141e/schema\"", StringComparison.Ordinal),
                 "141E-3: Roslyn generator emits schema fixture service descriptor");
+            Check(!generated.Contains("new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor($\"", StringComparison.Ordinal)
+                  && !generated.Contains("new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor(@\"", StringComparison.Ordinal),
+                "141E-3b: generated service descriptor arguments use regular string literals");
             var literals = ExtractDescriptorStringLiterals(generated, "/phase141e/schema");
             Check(literals.Length >= 7, "141E-5: generated descriptor includes schema payload constructor arguments");
 

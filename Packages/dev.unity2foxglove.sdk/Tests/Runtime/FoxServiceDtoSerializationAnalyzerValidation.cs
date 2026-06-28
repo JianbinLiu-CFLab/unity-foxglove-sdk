@@ -145,6 +145,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
                                                   && diagnostic.Path.Contains("readOnlyScalar", StringComparison.Ordinal)),
                 "141D-11: reflection validator reports structured warning diagnostics");
+            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract("System.Collections.Generic.List<T>")
+                  && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract(typeof(List<>).FullName)
+                  && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract("System.Collections.Generic.Dictionary<TKey, TValue>")
+                  && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract(typeof(Dictionary<,>).FullName),
+                "141D-11b: DTO type-name helpers accept Roslyn and reflection generic contract names");
         }
 
         private static void VerifyValidationWiringAndReleaseMetadata()

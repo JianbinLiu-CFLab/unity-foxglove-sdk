@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string name)
         {
             if (!condition)
-                throw new InvalidOperationException(name);
+                throw new InvalidOperationException("[FAIL] " + name);
 
             _passed++;
             Console.WriteLine($"[PASS] {name}");
@@ -109,9 +109,9 @@ namespace Unity.FoxgloveSDK.Tests
             var dir = Directory.GetCurrentDirectory();
             while (!string.IsNullOrEmpty(dir))
             {
-                if (Directory.Exists(Path.Combine(dir, ".git")))
+                if (File.Exists(Path.Combine(dir, "Packages", "dev.unity2foxglove.sdk", "package.json")))
                     return dir;
-                dir = Directory.GetParent(dir)?.FullName;
+                dir = Path.GetDirectoryName(dir);
             }
 
             return null;

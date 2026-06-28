@@ -257,9 +257,15 @@ namespace Unity.FoxgloveSDK.Tests
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException("Camera publisher directory was not found.");
 
-            var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToArray();
+            var files = new[]
+            {
+                Path.Combine(dir, "FoxgloveCameraPublisher.cs"),
+                Path.Combine(dir, "FoxgloveCameraPublisher.Video.cs")
+            };
+            foreach (var file in files)
+                if (!File.Exists(file))
+                    throw new FileNotFoundException("Required camera publisher source file was not found.", file);
+
             return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 

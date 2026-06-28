@@ -362,13 +362,24 @@ namespace Unity.FoxgloveSDK.Tests
                 });
                 Check(openError != null,
                     "68E-6: OpenRead invalid file throws");
-                File.Delete(path);
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (IOException ex)
+                {
+                    throw new Exception("[FAIL] 68E-7: OpenRead releases invalid file handle after failure: " + ex.Message, ex);
+                }
                 Check(!File.Exists(path), "68E-7: OpenRead releases invalid file handle after failure");
             }
             finally
             {
-                if (File.Exists(path))
-                    File.Delete(path);
+                try
+                {
+                    if (File.Exists(path))
+                        File.Delete(path);
+                }
+                catch { }
             }
         }
 

@@ -70,6 +70,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(HasBalancedGeneratedSourceDelimiters(source)
                   && !NormalizeNewlines(source).Contains("}),\n", StringComparison.Ordinal),
                 "113-A2b: generated schema info has balanced C# initializer delimiters");
+            Check(HasBalancedGeneratedSourceDelimiters("class C { void M() { var value = $\"value={x}\"; } }"),
+                "113-A2c: source delimiter scan treats interpolated string braces as string content");
 
             Check(!source.Contains("#if !UNITY_EDITOR", StringComparison.Ordinal)
                   && source.Contains("RuntimeInitializeOnLoadMethod", StringComparison.Ordinal),
@@ -434,6 +436,13 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     inVerbatimString = true;
                     i += 2;
+                    continue;
+                }
+
+                if (c == '$' && next == '"')
+                {
+                    inString = true;
+                    i++;
                     continue;
                 }
 

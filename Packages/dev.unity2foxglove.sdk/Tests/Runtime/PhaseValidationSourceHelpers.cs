@@ -11,11 +11,29 @@ namespace Unity.FoxgloveSDK.Tests
 {
     internal static class PhaseValidationSourceHelpers
     {
-        public static string ReadCameraPublisherSources()
+        public static string FindRequiredRepoRoot()
         {
             var root = Phase16Validation.FindRepoRoot();
             if (root == null)
-                throw new DirectoryNotFoundException("Could not find repository root.");
+                throw new DirectoryNotFoundException("Could not find repository root for source validation.");
+            return root;
+        }
+
+        public static string RepoPath(string relativePath)
+        {
+            var root = FindRequiredRepoRoot();
+            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing repository file: " + relativePath, path);
+            return path;
+        }
+
+        public static string ReadRequiredRepoText(string relativePath)
+            => File.ReadAllText(RepoPath(relativePath));
+
+        public static string ReadCameraPublisherSources()
+        {
+            var root = FindRequiredRepoRoot();
 
             var dir = Path.Combine(
                 root,

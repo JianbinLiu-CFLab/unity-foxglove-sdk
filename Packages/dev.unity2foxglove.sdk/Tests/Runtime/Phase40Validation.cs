@@ -5,7 +5,6 @@
 // Purpose: Phase 40 camera backpressure policy validation.
 
 using System;
-using System.IO;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -31,7 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestCooldownBlocksCapture();
             TestCooldownExpiresAllowsCapture();
             TestRepeatedDropExtendsCooldown();
-            TestZeroCooldownSkipsOnceOnly();
+            TestZeroCooldownAllowsCaptureWithPressureObserved();
             TestBudgetZeroIsUnlimited();
             TestBudgetAcceptsUnderOrEqual();
             TestBudgetRejectsOverLimit();
@@ -89,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(r2.NextDropCount == 2, "40A-6c: next drop count updated");
         }
 
-        private static void TestZeroCooldownSkipsOnceOnly()
+        private static void TestZeroCooldownAllowsCaptureWithPressureObserved()
         {
             var r = CameraBackpressurePolicy.Evaluate(true, 10, 0, 0, 1, 0);
             Check(r.AllowCapture, "40A-7: zero cooldown skips one sample only (allow capture)");
@@ -146,33 +145,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool TryReadRepoText(string relativePath, out string source)
         {
-            source = null;
-            var root = FindRepoRoot();
-            if (root == null)
-            {
-                Console.WriteLine("[WARN] repository root unavailable; skipping source inspection for " + relativePath);
-                return false;
-            }
-
-            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(path))
-                throw new FileNotFoundException("Missing repository file: " + relativePath, path);
-
-            source = File.ReadAllText(path);
+            source = PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
             return true;
-        }
-
-        private static string FindRepoRoot()
-        {
-            var dir = AppContext.BaseDirectory;
-            while (!string.IsNullOrEmpty(dir))
-            {
-                if (Directory.Exists(Path.Combine(dir, ".git")))
-                    return dir;
-                dir = Directory.GetParent(dir)?.FullName;
-            }
-
-            return null;
         }
 
         private static void Check(bool condition, string label)

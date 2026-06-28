@@ -311,21 +311,15 @@ internal static class Phase32Validation
 
         string TryReadRepoText(string relativePath, string label)
         {
-            var root = Unity.FoxgloveSDK.Tests.Phase16Validation.FindRepoRoot();
-            if (root == null)
+            try
             {
-                Console.WriteLine($"[WARN] {label}: repository root unavailable; skipping source inspection for {relativePath}");
+                return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+            }
+            catch (Exception ex) when (ex is DirectoryNotFoundException || ex is FileNotFoundException)
+            {
+                Check(false, $"{label}: source file exists at {relativePath} ({ex.Message})");
                 return null;
             }
-
-            var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(path))
-            {
-                Check(false, $"{label}: source file exists at {relativePath}");
-                return null;
-            }
-
-            return File.ReadAllText(path);
         }
 
         Console.WriteLine($"\nPhase 32: {passed} passed, {failed} failed.");

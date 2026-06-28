@@ -135,6 +135,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "67C-8: null status message is normalized to empty string");
             Check(nullMessage["id"] == null,
                 "67C-9: null status id is omitted");
+
+            transport.ClearText();
+            transport.Disconnect(8);
+            session.PublishStatus(FoxgloveStatusLevel.Info, "after disconnect", "phase67/disconnect");
+            Check(transport.TextsFor(7).Count == 1 && transport.TextsFor(8).Count == 0,
+                "67C-10: disconnected clients do not receive later status broadcasts");
         }
 
         private static void SessionRemoveStatusBroadcastsAndFiltersEmptyIds()
@@ -330,6 +336,12 @@ namespace Unity.FoxgloveSDK.Tests
                 if (!_sentTexts.ContainsKey(clientId))
                     _sentTexts[clientId] = new List<string>();
                 OnClientConnected?.Invoke(clientId);
+            }
+
+            public void Disconnect(uint clientId)
+            {
+                _connectedClients.Remove(clientId);
+                OnClientDisconnected?.Invoke(clientId);
             }
 
             public IReadOnlyList<string> TextsFor(uint clientId)

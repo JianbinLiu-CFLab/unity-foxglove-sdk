@@ -70,14 +70,17 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySidecarLifecycleFile(string relativePath, string checkName)
         {
             var source = ReadRepoText(relativePath);
+            var stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void Stop(");
+            if (string.IsNullOrEmpty(stopMethod))
+                throw new InvalidOperationException("[FAIL] missing source method: private void Stop(");
             Check(source.Contains("var process = _process;")
                   && source.Contains("RunStdinWriter(process, token)")
                   && source.Contains("RunStdoutReader(process, token)")
                   && source.Contains("RunStderrReader(process, token)")
-                  && source.Contains("WaitForTask(_stdinTask")
-                  && source.Contains("WaitForTask(_stdoutTask")
-                  && source.Contains("WaitForTask(_stderrTask")
-                  && Ordered(source, "WaitForTask(_stderrTask", "process.Dispose()"),
+                  && stopMethod.Contains("WaitForTask(_stdinTask")
+                  && stopMethod.Contains("WaitForTask(_stdoutTask")
+                  && stopMethod.Contains("WaitForTask(_stderrTask")
+                  && Ordered(stopMethod, "WaitForTask(_stderrTask", "process.Dispose()"),
                 checkName);
         }
 

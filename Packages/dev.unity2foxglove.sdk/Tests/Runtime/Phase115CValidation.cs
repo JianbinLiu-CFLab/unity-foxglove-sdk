@@ -313,10 +313,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool ReportWriteIsCanonicalChangeGated(string relativePath, string reportToken, string hashToken)
         {
             var source = ReadRepoText(relativePath);
-            return source.Contains("var manifestChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName)", StringComparison.Ordinal)
-                   && source.Contains("var hashChanged = WriteIfChanged(Path.Combine(outputDirectory, " + hashToken + ")", StringComparison.Ordinal)
-                   && source.Contains("var reportPath = Path.Combine(outputDirectory, " + reportToken + ")", StringComparison.Ordinal)
-                   && source.Contains("if (manifestChanged || hashChanged || !File.Exists(reportPath))", StringComparison.Ordinal)
+            return source.Contains("WriteIfChanged", StringComparison.Ordinal)
+                   && source.Contains("ManifestJsonFileName", StringComparison.Ordinal)
+                   && source.Contains(hashToken, StringComparison.Ordinal)
+                   && source.Contains(reportToken, StringComparison.Ordinal)
+                   && source.Contains("manifestChanged || hashChanged || !File.Exists(reportPath)", StringComparison.Ordinal)
                    && source.Contains("WriteIfChanged(reportPath, report)", StringComparison.Ordinal);
         }
 

@@ -267,9 +267,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Throws<InvalidDataException>(() => engine.Tick(10)),
                 "50J-1: oversized chunk inner message length throws InvalidDataException");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
-            Check(source.Contains("len > int.MaxValue") && source.Contains("InvalidDataException"),
-                "50J-2: non-message chunk record length casts are guarded");
+            SetPrivateField(engine, "_currentUncompressed", BuildChunkRecordHeader(McapWriter.OpcodeSchema, (ulong)int.MaxValue + 1UL));
+            SetPrivateField(engine, "_readOffset", 0);
+
+            Check(Throws<InvalidDataException>(() => engine.Tick(10)),
+                "50J-2: oversized non-message chunk inner length throws InvalidDataException");
         }
 
         private static void VerifySceneCubeColorSetterSource()

@@ -121,6 +121,20 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void CompressionSizeMismatchesThrowInvalidDataException()
+        {
+            var payload = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+
+            var lz4 = McapCompression.Compress("lz4", payload);
+            Assert.True(ThrowsInvalidData(() => McapCompression.Decompress("lz4", lz4, payload.Length + 2)),
+                "163-47A-1: lz4 declared-size mismatch throws InvalidDataException");
+
+            var zstd = McapCompression.Compress("zstd", payload);
+            Assert.True(ThrowsInvalidData(() => McapCompression.Decompress("zstd", zstd, payload.Length + 2)),
+                "163-47A-2: zstd declared-size mismatch throws InvalidDataException");
+        }
+
+        [Fact]
         public void WriterOptionsNormalizeUpperBoundsAndLz4Policy()
         {
             var oversized = McapWriterOptions.Normalize(new McapWriterOptions { ChunkSizeBytes = int.MaxValue });
