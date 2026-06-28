@@ -47,6 +47,10 @@ namespace Unity.FoxgloveSDK.Tests
                         hostKind: StringValue(member, "hostKind"),
                         rawMemberOrder: IntValue(member, "rawMemberOrder"),
                         conditionalSymbols: StringValue(member, "conditionalSymbols"),
+                        when: StringValue(member, "when"),
+                        unless: StringValue(member, "unless"),
+                        isAggregateMember: BoolValue(member, "isAggregateMember"),
+                        jsonFieldName: StringValue(member, "jsonFieldName"),
                         mode: ModeValue(member)));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));

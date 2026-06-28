@@ -106,6 +106,15 @@ namespace Unity.FoxgloveSDK.Editor
             WriteName(sb, "forceIntervalSeconds");
             WriteFloat(sb, member.ForceIntervalSeconds);
             sb.Append(',');
+            WriteStringField(sb, "when", member.When);
+            sb.Append(',');
+            WriteStringField(sb, "unless", member.Unless);
+            sb.Append(',');
+            WriteName(sb, "isAggregateMember");
+            sb.Append(member.IsAggregateMember ? "true" : "false");
+            sb.Append(',');
+            WriteStringField(sb, "jsonFieldName", member.JsonFieldName);
+            sb.Append(',');
             WriteStringField(sb, "hostKind", member.HostKind);
             sb.Append(',');
             WriteName(sb, "rawMemberOrder");
@@ -154,7 +163,7 @@ namespace Unity.FoxgloveSDK.Editor
                     case '\r': sb.Append("\\r"); break;
                     case '\t': sb.Append("\\t"); break;
                     default:
-                        if (ch < 0x20)
+                        if (ch < 0x20 || char.IsSurrogate(ch))
                         {
                             sb.Append("\\u");
                             sb.Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));

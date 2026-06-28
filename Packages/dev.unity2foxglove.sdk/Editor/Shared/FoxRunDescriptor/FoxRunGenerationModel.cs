@@ -316,7 +316,8 @@ namespace Unity.FoxgloveSDK.Editor
                 Unless,
                 IsAggregateMember,
                 JsonFieldName,
-                Mode);
+                Mode,
+                CanonicalType);
         }
 
         private static string DefaultJsonFieldName(string memberName)

@@ -20,15 +20,28 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, AdvertiseChannel> _channels = new Dictionary<uint, AdvertiseChannel>();
         private readonly object _lock = new object();
 
+        /// <summary>Raised when a channel id is reused with a different descriptor.</summary>
+        public event Action<AdvertiseChannel, AdvertiseChannel> ChannelOverwritten;
+
         /// <summary>Register a new channel. Overwrites if channelId already exists.</summary>
         public void Register(AdvertiseChannel channel)
         {
             if (channel == null) throw new ArgumentNullException(nameof(channel));
 
+            AdvertiseChannel overwritten = null;
             lock (_lock)
             {
+                if (_channels.TryGetValue(channel.Id, out var existing)
+                    && IsConflictingDescriptor(existing, channel))
+                {
+                    overwritten = existing;
+                }
+
                 _channels[channel.Id] = channel;
             }
+
+            if (overwritten != null)
+                ChannelOverwritten?.Invoke(overwritten, channel);
         }
 
         /// <summary>Remove a channel by ID.</summary>
@@ -71,6 +84,18 @@ namespace Unity.FoxgloveSDK.Core
         public int Count
         {
             get { lock (_lock) { return _channels.Count; } }
+        }
+
+        private static bool IsConflictingDescriptor(AdvertiseChannel left, AdvertiseChannel right)
+        {
+            if (left == null || right == null)
+                return left != right;
+
+            return !string.Equals(left.Topic ?? string.Empty, right.Topic ?? string.Empty, StringComparison.Ordinal)
+                   || !string.Equals(left.Encoding ?? string.Empty, right.Encoding ?? string.Empty, StringComparison.Ordinal)
+                   || !string.Equals(left.SchemaName ?? string.Empty, right.SchemaName ?? string.Empty, StringComparison.Ordinal)
+                   || !string.Equals(left.SchemaEncoding ?? string.Empty, right.SchemaEncoding ?? string.Empty, StringComparison.Ordinal)
+                   || !string.Equals(left.Schema ?? string.Empty, right.Schema ?? string.Empty, StringComparison.Ordinal);
         }
     }
 }

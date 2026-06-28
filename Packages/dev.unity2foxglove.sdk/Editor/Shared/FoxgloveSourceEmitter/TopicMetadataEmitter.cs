@@ -106,19 +106,13 @@ namespace Unity.FoxgloveSDK.Editor
                 if (i > 0)
                     sb.Append(';');
                 var field = fields[i];
-                sb.Append(JsonFieldName(field.MemberName));
+                sb.Append(field.JsonFieldName);
                 sb.Append(':');
-                sb.Append(FoxRunCanonicalTypeNormalizer.NormalizeTypeName(field.TypeName));
+                sb.Append(string.IsNullOrWhiteSpace(field.CanonicalType)
+                    ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(field.TypeName)
+                    : field.CanonicalType);
             }
             return sb.ToString();
-        }
-
-        private static string JsonFieldName(string memberName)
-        {
-            var name = memberName != null && memberName.StartsWith("@", StringComparison.Ordinal)
-                ? memberName.Substring(1)
-                : memberName ?? "";
-            return name.TrimStart('_');
         }
 
         private static string Sha256Hex(string value)

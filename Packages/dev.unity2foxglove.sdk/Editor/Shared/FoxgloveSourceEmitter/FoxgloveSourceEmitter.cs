@@ -39,6 +39,8 @@ namespace Unity.FoxgloveSDK.Editor
             /// <summary>Fully-qualified type name (e.g.
             /// <c>UnityEngine.Vector3</c>).</summary>
             public readonly string TypeName;
+            /// <summary>Canonical schema identity token for this member.</summary>
+            public readonly string CanonicalType;
             /// <summary>Topic string from <c>[FoxRun("/topic")]</c>.</summary>
             public readonly string Topic;
             /// <summary>Publishing rate in Hz.</summary>
@@ -73,10 +75,13 @@ namespace Unity.FoxgloveSDK.Editor
             /// </summary>
             public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName,
                 int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
-                bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
+                bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, string canonicalType = "")
             {
                 MemberName = memberName;
                 TypeName = typeName;
+                CanonicalType = string.IsNullOrWhiteSpace(canonicalType)
+                    ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(typeName)
+                    : FoxRunCanonicalTypeNormalizer.NormalizeTypeName(canonicalType);
                 Topic = topic;
                 RateHz = rateHz;
                 SchemaName = schemaName;

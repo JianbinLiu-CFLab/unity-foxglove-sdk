@@ -179,7 +179,7 @@ namespace Unity.FoxgloveSDK.Components
                     case '\r': sb.Append("\\r"); break;
                     case '\t': sb.Append("\\t"); break;
                     default:
-                        if (c < ' ')
+                        if (c < ' ' || char.IsSurrogate(c))
                             sb.Append("\\u").Append(((int)c).ToString("x4", System.Globalization.CultureInfo.InvariantCulture));
                         else
                             sb.Append(c);

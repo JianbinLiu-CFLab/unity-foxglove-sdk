@@ -151,6 +151,106 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ArrayFieldContractFingerprintUsesElementCanonicalType()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "ArrayTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "ArrayTelemetry", "_samples", "field", "System.Single[]",
+                        true, true, "System.Single", "/phase155/array", 10f, "",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false, jsonFieldName: "samples")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("fields=samples:float32", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("fields=samples:float[]", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void GeneratedFoxRunSchemaInfoContinuesAfterInvalidAggregateContract()
+        {
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            var warnings = 0;
+            void OnWarning(string message, Exception exception)
+            {
+                warnings++;
+                Assert.Contains("/phase154/bad", message, StringComparison.Ordinal);
+                Assert.IsType<InvalidOperationException>(exception);
+            }
+
+            FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed += OnWarning;
+            try
+            {
+                var manifest = new FoxRunSchemaManifestInfo(
+                    1,
+                    "Unity2Foxglove",
+                    "FoxRun",
+                    1,
+                    "global",
+                    "foxrun",
+                    new[]
+                    {
+                        new FoxRunSchemaTypeInfo(
+                            "Demo.VehicleTelemetry",
+                            new[]
+                            {
+                                new FoxRunSchemaContractInfo(
+                                    "Demo.BadTelemetry",
+                                    "/phase154/bad",
+                                    "Demo.BadTelemetry",
+                                    "json",
+                                    "contract",
+                                    "binding",
+                                    "policy",
+                                    "FixedRate",
+                                    10f,
+                                    0f,
+                                    0f,
+                                    new[]
+                                    {
+                                        new FoxRunSchemaFieldInfo("payload", "_payload", "field", "object", false, false, aggregate: true)
+                                    }),
+                                new FoxRunSchemaContractInfo(
+                                    "Demo.GoodTelemetry",
+                                    "/phase154/good",
+                                    "Demo.GoodTelemetry",
+                                    "json",
+                                    "contract",
+                                    "binding",
+                                    "policy",
+                                    "FixedRate",
+                                    10f,
+                                    0f,
+                                    0f,
+                                    new[]
+                                    {
+                                        new FoxRunSchemaFieldInfo("speed", "_speed", "field", "float", false, false, aggregate: true)
+                                    })
+                            })
+                    });
+                var registry = new DefaultSchemaRegistry();
+
+                FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+                FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas(registry);
+
+                Assert.Equal(1, warnings);
+                Assert.False(registry.TryGetSchema("Demo.BadTelemetry", "jsonschema", out _));
+                Assert.True(registry.TryGetSchema("Demo.GoodTelemetry", "jsonschema", out var entry));
+                Assert.Contains("\"speed\"", entry.Content, StringComparison.Ordinal);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.GeneratedSchemaRegistrationFailed -= OnWarning;
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
         public void RoslynGeneratorLowersFoxRunMessageFieldsToAggregateJsonPublish()
         {
             var source = @"
