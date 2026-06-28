@@ -665,9 +665,10 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     add(
         results,
         "PackageManager lookup guarded",
-        "#if UNITY_EDITOR" in text
-        and "UnityEditor.PackageManager.PackageInfo.FindForAssetPath" in text
-        and text.index("#if UNITY_EDITOR") < text.index("UnityEditor.PackageManager.PackageInfo.FindForAssetPath"),
+        re.search(
+            r"#if\s+UNITY_EDITOR[\s\S]{0,1200}UnityEditor\.PackageManager\.PackageInfo\.FindForAssetPath[\s\S]{0,1200}#endif",
+            text,
+        ) is not None,
         "ROS2ForUnity.cs",
     )
 
@@ -797,9 +798,21 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         and "standalone runtime owns its RMW selection while allowing Lyrical Zenoh" in runtime
         and "selectedRmwImplementation" in runtime
         and "hide any externally sourced ROS_DISTRO" in runtime
+        and "sourcedRosDistroBeforeStandalonePatch" in runtime
+        and "CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)" in runtime
         and "packagedRos2Version = GetMetadataValue" in runtime
         and "ROS2 version in standalone process environment does not match this runtime package" in runtime,
         "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "ROS2UnityComponent prevents restart during shared ROS shutdown",
+        "runtimeShutdownRequested" in component
+        and "MarkRuntimeShutdown()" in component
+        and "component.MarkRuntimeShutdown();" in component
+        and "throw new ObjectDisposedException(nameof(ROS2UnityComponent))" in component
+        and "ros2forUnity == null" in component,
+        "ROS2UnityComponent.cs",
     )
 
     dotnet_time = read_optional_text(scripts / "Time" / "DotnetTimeSource.cs")

@@ -35,8 +35,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
 
-            Check(source.Contains("IsZenohCapableDistro(rosDistro) && HasZenohPayload(packageDirectory)", StringComparison.Ordinal),
-                "163-31A-1: runtime selection requires both distro capability and Zenoh payload");
+            Check(source.Contains("IsZenohCapableDistro(rosDistro) && string.IsNullOrWhiteSpace(zenohPayloadDiagnostic)", StringComparison.Ordinal)
+                  && source.Contains("GetZenohPayloadDiagnostic(packageDirectory, rosDistro)", StringComparison.Ordinal),
+                "163-31A-1: runtime selection requires both distro capability and complete Zenoh payload");
             Check(source.Contains("string.Equals(rosDistro, \"lyrical\", StringComparison.Ordinal)", StringComparison.Ordinal)
                   && !ExtractMethod(source, "IsZenohCapableDistro").Contains("\"jazzy\"", StringComparison.Ordinal),
                 "163-31A-2: runtime selection does not mark Jazzy Zenoh-capable by stray DLL presence");
