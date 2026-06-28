@@ -55,6 +55,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void ExtractFunctionIgnoresLiteralBraces()
+        {
+            const string source = @"
+context.onRender = () => {
+  const label = ""{literal}"";
+  const format = ""value {0}"";
+  keepMe();
+};
+function later() { dropMe(); }";
+
+            var render = ExtractFunction(source, "context.onRender =");
+
+            Assert.Contains("keepMe()", render, StringComparison.Ordinal);
+            Assert.DoesNotContain("dropMe()", render, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Phase14095MigratedConsolePhaseIsRemoved()
         {
             var registry = RuntimeText("PhaseValidationRegistry.cs");
@@ -82,10 +99,90 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 return string.Empty;
 
             var depth = 0;
+            var inString = false;
+            var inChar = false;
+            var inLineComment = false;
+            var inBlockComment = false;
+            var templateDepth = 0;
             for (var i = brace; i < source.Length; i++)
             {
-                if (source[i] == '{') depth++;
-                else if (source[i] == '}')
+                var ch = source[i];
+                var next = i + 1 < source.Length ? source[i + 1] : '\0';
+
+                if (inLineComment)
+                {
+                    if (ch == '\n')
+                        inLineComment = false;
+                    continue;
+                }
+
+                if (inBlockComment)
+                {
+                    if (ch == '*' && next == '/')
+                    {
+                        inBlockComment = false;
+                        i++;
+                    }
+                    continue;
+                }
+
+                if (inString)
+                {
+                    if (ch == '"' && !IsEscaped(source, i))
+                        inString = false;
+                    continue;
+                }
+
+                if (inChar)
+                {
+                    if (ch == '\'' && !IsEscaped(source, i))
+                        inChar = false;
+                    continue;
+                }
+
+                if (templateDepth > 0)
+                {
+                    if (ch == '`' && !IsEscaped(source, i))
+                    {
+                        templateDepth = 0;
+                        continue;
+                    }
+                }
+
+                if (ch == '/' && next == '/')
+                {
+                    inLineComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (ch == '/' && next == '*')
+                {
+                    inBlockComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch == '\'')
+                {
+                    inChar = true;
+                    continue;
+                }
+
+                if (ch == '`')
+                {
+                    templateDepth = 1;
+                    continue;
+                }
+
+                if (ch == '{') depth++;
+                else if (ch == '}')
                 {
                     depth--;
                     if (depth == 0)
@@ -94,6 +191,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
 
             return source.Substring(index);
+        }
+
+        private static bool IsEscaped(string source, int index)
+        {
+            var slashCount = 0;
+            for (var i = index - 1; i >= 0 && source[i] == '\\'; i--)
+                slashCount++;
+            return slashCount % 2 == 1;
         }
 
         private static int Count(string source, string value)

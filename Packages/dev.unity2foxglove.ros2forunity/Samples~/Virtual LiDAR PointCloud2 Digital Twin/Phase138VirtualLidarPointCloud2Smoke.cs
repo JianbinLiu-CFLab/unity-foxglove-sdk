@@ -437,19 +437,19 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
         if (_node != null && _tfPublisher != null)
         {
             try { _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfPublisher); }
-            catch (Exception) { }
+            catch (Exception ex) { RecordCleanupFailure("removing TF publisher", ex); }
         }
 
         if (_node != null && _publisher != null)
         {
             try { _node.RemovePublisher<sensor_msgs.msg.PointCloud2>(_publisher); }
-            catch (Exception) { }
+            catch (Exception ex) { RecordCleanupFailure("removing PointCloud2 publisher", ex); }
         }
 
         if (_ros2Unity != null && _node != null)
         {
             try { _ros2Unity.RemoveNode(_node); }
-            catch (Exception) { }
+            catch (Exception ex) { RecordCleanupFailure("removing ROS2 node", ex); }
         }
 
         _tfPublisher = null;
@@ -460,6 +460,14 @@ public sealed class Phase138VirtualLidarPointCloud2Smoke : MonoBehaviour
             Destroy(_ros2Unity);
         _ros2Unity = null;
         _ownsRos2UnityComponent = false;
+    }
+
+    private void RecordCleanupFailure(string operation, Exception ex)
+    {
+        var message = "ROS2 cleanup failed while " + operation + ": " + ex.Message;
+        _lastError = message;
+        _statusMessage = message;
+        Debug.LogWarning(LogPrefix + " " + message);
     }
 #endif
 }

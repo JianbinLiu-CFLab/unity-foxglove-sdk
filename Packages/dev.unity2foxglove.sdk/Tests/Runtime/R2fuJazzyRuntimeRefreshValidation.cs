@@ -414,7 +414,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string RepoPath(string relativePath)
-            => Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", relativePath);
+            => Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
         private static string[] RuntimePackageKeys(string json)
         {

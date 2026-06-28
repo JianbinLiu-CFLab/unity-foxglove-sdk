@@ -102,12 +102,14 @@ namespace Unity.FoxgloveSDK.Tests
             // 6. All generated ray directions are finite and unit-length
             {
                 var allValid = true;
+                var validatedCount = 0;
                 for (var c = 0; c < profile.ColumnsPerFrame && allValid; c++)
                 {
                     for (var r = 0; r < profile.PixelsPerColumn && allValid; r++)
                     {
                         if (!gen1.TryGetRay(c, r, out var dir, out _))
                             continue;
+                        validatedCount++;
                         var magSq = dir.LengthSquared();
                         if (float.IsNaN(magSq) || float.IsInfinity(magSq)
                             || magSq < 0.9998f || magSq > 1.0002f)
@@ -117,6 +119,8 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
 
+                Check(validatedCount == gen1.RayCount,
+                    $"7.1-13A: all generated rays are returned by TryGetRay ({validatedCount}/{gen1.RayCount})");
                 Check(allValid, "7.1-13: all ray directions are finite and unit-length");
             }
 
@@ -253,8 +257,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMazeDemoFiles()
         {
             var repoRoot = RequireRepoRoot("7.4-0: repo root is available for maze demo source checks");
-            var mazeDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
+            var sourceMazeDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk",
                 "Samples~", "Virtual LiDAR Maze Demo");
+            var importedMazeDir = Path.Combine(repoRoot, "Unity2Foxglove", "Assets", "Samples",
+                "Unity2Foxglove SDK", "1.9.4", "Virtual LiDAR Maze Demo");
+            var mazeDir = Directory.Exists(sourceMazeDir) ? sourceMazeDir : importedMazeDir;
             var readmePath = Path.Combine(mazeDir, "README.md");
 
             if (!Directory.Exists(mazeDir))

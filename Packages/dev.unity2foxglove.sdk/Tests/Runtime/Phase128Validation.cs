@@ -352,7 +352,7 @@ namespace Unity.FoxgloveSDK.Tests
             var manifest = ReadRepoText(RuntimePackage + "/RuntimeSupport/runtime-manifest.json");
 
             Check(packageJson.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
-                  && manifest.Contains("709c7c5ecb693402ab0d3dbb3ec0268e1b7a6db0e18cb694e922278e10cbcb7a", StringComparison.Ordinal),
+                  && manifest.Contains("df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3", StringComparison.Ordinal),
                 "128I-1: Phase127 Jazzy runtime package identity and artifact hash remain intact");
         }
 

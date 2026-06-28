@@ -43,5 +43,36 @@ namespace Unity.FoxgloveSDK.Tests
                 _paths.Clear();
             }
         }
+
+        /// <summary>
+        /// Deletes registered temporary MCAP files whose file names begin with
+        /// the given label prefix. Best-effort; does not throw.
+        /// </summary>
+        public static void Cleanup(string labelPrefix)
+        {
+            if (string.IsNullOrWhiteSpace(labelPrefix))
+            {
+                Cleanup();
+                return;
+            }
+
+            var filePrefix = labelPrefix.EndsWith("_", StringComparison.Ordinal)
+                ? labelPrefix
+                : labelPrefix + "_";
+            lock (_paths)
+            {
+                for (var i = _paths.Count - 1; i >= 0; i--)
+                {
+                    var path = _paths[i];
+                    if (!Path.GetFileName(path).StartsWith(filePrefix, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    try { File.Delete(path); } catch { /* best effort */ }
+                    _paths.RemoveAt(i);
+                }
+            }
+        }
     }
 }

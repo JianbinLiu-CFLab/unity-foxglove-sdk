@@ -171,12 +171,15 @@ namespace Unity.FoxgloveSDK.IO
         {
             ThrowIfDisposed();
             Initialize();
-            var registry = CreateDecodeRegistry(options);
+            var registry = GetDecodeRegistry(options);
+            var decodedMessages = new List<McapDecodedMessage>();
             foreach (var raw in CreateIterator(query))
             {
                 registry.TryDecode(raw, out var decoded);
-                yield return decoded;
+                decodedMessages.Add(decoded);
             }
+
+            return decodedMessages;
         }
 
         /// <summary>

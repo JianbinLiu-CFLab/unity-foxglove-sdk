@@ -29,6 +29,7 @@ public static class Phase130MarkerArrayMessageBuilder
             hash *= FnvPrime;
         }
 
+        // visualization_msgs/Marker.id is signed int32; keep the FNV-1a value positive and deterministic.
         return unchecked((int)(hash & 0x7fffffffu));
     }
 

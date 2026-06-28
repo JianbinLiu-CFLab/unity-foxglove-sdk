@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("EnsureExecutorStarted();", StringComparison.Ordinal)
                   && source.Contains("EnsureEndpoints();", StringComparison.Ordinal)
                   && source.Contains("ROS2 For Unity endpoint setup failed", StringComparison.Ordinal)
-                  && source.Contains("_initializationBlocked = true;", StringComparison.Ordinal),
+                  && source.Contains("_postReadyInitializationBlocked = true;", StringComparison.Ordinal),
                 "134-26D-1: Phase128 wraps executor and endpoint setup in one-shot failure blocking");
             Check(source.Contains("FixedUpdate may still start it", StringComparison.Ordinal)
                   && source.Contains("StartExecutor reflection hook was not found", StringComparison.Ordinal),

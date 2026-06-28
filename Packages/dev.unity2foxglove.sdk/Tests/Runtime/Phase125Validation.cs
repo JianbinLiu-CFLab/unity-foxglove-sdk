@@ -68,9 +68,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && typeof(Ros2CdrReader).GetMethod("ReadByteArray") != null
                   && typeof(Ros2CdrReader).GetMethod("ReadFloat64Fixed") != null,
                 "125-A2: runtime reader exposes string, bytes, fixed-array reads");
-            Check(Ros2CdrDeserializerRegistry.DeserializerCount == 41
-                  && Ros2CdrDeserializerRegistry.Entries.Count == 41,
-                "125-A3: generated deserializer registry declares 41 entries");
+            Check(Ros2CdrDeserializerRegistry.DeserializerCount >= 41
+                  && Ros2CdrDeserializerRegistry.Entries.Count == Ros2CdrDeserializerRegistry.DeserializerCount,
+                "125-A3: generated deserializer registry declares at least the Phase125 floor and matches entry count");
             Check(Enum.IsDefined(typeof(McapDecodedPayloadKind), McapDecodedPayloadKind.Ros2CdrTyped)
                   && (int)McapDecodedPayloadKind.Ros2CdrTyped == 6,
                 "125-A4: decoded payload kind includes stable Ros2CdrTyped value 6");

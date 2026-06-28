@@ -60,7 +60,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(sink.Contains("public sealed class Ros2R2FUTopicSink : IFoxTopicSink", StringComparison.Ordinal)
                   && sink.Contains("IRos2TopicPublisherFactory", StringComparison.Ordinal)
-                  && sink.Contains("TryPublish(payload ?? Array.Empty<byte>(), timestampNs", StringComparison.Ordinal),
+                  && sink.Contains("payload == null", StringComparison.Ordinal)
+                  && sink.Contains("publisher.TryPublish(payload, timestampNs", StringComparison.Ordinal)
+                  && !sink.Contains("payload ?? Array.Empty<byte>()", StringComparison.Ordinal),
                 "156-5: ROS2 R2FU sink consumes serialized FoxRun bytes through explicit publisher mappings");
 
             Check(sink.Contains("ReportOnce(contract.Topic, \"ROS2 runtime unavailable", StringComparison.Ordinal)

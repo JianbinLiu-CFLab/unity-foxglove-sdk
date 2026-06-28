@@ -136,9 +136,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
             var normalized = setup.Replace("\r\n", "\n");
+            var emptyPathIndex = normalized.IndexOf("if (string.IsNullOrEmpty(_replayFilePath))", StringComparison.Ordinal);
+            var restoreIndex = emptyPathIndex >= 0
+                ? normalized.IndexOf("RestoreLivePublishers();", emptyPathIndex, StringComparison.Ordinal)
+                : -1;
+            var returnIndex = restoreIndex >= 0
+                ? normalized.IndexOf("return true;", restoreIndex, StringComparison.Ordinal)
+                : -1;
 
-            Check(normalized.Contains("if (string.IsNullOrEmpty(_replayFilePath))", StringComparison.Ordinal)
-                  && normalized.Contains("RestoreLivePublishers();\n                return true;", StringComparison.Ordinal),
+            Check(emptyPathIndex >= 0 && restoreIndex > emptyPathIndex && returnIndex > restoreIndex,
                 "134-1F-1: empty replay path restores publishers disabled during Awake");
         }
 

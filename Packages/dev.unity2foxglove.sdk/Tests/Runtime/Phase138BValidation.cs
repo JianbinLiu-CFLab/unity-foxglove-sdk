@@ -86,15 +86,19 @@ namespace Unity.FoxgloveSDK.Tests
 
             // 5. First 100 ray directions are unit-length and finite
             var limit = Math.Min(100, pattern.RayCount);
+            var validatedDirections = 0;
             for (var i = 0; i < limit; i++)
             {
                 if (!pattern.TryGetRay(i, 0, out var dir, out _))
                     continue;
+                validatedDirections++;
                 var magSq = dir.LengthSquared();
                 Check(!float.IsNaN(magSq) && !float.IsInfinity(magSq)
                       && magSq >= 0.9998f && magSq <= 1.0002f,
                     $"8.2-2: ray[{i}] direction is unit-length and finite (squared={magSq:F6})");
             }
+            Check(validatedDirections == limit,
+                $"8.2-2b: TryGetRay returned every sampled OS-1 ray ({validatedDirections}/{limit})");
 
             // 6. Time offsets monotonic [0..1)
             {
@@ -194,14 +198,18 @@ namespace Unity.FoxgloveSDK.Tests
 
             // 8. First 100 ray directions are finite
             var limit = Math.Min(100, pattern.RayCount);
+            var validatedDirections = 0;
             for (var i = 0; i < limit; i++)
             {
                 if (!pattern.TryGetRay(i, 0, out var dir, out _))
                     continue;
+                validatedDirections++;
                 Check(!float.IsNaN(dir.X) && !float.IsNaN(dir.Y) && !float.IsNaN(dir.Z)
                       && !float.IsInfinity(dir.X) && !float.IsInfinity(dir.Y) && !float.IsInfinity(dir.Z),
                     $"8.3-2: Mid-360 ray[{i}] direction is finite");
             }
+            Check(validatedDirections == limit,
+                $"8.3-2b: TryGetRay returned every sampled Mid-360 ray ({validatedDirections}/{limit})");
 
             // 9. Non-repetition: frameIndex=0 vs frameIndex=1 produce different directions for same ray index
             Check(pattern.TryGetRay(0, 0, out var dir0, out _),

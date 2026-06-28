@@ -37,6 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
                 VerifyBuiltInDecoders();
                 VerifyFailurePolicies();
                 VerifyCustomFactoryCache();
+                VerifyDecodedIteratorLifecycle();
                 VerifyRawIteratorPreserved();
                 VerifyBuiltInFactoryCache();
 
@@ -166,6 +167,27 @@ namespace Unity.FoxgloveSDK.Tests
                   && factory.TryCreateCount == 1
                   && factory.DecodeCount == 2,
                 "124-D1: caller factories run before built-ins and cache decoder per channel");
+
+            var options = new McapDecodeOptions { DecoderFactories = new List<IMcapMessageDecoderFactory> { factory } };
+            _ = loader.CreateDecodedIterator(
+                new McapDataLoaderQuery { Topics = new List<string> { "/phase124/custom" } },
+                options).ToList();
+            _ = loader.CreateDecodedIterator(
+                new McapDataLoaderQuery { Topics = new List<string> { "/phase124/custom" } },
+                options).ToList();
+            Check(factory.TryCreateCount == 2 && factory.DecodeCount == 6,
+                "124-D2: eager decoded iterator reuses cached decoder registry for repeated calls with same options");
+        }
+
+        private static void VerifyDecodedIteratorLifecycle()
+        {
+            var path = CreateDecodedFixture();
+            var loader = new McapDataLoader(path, McapSequentialReadLimits.UnlimitedForTests);
+            loader.Dispose();
+
+            Check(Throws<ObjectDisposedException>(() => loader.CreateDecodedIterator(
+                    new McapDataLoaderQuery { Topics = new List<string> { "/phase124/json" } })),
+                "124-D3: eager decoded iterator fails at call time after loader disposal");
         }
 
         private static void VerifyRawIteratorPreserved()
@@ -198,7 +220,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodeRegistry.cs");
             Check(registry.Contains("Lazy<List<IMcapMessageDecoderFactory>>", StringComparison.Ordinal)
                   && registry.Contains("BuiltInFactories", StringComparison.Ordinal)
-                  && registry.Contains("AddRange(BuiltInFactories.Value", StringComparison.Ordinal),
+                  && registry.Contains("AddRange(GetBuiltInFactories()", StringComparison.Ordinal),
                 "124-F1: built-in decoder factories are cached instead of rescanning assemblies per registry");
         }
 
@@ -260,6 +282,20 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new InvalidOperationException(name);
             _passed++;
             Console.WriteLine("[PASS] " + name);
+        }
+
+        private static bool Throws<TException>(Action action)
+            where TException : Exception
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (TException)
+            {
+                return true;
+            }
         }
 
         private sealed class CountingFactory : IMcapMessageDecoderFactory

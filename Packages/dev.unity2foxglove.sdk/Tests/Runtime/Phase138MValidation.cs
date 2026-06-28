@@ -316,7 +316,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static byte[] InvokeStaticByteArray(string typeName, string methodName, params object[] args)
         {
-            var type = Type.GetType(typeName + ", FoxgloveSdk.Tests")
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                           .Select(assembly => assembly.GetType(typeName, throwOnError: false, ignoreCase: false))
+                           .FirstOrDefault(foundType => foundType != null)
                        ?? Type.GetType(typeName);
             if (type == null)
                 throw new InvalidOperationException("Missing type " + typeName);
@@ -328,13 +330,13 @@ namespace Unity.FoxgloveSDK.Tests
             return (byte[])method.Invoke(null, args);
         }
 
-        private static string Read(string path) => File.ReadAllText(path);
+        private static string Read(string path) => File.ReadAllText(RepoPath(path));
 
         private static string ReadDirectory(string path)
         {
             var bytes = 0;
             var output = new StringBuilder();
-            foreach (var file in Directory.GetFiles(path, "*.cs", SearchOption.AllDirectories))
+            foreach (var file in Directory.GetFiles(RepoPath(path), "*.cs", SearchOption.AllDirectories))
             {
                 var content = File.ReadAllText(file);
                 output.AppendLine(content);
@@ -347,11 +349,18 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadCameraPublisherSources()
         {
-            const string dir = "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers";
+            var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
             var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
                 output.AppendLine(File.ReadAllText(file));
             return output.ToString();
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot()
+                ?? throw new DirectoryNotFoundException("Could not find repository root for Phase138M validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static void Check(bool condition, string label)

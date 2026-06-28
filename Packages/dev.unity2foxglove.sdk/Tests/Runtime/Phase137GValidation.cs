@@ -53,6 +53,9 @@ namespace Unity.FoxgloveSDK.Tests
             _summaryGaps.Clear();
 
             var repoRoot = Phase16Validation.FindRepoRoot();
+            if (repoRoot == null)
+                throw new DirectoryNotFoundException("Could not find repository root for Phase137G validation.");
+
             var packageRoot = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk");
 
             var allFiles = new List<string>();

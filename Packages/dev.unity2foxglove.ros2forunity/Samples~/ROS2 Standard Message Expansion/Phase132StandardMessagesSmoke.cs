@@ -64,8 +64,12 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
     private bool _runtimeRootLogged;
     private bool _endpointsLogged;
     private bool _firstPublishLogged;
-    private bool _initializationBlocked;
+    private bool _readyInitializationBlocked;
+    private float _nextReadyRetryTime;
+    private bool _postReadyInitializationBlocked;
+    private float _nextPostReadyRetryTime;
     private bool _warnedMissingStartExecutor;
+    private bool _previousRunInBackground;
     private int _frameIndex;
     private double _realtimeStartSeconds;
     private long _unixStartSeconds;
@@ -87,6 +91,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
 
     private void OnEnable()
     {
+        _previousRunInBackground = Application.runInBackground;
         Application.runInBackground = true;
         _nextPublishAt = 0f;
         _enabledSourceCount = 0;
@@ -104,7 +109,10 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         _runtimeRootLogged = false;
         _endpointsLogged = false;
         _firstPublishLogged = false;
-        _initializationBlocked = false;
+        _readyInitializationBlocked = false;
+        _nextReadyRetryTime = 0f;
+        _postReadyInitializationBlocked = false;
+        _nextPostReadyRetryTime = 0f;
         _warnedMissingStartExecutor = false;
         _frameIndex = 0;
         _unixStartSeconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -126,9 +134,8 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         if (!TryEnsureReady())
             return;
 
-        EnsureExecutorStarted();
-        EnsureSources();
-        EnsureEndpoints();
+        if (!TryEnsurePostReadySetup())
+            return;
         PublishIfDue();
 #else
         WarnMissingDefine();
@@ -137,6 +144,7 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
 
     private void OnDisable()
     {
+        Application.runInBackground = _previousRunInBackground;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         CleanupRuntime();
 #endif
@@ -236,9 +244,10 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
 
     private bool TryEnsureReady()
     {
-        if (_initializationBlocked)
+        if (_readyInitializationBlocked && Time.time < _nextReadyRetryTime)
             return false;
 
+        _readyInitializationBlocked = false;
         try
         {
             EnsureRos2UnityComponent();
@@ -254,10 +263,35 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         }
         catch (Exception ex)
         {
-            _initializationBlocked = true;
+            _readyInitializationBlocked = true;
+            _nextReadyRetryTime = Time.time + 5f;
             _lastError = ex.GetType().Name + ": " + ex.Message;
             _statusMessage = _lastError;
             Debug.LogWarning(LogPrefix + " ROS2 For Unity initialization failed: " + _lastError);
+            return false;
+        }
+    }
+
+    private bool TryEnsurePostReadySetup()
+    {
+        if (_postReadyInitializationBlocked && Time.time < _nextPostReadyRetryTime)
+            return false;
+
+        _postReadyInitializationBlocked = false;
+        try
+        {
+            EnsureExecutorStarted();
+            EnsureSources();
+            EnsureEndpoints();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _postReadyInitializationBlocked = true;
+            _nextPostReadyRetryTime = Time.time + 5f;
+            _lastError = ex.GetType().Name + ": " + ex.Message;
+            _statusMessage = _lastError;
+            Debug.LogWarning(LogPrefix + " ROS2 For Unity endpoint setup failed: " + _lastError);
             return false;
         }
     }
@@ -435,8 +469,9 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
             {
                 _ros2Unity.RemoveNode(_node);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                WarnCleanupFailure("node", ex);
             }
         }
 
@@ -449,6 +484,8 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         _node = null;
         _executorStarted = false;
         _warnedMissingStartExecutor = false;
+        _readyInitializationBlocked = false;
+        _postReadyInitializationBlocked = false;
 
         if (_ownsRos2UnityComponent && _ros2Unity != null)
             Destroy(_ros2Unity);
@@ -465,9 +502,15 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
         {
             _node.RemovePublisher<T>(publisher);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            WarnCleanupFailure(typeof(T).Name + " publisher", ex);
         }
+    }
+
+    private static void WarnCleanupFailure(string resource, Exception ex)
+    {
+        Debug.LogWarning(LogPrefix + " cleanup failed for " + resource + ": " + ex.GetType().Name + ": " + ex.Message);
     }
 #endif
 
@@ -483,7 +526,8 @@ public sealed class Phase132StandardMessagesSmoke : MonoBehaviour
             Debug.LogWarning(LogPrefix + " Could not resolve ROS2 For Unity runtime root via reflection.");
         const string runtimePackagePrefix = "Packages/dev.unity2foxglove.ros2forunity" + ".runtime.";
         _runtimeRootIsPackage = !string.IsNullOrEmpty(root)
-            && root.Replace('\\', '/').Contains(runtimePackagePrefix, StringComparison.OrdinalIgnoreCase);
+            && root.Replace('\\', '/').Contains(runtimePackagePrefix, StringComparison.OrdinalIgnoreCase)
+            && root.Replace('\\', '/').Contains("/Runtime/Ros2ForUnity", StringComparison.OrdinalIgnoreCase);
         _assetRuntimePresent = Directory.Exists(Path.Combine(Application.dataPath, "Ros2ForUnity"));
 
         Debug.Log(LogPrefix + " RUNTIME_ROOT=" + _runtimeRoot);

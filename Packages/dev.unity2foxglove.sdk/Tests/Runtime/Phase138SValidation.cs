@@ -321,15 +321,28 @@ namespace Unity.FoxgloveSDK.Tests
             if (index < 0)
                 return "";
 
-            var nextPublic = source.IndexOf("\n        public ", index + signature.Length, StringComparison.Ordinal);
-            var nextEvent = source.IndexOf("\n        public event ", index + signature.Length, StringComparison.Ordinal);
-            var end = source.Length;
-            if (nextPublic >= 0)
-                end = Math.Min(end, nextPublic);
-            if (nextEvent >= 0)
-                end = Math.Min(end, nextEvent);
+            var semicolon = source.IndexOf(';', index + signature.Length);
+            var brace = source.IndexOf('{', index + signature.Length);
+            if (semicolon >= 0 && (brace < 0 || semicolon < brace))
+                return source.Substring(index, semicolon - index + 1);
 
-            return source.Substring(index, end - index);
+            if (brace < 0)
+                return "";
+
+            var depth = 0;
+            for (var i = brace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(index, i - index + 1);
+                }
+            }
+
+            return "";
         }
 
         private static void Check(bool condition, string label)

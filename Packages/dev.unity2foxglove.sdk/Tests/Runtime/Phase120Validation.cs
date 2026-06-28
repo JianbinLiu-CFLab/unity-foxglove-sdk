@@ -368,11 +368,16 @@ print(json.dumps({
 
         private static Phase120Report CreateReport(bool includeOfficialPython)
         {
+            var commitResult = RunProcess("git", "rev-parse --short HEAD");
+            var commit = commitResult.Output.Trim();
+            if (commitResult.ExitCode != 0 || string.IsNullOrWhiteSpace(commit))
+                Limitations.Add("git commit provenance unavailable for Phase120 report");
+
             return new Phase120Report
             {
                 verdict = Limitations.Count == 0 ? "PASS" : "PASS WITH NOTED LIMITATIONS",
                 generatedAtUtc = DateTime.UtcNow.ToString("o"),
-                commit = RunProcess("git", "rev-parse --short HEAD").Output.Trim(),
+                commit = commit,
                 coreChecks = CoreChecks,
                 optionalChecks = OptionalChecks,
                 officialTooling = includeOfficialPython ? "official Python mcap executed" : "official Python mcap skipped in --phase120",

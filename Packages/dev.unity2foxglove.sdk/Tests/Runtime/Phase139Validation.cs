@@ -174,8 +174,18 @@ namespace Unity.FoxgloveSDK.Tests
                 {
                     try { process.Kill(entireProcessTree: true); } catch { }
                     process.WaitForExit(5_000);
+                    WaitForOutputTasks(outputTask, errorTask, 1_000);
                     throw new InvalidOperationException(
                         "Phase139 Python self-test timed out."
+                        + "\nstdout:\n" + ReadCompletedOutput(outputTask)
+                        + "\nstderr:\n" + ReadCompletedOutput(errorTask));
+                }
+
+                process.WaitForExit();
+                if (!WaitForOutputTasks(outputTask, errorTask, 2_000))
+                {
+                    throw new InvalidOperationException(
+                        "Phase139 Python self-test exited, but redirected output streams did not drain."
                         + "\nstdout:\n" + ReadCompletedOutput(outputTask)
                         + "\nstderr:\n" + ReadCompletedOutput(errorTask));
                 }
@@ -194,6 +204,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return task.IsCompleted ? task.GetAwaiter().GetResult() : string.Empty;
         }
+
+        private static bool WaitForOutputTasks(Task<string> outputTask, Task<string> errorTask, int timeoutMilliseconds)
+            => Task.WaitAll(new Task[] { outputTask, errorTask }, timeoutMilliseconds);
 
         private static string ResolvePythonExecutable()
         {

@@ -230,7 +230,8 @@ namespace Unity.FoxgloveSDK.IO
                 return denied;
             }
 
-            if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(request.SourceId)
+                && !string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
                     "Requested MCAP source id is not available in this prototype.");
 

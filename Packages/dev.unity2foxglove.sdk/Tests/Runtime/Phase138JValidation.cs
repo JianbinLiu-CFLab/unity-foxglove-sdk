@@ -294,9 +294,16 @@ namespace Unity.FoxgloveSDK.Tests
             if (SourceCache.TryGetValue(path, out var cached))
                 return cached;
 
-            var text = File.ReadAllText(path);
+            var text = File.ReadAllText(RepoPath(path));
             SourceCache[path] = text;
             return text;
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var root = Phase16Validation.FindRepoRoot()
+                ?? throw new DirectoryNotFoundException("Could not find repository root for Phase138J validation.");
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         /// <summary>

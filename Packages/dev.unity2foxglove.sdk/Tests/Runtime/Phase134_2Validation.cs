@@ -219,8 +219,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!serviceRegistry.Contains("var id = Register(descriptor);", StringComparison.Ordinal)
                   && serviceRegistry.Contains("if (handler != null)", StringComparison.Ordinal),
                 "134-2F-3: service descriptor and handler registration share a single critical section");
-            Check(parameterStore.IndexOf("foreach (var name in names)", StringComparison.Ordinal)
-                  < parameterStore.IndexOf("lock (_lock)", parameterStore.IndexOf("GetWireParameters", StringComparison.Ordinal), StringComparison.Ordinal),
+            var foreachIndex = parameterStore.IndexOf("foreach (var name in names)", StringComparison.Ordinal);
+            var getWireIndex = parameterStore.IndexOf("GetWireParameters", StringComparison.Ordinal);
+            var lockIndex = getWireIndex >= 0
+                ? parameterStore.IndexOf("lock (_lock)", getWireIndex, StringComparison.Ordinal)
+                : -1;
+            Check(foreachIndex >= 0 && lockIndex >= 0 && foreachIndex < lockIndex,
                 "134-2F-4: parameter name enumeration is materialized before taking the parameter store lock");
             Check(session.Contains("SendSessionSnapshot(clientId, chs, svcs)", StringComparison.Ordinal),
                 "134-2F-5: client connect sends session snapshot and seeds graph from one channel/service snapshot");
