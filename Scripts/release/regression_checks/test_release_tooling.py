@@ -162,6 +162,25 @@ class RunCiTests(unittest.TestCase):
         with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
             self.assertFalse(self.run_ci._check_boundary())
 
+    def test_boundary_check_uses_plain_ls_files_for_nested_developer(self) -> None:
+        """Nested Developer checks should not depend on git pathspec glob support."""
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            """Return canned git outputs for the boundary check."""
+            calls.append(cmd)
+            if cmd == ["git", "ls-files", "--", "Plan/**", "Developer/**"]:
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if cmd == ["git", "ls-files"]:
+                return subprocess.CompletedProcess(cmd, 0, "Packages/Demo/Developer/meta.txt\n", "")
+            raise AssertionError(cmd)
+
+        with mock.patch.object(self.run_ci.subprocess, "run", side_effect=fake_run):
+            self.assertFalse(self.run_ci._check_boundary())
+
+        self.assertIn(["git", "ls-files"], calls)
+        self.assertFalse(any(":(glob)" in " ".join(call) for call in calls))
+
     def test_run_ci_includes_schema_generated_output_freshness(self) -> None:
         """Local CI should reject stale committed schema generator outputs."""
         self.assertEqual(
@@ -210,6 +229,18 @@ class UnityIl2CppBuildTests(unittest.TestCase):
 
         self.assertTrue(failures)
         self.assertTrue(any("missing generated artifact" in failure for failure in failures))
+
+    def test_missing_project_pinned_unity_falls_back_to_hub_discovery(self) -> None:
+        """Missing ProjectVersion editor should not block newer Hub editor discovery."""
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp) / "UnityProject"
+            settings = project / "ProjectSettings"
+            settings.mkdir(parents=True)
+            (settings / "ProjectVersion.txt").write_text("m_EditorVersion: 6000.3.14f1\n", encoding="utf-8")
+
+            with mock.patch.object(self.unity_il2cpp.platform, "system", return_value="Windows"):
+                with mock.patch.dict(self.unity_il2cpp.os.environ, {"PROGRAMFILES": str(Path(temp) / "ProgramFiles")}, clear=False):
+                    self.assertIsNone(self.unity_il2cpp.find_unity_from_project_version(project))
 
 
 if __name__ == "__main__":

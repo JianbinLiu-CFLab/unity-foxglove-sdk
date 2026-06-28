@@ -37,20 +37,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse launch arguments."""
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ros2-root", default=str(ros2env.DEFAULT_ROS2_ROOT))
-    parser.add_argument("--raw-topic", default=DEFAULT_RAW_TOPIC)
-    parser.add_argument("--deskewed-topic", default=DEFAULT_DESKEWED_TOPIC)
-    parser.add_argument("--fixed-frame", default=DEFAULT_FIXED_FRAME)
-    parser.add_argument("--rmw", default=None)
-    parser.add_argument("--domain-id", default=None)
+    parser.add_argument("--ros2-root", default=str(ros2env.DEFAULT_ROS2_ROOT), help="Windows ROS2 root.")
+    parser.add_argument("--raw-topic", default=DEFAULT_RAW_TOPIC, help="Raw PointCloud2 topic.")
+    parser.add_argument("--deskewed-topic", default=DEFAULT_DESKEWED_TOPIC, help="Deskewed PointCloud2 topic.")
+    parser.add_argument("--fixed-frame", default=DEFAULT_FIXED_FRAME, help="RViz2 fixed frame.")
+    parser.add_argument("--rmw", default=None, help="RMW implementation override.")
+    parser.add_argument("--domain-id", default=None, help="ROS_DOMAIN_ID override.")
     parser.add_argument(
         "--discovery-range",
         choices=("LOCALHOST", "SUBNET", "OFF", "SYSTEM_DEFAULT"),
         default="SUBNET",
     )
-    parser.add_argument("--skip-topic-probe", action="store_true")
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--rviz-display-mode", choices=("both", "raw"), default="both")
+    parser.add_argument("--skip-topic-probe", action="store_true", help="Skip bounded ROS2 graph probes.")
+    parser.add_argument("--dry-run", action="store_true", help="Write config and print diagnostics without launching RViz2.")
+    parser.add_argument("--rviz-display-mode", choices=("both", "raw"), default="both", help="PointCloud2 displays to show.")
     return parser.parse_args(argv)
 
 
@@ -234,7 +234,7 @@ def main(argv: list[str]) -> int:
     """Launch RViz2."""
 
     args = parse_args(argv)
-    workspace_root = pathlib.Path(__file__).resolve().parents[3]
+    workspace_root = ros2env.find_workspace_root()
     raw_topic = normalize_topic(args.raw_topic)
     deskewed_topic = normalize_topic(args.deskewed_topic)
     fixed_frame = normalize_frame(args.fixed_frame)

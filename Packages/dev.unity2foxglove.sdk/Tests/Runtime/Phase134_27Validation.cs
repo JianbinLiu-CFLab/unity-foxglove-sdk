@@ -112,7 +112,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText(SyncScriptPath);
             Check(source.Contains("DEFAULT_PACKAGE_ROOT", StringComparison.Ordinal)
-                  && source.Contains("DEFAULT_IMPORTED_ROOT", StringComparison.Ordinal)
+                  && (source.Contains("DEFAULT_IMPORTED_ROOT", StringComparison.Ordinal)
+                      || source.Contains("default_imported_root", StringComparison.Ordinal))
                   && source.Contains("--apply", StringComparison.Ordinal)
                   && source.Contains("--dry-run", StringComparison.Ordinal),
                 "134-27E-1: ROS2 sample sync script has package/imported defaults and apply/dry-run modes");

@@ -121,6 +121,27 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertEqual(1, len(offenders))
         self.assertTrue(offenders[0].endswith("Samples~/BasicVisualization/Library"))
 
+    def test_forbidden_public_content_reports_all_labels_per_file(self) -> None:
+        """One public file can violate multiple public-boundary patterns."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            samples = root / "Samples~"
+            docs = root / "Documentation~"
+            samples.mkdir()
+            docs.mkdir()
+            offender = samples / "README.md"
+            offender.write_text("C:/Users/Alice/private\nTODO\n", encoding="utf-8")
+
+            self.validator.SAMPLES = samples
+            self.validator.DOCS = docs
+            self.validator.PACKAGE = root
+            results = []
+            self.validator.check_forbidden_public_content(results)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("local Windows path", results[-1].detail)
+        self.assertIn("to-do marker", results[-1].detail)
+
 
 class ValidateSourceGeneratorDllTests(unittest.TestCase):
     """Regression coverage for source generator DLL validator diagnostics."""

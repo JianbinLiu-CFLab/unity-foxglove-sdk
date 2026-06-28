@@ -188,10 +188,12 @@ def find_unity_from_project_version(project_path: Path) -> Optional[Path]:
             if unity.exists():
                 return unity
 
-    raise FileNotFoundError(
-        f"Project requires Unity {editor_version}, but that editor was not found. "
-        "Pass --unity or set UNITY_EXE/UNITY_PATH."
+    print(
+        f"[build_unity_il2cpp] Project-pinned Unity {editor_version} was not found; "
+        "falling back to generic Unity Hub discovery.",
+        file=sys.stderr,
     )
+    return None
 
 
 def find_unity_from_hub() -> Optional[Path]:

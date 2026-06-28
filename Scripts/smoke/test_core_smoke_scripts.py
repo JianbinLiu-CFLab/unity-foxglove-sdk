@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import os
 import ssl
 import subprocess
@@ -26,7 +27,7 @@ SMOKE = ROOT / "Scripts" / "smoke"
 
 
 def load_smoke_module(name: str, relative: str):
-    """Load one smoke helper with Scripts/smoke on sys.path for sibling imports."""
+    """Load one smoke helper with only its sibling directory on sys.path."""
     path = SMOKE / relative
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -34,7 +35,6 @@ def load_smoke_module(name: str, relative: str):
     sys.modules[spec.name] = module
     original_path = list(sys.path)
     sys.path.insert(0, str(path.parent))
-    sys.path.insert(0, str(SMOKE / "ros2"))
     try:
         spec.loader.exec_module(module)
     finally:
@@ -48,6 +48,37 @@ class NeverAdvertisesWebSocket:
     async def recv(self):
         """Sleep longer than any test advertise timeout."""
         await asyncio.sleep(60)
+
+
+class AdvertisesMalformedAndValidChannel:
+    """Fake websocket that first advertises malformed channels, then a valid one."""
+
+    def __init__(self):
+        """Initialize the scripted advertise frames."""
+        self._frames = [
+            json_bytes(
+                {
+                    "op": "advertise",
+                    "channels": [
+                        {"topic": "/tf"},
+                        {"id": "not-an-int", "topic": "/tf"},
+                        "bad-channel",
+                    ],
+                }
+            ),
+            json_bytes({"op": "advertise", "channels": [{"id": 7, "topic": "/tf"}]}),
+        ]
+
+    async def recv(self):
+        """Return the next scripted frame."""
+        if self._frames:
+            return self._frames.pop(0)
+        await asyncio.sleep(60)
+
+
+def json_bytes(payload: dict) -> str:
+    """Encode a JSON websocket text frame."""
+    return json.dumps(payload)
 
 
 class CoreSmokeScriptTests(unittest.TestCase):
@@ -170,6 +201,15 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertFalse(context.check_hostname)
         self.assertEqual(ssl.CERT_NONE, context.verify_mode)
 
+    def test_phase139_e2e_skips_malformed_advertised_channels(self) -> None:
+        """Malformed advertise channels should not crash the smoke helper."""
+        module = load_smoke_module("phase139_e2e_malformed_ad_under_test", "replay/phase139_e2e_integration_smoke.py")
+
+        channels = asyncio.run(module.collect_advertisements(AdvertisesMalformedAndValidChannel(), {"/tf"}, 0.5, 0.05))
+
+        self.assertEqual([7], list(channels))
+        self.assertEqual("/tf", channels[7]["topic"])
+
     def test_phase34_fixture_constants_are_checked_without_assert(self) -> None:
         """Optimized Python should still enforce load-bearing fixture constants."""
         module = load_smoke_module("phase34_under_test", "mcap/phase34_attachment_mcap.py")
@@ -205,6 +245,29 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertIn("refused", post["body"])
         self.assertEqual(-1, state["status"])
         self.assertIn("refused", state["body"])
+
+    def test_phase139d_main_writes_structured_failure_json(self) -> None:
+        """Phase139D CLI failures should still write parseable evidence JSON."""
+        module = load_smoke_module("phase139d_failure_json_under_test", "replay/phase139d_unity_cursor_bridge_acceptance.py")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            json_out = Path(tmp) / "phase139d.json"
+            with mock.patch.object(module, "validate_extension_metadata", side_effect=RuntimeError("metadata failed")):
+                code = module.main(["--json-out", str(json_out)])
+
+            payload = json.loads(json_out.read_text(encoding="utf-8"))
+
+        self.assertEqual(1, code)
+        self.assertEqual("fail", payload["status"])
+        self.assertIn("metadata failed", payload["error"])
+
+    def test_fetch_asset_rejects_oversized_error_payload_length(self) -> None:
+        """fetchAsset error frames should bounds-check their declared error length."""
+        module = load_smoke_module("fetch_asset_under_test", "assets/fetch_asset_smoke.py")
+        frame = bytes([module.FETCH_ASSET_RESPONSE_OPCODE]) + (42).to_bytes(4, "little") + bytes([1]) + (999).to_bytes(4, "little")
+
+        with self.assertRaises(ValueError):
+            module.parse_fetch_asset_response(frame)
 
     def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
         """RViz2 topic patching should not silently leave the default /points topic."""
@@ -288,7 +351,11 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
     def test_phase138_inline_subscribers_use_monotonic_deadlines(self) -> None:
         """Inline ROS2 subscriber deadlines should use monotonic time."""
-        for relative in ("ros2/phase138s_imu_native_dds_acceptance.py", "ros2/phase138t_camera_raw_image_dds_acceptance.py"):
+        for relative in (
+            "ros2/phase138s_imu_native_dds_acceptance.py",
+            "ros2/phase138t_camera_raw_image_dds_acceptance.py",
+            "ros2/phase138u_lidar_deskew_rviz2_acceptance.py",
+        ):
             with self.subTest(relative=relative):
                 source = (SMOKE / relative).read_text(encoding="utf-8")
                 self.assertNotIn("deadline = time.time() + spin_seconds", source)
@@ -317,6 +384,31 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertNotIn("--child-frame-id os_sensor", source)
         self.assertNotIn("child_frame_id: 'os_sensor'", source)
+
+    def test_phase138t_cleanup_escapes_powershell_wildcards(self) -> None:
+        """Phase138T cleanup should mirror the bounded wildcard-safe Phase138M cleanup."""
+        module = load_smoke_module("phase138t_cleanup_under_test", "ros2/launch_phase138t_camera_raw_rviz2.py")
+        calls: list[tuple[list[str], dict]] = []
+
+        def capture_run(args, **kwargs):
+            """Capture PowerShell cleanup invocation."""
+            calls.append((args, kwargs))
+            return SimpleNamespace(stdout="", returncode=0)
+
+        with mock.patch.object(module.sys, "platform", "win32"):
+            with mock.patch.object(module.subprocess, "run", side_effect=capture_run):
+                module.cleanup_stale_processes(Path("C:/project[1]/script.py"), Path("C:/project[1]/view.rviz"), "cam[1]")
+
+        self.assertEqual(1, len(calls))
+        self.assertIn("WildcardPattern", calls[0][0][-1])
+        self.assertEqual(10.0, calls[0][1].get("timeout"))
+
+    def test_phase138h_t_field_requires_exact_datatype_match(self) -> None:
+        """PointCloud2 t-field validation should not accept substring datatype matches."""
+        module = load_smoke_module("phase138h_t_field_under_test", "ros2/phase138h_pointcloud2_t_field_ros2_acceptance.py")
+
+        with self.assertRaises(RuntimeError):
+            module.validate_fields([{"name": "t", "datatype": "uint32_extra"}], "uint32")
 
 
 if __name__ == "__main__":

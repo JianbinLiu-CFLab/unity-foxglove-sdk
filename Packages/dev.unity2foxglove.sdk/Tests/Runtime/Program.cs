@@ -25,6 +25,18 @@ class Program
     /// </summary>
     static int Main(string[] args)
     {
+        try
+        {
+            return MainCore(args);
+        }
+        finally
+        {
+            TempMcapHelper.Cleanup();
+        }
+    }
+
+    private static int MainCore(string[] args)
+    {
         var argList = args.ToList();
 
         if (argList.Contains("--serve"))
@@ -43,6 +55,12 @@ class Program
             var demo = argList.Contains("--demo");
             var demo3d = argList.Contains("--demo3d");
             return RunServer(port, demo, demo3d);
+        }
+
+        if (argList.Contains("--demo") || argList.Contains("--demo3d"))
+        {
+            Console.Error.WriteLine("--demo and --demo3d require --serve.");
+            return 1;
         }
 
         if (argList.Contains("--phase139b-remote-data-loader-server"))
@@ -612,6 +630,7 @@ class Program
         var runtime = new Unity.FoxgloveSDK.Core.FoxgloveRuntime();
         Timer heartbeat = null;
         Timer sceneTimer = null;
+        var stopping = 0;
 
         try
         {
@@ -636,6 +655,9 @@ class Program
                 ulong seq = 0;
                 heartbeat = new Timer(_ =>
                 {
+                    if (Volatile.Read(ref stopping) != 0)
+                        return;
+
                     seq++;
                     var payload = new
                     {
@@ -657,6 +679,9 @@ class Program
                 ulong tfSeq = 0;
                 sceneTimer = new Timer(_ =>
                 {
+                    if (Volatile.Read(ref stopping) != 0)
+                        return;
+
                     tfSeq++;
                     var unixNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL;
                     var sec = unixNs / 1_000_000_000UL;
@@ -732,10 +757,21 @@ class Program
         finally
         {
             Console.WriteLine("\nStopping...");
-            heartbeat?.Dispose();
-            sceneTimer?.Dispose();
+            Interlocked.Exchange(ref stopping, 1);
+            DisposeTimerAndWait(heartbeat);
+            DisposeTimerAndWait(sceneTimer);
             runtime.Dispose();
             Console.WriteLine("Server stopped.");
         }
+    }
+
+    private static void DisposeTimerAndWait(Timer timer)
+    {
+        if (timer == null)
+            return;
+
+        using var disposed = new ManualResetEvent(false);
+        if (timer.Dispose(disposed))
+            disposed.WaitOne(TimeSpan.FromSeconds(5));
     }
 }

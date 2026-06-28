@@ -149,6 +149,7 @@ def launch_backend(args: argparse.Namespace, root: Path) -> tuple[subprocess.Pop
     command = [
         "dotnet",
         "run",
+        "--no-restore",
         "--project",
         str(project),
         "-p:BaseOutputPath=" + str(out_dir) + os.sep,

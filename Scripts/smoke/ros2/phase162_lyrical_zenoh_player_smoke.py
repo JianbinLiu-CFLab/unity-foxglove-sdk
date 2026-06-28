@@ -40,10 +40,10 @@ DEFAULT_ROUTER_READY_MARKER = "Started"
 def workspace_root() -> pathlib.Path:
     """Return the repository root."""
 
-    return pathlib.Path(__file__).resolve().parents[3]
+    return phase138u.ros2env.find_workspace_root()
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command-line arguments."""
 
     root = workspace_root()
@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
         default=root / "build" / "phase162-lyrical-zenoh-smoke" / "summary.json",
     )
     parser.set_defaults(launch_rviz=True)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def default_zenoh_router(ros2_root: pathlib.Path) -> pathlib.Path | None:
@@ -275,10 +275,10 @@ def write_summary(args: argparse.Namespace, summary: dict[str, object]) -> None:
         print(f"Error: {summary['error']}", file=sys.stderr)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """Run the Phase162 smoke helper."""
 
-    args = parse_args()
+    args = parse_args(argv)
     root = workspace_root()
     env, pixi_python, ros2_script = build_phase162_env(args)
     args.echo_output.parent.mkdir(parents=True, exist_ok=True)
@@ -348,15 +348,23 @@ def main() -> int:
                 raise RuntimeError(f"Expected text {args.expected_text!r} was not found in {args.echo_output}")
 
             summary["verdict"] = "PHASE162_LYRICAL_ZENOH_EXTERNAL_ECHO_PASS"
+            return_code = 0
         else:
             rviz_args = build_rviz_acceptance_args(args)
             summary["rvizAcceptanceArgs"] = rviz_args
-            rviz_code = phase138u.main(rviz_args)
-            summary["exitCodes"]["phase138uRviz2Acceptance"] = rviz_code
-            if rviz_code != 0:
-                raise RuntimeError(f"Phase162 Lyrical Zenoh RViz2 acceptance failed with exit code {rviz_code}.")
-            summary["verdict"] = "PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_PASS"
-        return_code = 0
+            try:
+                rviz_code = phase138u.main(rviz_args)
+            except phase138u.InconclusiveError as exc:
+                summary["exitCodes"]["phase138uRviz2Acceptance"] = 2
+                summary["verdict"] = "PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_INCONCLUSIVE"
+                summary["error"] = str(exc)
+                return_code = 2
+            else:
+                summary["exitCodes"]["phase138uRviz2Acceptance"] = rviz_code
+                if rviz_code != 0:
+                    raise RuntimeError(f"Phase162 Lyrical Zenoh RViz2 acceptance failed with exit code {rviz_code}.")
+                summary["verdict"] = "PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_PASS"
+                return_code = 0
     except Exception as exc:
         summary["verdict"] = (
             "PHASE162_LYRICAL_ZENOH_EXTERNAL_ECHO_FAIL"
@@ -381,4 +389,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

@@ -105,6 +105,11 @@ def parse_fetch_asset_response(data: bytes) -> tuple[int, int, int, bytes]:
     error_length = struct.unpack("<I", data[ERROR_LENGTH_START:ERROR_LENGTH_END])[STRUCT_UNPACK_VALUE_INDEX]
     payload = data[PAYLOAD_START:]
     if status != STATUS_OK:
+        available = len(data) - PAYLOAD_START
+        if error_length > available:
+            raise ValueError(
+                f"FetchAsset error payload length {error_length} exceeds available {available} byte(s)."
+            )
         payload = data[PAYLOAD_START : PAYLOAD_START + error_length]
     return opcode, request_id, status, payload
 

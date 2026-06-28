@@ -106,8 +106,8 @@ namespace Unity.FoxgloveSDK.Tests
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
 
             Check(program.Contains("finally", StringComparison.Ordinal)
-                  && program.Contains("heartbeat?.Dispose();", StringComparison.Ordinal)
-                  && program.Contains("sceneTimer?.Dispose();", StringComparison.Ordinal)
+                  && program.Contains("DisposeTimerAndWait(heartbeat);", StringComparison.Ordinal)
+                  && program.Contains("DisposeTimerAndWait(sceneTimer);", StringComparison.Ordinal)
                   && program.Contains("runtime.Dispose();", StringComparison.Ordinal),
                 "134-32E-1: manual server mode disposes timers and runtime in a finally block");
         }

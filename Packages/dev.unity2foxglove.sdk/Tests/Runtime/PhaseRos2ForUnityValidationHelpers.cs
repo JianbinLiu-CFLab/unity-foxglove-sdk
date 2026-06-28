@@ -9,11 +9,14 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Unity.FoxgloveSDK.Tests
 {
     internal static class PhaseRos2ForUnityValidationHelpers
     {
+        private const int GitLsFilesTimeoutMilliseconds = 30_000;
+
         public const string CurrentJazzyArtifactName = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip";
         public const string LegacyJazzyArtifactName = "Ros2ForUnity_Jazzy_standalone_windows10.zip";
         public const string LegacyHumbleArtifactName = "Ros2ForUnity_humble_standalone_windows11.zip";
@@ -90,9 +93,17 @@ namespace Unity.FoxgloveSDK.Tests
                 if (process == null)
                     throw new InvalidOperationException("Could not start git ls-files.");
 
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
+                var outputTask = process.StandardOutput.ReadToEndAsync();
+                var errorTask = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(GitLsFilesTimeoutMilliseconds))
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    throw new TimeoutException("git ls-files did not exit within the validation timeout.");
+                }
+
+                Task.WaitAll(outputTask, errorTask);
+                var output = outputTask.GetAwaiter().GetResult();
+                var error = errorTask.GetAwaiter().GetResult();
                 if (process.ExitCode != 0)
                     throw new InvalidOperationException("git ls-files failed: " + error);
 

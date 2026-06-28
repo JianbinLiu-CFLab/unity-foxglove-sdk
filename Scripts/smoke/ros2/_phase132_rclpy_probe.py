@@ -153,12 +153,17 @@ def main(argv: list[str]) -> int:
     while rclpy.ok() and len(node.results) < len(TOPICS) and time.monotonic() < deadline:
         rclpy.spin_once(node, timeout_sec=0.1)
 
-    missing = [topic for topic in TOPICS if topic not in node.results]
-    print(RESULT_PREFIX + json.dumps({"messages": node.results, "missing": missing}, sort_keys=True), flush=True)
+    try:
+        missing = [topic for topic in TOPICS if topic not in node.results]
+        print(RESULT_PREFIX + json.dumps({"messages": node.results, "missing": missing}, sort_keys=True), flush=True)
+        exit_code = 1 if missing else 0
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
-    # On Windows, rclpy teardown can occasionally outlive the acceptance timeout.
-    # This probe is a short-lived process, so exit after flushing the summary.
-    os._exit(1 if missing else 0)
+    # On Windows, process finalization after rclpy shutdown can occasionally
+    # outlive the acceptance timeout. Exit after explicit ROS teardown.
+    os._exit(exit_code)
 
 
 if __name__ == "__main__":

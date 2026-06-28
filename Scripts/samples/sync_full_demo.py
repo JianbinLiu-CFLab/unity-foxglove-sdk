@@ -254,7 +254,11 @@ def validate_file_maps(pairs: list[tuple[Path, Path]]) -> list[str]:
             errors.append(f"missing destination: {rel(dst)}")
             continue
 
-        expected = portable_full_demo_scene_payload(src) if is_demo_scene_to_sample_copy(src, dst) else src.read_bytes()
+        try:
+            expected = portable_full_demo_scene_payload(src) if is_demo_scene_to_sample_copy(src, dst) else src.read_bytes()
+        except ValueError as exc:
+            errors.append(f"invalid source: {rel(src)} ({exc})")
+            continue
         if dst.read_bytes() != expected:
             errors.append(f"stale destination: {rel(dst)}")
     return errors

@@ -40,6 +40,18 @@ class Ros2WindowsEnvTests(unittest.TestCase):
 
         self.assertIn(str(vendor_bin), env["PATH"].split(os.pathsep))
 
+    def test_build_ros_env_warns_when_inheriting_non_default_rmw(self) -> None:
+        """Implicit inherited Zenoh/FastDDS choices should be visible in acceptance logs."""
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            with mock.patch.dict(os.environ, {"RMW_IMPLEMENTATION": "rmw_zenoh_cpp"}, clear=False):
+                with mock.patch.object(ros2env, "log_event") as log_event:
+                    env = ros2env.build_ros_env(ros2_root, ros_distro="lyrical")
+
+        self.assertEqual("rmw_zenoh_cpp", env["RMW_IMPLEMENTATION"])
+        log_event.assert_called_once()
+        self.assertIn("rmw_zenoh_cpp", log_event.call_args.args[1])
+
     def test_launch_rviz_includes_ros2_opt_vendor_bin_paths(self) -> None:
         """RViz2 must see opt vendor DLL directories such as zenoh_cpp_vendor/bin."""
         with tempfile.TemporaryDirectory() as temp:

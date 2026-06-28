@@ -13,13 +13,11 @@ from __future__ import annotations
 
 import argparse
 import glob
+import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 import struct
 import sys
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "websocket"))
-from compressed_pointcloud_draco_probe import decode_compressed_pointcloud_payload
 
 
 REPO_ROOT_PARENT_DEPTH = 3
@@ -44,6 +42,22 @@ COMPRESSED_POINTCLOUD_FORMAT_TAG = 42
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 EXIT_UNSUPPORTED_COMPRESSION = 2
+
+
+def load_draco_probe_decoder():
+    """Load the sibling websocket probe without mutating process-wide sys.path."""
+
+    probe_path = Path(__file__).resolve().parents[1] / "websocket" / "compressed_pointcloud_draco_probe.py"
+    spec = importlib.util.spec_from_file_location("compressed_pointcloud_draco_probe_for_mcap_inspect", probe_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load Draco probe helper from {probe_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.decode_compressed_pointcloud_payload
+
+
+decode_compressed_pointcloud_payload = load_draco_probe_decoder()
 
 
 @dataclass(frozen=True)

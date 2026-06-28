@@ -156,7 +156,7 @@ def parse_timestamp_message(timestamp_payload: bytes) -> int | None:
                     nested_nsec, n_offset = parse_varint(nested, n_offset)
                 else:
                     n_offset = skip_field(nested, n_offset, n_wire)
-            if nested_sec is not None and nested_nsec is not None:
+            if sec is None and nsec is None and nested_sec is not None and nested_nsec is not None:
                 sec = nested_sec
                 nsec = nested_nsec
             continue

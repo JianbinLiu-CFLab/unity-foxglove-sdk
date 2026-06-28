@@ -10,12 +10,27 @@ Unity scene.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
 
-import phase139b_remote_data_loader_acceptance as phase139b
+
+def load_phase139b_helper():
+    """Load the sibling Phase139B helper without depending on ambient sys.path."""
+
+    helper_path = Path(__file__).resolve().with_name("phase139b_remote_data_loader_acceptance.py")
+    spec = importlib.util.spec_from_file_location("phase139b_remote_data_loader_acceptance_for_phase139c", helper_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load Phase139B helper from {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+phase139b = load_phase139b_helper()
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:

@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -100,6 +101,34 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
         self.assertIn("both", command)
         self.assertIn("--allow-static", command)
         self.assertNotIn("--no-rviz", command)
+
+    def test_main_preserves_phase138u_inconclusive_verdict(self) -> None:
+        """Motion-deskew inconclusive should not be collapsed into a hard failure."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            ros2_root = root / "ros2"
+            summary = root / "summary.json"
+            echo = root / "echo.log"
+            args = [
+                "--ros2-root",
+                str(ros2_root),
+                "--summary-output",
+                str(summary),
+                "--echo-output",
+                str(echo),
+                "--no-zenoh-router",
+                "--no-rviz",
+            ]
+
+            with mock.patch.object(self.smoke, "build_phase162_env", return_value=({}, Path("python.exe"), Path("ros2.py"))):
+                with mock.patch.object(self.smoke.phase138u, "main", side_effect=self.smoke.phase138u.InconclusiveError("static capture")):
+                    code = self.smoke.main(args)
+
+            payload = __import__("json").loads(summary.read_text(encoding="utf-8"))
+
+        self.assertEqual(2, code)
+        self.assertEqual("PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_INCONCLUSIVE", payload["verdict"])
+        self.assertIn("static capture", payload["error"])
 
 
 if __name__ == "__main__":

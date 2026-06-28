@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Text;
 using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -185,13 +186,11 @@ namespace Unity.FoxgloveSDK.Tests
                     var ext = Path.GetExtension(file).ToLowerInvariant();
                     if (ext == ".dll" || ext == ".exe" || ext == ".so" || ext == ".dylib")
                         continue;
-                    try
-                    {
-                        var content = File.ReadAllText(file);
+                    if (TryReadTextFile(file, out var content, out var warning))
                         Assert(!content.Contains(windowsAbsPath) && !content.Contains(unixAbsPath),
                             $"Sample {Path.GetFileName(dir)}/{Path.GetRelativePath(dir, file)}: no absolute path");
-                    }
-                    catch { /* skip truly binary files */ }
+                    else
+                        Console.WriteLine("[WARN] " + warning);
                 }
             }
 
@@ -248,17 +247,42 @@ namespace Unity.FoxgloveSDK.Tests
                 if (ext == ".dll" || ext == ".exe" || ext == ".so" || ext == ".dylib")
                     continue;
 
-                try
+                if (TryReadTextFile(file, out var content, out var warning))
                 {
-                    var content = File.ReadAllText(file);
                     var rel = File.Exists(path) ? Path.GetFileName(file) : Path.GetRelativePath(path, file);
                     Assert(!content.Contains(windowsAbsPath) && !content.Contains(unixAbsPath),
                         $"{label}/{rel}: no absolute path");
                 }
-                catch
+                else
                 {
-                    // Skip files that are not valid text in the current runtime.
+                    Console.WriteLine("[WARN] " + warning);
                 }
+            }
+        }
+
+        static bool TryReadTextFile(string file, out string content, out string warning)
+        {
+            content = string.Empty;
+            warning = string.Empty;
+            try
+            {
+                content = File.ReadAllText(file);
+                return true;
+            }
+            catch (DecoderFallbackException ex)
+            {
+                warning = $"Skipping non-text file {file}: {ex.Message}";
+                return false;
+            }
+            catch (IOException ex)
+            {
+                warning = $"Skipping unreadable file {file}: {ex.Message}";
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                warning = $"Skipping inaccessible file {file}: {ex.Message}";
+                return false;
             }
         }
     }

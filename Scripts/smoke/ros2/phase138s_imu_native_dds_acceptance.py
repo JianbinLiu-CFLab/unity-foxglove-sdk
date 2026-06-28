@@ -5,8 +5,7 @@
 # Module: Scripts/smoke
 # Purpose: ROS2-side acceptance helper for Phase 138S IMU native DDS output.
 
-
-
+"""Validate the IMU native DDS topic from a running Unity/R2FU scene."""
 
 from __future__ import annotations
 

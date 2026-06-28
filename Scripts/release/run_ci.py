@@ -93,17 +93,21 @@ def _check_boundary() -> bool:
         print(root_private.stdout)
         return False
 
-    nested_dev = subprocess.run(
-        ["git", "ls-files", "--", ":(glob)**/Developer/**", ":(glob)**/Developer.meta"],
+    all_tracked = subprocess.run(
+        ["git", "ls-files"],
         capture_output=True, text=True, cwd=REPO_ROOT,
     )
-    if nested_dev.returncode != 0:
+    if all_tracked.returncode != 0:
         print(f"\n{red('FAIL')} git ls-files failed while checking nested Developer/ files:")
-        print(nested_dev.stderr.strip())
+        print(all_tracked.stderr.strip())
         return False
-    if nested_dev.stdout.strip():
+    nested_dev = [
+        path for path in all_tracked.stdout.splitlines()
+        if "/Developer/" in path or path.endswith("/Developer.meta")
+    ]
+    if nested_dev:
         print(f"\n{red('FAIL')} Nested Developer/ files are tracked:")
-        print(nested_dev.stdout)
+        print("\n".join(nested_dev))
         return False
 
     print(f"\n{green(PASS)} Boundary check (no tracked Plan/Developer/)")
