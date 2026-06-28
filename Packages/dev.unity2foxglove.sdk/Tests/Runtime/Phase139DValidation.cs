@@ -46,6 +46,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySmokeScript();
             VerifyWorkflowDocumentation();
             VerifyRuntimeWiring();
+            VerifyMethodExtractorHandlesLiteralBraces();
             VerifyValidationWiring();
 
             Console.WriteLine($"Phase 139D: {_passed} checks passed.");
@@ -135,9 +136,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(endpointSource.Contains("Authorization", StringComparison.Ordinal)
                   && endpointSource.Contains("Bearer ", StringComparison.Ordinal),
                 "139D-4D: cursor endpoint supports an optional bearer token");
+            var optionsBranch = endpointSource.IndexOf("HttpMethod, \"OPTIONS\"", StringComparison.Ordinal);
+            var authGate = endpointSource.IndexOf("IsAuthorized(context.Request)", StringComparison.Ordinal);
             Check(endpointSource.Contains("Access-Control-Allow-Origin", StringComparison.Ordinal)
-                  && endpointSource.Contains("OPTIONS", StringComparison.Ordinal),
-                "139D-4E: cursor endpoint supports browser CORS preflight");
+                  && optionsBranch >= 0
+                  && authGate >= 0
+                  && optionsBranch < authGate,
+                "139D-4E: cursor endpoint handles browser CORS preflight before bearer-token auth");
             Check(endpointSource.Contains("ReplayCursorState", StringComparison.Ordinal)
                   && endpointSource.Contains("GET", StringComparison.Ordinal),
                 "139D-4F: cursor endpoint exposes Unity replay state for Foxglove follow mode");
@@ -163,13 +168,24 @@ namespace Unity.FoxgloveSDK.Tests
                 },
                 out var port);
 
-            var response = PostJson(
+            var status = PostJsonStatus(
                 $"http://127.0.0.1:{port}/v1/replay-cursor",
-                "{\"source\":\"test\",\"sequence\":3,\"mode\":\"seek\",\"time\":{\"sec\":22,\"nsec\":33}}");
+                "{\"source\":\"test\",\"sequence\":3,\"mode\":\"seek\",\"time\":{\"sec\":22,\"nsec\":33}}",
+                bearerToken: string.Empty,
+                out var response);
 
-            Check(response.Contains("\"accepted\":true", StringComparison.Ordinal)
+            Check(status == HttpStatusCode.Accepted
+                  && response.Contains("\"accepted\":true", StringComparison.Ordinal)
                   && received.TimeNs == 22_000_000_033UL,
                 "139D-4I: cursor endpoint accepts loopback POSTs into the runtime queue");
+
+            var preflight = PreflightStatus(
+                $"http://127.0.0.1:{port}/v1/replay-cursor",
+                "https://app.foxglove.dev",
+                out var allowOrigin);
+            Check(preflight == HttpStatusCode.NoContent
+                  && string.Equals(allowOrigin, "https://app.foxglove.dev", StringComparison.Ordinal),
+                "139D-4I2: cursor endpoint accepts unauthenticated browser CORS preflight");
 
             var state = GetText($"http://127.0.0.1:{port}/v1/replay-cursor");
             Check(state.Contains("\"available\":", StringComparison.Ordinal)
@@ -209,6 +225,15 @@ namespace Unity.FoxgloveSDK.Tests
                 out _);
             Check(wrongToken == HttpStatusCode.Unauthorized && acceptedCount == 0,
                 "139D-4L: cursor endpoint rejects wrong bearer token before queueing");
+
+            var preflight = PreflightStatus(
+                $"http://127.0.0.1:{port}/v1/replay-cursor",
+                "https://app.foxglove.dev",
+                out var allowOrigin);
+            Check(preflight == HttpStatusCode.NoContent
+                  && string.Equals(allowOrigin, "https://app.foxglove.dev", StringComparison.Ordinal)
+                  && acceptedCount == 0,
+                "139D-4L2: token-protected cursor endpoint accepts browser CORS preflight without Authorization");
 
             var accepted = PostJsonStatus(
                 $"http://127.0.0.1:{port}/v1/replay-cursor",
@@ -319,6 +344,8 @@ namespace Unity.FoxgloveSDK.Tests
             var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var server = Read(ManagerServerSourcePath);
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
+            var externalSeek = ExtractMethodBody(coordinator, "private void ReplaySeekExternalCursor");
+            var externalAdvance = ExtractMethodBody(coordinator, "private static void ReplayAdvanceToExternalCursor");
 
             Check(runtime.Contains("ExternalReplayCursorController", StringComparison.Ordinal)
                   && runtime.Contains("TryEnqueueExternalReplayCursor", StringComparison.Ordinal),
@@ -332,8 +359,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && coordinator.Contains("cursor.DidSeek", StringComparison.Ordinal)
                   && coordinator.Contains("ApplyTickToScene", StringComparison.Ordinal)
                   && !coordinator.Contains("replay.Tick(session, timeNs", StringComparison.Ordinal)
-                  && !coordinator.Contains("replay.Seek(cursor.TimeNs);\r\n                        QueueReplaySceneSnapshot(cursor.TimeNs);", StringComparison.Ordinal)
-                  && !coordinator.Contains("replay.Seek(cursor.TimeNs);\n                        QueueReplaySceneSnapshot(cursor.TimeNs);", StringComparison.Ordinal),
+                  && externalSeek.Contains("QueueReplaySceneSnapshot(timeNs)", StringComparison.Ordinal)
+                  && !externalAdvance.Contains("QueueReplaySceneSnapshot", StringComparison.Ordinal),
                 "139D-7C: runtime tick treats normal external cursors as scene-only smooth replay advances, not WebSocket snapshots");
 
             var replayController = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
@@ -360,6 +387,26 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!editor.Contains("Cursor Bridge (Advanced)", StringComparison.Ordinal)
                   && !editor.Contains("_enableReplayCursorBridge", StringComparison.Ordinal),
                 "139D-7H: manager Inspector does not expose unfinished cursor bridge controls");
+        }
+
+        private static void VerifyMethodExtractorHandlesLiteralBraces()
+        {
+            const string source = @"
+class Fixture
+{
+    private void Target()
+    {
+        var json = ""{literal}"";
+        var format = ""value {0}"";
+        AfterLiteralBraces();
+    }
+
+    private void Other() { ForbiddenAfterTarget(); }
+}";
+            var body = ExtractMethodBody(source, "private void Target()");
+            Check(body.Contains("AfterLiteralBraces()", StringComparison.Ordinal)
+                  && !body.Contains("ForbiddenAfterTarget", StringComparison.Ordinal),
+                "139D-7I: validation method-body extraction ignores braces inside string literals");
         }
 
         private static void VerifyValidationWiring()
@@ -396,20 +443,109 @@ namespace Unity.FoxgloveSDK.Tests
             if (brace < 0)
                 return string.Empty;
 
+            var end = FindMatchingBrace(source, brace);
+            return end >= 0 ? source.Substring(brace, end - brace + 1) : string.Empty;
+        }
+
+        private static int FindMatchingBrace(string source, int brace)
+        {
             var depth = 0;
+            var inString = false;
+            var inChar = false;
+            var inLineComment = false;
+            var inBlockComment = false;
+            var verbatimString = false;
             for (var i = brace; i < source.Length; i++)
             {
-                if (source[i] == '{')
+                var ch = source[i];
+                var next = i + 1 < source.Length ? source[i + 1] : '\0';
+
+                if (inLineComment)
+                {
+                    if (ch == '\n')
+                        inLineComment = false;
+                    continue;
+                }
+
+                if (inBlockComment)
+                {
+                    if (ch == '*' && next == '/')
+                    {
+                        inBlockComment = false;
+                        i++;
+                    }
+                    continue;
+                }
+
+                if (inString)
+                {
+                    if (verbatimString && ch == '"' && next == '"')
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (ch == '"' && (verbatimString || !IsEscaped(source, i)))
+                    {
+                        inString = false;
+                        verbatimString = false;
+                    }
+                    continue;
+                }
+
+                if (inChar)
+                {
+                    if (ch == '\'' && !IsEscaped(source, i))
+                        inChar = false;
+                    continue;
+                }
+
+                if (ch == '/' && next == '/')
+                {
+                    inLineComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (ch == '/' && next == '*')
+                {
+                    inBlockComment = true;
+                    i++;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    verbatimString = i > 0 && source[i - 1] == '@';
+                    continue;
+                }
+
+                if (ch == '\'')
+                {
+                    inChar = true;
+                    continue;
+                }
+
+                if (ch == '{')
                     depth++;
-                else if (source[i] == '}')
+                else if (ch == '}')
                 {
                     depth--;
                     if (depth == 0)
-                        return source.Substring(brace, i - brace + 1);
+                        return i;
                 }
             }
 
-            return string.Empty;
+            return -1;
+        }
+
+        private static bool IsEscaped(string source, int index)
+        {
+            var slashCount = 0;
+            for (var i = index - 1; i >= 0 && source[i] == '\\'; i--)
+                slashCount++;
+            return slashCount % 2 == 1;
         }
 
         private static string RepoPath(string relativePath)
@@ -483,14 +619,6 @@ namespace Unity.FoxgloveSDK.Tests
                    && (listener.ErrorCode == 183 || listener.ErrorCode == 10_048);
         }
 
-        private static string PostJson(string url, string json)
-        {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var response = client.PostAsync(url, content).GetAwaiter().GetResult();
-            return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-        }
-
         private static HttpStatusCode PostJsonStatus(string url, string json, string bearerToken, out string body)
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
@@ -502,6 +630,20 @@ namespace Unity.FoxgloveSDK.Tests
                 request.Headers.TryAddWithoutValidation("Authorization", "Bearer " + bearerToken);
             using var response = client.SendAsync(request).GetAwaiter().GetResult();
             body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+            return response.StatusCode;
+        }
+
+        private static HttpStatusCode PreflightStatus(string url, string origin, out string allowOrigin)
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var request = new HttpRequestMessage(HttpMethod.Options, url);
+            request.Headers.TryAddWithoutValidation("Origin", origin);
+            request.Headers.TryAddWithoutValidation("Access-Control-Request-Method", "POST");
+            request.Headers.TryAddWithoutValidation("Access-Control-Request-Headers", "Authorization, Content-Type");
+            using var response = client.SendAsync(request).GetAwaiter().GetResult();
+            allowOrigin = response.Headers.TryGetValues("Access-Control-Allow-Origin", out var values)
+                ? string.Join(",", values)
+                : string.Empty;
             return response.StatusCode;
         }
 

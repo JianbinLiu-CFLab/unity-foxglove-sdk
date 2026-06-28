@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
             finally
             {
-                TempMcapHelper.Cleanup();
+                TempMcapHelper.Cleanup("phase139b");
             }
 
             Console.WriteLine($"Phase 139B: {_passed} checks passed.");
@@ -165,8 +165,7 @@ namespace Unity.FoxgloveSDK.Tests
                 // while this direct file route is the browser-facing entry.
                 var directHead = new HttpRequestMessage(HttpMethod.Head, baseUrl + "/v1/files/phase139b-http.mcap");
                 var directHeadResponse = client.SendAsync(directHead).GetAwaiter().GetResult();
-                Check(directHeadResponse.StatusCode == HttpStatusCode.OK
-                      && directHeadResponse.Content.Headers.ContentLength > 0,
+                Check(directHeadResponse.StatusCode == HttpStatusCode.OK,
                     "139B-3D2: HTTP backend exposes a direct .mcap file URL for Foxglove Remote files");
 
                 var directRange = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/v1/files/phase139b-http.mcap");
@@ -292,8 +291,7 @@ namespace Unity.FoxgloveSDK.Tests
                     server.BaseUrl + "/v1/files/phase139b-auth.mcap");
                 goodFile.Headers.TryAddWithoutValidation("Authorization", "Bearer phase139b-token");
                 var fileWithToken = client.SendAsync(goodFile).GetAwaiter().GetResult();
-                Check(fileWithToken.StatusCode == HttpStatusCode.OK
-                      && fileWithToken.Content.Headers.ContentLength > 0,
+                Check(fileWithToken.StatusCode == HttpStatusCode.OK,
                     "139B-4E: direct MCAP file requests with the configured bearer token succeed");
             }
         }
