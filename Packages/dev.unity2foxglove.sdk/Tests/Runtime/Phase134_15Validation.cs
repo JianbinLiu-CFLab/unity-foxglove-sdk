@@ -170,17 +170,23 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var writer = new Ros2CdrWriter(1024);
             writer.WriteString(null);
-            writer.WriteByteArray(null);
-            writer.WriteFloat64Sequence(null);
+            writer.WriteByteArray(Array.Empty<byte>());
+            writer.WriteFloat64Sequence(Array.Empty<double>());
             writer.WriteUInt32Sequence(null);
             Check(writer.ToArray().Length > 4,
                 "134-15H-1: CDR writer capacity-hint constructor preserves normal write behavior");
+            Check(Throws<ArgumentNullException>(() => new Ros2CdrWriter().WriteByteArray((byte[])null)),
+                "134-15H-2: CDR writer rejects null required byte arrays");
+            Check(Throws<ArgumentNullException>(() => new Ros2CdrWriter().WriteFloat64Sequence(null)),
+                "134-15H-3: CDR writer rejects null required float64 sequences");
 
             var source = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrWriter.cs");
             Check(source.Contains("approximate output capacity hint")
+                  && source.Contains("Write a required uint8 sequence")
+                  && source.Contains("Write a required float64 sequence")
                   && source.Contains("builders must reject null when the field is required"),
-                "134-15H-2: CDR writer documents capacity hints and null sequence semantics");
+                "134-15H-4: CDR writer documents capacity hints and null sequence semantics");
         }
 
         private static bool Throws<T>(Action action)
