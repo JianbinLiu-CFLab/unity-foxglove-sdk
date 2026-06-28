@@ -184,7 +184,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "96E-4: sidecar rejects invalid depth");
             Check(sidecar.Contains("create_generic_publisher(frame.topic, frame.schema_name, qos)"),
                 "96E-5: sidecar applies requested QoS when creating publisher");
-            Check(sidecar.Contains("topic reused with different schemaName or QoS"),
+            Check(sidecar.Contains("reused with different schemaName or QoS: was [")
+                  && sidecar.Contains("] got ["),
                 "96E-6: sidecar rejects same-topic schema/QoS conflicts");
             Check(sidecar.Contains("reliability=%s durability=%s depth=%d"),
                 "96E-7: sidecar logs publisher QoS details");
