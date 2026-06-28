@@ -32,10 +32,12 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
         private Rigidbody _rb;
         private Vector3 _wanderDirection = Vector3.forward;
         private float _nextWanderChange;
+        private float _suppressJitterUntil;
 
         private void Start()
         {
             _rb = GetComponent<Rigidbody>();
+            SetWanderDirection(Vector3.forward);
             if (_rb != null)
             {
                 _rb.constraints =
@@ -81,24 +83,30 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             if (Time.time >= _nextWanderChange)
             {
                 var hitForward = Physics.Raycast(transform.position,
-                    _wanderDirection, 1.2f, ~0, QueryTriggerInteraction.Ignore);
+                    _wanderDirection, 1.2f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
                 if (hitForward)
                 {
                     var angle = (Random.value > 0.5f ? 90f : -90f) * (1f + Random.value * 0.3f);
-                    _wanderDirection = Quaternion.Euler(0f, angle, 0f) * _wanderDirection;
+                    SetWanderDirection(Quaternion.Euler(0f, angle, 0f) * _wanderDirection);
                     _nextWanderChange = Time.time + 1.5f;
+                    _suppressJitterUntil = _nextWanderChange;
                 }
             }
 
-            if (Time.time >= _nextWanderChange - 1.0f)
+            if (Time.time >= _nextWanderChange - 1.0f && Time.time >= _suppressJitterUntil)
             {
                 var jitter = Random.Range(-15f, 15f);
-                _wanderDirection = Quaternion.Euler(0f, jitter, 0f) * _wanderDirection;
+                SetWanderDirection(Quaternion.Euler(0f, jitter, 0f) * _wanderDirection);
                 _nextWanderChange = Time.time + 3f + Random.value * 2f;
             }
 
-            worldVelocity = _wanderDirection.normalized * _moveSpeed;
+            worldVelocity = _wanderDirection * _moveSpeed;
             turnDeg = 0f;
+        }
+
+        private void SetWanderDirection(Vector3 direction)
+        {
+            _wanderDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.forward;
         }
 
         /// <summary>True while the given key is held, using whichever input backend is active.</summary>
@@ -257,14 +265,11 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             var renderer = go.GetComponent<Renderer>();
             if (renderer == null) return;
 
-            // Clone the primitive's default material so we inherit a shader that
-            // matches the active render pipeline (URP/HDRP/Built-in). Picking a
-            // hard-coded "Standard" shader renders magenta under URP. Tint via the
-            // built-in (_Color) and URP/HDRP (_BaseColor) main-color properties.
-            var mat = new Material(renderer.sharedMaterial) { color = color };
-            if (mat.HasProperty("_BaseColor"))
-                mat.SetColor("_BaseColor", color);
-            renderer.sharedMaterial = mat;
+            var block = new MaterialPropertyBlock();
+            renderer.GetPropertyBlock(block);
+            block.SetColor("_Color", color);
+            block.SetColor("_BaseColor", color);
+            renderer.SetPropertyBlock(block);
         }
 
         private static void SetLayerRecursively(GameObject go, int layer)
