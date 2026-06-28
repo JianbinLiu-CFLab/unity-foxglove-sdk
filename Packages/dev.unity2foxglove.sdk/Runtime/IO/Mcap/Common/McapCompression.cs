@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.IO
                             total += read;
                         }
                         if (total != uncompressedSize)
-                            throw new InvalidOperationException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {total}");
+                            throw new InvalidDataException($"LZ4 decompressed size mismatch: expected {uncompressedSize}, got {total}");
                         return buf;
                     }
                 case "zstd":
@@ -96,7 +96,7 @@ namespace Unity.FoxgloveSDK.IO
                             0,
                             output.Length);
                         if (written != uncompressedSize)
-                            throw new InvalidOperationException($"Zstd decompressed size mismatch: expected {uncompressedSize}, got {written}");
+                            throw new InvalidDataException($"Zstd decompressed size mismatch: expected {uncompressedSize}, got {written}");
                         return output;
                     }
                 default:

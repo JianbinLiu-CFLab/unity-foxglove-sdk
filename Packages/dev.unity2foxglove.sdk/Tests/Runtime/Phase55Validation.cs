@@ -66,6 +66,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check(Throws<InvalidDataException>(() => McapCompression.Decompress("", new byte[] { 1 }, 2)),
                 "55A-2: uncompressed MCAP chunks must match their declared uncompressed size");
+            Check(Throws<InvalidDataException>(() => McapCompression.Decompress(
+                    "lz4",
+                    McapCompression.Compress("lz4", new byte[] { 1, 2, 3 }),
+                    5)),
+                "55A-3: lz4 MCAP chunks must match their declared uncompressed size");
+            Check(Throws<InvalidDataException>(() => McapCompression.Decompress(
+                    "zstd",
+                    McapCompression.Compress("zstd", new byte[] { 1, 2, 3 }),
+                    5)),
+                "55A-4: zstd MCAP chunks must match their declared uncompressed size");
         }
 
         private static void VerifyHistoryLimitIsAppliedInsideReplayEngine()
@@ -84,8 +94,11 @@ namespace Unity.FoxgloveSDK.Tests
                 method.Invoke(engine, new object[] { 0UL, ulong.MaxValue, result, 100 });
 
                 Check(result.Count == 100, "55B-2: capped History keeps at most the requested count");
-                Check(result[0].LogTime == 5901UL && result[result.Count - 1].LogTime == 6000UL,
-                    "55B-3: capped History keeps the latest messages in chronological order");
+                // Capped history intentionally retains the last N messages and preserves chronological order.
+                Check(result[0].LogTime < result[result.Count - 1].LogTime
+                      && result[0].LogTime == 5901UL
+                      && result[result.Count - 1].LogTime == 6000UL,
+                    "55B-3: capped History keeps the latest 100-message window in chronological order");
             }
             finally
             {
@@ -140,7 +153,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayDisableClearsSummaryMaps()
         {
-            var controller = new ReplayController(new ConsoleLogger(), null, null);
+            var controller = new ReplayController(new NoopLogger(), null, null);
             SetPrivateField(controller, "_summarySchemas", new Dictionary<ushort, McapSchema>
             {
                 [1] = new McapSchema { Id = 1, Name = "old" }
@@ -186,15 +199,23 @@ namespace Unity.FoxgloveSDK.Tests
         private static string CreateTempTimedMcap(int messageCount)
         {
             var tmp = Path.GetTempFileName();
-            using (var fs = new FileStream(tmp, FileMode.Truncate, FileAccess.Write))
+            try
             {
-                var recorder = new McapRecorder(fs);
-                recorder.AddChannel(1, "/phase55", "json", "", "", "");
-                for (var i = 1; i <= messageCount; i++)
-                    recorder.WriteMessage(1, (ulong)i, Encoding.UTF8.GetBytes("{\"i\":" + i + "}"));
-                recorder.Close();
+                using (var fs = new FileStream(tmp, FileMode.Truncate, FileAccess.Write))
+                {
+                    var recorder = new McapRecorder(fs);
+                    recorder.AddChannel(1, "/phase55", "json", "", "", "");
+                    for (var i = 1; i <= messageCount; i++)
+                        recorder.WriteMessage(1, (ulong)i, Encoding.UTF8.GetBytes("{\"i\":" + i + "}"));
+                    recorder.Close();
+                }
+                return tmp;
             }
-            return tmp;
+            catch
+            {
+                try { File.Delete(tmp); } catch { }
+                throw;
+            }
         }
 
         private static byte[] BuildChunkRecordHeader(byte opcode, ulong length)
@@ -229,6 +250,12 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new Exception("[FAIL] " + label);
             _passed++;
             Console.WriteLine("[PASS] " + label);
+        }
+
+        private sealed class NoopLogger : IFoxgloveLogger
+        {
+            public void LogWarning(string message) { }
+            public void LogError(string message) { }
         }
 
         private static string ReadRepoText(string relativePath)
