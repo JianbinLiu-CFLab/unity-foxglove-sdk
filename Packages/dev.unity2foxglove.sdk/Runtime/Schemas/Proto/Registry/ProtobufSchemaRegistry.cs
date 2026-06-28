@@ -18,6 +18,9 @@ namespace Foxglove.Schemas
     /// <summary>
     /// Registry that maps Foxglove protobuf schema names to FileDescriptorSet bytes.
     /// Accepts raw FileDescriptorSet bytes (typically from <see cref="FoxgloveSchemas.FileDescriptorSetData"/>).
+    /// This public type intentionally lives beside the generated
+    /// <c>Foxglove.Schemas</c> protobuf descriptors while registering into the
+    /// Unity2Foxglove schema abstraction supplied by <see cref="ISchemaRegistry"/>.
     /// Use <see cref="ProtobufSchemaRegistryLoader"/> for convenient construction.
     /// </summary>
     public class ProtobufSchemaRegistry
