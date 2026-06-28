@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import os
 import ssl
 import subprocess
@@ -26,7 +27,7 @@ SMOKE = ROOT / "Scripts" / "smoke"
 
 
 def load_smoke_module(name: str, relative: str):
-    """Load one smoke helper with Scripts/smoke on sys.path for sibling imports."""
+    """Load one smoke helper with only its sibling directory on sys.path."""
     path = SMOKE / relative
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
@@ -34,7 +35,6 @@ def load_smoke_module(name: str, relative: str):
     sys.modules[spec.name] = module
     original_path = list(sys.path)
     sys.path.insert(0, str(path.parent))
-    sys.path.insert(0, str(SMOKE / "ros2"))
     try:
         spec.loader.exec_module(module)
     finally:
@@ -48,6 +48,37 @@ class NeverAdvertisesWebSocket:
     async def recv(self):
         """Sleep longer than any test advertise timeout."""
         await asyncio.sleep(60)
+
+
+class AdvertisesMalformedAndValidChannel:
+    """Fake websocket that first advertises malformed channels, then a valid one."""
+
+    def __init__(self):
+        """Initialize the scripted advertise frames."""
+        self._frames = [
+            json_bytes(
+                {
+                    "op": "advertise",
+                    "channels": [
+                        {"topic": "/tf"},
+                        {"id": "not-an-int", "topic": "/tf"},
+                        "bad-channel",
+                    ],
+                }
+            ),
+            json_bytes({"op": "advertise", "channels": [{"id": 7, "topic": "/tf"}]}),
+        ]
+
+    async def recv(self):
+        """Return the next scripted frame."""
+        if self._frames:
+            return self._frames.pop(0)
+        await asyncio.sleep(60)
+
+
+def json_bytes(payload: dict) -> str:
+    """Encode a JSON websocket text frame."""
+    return json.dumps(payload)
 
 
 class CoreSmokeScriptTests(unittest.TestCase):
@@ -170,6 +201,15 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertFalse(context.check_hostname)
         self.assertEqual(ssl.CERT_NONE, context.verify_mode)
 
+    def test_phase139_e2e_skips_malformed_advertised_channels(self) -> None:
+        """Malformed advertise channels should not crash the smoke helper."""
+        module = load_smoke_module("phase139_e2e_malformed_ad_under_test", "replay/phase139_e2e_integration_smoke.py")
+
+        channels = asyncio.run(module.collect_advertisements(AdvertisesMalformedAndValidChannel(), {"/tf"}, 0.5, 0.05))
+
+        self.assertEqual([7], list(channels))
+        self.assertEqual("/tf", channels[7]["topic"])
+
     def test_phase34_fixture_constants_are_checked_without_assert(self) -> None:
         """Optimized Python should still enforce load-bearing fixture constants."""
         module = load_smoke_module("phase34_under_test", "mcap/phase34_attachment_mcap.py")
@@ -205,6 +245,29 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertIn("refused", post["body"])
         self.assertEqual(-1, state["status"])
         self.assertIn("refused", state["body"])
+
+    def test_phase139d_main_writes_structured_failure_json(self) -> None:
+        """Phase139D CLI failures should still write parseable evidence JSON."""
+        module = load_smoke_module("phase139d_failure_json_under_test", "replay/phase139d_unity_cursor_bridge_acceptance.py")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            json_out = Path(tmp) / "phase139d.json"
+            with mock.patch.object(module, "validate_extension_metadata", side_effect=RuntimeError("metadata failed")):
+                code = module.main(["--json-out", str(json_out)])
+
+            payload = json.loads(json_out.read_text(encoding="utf-8"))
+
+        self.assertEqual(1, code)
+        self.assertEqual("fail", payload["status"])
+        self.assertIn("metadata failed", payload["error"])
+
+    def test_fetch_asset_rejects_oversized_error_payload_length(self) -> None:
+        """fetchAsset error frames should bounds-check their declared error length."""
+        module = load_smoke_module("fetch_asset_under_test", "assets/fetch_asset_smoke.py")
+        frame = bytes([module.FETCH_ASSET_RESPONSE_OPCODE]) + (42).to_bytes(4, "little") + bytes([1]) + (999).to_bytes(4, "little")
+
+        with self.assertRaises(ValueError):
+            module.parse_fetch_asset_response(frame)
 
     def test_phase138l_rviz_config_patch_fails_when_required_topic_tokens_are_missing(self) -> None:
         """RViz2 topic patching should not silently leave the default /points topic."""

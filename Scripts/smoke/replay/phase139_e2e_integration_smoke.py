@@ -88,8 +88,8 @@ class ObservedTopic:
     schema_name: str | None = None
     messages: int = 0
     payload_bytes: int = 0
-    first_wall_time: float | None = None
-    last_wall_time: float | None = None
+    first_monotonic_time: float | None = None
+    last_monotonic_time: float | None = None
     first_log_time: int | None = None
     last_log_time: int | None = None
     note: str = ""
@@ -98,8 +98,8 @@ class ObservedTopic:
         """Return stable JSON evidence for this topic."""
 
         approx_hz = 0.0
-        if self.first_wall_time is not None and self.last_wall_time is not None:
-            elapsed = max(self.last_wall_time - self.first_wall_time, 0.0)
+        if self.first_monotonic_time is not None and self.last_monotonic_time is not None:
+            elapsed = max(self.last_monotonic_time - self.first_monotonic_time, 0.0)
             if elapsed > 0.0 and self.messages > 1:
                 approx_hz = (self.messages - 1) / elapsed
             elif duration_seconds > 0.0:
@@ -288,8 +288,8 @@ def self_test_summary(args: argparse.Namespace) -> dict[str, Any]:
     }
     now = time.monotonic()
     for index, topic in enumerate(observed.values()):
-        topic.first_wall_time = now + index * 0.01
-        topic.last_wall_time = topic.first_wall_time + 0.2
+        topic.first_monotonic_time = now + index * 0.01
+        topic.last_monotonic_time = topic.first_monotonic_time + 0.2
         topic.first_log_time = 1_780_000_000_000_000_000 + index
         topic.last_log_time = topic.first_log_time + 200_000_000
     return make_summary(args=args, status="pass", topics=observed, limitations=[])
@@ -385,12 +385,25 @@ async def collect_advertisements(
         if message.get("op") != "advertise":
             continue
         for channel in message.get("channels", []):
-            channel_id = int(channel.get("id"))
+            channel_id = try_parse_channel_id(channel)
+            if channel_id is None:
+                continue
             channels[channel_id] = channel
             advertised_topics.add(channel.get("topic"))
         if target_topics.issubset(advertised_topics):
             break
     return channels
+
+
+def try_parse_channel_id(channel: Any) -> int | None:
+    """Return a valid advertised channel id, or None for malformed advertisements."""
+
+    if not isinstance(channel, dict):
+        return None
+    try:
+        return int(channel["id"])
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 async def collect_messages(
@@ -422,8 +435,8 @@ async def collect_messages(
         now = time.monotonic()
         item.messages += 1
         item.payload_bytes += max(len(data) - 13, 0)
-        item.first_wall_time = now if item.first_wall_time is None else item.first_wall_time
-        item.last_wall_time = now
+        item.first_monotonic_time = now if item.first_monotonic_time is None else item.first_monotonic_time
+        item.last_monotonic_time = now
         item.first_log_time = log_time if item.first_log_time is None else item.first_log_time
         item.last_log_time = log_time
 

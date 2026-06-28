@@ -22,11 +22,10 @@ from pathlib import Path
 
 def repo_root() -> Path:
     """Return the repository root that contains this smoke helper."""
-    current = Path(__file__).resolve()
-    for parent in [current.parent, *current.parents]:
-        if (parent / "Packages").exists() and (parent / "Scripts").exists():
-            return parent
-    raise RuntimeError("Could not locate repository root from smoke helper path.")
+    root = Path(__file__).resolve().parents[3]
+    if not (root / "Packages").exists() or not (root / "Scripts").exists():
+        raise RuntimeError(f"Could not locate repository root from smoke helper path: {root}")
+    return root
 
 
 def read_text(path: Path) -> str:
@@ -206,8 +205,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     """Run the selected Phase139D smoke mode and write JSON evidence."""
     args = parse_args(argv)
-    root = repo_root()
+    try:
+        root = repo_root()
+        evidence = build_evidence(args)
+    except Exception as exc:
+        root = Path.cwd()
+        evidence = build_failure_evidence(args, exc)
 
+    write_evidence(root, args, evidence)
+    print(json.dumps(evidence, indent=2, sort_keys=True))
+    return 0 if evidence.get("status") == "pass" else 1
+
+
+def build_evidence(args: argparse.Namespace) -> dict:
+    """Build the selected Phase139D evidence document, raising on failed checks."""
+
+    root = repo_root()
     evidence = {
         "phase": "139D",
         "mode": args.mode,
@@ -222,12 +235,31 @@ def main(argv: list[str]) -> int:
     evidence["extension"] = validate_extension_metadata(root)
     if args.mode == "endpoint-loopback":
         evidence["endpoint_loopback"] = validate_endpoint_loopback(args)
+    return evidence
+
+
+def build_failure_evidence(args: argparse.Namespace, exc: Exception) -> dict:
+    """Build structured failure evidence for CLI failures."""
+
+    return {
+        "phase": "139D",
+        "mode": getattr(args, "mode", "unknown"),
+        "generated_at_unix": time.time(),
+        "status": "fail",
+        "error": str(exc),
+        "limitations": [
+            "This smoke helper does not install or run Foxglove Desktop extensions.",
+            "endpoint-loopback mode requires a manually enabled Unity cursor endpoint.",
+        ],
+    }
+
+
+def write_evidence(root: Path, args: argparse.Namespace, evidence: dict) -> None:
+    """Write one Phase139D evidence document."""
 
     json_out = (root / args.json_out).resolve()
     json_out.parent.mkdir(parents=True, exist_ok=True)
     json_out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    print(json.dumps(evidence, indent=2, sort_keys=True))
-    return 0
 
 
 if __name__ == "__main__":
