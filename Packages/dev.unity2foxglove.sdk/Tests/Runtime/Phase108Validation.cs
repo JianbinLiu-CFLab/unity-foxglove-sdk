@@ -414,11 +414,28 @@ namespace Unity.FoxgloveSDK.Tests
                     candidate.Name == methodName
                     && candidate.IsGenericMethodDefinition
                     && candidate.GetGenericArguments().Length == 1
-                    && candidate.GetParameters().Length == args.Length);
+                    && ParametersMatch(candidate.GetParameters(), args));
             if (method == null)
                 throw new MissingMethodException(target.GetType().FullName, methodName);
 
             return method.MakeGenericMethod(genericType).Invoke(target, args);
+        }
+
+        private static bool ParametersMatch(ParameterInfo[] parameters, object[] args)
+        {
+            if (parameters.Length != args.Length)
+                return false;
+
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (args[i] == null)
+                    continue;
+
+                if (!parameters[i].ParameterType.IsInstanceOfType(args[i]))
+                    return false;
+            }
+
+            return true;
         }
 
         private static void DisposeTwice(object target)

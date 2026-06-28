@@ -464,7 +464,12 @@ namespace Phase141FMultiDim
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", relativePath));
+        {
+            var root = Phase16Validation.FindRepoRoot();
+            if (root == null)
+                throw new DirectoryNotFoundException("Could not find repository root.");
+            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        }
 
         private static void Check(bool condition, string label)
         {

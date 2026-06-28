@@ -138,14 +138,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtime.Contains("using UnityEditor;", StringComparison.Ordinal)
                   && runtime.Contains("PackageInfo.FindForAssetPath", StringComparison.Ordinal),
                 "111F-E1: ROS2ForUnity keeps Editor-only package lookup guarded");
-            var oldLifecycle = runtime.Contains("ownerCount", StringComparison.Ordinal)
-                               && runtime.Contains("UnregisterCallbacks()", StringComparison.Ordinal);
-            var currentLifecycle = runtime.Contains("referenceCount", StringComparison.Ordinal)
-                                   && runtime.Contains("ShutdownShared()", StringComparison.Ordinal)
-                                   && runtime.Contains("initMutex", StringComparison.Ordinal)
-                                   && runtime.Contains("ownsReference", StringComparison.Ordinal);
+            var currentLifecycle = runtime.Contains("lifecycleGate", StringComparison.Ordinal)
+                                   && runtime.Contains("ownerCount", StringComparison.Ordinal)
+                                   && runtime.Contains("ownsLifecycle", StringComparison.Ordinal)
+                                   && runtime.Contains("isInitialized", StringComparison.Ordinal)
+                                   && runtime.Contains("DestroyROS2ForUnity()", StringComparison.Ordinal);
             Check(!runtime.Contains("~ROS2ForUnity", StringComparison.Ordinal)
-                  && (oldLifecycle || currentLifecycle),
+                  && currentLifecycle,
                 "111F-E2: ROS2ForUnity uses deterministic ownership instead of finalizer shutdown");
             Check(runtime.Contains("SuppressRos2csFinalizer", StringComparison.Ordinal)
                   && runtime.Contains("GC.SuppressFinalize(destructor)", StringComparison.Ordinal)

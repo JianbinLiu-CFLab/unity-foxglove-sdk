@@ -62,20 +62,20 @@ namespace Unity.FoxgloveSDK.Editor
             => ScalarTypeNames.Contains(fullName ?? string.Empty);
 
         public static bool IsListContract(string constructedFrom)
-            => ListTypeNames.Contains(constructedFrom ?? string.Empty);
+            => ListTypeNames.Contains(NormalizeGenericContractName(constructedFrom));
 
         public static bool IsListContract(string constructedFrom, string side)
         {
-            var name = constructedFrom ?? string.Empty;
+            var name = NormalizeGenericContractName(constructedFrom);
             return ListTypeNames.Contains(name)
                    || (side == FoxServiceDtoRules.ResponseSide && ResponseOnlyListTypeNames.Contains(name));
         }
 
         public static bool IsMutableCollectionContract(string constructedFrom)
-            => ListTypeNames.Contains(constructedFrom ?? string.Empty);
+            => ListTypeNames.Contains(NormalizeGenericContractName(constructedFrom));
 
         public static bool IsDictionaryContract(string constructedFrom)
-            => DictionaryTypeNames.Contains(constructedFrom ?? string.Empty);
+            => DictionaryTypeNames.Contains(NormalizeGenericContractName(constructedFrom));
 
         public static bool IsTaskLike(string fullName)
         {
@@ -99,5 +99,27 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string Normalize(string fullName)
             => (fullName ?? string.Empty).Replace('+', '.');
+
+        public static string NormalizeGenericContractName(string constructedFrom)
+        {
+            var name = constructedFrom ?? string.Empty;
+            return name switch
+            {
+                "System.Collections.Generic.List`1" => "System.Collections.Generic.List<T>",
+                "System.Collections.Generic.IList`1" => "System.Collections.Generic.IList<T>",
+                "System.Collections.Generic.IReadOnlyList`1" => "System.Collections.Generic.IReadOnlyList<T>",
+                "System.Collections.Generic.HashSet`1" => "System.Collections.Generic.HashSet<T>",
+                "System.Collections.Generic.ICollection`1" => "System.Collections.Generic.ICollection<T>",
+                "System.Collections.Generic.IReadOnlyCollection`1" => "System.Collections.Generic.IReadOnlyCollection<T>",
+                "System.Collections.Generic.Queue`1" => "System.Collections.Generic.Queue<T>",
+                "System.Collections.Generic.Stack`1" => "System.Collections.Generic.Stack<T>",
+                "System.Collections.ObjectModel.Collection`1" => "System.Collections.ObjectModel.Collection<T>",
+                "System.Collections.Generic.Dictionary`2" => "System.Collections.Generic.Dictionary<TKey, TValue>",
+                "System.Collections.Generic.IDictionary`2" => "System.Collections.Generic.IDictionary<TKey, TValue>",
+                "System.Collections.Generic.IReadOnlyDictionary`2" => "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>",
+                "System.Collections.Generic.SortedDictionary`2" => "System.Collections.Generic.SortedDictionary<TKey, TValue>",
+                _ => name,
+            };
+        }
     }
 }

@@ -210,6 +210,11 @@ namespace Unity.FoxgloveSDK.Tests
                       && (string)index["foxRun"]["globalManifestHash"] == ExpectedFoxRunFixtureHash
                       && (string)index["unity2Foxglove"]["sdkSchemaManifestHash"] == MismatchedHash,
                     "115B-C2: sidecar index records MCAP name, identity mode, completeness, and both evidence hashes");
+                var sidecarWriterSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/SchemaEvidenceSidecarWriter.cs");
+                var manifestWriterSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs");
+                Check(sidecarWriterSource.Contains("[\"globalManifestHash\"] = foxRunHash ?? string.Empty", StringComparison.Ordinal)
+                      && manifestWriterSource.Contains("ManifestHashFileName), manifest.GlobalManifestHash + \"\\n\")", StringComparison.Ordinal),
+                    "115B-C2b: sidecar FoxRun globalManifestHash is sourced from the FoxRun global manifest hash file");
 
                 Directory.Delete(sidecarRoot, recursive: true);
                 File.Delete(Path.Combine(currentRoot, "Unity2Foxglove", "unity2foxglove.schema-manifest.hash"));
