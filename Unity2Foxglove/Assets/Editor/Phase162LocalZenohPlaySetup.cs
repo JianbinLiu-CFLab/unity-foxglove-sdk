@@ -14,6 +14,13 @@ public static class Phase162LocalZenohPlaySetup
     private const string LyricalCommunicationModeKey = "Unity2Foxglove.R2FU.LyricalCommunicationMode";
     private const string PlayRequestedKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PlayRequested";
     private const string AutoExitKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.AutoExit";
+    private const string EnvironmentCapturedKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.EnvironmentCaptured";
+    private const string PreviousRosDomainIdKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousRosDomainId";
+    private const string PreviousRosDomainIdWasSetKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousRosDomainIdWasSet";
+    private const string PreviousRmwImplementationKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousRmwImplementation";
+    private const string PreviousRmwImplementationWasSetKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousRmwImplementationWasSet";
+    private const string PreviousCommunicationModeKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousCommunicationMode";
+    private const string PreviousCommunicationModeWasSetKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousCommunicationModeWasSet";
     private const double AutoExitAfterSeconds = 60.0;
     private static GameObject motionTarget;
     private static Vector3 motionOrigin;
@@ -61,9 +68,8 @@ public static class Phase162LocalZenohPlaySetup
             return;
         }
 
-        Environment.SetEnvironmentVariable("ROS_DOMAIN_ID", "0");
-        Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_zenoh_cpp");
-        EditorUserSettings.SetConfigValue(LyricalCommunicationModeKey, "zenoh");
+        CaptureEnvironmentBeforeOverride();
+        ApplyZenohEnvironmentOverride();
 
         EditorSceneManager.OpenScene(ScenePath);
 
@@ -71,28 +77,28 @@ public static class Phase162LocalZenohPlaySetup
         if (manager == null)
             throw new InvalidOperationException("Could not find FoxgloveManager in " + ScenePath);
 
-        SetField(manager, "_foxgloveOutputEnabled", false);
-        SetField(manager, "_ros2NativeEnabled", true);
-        SetField(manager, "_defaultPublisherEncoding", GlobalEncoding.Protobuf);
+        SetField(manager, "_foxgloveOutputEnabled", false, "configure FoxgloveManager output mode");
+        SetField(manager, "_ros2NativeEnabled", true, "configure FoxgloveManager output mode");
+        SetField(manager, "_defaultPublisherEncoding", GlobalEncoding.Protobuf, "configure FoxgloveManager publisher encoding");
 
         var publisher = UnityEngine.Object.FindFirstObjectByType<FoxglovePointCloudPublisher>();
         if (publisher == null)
             throw new InvalidOperationException("Could not find FoxglovePointCloudPublisher in " + ScenePath);
 
-        SetField(publisher, "_outputMode", PointCloudOutputMode.PointCloud2Native);
-        SetField(publisher, "_topic", "/unity/point_cloud2");
-        SetField(publisher, "_frameId", "os_lidar");
-        SetField(publisher, "_publishPointCloud2NativeTfAnchor", true);
-        SetField(publisher, "_enableMotionCompensation", true);
-        SetField(publisher, "_motionCompensationOutputPolicy", PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic);
-        SetField(publisher, "_deskewedPointCloud2NativeTopic", "/unity/point_cloud2_deskewed");
-        SetField(publisher, "_motionCompensationReferenceTime", PointCloudMotionCompensationReferenceTime.ScanStart);
-        SetField(publisher, "_motionCompensationSource", PointCloudMotionCompensationSource.SensorTransform);
+        SetField(publisher, "_outputMode", PointCloudOutputMode.PointCloud2Native, "configure PointCloud2 Native output");
+        SetField(publisher, "_topic", "/unity/point_cloud2", "configure raw PointCloud2 topic");
+        SetField(publisher, "_frameId", "os_lidar", "configure PointCloud2 frame id");
+        SetField(publisher, "_publishPointCloud2NativeTfAnchor", true, "configure PointCloud2 TF anchor");
+        SetField(publisher, "_enableMotionCompensation", true, "configure point cloud deskew");
+        SetField(publisher, "_motionCompensationOutputPolicy", PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic, "configure point cloud deskew output policy");
+        SetField(publisher, "_deskewedPointCloud2NativeTopic", "/unity/point_cloud2_deskewed", "configure deskewed PointCloud2 topic");
+        SetField(publisher, "_motionCompensationReferenceTime", PointCloudMotionCompensationReferenceTime.ScanStart, "configure deskew reference time");
+        SetField(publisher, "_motionCompensationSource", PointCloudMotionCompensationSource.SensorTransform, "configure deskew motion source");
 
         var controller = UnityEngine.Object.FindFirstObjectByType<Phase138LidarVehicleController>();
         if (controller != null)
         {
-            SetField(controller, "_useAutoWander", true);
+            SetField(controller, "_useAutoWander", true, "enable Phase162 vehicle motion");
             motionTarget = controller.gameObject;
             motionOriginCaptured = false;
             motionStartedAt = EditorApplication.timeSinceStartup;
@@ -115,6 +121,60 @@ public static class Phase162LocalZenohPlaySetup
         EditorApplication.update -= DriveVehicleDuringPlay;
         motionTarget = null;
         motionOriginCaptured = false;
+        RestoreEnvironmentAfterOverride();
+    }
+
+    private static void CaptureEnvironmentBeforeOverride()
+    {
+        if (SessionState.GetBool(EnvironmentCapturedKey, false))
+            return;
+
+        CaptureEnvironmentVariable("ROS_DOMAIN_ID", PreviousRosDomainIdKey, PreviousRosDomainIdWasSetKey);
+        CaptureEnvironmentVariable("RMW_IMPLEMENTATION", PreviousRmwImplementationKey, PreviousRmwImplementationWasSetKey);
+
+        var communicationMode = EditorUserSettings.GetConfigValue(LyricalCommunicationModeKey);
+        SessionState.SetBool(PreviousCommunicationModeWasSetKey, !string.IsNullOrEmpty(communicationMode));
+        SessionState.SetString(PreviousCommunicationModeKey, communicationMode ?? string.Empty);
+        SessionState.SetBool(EnvironmentCapturedKey, true);
+    }
+
+    private static void CaptureEnvironmentVariable(string variableName, string valueKey, string wasSetKey)
+    {
+        var value = Environment.GetEnvironmentVariable(variableName);
+        SessionState.SetBool(wasSetKey, value != null);
+        SessionState.SetString(valueKey, value ?? string.Empty);
+    }
+
+    private static void ApplyZenohEnvironmentOverride()
+    {
+        Environment.SetEnvironmentVariable("ROS_DOMAIN_ID", "0");
+        Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_zenoh_cpp");
+        EditorUserSettings.SetConfigValue(LyricalCommunicationModeKey, "zenoh");
+    }
+
+    private static void RestoreEnvironmentAfterOverride()
+    {
+        if (!SessionState.GetBool(EnvironmentCapturedKey, false))
+            return;
+
+        RestoreEnvironmentVariable("ROS_DOMAIN_ID", PreviousRosDomainIdKey, PreviousRosDomainIdWasSetKey);
+        RestoreEnvironmentVariable("RMW_IMPLEMENTATION", PreviousRmwImplementationKey, PreviousRmwImplementationWasSetKey);
+
+        var previousMode = SessionState.GetString(PreviousCommunicationModeKey, string.Empty);
+        EditorUserSettings.SetConfigValue(
+            LyricalCommunicationModeKey,
+            SessionState.GetBool(PreviousCommunicationModeWasSetKey, false) ? previousMode : string.Empty);
+
+        SessionState.SetBool(EnvironmentCapturedKey, false);
+    }
+
+    private static void RestoreEnvironmentVariable(string variableName, string valueKey, string wasSetKey)
+    {
+        Environment.SetEnvironmentVariable(
+            variableName,
+            SessionState.GetBool(wasSetKey, false)
+                ? SessionState.GetString(valueKey, string.Empty)
+                : null);
     }
 
     private static void DriveVehicleDuringPlay()
@@ -165,11 +225,15 @@ public static class Phase162LocalZenohPlaySetup
         }
     }
 
-    private static void SetField(object target, string name, object value)
+    private static void SetField(object target, string name, object value, string context)
     {
         var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
         if (field == null)
-            throw new MissingFieldException(target.GetType().FullName, name);
+        {
+            throw new MissingFieldException(
+                target.GetType().FullName,
+                name + " while trying to " + context + " for Phase162 Lyrical Zenoh acceptance");
+        }
 
         field.SetValue(target, value);
     }

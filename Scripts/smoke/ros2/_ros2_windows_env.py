@@ -36,7 +36,13 @@ def default_ros2_root(distro: str = "jazzy", workspace_root: pathlib.Path | None
     return root / "ros2-windows" / f"ros2_{normalized}"
 
 
-DEFAULT_ROS2_ROOT = default_ros2_root("jazzy")
+DEFAULT_JAZZY_ROS2_ROOT = default_ros2_root("jazzy")
+DEFAULT_HUMBLE_ROS2_ROOT = default_ros2_root("humble")
+DEFAULT_LYRICAL_ROS2_ROOT = default_ros2_root("lyrical")
+
+# Backward-compatible default for older Jazzy smoke scripts. New distro-specific
+# helpers should use default_ros2_root("<distro>") or the explicit constants above.
+DEFAULT_ROS2_ROOT = DEFAULT_JAZZY_ROS2_ROOT
 
 if os.name == "nt":
     import ctypes
@@ -91,7 +97,7 @@ def infer_ros_distro(ros2_root: pathlib.Path) -> str:
         return "lyrical"
     if "jazzy" in root_text:
         return "jazzy"
-    return "jazzy"
+    raise ValueError(f"Cannot infer ROS_DISTRO from ROS2 root path: {ros2_root}")
 
 
 def ros2_opt_bin_paths(ros2_root: pathlib.Path) -> list[pathlib.Path]:

@@ -57,27 +57,37 @@ public static class FoxgloveBuild
             Directory.CreateDirectory(outputDir);
 
         var namedTarget = NamedBuildTarget.FromBuildTargetGroup(BuildTargetGroup.Standalone);
-        PlayerSettings.SetScriptingBackend(namedTarget, ScriptingImplementation.IL2CPP);
-        PlayerSettings.SetManagedStrippingLevel(namedTarget, ManagedStrippingLevel.Medium);
-
-        var options = new BuildPlayerOptions
+        var previousScriptingBackend = PlayerSettings.GetScriptingBackend(namedTarget);
+        var previousManagedStrippingLevel = PlayerSettings.GetManagedStrippingLevel(namedTarget);
+        try
         {
-            scenes = scenes,
-            locationPathName = outputPath,
-            target = config.BuildTarget,
-            subtarget = (int)StandaloneBuildSubtarget.Player,
-            options = BuildOptions.None
-        };
+            PlayerSettings.SetScriptingBackend(namedTarget, ScriptingImplementation.IL2CPP);
+            PlayerSettings.SetManagedStrippingLevel(namedTarget, ManagedStrippingLevel.Medium);
 
-        Debug.Log($"[FoxgloveBuild] Starting {config.DisplayName} Player build...");
-        var report = BuildPipeline.BuildPlayer(options);
-        if (report.summary.totalErrors == 0)
-        {
-            Debug.Log($"Build succeeded: {outputPath}");
+            var options = new BuildPlayerOptions
+            {
+                scenes = scenes,
+                locationPathName = outputPath,
+                target = config.BuildTarget,
+                subtarget = (int)StandaloneBuildSubtarget.Player,
+                options = BuildOptions.None
+            };
+
+            Debug.Log($"[FoxgloveBuild] Starting {config.DisplayName} Player build...");
+            var report = BuildPipeline.BuildPlayer(options);
+            if (report.summary.totalErrors == 0)
+            {
+                Debug.Log($"Build succeeded: {outputPath}");
+            }
+            else
+            {
+                throw new System.Exception($"Build failed with {report.summary.totalErrors} errors: {report.summary}");
+            }
         }
-        else
+        finally
         {
-            throw new System.Exception($"Build failed with {report.summary.totalErrors} errors: {report.summary}");
+            PlayerSettings.SetScriptingBackend(namedTarget, previousScriptingBackend);
+            PlayerSettings.SetManagedStrippingLevel(namedTarget, previousManagedStrippingLevel);
         }
     }
 

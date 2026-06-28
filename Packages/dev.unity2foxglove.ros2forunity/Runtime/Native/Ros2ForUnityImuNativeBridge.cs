@@ -27,12 +27,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const int WarningIntervalFrames = 240;
 
         private static Ros2ForUnityImuNativeBridge _instance;
-        private static bool _runtimeShuttingDown;
-        private static bool _playModeSceneLoaded;
+        private static volatile bool _runtimeShuttingDown;
+        private static volatile bool _playModeSceneLoaded;
 #if UNITY_EDITOR
-        private static bool _editorEnteredPlayMode;
+        private static volatile bool _editorEnteredPlayMode;
         private static double _editorEnteredPlayModeAt;
-        private static bool _editorQuitting;
+        private static volatile bool _editorQuitting;
 #endif
 
         private readonly Dictionary<int, ImuBinding> _bindings = new Dictionary<int, ImuBinding>();
@@ -297,7 +297,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         return false;
                     }
 
-                    RecordRos2Failure("ROS2 For Unity runtime is not ready; IMU Native DDS output is paused.");
+                    if (!IsShuttingDown)
+                        RecordRos2Failure("ROS2 For Unity runtime is not ready; IMU Native DDS output is paused.");
+
                     return false;
                 }
             }
@@ -309,7 +311,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return false;
                 }
 
-                RecordRos2Failure("ROS2 For Unity runtime check failed: " + ex.Message);
+                if (!IsShuttingDown)
+                    RecordRos2Failure("ROS2 For Unity runtime check failed: " + ex.Message);
+
                 return false;
             }
 
@@ -344,6 +348,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void BeginShutdown()
         {
+            if (_isStopping)
+                return;
+
             _isStopping = true;
             _runtimeShuttingDown = true;
             ClearBindings();

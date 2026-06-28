@@ -89,7 +89,13 @@ namespace Unity2Foxglove.Ros2ForUnity
             if (!_publishers.TryGetValue(contract.Topic, out var publisher))
                 return;
 
-            if (!publisher.TryPublish(payload ?? Array.Empty<byte>(), timestampNs, out var error))
+            if (payload == null)
+            {
+                ReportOnce(contract.Topic + ":null-payload", "ROS2 publish skipped for '" + contract.Topic + "': payload was null.");
+                return;
+            }
+
+            if (!publisher.TryPublish(payload, timestampNs, out var error))
                 ReportOnce(contract.Topic + ":publish", "ROS2 publish failed for '" + contract.Topic + "': " + error);
         }
 
@@ -107,12 +113,20 @@ namespace Unity2Foxglove.Ros2ForUnity
             foreach (var publisher in _publishers.Values)
             {
                 try { publisher.Dispose(); }
-                catch { /* best-effort teardown */ }
+                catch (Exception ex)
+                {
+                    ReportOnce("dispose:publisher:" + ex.GetType().FullName, "ROS2 publisher teardown failed: "
+                        + ex.GetType().Name + ": " + ex.Message);
+                }
             }
 
             _publishers.Clear();
             try { _node?.Dispose(); }
-            catch { /* best-effort teardown */ }
+            catch (Exception ex)
+            {
+                ReportOnce("dispose:node:" + ex.GetType().FullName, "ROS2 node teardown failed: "
+                    + ex.GetType().Name + ": " + ex.Message);
+            }
         }
 
         private void ReportOnce(string key, string message)

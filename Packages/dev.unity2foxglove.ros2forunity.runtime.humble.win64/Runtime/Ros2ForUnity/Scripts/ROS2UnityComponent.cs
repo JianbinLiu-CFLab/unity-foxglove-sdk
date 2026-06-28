@@ -44,6 +44,7 @@ public class ROS2UnityComponent : MonoBehaviour
     private int snapshotVersion = -1;
     private bool initialized = false;
     private volatile bool quitting = false;
+    private bool runtimeShutdownRequested = false;
     private bool disposed = false;
     private Thread executorThread;
     private int interval = 2;  // Spinning / executor interval in ms
@@ -71,6 +72,7 @@ public class ROS2UnityComponent : MonoBehaviour
                 return;
 
             ros2forUnity = new ROS2ForUnity();
+            runtimeShutdownRequested = false;
             nodes = new List<ROS2Node>();
             ros2csNodes = new List<INode>();
             executableActions = new List<Action>();
@@ -96,6 +98,7 @@ public class ROS2UnityComponent : MonoBehaviour
             if (component != null)
             {
                 component.StopExecutor();
+                component.MarkRuntimeShutdown();
             }
         }
     }
@@ -268,7 +271,7 @@ public class ROS2UnityComponent : MonoBehaviour
         Thread threadToStart = null;
         lock (mutex)
         {
-            if (initialized || disposed)
+            if (initialized || disposed || runtimeShutdownRequested || ros2forUnity == null || nodes == null)
             {
                 return;
             }
@@ -280,6 +283,15 @@ public class ROS2UnityComponent : MonoBehaviour
             threadToStart = executorThread;
         }
         threadToStart.Start();
+    }
+
+    private void MarkRuntimeShutdown()
+    {
+        lock (mutex)
+        {
+            ros2forUnity = null;
+            runtimeShutdownRequested = true;
+        }
     }
 
     private void StopExecutor()

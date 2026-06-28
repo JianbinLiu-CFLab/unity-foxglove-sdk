@@ -18,6 +18,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
             CompilationPipeline.compilationStarted += OnCompilationStarted;
+            CompilationPipeline.compilationFinished += OnCompilationFinished;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
         }
 
@@ -62,13 +63,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, true);
         }
 
+        private static void OnCompilationFinished(object context)
+        {
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+                SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, false);
+        }
+
         private static void OnBeforeAssemblyReload()
         {
-            if (!SessionState.GetBool(CompilationStartedWhileR2fuPlayModeKey, false))
+            var compilationStartedWhilePlaying = SessionState.GetBool(CompilationStartedWhileR2fuPlayModeKey, false);
+            if (!compilationStartedWhilePlaying && !EditorApplication.isPlaying)
                 return;
 
             SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, false);
-            StopPlayModeBeforeNativeReload("script compilation assembly reload");
+            StopPlayModeBeforeNativeReload(
+                compilationStartedWhilePlaying
+                    ? "script compilation assembly reload"
+                    : "assembly reload");
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
                 Debug.LogError(

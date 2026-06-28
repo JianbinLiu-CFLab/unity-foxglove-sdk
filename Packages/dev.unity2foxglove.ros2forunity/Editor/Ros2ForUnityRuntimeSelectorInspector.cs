@@ -62,8 +62,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (status.SelectedRuntime != null)
             {
                 var sessionRuntime = Ros2ForUnityRuntimeSelection.GetSessionRuntimePackage();
-                var restartPackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(projectDirectory);
-                var restartCommunicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(projectDirectory);
+                var restartPackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
+                var restartCommunicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
                 if (!string.IsNullOrWhiteSpace(restartPackage))
                 {
                     EditorGUILayout.HelpBox(
@@ -138,17 +138,27 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Ros2ForUnityRuntimeSelectionStatus status,
             Ros2ForUnityRuntimeDescriptor[] installed)
         {
-            var selectedIndex = Math.Max(0, Array.FindIndex(installed, runtime =>
+            var selectedIndex = Array.FindIndex(installed, runtime =>
                 status.SelectedRuntime != null
-                && string.Equals(runtime.PackageName, status.SelectedRuntime.PackageName, StringComparison.Ordinal)));
+                && string.Equals(runtime.PackageName, status.SelectedRuntime.PackageName, StringComparison.Ordinal));
             var installedLabels = installed.Select(runtime => runtime.DisplayName).ToArray();
+            var popupLabels = installedLabels;
+            if (selectedIndex < 0)
+            {
+                popupLabels = new[] { "No active runtime" }.Concat(installedLabels).ToArray();
+                selectedIndex = 0;
+            }
 
             using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
             {
                 EditorGUI.BeginChangeCheck();
-                var changedIndex = EditorGUILayout.Popup("Active Runtime", selectedIndex, installedLabels);
-                if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < installed.Length)
-                    SwitchAndResolve(projectDirectory, installed[changedIndex]);
+                var changedIndex = EditorGUILayout.Popup("Active Runtime", selectedIndex, popupLabels);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    var runtimeIndex = popupLabels.Length == installed.Length ? changedIndex : changedIndex - 1;
+                    if (runtimeIndex >= 0 && runtimeIndex < installed.Length)
+                        SwitchAndResolve(projectDirectory, installed[runtimeIndex]);
+                }
             }
 
             if (EditorApplication.isPlayingOrWillChangePlaymode)
@@ -157,13 +167,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void SwitchAndResolve(string projectDirectory, Ros2ForUnityRuntimeDescriptor runtime)
         {
+            _pendingResolveMessage =
+                "Unity is resolving the selected runtime package. Restart Unity only if this Editor session already entered Play Mode with a different ROS2 runtime.";
             Ros2ForUnityRuntimeSelection.SwitchActiveRuntimePackage(projectDirectory, runtime.PackageName);
             Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
-            EditorApplication.delayCall += () =>
-            {
-                _pendingResolveMessage =
-                    "Unity is resolving the selected runtime package. Restart Unity only if this Editor session already entered Play Mode with a different ROS2 runtime.";
-            };
         }
 
         private static void DrawPendingResolveMessage()

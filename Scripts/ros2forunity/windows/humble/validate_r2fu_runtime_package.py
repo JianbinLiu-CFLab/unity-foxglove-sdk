@@ -204,6 +204,7 @@ def check_required_files(results: list[CheckResult]) -> None:
         PLUGIN_ROOT / "metadata_ros2cs.xml",
         RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs",
         RUNTIME_ROOT / "Scripts" / "ROS2UnityComponent.cs",
+        RUNTIME_ROOT / "Scripts" / "ROS2UnityCore.cs",
         RUNTIME_ROOT / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.HumbleWin64.asmdef",
         RUNTIME_ROOT / "Plugins" / "ros2cs_core.dll",
         RUNTIME_ROOT / "Plugins" / "ros2cs_common.dll",
@@ -488,9 +489,13 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     add(
         results,
         "PackageManager lookup guarded",
-        "#if UNITY_EDITOR" in text
-        and "UnityEditor.PackageManager.PackageInfo.FindForAssetPath" in text
-        and text.index("#if UNITY_EDITOR") < text.index("UnityEditor.PackageManager.PackageInfo.FindForAssetPath"),
+        re.search(
+            r"#if\s+UNITY_EDITOR\s+UnityEditor\.PackageManager\.PackageInfo\s+\w+\s*="
+            r"\s*UnityEditor\.PackageManager\.PackageInfo\.FindForAssetPath",
+            text,
+            re.S,
+        )
+        is not None,
         "ROS2ForUnity.cs",
     )
 
@@ -819,4 +824,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
