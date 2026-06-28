@@ -134,12 +134,23 @@ namespace Unity.FoxgloveSDK.IO
                 return DataProblem(RemoteMcapResponseStatus.Unsupported, "DataTooLargeForInMemoryResponse",
                     "Requested MCAP data exceeds the prototype in-memory byte response cap; use GetDataStream.");
 
+            byte[] data;
+            try
+            {
+                data = ReadAllBytesWithinCap(_mcapPath, _maxInMemoryDataBytes);
+            }
+            catch (RemoteMcapRangeTooLargeException)
+            {
+                return DataProblem(RemoteMcapResponseStatus.Unsupported, "DataTooLargeForInMemoryResponse",
+                    "Requested MCAP data exceeds the prototype in-memory byte response cap; use GetDataStream.");
+            }
+
             return new RemoteMcapDataResponse
             {
                 Status = RemoteMcapResponseStatus.Ok,
                 Authorization = authorization,
                 SourceId = _sourceId,
-                Data = File.ReadAllBytes(_mcapPath)
+                Data = data
             };
         }
 
@@ -219,6 +230,10 @@ namespace Unity.FoxgloveSDK.IO
                 return denied;
             }
 
+            if (!string.Equals(request.SourceId, _sourceId, StringComparison.Ordinal))
+                return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceNotFound",
+                    "Requested MCAP source id is not available in this prototype.");
+
             var info = new FileInfo(_mcapPath);
             if (!info.Exists)
                 return DataStreamProblem(RemoteMcapResponseStatus.NotFound, "SourceFileNotFound",
@@ -259,12 +274,14 @@ namespace Unity.FoxgloveSDK.IO
             var info = new FileInfo(_mcapPath);
             if (!info.Exists)
                 return CreateMissingManifest();
+            var loadLength = info.Length;
+            var loadLastWriteUtc = info.LastWriteTimeUtc;
 
             lock (_manifestCacheGate)
             {
                 if (_cachedManifest != null
-                    && _cachedManifestLength == info.Length
-                    && _cachedManifestLastWriteUtc == info.LastWriteTimeUtc)
+                    && _cachedManifestLength == loadLength
+                    && _cachedManifestLastWriteUtc == loadLastWriteUtc)
                 {
                     return CloneManifest(_cachedManifest);
                 }
@@ -286,22 +303,24 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             info.Refresh();
-            var cacheLength = info.Exists ? info.Length : 0L;
-            var cacheLastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue;
+            if (!info.Exists)
+                return CreateMissingManifest();
+            if (info.Length != loadLength || info.LastWriteTimeUtc != loadLastWriteUtc)
+                return manifest;
 
             lock (_manifestCacheGate)
             {
                 if (_cachedManifest != null
-                    && _cachedManifestLength == cacheLength
-                    && _cachedManifestLastWriteUtc == cacheLastWriteUtc)
+                    && _cachedManifestLength == loadLength
+                    && _cachedManifestLastWriteUtc == loadLastWriteUtc)
                 {
                     return CloneManifest(_cachedManifest);
                 }
 
                 _cachedManifest = CloneManifest(manifest);
                 _cachedManifestBytes = null;
-                _cachedManifestLength = cacheLength;
-                _cachedManifestLastWriteUtc = cacheLastWriteUtc;
+                _cachedManifestLength = loadLength;
+                _cachedManifestLastWriteUtc = loadLastWriteUtc;
                 return CloneManifest(manifest);
             }
         }
@@ -337,6 +356,33 @@ namespace Unity.FoxgloveSDK.IO
                 _cachedManifestLength = cacheLength;
                 _cachedManifestLastWriteUtc = cacheLastWriteUtc;
                 return _cachedManifestBytes;
+            }
+        }
+
+        private static byte[] ReadAllBytesWithinCap(string path, long maxBytes)
+        {
+            if (maxBytes < 0)
+                return File.ReadAllBytes(path);
+
+            using (var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var output = new MemoryStream())
+            {
+                var buffer = new byte[81920];
+                long total = 0;
+                while (true)
+                {
+                    var read = input.Read(buffer, 0, buffer.Length);
+                    if (read <= 0)
+                        break;
+
+                    total += read;
+                    if (total > maxBytes)
+                        throw new RemoteMcapRangeTooLargeException(
+                            "Requested MCAP data exceeds the prototype in-memory byte response cap; use GetDataStream.");
+                    output.Write(buffer, 0, read);
+                }
+
+                return output.ToArray();
             }
         }
 

@@ -153,6 +153,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private static void AppendNullableNumber(StringBuilder sb)
         {
+            // JSON has no NaN/Infinity literal. FoxRun aggregate floating-point
+            // fields allow null as the sentinel for non-finite runtime values,
+            // even when the source field itself is not nullable.
             sb.Append("{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}");
         }
 

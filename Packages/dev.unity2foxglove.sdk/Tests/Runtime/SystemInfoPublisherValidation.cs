@@ -90,8 +90,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("MaxPublishRateHz", StringComparison.Ordinal),
                 "145C-1: publisher names the maximum allowed publish rate");
-            Check(source.Contains("5f", StringComparison.Ordinal),
-                "145C-2: publisher clamps to 5 Hz maximum rate / 200 ms minimum interval");
+            Check(source.Contains("private const float MaxPublishRateHz = 5f;", StringComparison.Ordinal),
+                "145C-2: publisher names the 5 Hz maximum rate / 200 ms minimum interval");
             Check(source.Contains("Mathf.Min", StringComparison.Ordinal)
                   || source.Contains("Math.Min", StringComparison.Ordinal),
                 "145C-3: effective rate is clamped before scheduling");

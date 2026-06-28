@@ -130,8 +130,13 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         internal static uint TimeOffsetSecondsToNanoseconds(float timeOffsetSeconds)
         {
-            if (float.IsNaN(timeOffsetSeconds) || float.IsInfinity(timeOffsetSeconds) || timeOffsetSeconds <= 0f)
+            if (float.IsNaN(timeOffsetSeconds) || float.IsInfinity(timeOffsetSeconds) || timeOffsetSeconds == 0f)
                 return 0u;
+            if (timeOffsetSeconds < 0f)
+                throw new ArgumentOutOfRangeException(
+                    nameof(timeOffsetSeconds),
+                    timeOffsetSeconds,
+                    "PointCloud absolute time offsets must be non-negative.");
 
             var nanoseconds = Math.Round(
                 (double)timeOffsetSeconds * 1_000_000_000d,

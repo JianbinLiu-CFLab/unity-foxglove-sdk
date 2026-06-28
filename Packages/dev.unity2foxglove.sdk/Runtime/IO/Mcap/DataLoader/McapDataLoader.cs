@@ -140,6 +140,26 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         /// <summary>
+        /// Creates a forward-only lazy decoded iterator over matching messages.
+        /// The returned enumerable can be enumerated only once and keeps the
+        /// same ordering and stream-ownership constraints as
+        /// <see cref="CreateLazyIterator"/>.
+        /// </summary>
+        public IEnumerable<McapDecodedMessage> CreateLazyDecodedIterator(
+            McapDataLoaderQuery query,
+            McapDecodeOptions options = null)
+        {
+            ThrowIfDisposed();
+            Initialize();
+            if (!QueryCanMatch(query?.ChannelIds, query?.Topics))
+                return CreateEmptyLazyDecodedIterator();
+
+            return new McapSinglePassEnumerable<McapDecodedMessage>(
+                nameof(McapDataLoader) + "." + nameof(CreateLazyDecodedIterator),
+                () => EnumerateLazyDecodedMessages(ToLazyReadOptions(query), options).GetEnumerator());
+        }
+
+        /// <summary>
         /// Creates an opt-in decoded iterator over matching messages while
         /// preserving each raw MCAP payload as the source of truth.
         /// Like <see cref="CreateIterator"/>, this materializes the raw result set
@@ -640,6 +660,16 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        private IEnumerable<McapDecodedMessage> EnumerateLazyDecodedMessages(McapReadOptions options, McapDecodeOptions decodeOptions)
+        {
+            var registry = CreateDecodeRegistry(decodeOptions);
+            foreach (var raw in EnumerateLazyMessages(options))
+            {
+                registry.TryDecode(raw, out var decoded);
+                yield return decoded;
+            }
+        }
+
         private static int ComputeDecodeOptionsFingerprint(McapDecodeOptions options)
         {
             if (options == null)
@@ -685,6 +715,11 @@ namespace Unity.FoxgloveSDK.IO
             => new McapSinglePassEnumerable<McapDataLoaderMessage>(
                 nameof(McapDataLoader) + "." + nameof(CreateLazyIterator),
                 () => ((IEnumerable<McapDataLoaderMessage>)Array.Empty<McapDataLoaderMessage>()).GetEnumerator());
+
+        private static IEnumerable<McapDecodedMessage> CreateEmptyLazyDecodedIterator()
+            => new McapSinglePassEnumerable<McapDecodedMessage>(
+                nameof(McapDataLoader) + "." + nameof(CreateLazyDecodedIterator),
+                () => ((IEnumerable<McapDecodedMessage>)Array.Empty<McapDecodedMessage>()).GetEnumerator());
 
         private static List<ushort> CopyUShorts(List<ushort> source)
             => source == null ? new List<ushort>() : new List<ushort>(source);

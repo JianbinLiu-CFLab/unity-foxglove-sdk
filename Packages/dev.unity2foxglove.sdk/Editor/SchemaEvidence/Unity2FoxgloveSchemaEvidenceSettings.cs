@@ -126,21 +126,33 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DrawSettings()
         {
+            var previousMode = DefaultIdentityMode;
+            var previousRoot = CurrentEvidenceRoot;
+
             EditorGUI.BeginChangeCheck();
-            var mode = (SchemaIdentityMode)EditorGUILayout.EnumPopup("Default Identity Mode", DefaultIdentityMode);
-            var root = EditorGUILayout.TextField("Current Evidence Root", CurrentEvidenceRoot);
+            var mode = (SchemaIdentityMode)EditorGUILayout.EnumPopup("Default Identity Mode", previousMode);
+            var root = EditorGUILayout.TextField("Current Evidence Root", previousRoot);
             var changed = EditorGUI.EndChangeCheck();
+
+            var shouldSave = false;
+            if (changed && mode != previousMode)
+            {
+                instance._defaultIdentityMode = mode;
+                shouldSave = true;
+            }
 
             if (!Unity2FoxgloveSchemaEvidencePaths.TryNormalizeAssetsRoot(root, out var normalized, out var error))
             {
                 EditorGUILayout.HelpBox(error, MessageType.Error);
             }
-            else if (changed)
+            else if (changed && !string.Equals(previousRoot, normalized, System.StringComparison.Ordinal))
             {
-                instance._defaultIdentityMode = mode;
                 instance._currentEvidenceRoot = normalized;
-                SaveAndSync();
+                shouldSave = true;
             }
+
+            if (shouldSave)
+                SaveAndSync();
 
             EditorGUILayout.Space();
             var resolvedRoot = Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot();

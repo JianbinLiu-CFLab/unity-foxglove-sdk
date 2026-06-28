@@ -82,8 +82,8 @@ namespace Unity.FoxgloveSDK.Tests
             var shouldPublish = Slice(source, "protected bool ShouldPublishNow()", "protected static string SanitizeFrameId");
             var rateResolution = Slice(source, "private float ResolvePublishRateHz()", "private void WarnIfEncodingFallback");
 
-            Check(source.Contains("_publishRateSource = PublisherRateSource.OverrideLocal"),
-                "71C-1: existing publishers default missing serialized rate source to local override");
+            Check(source.Contains("_publishRateSource = PublisherRateSource.UseManagerDefault"),
+                "71C-1: publishers default missing serialized rate source to manager default");
             Check(source.Contains("protected virtual void Reset()") && source.Contains("PublisherRateSource.UseManagerDefault"),
                 "71C-2: newly added publishers default to manager rate");
             Check(source.Contains("public PublisherRateSource PublishRateSource => _publishRateSource"),
@@ -100,8 +100,8 @@ namespace Unity.FoxgloveSDK.Tests
                     || shouldPublish.Contains("rateHz <= 0")
                     || shouldPublish.Contains("nonPositivePublishesEveryFrame: true"),
                 "71C-8: ShouldPublishNow preserves non-positive no-throttle semantics");
-            Check(rateResolution.Contains("FindFirstObjectByType<FoxgloveManager>()"),
-                "71C-9: effective rate can preview scene manager defaults without serialized manager reference");
+            Check(rateResolution.Contains("FindAnyObjectByType<FoxgloveManager>()"),
+                "71C-9: effective rate can preview scene manager defaults without ordered scene search");
         }
 
         private static void VerifyPublisherInspectorUx()

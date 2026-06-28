@@ -57,7 +57,8 @@ namespace Unity.FoxgloveSDK.Tests
                 $"134-12A-2: {label} retains local pending-readback cleanup policy");
             Check(source.Contains("if (_pendingRequests == 0") && source.Contains("CleanupResources();"),
                 $"134-12A-3: {label} still cleans resources immediately when no local readback is pending");
-            Check(source.Contains("generation != _captureGeneration"),
+            Check(source.Contains("generation != _captureGeneration")
+                  || source.Contains("generation != Volatile.Read(ref _captureGeneration)"),
                 $"134-12A-4: {label} keeps generation guard for stale callbacks");
         }
 

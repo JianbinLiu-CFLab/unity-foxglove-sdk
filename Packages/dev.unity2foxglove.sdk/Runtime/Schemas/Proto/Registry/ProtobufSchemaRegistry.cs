@@ -8,7 +8,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
 using Unity.FoxgloveSDK.Schemas;
@@ -18,6 +17,9 @@ namespace Foxglove.Schemas
     /// <summary>
     /// Registry that maps Foxglove protobuf schema names to FileDescriptorSet bytes.
     /// Accepts raw FileDescriptorSet bytes (typically from <see cref="FoxgloveSchemas.FileDescriptorSetData"/>).
+    /// This public type intentionally lives beside the generated
+    /// <c>Foxglove.Schemas</c> protobuf descriptors while registering into the
+    /// Unity2Foxglove schema abstraction supplied by <see cref="ISchemaRegistry"/>.
     /// Use <see cref="ProtobufSchemaRegistryLoader"/> for convenient construction.
     /// </summary>
     public class ProtobufSchemaRegistry
@@ -119,13 +121,14 @@ namespace Foxglove.Schemas
                 if (file.Name == null || file.MessageType.Count == 0)
                     continue;
 
-                // Collect transitive dependencies for this file.
-                var neededFiles = new HashSet<string>();
-                CollectDependencies(file.Name, fileMap, neededFiles);
+                // Collect transitive dependencies in dependency-first order so
+                // strict protobuf decoders can resolve imports as they read.
+                var neededFiles = new List<string>();
+                CollectDependencies(file.Name, fileMap, new HashSet<string>(), neededFiles);
 
                 // Build a minimal FileDescriptorSet.
                 var subset = new FileDescriptorSet();
-                foreach (var depName in neededFiles.OrderBy(name => name, StringComparer.Ordinal))
+                foreach (var depName in neededFiles)
                 {
                     if (fileMap.TryGetValue(depName, out var depFile))
                         subset.File.Add(depFile);
@@ -146,9 +149,10 @@ namespace Foxglove.Schemas
 
         private static void CollectDependencies(string fileName,
             Dictionary<string, FileDescriptorProto> fileMap,
-            HashSet<string> result)
+            HashSet<string> visited,
+            List<string> ordered)
         {
-            if (!result.Add(fileName))
+            if (!visited.Add(fileName))
                 return;
 
             if (!fileMap.TryGetValue(fileName, out var file))
@@ -156,8 +160,10 @@ namespace Foxglove.Schemas
 
             foreach (var dep in file.Dependency)
             {
-                CollectDependencies(dep, fileMap, result);
+                CollectDependencies(dep, fileMap, visited, ordered);
             }
+
+            ordered.Add(fileName);
         }
     }
 }

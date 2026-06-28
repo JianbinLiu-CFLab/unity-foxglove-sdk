@@ -305,8 +305,8 @@ internal static class Phase32Validation
             "32G-7");
         if (publisherBaseSource != null)
         {
-            Check(publisherBaseSource.Contains("_manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf"),
-                "32G-7: publisher base unresolved-manager fallback matches protobuf default");
+            Check(publisherBaseSource.Contains("_manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Json"),
+                "32G-7: publisher base unresolved-manager fallback matches JSON-only base capability");
         }
 
         string TryReadRepoText(string relativePath, string label)

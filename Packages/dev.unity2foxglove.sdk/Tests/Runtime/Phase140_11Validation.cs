@@ -111,8 +111,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(registry.Contains("RuntimeInitializeOnLoadMethod", StringComparison.Ordinal)
                   && registry.Contains("FactoryDiagnostics.Clear()", StringComparison.Ordinal),
                 "140-11G-1: decoder factory diagnostics reset across no-domain-reload Play Mode starts");
-            Check(registry.Contains("BuiltInFactories intentionally initializes once per AppDomain", StringComparison.Ordinal),
-                "140-11G-2: decoder registry documents the intentional one-AppDomain factory cache");
+            Check(registry.Contains("BuiltInFactories = CreateBuiltInFactoriesLazy()", StringComparison.Ordinal),
+                "140-11G-2: decoder registry refreshes built-in factory cache on Unity runtime reload");
         }
 
         private static void DecodeRegistryAvoidsDiscardedRawPayload()

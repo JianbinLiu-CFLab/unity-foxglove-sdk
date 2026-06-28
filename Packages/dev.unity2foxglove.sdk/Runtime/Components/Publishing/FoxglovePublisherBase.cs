@@ -29,8 +29,9 @@ namespace Unity.FoxgloveSDK.Components
         [Header("General")]
         [SerializeField] protected FoxgloveManager _manager;
         [SerializeField] protected string _topic = "";
-        [SerializeField] protected PublisherRateSource _publishRateSource = PublisherRateSource.OverrideLocal;
+        [SerializeField] protected PublisherRateSource _publishRateSource = PublisherRateSource.UseManagerDefault;
         [SerializeField] protected float _publishRateHz = 10f;
+        [Tooltip("When true, this publisher sends data on each scheduled tick. Disable to pause publishing without removing the component.")]
         [SerializeField] protected bool _publishOnEnable = true;
         [SerializeField] protected bool _warnIfManagerMissing = true;
 
@@ -47,9 +48,11 @@ namespace Unity.FoxgloveSDK.Components
         private FixedRatePublishState _publishRateState;
         private FixedRatePublishState _publishRateStateFixed;
         private bool _warnedManagerMissing;
-        private string _lastEncodingWarningKey;
+        private string _lastEncodingFallbackWarningKey;
+        private string _lastEncodingMismatchWarningKey;
         private string _lastBridgeWarningKey;
-        private string _lastTopicWarningKey;
+        private string _lastPublishTopicWarningKey;
+        private string _lastRos2BridgeTopicWarningKey;
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
@@ -196,12 +199,16 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void OnEnable()
         {
+            // Re-enable starts a fresh cadence window, so the first scheduled
+            // tick can publish immediately instead of waiting one full period.
             _publishRateState = default;
             _publishRateStateFixed = default;
             _warnedManagerMissing = false;
-            _lastEncodingWarningKey = null;
+            _lastEncodingFallbackWarningKey = null;
+            _lastEncodingMismatchWarningKey = null;
             _lastBridgeWarningKey = null;
-            _lastTopicWarningKey = null;
+            _lastPublishTopicWarningKey = null;
+            _lastRos2BridgeTopicWarningKey = null;
             ResolveManager();
         }
 
@@ -540,7 +547,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual PublisherEncodingResolution ResolvePublisherEncoding()
         {
-            var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Protobuf;
+            var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Json;
             var allowPublisherOverride = _manager == null || _manager.AllowPublisherOverride;
             return PublisherEncodingPolicy.Resolve(
                 managerDefault,
@@ -569,7 +576,7 @@ namespace Unity.FoxgloveSDK.Components
             var manager = _manager;
 #if UNITY_EDITOR
             if (manager == null && !Application.isPlaying)
-                manager = FindFirstObjectByType<FoxgloveManager>();
+                manager = FindAnyObjectByType<FoxgloveManager>();
 #endif
 
             return PublisherRatePolicy.Resolve(
@@ -601,8 +608,8 @@ namespace Unity.FoxgloveSDK.Components
             if (resolution.IsSupported && IsExpectedEncodingFallback(resolution)) return;
 
             var key = $"fallback:{resolution.RequestedLabel}:{resolution.EffectiveLabel}";
-            if (_lastEncodingWarningKey == key) return;
-            _lastEncodingWarningKey = key;
+            if (_lastEncodingFallbackWarningKey == key) return;
+            _lastEncodingFallbackWarningKey = key;
 
             if (resolution.Effective == PublisherEffectiveEncoding.Unsupported)
             {
@@ -619,10 +626,11 @@ namespace Unity.FoxgloveSDK.Components
             if (HasValidPublisherTopic(_topic))
                 return true;
 
+            ref var lastTopicWarningKey = ref GetTopicWarningKey(operation);
             var key = "invalid-topic:" + operation;
-            if (_lastTopicWarningKey != key)
+            if (lastTopicWarningKey != key)
             {
-                _lastTopicWarningKey = key;
+                lastTopicWarningKey = key;
                 Debug.LogWarning(
                     $"[Foxglove] {GetType().Name} cannot {operation}: Topic is empty. Configure a non-empty topic before publishing.");
             }
@@ -633,11 +641,19 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnEncodingMismatch(PublisherEncodingResolution resolution, string attemptedEncoding)
         {
             var key = $"mismatch:{attemptedEncoding}:{resolution.EffectiveLabel}";
-            if (_lastEncodingWarningKey == key) return;
-            _lastEncodingWarningKey = key;
+            if (_lastEncodingMismatchWarningKey == key) return;
+            _lastEncodingMismatchWarningKey = key;
 
             Debug.LogWarning(
                 $"[Foxglove] {GetType().Name} resolved to {resolution.EffectiveLabel} but attempted to publish {attemptedEncoding}; dropping message.");
+        }
+
+        private ref string GetTopicWarningKey(string operation)
+        {
+            if (string.Equals(operation, "ROS2 Bridge publish", System.StringComparison.Ordinal))
+                return ref _lastRos2BridgeTopicWarningKey;
+
+            return ref _lastPublishTopicWarningKey;
         }
 
         private void WarnIfRos2BridgeFallback(Ros2BridgeOutputResolution resolution)

@@ -113,9 +113,8 @@ namespace Unity.FoxgloveSDK.Tests
                 && packedSource.Contains("Treat as read-only")
                 && packedSource.Contains("clone it first"),
                 "134-14D-5: packed point-cloud byte ownership is documented");
-            Check(source.Contains("owned by this result")
-                && source.Contains("Treat as read-only")
-                && source.Contains("invalidate the paired JSON/protobuf payloads"),
+            Check(source.Contains("already copied these bytes")
+                && source.Contains("not affected by later mutation"),
                 "134-14D-6: point-cloud build result byte ownership is documented");
         }
 

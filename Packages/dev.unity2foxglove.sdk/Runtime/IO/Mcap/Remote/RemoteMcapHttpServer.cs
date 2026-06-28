@@ -98,8 +98,22 @@ namespace Unity.FoxgloveSDK.IO
             _disposed = true;
             _stop.Cancel();
             try { _listener.Close(); } catch { /* best effort during shutdown */ }
-            try { _loop.Wait(DisposeWaitTimeout); } catch { /* listener close wakes the loop with an exception */ }
-            _stop.Dispose();
+            try
+            {
+                if (_loop.Wait(DisposeWaitTimeout))
+                {
+                    _stop.Dispose();
+                }
+                else
+                {
+                    _loop.ContinueWith(_ => _stop.Dispose(), TaskScheduler.Default);
+                }
+            }
+            catch
+            {
+                // Listener close wakes the loop with an exception; keep shutdown best-effort.
+                _loop.ContinueWith(_ => _stop.Dispose(), TaskScheduler.Default);
+            }
         }
 
         private async Task ListenLoopAsync(RemoteMcapHttpRouter router, CancellationToken token)

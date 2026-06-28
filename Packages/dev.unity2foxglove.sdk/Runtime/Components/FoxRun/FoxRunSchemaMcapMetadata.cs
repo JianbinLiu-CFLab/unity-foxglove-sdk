@@ -22,10 +22,19 @@ namespace Unity.FoxgloveSDK.Components
         Mismatch
     }
 
-    /// <summary>Comparison result for recorded and current FoxRun schema manifest hashes.</summary>
+    /// <summary>
+    /// Comparison result for recorded and current FoxRun schema manifest hashes.
+    /// <see cref="IsBlocking"/> reports whether the result is blocking-capable
+    /// under strict identity policy; warn-mode callers should still combine it
+    /// with their own <see cref="Unity.FoxgloveSDK.Core.SchemaIdentityMode"/>.
+    /// </summary>
     public sealed class FoxRunReplaySchemaGuardResult
     {
         public FoxRunReplaySchemaGuardState State { get; }
+        /// <summary>
+        /// True when this result should block replay under strict schema identity
+        /// policy. It is not an unconditional replay-stop signal for warn mode.
+        /// </summary>
         public bool IsBlocking { get; }
         public string Message { get; }
         public string RecordedGlobalManifestHash { get; }
