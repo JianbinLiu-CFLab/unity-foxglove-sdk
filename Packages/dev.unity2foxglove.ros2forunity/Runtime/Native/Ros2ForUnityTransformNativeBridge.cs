@@ -28,12 +28,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const int WarningIntervalFrames = 240;
 
         private static Ros2ForUnityTransformNativeBridge _instance;
-        private static bool _runtimeShuttingDown;
-        private static bool _playModeSceneLoaded;
+        private static volatile bool _runtimeShuttingDown;
+        private static volatile bool _playModeSceneLoaded;
 #if UNITY_EDITOR
-        private static bool _editorEnteredPlayMode;
+        private static volatile bool _editorEnteredPlayMode;
         private static double _editorEnteredPlayModeAt;
-        private static bool _editorQuitting;
+        private static volatile bool _editorQuitting;
 #endif
 
         private readonly Dictionary<int, Binding> _bindings = new Dictionary<int, Binding>();
@@ -354,6 +354,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void BeginShutdown()
         {
+            if (_isStopping)
+                return;
+
             _isStopping = true;
             _runtimeShuttingDown = true;
             ClearBindings();

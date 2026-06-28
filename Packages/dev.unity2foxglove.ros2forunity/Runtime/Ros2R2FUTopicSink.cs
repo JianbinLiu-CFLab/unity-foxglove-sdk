@@ -89,7 +89,13 @@ namespace Unity2Foxglove.Ros2ForUnity
             if (!_publishers.TryGetValue(contract.Topic, out var publisher))
                 return;
 
-            if (!publisher.TryPublish(payload ?? Array.Empty<byte>(), timestampNs, out var error))
+            if (payload == null)
+            {
+                ReportOnce(contract.Topic + ":null-payload", "ROS2 publish skipped for '" + contract.Topic + "': payload was null.");
+                return;
+            }
+
+            if (!publisher.TryPublish(payload, timestampNs, out var error))
                 ReportOnce(contract.Topic + ":publish", "ROS2 publish failed for '" + contract.Topic + "': " + error);
         }
 

@@ -91,6 +91,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         lastException = ex;
                         CleanupRos2();
+
+                        if (Owner.IsShuttingDown)
+                            return false;
                     }
                 }
 

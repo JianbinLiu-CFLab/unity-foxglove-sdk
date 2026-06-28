@@ -97,6 +97,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static double[] Copy(System.Collections.Generic.IReadOnlyList<double> values)
         {
+            if (values == null)
+                return Array.Empty<double>();
+
             var output = new double[values.Count];
             for (var i = 0; i < output.Length; i++)
                 output[i] = values[i];
@@ -106,6 +109,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static double[] Copy(System.Collections.Generic.IReadOnlyList<double> values, int length)
         {
             var output = new double[length];
+            if (values == null)
+                return output;
+
             for (var i = 0; i < output.Length && i < values.Count; i++)
                 output[i] = values[i];
             return output;
@@ -113,7 +119,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static void CopyInto(System.Collections.Generic.IReadOnlyList<double> source, double[] destination)
         {
-            if (destination == null)
+            if (source == null || destination == null)
                 return;
 
             var count = Math.Min(source.Count, destination.Length);
