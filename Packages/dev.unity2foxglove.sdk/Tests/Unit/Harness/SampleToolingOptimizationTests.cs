@@ -234,7 +234,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.Contains("struct PayloadView", bridge, StringComparison.Ordinal);
             Assert.Contains("return PayloadView{frame.payload.data(), frame.payload.size()};", payload, StringComparison.Ordinal);
-            Assert.Contains("return PayloadView{frame.payload.data() + 4, frame.payload.size() - 4};", payload, StringComparison.Ordinal);
+            Assert.Contains("scratch.insert(scratch.end(), frame.payload.begin(), frame.payload.end());", payload, StringComparison.Ordinal);
+            Assert.Contains("return PayloadView{scratch.data(), scratch.size()};", payload, StringComparison.Ordinal);
             Assert.DoesNotContain("return frame.payload;", payload, StringComparison.Ordinal);
             Assert.DoesNotContain("std::vector<uint8_t>(frame.payload.begin() + 4", payload, StringComparison.Ordinal);
             VerifyProbe("Scripts/smoke/websocket/topic_rate_probe.py", removePayloadLengthSlice: true);

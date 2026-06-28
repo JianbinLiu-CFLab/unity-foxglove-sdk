@@ -36,7 +36,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def run_build() -> None:
+def run_build() -> bool:
     """Build the source generator project in Release mode."""
     command = [
         "dotnet",
@@ -48,7 +48,13 @@ def run_build() -> None:
         str(BUILD_OUTPUT_DIR),
         "-v:minimal",
     ]
-    subprocess.run(command, cwd=REPO_ROOT, check=True)
+    try:
+        subprocess.run(command, cwd=REPO_ROOT, check=True)
+    except subprocess.CalledProcessError as exc:
+        print(f"[FAIL] Source generator Release build failed with exit code {exc.returncode}.", file=sys.stderr)
+        print(f"       command: {' '.join(command)}", file=sys.stderr)
+        return False
+    return True
 
 
 def validate_or_update(update: bool) -> int:
@@ -57,7 +63,8 @@ def validate_or_update(update: bool) -> int:
         print(f"[FAIL] Source generator project missing: {PROJECT}", file=sys.stderr)
         return 1
 
-    run_build()
+    if not run_build():
+        return 1
 
     if not BUILT_DLL.exists():
         print(f"[FAIL] Release build did not produce {BUILT_DLL}", file=sys.stderr)

@@ -37,7 +37,7 @@ RenderSettings:
   m_ReflectionBounces: 1
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
-  m_Sun: {fileID: 0}
+  m_Sun: {fileID: 410087040}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -269,7 +269,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
-  _manager: {fileID: 0}
+  _manager: {fileID: 346350281}
   _topic: /unity/camera
   _publishRateSource: 0
   _publishRateHz: 10
@@ -447,10 +447,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 346350280}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3d0f1e2a4b5c6d7e8f9a0b1c2d3e4f5, type: 3}
+  m_Script: {fileID: 11500000, guid: 745c54bef9ea4071a9b783828520c63d, type: 3}
   m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveReplayObjectAdapter
-  _manager: {fileID: 0}
+  _manager: {fileID: 346350281}
   _autoLookup: 1
   _frameOverrides: []
   _entityOverrides: []
@@ -773,8 +773,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 30efba2d25ad48cfb9769811e4e56e63, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher
-  _manager: {fileID: 0}
-  _topic: 
+  _manager: {fileID: 346350281}
+  _topic: /unity/point_cloud
   _publishRateSource: 0
   _publishRateHz: 10
   _publishOnEnable: 1
@@ -982,22 +982,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe
   _mutateValues: 1
   _publishNullOptional: 0
-  _lastStatus: Randomized probe values.
-  scalarValue: 0.15267503
-  textValue: random 334
-  vectorValue: {x: 1.6076865, y: 1.2682118, z: -0.17692828}
+  _lastStatus: Reset probe values.
+  scalarValue: 0
+  textValue: hello 115F
+  vectorValue: {x: 0, y: 0, z: 0}
   sampleArray:
-  - -7.7005405
-  - -0.79501724
-  - -5.589857
+  - 0
+  - 1
+  - 2
   sampleList:
-  - 2.9941864
-  - -4.4121895
-  - 5.593078
+  - 0
+  - 1
+  - 2
   nestedPayload:
-    count: 435
-    label: randomized
-    offset: {x: 1.6076865, y: 1.2682118, z: -0.17692828}
+    count: 0
+    label: reset
+    offset: {x: 0, y: 0, z: 0}
 --- !u!4 &1691798672
 Transform:
   m_ObjectHideFlags: 0
@@ -1047,8 +1047,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 49c73532e06675941b2a1b734765dc2d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveSceneCubePublisher
-  _manager: {fileID: 0}
-  _topic: 
+  _manager: {fileID: 346350281}
+  _topic: /scene
   _publishRateSource: 1
   _publishRateHz: 10
   _publishOnEnable: 1
@@ -1072,8 +1072,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4c1d6a066ac4948418f4df6fdc4c5e3c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher
-  _manager: {fileID: 0}
-  _topic: 
+  _manager: {fileID: 346350281}
+  _topic: /tf
   _publishRateSource: 1
   _publishRateHz: 10
   _publishOnEnable: 1

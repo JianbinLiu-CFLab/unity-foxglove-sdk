@@ -43,6 +43,14 @@ jobs:
       - name: Run xUnit unit tests
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --logger "trx;LogFileName=unit-tests.trx" --results-directory build/TestResults/Unit
 
+      - name: Upload xUnit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: build/TestResults/Unit
+          if-no-files-found: ignore
+
   analyzer-freshness:
     runs-on: windows-latest
     steps:

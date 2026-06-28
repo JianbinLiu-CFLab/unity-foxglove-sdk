@@ -45,12 +45,35 @@ THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 # File extensions that Unity tracks with .meta sidecar files in samples.
 UNITY_META_EXTENSIONS = {
     ".asmdef",
+    ".anim",
     ".asset",
+    ".controller",
+    ".compute",
     ".cs",
     ".dll",
+    ".fbx",
+    ".fontsettings",
+    ".guiskin",
     ".inputactions",
+    ".jpeg",
+    ".jpg",
     ".json",
+    ".mat",
+    ".otf",
+    ".physicmaterial",
+    ".png",
+    ".prefab",
+    ".preset",
+    ".rendertexture",
+    ".shader",
+    ".shadergraph",
+    ".spriteatlas",
+    ".ttf",
     ".unity",
+    ".uss",
+    ".uxml",
+    ".vfx",
+    ".wav",
     ".xml",
 }
 
@@ -74,7 +97,37 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
         PACKAGE / "Plugins" / "Google.Protobuf" / "Google.Protobuf.dll",
         ("Google.Protobuf", "BSD-3-Clause", "Plugins/Google.Protobuf/Google.Protobuf.dll"),
     ),
+    (
+        PACKAGE / "Runtime" / "Plugins" / "compression" / "K4os.Compression.LZ4.dll",
+        ("K4os.Compression.LZ4", "MIT", "Runtime/Plugins/compression/K4os.Compression.LZ4.dll"),
+    ),
+    (
+        PACKAGE / "Runtime" / "Plugins" / "compression" / "K4os.Compression.LZ4.Streams.dll",
+        ("K4os.Compression.LZ4.Streams", "MIT", "Runtime/Plugins/compression/K4os.Compression.LZ4.Streams.dll"),
+    ),
+    (
+        PACKAGE / "Runtime" / "Plugins" / "compression" / "K4os.Hash.xxHash.dll",
+        ("K4os.Hash.xxHash", "MIT", "Runtime/Plugins/compression/K4os.Hash.xxHash.dll"),
+    ),
+    (
+        PACKAGE / "Runtime" / "Plugins" / "compression" / "System.IO.Pipelines.dll",
+        ("System.IO.Pipelines", "MIT", "Runtime/Plugins/compression/System.IO.Pipelines.dll"),
+    ),
+    (
+        PACKAGE / "Runtime" / "Plugins" / "compression" / "ZstdSharp.dll",
+        ("ZstdSharp.Port", "MIT", "Runtime/Plugins/compression/ZstdSharp.dll"),
+    ),
+    (
+        PACKAGE / "Runtime" / "Plugins" / "StbImageWriteSharp.dll",
+        ("StbImageWriteSharp", "Public Domain", "Runtime/Plugins/StbImageWriteSharp.dll"),
+    ),
+    (
+        PACKAGE / "Runtime" / "Plugins" / "Windows" / "x86_64" / "Unity2FoxgloveDracoNative.dll",
+        ("Google Draco", "Apache-2.0", "Runtime/Plugins/Windows/x86_64/Unity2FoxgloveDracoNative.dll"),
+    ),
 )
+
+VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 # Directory path parts that indicate local/generated sample artifacts.
 FORBIDDEN_SAMPLE_PARTS = {
@@ -149,7 +202,7 @@ def check_package_identity(results: list[CheckResult], data: dict) -> None:
         add(results, f"package {key}", actual == value, f"expected {value!r}, got {actual!r}")
 
     version = data.get("version")
-    add(results, "package version", isinstance(version, str) and bool(version.strip()), f"version={version!r}")
+    add(results, "package version", isinstance(version, str) and VERSION_RE.match(version) is not None, f"version={version!r}")
 
     samples = data.get("samples")
     add(

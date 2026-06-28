@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
             var basicDir = Path.Combine(samplesDir, "BasicVisualization");
             var fullDir = Path.Combine(samplesDir, "FullDemoVisualization");
             var ros2Dir = Path.Combine(samplesDir, "Ros2BridgeSample");
+            var lidarMazeDir = Path.Combine(samplesDir, "Virtual LiDAR Maze Demo");
             var configsDir = Path.Combine(repoRoot, "Unity2Foxglove", "Configs");
 
             // ── 17A: package.json samples declaration ──
@@ -105,6 +106,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             var fullScene = File.ReadAllText(Path.Combine(fullDir, "Scenes", "FullDemoVisualization.unity"));
             Assert(!fullScene.Contains("Assembly-CSharp::Phase53FoxRunTriggerSmoke"), "FullDemo scene has current FoxRun trigger class identifier");
+            Assert(fullScene.Contains("Assembly-CSharp::FoxRunTriggerTelemetrySmoke"),
+                "FullDemo scene contains current FoxRun trigger telemetry component");
 
             var defaultVolumeProfile = File.ReadAllText(Path.Combine(fullDir, "Settings", "DefaultVolumeProfile.asset"));
             Assert(!defaultVolumeProfile.Contains("Unity.RenderPipelines.Core.Editor.Tests"), "FullDemo default volume profile has no URP Editor.Tests components");
@@ -134,6 +137,15 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSampleLaserScan.cs")), "Ros2BridgeSample laser script exists");
             Assert(File.Exists(Path.Combine(ros2Dir, "Scripts", "Ros2BridgeSamplePointCloud.cs")), "Ros2BridgeSample point cloud script exists");
 
+            // The Virtual LiDAR Maze Demo is importable from package.json and
+            // must receive the same sample hygiene coverage as the older samples.
+            Assert(Directory.Exists(lidarMazeDir), "Virtual LiDAR Maze Demo/ exists");
+            Assert(File.Exists(Path.Combine(lidarMazeDir, "README.md")), "Virtual LiDAR Maze Demo README exists");
+            Assert(File.Exists(Path.Combine(lidarMazeDir, "Phase138MazeDemoBootstrap.cs")), "Virtual LiDAR Maze Demo bootstrap exists");
+            Assert(File.Exists(Path.Combine(lidarMazeDir, "Phase138MazeBuilder.cs")), "Virtual LiDAR Maze Demo maze builder exists");
+            Assert(File.Exists(Path.Combine(lidarMazeDir, "Phase138LidarVehicleController.cs")), "Virtual LiDAR Maze Demo vehicle controller exists");
+            Assert(File.Exists(Path.Combine(lidarMazeDir, "Editor", "Phase138MazeDemoSceneBuilder.cs")), "Virtual LiDAR Maze Demo scene builder exists");
+
             // ── Forbidden items in samples ──
             var forbidden = new[] { "Generated", "TutorialInfo", "Editor", "Plugins", "Library", "Logs", "Recordings" };
             foreach (var sampleDir in new[] { basicDir, fullDir, ros2Dir })
@@ -152,10 +164,16 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
+            var lidarForbidden = new[] { "Generated", "TutorialInfo", "Plugins", "Library", "Logs", "Recordings" };
+            foreach (var f in lidarForbidden)
+            {
+                Assert(!Directory.Exists(Path.Combine(lidarMazeDir, f)), $"Virtual LiDAR Maze Demo: no {f}/");
+            }
+
             // ── No absolute paths in samples ──
             // .unity, .asset, and .inputactions are text YAML/JSON — these are
             // exactly where serialized local paths appear, so they MUST be scanned.
-            var sampleDirs = new[] { basicDir, fullDir, ros2Dir };
+            var sampleDirs = new[] { basicDir, fullDir, ros2Dir, lidarMazeDir };
             var windowsAbsPath = repoRoot.Replace('/', '\\');
             var unixAbsPath = repoRoot.Replace('\\', '/');
             foreach (var dir in sampleDirs)
@@ -185,6 +203,7 @@ namespace Unity.FoxgloveSDK.Tests
             ScanNoAbsolutePaths(Path.Combine(demoDir, "README.md"), repoRoot, "Unity2Foxglove/README.md");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Assets"), repoRoot, "Unity2Foxglove/Assets");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Packages"), repoRoot, "Unity2Foxglove/Packages");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "ProjectSettings"), repoRoot, "Unity2Foxglove/ProjectSettings");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Configs"), repoRoot, "Unity2Foxglove/Configs");
             ScanNoAbsolutePaths(Path.Combine(demoDir, "Docs"), repoRoot, "Unity2Foxglove/Docs");
 
@@ -195,7 +214,8 @@ namespace Unity.FoxgloveSDK.Tests
             var sampleFullLayout = Path.Combine(fullDir, "FoxgloveFullLayout.json");
             var configContent = File.ReadAllText(configFullLayout);
             var sampleContent = File.ReadAllText(sampleFullLayout);
-            Assert(configContent == sampleContent, "FullLayout.json consistent between Configs and sample");
+            Assert(NormalizeNewlines(configContent) == NormalizeNewlines(sampleContent),
+                "FullLayout.json consistent between Configs and sample");
 
             Console.WriteLine("Phase 17: All checks passed.");
         }
@@ -207,6 +227,9 @@ namespace Unity.FoxgloveSDK.Tests
             else
                 throw new Exception($"[FAIL] {description}");
         }
+
+        static string NormalizeNewlines(string text)
+            => text.Replace("\r\n", "\n").Replace("\r", "\n");
 
         static void ScanNoAbsolutePaths(string path, string repoRoot, string label)
         {

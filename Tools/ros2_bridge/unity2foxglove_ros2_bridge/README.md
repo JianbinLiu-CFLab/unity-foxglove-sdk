@@ -5,6 +5,9 @@ This is the experimental ROS 2 sidecar used by the Phase 94 bridge spike and the
 It remains intentionally narrow:
 
 - localhost only;
+- publishes only `foxglove_msgs/msg/*` schemas; use the `dev.unity2foxglove.ros2forunity`
+  adapter for standard ROS 2 message types such as `sensor_msgs/msg/Image` or
+  `sensor_msgs/msg/PointCloud2`;
 - QoS is preset-driven from Unity2Foxglove (`Reliable Default`, `Sensor Data`, `Transient Local`, or `Custom` reliability/durability/depth);
 - no automatic ROS 2 install;
 - no Windows-native ROS 2 support;
@@ -12,6 +15,8 @@ It remains intentionally narrow:
 - Phase 95 adds Unity Inspector controls and background queue status, Phase 96 adds bridge topic namespace/override and QoS metadata, Phase 97 adds a lightweight `U2R2` `health_ping` / `health_pong` check, and Phase 98 adds a guided sample plus launch kit. The sidecar transport and ROS 2 environment are still manual.
 
 ROS 2 publisher QoS is fixed when the sidecar creates a topic publisher. If you change QoS for an existing topic, restart this sidecar or use a different effective bridge topic.
+
+The `U2R2` transport is a raw TCP frame stream. If the sidecar sees a malformed frame, it closes the client connection because it cannot safely resynchronize to the next frame boundary. Unity should reconnect and the sidecar log will identify the rejected frame.
 
 Normal Unity2Foxglove Foxglove WebSocket use does not require ROS.
 
@@ -44,7 +49,7 @@ source install/setup.bash
 
 ## Run
 
-Default mode forwards the Phase 91/93 CDR encapsulation header unchanged:
+Default mode forwards Unity's CDR payload, including the Phase 91/93 CDR encapsulation header, unchanged:
 
 ```bash
 ros2 run unity2foxglove_ros2_bridge unity2foxglove_ros2_bridge --host 127.0.0.1 --port 8767 --payload-format cdr-with-encapsulation
@@ -58,13 +63,13 @@ ros2 launch unity2foxglove_ros2_bridge unity2foxglove_bridge.launch.py host:=127
 
 The launch file is installed by this package after `colcon build`.
 
-If `ros2 topic echo` sees the topics but cannot decode plausible values, retry the diagnostic body-only mode:
+The diagnostic body-only mode is only for test senders that produce CDR bytes without the four-byte CDR encapsulation header. In this mode, the sidecar prepends the little-endian encapsulation header before publishing to ROS 2:
 
 ```bash
 ros2 run unity2foxglove_ros2_bridge unity2foxglove_ros2_bridge --host 127.0.0.1 --port 8767 --payload-format cdr-body-only
 ```
 
-Record which mode works for your ROS 2 distro and RMW implementation.
+Do not use `cdr-body-only` for normal Unity2Foxglove payloads that already include `00 01 00 00`; the sidecar rejects those frames so malformed CDR is not published.
 
 ## Health Check
 

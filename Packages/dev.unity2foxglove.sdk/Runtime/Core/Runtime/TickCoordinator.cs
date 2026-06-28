@@ -122,8 +122,14 @@ namespace Unity.FoxgloveSDK.Core
         {
             playbackClock.Apply(1, 1f, true, timeNs);
             replay.Play();
-            replay.ApplyTickToScene(timeNs, deferCallbacks: true);
-            replay.Pause();
+            try
+            {
+                replay.ApplyTickToScene(timeNs, deferCallbacks: true);
+            }
+            finally
+            {
+                replay.Pause();
+            }
         }
 
         private void RememberExternalCursor(ulong timeNs)

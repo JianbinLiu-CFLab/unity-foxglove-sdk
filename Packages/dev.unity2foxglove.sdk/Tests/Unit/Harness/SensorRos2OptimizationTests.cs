@@ -286,7 +286,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("socket.Send(bytes", tcp, StringComparison.Ordinal);
             Assert.Contains("struct PayloadView", sidecar, StringComparison.Ordinal);
             Assert.Contains("PayloadView payload_for_publish", sidecar, StringComparison.Ordinal);
-            Assert.Contains("frame.payload.data() + 4", sidecar, StringComparison.Ordinal);
+            Assert.Contains("std::vector<uint8_t> & scratch", sidecar, StringComparison.Ordinal);
+            Assert.Contains("scratch.insert(scratch.end(), frame.payload.begin(), frame.payload.end());", sidecar, StringComparison.Ordinal);
             Assert.DoesNotContain("std::vector<uint8_t> payload_for_publish", sidecar, StringComparison.Ordinal);
             Assert.Contains("topic_signature_.emplace(frame.topic, signature)", sidecar, StringComparison.Ordinal);
             Assert.DoesNotContain("topic_signature_[frame.topic] = signature", sidecar, StringComparison.Ordinal);

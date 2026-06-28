@@ -133,9 +133,9 @@ namespace Unity.FoxgloveSDK.Tests
             var phase16 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs");
 
             Check(phase16.Contains("TryRunGitLsFiles", StringComparison.Ordinal)
-                  && phase16.Contains("git unavailable; skipping tracked private workspace boundary checks", StringComparison.Ordinal)
-                  && !phase16.Contains("throw new Exception($\"git ls-files failed", StringComparison.Ordinal),
-                "134-33G-1: Phase 16 private-boundary git checks warn/skip when git is unavailable");
+                  && phase16.Contains("Assert(false, \"git is available for tracked private workspace boundary checks\")", StringComparison.Ordinal)
+                  && !phase16.Contains("git unavailable; skipping tracked private workspace boundary checks", StringComparison.Ordinal),
+                "134-33G-1: Phase 16 private-boundary git checks fail closed when git is unavailable");
             Check(phase16.Contains("CountPythonParensOutsideStrings", StringComparison.Ordinal)
                   && phase16.Contains("PythonLineEndsWithDeclarationColonOutsideStrings", StringComparison.Ordinal),
                 "134-33G-2: Phase 16 Python declaration parser ignores string literals and comments");

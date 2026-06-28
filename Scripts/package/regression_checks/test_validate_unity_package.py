@@ -7,14 +7,17 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[3]
 VALIDATE_PACKAGE_PATH = ROOT / "Scripts" / "package" / "validate_unity_package.py"
+VALIDATE_SOURCE_GENERATOR_PATH = ROOT / "Scripts" / "package" / "validate_source_generator_dll.py"
 
 
 def load_module(name: str, path: Path):
@@ -49,6 +52,57 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(results[-1].ok)
         self.assertIn("Demo.asmdef", results[-1].detail)
 
+    def test_sample_meta_checks_prefab_files(self) -> None:
+        """Common Unity assets such as prefabs need stable .meta sidecars."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            sample = root / "Samples~" / "Demo"
+            sample.mkdir(parents=True)
+            (sample / "Robot.prefab").write_text("%YAML 1.1", encoding="utf-8")
+
+            self.validator.SAMPLES = root / "Samples~"
+            results = []
+            self.validator.check_sample_meta(results)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Robot.prefab", results[-1].detail)
+
+    def test_package_version_must_be_semver(self) -> None:
+        """Unity package versions should be MAJOR.MINOR.PATCH."""
+        results = []
+        self.validator.check_package_identity(
+            results,
+            {
+                "name": "dev.unity2foxglove.sdk",
+                "displayName": "Unity2Foxglove SDK",
+                "license": "Apache-2.0",
+                "version": "1.0",
+                "samples": [],
+            },
+        )
+
+        version_result = next(item for item in results if item.name == "package version")
+        self.assertFalse(version_result.ok)
+
+    def test_third_party_notice_requirements_cover_runtime_plugin_dlls(self) -> None:
+        """Runtime plugin DLLs should be gated by explicit third-party notice tokens."""
+        requirement_paths = {
+            requirement[0].as_posix()
+            for requirement in self.validator.THIRD_PARTY_NOTICE_REQUIREMENTS
+        }
+
+        expected = [
+            "Runtime/Plugins/compression/K4os.Compression.LZ4.dll",
+            "Runtime/Plugins/compression/K4os.Compression.LZ4.Streams.dll",
+            "Runtime/Plugins/compression/K4os.Hash.xxHash.dll",
+            "Runtime/Plugins/compression/System.IO.Pipelines.dll",
+            "Runtime/Plugins/compression/ZstdSharp.dll",
+            "Runtime/Plugins/StbImageWriteSharp.dll",
+            "Runtime/Plugins/Windows/x86_64/Unity2FoxgloveDracoNative.dll",
+        ]
+        for suffix in expected:
+            self.assertTrue(any(path.endswith(suffix) for path in requirement_paths), suffix)
+
     def test_forbidden_sample_artifacts_reports_root_directory_once(self) -> None:
         """A forbidden directory should not flood diagnostics with descendants."""
         with tempfile.TemporaryDirectory() as temp:
@@ -66,6 +120,24 @@ class ValidatePackageTests(unittest.TestCase):
         offenders = [item.strip() for item in results[-1].detail.split(";")]
         self.assertEqual(1, len(offenders))
         self.assertTrue(offenders[0].endswith("Samples~/BasicVisualization/Library"))
+
+
+class ValidateSourceGeneratorDllTests(unittest.TestCase):
+    """Regression coverage for source generator DLL validator diagnostics."""
+
+    def setUp(self) -> None:
+        """Load a fresh validate_source_generator_dll module for each test."""
+        self.validator = load_module("validate_source_generator_dll_under_test", VALIDATE_SOURCE_GENERATOR_PATH)
+
+    def test_build_failure_returns_structured_failure(self) -> None:
+        """A failed dotnet build should not surface as a Python traceback."""
+        failed = subprocess.CalledProcessError(returncode=9, cmd=["dotnet", "build"])
+        with mock.patch.object(self.validator.subprocess, "run", side_effect=failed):
+            with mock.patch("sys.stderr") as stderr:
+                self.assertFalse(self.validator.run_build())
+
+        written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
+        self.assertIn("[FAIL] Source generator Release build failed", written)
 
 
 if __name__ == "__main__":

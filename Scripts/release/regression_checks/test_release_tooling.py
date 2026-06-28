@@ -47,6 +47,9 @@ class VersionBumpTests(unittest.TestCase):
                 "\n".join(
                     [
                         "header",
+                        "[![Release](https://img.shields.io/badge/release-v1.9.4-green)](https://example.test/releases)",
+                        "- A pure C# WebSocket server for Unity Editor and Standalone Player. Windows is verified for v1.9.4; macOS/Linux are intended targets but not yet verified.",
+                        "Historical note: upgraded from release-v1.9.4 after verified for v1.9.4 acceptance.",
                         "- [v1.9.4 release notes](docs/releases/RELEASE_NOTES_v1.9.4.md)",
                         "- [v1.9.3 release notes](docs/releases/RELEASE_NOTES_v1.9.3.md)",
                         "- [v1.9.2 release notes](docs/releases/RELEASE_NOTES_v1.9.2.md)",
@@ -63,6 +66,9 @@ class VersionBumpTests(unittest.TestCase):
             bump.update_readme("1.9.4")
 
             text = readme.read_text(encoding="utf-8")
+            self.assertIn("release-v2.0.0-green", text)
+            self.assertIn("Windows is verified for v2.0.0;", text)
+            self.assertIn("Historical note: upgraded from release-v1.9.4 after verified for v1.9.4 acceptance.", text)
             self.assertIn("- [v2.0.0 release notes](docs/releases/RELEASE_NOTES_v2.0.0.md)", text)
             self.assertIn("- [v1.9.4 release notes](docs/releases/RELEASE_NOTES_v1.9.4.md)", text)
             self.assertNotIn("RELEASE_NOTES_v1.9.3", text)
@@ -88,6 +94,29 @@ class VersionBumpTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 bump.update_phase16_assertion()
+
+    def test_update_changelog_inserts_at_version_heading_not_first_rule(self) -> None:
+        """Horizontal rules before version history must not receive new entries."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            changelog = root / "CHANGELOG.md"
+            changelog.write_text(
+                "# Changelog\n\n"
+                "Intro text.\n\n"
+                "---\n"
+                "Non-version separator.\n\n"
+                "---\n\n"
+                "## 1.2.3 - 2026-01-02\n\n"
+                "- Existing entry.\n",
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "2.0.0", "2026-06-08", False)
+            bump.update_changelog()
+
+            text = changelog.read_text(encoding="utf-8")
+            self.assertIn("---\nNon-version separator.\n\n---\n\n## 2.0.0 - 2026-06-08", text)
+            self.assertIn("## 1.2.3 - 2026-01-02", text)
 
     def test_update_citation_updates_version_and_release_date(self) -> None:
         """CITATION.cff should carry exact release metadata."""
@@ -139,6 +168,32 @@ class RunCiTests(unittest.TestCase):
             "Scripts/schema/validate_schema_generated_outputs.py",
             self.run_ci.SCHEMA_GENERATED_OUTPUT_VALIDATOR,
         )
+
+    def test_package_validators_use_current_python_executable(self) -> None:
+        """Local CI should not depend on a bare python command existing."""
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
+            """Capture CI subprocess commands without executing them."""
+            calls.append(cmd)
+            return True
+
+        with mock.patch.object(self.run_ci, "run", side_effect=fake_run):
+            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", "packages"]):
+                self.assertEqual(0, self.run_ci.main())
+
+        python_calls = [cmd for cmd in calls if cmd and cmd[1].endswith(".py")]
+        self.assertTrue(python_calls)
+        self.assertTrue(all(cmd[0] == sys.executable for cmd in python_calls))
+
+    def test_fatal_run_raises_after_printing_failure(self) -> None:
+        """Fatal subprocess failures should abort at the point of failure."""
+        failed = subprocess.CompletedProcess(args=["tool"], returncode=7, stdout="", stderr="")
+        with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
+            self.assertFalse(self.run_ci.run(["tool"], "nonfatal", fatal=False))
+            with self.assertRaises(SystemExit) as context:
+                self.run_ci.run(["tool"], "fatal", fatal=True)
+        self.assertEqual(7, context.exception.code)
 
 
 class UnityIl2CppBuildTests(unittest.TestCase):
