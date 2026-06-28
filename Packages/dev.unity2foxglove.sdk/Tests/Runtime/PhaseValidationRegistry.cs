@@ -173,6 +173,8 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase137d", "Phase 137D", Phase137DValidation.Validate),
             Ci("--phase137e", "Phase 137E", Phase137EValidation.Validate),
             Ci("--phase137f", "Phase 137F", Phase137FValidation.Validate),
+            // Phase 137G is an explicit governance audit until the existing documentation baseline is remediated.
+            Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
             Ci("--phase137", "Phase 137", Phase137Validation.Validate),
             Ci("--phase142", "Phase 142", Phase142Validation.Validate),
             Local("--phase143", "Phase 143", Phase143Validation.Validate),
@@ -245,6 +247,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-53", "Phase 163-53", Phase163_53Validation.Validate, includeInDefault: false),
             Ci("--phase163-54", "Phase 163-54", Phase163_54Validation.Validate, includeInDefault: false),
             Ci("--phase163-55", "Phase 163-55", Phase163_55Validation.Validate, includeInDefault: false),
+            Ci("--phase163-56", "Phase 163-56", Phase163_56Validation.Validate, includeInDefault: false),
             Local("--phase138", "Phase 138", Phase138Validation.Validate),
             Local("--phase138b", "Phase 138B", Phase138BValidation.Validate),
             Local("--phase138c2", "Phase 138C2", Phase138C2Validation.Validate),
@@ -294,8 +297,6 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase141c", "FoxService DTO serialization analyzer", FoxServiceDtoSerializationAnalyzerValidation.Validate, includeInDefault: false),
             Ci("--phase141e", "FoxService editor schema polish", FoxServiceEditorSchemaPolishValidation.Validate, includeInDefault: false),
             Ci("--phase141f", "FoxService DTO graph walker convergence", FoxServiceDtoGraphWalkerConvergenceValidation.Validate, includeInDefault: false),
-            // Phase 137G is an explicit governance audit until the existing documentation baseline is remediated.
-            Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
         };
 
         static PhaseValidationRegistry()

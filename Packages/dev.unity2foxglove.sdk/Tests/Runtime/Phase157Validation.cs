@@ -19,12 +19,19 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("\n--- Phase 157 Tests ---");
             _passCount = 0;
 
+            VerifyOptionalPackagePresent();
             VerifyGeneratedInputSurface();
             VerifyMainThreadAndSecurityBoundary();
             VerifyExistingServiceHubExtension();
             VerifyValidationRegistryEntry();
 
             Console.WriteLine("Phase 157: " + _passCount + " checks passed.\n");
+        }
+
+        private static void VerifyOptionalPackagePresent()
+        {
+            Check(Directory.Exists(RepoPath("Packages/dev.unity2foxglove.ros2forunity")),
+                "157-0: optional R2FU adapter package is present for Phase157 validation");
         }
 
         private static void VerifyGeneratedInputSurface()
@@ -36,7 +43,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(input.Contains("interface IFoxgloveInputSource", StringComparison.Ordinal)
                   && emitter.Contains("FoxgloveInput_TryApply", StringComparison.Ordinal),
                 "generated inbound members use a dedicated typed input interface");
-            Check(decoder.Contains("ContainsTypeHint", StringComparison.Ordinal)
+            Check(decoder.Contains("ContainsForbiddenTypeHint", StringComparison.Ordinal)
                   && decoder.Contains("forbidden $type hint", StringComparison.Ordinal)
                   && !decoder.Contains("TypeNameHandling.Auto", StringComparison.Ordinal),
                 "inbound JSON rejects polymorphic type hints and never enables runtime-selected types");
@@ -83,10 +90,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        private static string RepoPath(string relativePath)
+        {
             var root = Phase16Validation.FindRepoRoot();
             if (root == null)
                 throw new DirectoryNotFoundException("Could not find repository root.");
-            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static void Check(bool condition, string label)

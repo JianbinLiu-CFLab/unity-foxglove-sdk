@@ -153,8 +153,11 @@ namespace Unity.FoxgloveSDK.Tests
                 var field = typeof(McapAmendmentWriter).GetField("_sourceStream", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (field == null)
                     throw new InvalidOperationException("Could not find McapAmendmentWriter._sourceStream.");
+                if (!typeof(IDisposable).IsAssignableFrom(field.FieldType))
+                    throw new InvalidOperationException("McapAmendmentWriter._sourceStream no longer implements IDisposable.");
 
-                var sourceStream = (IDisposable)field.GetValue(writer);
+                if (field.GetValue(writer) is not IDisposable sourceStream)
+                    throw new InvalidOperationException("McapAmendmentWriter._sourceStream was unexpectedly null.");
                 sourceStream.Dispose();
                 field.SetValue(writer, null);
 

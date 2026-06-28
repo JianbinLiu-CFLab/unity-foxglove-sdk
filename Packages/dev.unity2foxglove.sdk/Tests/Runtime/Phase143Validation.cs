@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(entry != null
                   && entry.Category == ValidationCategory.LocalEvidence
                   && entry.IncludeInDefault,
-                "143F-2: Phase143 is classified as local-evidence opt-in outside default CI");
+                "143F-2: Phase143 is classified as local-evidence and included in default runs when local evidence is enabled");
             Check(project.Contains("Phase143Validation.cs", StringComparison.Ordinal),
                 "143F-3: test project compiles Phase143Validation");
         }
@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var normalized = path.Replace('\\', '/');
             var inRuntimePackage = normalized.StartsWith(
-                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.",
                 StringComparison.Ordinal);
             if (normalized.StartsWith("Unity2Foxglove/Assets/Ros2ForUnity", StringComparison.Ordinal))
                 return true;

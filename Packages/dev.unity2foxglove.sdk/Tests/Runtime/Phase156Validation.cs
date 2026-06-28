@@ -19,12 +19,19 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("\n--- Phase 156 Tests ---");
             _passCount = 0;
 
+            VerifyOptionalPackagePresent();
             VerifyPackageDependencyDirection();
             VerifyBootstrapRequiresRealContextProvider();
             VerifySinkIsOutboundOnlyAndFailClosed();
             VerifyValidationRegistryEntry();
 
             Console.WriteLine("Phase 156: " + _passCount + " checks passed.\n");
+        }
+
+        private static void VerifyOptionalPackagePresent()
+        {
+            Check(Directory.Exists(RepoPath("Packages/dev.unity2foxglove.ros2forunity")),
+                "156-0: optional R2FU adapter package is present for Phase156 validation");
         }
 
         private static void VerifyPackageDependencyDirection()
@@ -79,11 +86,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            return File.ReadAllText(RepoPath(relativePath));
+        }
+
+        private static string RepoPath(string relativePath)
+        {
             var root = Phase16Validation.FindRepoRoot();
             if (root == null)
                 throw new DirectoryNotFoundException("Could not find repository root.");
 
-            return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
 
         private static void Check(bool condition, string label)

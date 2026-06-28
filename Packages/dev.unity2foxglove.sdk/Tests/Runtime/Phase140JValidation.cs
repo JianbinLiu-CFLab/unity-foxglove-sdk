@@ -197,7 +197,9 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string Read(string path)
-            => File.ReadAllText(path);
+            => File.ReadAllText(Path.Combine(
+                Phase16Validation.FindRepoRoot(),
+                path.Replace('/', Path.DirectorySeparatorChar)));
 
         private static void Check(bool condition, string message)
         {

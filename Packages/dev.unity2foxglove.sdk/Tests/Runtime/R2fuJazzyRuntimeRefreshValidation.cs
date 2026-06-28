@@ -243,15 +243,21 @@ namespace Unity.FoxgloveSDK.Tests
             var manifestRuntimes = RuntimePackageKeys(manifest);
             var lockRuntimes = RuntimePackageKeys(lockFile);
 
-            Check(manifestRuntimes.Length == 1
-                  && manifestRuntimes[0] == "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                "161-E1: Unity sample project manifest resolves exactly the Jazzy R2FU runtime package");
-            Check(lockRuntimes.Length == 1
-                  && lockRuntimes[0] == "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                "161-E2: Unity sample project lock resolves exactly the Jazzy R2FU runtime package");
-            Check(manifest.Contains("file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", StringComparison.Ordinal)
+            Check(manifestRuntimes.Length == 1,
+                "161-E1: Unity sample project manifest resolves exactly one R2FU runtime package");
+            Check(lockRuntimes.Length == 1 && manifestRuntimes.Length == 1 && lockRuntimes[0] == manifestRuntimes[0],
+                "161-E2: Unity sample project lock resolves the same single R2FU runtime package");
+            if (manifestRuntimes.Length != 1)
+                return;
+
+            var activeRuntimePackage = manifestRuntimes[0];
+            Check(manifest.Contains("file:../../Packages/" + activeRuntimePackage, StringComparison.Ordinal)
                   && lockFile.Contains("\"source\": \"local\"", StringComparison.Ordinal),
-                "161-E3: active Jazzy runtime is referenced from the repository Packages candidate directory");
+                "161-E3: active runtime is referenced from the repository Packages candidate directory");
+
+            var activeRuntimeManifest = ReadRepoText("Packages/" + activeRuntimePackage + "/RuntimeSupport/runtime-manifest.json");
+            Check(RuntimeId(activeRuntimeManifest) == ExpectedRuntimeId(activeRuntimePackage),
+                "161-E4: active runtime package identity matches its runtime manifest");
         }
 
         private static void ValidationRegistryWiresPhase161()
@@ -422,6 +428,24 @@ namespace Unity.FoxgloveSDK.Tests
                 json ?? string.Empty,
                 "\"(dev\\.unity2foxglove\\.ros2forunity\\.runtime\\.[^\"]+)\"\\s*:");
             return matches.Cast<Match>().Select(match => match.Groups[1].Value).ToArray();
+        }
+
+        private static string RuntimeId(string runtimeManifest)
+        {
+            var match = Regex.Match(
+                runtimeManifest ?? string.Empty,
+                "\"runtimeId\"\\s*:\\s*\"([^\"]+)\"",
+                RegexOptions.CultureInvariant);
+            return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+
+        private static string ExpectedRuntimeId(string runtimePackage)
+        {
+            const string prefix = "dev.unity2foxglove.ros2forunity.runtime.";
+            var suffix = runtimePackage.StartsWith(prefix, StringComparison.Ordinal)
+                ? runtimePackage.Substring(prefix.Length)
+                : runtimePackage;
+            return "r2fu-" + suffix.Replace('.', '-');
         }
 
         private static void Check(bool condition, string message)
