@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             var pkgDir = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk");
 
-            // 閳光偓閳光偓 16A: Package metadata 閳光偓閳光偓
+            // --- 16A: Package metadata ---
             var pkgJson = Path.Combine(pkgDir, "package.json");
             Assert(File.Exists(pkgJson), $"package.json exists at {pkgJson}");
 
@@ -46,13 +46,13 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(json.Contains("\"displayName\": \"Unity2Foxglove SDK\""), "package.json displayName correct");
             Assert(json.Contains("\"license\": \"Apache-2.0\""), "package.json license is Apache-2.0");
 
-            // 閳光偓閳光偓 16A: LICENSE files 閳光偓閳光偓
+            // --- 16A: LICENSE files ---
             var pkgLicense = Path.Combine(pkgDir, "LICENSE");
             Assert(File.Exists(pkgLicense), $"Package LICENSE exists at {pkgLicense}");
             var rootLicense = Path.Combine(repoRoot, "LICENSE");
             Assert(File.Exists(rootLicense), $"Root LICENSE exists at {rootLicense}");
 
-            // 閳光偓閳光偓 16C: .gitignore covers build artifacts 閳光偓閳光偓
+            // --- 16C: .gitignore covers build artifacts ---
             var gitignorePath = Path.Combine(repoRoot, ".gitignore");
             Assert(File.Exists(gitignorePath), ".gitignore exists");
             var gitignore = File.ReadAllText(gitignorePath);
@@ -61,13 +61,13 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(gitignore.Contains("build/"), ".gitignore covers build/");
             ValidatePackageBuildOutputsAbsent(repoRoot);
 
-            // 閳光偓閳光偓 16D: CI workflows 閳光偓閳光偓
+            // --- 16D: CI workflows ---
             var ciDir = Path.Combine(repoRoot, ".github", "workflows");
             Assert(Directory.Exists(ciDir), ".github/workflows/ exists");
             Assert(File.Exists(Path.Combine(ciDir, "dotnet-tests.yml")), "dotnet-tests.yml exists");
             Assert(File.Exists(Path.Combine(ciDir, "package-check.yml")), "package-check.yml exists");
 
-            // 閳光偓閳光偓 asmdef consistency 閳光偓閳光偓
+            // --- asmdef consistency ---
             var asmdefPath = Path.Combine(pkgDir, "Runtime", "Unity.FoxgloveSDK.asmdef");
             Assert(File.Exists(asmdefPath), "Runtime asmdef exists");
             var asmdef = File.ReadAllText(asmdefPath);
@@ -449,11 +449,7 @@ namespace Unity.FoxgloveSDK.Tests
                     },
                     out var trackedPrivateFiles))
             {
-                if (IsCiEnvironment())
-                    Assert(false, "git is available for tracked private workspace boundary checks in CI");
-
-                Console.WriteLine("[WARN] git unavailable; skipping tracked private workspace boundary checks");
-                return;
+                Assert(false, "git is available for tracked private workspace boundary checks");
             }
 
             Assert(trackedPrivateFiles.Count == 0,
@@ -495,13 +491,6 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 return false;
             }
-        }
-
-        static bool IsCiEnvironment()
-        {
-            var ci = Environment.GetEnvironmentVariable("CI");
-            return string.Equals(ci, "true", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(ci, "1", StringComparison.OrdinalIgnoreCase);
         }
 
         static string QuoteGitArgument(string value)
@@ -598,7 +587,9 @@ namespace Unity.FoxgloveSDK.Tests
             var dir = AppDomain.CurrentDomain.BaseDirectory;
             while (dir != null)
             {
-                if (File.Exists(Path.Combine(dir, ".gitignore")))
+                if (File.Exists(Path.Combine(dir, "README.md"))
+                    && Directory.Exists(Path.Combine(dir, "Unity2Foxglove"))
+                    && Directory.Exists(Path.Combine(dir, "Packages")))
                     return dir;
                 var parent = Directory.GetParent(dir);
                 if (parent == null) break;

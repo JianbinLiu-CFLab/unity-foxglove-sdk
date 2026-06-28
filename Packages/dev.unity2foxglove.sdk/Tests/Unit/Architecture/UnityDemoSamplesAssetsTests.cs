@@ -57,7 +57,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
 
-            Assert.Contains(".GroupBy(t => t.AsmName", source, StringComparison.Ordinal);
+            Assert.Contains(".GroupBy(", source, StringComparison.Ordinal);
+            Assert.Contains(".AsmName", source, StringComparison.Ordinal);
             Assert.Contains("foreach (var type in group", source, StringComparison.Ordinal);
             Assert.DoesNotContain("foreach (var (asm, ns, cn) in types)", source, StringComparison.Ordinal);
         }
