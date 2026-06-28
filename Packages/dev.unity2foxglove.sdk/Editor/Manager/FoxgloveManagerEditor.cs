@@ -128,7 +128,10 @@ namespace Unity.FoxgloveSDK.Editor
 
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Copy Web URL"))
+                    var copyWebUrlLabel = string.IsNullOrEmpty(token)
+                        ? new GUIContent("Copy Web URL")
+                        : new GUIContent("Copy Web URL (with token)", "Copies the full Foxglove Web URL, including the shared token query parameter.");
+                    if (GUILayout.Button(copyWebUrlLabel))
                         EditorGUIUtility.systemCopyBuffer = foxgloveWebUrl;
 
                     if (GUILayout.Button("Open Web"))
@@ -324,6 +327,9 @@ namespace Unity.FoxgloveSDK.Editor
 
                 DrawPasswordProperty("_certificatePassword", "Certificate Password");
                 DrawPasswordProperty("_sharedToken", "Shared Token");
+                EditorGUILayout.HelpBox(
+                    "Certificate passwords and shared tokens are serialized with the scene or prefab. Use local-development credentials here and avoid committing production secrets.",
+                    MessageType.Warning);
                 DrawProperty("_rootCaDistributorEnabled");
                 DrawProperty("_rootCaDistributorHost");
                 DrawProperty("_rootCaDistributorPort");

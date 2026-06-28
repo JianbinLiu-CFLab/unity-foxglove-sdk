@@ -28,6 +28,9 @@ namespace Unity.FoxgloveSDK.Tests
             EditorProcessesHaveTimeoutCleanup();
             PackageValidatorsAreWiredIntoCi();
             DiagnosticsInspectorUsesTypedStatsOnly();
+            Phase162ZenohSetupRestoresSessionState();
+            ManagerInspectorLabelsTokenAndSecretSerialization();
+            UnityBuildRestoresPlayerSettings();
             PhaseWiringIsPresent();
 
             Console.WriteLine($"Phase 163-26: {_passed} checks passed.");
@@ -152,16 +155,57 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-26H-1: manager diagnostics inspector renders typed transport stats without string-format log injection");
         }
 
+        private static void Phase162ZenohSetupRestoresSessionState()
+        {
+            var setup = ReadRepoText("Unity2Foxglove/Assets/Editor/Phase162LocalZenohPlaySetup.cs");
+
+            Check(setup.Contains("CaptureEnvironmentBeforeOverride", StringComparison.Ordinal)
+                  && setup.Contains("RestoreEnvironmentAfterOverride", StringComparison.Ordinal)
+                  && setup.Contains("RestoreEnvironmentVariable(\"ROS_DOMAIN_ID\"", StringComparison.Ordinal)
+                  && setup.Contains("RestoreEnvironmentVariable(\"RMW_IMPLEMENTATION\"", StringComparison.Ordinal)
+                  && setup.Contains("EditorUserSettings.SetConfigValue(", StringComparison.Ordinal)
+                  && setup.Contains("PreviousCommunicationModeKey", StringComparison.Ordinal),
+                "163-26I-1: Phase162 Zenoh acceptance helper restores ROS2 env and communication mode after Play Mode");
+            Check(setup.Contains("while trying to \" + context + \" for Phase162 Lyrical Zenoh acceptance", StringComparison.Ordinal)
+                  && setup.Contains("configure PointCloud2 Native output", StringComparison.Ordinal)
+                  && setup.Contains("configure FoxgloveManager output mode", StringComparison.Ordinal),
+                "163-26I-2: Phase162 reflection setup failures include acceptance-step context");
+        }
+
+        private static void ManagerInspectorLabelsTokenAndSecretSerialization()
+        {
+            var inspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+
+            Check(inspector.Contains("Copy Web URL (with token)", StringComparison.Ordinal)
+                  && inspector.Contains("shared token query parameter", StringComparison.Ordinal),
+                "163-26J-1: manager Inspector labels clipboard URL copies that include the shared token");
+            Check(inspector.Contains("Certificate passwords and shared tokens are serialized", StringComparison.Ordinal)
+                  && inspector.Contains("avoid committing production secrets", StringComparison.Ordinal),
+                "163-26J-2: manager Inspector warns that certificate passwords and shared tokens serialize into assets");
+        }
+
+        private static void UnityBuildRestoresPlayerSettings()
+        {
+            var build = ReadRepoText("Unity2Foxglove/Assets/Editor/FoxgloveBuild.cs");
+
+            Check(build.Contains("previousScriptingBackend = PlayerSettings.GetScriptingBackend", StringComparison.Ordinal)
+                  && build.Contains("previousManagedStrippingLevel = PlayerSettings.GetManagedStrippingLevel", StringComparison.Ordinal)
+                  && build.Contains("finally", StringComparison.Ordinal)
+                  && build.Contains("PlayerSettings.SetScriptingBackend(namedTarget, previousScriptingBackend)", StringComparison.Ordinal)
+                  && build.Contains("PlayerSettings.SetManagedStrippingLevel(namedTarget, previousManagedStrippingLevel)", StringComparison.Ordinal),
+                "163-26K-1: Unity IL2CPP build helper restores PlayerSettings after the build attempt");
+        }
+
         private static void PhaseWiringIsPresent()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
 
             Check(project.Contains("Phase163_26Validation.cs", StringComparison.Ordinal),
-                "163-26I-1: runtime test project compiles Phase163_26Validation");
+                "163-26L-1: runtime test project compiles Phase163_26Validation");
             Check(registry.Contains("--phase163-26", StringComparison.Ordinal)
                   && registry.Contains("Phase163_26Validation.Validate", StringComparison.Ordinal),
-                "163-26I-2: validation registry exposes --phase163-26");
+                "163-26L-2: validation registry exposes --phase163-26");
         }
 
         private static bool CheckOrdered(string text, string first, string second)
