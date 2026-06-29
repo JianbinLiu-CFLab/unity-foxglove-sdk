@@ -12,6 +12,13 @@ namespace Unity.FoxgloveSDK.Protocol
     /// <summary>Encodes binary WebSocket frames for the Foxglove protocol v1.</summary>
     public static class BinaryEncoding
     {
+        public const int ServerMessageDataHeaderLength = 13;
+        public const int TimeFrameLength = 9;
+
+        private static readonly byte[] EmptyEncodingBytes = Array.Empty<byte>();
+        private static readonly byte[] JsonEncodingBytes = System.Text.Encoding.UTF8.GetBytes("json");
+        private static readonly byte[] ProtobufEncodingBytes = System.Text.Encoding.UTF8.GetBytes("protobuf");
+
         /// <summary>
         /// Server→client MessageData frame.
         /// Wire format: opcode(1) + subscriptionId(u32 LE) + logTime(u64 LE) + payload
@@ -19,21 +26,41 @@ namespace Unity.FoxgloveSDK.Protocol
         public static byte[] EncodeServerMessageData(uint subscriptionId, ulong logTimeNs, byte[] payload)
         {
             payload ??= Array.Empty<byte>();
-            var frame = new byte[1 + 4 + 8 + payload.Length];
-            frame[0] = ServerOpcode.MessageData;
-            WriteU32LE(frame, 1, subscriptionId);
-            WriteU64LE(frame, 5, logTimeNs);
-            Buffer.BlockCopy(payload, 0, frame, 13, payload.Length);
+            var frame = new byte[GetServerMessageDataFrameLength(payload.Length)];
+            EncodeServerMessageData(frame, 0, subscriptionId, logTimeNs, payload);
             return frame;
+        }
+
+        public static int GetServerMessageDataFrameLength(int payloadLength)
+        {
+            if (payloadLength < 0)
+                throw new ArgumentOutOfRangeException(nameof(payloadLength));
+            return ServerMessageDataHeaderLength + payloadLength;
+        }
+
+        public static void EncodeServerMessageData(byte[] destination, int offset, uint subscriptionId, ulong logTimeNs, byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            ValidateBufferRange(destination, offset, GetServerMessageDataFrameLength(payload.Length));
+            destination[offset] = ServerOpcode.MessageData;
+            WriteU32LEUnchecked(destination, offset + 1, subscriptionId);
+            WriteU64LEUnchecked(destination, offset + 5, logTimeNs);
+            Buffer.BlockCopy(payload, 0, destination, offset + ServerMessageDataHeaderLength, payload.Length);
         }
 
         /// <summary>Encode a Time frame: opcode(1) + timestamp(8 bytes LE, nanoseconds).</summary>
         public static byte[] EncodeTime(ulong nsecs)
         {
-            var frame = new byte[1 + 8];
-            frame[0] = ServerOpcode.Time;
-            WriteU64LE(frame, 1, nsecs);
+            var frame = new byte[TimeFrameLength];
+            EncodeTime(frame, 0, nsecs);
             return frame;
+        }
+
+        public static void EncodeTime(byte[] destination, int offset, ulong nsecs)
+        {
+            ValidateBufferRange(destination, offset, TimeFrameLength);
+            destination[offset] = ServerOpcode.Time;
+            WriteU64LEUnchecked(destination, offset + 1, nsecs);
         }
 
         /// <summary>
@@ -115,16 +142,27 @@ namespace Unity.FoxgloveSDK.Protocol
         public static byte[] EncodeServerServiceCallResponse(
             uint serviceId, uint callId, string encoding, byte[] payload)
         {
-            var encBytes = System.Text.Encoding.UTF8.GetBytes(encoding ?? "");
+            var encBytes = GetCachedServiceEncodingBytes(encoding);
             var frame = new byte[1 + 4 + 4 + 4 + encBytes.Length + (payload?.Length ?? 0)];
             frame[0] = ServerOpcode.ServiceCallResponse;
-            WriteU32LE(frame, 1, serviceId);
-            WriteU32LE(frame, 5, callId);
-            WriteU32LE(frame, 9, (uint)encBytes.Length);
+            WriteU32LEUnchecked(frame, 1, serviceId);
+            WriteU32LEUnchecked(frame, 5, callId);
+            WriteU32LEUnchecked(frame, 9, (uint)encBytes.Length);
             Buffer.BlockCopy(encBytes, 0, frame, 13, encBytes.Length);
             if (payload != null && payload.Length > 0)
                 Buffer.BlockCopy(payload, 0, frame, 13 + encBytes.Length, payload.Length);
             return frame;
+        }
+
+        private static byte[] GetCachedServiceEncodingBytes(string encoding)
+        {
+            if (string.IsNullOrEmpty(encoding))
+                return EmptyEncodingBytes;
+            if (string.Equals(encoding, "json", StringComparison.Ordinal))
+                return JsonEncodingBytes;
+            if (string.Equals(encoding, "protobuf", StringComparison.Ordinal))
+                return ProtobufEncodingBytes;
+            return System.Text.Encoding.UTF8.GetBytes(encoding);
         }
 
         // ── Little-endian helpers ──
@@ -133,6 +171,11 @@ namespace Unity.FoxgloveSDK.Protocol
         public static void WriteU32LE(byte[] buf, int offset, uint value)
         {
             ValidateBufferRange(buf, offset, 4);
+            WriteU32LEUnchecked(buf, offset, value);
+        }
+
+        private static void WriteU32LEUnchecked(byte[] buf, int offset, uint value)
+        {
             buf[offset] = (byte)(value & 0xFF);
             buf[offset + 1] = (byte)((value >> 8) & 0xFF);
             buf[offset + 2] = (byte)((value >> 16) & 0xFF);
@@ -143,6 +186,11 @@ namespace Unity.FoxgloveSDK.Protocol
         public static void WriteU64LE(byte[] buf, int offset, ulong value)
         {
             ValidateBufferRange(buf, offset, 8);
+            WriteU64LEUnchecked(buf, offset, value);
+        }
+
+        private static void WriteU64LEUnchecked(byte[] buf, int offset, ulong value)
+        {
             buf[offset] = (byte)(value & 0xFF);
             buf[offset + 1] = (byte)((value >> 8) & 0xFF);
             buf[offset + 2] = (byte)((value >> 16) & 0xFF);
@@ -183,9 +231,9 @@ namespace Unity.FoxgloveSDK.Protocol
         {
             var frame = new byte[1 + 4 + 1 + 4 + (payload?.Length ?? 0)];
             frame[0] = ServerOpcode.FetchAssetResponse;
-            WriteU32LE(frame, 1, requestId);
+            WriteU32LEUnchecked(frame, 1, requestId);
             frame[5] = FetchAssetStatusSuccess;
-            WriteU32LE(frame, 6, 0u);
+            WriteU32LEUnchecked(frame, 6, 0u);
             if (payload != null && payload.Length > 0)
                 Buffer.BlockCopy(payload, 0, frame, 10, payload.Length);
             return frame;
@@ -197,9 +245,9 @@ namespace Unity.FoxgloveSDK.Protocol
             var errBytes = System.Text.Encoding.UTF8.GetBytes(message ?? "");
             var frame = new byte[1 + 4 + 1 + 4 + errBytes.Length];
             frame[0] = ServerOpcode.FetchAssetResponse;
-            WriteU32LE(frame, 1, requestId);
+            WriteU32LEUnchecked(frame, 1, requestId);
             frame[5] = FetchAssetStatusError;
-            WriteU32LE(frame, 6, (uint)errBytes.Length);
+            WriteU32LEUnchecked(frame, 6, (uint)errBytes.Length);
             Buffer.BlockCopy(errBytes, 0, frame, 10, errBytes.Length);
             return frame;
         }
@@ -213,6 +261,11 @@ namespace Unity.FoxgloveSDK.Protocol
         public static void WriteF32LE(byte[] buf, int offset, float value)
         {
             WriteU32LE(buf, offset, unchecked((uint)BitConverter.SingleToInt32Bits(value)));
+        }
+
+        private static void WriteF32LEUnchecked(byte[] buf, int offset, float value)
+        {
+            WriteU32LEUnchecked(buf, offset, unchecked((uint)BitConverter.SingleToInt32Bits(value)));
         }
 
         /// <summary>Read a 32-bit float in little-endian byte order.</summary>
@@ -254,10 +307,10 @@ namespace Unity.FoxgloveSDK.Protocol
             var frame = new byte[1 + 1 + 8 + 4 + 1 + 4 + idBytes.Length];
             frame[0] = ServerOpcode.PlaybackState;
             frame[1] = status;
-            WriteU64LE(frame, 2, currentTimeNs);
-            WriteF32LE(frame, 10, speed);
+            WriteU64LEUnchecked(frame, 2, currentTimeNs);
+            WriteF32LEUnchecked(frame, 10, speed);
             frame[14] = didSeek ? (byte)1 : (byte)0;
-            WriteU32LE(frame, 15, (uint)idBytes.Length);
+            WriteU32LEUnchecked(frame, 15, (uint)idBytes.Length);
             Buffer.BlockCopy(idBytes, 0, frame, 19, idBytes.Length);
             return frame;
         }
