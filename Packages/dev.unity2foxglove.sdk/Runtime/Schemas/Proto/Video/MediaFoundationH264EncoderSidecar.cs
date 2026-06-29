@@ -56,6 +56,7 @@ namespace Foxglove.Schemas.Video
         private long _nextSampleTime;
         private long _sampleDuration;
         private int _outputCount;
+        private int _maxOutputQueue = 4;
         private bool _mfStarted;
         private bool _comInitialized;
 
@@ -70,6 +71,7 @@ namespace Foxglove.Schemas.Video
         {
             Stop(clearOutputQueue: true);
             _options = options ?? new MediaFoundationH264EncoderOptions();
+            _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
             LastError = null;
             LastDiagnosticLine = null;
 
@@ -205,6 +207,7 @@ namespace Foxglove.Schemas.Video
             _nv12Scratch = null;
             _nextSampleTime = 0;
             _sampleDuration = 0;
+            _maxOutputQueue = 4;
             ClearSampleTimestampMap();
 
             if (_mfStarted)
@@ -600,8 +603,7 @@ namespace Foxglove.Schemas.Video
 
             lock (_outputLock)
             {
-                var capacity = Math.Max(1, _options?.MaxOutputQueue ?? 4);
-                while (_outputCount >= capacity && _outputAccessUnits.TryDequeue(out _))
+                while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
                     _outputCount--;
 
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
