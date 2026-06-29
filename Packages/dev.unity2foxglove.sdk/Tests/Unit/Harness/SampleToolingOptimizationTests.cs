@@ -168,9 +168,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("lower_names = [(name, name.lower()) for name in names]", summary, StringComparison.Ordinal);
             Assert.Contains("for name, lower in lower_names", summary, StringComparison.Ordinal);
             Assert.DoesNotContain("name.lower() for pattern", summary, StringComparison.Ordinal);
-            Assert.Contains("paths = list(package.rglob(\"*\"))", metas, StringComparison.Ordinal);
-            Assert.Contains("directories = sorted((path for path in paths if path.is_dir())", metas, StringComparison.Ordinal);
-            Assert.Contains("files = sorted((path for path in paths if path.is_file())", metas, StringComparison.Ordinal);
+            Assert.Contains("keyed_paths = sorted((path.as_posix(), path) for path in package.rglob(\"*\"))", metas, StringComparison.Ordinal);
+            Assert.Contains("directories = [path for _, path in keyed_paths if path.is_dir()]", metas, StringComparison.Ordinal);
+            Assert.Contains("files = [path for _, path in keyed_paths if path.is_file()]", metas, StringComparison.Ordinal);
             Assert.Equal(1, TestSources.Count(metas, "package.rglob(\"*\")"));
             Assert.Contains("if path.name in forbidden_dirs and path.is_dir():", artifacts, StringComparison.Ordinal);
             Assert.DoesNotContain("if path.is_dir() and path.name in forbidden_dirs:", artifacts, StringComparison.Ordinal);

@@ -270,7 +270,7 @@ namespace Unity.FoxgloveSDK.Tests
             var transformUpdate = Slice(transformSource, "protected override void Update()", "protected override FrameTransformMessage CreateMessage()");
             CheckOrdered(transformUpdate, "ShouldPublishNow()", "ShouldPrepareAnyPublishPayload(", "73F-6: transform publisher preflights after cadence");
             CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "PublishProtobufTransform", "73F-7: transform publisher preflights before protobuf transform creation");
-            CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "CreateMessage(unixNs)", "73F-8: transform publisher preflights before JSON transform creation");
+            CheckOrdered(transformUpdate, "ShouldPrepareAnyPublishPayload(", "CreateMessage(unixNs, pos, rot)", "73F-8: transform publisher preflights before JSON transform creation");
 
             var calibrationSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraCalibrationPublisher.cs");
             var calibrationUpdate = Slice(calibrationSource, "private void Update()", "private CameraCalibrationMessage BuildCalibration");
