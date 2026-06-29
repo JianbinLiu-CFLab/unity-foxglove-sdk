@@ -144,12 +144,16 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public sealed class UnityReplayCursorEndpoint : IDisposable
     {
+        private static readonly byte[] AcceptedCursorResponseBytes =
+            Encoding.UTF8.GetBytes("{\"accepted\":true,\"message\":\"Cursor accepted.\"}");
+
         private readonly IFoxgloveLogger _logger;
         private volatile HttpListener _listener;
         private Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> _queue;
         private Func<ReplayCursorState> _stateProvider;
         private volatile bool _running;
         private UnityReplayCursorEndpointOptions _options;
+        private byte[] _readBodyBuffer;
 
         /// <summary>Create an endpoint with an optional logger.</summary>
         public UnityReplayCursorEndpoint(IFoxgloveLogger logger = null)
@@ -185,6 +189,7 @@ namespace Unity.FoxgloveSDK.Core
             _options = options;
             _queue = queue;
             _stateProvider = stateProvider;
+            _readBodyBuffer = new byte[options.MaxBodyBytes + 1];
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://{options.Host}:{options.Port}/");
             _listener.Start();
@@ -200,6 +205,7 @@ namespace Unity.FoxgloveSDK.Core
             _listener = null;
             _queue = null;
             _stateProvider = null;
+            _readBodyBuffer = null;
             if (listener == null)
             {
                 return;
@@ -314,6 +320,12 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             var result = _queue?.Invoke(request) ?? new UnityReplayCursorEndpointQueueResult(false, "Cursor queue is unavailable.");
+            if (result.Success && string.Equals(result.Message, "Cursor accepted.", StringComparison.Ordinal))
+            {
+                TryWrite(context, 202, AcceptedCursorResponseBytes);
+                return;
+            }
+
             TryWrite(
                 context,
                 result.Success ? 202 : 409,
@@ -358,28 +370,36 @@ namespace Unity.FoxgloveSDK.Core
         private string ReadBody(HttpListenerRequest request)
         {
             var encoding = request.ContentEncoding ?? Encoding.UTF8;
-            using var memory = new MemoryStream();
-            var buffer = new byte[Math.Min(_options.MaxBodyBytes + 1, 4096)];
+            var buffer = _readBodyBuffer;
+            if (buffer == null || buffer.Length < _options.MaxBodyBytes + 1)
+            {
+                buffer = new byte[_options.MaxBodyBytes + 1];
+                _readBodyBuffer = buffer;
+            }
+
             var total = 0;
             int read;
-            while ((read = request.InputStream.Read(buffer, 0, buffer.Length)) > 0)
+            while ((read = request.InputStream.Read(buffer, total, buffer.Length - total)) > 0)
             {
                 total += read;
                 if (total > _options.MaxBodyBytes)
                 {
                     return null;
                 }
-
-                memory.Write(buffer, 0, read);
             }
 
-            return encoding.GetString(memory.ToArray());
+            return encoding.GetString(buffer, 0, total);
         }
 
         private void TryWrite(HttpListenerContext context, int statusCode, string body)
         {
             body ??= string.Empty;
-            var bytes = Encoding.UTF8.GetBytes(body);
+            TryWrite(context, statusCode, Encoding.UTF8.GetBytes(body));
+        }
+
+        private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes)
+        {
+            bytes ??= Array.Empty<byte>();
             try
             {
                 context.Response.StatusCode = statusCode;
