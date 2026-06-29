@@ -24,10 +24,21 @@ namespace Unity.FoxgloveSDK.Editor
             IReadOnlyList<FoxRunGenerationType> types,
             int descriptorVersion = FoxRunGenerationDescriptorConstants.DescriptorVersion,
             string generatorVersion = FoxRunGenerationDescriptorConstants.GeneratorVersion)
+            : this(types, descriptorVersion, generatorVersion, typesAlreadySortedAndCopied: false)
+        {
+        }
+
+        private FoxRunGenerationModel(
+            IReadOnlyList<FoxRunGenerationType> types,
+            int descriptorVersion,
+            string generatorVersion,
+            bool typesAlreadySortedAndCopied)
         {
             DescriptorVersion = descriptorVersion;
             GeneratorVersion = generatorVersion ?? string.Empty;
-            Types = CopyTypes(types);
+            Types = typesAlreadySortedAndCopied
+                ? ToReadOnlyTypes(types)
+                : CopyTypes(types);
         }
 
         public static FoxRunGenerationModel FromMembers(IReadOnlyList<FoxRunGenerationMember> members)
@@ -38,16 +49,29 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(group => group.Key.DeclaringType, StringComparer.Ordinal)
                 .Select(group => new FoxRunGenerationType(group.Key.Namespace, group.Key.ClassName, group.ToList()))
                 .ToList();
-            return new FoxRunGenerationModel(types);
+            return new FoxRunGenerationModel(
+                types,
+                FoxRunGenerationDescriptorConstants.DescriptorVersion,
+                FoxRunGenerationDescriptorConstants.GeneratorVersion,
+                typesAlreadySortedAndCopied: true);
         }
 
         private static IReadOnlyList<FoxRunGenerationType> CopyTypes(IReadOnlyList<FoxRunGenerationType> types)
         {
             return (types ?? Array.Empty<FoxRunGenerationType>())
                 .OrderBy(type => type.DeclaringType, StringComparer.Ordinal)
-                .Select(type => new FoxRunGenerationType(type.Namespace, type.ClassName, type.Members))
+                .Select(type => new FoxRunGenerationType(type.Namespace, type.ClassName, type.Members, membersAlreadySorted: true))
                 .ToList()
                 .AsReadOnly();
+        }
+
+        private static IReadOnlyList<FoxRunGenerationType> ToReadOnlyTypes(IReadOnlyList<FoxRunGenerationType> types)
+        {
+            if (types == null)
+                return Array.Empty<FoxRunGenerationType>();
+            return types is List<FoxRunGenerationType> list
+                ? list.AsReadOnly()
+                : types.ToList().AsReadOnly();
         }
 
         private readonly struct TypeKey
@@ -73,17 +97,38 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly IReadOnlyList<FoxRunGenerationMember> Members;
 
         public FoxRunGenerationType(string ns, string className, IReadOnlyList<FoxRunGenerationMember> members)
+            : this(ns, className, members, membersAlreadySorted: false)
+        {
+        }
+
+        internal FoxRunGenerationType(string ns, string className, IReadOnlyList<FoxRunGenerationMember> members, bool membersAlreadySorted)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
             DeclaringType = string.IsNullOrEmpty(Namespace) ? ClassName : Namespace + "." + ClassName;
-            Members = (members ?? Array.Empty<FoxRunGenerationMember>())
+            Members = membersAlreadySorted
+                ? CopyMembers(members)
+                : SortMembers(members);
+        }
+
+        private static IReadOnlyList<FoxRunGenerationMember> SortMembers(IReadOnlyList<FoxRunGenerationMember> members)
+        {
+            return (members ?? Array.Empty<FoxRunGenerationMember>())
                 .OrderBy(member => member.Topic, StringComparer.Ordinal)
                 .ThenBy(member => member.MemberName, StringComparer.Ordinal)
                 .ThenBy(member => member.SchemaName, StringComparer.Ordinal)
                 .ThenBy(member => member.CanonicalType, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
+        }
+
+        private static IReadOnlyList<FoxRunGenerationMember> CopyMembers(IReadOnlyList<FoxRunGenerationMember> members)
+        {
+            if (members == null)
+                return Array.Empty<FoxRunGenerationMember>();
+            return members is List<FoxRunGenerationMember> list
+                ? list.AsReadOnly()
+                : members.ToList().AsReadOnly();
         }
     }
 

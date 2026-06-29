@@ -24,8 +24,25 @@ namespace Unity.FoxgloveSDK.Editor
         private const int ReplaceAttempts = 3;
         private const int ReplaceRetryDelayMilliseconds = 50;
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
+        private static readonly string[] Indents =
+        {
+            "",
+            "    ",
+            "        ",
+            "            ",
+            "                ",
+            "                    ",
+            "                        "
+        };
 
         public static FoxRunSchemaInfoVerification WriteGeneratedInfoFiles(
+            string outputDirectory,
+            FoxRunCanonicalManifest manifest)
+        {
+            return WriteGeneratedInfoFilesWithResult(outputDirectory, manifest).Verification;
+        }
+
+        public static FoxRunSchemaInfoWriteResult WriteGeneratedInfoFilesWithResult(
             string outputDirectory,
             FoxRunCanonicalManifest manifest)
         {
@@ -38,13 +55,13 @@ namespace Unity.FoxgloveSDK.Editor
             Directory.CreateDirectory(outputDirectory);
 
             var sourcePath = Path.Combine(outputDirectory, SchemaInfoFileName);
-            WriteIfChanged(sourcePath, source);
-            EnsureMetaFile(Path.Combine(outputDirectory, SchemaInfoMetaFileName));
+            var sourceChanged = WriteIfChanged(sourcePath, source);
+            var metaChanged = EnsureMetaFile(Path.Combine(outputDirectory, SchemaInfoMetaFileName));
 
             var verification = VerifyGeneratedInfo(manifest, source);
             if (!verification.IsValid)
                 throw new InvalidOperationException("Generated FoxRun schema info failed verification: " + string.Join("; ", verification.Errors));
-            return verification;
+            return new FoxRunSchemaInfoWriteResult(verification, sourceChanged, metaChanged);
         }
 
         public static string GenerateSource(FoxRunCanonicalManifest manifest)
@@ -68,11 +85,19 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("    public static class FoxRunSchemaInfo");
             sb.AppendLine("    {");
             sb.AppendLine("        public const int ManifestVersion = " + manifest.ManifestVersion.ToString(CultureInfo.InvariantCulture) + ";");
-            sb.AppendLine("        public const string PackageName = " + StringLiteral(manifest.Package) + ";");
-            sb.AppendLine("        public const string GeneratorName = " + StringLiteral(manifest.Generator.Name) + ";");
+            sb.Append("        public const string PackageName = ");
+            AppendStringLiteral(sb, manifest.Package);
+            sb.AppendLine(";");
+            sb.Append("        public const string GeneratorName = ");
+            AppendStringLiteral(sb, manifest.Generator.Name);
+            sb.AppendLine(";");
             sb.AppendLine("        public const int GeneratorMajorVersion = " + manifest.Generator.MajorVersion.ToString(CultureInfo.InvariantCulture) + ";");
-            sb.AppendLine("        public const string GlobalManifestHash = " + StringLiteral(manifest.GlobalManifestHash) + ";");
-            sb.AppendLine("        public const string FoxRunManifestHash = " + StringLiteral(manifest.Sections.FoxRun.ManifestHash) + ";");
+            sb.Append("        public const string GlobalManifestHash = ");
+            AppendStringLiteral(sb, manifest.GlobalManifestHash);
+            sb.AppendLine(";");
+            sb.Append("        public const string FoxRunManifestHash = ");
+            AppendStringLiteral(sb, manifest.Sections.FoxRun.ManifestHash);
+            sb.AppendLine(";");
             sb.AppendLine("        public const int TypeCount = " + types.Count.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int ContractCount = " + contractCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int FieldCount = " + fieldCount.ToString(CultureInfo.InvariantCulture) + ";");
@@ -146,7 +171,7 @@ namespace Unity.FoxgloveSDK.Editor
             foreach (var type in types)
             {
                 sb.AppendLine(inner + "new FoxRunSchemaTypeInfo(");
-                sb.AppendLine(inner + "    " + StringLiteral(type.DeclaringType) + ",");
+                AppendIndentedStringLiteralLine(sb, inner, type.DeclaringType, ",");
                 WriteContractsArray(sb, type.Contracts, indentLevel + 2);
                 sb.AppendLine(inner + "),");
             }
@@ -162,19 +187,19 @@ namespace Unity.FoxgloveSDK.Editor
             foreach (var contract in contracts)
             {
                 sb.AppendLine(inner + "new FoxRunSchemaContractInfo(");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.DeclaringType) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.Topic) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.SchemaName) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.Encoding) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.ContractHash) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.BindingHash) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.PolicyHash) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(contract.Policy.Mode) + ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.DeclaringType, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.Topic, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.SchemaName, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.Encoding, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.ContractHash, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.BindingHash, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.PolicyHash, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.Policy.Mode, ",");
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.RateHz) + ",");
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ChangeEpsilon) + ",");
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ForceIntervalSeconds) + ",");
                 WriteFieldsArray(sb, contract.Fields, indentLevel + 2, trailingComma: true);
-                sb.AppendLine(inner + "    " + StringLiteral(contract.FlowMode));
+                AppendIndentedStringLiteralLine(sb, inner, contract.FlowMode, "");
                 sb.AppendLine(inner + "),");
             }
             sb.AppendLine(indent + "}");
@@ -193,10 +218,10 @@ namespace Unity.FoxgloveSDK.Editor
             foreach (var field in fields)
             {
                 sb.AppendLine(inner + "new FoxRunSchemaFieldInfo(");
-                sb.AppendLine(inner + "    " + StringLiteral(field.JsonName) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(field.MemberName) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(field.MemberKind) + ",");
-                sb.AppendLine(inner + "    " + StringLiteral(field.Type) + ",");
+                AppendIndentedStringLiteralLine(sb, inner, field.JsonName, ",");
+                AppendIndentedStringLiteralLine(sb, inner, field.MemberName, ",");
+                AppendIndentedStringLiteralLine(sb, inner, field.MemberKind, ",");
+                AppendIndentedStringLiteralLine(sb, inner, field.Type, ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Nullable) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Array) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Aggregate) + "),");
@@ -204,32 +229,57 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(indent + (trailingComma ? "}," : "}"));
         }
 
-        private static void EnsureMetaFile(string metaPath)
+        private static bool EnsureMetaFile(string metaPath)
         {
             if (File.Exists(metaPath))
-                return;
+                return false;
 
-            WriteIfChanged(
+            return WriteIfChanged(
                 metaPath,
                 "fileFormatVersion: 2\n" +
                 "guid: " + StableSchemaInfoMetaGuid + "\n");
         }
 
-        private static void WriteIfChanged(string path, string content)
+        private static bool WriteIfChanged(string path, string content)
         {
-            var bytes = Utf8NoBom.GetBytes(content);
-            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
-                return;
+            var bytes = Utf8NoBom.GetBytes(content ?? string.Empty);
+            var existing = new FileInfo(path);
+            if (existing.Exists && existing.Length == bytes.Length && FileContentEquals(path, bytes))
+                return false;
 
             var tempPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
             try
             {
                 File.WriteAllBytes(tempPath, bytes);
                 ReplaceFile(tempPath, path);
+                return true;
             }
             finally
             {
                 TryDeleteTempFile(tempPath);
+            }
+        }
+
+        private static bool FileContentEquals(string path, byte[] bytes)
+        {
+            var buffer = new byte[8192];
+            using (var stream = File.OpenRead(path))
+            {
+                for (var offset = 0; offset < bytes.Length;)
+                {
+                    var expected = Math.Min(buffer.Length, bytes.Length - offset);
+                    var read = stream.Read(buffer, 0, expected);
+                    if (read == 0)
+                        return false;
+                    for (var i = 0; i < read; i++)
+                    {
+                        if (buffer[i] != bytes[offset + i])
+                            return false;
+                    }
+                    offset += read;
+                }
+
+                return stream.ReadByte() == -1;
             }
         }
 
@@ -332,10 +382,23 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private static void AppendIndentedStringLiteralLine(StringBuilder sb, string innerIndent, string value, string suffix)
+        {
+            sb.Append(innerIndent).Append("    ");
+            AppendStringLiteral(sb, value);
+            sb.AppendLine(suffix);
+        }
+
         private static string StringLiteral(string value)
         {
+            var sb = new StringBuilder((value ?? string.Empty).Length + 2);
+            AppendStringLiteral(sb, value);
+            return sb.ToString();
+        }
+
+        private static void AppendStringLiteral(StringBuilder sb, string value)
+        {
             value = value ?? string.Empty;
-            var sb = new StringBuilder(value.Length + 2);
             sb.Append('"');
             foreach (var c in value)
             {
@@ -357,7 +420,6 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
             sb.Append('"');
-            return sb.ToString();
         }
 
         private static string FloatLiteral(float value)
@@ -375,7 +437,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string Indent(int level)
         {
-            return new string(' ', level * 4);
+            return level >= 0 && level < Indents.Length
+                ? Indents[level]
+                : new string(' ', level * 4);
         }
 
         private static string ExtractStringConstant(string source, string name)
@@ -448,6 +512,24 @@ namespace Unity.FoxgloveSDK.Editor
             return int.TryParse(source.Substring(start, end - start).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
                 ? value
                 : -1;
+        }
+    }
+
+    public sealed class FoxRunSchemaInfoWriteResult
+    {
+        public FoxRunSchemaInfoVerification Verification { get; }
+        public bool SourceChanged { get; }
+        public bool MetaChanged { get; }
+        public bool AnyChanged => SourceChanged || MetaChanged;
+
+        public FoxRunSchemaInfoWriteResult(
+            FoxRunSchemaInfoVerification verification,
+            bool sourceChanged,
+            bool metaChanged)
+        {
+            Verification = verification ?? throw new ArgumentNullException(nameof(verification));
+            SourceChanged = sourceChanged;
+            MetaChanged = metaChanged;
         }
     }
 

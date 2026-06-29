@@ -152,6 +152,12 @@ namespace Unity.FoxgloveSDK.Editor
             if (members == null || members.Count == 0)
                 throw new ArgumentException("At least one member is required.", nameof(members));
 
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (members[i] == null)
+                    throw new ArgumentException("TopicMember cannot be null.", nameof(members));
+            }
+
             var publishMembers = members
                 .Where(member => member.Mode != 1)
                 .ToList();

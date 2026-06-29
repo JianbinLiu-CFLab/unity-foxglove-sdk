@@ -18,6 +18,9 @@ namespace Unity.FoxgloveSDK.Editor
     /// </summary>
     internal static class TopicMetadataEmitter
     {
+        private static readonly object Sha256Gate = new();
+        private static readonly SHA256 SharedSha256 = SHA256.Create();
+
         /// <summary>
         /// Emits the <c>IFoxgloveLogSource.FoxgloveLog_GetTopic</c> switch
         /// method that returns a <c>FoxgloveLogTopicInfo</c> for each topic
@@ -108,18 +111,20 @@ namespace Unity.FoxgloveSDK.Editor
                 var field = fields[i];
                 sb.Append(field.JsonFieldName);
                 sb.Append(':');
-                sb.Append(string.IsNullOrWhiteSpace(field.CanonicalType)
-                    ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(field.TypeName)
-                    : field.CanonicalType);
+                sb.Append(field.CanonicalType);
             }
             return sb.ToString();
         }
 
         private static string Sha256Hex(string value)
         {
-            using var sha = SHA256.Create();
             var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
-            var hash = sha.ComputeHash(bytes);
+            byte[] hash;
+            lock (Sha256Gate)
+            {
+                hash = SharedSha256.ComputeHash(bytes);
+            }
+
             var sb = new StringBuilder(hash.Length * 2);
             foreach (var b in hash)
                 sb.Append(b.ToString("x2", CultureInfo.InvariantCulture));

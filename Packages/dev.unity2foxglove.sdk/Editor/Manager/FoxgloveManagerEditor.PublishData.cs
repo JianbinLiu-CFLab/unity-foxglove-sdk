@@ -14,6 +14,11 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public partial class FoxgloveManagerEditor : UnityEditor.Editor
     {
+        private const string R2fuRuntimeSelectorInspectorTypeName =
+            "Unity2Foxglove.Ros2" + "ForUnity.Editor.Ros2" + "ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2" + "ForUnity.Editor";
+        private static bool _r2fuRuntimeSelectorResolved;
+        private static System.Reflection.MethodInfo _r2fuRuntimeSelectorDrawMethod;
+
         private void DrawPublishDataSection()
         {
             FoxgloveManagerInspectorLayout.Subheader("Output Mode");
@@ -41,17 +46,11 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawOptionalR2fuRuntimeSelector()
         {
-            var ros2Native = serializedObject.FindProperty("_ros2NativeEnabled");
+            var ros2Native = FindCachedProperty("_ros2NativeEnabled");
             if (ros2Native == null || !ros2Native.boolValue)
                 return;
 
-            var selectorType = System.Type.GetType(
-                "Unity2Foxglove." + "Ros2" + "For" + "Unity.Editor."
-                + "Ros2" + "For" + "UnityRuntimeSelectorInspector, Unity2Foxglove."
-                + "Ros2" + "For" + "Unity.Editor");
-            var drawMethod = selectorType?.GetMethod(
-                "DrawActiveRuntimeSelector",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            var drawMethod = ResolveR2fuRuntimeSelectorDrawMethod();
             if (drawMethod == null)
             {
                 EditorGUILayout.HelpBox(
@@ -77,6 +76,19 @@ namespace Unity.FoxgloveSDK.Editor
                     "ROS2 For Unity runtime selector failed: " + ex.GetType().Name + ": " + ex.Message,
                     MessageType.Warning);
             }
+        }
+
+        private static System.Reflection.MethodInfo ResolveR2fuRuntimeSelectorDrawMethod()
+        {
+            if (_r2fuRuntimeSelectorResolved)
+                return _r2fuRuntimeSelectorDrawMethod;
+
+            _r2fuRuntimeSelectorResolved = true;
+            var selectorType = System.Type.GetType(R2fuRuntimeSelectorInspectorTypeName);
+            _r2fuRuntimeSelectorDrawMethod = selectorType?.GetMethod(
+                "DrawActiveRuntimeSelector",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            return _r2fuRuntimeSelectorDrawMethod;
         }
     }
 }

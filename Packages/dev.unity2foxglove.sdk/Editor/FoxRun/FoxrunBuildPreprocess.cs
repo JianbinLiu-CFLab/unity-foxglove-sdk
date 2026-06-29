@@ -57,10 +57,11 @@ namespace Unity.FoxgloveSDK.Editor
         {
             Debug.Log("[FoxrunBuildPreprocess] Generating FoxRun source files...");
             List<string> files;
+            List<(string AsmName, string Ns, string ClassName)> foxRunTypes;
             FoxRunCanonicalManifest manifest;
             try
             {
-                files = FoxrunCodeGenerator.GenerateSourceFiles(out manifest);
+                files = FoxrunCodeGenerator.GenerateSourceFiles(out manifest, out foxRunTypes);
             }
             catch (Exception ex)
             {
@@ -104,7 +105,7 @@ namespace Unity.FoxgloveSDK.Editor
             // changed on disk. Discovery happens in the Editor build step; the
             // generated Player code still publishes without runtime reflection.
             var linkPath = Path.Combine(Application.dataPath, "FoxRun_link.xml");
-            EnsureFoxRunLinkXml(linkPath);
+            EnsureFoxRunLinkXml(linkPath, foxRunTypes);
 
             try
             {
@@ -153,6 +154,15 @@ namespace Unity.FoxgloveSDK.Editor
                     "  - Failed at: scan\n" +
                     $"  - Reason: {ex.GetType().Name}: {ex.Message}\n");
             }
+
+            EnsureFoxRunLinkXml(linkPath, types);
+        }
+
+        static void EnsureFoxRunLinkXml(
+            string linkPath,
+            List<(string AsmName, string Ns, string ClassName)> types)
+        {
+            types = types ?? new List<(string AsmName, string Ns, string ClassName)>();
 
             if (types.Count == 0)
             {
@@ -246,7 +256,8 @@ namespace Unity.FoxgloveSDK.Editor
         private static void WriteTextIfChanged(string path, string text)
         {
             var bytes = Utf8NoBom.GetBytes(text ?? string.Empty);
-            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
+            var existing = new FileInfo(path);
+            if (existing.Exists && existing.Length == bytes.Length && FileContentEquals(path, bytes))
                 return;
 
             var directory = Path.GetDirectoryName(path);
@@ -274,6 +285,29 @@ namespace Unity.FoxgloveSDK.Editor
                     TryDeleteTempFile(tempPath);
                     throw;
                 }
+            }
+        }
+
+        private static bool FileContentEquals(string path, byte[] bytes)
+        {
+            var buffer = new byte[8192];
+            using (var stream = File.OpenRead(path))
+            {
+                for (var offset = 0; offset < bytes.Length;)
+                {
+                    var expected = Math.Min(buffer.Length, bytes.Length - offset);
+                    var read = stream.Read(buffer, 0, expected);
+                    if (read == 0)
+                        return false;
+                    for (var i = 0; i < read; i++)
+                    {
+                        if (buffer[i] != bytes[offset + i])
+                            return false;
+                    }
+                    offset += read;
+                }
+
+                return stream.ReadByte() == -1;
             }
         }
 

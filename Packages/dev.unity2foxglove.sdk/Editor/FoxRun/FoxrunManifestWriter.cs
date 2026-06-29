@@ -34,24 +34,26 @@ namespace Unity.FoxgloveSDK.Editor
 
             var manifest = FoxRunManifestBuilder.Build(members ?? Array.Empty<FoxRunManifestMember>());
             var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
-            var report = FoxRunManifestJsonWriter.WriteReport(
-                manifest,
-                generatedAtUtc ?? DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-                warnings ?? Array.Empty<string>());
-
             Directory.CreateDirectory(outputDirectory);
             var manifestChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName), canonical);
             var hashChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestHashFileName), manifest.GlobalManifestHash + "\n");
             var reportPath = Path.Combine(outputDirectory, ManifestReportFileName);
             if (manifestChanged || hashChanged || !File.Exists(reportPath))
+            {
+                var report = FoxRunManifestJsonWriter.WriteReport(
+                    manifest,
+                    generatedAtUtc ?? DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                    warnings ?? Array.Empty<string>());
                 WriteIfChanged(reportPath, report);
+            }
             return manifest;
         }
 
         private static bool WriteIfChanged(string path, string content)
         {
-            var bytes = Utf8NoBom.GetBytes(content);
-            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
+            var bytes = Utf8NoBom.GetBytes(content ?? string.Empty);
+            var existing = new FileInfo(path);
+            if (existing.Exists && existing.Length == bytes.Length && FileContentEquals(path, bytes))
                 return false;
 
             var tempPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -64,6 +66,29 @@ namespace Unity.FoxgloveSDK.Editor
             finally
             {
                 TryDeleteTempFile(tempPath);
+            }
+        }
+
+        private static bool FileContentEquals(string path, byte[] bytes)
+        {
+            var buffer = new byte[8192];
+            using (var stream = File.OpenRead(path))
+            {
+                for (var offset = 0; offset < bytes.Length;)
+                {
+                    var expected = Math.Min(buffer.Length, bytes.Length - offset);
+                    var read = stream.Read(buffer, 0, expected);
+                    if (read == 0)
+                        return false;
+                    for (var i = 0; i < read; i++)
+                    {
+                        if (buffer[i] != bytes[offset + i])
+                            return false;
+                    }
+                    offset += read;
+                }
+
+                return stream.ReadByte() == -1;
             }
         }
 

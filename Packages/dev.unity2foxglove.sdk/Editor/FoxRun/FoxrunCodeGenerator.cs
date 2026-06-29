@@ -28,6 +28,21 @@ namespace Unity.FoxgloveSDK.Editor
         private const int ReplaceAttempts = 3;
         private const int ReplaceRetryDelayMilliseconds = 50;
 
+        public sealed class FoxRunManifestRefreshResult
+        {
+            public FoxRunCanonicalManifest Manifest { get; }
+            public FoxRunSchemaInfoWriteResult SchemaInfo { get; }
+            public bool SchemaInfoChanged => SchemaInfo != null && SchemaInfo.AnyChanged;
+
+            public FoxRunManifestRefreshResult(
+                FoxRunCanonicalManifest manifest,
+                FoxRunSchemaInfoWriteResult schemaInfo)
+            {
+                Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
+                SchemaInfo = schemaInfo ?? throw new ArgumentNullException(nameof(schemaInfo));
+            }
+        }
+
         /// <summary>
         /// Collect the types that GenerateSourceFiles would process, without writing files.
         /// Returns a list of (assemblyName, namespace, className) tuples for IL2CPP preservation.
@@ -99,9 +114,18 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static List<string> GenerateSourceFiles(out FoxRunCanonicalManifest manifest)
         {
+            return GenerateSourceFiles(out manifest, out _);
+        }
+
+        public static List<string> GenerateSourceFiles(
+            out FoxRunCanonicalManifest manifest,
+            out List<(string AsmName, string Ns, string ClassName)> foxRunTypes)
+        {
             var result = new List<string>();
-            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            var serviceScan = ScanFoxServiceMethods(ignoreReflectionTypeLoadExceptions: true);
+            var editorScan = ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: true);
+            var scan = editorScan.FoxRun;
+            var serviceScan = editorScan.Services;
+            foxRunTypes = editorScan.FoxRunTypes;
             var byClass = scan.ByClass;
             var model = LowerReflectionMembers(scan.ReflectionMembers);
             ValidateGenerationModel(model);
@@ -162,7 +186,12 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         public static FoxRunCanonicalManifest GenerateManifestFilesOnly()
         {
-            return GenerateManifestAndSchemaInfoFilesOnly();
+            return GenerateManifestFilesOnlyWithResult().Manifest;
+        }
+
+        public static FoxRunManifestRefreshResult GenerateManifestFilesOnlyWithResult()
+        {
+            return GenerateManifestAndSchemaInfoFilesOnlyWithResult();
         }
 
         /// <summary>
@@ -173,13 +202,18 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         public static FoxRunCanonicalManifest GenerateManifestAndSchemaInfoFilesOnly()
         {
+            return GenerateManifestAndSchemaInfoFilesOnlyWithResult().Manifest;
+        }
+
+        public static FoxRunManifestRefreshResult GenerateManifestAndSchemaInfoFilesOnlyWithResult()
+        {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var model = LowerReflectionMembers(scan.ReflectionMembers);
             ValidateGenerationModel(model);
             var manifest = WriteManifestFiles(scan.ManifestMembers);
-            WriteSchemaInfoFiles(manifest);
+            var schemaInfo = WriteSchemaInfoFiles(manifest);
             WriteDescriptorFile(model);
-            return manifest;
+            return new FoxRunManifestRefreshResult(manifest, schemaInfo);
         }
 
         public static IReadOnlyList<FoxRunManifestMember> CollectManifestMembers()
@@ -216,9 +250,9 @@ namespace Unity.FoxgloveSDK.Editor
                 members);
         }
 
-        private static FoxRunSchemaInfoVerification WriteSchemaInfoFiles(FoxRunCanonicalManifest manifest)
+        private static FoxRunSchemaInfoWriteResult WriteSchemaInfoFiles(FoxRunCanonicalManifest manifest)
         {
-            return FoxRunSchemaInfoWriter.WriteGeneratedInfoFiles(GetManifestOutputDirectory(), manifest);
+            return FoxRunSchemaInfoWriter.WriteGeneratedInfoFilesWithResult(GetManifestOutputDirectory(), manifest);
         }
 
         private static void WriteDescriptorFile(FoxRunGenerationModel model)
@@ -253,6 +287,65 @@ namespace Unity.FoxgloveSDK.Editor
         private static string GetManifestOutputDirectory()
         {
             return Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory();
+        }
+
+        private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices(bool ignoreReflectionTypeLoadExceptions)
+        {
+            var byClass = new Dictionary<(string Ns, string ClassName), List<MemberData>>();
+            var manifestMembers = new List<FoxRunManifestMember>();
+            var reflectionMembers = new List<FoxRunReflectionGenerationMember>();
+            var serviceEntries = new List<FoxServiceScanEntry>();
+            var foxRunTypes = new List<(string AsmName, string Ns, string ClassName)>();
+
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    foreach (var type in asm.GetTypes())
+                    {
+                        if (!type.IsClass || type.IsAbstract) continue;
+                        if (!IsPartial(type)) continue;
+                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
+
+                        var ns = type.Namespace ?? "";
+                        var key = (ns, type.Name);
+
+                        var members = ScanType(type);
+                        if (members.Count > 0)
+                        {
+                            foxRunTypes.Add((asm.GetName().Name, ns, type.Name));
+                            if (!byClass.TryGetValue(key, out var list))
+                                byClass[key] = list = new List<MemberData>();
+
+                            foreach (var member in members)
+                            {
+                                list.Add(member);
+                                manifestMembers.Add(member.ToManifestMember());
+                                reflectionMembers.Add(member.ToReflectionMember());
+                            }
+                        }
+
+                        var methods = ScanServiceType(type);
+                        if (methods.Count > 0)
+                        {
+                            var owner = string.IsNullOrEmpty(ns) ? type.Name : ns + "." + type.Name;
+                            foreach (var method in methods)
+                                serviceEntries.Add(new FoxServiceScanEntry(key, owner, method));
+                        }
+                    }
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    if (!ignoreReflectionTypeLoadExceptions)
+                        throw;
+                    WarnSkippedAssembly(asm, ex);
+                }
+            }
+
+            return new FoxRunAndServiceScanResult(
+                new FoxRunScanResult(byClass, manifestMembers, reflectionMembers),
+                BuildFoxServiceScanResult(serviceEntries),
+                foxRunTypes);
         }
 
         private static FoxRunScanResult ScanFoxRunMembers(bool ignoreReflectionTypeLoadExceptions)
@@ -431,6 +524,11 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
 
+            return BuildFoxServiceScanResult(entries);
+        }
+
+        private static FoxServiceScanResult BuildFoxServiceScanResult(List<FoxServiceScanEntry> entries)
+        {
             var duplicateNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var group in entries.GroupBy(entry => entry.Method.ServiceName, StringComparer.Ordinal))
             {
@@ -824,6 +922,23 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private sealed class FoxRunAndServiceScanResult
+        {
+            public readonly FoxRunScanResult FoxRun;
+            public readonly FoxServiceScanResult Services;
+            public readonly List<(string AsmName, string Ns, string ClassName)> FoxRunTypes;
+
+            public FoxRunAndServiceScanResult(
+                FoxRunScanResult foxRun,
+                FoxServiceScanResult services,
+                List<(string AsmName, string Ns, string ClassName)> foxRunTypes)
+            {
+                FoxRun = foxRun;
+                Services = services;
+                FoxRunTypes = foxRunTypes;
+            }
+        }
+
         private sealed class FoxServiceScanResult
         {
             public readonly Dictionary<(string Ns, string ClassName), List<FoxServiceSourceEmitter.ServiceMethod>> ByClass;
@@ -898,8 +1013,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool WriteSourceFileIfChanged(string path, byte[] bytes)
         {
-            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
-                return false;
+            if (File.Exists(path))
+            {
+                var existing = new FileInfo(path);
+                if (existing.Length == bytes.Length && FileContentEquals(path, bytes))
+                    return false;
+            }
 
             WriteBytesWithTempReplace(path, bytes);
             return true;
@@ -908,6 +1027,29 @@ namespace Unity.FoxgloveSDK.Editor
         private static void WriteTextFileIfChanged(string path, string text)
         {
             WriteSourceFileIfChanged(path, Utf8NoBom.GetBytes(text ?? string.Empty));
+        }
+
+        private static bool FileContentEquals(string path, byte[] bytes)
+        {
+            var buffer = new byte[8192];
+            using (var stream = File.OpenRead(path))
+            {
+                for (var offset = 0; offset < bytes.Length;)
+                {
+                    var expected = Math.Min(buffer.Length, bytes.Length - offset);
+                    var read = stream.Read(buffer, 0, expected);
+                    if (read == 0)
+                        return false;
+                    for (var i = 0; i < read; i++)
+                    {
+                        if (buffer[i] != bytes[offset + i])
+                            return false;
+                    }
+                    offset += read;
+                }
+
+                return stream.ReadByte() == -1;
+            }
         }
 
         private static void WriteBytesWithTempReplace(string path, byte[] bytes)

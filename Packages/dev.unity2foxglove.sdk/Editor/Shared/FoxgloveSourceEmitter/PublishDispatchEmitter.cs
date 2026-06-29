@@ -152,12 +152,11 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string PayloadExpr(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
-            var jsonNames = fields.Select(f => f.JsonFieldName).ToList();
             var dict = new StringBuilder("new Dictionary<string, object> { ");
             for (int j = 0; j < fields.Count; j++)
             {
                 if (j > 0) dict.Append(", ");
-                dict.Append($"[\"{StringLiteralEmitter.CSharpStringLiteral(jsonNames[j])}\"] = {TypeExprEmitter.ValueExpr(fields[j].MemberName, fields[j].TypeName)}");
+                dict.Append($"[\"{StringLiteralEmitter.CSharpStringLiteral(fields[j].JsonFieldName)}\"] = {TypeExprEmitter.ValueExpr(fields[j].MemberName, fields[j].TypeName)}");
             }
             dict.Append(" }");
             return dict.ToString();

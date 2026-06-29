@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawProperty("_enableRecording");
             DrawProperty("_recordingPrefix");
-            var directory = serializedObject.FindProperty("_recordingDirectory");
+            var directory = FindCachedProperty("_recordingDirectory");
             if (directory != null)
                 DrawPathBrowse(directory, "Select Recording Directory", "", false, GetSmartDefault(directory.stringValue, false));
             else
@@ -48,7 +48,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_enableReplay");
             DrawReplayAutoPlayControl();
             DrawProperty("_disableLivePublishers");
-            var replayPath = serializedObject.FindProperty("_replayFilePath");
+            var replayPath = FindCachedProperty("_replayFilePath");
             if (replayPath != null)
             {
                 DrawStackedPathBrowse(replayPath,
@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawReplayAutoPlayControl()
         {
-            var replayAutoPlay = serializedObject.FindProperty("_replayAutoPlay");
+            var replayAutoPlay = FindCachedProperty("_replayAutoPlay");
             if (replayAutoPlay == null)
             {
                 DrawMissingProperty("_replayAutoPlay");
@@ -134,20 +134,20 @@ namespace Unity.FoxgloveSDK.Editor
 
         private string BuildRemoteMcapBaseUrl()
         {
-            var host = GetString("_remoteMcapFileServerHost", "127.0.0.1");
-            if (string.IsNullOrWhiteSpace(host))
-                host = "127.0.0.1";
-
-            return "http://" + host.Trim() + ":" + GetInt("_remoteMcapFileServerPort", 8891).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            RefreshRemoteMcapUrlCache(
+                GetString("_remoteMcapFileServerHost", "127.0.0.1"),
+                GetInt("_remoteMcapFileServerPort", 8891),
+                GetString("_remoteMcapFileServerSourceId", "local-mcap"));
+            return _cachedRemoteBaseUrl;
         }
 
         private string BuildRemoteMcapDirectFileUrl()
         {
-            var sourceId = GetString("_remoteMcapFileServerSourceId", "local-mcap");
-            if (string.IsNullOrWhiteSpace(sourceId))
-                sourceId = "local-mcap";
-
-            return BuildRemoteMcapBaseUrl() + "/v1/files/" + System.Uri.EscapeDataString(sourceId.Trim()) + ".mcap";
+            RefreshRemoteMcapUrlCache(
+                GetString("_remoteMcapFileServerHost", "127.0.0.1"),
+                GetInt("_remoteMcapFileServerPort", 8891),
+                GetString("_remoteMcapFileServerSourceId", "local-mcap"));
+            return _cachedRemoteDirectFileUrl;
         }
 
         private static void OpenFoxgloveTarget(string remoteUrl)
@@ -168,10 +168,10 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUI.indentLevel++;
 
-            var source = serializedObject.FindProperty("_identityModeSource");
-            var overrideMode = serializedObject.FindProperty("_identityModeOverride");
-            var projectMode = serializedObject.FindProperty("_projectSettingsIdentityMode");
-            var evidenceRoot = serializedObject.FindProperty("_schemaEvidenceRoot");
+            var source = FindCachedProperty("_identityModeSource");
+            var overrideMode = FindCachedProperty("_identityModeOverride");
+            var projectMode = FindCachedProperty("_projectSettingsIdentityMode");
+            var evidenceRoot = FindCachedProperty("_schemaEvidenceRoot");
 
             if (source == null || overrideMode == null || projectMode == null || evidenceRoot == null)
             {

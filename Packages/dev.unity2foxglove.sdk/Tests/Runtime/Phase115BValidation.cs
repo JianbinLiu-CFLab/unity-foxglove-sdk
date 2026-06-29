@@ -293,9 +293,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && paths.Contains("ResolveUnity2FoxgloveOutputDirectory", StringComparison.Ordinal),
                 "115B-D5: Editor resolver owns the current schema evidence root and generated output directories");
 
-            Check(ReadRepoText(FoxRunGeneratorPath).Contains("ResolveFoxRunOutputDirectory", StringComparison.Ordinal)
-                  && ReadRepoText(FoxRunPlayHookPath).Contains("ResolveFoxRunOutputDirectory", StringComparison.Ordinal)
-                  && ReadRepoText(AggregateGeneratorPath).Contains("ResolveUnity2FoxgloveOutputDirectory", StringComparison.Ordinal),
+            var foxRunGenerator = ReadRepoText(FoxRunGeneratorPath);
+            var foxRunPlayHook = ReadRepoText(FoxRunPlayHookPath);
+            var aggregateGenerator = ReadRepoText(AggregateGeneratorPath);
+            Check(foxRunGenerator.Contains("ResolveFoxRunOutputDirectory", StringComparison.Ordinal)
+                  && foxRunPlayHook.Contains("GenerateManifestFilesOnlyWithResult()", StringComparison.Ordinal)
+                  && foxRunPlayHook.Contains("GenerateArtifacts(refresh.Manifest)", StringComparison.Ordinal)
+                  && aggregateGenerator.Contains("ResolveUnity2FoxgloveOutputDirectory", StringComparison.Ordinal),
                 "115B-D6: FoxRun and aggregate generation share the schema evidence path resolver");
 
             var editor = ReadRepoText(ManagerEditorPath);

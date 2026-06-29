@@ -6,6 +6,7 @@
 // path helpers.
 
 using System.IO;
+using System.Reflection;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Transport;
@@ -46,12 +47,110 @@ namespace Unity.FoxgloveSDK.Editor
         private static int _lastRootCaDistributorPort;
         private string _cachedRootCaFingerprintPath;
         private string _cachedRootCaFingerprint;
+        private SerializedProperty _scriptProperty;
+        private SerializedProperty _hostProperty;
+        private SerializedProperty _portProperty;
+        private SerializedProperty _transportModeProperty;
+        private SerializedProperty _sharedTokenProperty;
+        private SerializedProperty _startOnEnableProperty;
+        private SerializedProperty _enableRecordingProperty;
+        private SerializedProperty _enableReplayProperty;
+        private SerializedProperty _foxgloveOutputEnabledProperty;
+        private SerializedProperty _ros2NativeEnabledProperty;
+        private SerializedProperty _ros2BridgeEnabledProperty;
+        private SerializedProperty _enableFoxRunInboundProperty;
+        private SerializedProperty _allowRemoteFoxRunInboundWithSharedTokenProperty;
+        private SerializedProperty _certificatePfxPathProperty;
+        private SerializedProperty _certificatePasswordProperty;
+        private SerializedProperty _rootCaFilePathProperty;
+        private SerializedProperty _rootCaDistributorEnabledProperty;
+        private SerializedProperty _rootCaDistributorHostProperty;
+        private SerializedProperty _rootCaDistributorPortProperty;
+        private SerializedProperty _enableRemoteMcapFileServerProperty;
+        private SerializedProperty _remoteMcapFileServerHostProperty;
+        private SerializedProperty _remoteMcapFileServerPortProperty;
+        private SerializedProperty _remoteMcapFileServerSourceIdProperty;
+        private SerializedProperty _recordingDirectoryProperty;
+        private SerializedProperty _replayFilePathProperty;
+        private SerializedProperty _replayAutoPlayProperty;
+        private SerializedProperty _identityModeSourceProperty;
+        private SerializedProperty _identityModeOverrideProperty;
+        private SerializedProperty _projectSettingsIdentityModeProperty;
+        private SerializedProperty _schemaEvidenceRootProperty;
+        private TransportStatsSnapshot _transportStatsThisRepaint = TransportStatsSnapshot.Unsupported;
+        private int _transportStatsFrame = -1;
+        private Components.FoxgloveServiceHub _cachedServiceHub;
+        private int _cachedServiceSnapshotFrame = -1;
+        private System.Collections.Generic.IReadOnlyList<Components.FoxgloveRegisteredServiceSnapshot> _cachedServiceSnapshots =
+            System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
+        private string _cachedEndpointHost;
+        private int _cachedEndpointPort;
+        private bool _cachedEndpointSecure;
+        private string _cachedEndpointToken;
+        private string _cachedEndpoint;
+        private string _cachedFoxgloveWebUrl;
+        private string _cachedRedactedFoxgloveWebUrl;
+        private string _cachedSecureUrl;
+        private string _cachedRemoteHost;
+        private int _cachedRemotePort;
+        private string _cachedRemoteSourceId;
+        private string _cachedRemoteBaseUrl;
+        private string _cachedRemoteDirectFileUrl;
 
         static FoxgloveManagerEditor()
         {
             AssemblyReloadEvents.beforeAssemblyReload += StopEditorRootCaDistributor;
             EditorApplication.quitting += StopEditorRootCaDistributor;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+        }
+
+        private void OnEnable()
+        {
+            CacheSerializedProperties();
+            InvalidateUrlCaches();
+        }
+
+        private void OnDisable()
+        {
+            _transportStatsThisRepaint = TransportStatsSnapshot.Unsupported;
+            _transportStatsFrame = -1;
+            _cachedServiceHub = null;
+            _cachedServiceSnapshotFrame = -1;
+            _cachedServiceSnapshots = System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
+        }
+
+        private void CacheSerializedProperties()
+        {
+            _scriptProperty = serializedObject.FindProperty("m_Script");
+            _hostProperty = serializedObject.FindProperty("_host");
+            _portProperty = serializedObject.FindProperty("_port");
+            _transportModeProperty = serializedObject.FindProperty("_transportMode");
+            _sharedTokenProperty = serializedObject.FindProperty("_sharedToken");
+            _startOnEnableProperty = serializedObject.FindProperty("_startOnEnable");
+            _enableRecordingProperty = serializedObject.FindProperty("_enableRecording");
+            _enableReplayProperty = serializedObject.FindProperty("_enableReplay");
+            _foxgloveOutputEnabledProperty = serializedObject.FindProperty("_foxgloveOutputEnabled");
+            _ros2NativeEnabledProperty = serializedObject.FindProperty("_ros2NativeEnabled");
+            _ros2BridgeEnabledProperty = serializedObject.FindProperty("_ros2BridgeEnabled");
+            _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
+            _allowRemoteFoxRunInboundWithSharedTokenProperty = serializedObject.FindProperty("_allowRemoteFoxRunInboundWithSharedToken");
+            _certificatePfxPathProperty = serializedObject.FindProperty("_certificatePfxPath");
+            _certificatePasswordProperty = serializedObject.FindProperty("_certificatePassword");
+            _rootCaFilePathProperty = serializedObject.FindProperty("_rootCaFilePath");
+            _rootCaDistributorEnabledProperty = serializedObject.FindProperty("_rootCaDistributorEnabled");
+            _rootCaDistributorHostProperty = serializedObject.FindProperty("_rootCaDistributorHost");
+            _rootCaDistributorPortProperty = serializedObject.FindProperty("_rootCaDistributorPort");
+            _enableRemoteMcapFileServerProperty = serializedObject.FindProperty("_enableRemoteMcapFileServer");
+            _remoteMcapFileServerHostProperty = serializedObject.FindProperty("_remoteMcapFileServerHost");
+            _remoteMcapFileServerPortProperty = serializedObject.FindProperty("_remoteMcapFileServerPort");
+            _remoteMcapFileServerSourceIdProperty = serializedObject.FindProperty("_remoteMcapFileServerSourceId");
+            _recordingDirectoryProperty = serializedObject.FindProperty("_recordingDirectory");
+            _replayFilePathProperty = serializedObject.FindProperty("_replayFilePath");
+            _replayAutoPlayProperty = serializedObject.FindProperty("_replayAutoPlay");
+            _identityModeSourceProperty = serializedObject.FindProperty("_identityModeSource");
+            _identityModeOverrideProperty = serializedObject.FindProperty("_identityModeOverride");
+            _projectSettingsIdentityModeProperty = serializedObject.FindProperty("_projectSettingsIdentityMode");
+            _schemaEvidenceRootProperty = serializedObject.FindProperty("_schemaEvidenceRoot");
         }
 
         /// <summary>
@@ -61,6 +160,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             serializedObject.Update();
             Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
+            RefreshTransportStatsForRepaint();
 
             DrawScriptProperty();
             DrawCompactStatus();
@@ -71,7 +171,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", ref _mcapExpanded, DrawMcapSection);
             DrawSection("FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
-            var ros2BridgeProp = serializedObject.FindProperty("_ros2BridgeEnabled");
+            var ros2BridgeProp = FindCachedProperty("_ros2BridgeEnabled");
             if (ros2BridgeProp != null && ros2BridgeProp.boolValue)
                 DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
             DrawSection("Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
@@ -81,7 +181,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawScriptProperty()
         {
-            var script = serializedObject.FindProperty("m_Script");
+            var script = FindCachedProperty("m_Script");
             if (script == null) return;
 
             using (new EditorGUI.DisabledScope(true))
@@ -97,9 +197,7 @@ namespace Unity.FoxgloveSDK.Editor
             var port = GetInt("_port", 8765);
             var isSecure = IsSecureMode();
             var token = GetString("_sharedToken", "");
-            var endpoint = FoxgloveAppUrl.BuildWebSocketEndpoint(host, port, isSecure, token, redactToken: true);
-            var foxgloveWebUrl = FoxgloveAppUrl.BuildHostedWebSocketUrl(host, port, isSecure, token: token);
-            var redactedFoxgloveWebUrl = FoxgloveAppUrl.BuildHostedWebSocketUrl(host, port, isSecure, token: token, redactToken: true);
+            RefreshWebUrlCache(host, port, isSecure, token);
 
             EditorGUILayout.Space();
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
@@ -107,8 +205,8 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.LabelField("Status Summary", EditorStyles.boldLabel);
                 using (new EditorGUI.DisabledScope(true))
                 {
-                    EditorGUILayout.TextField("Endpoint", endpoint);
-                    EditorGUILayout.TextField("Foxglove Web URL", redactedFoxgloveWebUrl);
+                    EditorGUILayout.TextField("Endpoint", _cachedEndpoint);
+                    EditorGUILayout.TextField("Foxglove Web URL", _cachedRedactedFoxgloveWebUrl);
                     EditorGUILayout.Toggle("Start On Enable", GetBool("_startOnEnable"));
                     EditorGUILayout.Toggle("Recording Enabled", GetBool("_enableRecording"));
                     EditorGUILayout.Toggle("Replay Enabled", GetBool("_enableReplay"));
@@ -116,7 +214,7 @@ namespace Unity.FoxgloveSDK.Editor
                     if (Application.isPlaying && manager != null)
                     {
                         EditorGUILayout.Toggle("Running", manager.IsRunning);
-                        var stats = manager.GetTransportStatsSnapshot();
+                        var stats = GetTransportStatsForRepaint();
                         if (stats.Supported)
                         {
                             EditorGUILayout.IntField("Active Clients", stats.ActiveClientCount);
@@ -132,10 +230,10 @@ namespace Unity.FoxgloveSDK.Editor
                         ? new GUIContent("Copy Web URL")
                         : new GUIContent("Copy Web URL (with token)", "Copies the full Foxglove Web URL, including the shared token query parameter.");
                     if (GUILayout.Button(copyWebUrlLabel))
-                        EditorGUIUtility.systemCopyBuffer = foxgloveWebUrl;
+                        EditorGUIUtility.systemCopyBuffer = _cachedFoxgloveWebUrl;
 
                     if (GUILayout.Button("Open Web"))
-                        Application.OpenURL(foxgloveWebUrl);
+                        Application.OpenURL(_cachedFoxgloveWebUrl);
                 }
             }
         }
@@ -213,7 +311,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var snapshots = hub.GetRegisteredServiceSnapshots();
+            var snapshots = GetServiceSnapshotsForRepaint(hub);
             using (new EditorGUI.DisabledScope(true))
                 EditorGUILayout.IntField("Registered Services", snapshots.Count);
 
@@ -274,7 +372,8 @@ namespace Unity.FoxgloveSDK.Editor
             var host = GetString("_host", "127.0.0.1");
             var port = GetInt("_port", 8765);
             var token = GetString("_sharedToken", "");
-            var secureUrl = $"wss://{host}:{port}" + (string.IsNullOrEmpty(token) ? "" : "?token=REDACTED");
+            RefreshWebUrlCache(host, port, isSecure: true, token);
+            var secureUrl = _cachedSecureUrl;
             using (new EditorGUI.DisabledScope(true))
             {
                 EditorGUILayout.TextField("Secure URL", secureUrl);
@@ -319,7 +418,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             using (new EditorGUI.DisabledScope(!isSecure))
             {
-                var pfx = serializedObject.FindProperty("_certificatePfxPath");
+                var pfx = FindCachedProperty("_certificatePfxPath");
                 if (pfx != null)
                     DrawPathBrowse(pfx, "Select WSS PFX Certificate", "pfx", true, GetSmartDefault(pfx.stringValue, true));
                 else
@@ -334,7 +433,7 @@ namespace Unity.FoxgloveSDK.Editor
                 DrawProperty("_rootCaDistributorHost");
                 DrawProperty("_rootCaDistributorPort");
 
-                var rootCa = serializedObject.FindProperty("_rootCaFilePath");
+                var rootCa = FindCachedProperty("_rootCaFilePath");
                 if (rootCa != null)
                     DrawPathBrowse(rootCa, "Select Root CA File", "crt", true, GetSmartDefault(rootCa.stringValue, true));
                 else
@@ -393,7 +492,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawProperty(string propertyName)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop == null)
             {
                 DrawMissingProperty(propertyName);
@@ -405,7 +504,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawProperty(string propertyName, string label)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop == null)
             {
                 DrawMissingProperty(propertyName);
@@ -419,7 +518,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             // TransportModeLabels exposes only "Web Socket" and "Secure Web Socket";
             // the internal None sentinel stays hidden from the Inspector.
-            var prop = serializedObject.FindProperty("_transportMode");
+            var prop = FindCachedProperty("_transportMode");
             if (prop == null)
             {
                 DrawMissingProperty("_transportMode");
@@ -441,7 +540,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawFloatProperty(string propertyName, string label, string tooltip)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop == null)
             {
                 DrawMissingProperty(propertyName);
@@ -453,7 +552,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawGlobalEncodingProperty(string propertyName, string label)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop == null)
             {
                 DrawMissingProperty(propertyName);
@@ -468,54 +567,175 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.HelpBox($"Serialized property '{propertyName}' was not found.", MessageType.Warning);
         }
 
+        private SerializedProperty FindCachedProperty(string propertyName)
+        {
+            switch (propertyName)
+            {
+                case "m_Script": return _scriptProperty;
+                case "_host": return _hostProperty;
+                case "_port": return _portProperty;
+                case "_transportMode": return _transportModeProperty;
+                case "_sharedToken": return _sharedTokenProperty;
+                case "_startOnEnable": return _startOnEnableProperty;
+                case "_enableRecording": return _enableRecordingProperty;
+                case "_enableReplay": return _enableReplayProperty;
+                case "_foxgloveOutputEnabled": return _foxgloveOutputEnabledProperty;
+                case "_ros2NativeEnabled": return _ros2NativeEnabledProperty;
+                case "_ros2BridgeEnabled": return _ros2BridgeEnabledProperty;
+                case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
+                case "_allowRemoteFoxRunInboundWithSharedToken": return _allowRemoteFoxRunInboundWithSharedTokenProperty;
+                case "_certificatePfxPath": return _certificatePfxPathProperty;
+                case "_certificatePassword": return _certificatePasswordProperty;
+                case "_rootCaFilePath": return _rootCaFilePathProperty;
+                case "_rootCaDistributorEnabled": return _rootCaDistributorEnabledProperty;
+                case "_rootCaDistributorHost": return _rootCaDistributorHostProperty;
+                case "_rootCaDistributorPort": return _rootCaDistributorPortProperty;
+                case "_enableRemoteMcapFileServer": return _enableRemoteMcapFileServerProperty;
+                case "_remoteMcapFileServerHost": return _remoteMcapFileServerHostProperty;
+                case "_remoteMcapFileServerPort": return _remoteMcapFileServerPortProperty;
+                case "_remoteMcapFileServerSourceId": return _remoteMcapFileServerSourceIdProperty;
+                case "_recordingDirectory": return _recordingDirectoryProperty;
+                case "_replayFilePath": return _replayFilePathProperty;
+                case "_replayAutoPlay": return _replayAutoPlayProperty;
+                case "_identityModeSource": return _identityModeSourceProperty;
+                case "_identityModeOverride": return _identityModeOverrideProperty;
+                case "_projectSettingsIdentityMode": return _projectSettingsIdentityModeProperty;
+                case "_schemaEvidenceRoot": return _schemaEvidenceRootProperty;
+                default: return serializedObject.FindProperty(propertyName);
+            }
+        }
+
         private string GetString(string propertyName, string fallback)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             return prop != null ? prop.stringValue : fallback;
         }
 
         private int GetInt(string propertyName, int fallback)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             return prop != null ? prop.intValue : fallback;
         }
 
         private bool GetBool(string propertyName)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             return prop != null && prop.boolValue;
+        }
+
+        private void RefreshWebUrlCache(string host, int port, bool isSecure, string token)
+        {
+            host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host;
+            token = token ?? string.Empty;
+
+            if (string.Equals(_cachedEndpointHost, host, System.StringComparison.Ordinal)
+                && _cachedEndpointPort == port
+                && _cachedEndpointSecure == isSecure
+                && string.Equals(_cachedEndpointToken, token, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _cachedEndpointHost = host;
+            _cachedEndpointPort = port;
+            _cachedEndpointSecure = isSecure;
+            _cachedEndpointToken = token;
+            _cachedEndpoint = FoxgloveAppUrl.BuildWebSocketEndpoint(host, port, isSecure, token, redactToken: true);
+            _cachedFoxgloveWebUrl = FoxgloveAppUrl.BuildHostedWebSocketUrl(host, port, isSecure, token: token);
+            _cachedRedactedFoxgloveWebUrl = FoxgloveAppUrl.BuildHostedWebSocketUrl(host, port, isSecure, token: token, redactToken: true);
+            _cachedSecureUrl = $"wss://{host}:{port}" + (string.IsNullOrEmpty(token) ? "" : "?token=REDACTED");
+        }
+
+        private void RefreshRemoteMcapUrlCache(string host, int port, string sourceId)
+        {
+            host = string.IsNullOrWhiteSpace(host) ? "127.0.0.1" : host.Trim();
+            sourceId = string.IsNullOrWhiteSpace(sourceId) ? "local-mcap" : sourceId.Trim();
+
+            if (string.Equals(_cachedRemoteHost, host, System.StringComparison.Ordinal)
+                && _cachedRemotePort == port
+                && string.Equals(_cachedRemoteSourceId, sourceId, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _cachedRemoteHost = host;
+            _cachedRemotePort = port;
+            _cachedRemoteSourceId = sourceId;
+            _cachedRemoteBaseUrl = "http://" + host + ":" + port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _cachedRemoteDirectFileUrl = _cachedRemoteBaseUrl
+                + "/v1/files/"
+                + System.Uri.EscapeDataString(sourceId)
+                + ".mcap";
+        }
+
+        private void InvalidateUrlCaches()
+        {
+            _cachedEndpointHost = null;
+            _cachedRemoteHost = null;
+        }
+
+        private void RefreshTransportStatsForRepaint()
+        {
+            var manager = target as Components.FoxgloveManager;
+            _transportStatsFrame = Time.frameCount;
+            _transportStatsThisRepaint = Application.isPlaying && manager != null
+                ? manager.GetTransportStatsSnapshot()
+                : TransportStatsSnapshot.Unsupported;
+        }
+
+        private TransportStatsSnapshot GetTransportStatsForRepaint()
+        {
+            if (_transportStatsFrame != Time.frameCount)
+                RefreshTransportStatsForRepaint();
+            return _transportStatsThisRepaint ?? TransportStatsSnapshot.Unsupported;
+        }
+
+        private System.Collections.Generic.IReadOnlyList<Components.FoxgloveRegisteredServiceSnapshot> GetServiceSnapshotsForRepaint(
+            Components.FoxgloveServiceHub hub)
+        {
+            if (hub == null)
+                return System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
+
+            var frame = Time.frameCount;
+            if (_cachedServiceHub == hub && _cachedServiceSnapshotFrame == frame)
+                return _cachedServiceSnapshots;
+
+            _cachedServiceHub = hub;
+            _cachedServiceSnapshotFrame = frame;
+            _cachedServiceSnapshots = hub.GetRegisteredServiceSnapshots();
+            return _cachedServiceSnapshots;
         }
 
         private void SetString(string propertyName, string value)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop != null)
                 prop.stringValue = value ?? string.Empty;
         }
 
         private void SetBool(string propertyName, bool value)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop != null)
                 prop.boolValue = value;
         }
 
         private void SetInt(string propertyName, int value)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop != null)
                 prop.intValue = value;
         }
 
         private bool IsSecureMode()
         {
-            var prop = serializedObject.FindProperty("_transportMode");
+            var prop = FindCachedProperty("_transportMode");
             return prop != null && prop.enumValueIndex == (int)FoxgloveTransportMode.SecureWebSocket;
         }
 
         private void DrawPasswordProperty(string propertyName, string label)
         {
-            var prop = serializedObject.FindProperty(propertyName);
+            var prop = FindCachedProperty(propertyName);
             if (prop == null)
             {
                 DrawMissingProperty(propertyName);
