@@ -6,6 +6,7 @@
 // transport statistics.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -24,12 +25,15 @@ namespace Unity.FoxgloveSDK.Transport
     {
         private const int CloseDrainTimeoutMs = 250;
         private const int SendLoopCloseTimeoutMs = 1000;
+        private const int MaxSendBatchFrames = 32;
+        private static readonly double StopwatchTicksToMilliseconds = 1000d / Stopwatch.Frequency;
 
         /// <summary>Underlying TCP client owned by this connection after handshake.</summary>
         private readonly TcpClient _tcpClient;
         /// <summary>Underlying plain or TLS stream.</summary>
         private readonly Stream _stream;
         private readonly WsSendQueue _sendQueue;
+        private readonly List<QueuedFrame> _sendBatch = new(MaxSendBatchFrames);
         private CancellationTokenSource _sendCts;
         private Task _sendTask;
         private int _disposed;
@@ -86,9 +90,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         private static long MonotonicMilliseconds()
         {
-            var ticks = Stopwatch.GetTimestamp();
-            var frequency = Stopwatch.Frequency;
-            return (ticks / frequency) * 1000 + (ticks % frequency) * 1000 / frequency;
+            return (long)(Stopwatch.GetTimestamp() * StopwatchTicksToMilliseconds);
         }
 
         public void StartSendLoop(Action onSendFailed, CancellationToken parentToken)
@@ -106,6 +108,11 @@ namespace Unity.FoxgloveSDK.Transport
         {
             var payload = Encoding.UTF8.GetBytes(json);
             return _sendQueue.Enqueue(new QueuedFrame(OpText, payload, priority));
+        }
+
+        internal EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)
+        {
+            return _sendQueue.Enqueue(new QueuedFrame(OpText, utf8Json ?? Array.Empty<byte>(), priority));
         }
 
         /// <summary>Send raw bytes in a binary frame.</summary>
@@ -161,7 +168,13 @@ namespace Unity.FoxgloveSDK.Transport
             try
             {
                 while (_sendQueue.WaitToDequeue(ct, out var frame))
-                    WriteFrame(frame.Opcode, frame.Payload);
+                {
+                    _sendBatch.Clear();
+                    _sendBatch.Add(frame);
+                    while (_sendBatch.Count < MaxSendBatchFrames && _sendQueue.TryDequeue(out var nextFrame))
+                        _sendBatch.Add(nextFrame);
+                    WriteFrameBatch(_sendBatch);
+                }
             }
             catch (OperationCanceledException) { }
             catch (ObjectDisposedException) { }
@@ -174,6 +187,23 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 onSendFailed?.Invoke();
             }
+        }
+
+        /// <summary>Write a bounded burst of queued frames and flush once at the end.</summary>
+        private void WriteFrameBatch(List<QueuedFrame> frames)
+        {
+            if (frames == null || frames.Count == 0)
+                return;
+
+            foreach (var frame in frames)
+            {
+                WsFrameCodec.WriteFrame(_stream, frame.Opcode, frame.Payload, flush: false);
+                Interlocked.Increment(ref _sentFrames);
+                Interlocked.Add(ref _sentBytes, frame.Payload.Length);
+            }
+
+            _stream.Flush();
+            TouchActivity();
         }
 
         /// <summary>Build and write a complete WebSocket frame (FIN + opcode + length-prefixed payload).</summary>

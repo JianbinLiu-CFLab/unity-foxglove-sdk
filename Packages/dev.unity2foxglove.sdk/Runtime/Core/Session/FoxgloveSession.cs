@@ -43,8 +43,15 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SubscriptionRegistry _subscriptions = new();
         private readonly object _subscriberScratchLock = new();
         private readonly List<(uint clientId, uint subscriptionId)> _subscriberScratch = new();
+        private readonly List<AdvertiseChannel> _singleAdvertiseChannels = new(1);
+        private readonly List<uint> _singleUnadvertiseChannelIds = new(1);
         private readonly object _paramSubScratchLock = new();
         private readonly List<uint> _paramSubScratch = new();
+        private readonly object _parameterBroadcastScratchLock = new();
+        private readonly HashSet<string> _parameterBroadcastSeen = new();
+        private readonly List<string> _parameterBroadcastNames = new();
+        private readonly List<FoxgloveServiceCall> _pendingServiceCallsScratch = new();
+        private readonly List<FoxgloveServiceCall> _completedServiceCallsScratch = new();
         private readonly ISchemaRegistry _schemaRegistry;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
@@ -284,8 +291,7 @@ namespace Unity.FoxgloveSDK.Core
             if (AllowLiveWebSocket(channel))
             {
                 _graph.SetUnityPublishedTopic(channel.Topic);
-                _transport.BroadcastText(JsonConvert.SerializeObject(
-                    new Advertise { Channels = new List<AdvertiseChannel> { channel } }));
+                _transport.BroadcastText(SerializeSingleAdvertise(channel));
                 _graph.BroadcastUpdate();
             }
         }
@@ -308,10 +314,27 @@ namespace Unity.FoxgloveSDK.Core
             }
             if (liveAllowed)
             {
-                _transport.BroadcastText(JsonConvert.SerializeObject(
-                    new Unadvertise { ChannelIds = new List<uint> { channelId } }));
+                _transport.BroadcastText(SerializeSingleUnadvertise(channelId));
                 _graph.BroadcastUpdate();
             }
+        }
+
+        private string SerializeSingleAdvertise(AdvertiseChannel channel)
+        {
+            _singleAdvertiseChannels.Clear();
+            _singleAdvertiseChannels.Add(channel);
+            var json = JsonConvert.SerializeObject(new Advertise { Channels = _singleAdvertiseChannels });
+            _singleAdvertiseChannels.Clear();
+            return json;
+        }
+
+        private string SerializeSingleUnadvertise(uint channelId)
+        {
+            _singleUnadvertiseChannelIds.Clear();
+            _singleUnadvertiseChannelIds.Add(channelId);
+            var json = JsonConvert.SerializeObject(new Unadvertise { ChannelIds = _singleUnadvertiseChannelIds });
+            _singleUnadvertiseChannelIds.Clear();
+            return json;
         }
 
         /// <summary>

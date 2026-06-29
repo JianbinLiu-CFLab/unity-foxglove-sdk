@@ -76,6 +76,7 @@ namespace Unity.FoxgloveSDK.Transport
         private readonly int _maxFrames;
         private readonly int _maxQueuedBytes;
         private int _queuedBytes;
+        private int _dataQueuedBytes;
         private bool _completed;
         private long _droppedDataFrames;
 
@@ -144,9 +145,14 @@ namespace Unity.FoxgloveSDK.Transport
                     }
 
                     if (frame.Priority == FramePriority.Control)
+                    {
                         _controlFrames.Enqueue(frame);
+                    }
                     else
+                    {
                         _dataFrames.Enqueue(frame);
+                        _dataQueuedBytes += frame.SizeBytes;
+                    }
 
                     _queuedBytes += frame.SizeBytes;
                     Monitor.Pulse(_lock);
@@ -212,11 +218,9 @@ namespace Unity.FoxgloveSDK.Transport
             lock (_lock)
             {
                 var dropped = _dataFrames.Count;
-                while (_dataFrames.Count > 0)
-                {
-                    var frame = _dataFrames.Dequeue();
-                    _queuedBytes -= frame.SizeBytes;
-                }
+                _queuedBytes -= _dataQueuedBytes;
+                _dataQueuedBytes = 0;
+                _dataFrames.Clear();
 
                 _droppedDataFrames += dropped;
                 if (CountLocked == 0) Monitor.PulseAll(_lock);
@@ -295,6 +299,7 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 frame = _dataFrames.Dequeue();
                 _queuedBytes -= frame.SizeBytes;
+                _dataQueuedBytes -= frame.SizeBytes;
                 if (CountLocked == 0) Monitor.PulseAll(_lock);
                 return true;
             }
@@ -307,6 +312,7 @@ namespace Unity.FoxgloveSDK.Transport
         {
             var dropped = _dataFrames.Dequeue();
             _queuedBytes -= dropped.SizeBytes;
+            _dataQueuedBytes -= dropped.SizeBytes;
             _droppedDataFrames++;
         }
 

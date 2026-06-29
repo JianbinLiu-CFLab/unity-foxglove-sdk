@@ -122,6 +122,8 @@ namespace Unity.FoxgloveSDK.Components
         [Header("MCAP Replay")]
         [SerializeField] private bool _enableReplay;
         [SerializeField] private string _replayFilePath = "";
+        private string _cachedReplayFilePathInput;
+        private string _cachedResolvedReplayFilePath;
         [SerializeField] private bool _replayAutoPlay;
         [SerializeField] private bool _disableLivePublishers;
         private bool _livePublishersDisabled;
@@ -416,6 +418,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnValidate()
         {
             InvalidateRos2BridgeNamespaceCache();
+            InvalidateResolvedReplayFilePathCache();
             _port = Mathf.Clamp(_port, 1, 65535);
             _rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);
             _recordingChunkSizeKB = Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB);
@@ -528,6 +531,12 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return System.IO.Path.GetFullPath(System.IO.Path.Combine(ProjectRoot, path));
+        }
+
+        private void InvalidateResolvedReplayFilePathCache()
+        {
+            _cachedReplayFilePathInput = null;
+            _cachedResolvedReplayFilePath = null;
         }
 
         private void CreateRos2BridgeRuntime()

@@ -6,9 +6,9 @@
 // roots for the Foxglove fetchAsset capability. No UnityEngine dependency.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -62,48 +62,55 @@ namespace Unity.FoxgloveSDK.Core
                 return false;
             }
 
-            List<KeyValuePair<string, AssetRoot>> roots;
+            string bestPrefix = null;
+            var bestPrefixLength = -1;
+            AssetRoot bestRoot = default;
             lock (_lock)
             {
-                roots = _roots
-                    .OrderByDescending(item => item.Key.Length)
-                    .ToList();
+                foreach (var (prefix, root) in _roots)
+                {
+                    if (prefix.Length <= bestPrefixLength || !uri.StartsWith(prefix, StringComparison.Ordinal))
+                        continue;
+
+                    bestPrefix = prefix;
+                    bestPrefixLength = prefix.Length;
+                    bestRoot = root;
+                }
             }
 
-            foreach (var (prefix, root) in roots)
+            if (bestPrefix == null)
             {
-                if (!uri.StartsWith(prefix, StringComparison.Ordinal))
-                    continue;
-                var relative = uri.Substring(prefix.Length);
-                try
-                {
-                    relative = Uri.UnescapeDataString(relative);
-                    relative = relative.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
-                    var resolved = Path.GetFullPath(Path.Combine(root.LocalRoot, relative));
-                    var normalizedRoot = root.LocalRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    var comparison = FileSystemPathComparison;
-                    var rootPrefix = normalizedRoot + Path.DirectorySeparatorChar;
-                    if (!resolved.StartsWith(rootPrefix, comparison) && !string.Equals(resolved, normalizedRoot, comparison))
-                    { error = $"Path traversal denied: {uri}"; return false; }
-                    if (Directory.Exists(resolved))
-                    { error = $"Path is a directory: {uri}"; return false; }
-                    if (!File.Exists(resolved))
-                    { error = $"File not found: {uri}"; return false; }
-                    var fi = new FileInfo(resolved);
-                    if (fi.Length > root.MaxBytes)
-                    { error = $"File exceeds size limit ({root.MaxBytes} bytes): {fi.Length}"; return false; }
-                    path = resolved;
-                    maxBytes = root.MaxBytes;
-                    return true;
-                }
-                catch (Exception ex) when (IsAssetPathException(ex))
-                {
-                    error = $"Invalid asset URI: {ex.Message}";
-                    return false;
-                }
+                error = $"No asset root registered for URI: {uri}";
+                return false;
             }
-            error = $"No asset root registered for URI: {uri}";
-            return false;
+
+            var relative = uri.Substring(bestPrefix.Length);
+            try
+            {
+                relative = Uri.UnescapeDataString(relative);
+                relative = relative.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+                var resolved = Path.GetFullPath(Path.Combine(bestRoot.LocalRoot, relative));
+                var normalizedRoot = bestRoot.LocalRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var comparison = FileSystemPathComparison;
+                var rootPrefix = normalizedRoot + Path.DirectorySeparatorChar;
+                if (!resolved.StartsWith(rootPrefix, comparison) && !string.Equals(resolved, normalizedRoot, comparison))
+                { error = $"Path traversal denied: {uri}"; return false; }
+                if (Directory.Exists(resolved))
+                { error = $"Path is a directory: {uri}"; return false; }
+                if (!File.Exists(resolved))
+                { error = $"File not found: {uri}"; return false; }
+                var fi = new FileInfo(resolved);
+                if (fi.Length > bestRoot.MaxBytes)
+                { error = $"File exceeds size limit ({bestRoot.MaxBytes} bytes): {fi.Length}"; return false; }
+                path = resolved;
+                maxBytes = bestRoot.MaxBytes;
+                return true;
+            }
+            catch (Exception ex) when (IsAssetPathException(ex))
+            {
+                error = $"Invalid asset URI: {ex.Message}";
+                return false;
+            }
         }
 
         /// <summary>
@@ -142,24 +149,31 @@ namespace Unity.FoxgloveSDK.Core
                     return false;
                 }
 
-                using var output = new MemoryStream(stream.Length <= int.MaxValue ? (int)stream.Length : 0);
-                var buffer = new byte[81920];
-                long total = 0;
-                int read;
-                while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                var buffer = ArrayPool<byte>.Shared.Rent(81920);
+                try
                 {
-                    total += read;
-                    if (total > maxBytes)
+                    using var output = new MemoryStream(stream.Length <= int.MaxValue ? (int)stream.Length : 0);
+                    long total = 0;
+                    int read;
+                    while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
                     {
-                        error = $"File exceeds size limit ({maxBytes} bytes): {total}";
-                        return false;
+                        total += read;
+                        if (total > maxBytes)
+                        {
+                            error = $"File exceeds size limit ({maxBytes} bytes): {total}";
+                            return false;
+                        }
+
+                        output.Write(buffer, 0, read);
                     }
 
-                    output.Write(buffer, 0, read);
+                    bytes = output.ToArray();
+                    return true;
                 }
-
-                bytes = output.ToArray();
-                return true;
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
             catch (Exception ex) when (IsAssetPathException(ex))
             {

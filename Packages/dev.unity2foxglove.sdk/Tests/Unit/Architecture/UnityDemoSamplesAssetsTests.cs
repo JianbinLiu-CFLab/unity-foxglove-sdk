@@ -16,6 +16,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
     [Trait("Domain", "Architecture")]
     public sealed class UnityDemoSamplesAssetsTests
     {
+        private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRoot);
+
         private static readonly string[] VolumeProfilePaths =
         {
             "Unity2Foxglove/Assets/Settings/DefaultVolumeProfile.asset",
@@ -249,26 +251,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         private static string Path(string relativePath)
         {
-            return System.IO.Path.Combine(RepoRoot, relativePath.Replace('/', System.IO.Path.DirectorySeparatorChar));
+            return System.IO.Path.Combine(RepoRoot.Value, relativePath.Replace('/', System.IO.Path.DirectorySeparatorChar));
         }
 
-        private static string RepoRoot
+        private static string FindRepoRoot()
         {
-            get
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
             {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    if (File.Exists(System.IO.Path.Combine(dir.FullName, "README.md"))
-                        && Directory.Exists(System.IO.Path.Combine(dir.FullName, "Unity2Foxglove"))
-                        && Directory.Exists(System.IO.Path.Combine(dir.FullName, "Packages")))
-                        return dir.FullName;
+                if (File.Exists(System.IO.Path.Combine(dir.FullName, "README.md"))
+                    && Directory.Exists(System.IO.Path.Combine(dir.FullName, "Unity2Foxglove"))
+                    && Directory.Exists(System.IO.Path.Combine(dir.FullName, "Packages")))
+                    return dir.FullName;
 
-                    dir = dir.Parent;
-                }
-
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                dir = dir.Parent;
             }
+
+            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
         }
     }
 }

@@ -196,14 +196,13 @@ def portable_full_demo_scene_payload(src: Path) -> bytes:
                 replacement = match.group(1) + value
                 break
         rewritten.append(with_line_ending(line, replacement if replacement is not None else body))
-    payload = "".join(rewritten).encode("utf-8")
-    validate_portable_full_demo_scene_payload(payload)
-    return payload
+    text = "".join(rewritten)
+    validate_portable_full_demo_scene_payload(text)
+    return text.encode("utf-8")
 
 
-def validate_portable_full_demo_scene_payload(payload: bytes) -> None:
+def validate_portable_full_demo_scene_payload(text: str) -> None:
     """Reject portable sample scenes that still contain local-only values."""
-    text = payload.decode("utf-8", errors="replace")
     for line_number, line in enumerate(text.splitlines(), start=1):
         match = PORTABLE_FULL_DEMO_SCENE_FIELD_PATTERN.match(line)
         if not match or match.group(2) not in PORTABLE_FULL_DEMO_SCENE_FORBIDDEN_FIELDS:

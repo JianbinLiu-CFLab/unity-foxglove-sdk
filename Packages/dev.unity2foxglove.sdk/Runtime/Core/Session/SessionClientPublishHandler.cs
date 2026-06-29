@@ -7,7 +7,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.IO;
@@ -33,6 +32,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Action<uint, uint, string, byte[]> _messageCallback;
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
         private readonly HashSet<uint> _budgetWarnedClients = new();
+        private readonly List<(uint clientId, uint chId)> _clientChannelRemovalScratch = new();
         private readonly object _clientChannelsLock = new();
 
         public SessionClientPublishHandler(
@@ -63,13 +63,20 @@ namespace Unity.FoxgloveSDK.Core
             var removedGraphTopics = new List<(uint channelId, string topic)>();
             lock (_clientChannelsLock)
             {
-                var toRemove = _clientChannels.Keys.Where(k => k.clientId == clientId).ToList();
-                foreach (var k in toRemove)
+                _clientChannelRemovalScratch.Clear();
+                foreach (var key in _clientChannels.Keys)
+                {
+                    if (key.clientId == clientId)
+                        _clientChannelRemovalScratch.Add(key);
+                }
+
+                foreach (var k in _clientChannelRemovalScratch)
                 {
                     if (_clientChannels.Remove(k, out var ch))
                         removedGraphTopics.Add((k.chId, ch.Topic));
                 }
 
+                _clientChannelRemovalScratch.Clear();
                 _budgetWarnedClients.Remove(clientId);
             }
 

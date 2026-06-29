@@ -8,7 +8,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -44,14 +43,22 @@ namespace Unity.FoxgloveSDK.Core
             catch { _logger.LogWarning($"setParameters parse error from client {clientId}"); return; }
 
             var changedNames = new List<string>();
-            foreach (var p in msg.Parameters ?? new List<Parameter>())
+            List<string> requestedNames = null;
+            if (msg.Parameters != null)
             {
-                if (p != null && p.Name != null && _parameters.TrySetFromClient(p.Name, p.Value))
-                    changedNames.Add(p.Name);
+                requestedNames = new List<string>(msg.Parameters.Count);
+                foreach (var p in msg.Parameters)
+                {
+                    if (p?.Name == null)
+                        continue;
+
+                    requestedNames.Add(p.Name);
+                    if (_parameters.TrySetFromClient(p.Name, p.Value))
+                        changedNames.Add(p.Name);
+                }
             }
 
-            var names = msg.Parameters?.Select(p => p?.Name).Where(n => n != null);
-            var current = _parameters.GetWireParameters(names);
+            var current = _parameters.GetWireParameters(requestedNames);
             var resp = new ParameterValues { Parameters = current, Id = msg.Id };
             _transport.SendText(clientId, JsonConvert.SerializeObject(resp));
 
@@ -108,28 +115,38 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void BroadcastParameterValues(IEnumerable<string> parameterNames)
         {
-            List<string> names = null;
-            if (parameterNames != null)
+            lock (_parameterBroadcastScratchLock)
             {
-                var seen = new HashSet<string>();
-                names = new List<string>();
-                foreach (var n in parameterNames)
+                _parameterBroadcastSeen.Clear();
+                _parameterBroadcastNames.Clear();
+                try
                 {
-                    if (!string.IsNullOrEmpty(n) && seen.Add(n))
-                        names.Add(n);
+                    if (parameterNames != null)
+                    {
+                        foreach (var n in parameterNames)
+                        {
+                            if (!string.IsNullOrEmpty(n) && _parameterBroadcastSeen.Add(n))
+                                _parameterBroadcastNames.Add(n);
+                        }
+                    }
+
+                    if (_parameterBroadcastNames.Count == 0)
+                        return;
+
+                    var parameters = _parameters.GetWireParameters(_parameterBroadcastNames);
+                    if (parameters.Count == 0)
+                        return;
+
+                    var broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
+                    foreach (var cid in GetParamSubscribersForChanged(_parameterBroadcastNames, null))
+                        _transport.SendText(cid, broadcastJson);
+                }
+                finally
+                {
+                    _parameterBroadcastSeen.Clear();
+                    _parameterBroadcastNames.Clear();
                 }
             }
-
-            if (names == null || names.Count == 0)
-                return;
-
-            var parameters = _parameters.GetWireParameters(names);
-            if (parameters.Count == 0)
-                return;
-
-            var broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
-            foreach (var cid in GetParamSubscribersForChanged(names, null))
-                _transport.SendText(cid, broadcastJson);
         }
 
         /// <summary>

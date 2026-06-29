@@ -99,12 +99,16 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!_frameStallDiagnosticsEnabled)
             {
-                _lastFrameStallDiagnosticsTime = 0d;
-                _lastFrameStallGcBytes = 0L;
-                _lastFrameStallGcCount0 = 0;
-                _lastFrameStallGcCount1 = 0;
-                _lastFrameStallGcCount2 = 0;
-                _frameStallDiagnosticsWasEnabled = false;
+                if (_frameStallDiagnosticsWasEnabled)
+                {
+                    _lastFrameStallDiagnosticsTime = 0d;
+                    _lastFrameStallGcBytes = 0L;
+                    _lastFrameStallGcCount0 = 0;
+                    _lastFrameStallGcCount1 = 0;
+                    _lastFrameStallGcCount2 = 0;
+                    _frameStallDiagnosticsWasEnabled = false;
+                }
+
                 return;
             }
 

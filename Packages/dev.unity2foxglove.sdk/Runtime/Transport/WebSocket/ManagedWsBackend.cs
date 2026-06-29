@@ -177,28 +177,29 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Send a UTF-8 text frame to every connected client.</summary>
         public void BroadcastText(string json)
         {
-            foreach (var (id, conn) in _clients.ToArray())
-                HandleEnqueueResult(id, conn, conn.SendText(json, FramePriority.Control), "BroadcastText");
+            var payload = Encoding.UTF8.GetBytes(json ?? string.Empty);
+            foreach (var (id, conn) in _clients)
+                HandleEnqueueResult(id, conn, conn.SendTextEncoded(payload, FramePriority.Control), "BroadcastText");
         }
 
         /// <summary>Send a binary frame to every connected client.</summary>
         public void BroadcastBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients.ToArray())
+            foreach (var (id, conn) in _clients)
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Control), "BroadcastBinary");
         }
 
         /// <summary>Send droppable live data binary frames to every connected client.</summary>
         public void BroadcastDataBinary(byte[] data)
         {
-            foreach (var (id, conn) in _clients.ToArray())
+            foreach (var (id, conn) in _clients)
                 HandleEnqueueResult(id, conn, conn.SendBinary(data, FramePriority.Data), "BroadcastDataBinary");
         }
 
         /// <summary>Drop queued data frames for all clients while preserving protocol control frames.</summary>
         public void ClearDataQueues()
         {
-            foreach (var (_, conn) in _clients.ToArray())
+            foreach (var (_, conn) in _clients)
                 conn.ClearDataFrames();
         }
 
@@ -218,7 +219,7 @@ namespace Unity.FoxgloveSDK.Transport
             long totalQueuedBytes = 0;
             long activeDropped = 0;
 
-            foreach (var kv in _clients.ToArray())
+            foreach (var kv in _clients)
             {
                 var cs = kv.Value.GetClientStats(kv.Key);
                 clientList.Add(cs);

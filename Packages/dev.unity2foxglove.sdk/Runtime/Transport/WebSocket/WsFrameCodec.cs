@@ -69,6 +69,9 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         internal static void WriteFrame(Stream stream, byte opcode, byte[] payload)
+            => WriteFrame(stream, opcode, payload, flush: true);
+
+        internal static void WriteFrame(Stream stream, byte opcode, byte[] payload, bool flush)
         {
             FoxgloveProfiler.Global.BeginSample("WsFrameCodec.Encode");
             try
@@ -79,7 +82,8 @@ namespace Unity.FoxgloveSDK.Transport
                 stream.Write(header.Slice(0, headerLength));
                 if (payload.Length > 0)
                     stream.Write(payload, 0, payload.Length);
-                stream.Flush();
+                if (flush)
+                    stream.Flush();
             }
             finally
             {
@@ -144,8 +148,14 @@ namespace Unity.FoxgloveSDK.Transport
             if (payloadLen > 0 && !ReadExact(stream, payload, 0, payloadLen))
                 return false;
 
+            var maskIndex = 0;
             for (var i = 0; i < payload.Length; i++)
-                payload[i] = (byte)(payload[i] ^ mask[i % 4]);
+            {
+                payload[i] = (byte)(payload[i] ^ mask[maskIndex]);
+                maskIndex++;
+                if (maskIndex == 4)
+                    maskIndex = 0;
+            }
 
             frame = new WsFrame
             {

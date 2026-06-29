@@ -131,21 +131,21 @@ namespace Unity.FoxgloveSDK.Core
                 case "number":
                     if (value.Type == JTokenType.Integer || value.Type == JTokenType.Float)
                     {
-                        normalized = value.DeepClone();
+                        normalized = value;
                         return true;
                     }
                     return false;
                 case "string":
                     if (value.Type == JTokenType.String)
                     {
-                        normalized = value.DeepClone();
+                        normalized = value;
                         return true;
                     }
                     return false;
                 case "boolean":
                     if (value.Type == JTokenType.Boolean)
                     {
-                        normalized = value.DeepClone();
+                        normalized = value;
                         return true;
                     }
                     return false;
@@ -194,6 +194,9 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Get a set of parameters matching the given names. Empty/null names returns all.</summary>
         public List<Parameter> GetWireParameters(IEnumerable<string> names)
         {
+            if (names is IReadOnlyList<string> namesList)
+                return GetWireParameters(namesList);
+
             List<string> requestedNames = null;
             if (names != null)
             {
@@ -202,17 +205,25 @@ namespace Unity.FoxgloveSDK.Core
                     requestedNames.Add(name);
             }
 
+            return GetWireParameters((IReadOnlyList<string>)requestedNames);
+        }
+
+        /// <summary>Get a set of parameters matching the given names. Empty/null names returns all.</summary>
+        public List<Parameter> GetWireParameters(IReadOnlyList<string> names)
+        {
             lock (_lock)
             {
-                var result = new List<Parameter>();
-                if (requestedNames == null)
+                var result = names == null
+                    ? new List<Parameter>(_params.Count)
+                    : new List<Parameter>(names.Count);
+                if (names == null)
                 {
                     foreach (var (n, e) in _params)
                         result.Add(ToWireParameter(n, e));
                 }
                 else
                 {
-                    foreach (var n in requestedNames)
+                    foreach (var n in names)
                     {
                         if (_params.TryGetValue(n, out var entry))
                             result.Add(ToWireParameter(n, entry));

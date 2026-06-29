@@ -38,11 +38,10 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Try to add one subscription for a client without throwing on budget rejection.</summary>
         public bool TryAddSubscription(uint clientId, uint subscriptionId, uint channelId, out string error)
         {
-            return TryAddSubscriptions(
-                clientId,
-                new[] { (subscriptionId, channelId) },
-                out _,
-                out error);
+            lock (_lock)
+            {
+                return TryAddSubscriptionLocked(clientId, subscriptionId, channelId, out _, out error);
+            }
         }
 
         /// <summary>
@@ -72,20 +71,21 @@ namespace Unity.FoxgloveSDK.Core
                     subs = null;
 
                 var currentClientCount = subs?.Count ?? 0;
-                var resulting = subs != null
-                    ? new Dictionary<uint, uint>(subs)
-                    : new Dictionary<uint, uint>();
+                var newUniqueCount = 0;
+                foreach (var subscriptionId in deduped.Keys)
+                {
+                    if (subs == null || !subs.ContainsKey(subscriptionId))
+                        newUniqueCount++;
+                }
 
-                foreach (var (subscriptionId, channelId) in deduped)
-                    resulting[subscriptionId] = channelId;
-
-                if (resulting.Count > MaxSubscriptionsPerClient)
+                var resultingCount = currentClientCount + newUniqueCount;
+                if (resultingCount > MaxSubscriptionsPerClient)
                 {
                     error = $"Too many subscriptions for client {clientId}";
                     return false;
                 }
 
-                var totalAfter = TotalSubscriptionCountLocked() - currentClientCount + resulting.Count;
+                var totalAfter = TotalSubscriptionCountLocked() - currentClientCount + resultingCount;
                 if (totalAfter > MaxTotalSubscriptions)
                 {
                     error = "Too many total subscriptions";
@@ -118,6 +118,53 @@ namespace Unity.FoxgloveSDK.Core
 
                 return true;
             }
+        }
+
+        private bool TryAddSubscriptionLocked(
+            uint clientId,
+            uint subscriptionId,
+            uint channelId,
+            out SubscriptionRegistryChange change,
+            out string error)
+        {
+            change = default;
+            error = null;
+
+            if (!_clients.TryGetValue(clientId, out var subs))
+                subs = null;
+
+            var currentClientCount = subs?.Count ?? 0;
+            var isNewSubscription = subs == null || !subs.ContainsKey(subscriptionId);
+            if (currentClientCount + (isNewSubscription ? 1 : 0) > MaxSubscriptionsPerClient)
+            {
+                error = $"Too many subscriptions for client {clientId}";
+                return false;
+            }
+
+            if (isNewSubscription && TotalSubscriptionCountLocked() + 1 > MaxTotalSubscriptions)
+            {
+                error = "Too many total subscriptions";
+                return false;
+            }
+
+            if (subs == null)
+            {
+                subs = new Dictionary<uint, uint>();
+                _clients[clientId] = subs;
+            }
+
+            var hadPrevious = subs.TryGetValue(subscriptionId, out var previousChannelId);
+            if (hadPrevious)
+                RemoveReverseIndex(previousChannelId, clientId, subscriptionId);
+
+            subs[subscriptionId] = channelId;
+            AddReverseIndex(channelId, clientId, subscriptionId);
+            change = new SubscriptionRegistryChange(
+                subscriptionId,
+                channelId,
+                hadPrevious,
+                hadPrevious ? previousChannelId : 0);
+            return true;
         }
 
         /// <summary>

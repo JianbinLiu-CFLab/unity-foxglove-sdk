@@ -26,6 +26,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private readonly Func<McapRecorder> _recorderProvider;
         private readonly ConnectionGraphRegistry _graph = new();
+        private readonly object _subscriberScratchLock = new();
+        private readonly List<uint> _subscriberScratch = new();
         /// <summary>Volatile flag: 1 when the graph is dirty and needs a metadata flush.</summary>
         private int _dirty;
 
@@ -131,13 +133,24 @@ namespace Unity.FoxgloveSDK.Core
         public void BroadcastUpdate()
         {
             var hasDirtyRecorder = Volatile.Read(ref _dirty) == 1 && _recorderProvider() != null;
-            var subscribers = _graph.GetSubscribers();
-            if (subscribers.Count == 0 && !hasDirtyRecorder)
-                return;
+            string json;
+            lock (_subscriberScratchLock)
+            {
+                _graph.CopySubscribersTo(_subscriberScratch);
+                if (_subscriberScratch.Count == 0 && !hasDirtyRecorder)
+                    return;
 
-            var json = JsonConvert.SerializeObject(_graph.GetSnapshot());
-            foreach (var subId in subscribers)
-                _transport.SendText(subId, json);
+                json = JsonConvert.SerializeObject(_graph.GetSnapshot());
+                try
+                {
+                    foreach (var subId in _subscriberScratch)
+                        _transport.SendText(subId, json);
+                }
+                finally
+                {
+                    _subscriberScratch.Clear();
+                }
+            }
 
             FlushMetadataSnapshotIfDirty(json);
         }

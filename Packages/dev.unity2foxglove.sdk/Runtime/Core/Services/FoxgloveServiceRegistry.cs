@@ -7,7 +7,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -22,6 +21,7 @@ namespace Unity.FoxgloveSDK.Core
         // Key: (clientId, callId) — two clients may independently use the same callId
         private readonly Dictionary<(uint clientId, uint callId), FoxgloveServiceCall> _pending = new();
         private readonly Dictionary<uint, int> _pendingCountByClient = new();
+        private readonly List<(uint clientId, uint callId)> _completedKeysScratch = new();
         private readonly object _lock = new();
         private uint _nextServiceId = 1;
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
@@ -86,7 +86,13 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Snapshot of all registered services for advertise.</summary>
         public List<ServiceDescriptor> GetAll()
         {
-            lock (_lock) { return _services.Values.Select(CloneDescriptor).ToList(); }
+            lock (_lock)
+            {
+                var result = new List<ServiceDescriptor>(_services.Count);
+                foreach (var descriptor in _services.Values)
+                    result.Add(CloneDescriptor(descriptor));
+                return result;
+            }
         }
 
         // ── Pending calls ──
@@ -209,7 +215,24 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Snapshot of pending (not yet completed) calls, for Unity handler polling.</summary>
         public List<FoxgloveServiceCall> GetPendingCalls()
         {
-            lock (_lock) { return _pending.Values.Where(c => !c.IsCompleted).ToList(); }
+            var result = new List<FoxgloveServiceCall>();
+            CopyPendingCallsTo(result);
+            return result;
+        }
+
+        /// <summary>Copy pending (not yet completed) calls into a caller-owned list.</summary>
+        public void CopyPendingCallsTo(List<FoxgloveServiceCall> destination)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
+            lock (_lock)
+            {
+                destination.Clear();
+                foreach (var call in _pending.Values)
+                    if (!call.IsCompleted)
+                        destination.Add(call);
+            }
         }
 
         /// <summary>
@@ -219,21 +242,38 @@ namespace Unity.FoxgloveSDK.Core
         public List<FoxgloveServiceCall> DrainCompleted()
         {
             var completed = new List<FoxgloveServiceCall>();
+            DrainCompletedTo(completed);
+            return completed;
+        }
+
+        /// <summary>Drain all completed calls into a caller-owned list and remove them from pending.</summary>
+        public void DrainCompletedTo(List<FoxgloveServiceCall> destination)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
             lock (_lock)
             {
-                var completedKeys = new List<(uint clientId, uint callId)>();
+                destination.Clear();
+                _completedKeysScratch.Clear();
                 foreach (var (key, call) in _pending)
                 {
                     if (call.IsCompleted)
                     {
-                        completed.Add(call);
-                        completedKeys.Add(key);
+                        destination.Add(call);
+                        _completedKeysScratch.Add(key);
                     }
                 }
-                foreach (var key in completedKeys)
-                    RemovePendingCall(key);
+                try
+                {
+                    foreach (var key in _completedKeysScratch)
+                        RemovePendingCall(key);
+                }
+                finally
+                {
+                    _completedKeysScratch.Clear();
+                }
             }
-            return completed;
         }
 
         /// <summary>
