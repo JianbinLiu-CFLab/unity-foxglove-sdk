@@ -14,6 +14,23 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase17Validation
     {
+        private static readonly HashSet<string> AbsolutePathTextExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".asmdef",
+            ".asset",
+            ".controller",
+            ".cs",
+            ".inputactions",
+            ".json",
+            ".mat",
+            ".md",
+            ".meta",
+            ".prefab",
+            ".txt",
+            ".unity",
+            ".xml"
+        };
+
         /// <summary>
         /// Phase 17 — UPM samples: package.json.samples declaration,
         /// BasicVisualization lightweight sample, FullDemoVisualization complete demo.
@@ -179,12 +196,9 @@ namespace Unity.FoxgloveSDK.Tests
             var unixAbsPath = repoRoot.Replace('\\', '/');
             foreach (var dir in sampleDirs)
             {
-                var allFiles = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);
-                foreach (var file in allFiles)
+                foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
                 {
-                    // Skip only binary asset bundles / DLLs; text-serialized Unity files are fair game
-                    var ext = Path.GetExtension(file).ToLowerInvariant();
-                    if (ext == ".dll" || ext == ".exe" || ext == ".so" || ext == ".dylib")
+                    if (!ShouldScanForAbsolutePaths(file))
                         continue;
                     if (TryReadTextFile(file, out var content, out var warning))
                         Assert(!content.Contains(windowsAbsPath) && !content.Contains(unixAbsPath),
@@ -237,12 +251,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             var files = File.Exists(path)
                 ? new[] { path }
-                : Directory.GetFiles(path, "*", SearchOption.AllDirectories);
+                : Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories);
 
             foreach (var file in files)
             {
-                var ext = Path.GetExtension(file).ToLowerInvariant();
-                if (ext == ".dll" || ext == ".exe" || ext == ".so" || ext == ".dylib")
+                if (!ShouldScanForAbsolutePaths(file))
                     continue;
 
                 if (TryReadTextFile(file, out var content, out var warning))
@@ -282,6 +295,12 @@ namespace Unity.FoxgloveSDK.Tests
                 warning = $"Skipping inaccessible file {file}: {ex.Message}";
                 return false;
             }
+        }
+
+        static bool ShouldScanForAbsolutePaths(string file)
+        {
+            var ext = Path.GetExtension(file);
+            return AbsolutePathTextExtensions.Contains(ext);
         }
     }
 }
