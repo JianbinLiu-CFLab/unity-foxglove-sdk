@@ -60,6 +60,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void OnCompilationStarted(object context)
         {
+            Ros2ForUnityRuntimeSelection.InvalidateStatusCache();
             if (StopPlayModeBeforeNativeReload("script compilation"))
                 SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, true);
         }
@@ -94,8 +95,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return false;
 
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
-            var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
-            if (status.SelectedRuntime == null)
+            if (!Ros2ForUnityRuntimeSelection.HasManifestRuntimePackage(projectDirectory))
                 return false;
 
             Debug.LogError(
