@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var stats = manager.GetTransportStatsSnapshot();
+            var stats = GetTransportStatsForRepaint();
             if (!stats.Supported)
             {
                 EditorGUILayout.HelpBox("Transport stats are not available for this backend.", MessageType.Info);

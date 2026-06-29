@@ -415,7 +415,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-17-H3: schema manifest builder validates supports flags against schema names");
 
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestWriter.cs");
-            Check(writer.Contains("TryReadExistingBytes", StringComparison.Ordinal)
+            Check(writer.Contains("FileContentEquals", StringComparison.Ordinal)
+                  && writer.Contains("FileContentEqualsOnce", StringComparison.Ordinal)
                   && writer.Contains("AggregateException", StringComparison.Ordinal),
                 "134-17-H4: schema manifest writer retries stale reads and preserves replace/copy failures");
         }

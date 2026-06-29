@@ -226,6 +226,7 @@
     <Compile Include="Phase164_22Validation.cs" />
     <Compile Include="Phase164_23Validation.cs" />
     <Compile Include="Phase164_24Validation.cs" />
+    <Compile Include="Phase164_25Validation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />
