@@ -77,8 +77,8 @@ namespace Unity.FoxgloveSDK.Components
 
             public int Length => _request.GetData<byte>().Length;
 
-            public byte[] ToArray()
-                => _request.GetData<byte>().ToArray();
+            public void CopyTo(byte[] destination)
+                => _request.GetData<byte>().CopyTo(destination);
         }
 
         /// <summary>

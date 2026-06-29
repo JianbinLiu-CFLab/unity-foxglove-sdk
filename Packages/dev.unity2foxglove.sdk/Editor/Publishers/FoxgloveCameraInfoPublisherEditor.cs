@@ -20,7 +20,13 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _showOptionalTfAnchor;
         private static bool _showAdvancedTransport;
         private static readonly Dictionary<string, System.Type> ObjectFieldTypeCache =
-            new Dictionary<string, System.Type>(StringComparer.Ordinal);
+            new Dictionary<string, System.Type>(StringComparer.Ordinal)
+            {
+                ["_manager"] = typeof(FoxgloveManager),
+                ["_sourceCamera"] = typeof(Camera),
+                ["_imagePublisher"] = typeof(FoxgloveCameraPublisher),
+                ["_sensorUnitProfile"] = typeof(SensorUnitProfile)
+            };
 
         public override void OnInspectorGUI()
         {
@@ -189,17 +195,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static System.Type GetObjectFieldType(SerializedProperty property)
         {
-            switch (property.name)
-            {
-                case "_manager":
-                    return typeof(FoxgloveManager);
-                case "_sourceCamera":
-                    return typeof(Camera);
-                case "_imagePublisher":
-                    return typeof(FoxgloveCameraPublisher);
-                case "_sensorUnitProfile":
-                    return typeof(SensorUnitProfile);
-            }
+            if (ObjectFieldTypeCache.TryGetValue(property.name, out var knownType))
+                return knownType;
 
             var typeName = property.type;
             if (typeName.StartsWith("PPtr<$", System.StringComparison.Ordinal)
