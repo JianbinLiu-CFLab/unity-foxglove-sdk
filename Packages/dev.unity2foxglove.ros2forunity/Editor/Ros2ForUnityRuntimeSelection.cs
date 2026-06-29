@@ -93,6 +93,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static DateTime _cachedManifestWriteTimeUtc;
         private static long _cachedManifestLength = -1;
         private static IReadOnlyList<string> _cachedManifestRuntimePackages;
+        private static readonly Dictionary<string, string> ZenohPayloadDiagnostics =
+            new Dictionary<string, string>(StringComparer.Ordinal);
 
         public static string ProjectDirectoryFromApplication()
         {
@@ -436,6 +438,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             _cachedManifestWriteTimeUtc = DateTime.MinValue;
             _cachedManifestLength = -1;
             _cachedManifestRuntimePackages = null;
+            ZenohPayloadDiagnostics.Clear();
         }
 
         private static Ros2ForUnityRuntimeDescriptor TryCreateDescriptor(string packageDirectory)
@@ -477,6 +480,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!IsZenohCapableDistro(rosDistro))
                 return string.Empty;
 
+            var cacheKey = packageDirectory + "|" + rosDistro;
+            if (ZenohPayloadDiagnostics.TryGetValue(cacheKey, out var cached))
+                return cached;
+
+            var diagnostic = ComputeZenohPayloadDiagnostic(packageDirectory);
+            ZenohPayloadDiagnostics[cacheKey] = diagnostic;
+            return diagnostic;
+        }
+
+        private static string ComputeZenohPayloadDiagnostic(string packageDirectory)
+        {
             var pluginsRoot = Path.Combine(packageDirectory, "Runtime", "Ros2ForUnity", "Plugins");
             var streamingAssetsShare = Path.Combine(
                 packageDirectory,

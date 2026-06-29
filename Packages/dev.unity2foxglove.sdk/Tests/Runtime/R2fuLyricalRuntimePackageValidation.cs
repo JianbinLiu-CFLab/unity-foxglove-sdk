@@ -5,6 +5,7 @@
 // Purpose: Phase 146B validation for the R2FU Lyrical Win64 runtime package.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -36,6 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
             "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608";
 
         private static int _passed;
+        private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         public static void Validate()
         {
@@ -478,7 +480,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = RepoPath(relativePath);
             Check(File.Exists(path), $"146B-file: {relativePath} exists");
-            return File.ReadAllText(path);
+            if (FileTextCache.TryGetValue(path, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(path);
+            FileTextCache[path] = text;
+            return text;
         }
 
         private static string RepoPath(string relativePath)

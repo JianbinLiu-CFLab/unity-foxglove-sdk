@@ -22,10 +22,12 @@ public static class Phase162LocalZenohPlaySetup
     private const string PreviousCommunicationModeKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousCommunicationMode";
     private const string PreviousCommunicationModeWasSetKey = "Unity2Foxglove.Phase162LocalZenohPlaySetup.PreviousCommunicationModeWasSet";
     private const double AutoExitAfterSeconds = 60.0;
+    private const double MotionTargetSearchIntervalSeconds = 0.5;
     private static GameObject motionTarget;
     private static Vector3 motionOrigin;
     private static bool motionOriginCaptured;
     private static double motionStartedAt;
+    private static double nextMotionTargetSearchAt;
 
     [InitializeOnLoadMethod]
     private static void AutoConfigureFromCommandLine()
@@ -102,6 +104,7 @@ public static class Phase162LocalZenohPlaySetup
             motionTarget = controller.gameObject;
             motionOriginCaptured = false;
             motionStartedAt = EditorApplication.timeSinceStartup;
+            nextMotionTargetSearchAt = 0.0;
             EditorApplication.update -= DriveVehicleDuringPlay;
             EditorApplication.update += DriveVehicleDuringPlay;
         }
@@ -121,6 +124,7 @@ public static class Phase162LocalZenohPlaySetup
         EditorApplication.update -= DriveVehicleDuringPlay;
         motionTarget = null;
         motionOriginCaptured = false;
+        nextMotionTargetSearchAt = 0.0;
         RestoreEnvironmentAfterOverride();
     }
 
@@ -194,8 +198,11 @@ public static class Phase162LocalZenohPlaySetup
             return;
         }
 
-        if (motionTarget == null)
+        if (motionTarget == null && EditorApplication.timeSinceStartup >= nextMotionTargetSearchAt)
+        {
+            nextMotionTargetSearchAt = EditorApplication.timeSinceStartup + MotionTargetSearchIntervalSeconds;
             motionTarget = GameObject.Find("Vehicle");
+        }
         if (motionTarget == null)
             return;
 
