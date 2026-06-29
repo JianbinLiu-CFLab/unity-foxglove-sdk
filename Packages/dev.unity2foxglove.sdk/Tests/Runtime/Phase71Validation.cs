@@ -94,8 +94,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "71C-5: publisher exposes effective publish rate");
             Check(source.Contains("PublisherRatePolicy.Resolve"),
                 "71C-6: publisher resolves rates through PublisherRatePolicy");
-            Check(shouldPublish.Contains("EffectivePublishRateHz") && !shouldPublish.Contains("1f / _publishRateHz"),
-                "71C-7: ShouldPublishNow uses effective publish rate");
+            Check(shouldPublish.Contains("ResolveCachedPublishRateHz()") && !shouldPublish.Contains("1f / _publishRateHz"),
+                "71C-7: ShouldPublishNow uses cached effective publish rate");
             Check(shouldPublish.Contains("effectiveRateHz <= 0")
                     || shouldPublish.Contains("rateHz <= 0")
                     || shouldPublish.Contains("nonPositivePublishesEveryFrame: true"),

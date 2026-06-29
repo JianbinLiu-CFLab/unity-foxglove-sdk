@@ -48,8 +48,15 @@ namespace Unity.FoxgloveSDK.Components
         private FixedRatePublishState _publishRateState;
         private FixedRatePublishState _publishRateStateFixed;
         private bool _warnedManagerMissing;
-        private string _lastEncodingFallbackWarningKey;
-        private string _lastEncodingMismatchWarningKey;
+        private bool _publishRateCacheValid;
+        private PublisherRateSource _cachedPublishRateSource;
+        private float _cachedLocalPublishRateHz;
+        private float _cachedManagerPublishRateHz;
+        private bool _cachedPublishRateHasManager;
+        private float _cachedPublishRateHz;
+        private int _lastEncodingFallbackWarningKey;
+        private int _lastEncodingMismatchWarningKey;
+        private int _lastBridgeFallbackWarningKey;
         private string _lastBridgeWarningKey;
         private string _lastPublishTopicWarningKey;
         private string _lastRos2BridgeTopicWarningKey;
@@ -203,9 +210,11 @@ namespace Unity.FoxgloveSDK.Components
             // tick can publish immediately instead of waiting one full period.
             _publishRateState = default;
             _publishRateStateFixed = default;
+            InvalidatePublishRateCache();
             _warnedManagerMissing = false;
-            _lastEncodingFallbackWarningKey = null;
-            _lastEncodingMismatchWarningKey = null;
+            _lastEncodingFallbackWarningKey = 0;
+            _lastEncodingMismatchWarningKey = 0;
+            _lastBridgeFallbackWarningKey = 0;
             _lastBridgeWarningKey = null;
             _lastPublishTopicWarningKey = null;
             _lastRos2BridgeTopicWarningKey = null;
@@ -213,6 +222,11 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         protected virtual void OnDisable() { }
+
+        protected virtual void OnValidate()
+        {
+            InvalidatePublishRateCache();
+        }
 
         protected void ResolveManager()
         {
@@ -274,7 +288,7 @@ namespace Unity.FoxgloveSDK.Components
 #endif
             return FixedRatePublishScheduler.ShouldPublish(
                 Time.unscaledTimeAsDouble,
-                EffectivePublishRateHz,
+                ResolveCachedPublishRateHz(),
                 ref _publishRateState,
                 nonPositivePublishesEveryFrame: true);
 #if UNITY_2020_3_OR_NEWER
@@ -295,7 +309,7 @@ namespace Unity.FoxgloveSDK.Components
 #endif
             return FixedRatePublishScheduler.ShouldPublish(
                 Time.fixedTimeAsDouble,
-                EffectivePublishRateHz,
+                ResolveCachedPublishRateHz(),
                 ref _publishRateStateFixed,
                 nonPositivePublishesEveryFrame: true);
 #if UNITY_2020_3_OR_NEWER
@@ -586,6 +600,42 @@ namespace Unity.FoxgloveSDK.Components
                 manager != null);
         }
 
+        private float ResolveCachedPublishRateHz()
+        {
+            var manager = _manager;
+#if UNITY_EDITOR
+            if (manager == null && !Application.isPlaying)
+                manager = FindAnyObjectByType<FoxgloveManager>();
+#endif
+            var hasManager = manager != null;
+            var managerRateHz = hasManager ? manager.DefaultPublishRateHz : _publishRateHz;
+
+            if (!_publishRateCacheValid
+                || _cachedPublishRateSource != _publishRateSource
+                || _cachedLocalPublishRateHz != _publishRateHz
+                || _cachedManagerPublishRateHz != managerRateHz
+                || _cachedPublishRateHasManager != hasManager)
+            {
+                _cachedPublishRateHz = PublisherRatePolicy.Resolve(
+                    _publishRateSource,
+                    managerRateHz,
+                    _publishRateHz,
+                    hasManager);
+                _cachedPublishRateSource = _publishRateSource;
+                _cachedLocalPublishRateHz = _publishRateHz;
+                _cachedManagerPublishRateHz = managerRateHz;
+                _cachedPublishRateHasManager = hasManager;
+                _publishRateCacheValid = true;
+            }
+
+            return _cachedPublishRateHz;
+        }
+
+        private void InvalidatePublishRateCache()
+        {
+            _publishRateCacheValid = false;
+        }
+
         private string BuildSupportedEncodingSummary()
         {
             var json = SupportsJsonEncoding;
@@ -607,7 +657,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!resolution.FellBack) return;
             if (resolution.IsSupported && IsExpectedEncodingFallback(resolution)) return;
 
-            var key = $"fallback:{resolution.RequestedLabel}:{resolution.EffectiveLabel}";
+            var key = EncodingWarningKey(resolution.Requested, resolution.Effective);
             if (_lastEncodingFallbackWarningKey == key) return;
             _lastEncodingFallbackWarningKey = key;
 
@@ -640,7 +690,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void WarnEncodingMismatch(PublisherEncodingResolution resolution, string attemptedEncoding)
         {
-            var key = $"mismatch:{attemptedEncoding}:{resolution.EffectiveLabel}";
+            var key = EncodingWarningKey(AttemptedEncodingWarningKey(attemptedEncoding), resolution.Effective);
             if (_lastEncodingMismatchWarningKey == key) return;
             _lastEncodingMismatchWarningKey = key;
 
@@ -660,9 +710,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!resolution.FellBack) return;
 
-            var key = $"fallback:{resolution.RequestedLabel}:{resolution.EffectiveLabel}";
-            if (_lastBridgeWarningKey == key) return;
-            _lastBridgeWarningKey = key;
+            var key = BridgeWarningKey(resolution.Requested, resolution.Effective);
+            if (_lastBridgeFallbackWarningKey == key) return;
+            _lastBridgeFallbackWarningKey = key;
 
             Debug.LogWarning(
                 $"[Foxglove] {GetType().Name} does not support ROS2 Bridge output; bridge publishing is disabled for this publisher.");
@@ -676,5 +726,25 @@ namespace Unity.FoxgloveSDK.Components
 
             Debug.LogWarning($"[Foxglove] {GetType().Name} ROS2 Bridge publish skipped: {reason}");
         }
+
+        private static int EncodingWarningKey(PublisherEffectiveEncoding requested, PublisherEffectiveEncoding effective)
+            => (((int)requested + 1) << 8) | ((int)effective + 1);
+
+        private static int EncodingWarningKey(int attemptedEncoding, PublisherEffectiveEncoding effective)
+            => (attemptedEncoding << 8) | ((int)effective + 1);
+
+        private static int AttemptedEncodingWarningKey(string attemptedEncoding)
+        {
+            if (string.Equals(attemptedEncoding, "JSON", System.StringComparison.Ordinal))
+                return 1;
+            if (string.Equals(attemptedEncoding, "Protobuf", System.StringComparison.Ordinal))
+                return 2;
+            if (string.Equals(attemptedEncoding, "ROS2", System.StringComparison.Ordinal))
+                return 3;
+            return 4;
+        }
+
+        private static int BridgeWarningKey(Ros2BridgeEffectiveOutput requested, Ros2BridgeEffectiveOutput effective)
+            => (((int)requested + 1) << 8) | ((int)effective + 1);
     }
 }
