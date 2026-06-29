@@ -36,6 +36,7 @@ const MAX_FOLLOW_STEP_MS = 150;
 // the point-cloud flicker / continuity trade-off — lower = more continuous but more frame reloads.
 const SEEK_UI_INTERVAL_MS = 100;
 const WAITING_REPLAY_TIME_TEXT = "Waiting for Foxglove playback";
+const NO_TOKEN_HEADERS: Record<string, string> = { "Content-Type": "application/json" };
 
 // Stage 3 (140K): seekPlayback is an undocumented PanelExtensionContext method reached via
 // cast. When present it lets the panel advance the Foxglove timeline forward-only at Unity's
@@ -142,10 +143,8 @@ async function sendCursor(
   payload: CursorPayload,
   signal?: AbortSignal,
 ): Promise<SendStatus> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token.length > 0) {
-    headers.Authorization = `Bearer ${token}`;
-  }
+  const headers: Record<string, string> =
+    token.length > 0 ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` } : NO_TOKEN_HEADERS;
 
   const response = await fetch(endpoint, {
     method: "POST",
@@ -442,6 +441,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   let lastRenderNsec = -1;
   let lastStartTime: { sec: number; nsec: number } | undefined;
   let lastEndTime: { sec: number; nsec: number } | undefined;
+  let minIntervalMs = 1000 / state.maxHz;
 
   const seekPlayback = (context as unknown as MaybeSeekable).seekPlayback;
   const canFollow = typeof seekPlayback === "function";
@@ -552,7 +552,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     if (followPumpHandle != undefined) {
       return;
     }
-    const delay = Math.max(0, 1000 / state.maxHz - (Date.now() - lastSentAtMs));
+    const delay = Math.max(0, minIntervalMs - (Date.now() - lastSentAtMs));
     followPumpHandle = setTimeout(() => {
       followPumpHandle = undefined;
       pumpFollow();
@@ -567,8 +567,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
       time: { sec: sentSec, nsec: sentNsec },
       mode: "advance",
       didSeek: false,
-      startTime: lastStartTime != undefined ? { ...lastStartTime } : undefined,
-      endTime: lastEndTime != undefined ? { ...lastEndTime } : undefined,
+      startTime: lastStartTime,
+      endTime: lastEndTime,
     };
   }
 
@@ -705,6 +705,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     const parsed = Number.parseFloat(panel.maxHzInput.value);
     const maxHz = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_HZ;
     state = { ...state, maxHz };
+    minIntervalMs = 1000 / state.maxHz;
     panel.maxHzInput.value = String(state.maxHz);
     savePanelState(context, state);
   });
@@ -762,7 +763,6 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
         // parked this lets the user scrub freely (each scrub syncs Unity once) without the loop
         // running away — re-check Follow to resume Unity-paced playback.
         const nowMs = Date.now();
-        const minIntervalMs = 1000 / state.maxHz;
         if (
           !inFlight &&
           shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)
