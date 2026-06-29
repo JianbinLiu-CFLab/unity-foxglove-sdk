@@ -19,6 +19,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         /// <summary>Maximum CDR payload size in bytes for one U2R2 frame.</summary>
         public const int MaxPayloadBytes = 64 * 1024 * 1024;
 
+        private static readonly byte[] FramePrefix =
+        {
+            (byte)'U', (byte)'2', (byte)'R', (byte)'2',
+            1, 0,
+            0, 0
+        };
+
+        [ThreadStatic]
+        private static byte[] _fixedHeaderBuffer;
+
         public static byte[] Write(Ros2BridgeFrame frame)
         {
             var headerBytes = BuildHeaderBytes(frame);
@@ -84,30 +94,33 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
 
-            destination.WriteByte((byte)'U');
-            destination.WriteByte((byte)'2');
-            destination.WriteByte((byte)'R');
-            destination.WriteByte((byte)'2');
-            WriteUInt16LE(destination, 1);
-            WriteUInt16LE(destination, 0);
-            WriteUInt32LE(destination, checked((uint)headerBytes.Length));
-            WriteUInt32LE(destination, checked((uint)frame.PayloadLength));
+            var fixedHeader = GetFixedHeaderBuffer();
+            WriteUInt32LE(fixedHeader, 8, checked((uint)headerBytes.Length));
+            WriteUInt32LE(fixedHeader, 12, checked((uint)frame.PayloadLength));
+            destination.Write(fixedHeader, 0, fixedHeader.Length);
             destination.Write(headerBytes, 0, headerBytes.Length);
             frame.WritePayloadTo(destination);
         }
 
-        private static void WriteUInt16LE(Stream stream, ushort value)
+        private static byte[] GetFixedHeaderBuffer()
         {
-            stream.WriteByte((byte)(value & 0xff));
-            stream.WriteByte((byte)((value >> 8) & 0xff));
+            var buffer = _fixedHeaderBuffer;
+            if (buffer == null)
+            {
+                buffer = new byte[16];
+                Buffer.BlockCopy(FramePrefix, 0, buffer, 0, FramePrefix.Length);
+                _fixedHeaderBuffer = buffer;
+            }
+
+            return buffer;
         }
 
-        private static void WriteUInt32LE(Stream stream, uint value)
+        private static void WriteUInt32LE(byte[] buffer, int offset, uint value)
         {
-            stream.WriteByte((byte)(value & 0xff));
-            stream.WriteByte((byte)((value >> 8) & 0xff));
-            stream.WriteByte((byte)((value >> 16) & 0xff));
-            stream.WriteByte((byte)((value >> 24) & 0xff));
+            buffer[offset] = (byte)(value & 0xff);
+            buffer[offset + 1] = (byte)((value >> 8) & 0xff);
+            buffer[offset + 2] = (byte)((value >> 16) & 0xff);
+            buffer[offset + 3] = (byte)((value >> 24) & 0xff);
         }
 
         private sealed class FrameHeader

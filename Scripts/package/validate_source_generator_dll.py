@@ -35,8 +35,9 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def run_build(build_output_dir: Path, msbuild_props: list[str]) -> bool:
+def run_build(build_output_dir: Path = BUILD_OUTPUT_DIR, msbuild_props: list[str] | None = None) -> bool:
     """Build the source generator project in Release mode."""
+    msbuild_props = msbuild_props or []
     command = [
         "dotnet",
         "build",

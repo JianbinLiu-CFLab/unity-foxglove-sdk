@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Core
     {
         private readonly object _gate = new object();
         private int _enabled;
+        private int _hasPendingFast;
         private bool _hasPending;
         private bool _hasLastAccepted;
         private ulong _lastAcceptedNs;
@@ -76,6 +77,7 @@ namespace Unity.FoxgloveSDK.Core
 
                 _pending = request.WithTimeNs(clampedTimeNs);
                 _hasPending = true;
+                Volatile.Write(ref _hasPendingFast, 1);
                 _hasLastAccepted = true;
                 _lastAcceptedNs = clampedTimeNs;
                 message = "Cursor accepted.";
@@ -86,6 +88,12 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Drain the latest pending cursor request, dropping older coalesced values.</summary>
         public bool TryDrainLatest(out ReplayCursorRequest request)
         {
+            if (Volatile.Read(ref _hasPendingFast) == 0)
+            {
+                request = default;
+                return false;
+            }
+
             lock (_gate)
             {
                 if (!_hasPending)
@@ -97,6 +105,7 @@ namespace Unity.FoxgloveSDK.Core
                 request = _pending;
                 _pending = default;
                 _hasPending = false;
+                Volatile.Write(ref _hasPendingFast, 0);
                 return true;
             }
         }
@@ -108,6 +117,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 _pending = default;
                 _hasPending = false;
+                Volatile.Write(ref _hasPendingFast, 0);
                 _hasLastAccepted = false;
                 _lastAcceptedNs = 0;
             }

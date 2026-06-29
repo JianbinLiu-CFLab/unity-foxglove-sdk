@@ -363,10 +363,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("addEventListener", renderLoop, StringComparison.Ordinal);
             Assert.DoesNotContain("replaceChildren", renderLoop, StringComparison.Ordinal);
             Assert.DoesNotContain("escapeHtml", renderLoop, StringComparison.Ordinal);
-            // Phase 140K Stage 1 promoted the cursor rate to a panel setting; the render loop now
-            // derives the interval from state.maxHz (cheap arithmetic, still no DOM/formatting work).
+            // Phase 140K Stage 1 promoted the cursor rate to a panel setting; Phase 164 caches the
+            // derived interval outside the render loop so render only reads the current value.
             Assert.Contains("const DEFAULT_MAX_HZ = 60;", source, StringComparison.Ordinal);
-            Assert.Contains("const minIntervalMs = 1000 / state.maxHz;", renderLoop, StringComparison.Ordinal);
+            Assert.Contains("let minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
+            Assert.Contains("minIntervalMs = 1000 / state.maxHz;", source, StringComparison.Ordinal);
+            Assert.Contains("shouldSendCursor(state.enabled, currentTime, lastCursorSec, lastCursorNsec, lastSentAtMs, nowMs, minIntervalMs)", renderLoop, StringComparison.Ordinal);
+            Assert.DoesNotContain("1000 / state.maxHz", renderLoop, StringComparison.Ordinal);
             Assert.DoesNotContain("1000 / DEFAULT_MAX_HZ", renderLoop, StringComparison.Ordinal);
             Assert.Contains("lastCursorSec", source, StringComparison.Ordinal);
             Assert.Contains("lastCursorNsec", source, StringComparison.Ordinal);

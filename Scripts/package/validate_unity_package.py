@@ -90,6 +90,20 @@ FORBIDDEN_PUBLIC_PATTERNS = (
     ("Unity Editor.Tests component", re.compile(r"Unity\.RenderPipelines\.Core\.Editor\.Tests")),
     ("stale Phase scene class identifier", re.compile(r"Assembly-CSharp::Phase\d+")),
 )
+FORBIDDEN_PUBLIC_PATTERN_GROUPS = tuple(
+    (f"P{index}", label, pattern)
+    for index, (label, pattern) in enumerate(FORBIDDEN_PUBLIC_PATTERNS)
+)
+FORBIDDEN_PUBLIC_SCAN_PATTERN = re.compile(
+    "|".join(
+        f"(?P<{group}>{'(?i:' + pattern.pattern + ')' if pattern.flags & re.IGNORECASE else '(?:' + pattern.pattern + ')'})"
+        for group, _, pattern in FORBIDDEN_PUBLIC_PATTERN_GROUPS
+    )
+)
+FORBIDDEN_PUBLIC_LABELS_BY_GROUP = {
+    group: label
+    for group, label, _ in FORBIDDEN_PUBLIC_PATTERN_GROUPS
+}
 
 # Bundled binary dependencies that must be named in the third-party notice file.
 THIRD_PARTY_NOTICE_REQUIREMENTS = (
@@ -173,6 +187,15 @@ def iter_files(root: Path) -> Iterable[Path]:
     return (p for p in root.rglob("*") if p.is_file())
 
 
+def path_is_relative_to(path: Path, root: Path) -> bool:
+    """Return whether a path is under a root without requiring Python 3.9 Path.is_relative_to."""
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 def add(results: list[CheckResult], name: str, ok: bool, detail: str = "") -> None:
     """Append one check result to the accumulated report."""
     results.append(CheckResult(name, ok, detail))
@@ -251,8 +274,9 @@ def check_required_files(results: list[CheckResult]) -> None:
         add(results, f"required file: {path.name}", path.exists(), rel(path))
 
 
-def check_sample_meta(results: list[CheckResult], samples_files: list[Path]) -> None:
+def check_sample_meta(results: list[CheckResult], samples_files: list[Path] | None = None) -> None:
     """Ensure Unity sample assets have matching .meta sidecars."""
+    samples_files = samples_files if samples_files is not None else list(iter_files(SAMPLES))
     missing: list[str] = []
     for path in samples_files:
         if path.suffix == ".meta" or path.name == "README.md":
@@ -305,22 +329,26 @@ def check_sample_boundaries(results: list[CheckResult]) -> None:
     add(results, "FullDemo avoids project-level input action assets", not conflicts, "; ".join(conflicts) if conflicts else "no InputSystem_Actions asset")
 
 
-def check_forbidden_public_content(results: list[CheckResult], samples_files: list[Path]) -> None:
+def check_forbidden_public_content(
+    results: list[CheckResult],
+    samples_files: list[Path] | None = None,
+    docs_files: list[Path] | None = None,
+) -> None:
     """Scan public docs and samples for local-only markers."""
-    roots = [SAMPLES, DOCS, PACKAGE / "README.md"]
+    samples_files = samples_files if samples_files is not None else list(iter_files(SAMPLES))
+    docs_files = docs_files if docs_files is not None else list(iter_files(DOCS))
+    package_readme = PACKAGE / "README.md"
     offenders: list[str] = []
-    for root in roots:
-        if root == SAMPLES:
-            paths = samples_files
-        else:
-            paths = [root] if root.is_file() else list(iter_files(root))
-        for path in paths:
-            if path.suffix.lower() not in {".md", ".json", ".cs", ".unity", ".asset", ".inputactions", ".xml"}:
-                continue
-            text = path.read_text(encoding="utf-8", errors="replace")
-            for label, pattern in FORBIDDEN_PUBLIC_PATTERNS:
-                if pattern.search(text):
-                    offenders.append(f"{rel(path)} ({label})")
+    paths = samples_files + docs_files
+    if package_readme.is_file():
+        paths.append(package_readme)
+    for path in paths:
+        if path.suffix.lower() not in {".md", ".json", ".cs", ".unity", ".asset", ".inputactions", ".xml"}:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in FORBIDDEN_PUBLIC_SCAN_PATTERN.finditer(text):
+            label = FORBIDDEN_PUBLIC_LABELS_BY_GROUP.get(match.lastgroup or "", "forbidden marker")
+            offenders.append(f"{rel(path)} ({label})")
     add(
         results,
         "public docs/samples have no forbidden markers",
@@ -329,8 +357,9 @@ def check_forbidden_public_content(results: list[CheckResult], samples_files: li
     )
 
 
-def check_forbidden_sample_artifacts(results: list[CheckResult], samples_entries: list[Path]) -> None:
+def check_forbidden_sample_artifacts(results: list[CheckResult], samples_entries: list[Path] | None = None) -> None:
     """Reject generated, local, or benchmark files from package samples."""
+    samples_entries = samples_entries if samples_entries is not None else list(SAMPLES.rglob("*"))
     offenders: set[Path] = set()
     for path in samples_entries:
         relative_parts = path.relative_to(SAMPLES).parts
@@ -355,11 +384,12 @@ def check_forbidden_sample_artifacts(results: list[CheckResult], samples_entries
     )
 
 
-def check_package_build_artifacts(results: list[CheckResult]) -> None:
+def check_package_build_artifacts(results: list[CheckResult], package_entries: list[Path] | None = None) -> None:
     """Reject build/cache directories from the release package tree."""
+    package_entries = package_entries if package_entries is not None else list(PACKAGE.rglob("*"))
     forbidden_dirs = {"bin", "obj", "__pycache__"}
     offenders: list[str] = []
-    for path in PACKAGE.rglob("*"):
+    for path in package_entries:
         if path.name in forbidden_dirs and path.is_dir():
             offenders.append(rel(path))
     add(
@@ -424,17 +454,19 @@ def print_results(results: list[CheckResult]) -> None:
 def main() -> int:
     """Run all release package checks and return a process exit code."""
     results: list[CheckResult] = []
-    samples_entries = list(SAMPLES.rglob("*")) if SAMPLES.exists() else []
+    package_entries = list(PACKAGE.rglob("*")) if PACKAGE.exists() else []
+    samples_entries = [path for path in package_entries if path_is_relative_to(path, SAMPLES)]
     samples_files = [path for path in samples_entries if path.is_file()]
+    docs_files = [path for path in package_entries if path.is_file() and path_is_relative_to(path, DOCS)]
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
     check_required_files(results)
     check_sample_meta(results, samples_files)
     check_sample_boundaries(results)
-    check_forbidden_public_content(results, samples_files)
+    check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
-    check_package_build_artifacts(results)
+    check_package_build_artifacts(results, package_entries)
     check_google_protobuf_collision(results)
     check_third_party_notices(results)
 

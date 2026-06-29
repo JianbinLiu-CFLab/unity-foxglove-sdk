@@ -5,6 +5,7 @@
 // Purpose: Optional loopback HTTP endpoint for Foxglove extension cursor metadata.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -146,6 +147,8 @@ namespace Unity.FoxgloveSDK.Core
     {
         private static readonly byte[] AcceptedCursorResponseBytes =
             Encoding.UTF8.GetBytes("{\"accepted\":true,\"message\":\"Cursor accepted.\"}");
+        private static readonly byte[] DuplicateCursorResponseBytes =
+            Encoding.UTF8.GetBytes("{\"accepted\":false,\"message\":\"Duplicate cursor ignored.\"}");
 
         private readonly IFoxgloveLogger _logger;
         private volatile HttpListener _listener;
@@ -153,7 +156,6 @@ namespace Unity.FoxgloveSDK.Core
         private Func<ReplayCursorState> _stateProvider;
         private volatile bool _running;
         private UnityReplayCursorEndpointOptions _options;
-        private byte[] _readBodyBuffer;
 
         /// <summary>Create an endpoint with an optional logger.</summary>
         public UnityReplayCursorEndpoint(IFoxgloveLogger logger = null)
@@ -189,7 +191,6 @@ namespace Unity.FoxgloveSDK.Core
             _options = options;
             _queue = queue;
             _stateProvider = stateProvider;
-            _readBodyBuffer = new byte[options.MaxBodyBytes + 1];
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://{options.Host}:{options.Port}/");
             _listener.Start();
@@ -205,7 +206,6 @@ namespace Unity.FoxgloveSDK.Core
             _listener = null;
             _queue = null;
             _stateProvider = null;
-            _readBodyBuffer = null;
             if (listener == null)
             {
                 return;
@@ -325,6 +325,11 @@ namespace Unity.FoxgloveSDK.Core
                 TryWrite(context, 202, AcceptedCursorResponseBytes);
                 return;
             }
+            if (!result.Success && string.Equals(result.Message, "Duplicate cursor ignored.", StringComparison.Ordinal))
+            {
+                TryWrite(context, 409, DuplicateCursorResponseBytes);
+                return;
+            }
 
             TryWrite(
                 context,
@@ -355,10 +360,15 @@ namespace Unity.FoxgloveSDK.Core
                 return true;
             }
 
-            var normalizedOrigin = origin.Trim().TrimEnd('/');
+            if (!TryGetOriginBounds(origin, out var start, out var length))
+            {
+                return true;
+            }
+
             foreach (var allowedOrigin in _options.AllowedCorsOrigins)
             {
-                if (string.Equals(normalizedOrigin, allowedOrigin, StringComparison.OrdinalIgnoreCase))
+                if (length == allowedOrigin.Length
+                    && string.Compare(origin, start, allowedOrigin, 0, length, StringComparison.OrdinalIgnoreCase) == 0)
                 {
                     return true;
                 }
@@ -370,25 +380,26 @@ namespace Unity.FoxgloveSDK.Core
         private string ReadBody(HttpListenerRequest request)
         {
             var encoding = request.ContentEncoding ?? Encoding.UTF8;
-            var buffer = _readBodyBuffer;
-            if (buffer == null || buffer.Length < _options.MaxBodyBytes + 1)
+            var buffer = ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1);
+            try
             {
-                buffer = new byte[_options.MaxBodyBytes + 1];
-                _readBodyBuffer = buffer;
-            }
-
-            var total = 0;
-            int read;
-            while ((read = request.InputStream.Read(buffer, total, buffer.Length - total)) > 0)
-            {
-                total += read;
-                if (total > _options.MaxBodyBytes)
+                var total = 0;
+                int read;
+                while ((read = request.InputStream.Read(buffer, total, buffer.Length - total)) > 0)
                 {
-                    return null;
+                    total += read;
+                    if (total > _options.MaxBodyBytes)
+                    {
+                        return null;
+                    }
                 }
-            }
 
-            return encoding.GetString(buffer, 0, total);
+                return encoding.GetString(buffer, 0, total);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         private void TryWrite(HttpListenerContext context, int statusCode, string body)
@@ -408,7 +419,7 @@ namespace Unity.FoxgloveSDK.Core
                 var origin = context.Request.Headers["Origin"];
                 if (!string.IsNullOrWhiteSpace(origin) && IsCorsOriginAllowed(origin))
                 {
-                    context.Response.Headers["Access-Control-Allow-Origin"] = origin.Trim().TrimEnd('/');
+                    context.Response.Headers["Access-Control-Allow-Origin"] = NormalizeOriginForHeader(origin);
                 }
 
                 context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
@@ -429,6 +440,50 @@ namespace Unity.FoxgloveSDK.Core
 
         private static string JsonEscape(string value)
             => JsonConvert.ToString(value ?? string.Empty);
+
+        private static bool TryGetOriginBounds(string origin, out int start, out int length)
+        {
+            start = 0;
+            length = 0;
+            if (string.IsNullOrWhiteSpace(origin))
+            {
+                return false;
+            }
+
+            var end = origin.Length - 1;
+            while (start <= end && char.IsWhiteSpace(origin[start]))
+            {
+                start++;
+            }
+
+            while (end >= start && char.IsWhiteSpace(origin[end]))
+            {
+                end--;
+            }
+
+            while (end >= start && origin[end] == '/')
+            {
+                end--;
+            }
+
+            if (end < start)
+            {
+                return false;
+            }
+
+            length = end - start + 1;
+            return true;
+        }
+
+        private static string NormalizeOriginForHeader(string origin)
+        {
+            if (!TryGetOriginBounds(origin, out var start, out var length))
+            {
+                return string.Empty;
+            }
+
+            return start == 0 && length == origin.Length ? origin : origin.Substring(start, length);
+        }
 
         /// <summary>Stop the endpoint.</summary>
         public void Dispose() => Stop();

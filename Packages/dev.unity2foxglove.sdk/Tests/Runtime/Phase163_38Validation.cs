@@ -32,7 +32,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-38A-1: cursor endpoint listener field is volatile for cross-thread shutdown");
             Check(source.Contains("Access-Control-Allow-Private-Network", StringComparison.Ordinal),
                 "163-38A-2: cursor endpoint emits Private Network Access CORS header");
-            Check(source.Contains("new byte[Math.Min(_options.MaxBodyBytes + 1, 4096)]", StringComparison.Ordinal)
+            Check(source.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
+                  && source.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
                   && source.Contains("total > _options.MaxBodyBytes", StringComparison.Ordinal)
                   && !source.Contains("new char[_options.MaxBodyBytes + 1]", StringComparison.Ordinal),
                 "163-38A-3: cursor endpoint enforces request body limit in bytes");

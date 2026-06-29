@@ -16,7 +16,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_ROOT = REPO_ROOT / "Scripts"
-THIS_SCRIPT = Path(__file__).resolve()
+THIS_SCRIPT_RELATIVE_PATH = "Scripts/package/validate_local_entrypoints.py"
 
 FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Windows ROS2 install root", re.compile(r"C:[\\/]+ros2_[A-Za-z0-9_-]+[\\/]+ros2-windows", re.IGNORECASE)),
@@ -25,34 +25,38 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-def tracked_python_scripts() -> list[Path]:
-    """Return tracked Python scripts under Scripts/."""
-
+def git_grep_failures(label: str, pattern: re.Pattern[str]) -> list[str]:
+    """Return git-grep matches for one forbidden tracked-script pattern."""
     result = subprocess.run(
-        ["git", "ls-files", "--", "Scripts/**/*.py"],
+        [
+            "git",
+            "grep",
+            "-n",
+            "-I",
+            "-E",
+            pattern.pattern,
+            "--",
+            ":(glob)Scripts/**/*.py",
+            f":!{THIS_SCRIPT_RELATIVE_PATH}",
+        ],
         cwd=REPO_ROOT,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        check=True,
     )
-    return [REPO_ROOT / line for line in result.stdout.splitlines() if line.strip()]
+    if result.returncode == 1:
+        return []
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "git grep failed")
+    return [f"{line}: {label}" for line in result.stdout.splitlines() if line.strip()]
 
 
 def main() -> int:
     """Validate tracked scripts and return a process exit code."""
 
     failures: list[str] = []
-    for path in tracked_python_scripts():
-        if path.resolve() == THIS_SCRIPT:
-            continue
-        rel = path.relative_to(REPO_ROOT).as_posix()
-
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for label, pattern in FORBIDDEN_PATTERNS:
-            for match in pattern.finditer(text):
-                line = text.count("\n", 0, match.start()) + 1
-                failures.append(f"{rel}:{line}: {label}: {match.group(0)}")
+    for label, pattern in FORBIDDEN_PATTERNS:
+        failures.extend(git_grep_failures(label, pattern))
 
     if failures:
         print("[FAIL] Local entrypoint validation found hard-coded resource paths:")

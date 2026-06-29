@@ -96,19 +96,24 @@ class VersionBump:
             raise ValueError(f"Expected one {label} in {self.rel(path)}, found {len(hits)}.")
         return re.sub(pattern, replacement, text, count=SINGLE_REPLACEMENT)
 
-    def package_version(self) -> str:
+    def package_json_path(self) -> Path:
+        """Return the canonical package.json path."""
+        return self.root / "Packages/dev.unity2foxglove.sdk/package.json"
+
+    def package_version(self, text: str | None = None, path: Path | None = None) -> str:
         """Read the current semantic version from package.json."""
-        package_json = self.root / "Packages/dev.unity2foxglove.sdk/package.json"
-        data = json.loads(self.read(package_json))
+        path = path or self.package_json_path()
+        text = self.read(path) if text is None else text
+        data = json.loads(text)
         version = data.get("version")
         if not isinstance(version, str) or not VERSION_RE.match(version):
-            raise ValueError(f"Cannot read semantic version from {self.rel(package_json)}")
+            raise ValueError(f"Cannot read semantic version from {self.rel(path)}")
         return version
 
-    def replace_version_property(self, old_version: str) -> None:
+    def replace_version_property(self, old_version: str, text: str | None = None, path: Path | None = None) -> None:
         """Replace the canonical package.json version property."""
-        path = self.root / "Packages/dev.unity2foxglove.sdk/package.json"
-        text = self.read(path)
+        path = path or self.package_json_path()
+        text = self.read(path) if text is None else text
         pattern = re.compile(r'("version"\s*:\s*")(\d+\.\d+\.\d+)(")')
         updated, count = pattern.subn(
             lambda m: f"{m.group(VERSION_PROPERTY_PREFIX_GROUP)}{self.version}{m.group(VERSION_PROPERTY_SUFFIX_GROUP)}",
@@ -258,8 +263,10 @@ class VersionBump:
 
     def run(self) -> int:
         """Apply or report every version-bump edit."""
-        old_version = self.package_version()
-        self.replace_version_property(old_version)
+        package_json = self.package_json_path()
+        package_json_text = self.read(package_json)
+        old_version = self.package_version(package_json_text, package_json)
+        self.replace_version_property(old_version, package_json_text, package_json)
         self.update_readme(old_version)
         self.update_package_readme(old_version)
         self.update_citation()

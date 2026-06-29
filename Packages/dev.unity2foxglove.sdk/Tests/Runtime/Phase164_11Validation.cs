@@ -100,10 +100,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("private static readonly byte[] AcceptedCursorResponseBytes", StringComparison.Ordinal)
                   && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes)", StringComparison.Ordinal),
                 "164-11D-1: cursor endpoint keeps cached accepted response bytes");
-            Check(source.Contains("private byte[] _readBodyBuffer", StringComparison.Ordinal)
-                  && readBody.Contains("var buffer = _readBodyBuffer", StringComparison.Ordinal)
+            Check(readBody.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
+                  && readBody.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
                   && !readBody.Contains("new char[_options.MaxBodyBytes + 1]", StringComparison.Ordinal),
-                "164-11D-2: cursor endpoint keeps a reusable request body buffer");
+                "164-11D-2: cursor endpoint keeps request body reads on pooled byte buffers");
         }
 
         private static void VerifyRegistry()

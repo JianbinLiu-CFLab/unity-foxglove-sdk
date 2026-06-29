@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Editor
             "Unity2Foxglove.Ros2Bridge.Ros2Path",
             "Unity2Foxglove.Ros2Bridge.Diagnostics.Ros2ExecutablePath"
         };
+        private static bool _legacyMigrationChecked;
 
         internal static string Ros2ExecutablePath
         {
@@ -37,6 +38,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void MigrateLegacyRos2ExecutablePath()
         {
+            if (_legacyMigrationChecked)
+                return;
+
+            _legacyMigrationChecked = true;
             if (EditorPrefs.HasKey(Ros2ExecutablePathKey))
                 return;
 

@@ -17,6 +17,11 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase37Validation
     {
+        private static readonly byte[] EmptyJsonPayload = Encoding.UTF8.GetBytes("{}");
+        private static readonly byte[] SeriesPayload0 = Encoding.UTF8.GetBytes("{\"s\":0}");
+        private static readonly byte[] SeriesPayload1 = Encoding.UTF8.GetBytes("{\"s\":1}");
+        private static readonly byte[] SeriesPayload2 = Encoding.UTF8.GetBytes("{\"s\":2}");
+        private static readonly byte[][] ChunkPayloads = BuildChunkPayloads();
         private static int _passCount;
 
         /// <summary>
@@ -41,9 +46,9 @@ namespace Unity.FoxgloveSDK.Tests
             using (var recorder = new McapRecorder(ms))
             {
                 recorder.AddChannel(1, "/rt", "json", "test.RT", "jsonschema", "{\"type\":\"object\"}");
-                recorder.WriteMessage(1, 100, Encoding.UTF8.GetBytes("{\"s\":0}"));
-                recorder.WriteMessage(1, 200, Encoding.UTF8.GetBytes("{\"s\":1}"));
-                recorder.WriteMessage(1, 300, Encoding.UTF8.GetBytes("{\"s\":2}"));
+                recorder.WriteMessage(1, 100, SeriesPayload0);
+                recorder.WriteMessage(1, 200, SeriesPayload1);
+                recorder.WriteMessage(1, 300, SeriesPayload2);
                 recorder.Close();
             }
 
@@ -105,11 +110,11 @@ namespace Unity.FoxgloveSDK.Tests
                 recorder.AddChannel(2, "/b", "json", "test.B", "jsonschema", "{\"type\":\"object\"}");
                 recorder.AddChannel(3, "/c", "json", "test.C", "jsonschema", "{\"type\":\"object\"}");
 
-                recorder.WriteMessage(1, 100, Encoding.UTF8.GetBytes("{}"));
-                recorder.WriteMessage(2, 200, Encoding.UTF8.GetBytes("{}"));
-                recorder.WriteMessage(3, 300, Encoding.UTF8.GetBytes("{}"));
-                recorder.WriteMessage(1, 400, Encoding.UTF8.GetBytes("{}"));
-                recorder.WriteMessage(2, 500, Encoding.UTF8.GetBytes("{}"));
+                recorder.WriteMessage(1, 100, EmptyJsonPayload);
+                recorder.WriteMessage(2, 200, EmptyJsonPayload);
+                recorder.WriteMessage(3, 300, EmptyJsonPayload);
+                recorder.WriteMessage(1, 400, EmptyJsonPayload);
+                recorder.WriteMessage(2, 500, EmptyJsonPayload);
                 recorder.Close();
             }
 
@@ -135,7 +140,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 recorder.AddChannel(1, "/chunk", "json", "test.Chunk", "jsonschema", "{\"type\":\"object\"}");
                 for (var i = 0; i < 20; i++)
-                    recorder.WriteMessage(1, (ulong)i * 1000, Encoding.UTF8.GetBytes($"{{\"i\":{i}}}"));
+                    recorder.WriteMessage(1, (ulong)i * 1000, ChunkPayloads[i]);
                 recorder.Close();
             }
 
@@ -155,6 +160,14 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             Check(totalMessages == 20, "37A-4d: all 20 messages recovered across chunks");
+        }
+
+        private static byte[][] BuildChunkPayloads()
+        {
+            var payloads = new byte[20][];
+            for (var i = 0; i < payloads.Length; i++)
+                payloads[i] = Encoding.UTF8.GetBytes("{\"i\":" + i + "}");
+            return payloads;
         }
 
         private static void Check(bool condition, string label)

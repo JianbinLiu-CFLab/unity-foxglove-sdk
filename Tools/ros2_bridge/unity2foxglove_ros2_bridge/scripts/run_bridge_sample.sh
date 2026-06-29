@@ -59,8 +59,12 @@ schemas=(
   foxglove_msgs/msg/CompressedPointCloud
 )
 
+interfaces="$(ros2 interface package foxglove_msgs)"
 for schema in "${schemas[@]}"; do
-  ros2 interface show "$schema" >/dev/null
+  if ! grep -Fxq "$schema" <<<"$interfaces"; then
+    echo "ROS2 interface check failed: $schema is not listed by foxglove_msgs." >&2
+    exit 1
+  fi
 done
 
 echo "Preflight passed for sample schemas."

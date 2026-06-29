@@ -46,8 +46,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 stream.Write(request, 0, request.Length);
                 stream.Flush();
 
-                var response = ReadU2R2Frame(stream, cancellationToken);
-                var pong = Ros2BridgeU2R2HealthCodec.ParseHealthPong(response, requestId);
+                var responseHeader = ReadU2R2Header(stream, cancellationToken);
+                var pong = Ros2BridgeU2R2HealthCodec.ParseHealthPongHeader(responseHeader, requestId);
                 stopwatch.Stop();
 
                 if (pong.Status == "error")
@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             return task.IsCompleted;
         }
 
-        private static byte[] ReadU2R2Frame(Stream stream, CancellationToken cancellationToken)
+        private static byte[] ReadU2R2Header(Stream stream, CancellationToken cancellationToken)
         {
             var fixedHeader = ReadExact(stream, 16, cancellationToken);
             if (fixedHeader[0] != 'U' || fixedHeader[1] != '2' || fixedHeader[2] != 'R' || fixedHeader[3] != '2')
@@ -106,16 +106,10 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 throw new FormatException("U2R2 response payload length exceeds maximum.");
 
             var header = ReadExact(stream, checked((int)headerLength), cancellationToken);
-            var payload = payloadLength == 0
-                ? Array.Empty<byte>()
-                : ReadExact(stream, checked((int)payloadLength), cancellationToken);
+            if (payloadLength != 0)
+                throw new FormatException("Health pong payload must be empty.");
 
-            var frame = new byte[16 + header.Length + payload.Length];
-            Buffer.BlockCopy(fixedHeader, 0, frame, 0, fixedHeader.Length);
-            Buffer.BlockCopy(header, 0, frame, fixedHeader.Length, header.Length);
-            if (payload.Length > 0)
-                Buffer.BlockCopy(payload, 0, frame, fixedHeader.Length + header.Length, payload.Length);
-            return frame;
+            return header;
         }
 
         private static byte[] ReadExact(Stream stream, int count, CancellationToken cancellationToken)

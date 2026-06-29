@@ -96,6 +96,27 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (payloadLength != 0)
                 throw new FormatException("Health pong payload must be empty.");
 
+            return ParseHealthPongHeader(header, expectedRequestId);
+        }
+
+        internal static Ros2BridgeHealthPong ParseHealthPongHeader(byte[] headerBytes, string expectedRequestId)
+        {
+            if (headerBytes == null || headerBytes.Length == 0)
+                throw new FormatException("Health pong JSON header is empty.");
+
+            var headerJson = Encoding.UTF8.GetString(headerBytes);
+            try
+            {
+                return ParseHealthPongHeader(JObject.Parse(headerJson), expectedRequestId);
+            }
+            catch (JsonException ex)
+            {
+                throw new FormatException("Health pong JSON header is malformed: " + ex.Message, ex);
+            }
+        }
+
+        private static Ros2BridgeHealthPong ParseHealthPongHeader(JObject header, string expectedRequestId)
+        {
             var op = header.Value<string>("op");
             if (!string.Equals(op, "health_pong", StringComparison.Ordinal))
                 throw new FormatException("Health response op must be health_pong.");

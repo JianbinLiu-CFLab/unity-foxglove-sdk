@@ -98,8 +98,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var leakedDirectories = EnumeratePackageBuildOutputDirectories(packagesDir)
                 .Select(path => Path.GetRelativePath(repoRoot, path).Replace('\\', '/'))
-                .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
+            if (leakedDirectories.Length > 0)
+                Array.Sort(leakedDirectories, StringComparer.Ordinal);
 
             Assert(leakedDirectories.Length == 0,
                 "Packages contains no bin/ or obj/ build output directories: " + string.Join(", ", leakedDirectories));
@@ -165,11 +166,7 @@ namespace Unity.FoxgloveSDK.Tests
         static void ValidatePythonDocstrings(string repoRoot)
         {
             var scriptsDir = Path.Combine(repoRoot, "Scripts");
-            var pythonFiles = Directory.GetFiles(scriptsDir, "*.py", SearchOption.AllDirectories)
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToArray();
-
-            foreach (var path in pythonFiles)
+            foreach (var path in Directory.EnumerateFiles(scriptsDir, "*.py", SearchOption.AllDirectories))
             {
                 AssertPythonDefinitionsHaveDocstrings(repoRoot, path);
             }
@@ -398,7 +395,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             foreach (var path in workflowFiles)
             {
-                var text = File.ReadAllText(path).Replace('\\', '/');
+                var text = File.ReadAllText(path);
+                if (text.Contains('\\'))
+                    text = text.Replace('\\', '/');
                 var relativePath = Path.GetRelativePath(repoRoot, path).Replace(Path.DirectorySeparatorChar, '/');
                 foreach (var stalePath in stalePaths)
                     Assert(!text.Contains(stalePath), $"{relativePath} does not reference stale script path {stalePath}");
