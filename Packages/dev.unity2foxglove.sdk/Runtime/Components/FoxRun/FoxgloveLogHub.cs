@@ -119,6 +119,7 @@ namespace Unity.FoxgloveSDK.Components
         private static FoxgloveLogHub _instance;
         private static readonly object PendingRegistrationsGate = new();
         private static readonly List<IFoxgloveLogSource> PendingRegistrations = new();
+        private static readonly HashSet<IFoxgloveLogSource> PendingRegistrationSet = new();
         /// <summary>Cached reference to the FoxgloveManager.</summary>
         private FoxgloveManager _mgr;
         [SerializeField] private bool _enableFallbackSceneScan = true;
@@ -128,6 +129,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly FoxTopicSinkRouter _sinkRouter = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
         private readonly List<IFoxgloveLogSource> _stale = new();
+        private readonly List<IFoxgloveLogSource> _registrationDrainBuffer = new();
         private readonly List<IFoxgloveLogSource> _pendingAdds = new();
         private readonly List<IFoxgloveLogSource> _pendingRemoves = new();
         private readonly HashSet<string> _warnedSourceFailures = new();
@@ -164,7 +166,7 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (PendingRegistrationsGate)
             {
-                if (!PendingRegistrations.Contains(source))
+                if (PendingRegistrationSet.Add(source))
                     PendingRegistrations.Add(source);
             }
 
@@ -180,6 +182,7 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (PendingRegistrationsGate)
             {
+                PendingRegistrationSet.Remove(source);
                 PendingRegistrations.Remove(source);
             }
 
@@ -228,6 +231,7 @@ namespace Unity.FoxgloveSDK.Components
             lock (PendingRegistrationsGate)
             {
                 PendingRegistrations.Clear();
+                PendingRegistrationSet.Clear();
             }
         }
 
@@ -599,18 +603,20 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainPendingRegistrations()
         {
-            IFoxgloveLogSource[] pending;
+            _registrationDrainBuffer.Clear();
             lock (PendingRegistrationsGate)
             {
                 if (PendingRegistrations.Count == 0)
                     return;
 
-                pending = PendingRegistrations.ToArray();
+                _registrationDrainBuffer.AddRange(PendingRegistrations);
                 PendingRegistrations.Clear();
+                PendingRegistrationSet.Clear();
             }
 
-            foreach (var source in pending)
+            foreach (var source in _registrationDrainBuffer)
                 AddSource(source);
+            _registrationDrainBuffer.Clear();
         }
 
         private bool TriggerSource(IFoxgloveLogSource source, int topicIndex)
