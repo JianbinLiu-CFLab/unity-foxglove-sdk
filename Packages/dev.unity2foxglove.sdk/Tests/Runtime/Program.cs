@@ -38,8 +38,9 @@ class Program
     private static int MainCore(string[] args)
     {
         var argList = args.ToList();
+        var argSet = new HashSet<string>(argList, StringComparer.Ordinal);
 
-        if (argList.Contains("--serve"))
+        if (argSet.Contains("--serve"))
         {
             int port = 8765;
             var portIdx = argList.IndexOf("--port");
@@ -52,8 +53,8 @@ class Program
                 }
             }
 
-            var demo = argList.Contains("--demo");
-            var demo3d = argList.Contains("--demo3d");
+            var demo = argSet.Contains("--demo");
+            var demo3d = argSet.Contains("--demo3d");
             if (IsCiEnvironment())
             {
                 Console.Error.WriteLine("--serve is manual-only and is disabled when CI-like environment variables are set.");
@@ -63,19 +64,19 @@ class Program
             return RunServer(port, demo, demo3d);
         }
 
-        if (argList.Contains("--demo") || argList.Contains("--demo3d"))
+        if (argSet.Contains("--demo") || argSet.Contains("--demo3d"))
         {
             Console.Error.WriteLine("--demo and --demo3d require --serve.");
             return 1;
         }
 
-        if (argList.Contains("--phase139b-remote-data-loader-server"))
+        if (argSet.Contains("--phase139b-remote-data-loader-server"))
             return RunPhase139BRemoteDataLoaderServer(argList);
 
-        if (TryRunRegisteredValidation(argList, out var registeredValidationExitCode))
+        if (TryRunRegisteredValidation(argList, argSet, out var registeredValidationExitCode))
             return registeredValidationExitCode;
 
-        if (argList.Contains("--phase97-health"))
+        if (argSet.Contains("--phase97-health"))
             return RunPhase97Health(argList);
 
         var phase98SampleSendAllIdx = argList.IndexOf("--phase98-sample-send-all");
@@ -96,10 +97,10 @@ class Program
             return RunPhase98SampleSendAll(argList[phase98SampleSendAllIdx + 1], port);
         }
 
-        if (argList.Contains("--phase98-live"))
+        if (argSet.Contains("--phase98-live"))
             return RunPhase98Live(argList);
 
-        if (argList.Contains("--phase99-live"))
+        if (argSet.Contains("--phase99-live"))
             return RunPhase99Live(argList);
 
         var phase94BridgeSendIdx = argList.IndexOf("--phase94-bridge-send");
@@ -200,12 +201,12 @@ class Program
             return 1;
         }
 
-        return RunTests(argList.Contains("--local-evidence"));
+        return RunTests(argSet.Contains("--local-evidence"));
     }
 
-    private static bool TryRunRegisteredValidation(List<string> argList, out int exitCode)
+    private static bool TryRunRegisteredValidation(List<string> argList, IReadOnlyCollection<string> argSet, out int exitCode)
     {
-        if (argList.Contains("--list-validations"))
+        if (argSet.Contains("--list-validations"))
         {
             foreach (var validation in PhaseValidationRegistry.All)
             {

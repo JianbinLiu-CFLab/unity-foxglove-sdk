@@ -30,9 +30,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             lock (TypeCache)
             {
-                if (!TypeCache.ContainsKey(fullName))
-                    TypeCache.Add(fullName, resolved);
-                return TypeCache[fullName];
+                if (TypeCache.TryGetValue(fullName, out var cached))
+                    return cached;
+
+                TypeCache.Add(fullName, resolved);
+                return resolved;
             }
         }
     }
