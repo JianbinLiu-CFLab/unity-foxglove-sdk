@@ -79,8 +79,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(write.Contains("var existing = new FileInfo(path);", StringComparison.Ordinal)
                   && write.Contains("existing.Length == bytes.Length", StringComparison.Ordinal)
-                  && write.Contains("File.ReadAllBytes(path).SequenceEqual(bytes)", StringComparison.Ordinal),
-                "164-22D-1: generated file equality check reads existing bytes only after a length match");
+                  && write.Contains("FileContentEquals(path, bytes)", StringComparison.Ordinal)
+                  && !write.Contains("File.ReadAllBytes(path).SequenceEqual(bytes)", StringComparison.Ordinal),
+                "164-22D-1: generated file equality check streams existing bytes only after a length match");
         }
 
         private static void VerifyRegistry()

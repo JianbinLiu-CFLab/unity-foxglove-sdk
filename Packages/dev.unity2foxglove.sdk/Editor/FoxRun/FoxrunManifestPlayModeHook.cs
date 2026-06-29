@@ -5,7 +5,6 @@
 // Purpose: Refreshes FoxRun canonical manifest artifacts before Editor Play Mode.
 
 using System;
-using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -35,16 +34,12 @@ namespace Unity.FoxgloveSDK.Editor
             try
             {
                 Unity2FoxgloveSchemaEvidenceSettings.SyncOpenSceneManagers();
-                var schemaInfoPath = Path.Combine(
-                    Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory(),
-                    FoxRunSchemaInfoWriter.SchemaInfoFileName);
-                var previousSchemaInfo = ReadExistingText(schemaInfoPath);
-                var manifest = FoxrunCodeGenerator.GenerateManifestFilesOnly();
-                var aggregate = Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts(manifest);
+                var refresh = FoxrunCodeGenerator.GenerateManifestFilesOnlyWithResult();
+                var aggregate = Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts(refresh.Manifest);
                 Debug.Log("[FoxRun] Refreshed canonical manifest, schema info, and SDK schema manifest before Play Mode: " +
-                          manifest.GlobalManifestHash + " / " + aggregate.SdkSchemaManifestHash);
+                          refresh.Manifest.GlobalManifestHash + " / " + aggregate.SdkSchemaManifestHash);
 
-                if (!string.Equals(previousSchemaInfo, ReadExistingText(schemaInfoPath), StringComparison.Ordinal))
+                if (refresh.SchemaInfoChanged)
                 {
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                     EditorApplication.isPlaying = false;
@@ -64,9 +59,5 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static string ReadExistingText(string path)
-        {
-            return File.Exists(path) ? File.ReadAllText(path) : null;
-        }
     }
 }

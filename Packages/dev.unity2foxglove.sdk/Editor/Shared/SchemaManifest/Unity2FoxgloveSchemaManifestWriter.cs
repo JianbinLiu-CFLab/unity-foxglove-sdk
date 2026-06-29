@@ -35,24 +35,27 @@ namespace Unity.FoxgloveSDK.Editor
                 throw new ArgumentNullException(nameof(manifest));
 
             var canonical = Unity2FoxgloveSchemaManifestJsonWriter.WriteCanonical(manifest);
-            var report = Unity2FoxgloveSchemaManifestJsonWriter.WriteReport(
-                manifest,
-                generatedAtUtc ?? DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-                warnings ?? Array.Empty<string>());
 
             Directory.CreateDirectory(outputDirectory);
             var manifestChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName), canonical);
             var hashChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestHashFileName), manifest.SdkSchemaManifestHash + "\n");
             var reportPath = Path.Combine(outputDirectory, ManifestReportFileName);
             if (manifestChanged || hashChanged || !File.Exists(reportPath))
+            {
+                var report = Unity2FoxgloveSchemaManifestJsonWriter.WriteReport(
+                    manifest,
+                    generatedAtUtc ?? DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                    warnings ?? Array.Empty<string>());
                 WriteIfChanged(reportPath, report);
+            }
             return manifest;
         }
 
         private static bool WriteIfChanged(string path, string content)
         {
             var bytes = Utf8NoBom.GetBytes(content ?? string.Empty);
-            if (TryReadExistingBytes(path, out var existingBytes) && existingBytes.SequenceEqual(bytes))
+            var existing = new FileInfo(path);
+            if (existing.Exists && existing.Length == bytes.Length && FileContentEquals(path, bytes))
                 return false;
 
             var tempPath = path + ".tmp-" + Guid.NewGuid().ToString("N");
@@ -78,18 +81,13 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static bool TryReadExistingBytes(string path, out byte[] bytes)
+        private static bool FileContentEquals(string path, byte[] bytes)
         {
-            bytes = null;
-            if (!File.Exists(path))
-                return false;
-
             for (var attempt = 0; attempt < ReplaceAttempts; attempt++)
             {
                 try
                 {
-                    bytes = File.ReadAllBytes(path);
-                    return true;
+                    return FileContentEqualsOnce(path, bytes);
                 }
                 catch (IOException)
                 {
@@ -102,6 +100,29 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return false;
+        }
+
+        private static bool FileContentEqualsOnce(string path, byte[] bytes)
+        {
+            var buffer = new byte[8192];
+            using (var stream = File.OpenRead(path))
+            {
+                for (var offset = 0; offset < bytes.Length;)
+                {
+                    var expected = Math.Min(buffer.Length, bytes.Length - offset);
+                    var read = stream.Read(buffer, 0, expected);
+                    if (read == 0)
+                        return false;
+                    for (var i = 0; i < read; i++)
+                    {
+                        if (buffer[i] != bytes[offset + i])
+                            return false;
+                    }
+                    offset += read;
+                }
+
+                return stream.ReadByte() == -1;
+            }
         }
 
         private static void ReplaceFile(string tempPath, string path)

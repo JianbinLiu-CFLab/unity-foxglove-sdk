@@ -40,12 +40,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyEditorFallbackUsesCombinedScan()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
-            var generate = PhaseValidationSourceHelpers.SourceMethod(source, "public static List<string> GenerateSourceFiles(out FoxRunCanonicalManifest manifest)");
+            var generate = PhaseValidationSourceHelpers.SourceMethod(source, "out List<(string AsmName, string Ns, string ClassName)> foxRunTypes)");
             var combined = PhaseValidationSourceHelpers.SourceMethod(source, "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices");
 
             Check(generate.Contains("var editorScan = ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal)
                   && generate.Contains("var scan = editorScan.FoxRun;", StringComparison.Ordinal)
                   && generate.Contains("var serviceScan = editorScan.Services;", StringComparison.Ordinal)
+                  && generate.Contains("foxRunTypes = editorScan.FoxRunTypes;", StringComparison.Ordinal)
                   && !generate.Contains("ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal)
                   && !generate.Contains("ScanFoxServiceMethods(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal),
                 "164-23B-1: source-file generation uses one combined FoxRun/FoxService reflection scan");
