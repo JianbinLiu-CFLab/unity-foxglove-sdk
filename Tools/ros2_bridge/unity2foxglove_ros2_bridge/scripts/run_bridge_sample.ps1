@@ -32,6 +32,7 @@ function Invoke-Ros2Checked {
     if ($LASTEXITCODE -ne 0) {
         throw ("{0} failed with exit code {1}: ros2 {2}`n{3}" -f $Description, $LASTEXITCODE, ($Arguments -join " "), ($output -join "`n"))
     }
+    return $output
 }
 
 Invoke-Ros2Checked -Description "foxglove_msgs package lookup" -Arguments @("pkg", "prefix", "foxglove_msgs")
@@ -46,8 +47,11 @@ $schemas = @(
     "foxglove_msgs/msg/CompressedPointCloud"
 )
 
+$interfaces = @(Invoke-Ros2Checked -Description "foxglove_msgs interface catalog lookup" -Arguments @("interface", "package", "foxglove_msgs"))
 foreach ($schema in $schemas) {
-    Invoke-Ros2Checked -Description "ROS2 interface check for $schema" -Arguments @("interface", "show", $schema)
+    if (-not ($interfaces -ccontains $schema)) {
+        throw "ROS2 interface check failed: $schema is not listed by foxglove_msgs."
+    }
 }
 
 Write-Host "Preflight passed for sample schemas."

@@ -304,11 +304,10 @@ namespace Unity.FoxgloveSDK.Tests
             var ps1 = ReadRepoText("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.ps1");
             foreach (var schema in RequiredProductTopics.Select(t => t.SchemaName).Concat(new[] { OptionalDracoTopic.SchemaName }))
             {
-                Check(bash.Contains("ros2 interface show", StringComparison.Ordinal)
+                Check(bash.Contains("ros2 interface package foxglove_msgs", StringComparison.Ordinal)
                       && bash.Contains(schema, StringComparison.Ordinal),
                     "98C-5: bash preflight checks " + schema);
-                Check((ps1.Contains("Invoke-Ros2Checked", StringComparison.Ordinal)
-                       || ps1.Contains("ros2 interface show", StringComparison.Ordinal))
+                Check(ps1.Contains("\"interface\", \"package\", \"foxglove_msgs\"", StringComparison.Ordinal)
                       && ps1.Contains(schema, StringComparison.Ordinal),
                     "98C-6: PowerShell preflight checks " + schema);
             }

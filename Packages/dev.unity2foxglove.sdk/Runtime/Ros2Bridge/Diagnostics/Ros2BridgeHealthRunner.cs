@@ -182,22 +182,38 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             var stopwatch = Stopwatch.StartNew();
             var entries = FoxgloveRos2MsgSchemaCatalog.Entries;
             var missing = new List<string>();
+            ThrowIfCancellationRequested(options);
+            options.Progress?.Invoke(new Ros2BridgeHealthProgress(
+                InterfacesId,
+                "Checking foxglove_msgs interface catalog",
+                0,
+                entries.Count));
+            var result = _commandRunner.Run(
+                executable,
+                "interface package foxglove_msgs",
+                options.CommandTimeoutMs,
+                options.CancellationToken);
+
+            if (!result.Succeeded)
+            {
+                stopwatch.Stop();
+                return new Ros2BridgeHealthCheckResult(
+                    InterfacesId,
+                    "ROS2 Interfaces",
+                    Ros2BridgeHealthStatus.Fail,
+                    "Could not list foxglove_msgs interfaces: " + CompactFailure(result),
+                    "Install foxglove_msgs or source the workspace that provides all bundled interfaces.",
+                    "ros2 interface package foxglove_msgs",
+                    stopwatch.ElapsedMilliseconds);
+            }
+
+            var availableInterfaces = BuildInterfaceSet(result.Stdout);
             for (var i = 0; i < entries.Count; i++)
             {
                 ThrowIfCancellationRequested(options);
                 var schemaName = entries[i].SchemaName;
-                options.Progress?.Invoke(new Ros2BridgeHealthProgress(
-                    InterfacesId,
-                    $"Checking interfaces {i + 1}/{entries.Count}",
-                    i,
-                    entries.Count));
-                var result = _commandRunner.Run(
-                    executable,
-                    "interface show " + schemaName,
-                    options.CommandTimeoutMs,
-                    options.CancellationToken);
-                if (!result.Succeeded)
-                    missing.Add(schemaName + " (" + CompactFailure(result) + ")");
+                if (result.Succeeded && !availableInterfaces.Contains(schemaName))
+                    missing.Add(schemaName);
             }
 
             options.Progress?.Invoke(new Ros2BridgeHealthProgress(
@@ -223,8 +239,25 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 Ros2BridgeHealthStatus.Fail,
                 $"{entries.Count - missing.Count}/{entries.Count} interfaces available. First missing: {missing[0]}",
                 "Install foxglove_msgs or source the workspace that provides all bundled interfaces.",
-                "ros2 interface show foxglove_msgs/msg/FrameTransform",
+                "ros2 interface package foxglove_msgs",
                 stopwatch.ElapsedMilliseconds);
+        }
+
+        private static HashSet<string> BuildInterfaceSet(string stdout)
+        {
+            var interfaces = new HashSet<string>(StringComparer.Ordinal);
+            if (string.IsNullOrWhiteSpace(stdout))
+                return interfaces;
+
+            var lines = stdout.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            foreach (var line in lines)
+            {
+                var value = line.Trim();
+                if (value.Length > 0)
+                    interfaces.Add(value);
+            }
+
+            return interfaces;
         }
 
         private Ros2BridgeHealthCheckResult CheckSidecarPing(Ros2BridgeHealthOptions options)

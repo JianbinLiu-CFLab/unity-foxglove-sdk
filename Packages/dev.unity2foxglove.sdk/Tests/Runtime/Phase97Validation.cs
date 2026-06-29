@@ -344,8 +344,8 @@ namespace Unity.FoxgloveSDK.Tests
 
                 var stdout = arguments.StartsWith("pkg prefix", StringComparison.Ordinal)
                     ? "/opt/ros/jazzy"
-                    : arguments.StartsWith("interface show", StringComparison.Ordinal)
-                        ? "# " + arguments.Substring("interface show ".Length)
+                    : arguments.StartsWith("interface package foxglove_msgs", StringComparison.Ordinal)
+                        ? string.Join(Environment.NewLine, FoxgloveRos2MsgSchemaCatalog.Entries.Select(e => e.SchemaName))
                         : "ros2 help";
                 return new Ros2BridgeCommandResult(0, stdout, "", false, "", 1);
             }

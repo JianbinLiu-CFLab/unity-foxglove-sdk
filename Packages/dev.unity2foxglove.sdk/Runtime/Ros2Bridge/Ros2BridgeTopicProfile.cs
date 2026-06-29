@@ -179,6 +179,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (string.IsNullOrEmpty(value))
                 return string.Empty;
 
+            if (!ContainsConsecutiveSlashes(value))
+                return value;
+
             var chars = new char[value.Length];
             var write = 0;
             var lastWasSlash = false;
@@ -200,6 +203,17 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
 
             return write == value.Length ? value : new string(chars, 0, write);
+        }
+
+        private static bool ContainsConsecutiveSlashes(string value)
+        {
+            for (var i = 1; i < value.Length; i++)
+            {
+                if (value[i] == '/' && value[i - 1] == '/')
+                    return true;
+            }
+
+            return false;
         }
 
         private static bool ContainsNewline(string value)
