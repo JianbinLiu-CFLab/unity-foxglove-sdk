@@ -136,9 +136,23 @@ def wait_for_marker(path: pathlib.Path, marker: str, timeout_seconds: float) -> 
         return True
 
     deadline = time.monotonic() + timeout_seconds
+    last_position = 0
+    tail = ""
     while time.monotonic() < deadline:
-        if path.exists() and marker in path.read_text(encoding="utf-8", errors="replace"):
-            return True
+        if path.exists():
+            size = path.stat().st_size
+            if size < last_position:
+                last_position = 0
+                tail = ""
+            with path.open("r", encoding="utf-8", errors="replace") as stream:
+                stream.seek(last_position)
+                chunk = stream.read()
+                last_position = stream.tell()
+            if chunk:
+                combined = tail + chunk
+                if marker in combined:
+                    return True
+                tail = combined[-max(len(marker) - 1, 0):]
         time.sleep(0.25)
     return False
 

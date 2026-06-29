@@ -42,6 +42,8 @@ internal class ROS2ForUnity
     private const string expectedRmwImplementation = "rmw_fastrtps_cpp";
     private static readonly string[] SupportedRosVersions = { "foxy", "galactic", "humble", "jazzy", "rolling" };
     private static readonly string SupportedRosVersionsString = String.Join(", ", SupportedRosVersions);
+    private static readonly Lazy<string> ros2ForUnityPath = new Lazy<string>(ComputeRos2ForUnityPath);
+    private static readonly Lazy<string> pluginPath = new Lazy<string>(ComputePluginPath);
     private XmlDocument ros2csMetadata = new XmlDocument();
     private XmlDocument ros2ForUnityMetadata = new XmlDocument();
     private bool ownsLifecycle;
@@ -124,12 +126,17 @@ internal class ROS2ForUnity
 
     public static string GetRos2ForUnityPath()
     {
+        return ros2ForUnityPath.Value;
+    }
+
+    private static string ComputeRos2ForUnityPath()
+    {
         char separator = Path.DirectorySeparatorChar;
         string appDataPath = Application.dataPath;
-        string pluginPath = appDataPath;
+        string path = appDataPath;
 
         if (InEditor()) {
-            string assetPath = pluginPath + separator + ros2ForUnityAssetFolderName;
+            string assetPath = path + separator + ros2ForUnityAssetFolderName;
             if (Directory.Exists(assetPath)) {
                 return assetPath;
             }
@@ -166,32 +173,37 @@ internal class ROS2ForUnity
             // Unity2Foxglove package path support: keep upstream asset-folder fallback.
             return assetPath;
         }
-        return pluginPath; 
+        return path;
     }
 
     public static string GetPluginPath()
     {
+        return pluginPath.Value;
+    }
+
+    private static string ComputePluginPath()
+    {
         char separator = Path.DirectorySeparatorChar;
         string ros2ForUnityPath = GetRos2ForUnityPath();
-        string pluginPath = ros2ForUnityPath;
+        string path = ros2ForUnityPath;
         
-        pluginPath += separator + "Plugins";
+        path += separator + "Plugins";
         
         if (InEditor()) {
-            pluginPath += separator + GetOSName();
+            path += separator + GetOSName();
         }
 
         if (InEditor() || GetOS() == Platform.Windows)
         {
-           pluginPath += separator + "x86_64";
+           path += separator + "x86_64";
         }
         
         if (GetOS() == Platform.Windows)
         {
-           pluginPath = pluginPath.Replace("/", "\\");
+           path = path.Replace("/", "\\");
         }
 
-        return pluginPath;
+        return path;
     }
 
     /// <summary>
@@ -275,6 +287,12 @@ internal class ROS2ForUnity
         }
 
         string trimmed = value.Trim();
+        string fastNormalized = trimmed.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (LooksNormalizedEnvPathEntry(fastNormalized))
+        {
+            return fastNormalized;
+        }
+
         try
         {
             trimmed = Path.GetFullPath(trimmed);
@@ -285,6 +303,25 @@ internal class ROS2ForUnity
         }
 
         return trimmed.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static bool LooksNormalizedEnvPathEntry(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !Path.IsPathRooted(value))
+        {
+            return false;
+        }
+
+        char separator = Path.DirectorySeparatorChar;
+        char altSeparator = Path.AltDirectorySeparatorChar;
+        return value.IndexOf(separator + "." + separator, StringComparison.Ordinal) < 0
+            && value.IndexOf(altSeparator + "." + altSeparator, StringComparison.Ordinal) < 0
+            && value.IndexOf(separator + ".." + separator, StringComparison.Ordinal) < 0
+            && value.IndexOf(altSeparator + ".." + altSeparator, StringComparison.Ordinal) < 0
+            && !value.EndsWith(separator + ".", StringComparison.Ordinal)
+            && !value.EndsWith(altSeparator + ".", StringComparison.Ordinal)
+            && !value.EndsWith(separator + "..", StringComparison.Ordinal)
+            && !value.EndsWith(altSeparator + "..", StringComparison.Ordinal);
     }
 
     public bool IsStandalone() {

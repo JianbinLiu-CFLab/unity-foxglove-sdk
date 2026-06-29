@@ -354,7 +354,7 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     )
 
 
-def check_inventory(results: list[CheckResult], release_gate: bool = False) -> None:
+def check_inventory(results: list[CheckResult], release_gate: bool = False, skip_dll_hash: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
     if not data:
@@ -433,6 +433,7 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
     missing: list[str] = []
     mismatched: list[str] = []
     checked_dlls = 0
+    should_hash_dlls = release_gate or not skip_dll_hash
     if isinstance(files, list):
         for item in files:
             if not isinstance(item, dict):
@@ -451,7 +452,7 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
             if not package_path.is_file():
                 missing.append(path_text)
                 continue
-            if expected_hash and file_sha256(package_path) != expected_hash:
+            if should_hash_dlls and expected_hash and file_sha256(package_path) != expected_hash:
                 mismatched.append(path_text)
 
     add(
@@ -463,8 +464,12 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False) -> N
     add(
         results,
         "runtime inventory DLL hashes match disk",
-        isinstance(files, list) and checked_dlls >= 900 and not mismatched,
-        f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}",
+        isinstance(files, list) and checked_dlls >= 900 and (not should_hash_dlls or not mismatched),
+        (
+            "skipped by fast validation; use --release-gate for full DLL hash verification"
+            if not should_hash_dlls
+            else f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}"
+        ),
     )
 
     file_paths = {str(item.get("path", "")) for item in files if isinstance(item, dict)}
@@ -813,22 +818,31 @@ def check_package_boundaries(results: list[CheckResult]) -> None:
     add(results, "core SDK does not depend on runtime package", PACKAGE_NAME not in sdk_deps, sdk_deps)
     add(results, "adapter does not hard-depend on runtime package", PACKAGE_NAME not in adapter_deps, adapter_deps)
 
-    sdk_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in iter_files(CORE_PACKAGE / "Runtime"))
     add(
         results,
         "core SDK runtime remains ROS2 For Unity free",
-        "ROS2UnityComponent" not in sdk_text and "ros2forunity.runtime" not in sdk_text,
+        not core_runtime_has_forbidden_tokens(),
         "core runtime scan",
     )
 
 
-def run_checks(release_gate: bool = False) -> list[CheckResult]:
+def core_runtime_has_forbidden_tokens() -> bool:
+    """Return True when the core SDK Runtime contains R2FU-only tokens."""
+    tokens = ("ROS2UnityComponent", "ros2forunity.runtime")
+    for path in iter_files(CORE_PACKAGE / "Runtime"):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if any(token in text for token in tokens):
+            return True
+    return False
+
+
+def run_checks(release_gate: bool = False, skip_dll_hash: bool = False) -> list[CheckResult]:
     """Run all runtime package checks."""
     results: list[CheckResult] = []
     check_package_metadata(results)
     check_required_files(results)
     check_runtime_manifest(results)
-    check_inventory(results, release_gate=release_gate)
+    check_inventory(results, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
     check_runtime_files(results)
     check_package_path_patch(results)
     check_runtime_asmdef(results)
@@ -855,13 +869,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Require redistributionStatus=published before release publication.",
     )
+    parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="Skip per-DLL SHA-256 verification during routine validation; ignored by --release-gate.",
+    )
+    parser.add_argument(
+        "--skip-dll-hash",
+        action="store_true",
+        help="Alias for --fast.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run validation and return a process exit code."""
     args = parse_args(argv)
-    results = run_checks(release_gate=args.release_gate)
+    skip_dll_hash = (args.fast or args.skip_dll_hash) and not args.release_gate
+    results = run_checks(release_gate=args.release_gate, skip_dll_hash=skip_dll_hash)
     print_results(results)
     failures = [result for result in results if not result.ok]
     if failures:

@@ -12,18 +12,6 @@ Visualization Manager:
       Name: Grid
       Plane: XY
       Reference Frame: <Fixed Frame>
-    - Class: rviz_default_plugins/TF
-      Enabled: false
-      Frame Timeout: 15
-      Name: TF
-      Show Axes: true
-      Show Names: true
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /tf
     - Class: rviz_default_plugins/PointCloud2
       Enabled: true
       Name: PointCloud2 /points

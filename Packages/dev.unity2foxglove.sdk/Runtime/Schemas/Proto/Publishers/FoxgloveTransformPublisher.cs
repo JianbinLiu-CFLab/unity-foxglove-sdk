@@ -36,6 +36,14 @@ namespace Unity.FoxgloveSDK.Components
 
         public event Action<FrameTransformMessage> FrameTransformReady;
 
+        private bool _childFrameIdCacheValid;
+        private string _cachedChildFrameIdRaw;
+        private string _cachedChildFrameIdFallback;
+        private string _cachedResolvedChildFrameId;
+        private bool _parentFrameIdCacheValid;
+        private string _cachedParentFrameIdRaw;
+        private string _cachedResolvedParentFrameId;
+
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/tf";
@@ -43,11 +51,17 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Resolved child frame id used in generated frame transform messages.</summary>
         public string ResolvedChildFrameId =>
-            SanitizeFrameId(_childFrameId, gameObject.name);
+            ResolveChildFrameId();
 
         /// <summary>Resolved parent frame id used in generated frame transform messages.</summary>
         public string ResolvedParentFrameId =>
-            SanitizeFrameId(_parentFrameId, "unity_world");
+            ResolveParentFrameId();
+
+        protected override void OnValidate()
+        {
+            base.OnValidate();
+            InvalidateFrameIdCache();
+        }
 
         protected override void Update()
         {
@@ -65,26 +79,29 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             var unixNs = CurrentTransformTimeNs();
-            var message = CreateMessage(unixNs);
-            if (message == null) return;
+            ResolveTransform(out var pos, out var rot);
+            FrameTransformMessage message = null;
             byte[] ros2Payload = null;
 
             if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)
             {
-                PublishProtobufTransform(unixNs, encodingResolution);
+                PublishProtobufTransform(unixNs, encodingResolution, pos, rot);
             }
             else if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Ros2)
             {
+                message = CreateMessage(unixNs, pos, rot);
                 ros2Payload = Ros2CdrFrameTransformBuilder.Serialize(message);
                 PublishRos2(ros2Payload, unixNs, encodingResolution);
             }
             else if (publishWebSocket)
             {
+                message = CreateMessage(unixNs, pos, rot);
                 Publish(message, unixNs, encodingResolution);
             }
 
             if (publishBridge)
             {
+                message ??= CreateMessage(unixNs, pos, rot);
                 ros2Payload ??= Ros2CdrFrameTransformBuilder.Serialize(message);
                 PublishRos2Bridge(ros2Payload, unixNs, bridgeResolution);
             }
@@ -93,6 +110,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 try
                 {
+                    message ??= CreateMessage(unixNs, pos, rot);
                     nativeHandler?.Invoke(message);
                 }
                 catch (Exception ex)
@@ -112,9 +130,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private FrameTransformMessage CreateMessage(ulong unixNs)
         {
-            var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
-
             ResolveTransform(out var pos, out var rot);
+            return CreateMessage(unixNs, pos, rot);
+        }
+
+        private FrameTransformMessage CreateMessage(ulong unixNs, UVector3 pos, UQuaternion rot)
+        {
+            var time = FoxgloveTimeUtil.ToFoxgloveTime(unixNs);
 
             return new FrameTransformMessage
             {
@@ -126,10 +148,8 @@ namespace Unity.FoxgloveSDK.Components
             };
         }
 
-        private void PublishProtobufTransform(ulong unixNs, PublisherEncodingResolution resolution)
+        private void PublishProtobufTransform(ulong unixNs, PublisherEncodingResolution resolution, UVector3 pos, UQuaternion rot)
         {
-            ResolveTransform(out var pos, out var rot);
-
             var protoFt = new Foxglove.FrameTransform
             {
                 Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs),
@@ -140,6 +160,41 @@ namespace Unity.FoxgloveSDK.Components
             };
 
             PublishProto(protoFt.ToByteArray(), unixNs, resolution);
+        }
+
+        private string ResolveChildFrameId()
+        {
+            var fallback = gameObject.name;
+            if (!_childFrameIdCacheValid
+                || !string.Equals(_cachedChildFrameIdRaw, _childFrameId, StringComparison.Ordinal)
+                || !string.Equals(_cachedChildFrameIdFallback, fallback, StringComparison.Ordinal))
+            {
+                _cachedResolvedChildFrameId = SanitizeFrameId(_childFrameId, fallback);
+                _cachedChildFrameIdRaw = _childFrameId;
+                _cachedChildFrameIdFallback = fallback;
+                _childFrameIdCacheValid = true;
+            }
+
+            return _cachedResolvedChildFrameId;
+        }
+
+        private string ResolveParentFrameId()
+        {
+            if (!_parentFrameIdCacheValid
+                || !string.Equals(_cachedParentFrameIdRaw, _parentFrameId, StringComparison.Ordinal))
+            {
+                _cachedResolvedParentFrameId = SanitizeFrameId(_parentFrameId, "unity_world");
+                _cachedParentFrameIdRaw = _parentFrameId;
+                _parentFrameIdCacheValid = true;
+            }
+
+            return _cachedResolvedParentFrameId;
+        }
+
+        private void InvalidateFrameIdCache()
+        {
+            _childFrameIdCacheValid = false;
+            _parentFrameIdCacheValid = false;
         }
 
         private void ResolveTransform(out UVector3 position, out UQuaternion rotation)

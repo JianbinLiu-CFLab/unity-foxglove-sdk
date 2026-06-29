@@ -38,11 +38,14 @@ namespace Unity.FoxgloveSDK.Sensors
         /// <summary>Create a world-to-local matrix for a rigid Unity transform with unit scale.</summary>
         public static float4x4 RigidWorldToLocal(Vector3 position, Quaternion rotation)
         {
-            var transform = float4x4.TRS(
-                new float3(position.x, position.y, position.z),
-                new quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
+            // Unit-scale rigid inverse: avoid building and inverting a full TRS matrix
+            // on every LiDAR scan scheduling tick.
+            var inverseRotation = UnityEngine.Quaternion.Inverse(rotation);
+            var inversePosition = inverseRotation * -position;
+            return float4x4.TRS(
+                new float3(inversePosition.x, inversePosition.y, inversePosition.z),
+                new quaternion(inverseRotation.x, inverseRotation.y, inverseRotation.z, inverseRotation.w),
                 new float3(1f, 1f, 1f));
-            return math.inverse(transform);
         }
     }
 }

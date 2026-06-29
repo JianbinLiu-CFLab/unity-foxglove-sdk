@@ -16,17 +16,17 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray /markers
       Topic:
-        Depth: 10
+        Depth: 2
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /markers
-      Queue Size: 10
+      Queue Size: 2
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
-    Frame Rate: 30
+    Frame Rate: 10
   Name: root
   Tools:
     - Class: rviz_default_plugins/Interact
