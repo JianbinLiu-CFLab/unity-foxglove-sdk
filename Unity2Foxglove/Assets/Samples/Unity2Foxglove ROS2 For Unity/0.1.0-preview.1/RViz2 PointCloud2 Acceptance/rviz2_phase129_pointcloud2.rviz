@@ -28,7 +28,7 @@ Visualization Manager:
       Enabled: true
       Name: PointCloud2 /points
       Topic:
-        Depth: 10
+        Depth: 2
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -36,12 +36,12 @@ Visualization Manager:
       Style: Points
       Size (Pixels): 4
       Color Transformer: Intensity
-      Queue Size: 10
+      Queue Size: 2
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
-    Frame Rate: 30
+    Frame Rate: 10
   Name: root
   Tools:
     - Class: rviz_default_plugins/Interact
