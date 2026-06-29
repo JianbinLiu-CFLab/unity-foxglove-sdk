@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase16Validation
     {
         private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRootCore);
+        private static readonly Regex PackageVersionRegex = new Regex(@"^\d+\.\d+\.\d+$", RegexOptions.Compiled);
 
         /// <summary>
         /// Validation method for Validate.
@@ -45,7 +46,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             var json = File.ReadAllText(pkgJson);
             Assert(json.Contains("\"name\": \"dev.unity2foxglove.sdk\""), "package.json name correct");
-            Assert(json.Contains("\"version\": \"1.9.5\""), "package.json version is 1.9.5");
+            var packageVersion = ExtractPackageJsonString(json, "version");
+            Assert(packageVersion != null && PackageVersionRegex.IsMatch(packageVersion), "package.json version is valid semver");
             Assert(json.Contains("\"displayName\": \"Unity2Foxglove SDK\""), "package.json displayName correct");
             Assert(json.Contains("\"license\": \"Apache-2.0\""), "package.json license is Apache-2.0");
 
@@ -94,19 +96,19 @@ namespace Unity.FoxgloveSDK.Tests
             var packagesDir = Path.Combine(repoRoot, "Packages");
             Assert(Directory.Exists(packagesDir), "Packages directory exists");
 
-            var leakedDirectories = Directory.EnumerateDirectories(packagesDir, "*", SearchOption.AllDirectories)
-                .Where(path =>
-                {
-                    var name = Path.GetFileName(path);
-                    return string.Equals(name, "bin", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(name, "obj", StringComparison.OrdinalIgnoreCase);
-                })
+            var leakedDirectories = EnumeratePackageBuildOutputDirectories(packagesDir)
                 .Select(path => Path.GetRelativePath(repoRoot, path).Replace('\\', '/'))
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
 
             Assert(leakedDirectories.Length == 0,
                 "Packages contains no bin/ or obj/ build output directories: " + string.Join(", ", leakedDirectories));
+        }
+
+        static IEnumerable<string> EnumeratePackageBuildOutputDirectories(string packagesDir)
+        {
+            return Directory.EnumerateDirectories(packagesDir, "bin", SearchOption.AllDirectories)
+                .Concat(Directory.EnumerateDirectories(packagesDir, "obj", SearchOption.AllDirectories));
         }
 
         static void ValidateRepositoryHeaders(string repoRoot)
@@ -171,6 +173,13 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 AssertPythonDefinitionsHaveDocstrings(repoRoot, path);
             }
+        }
+
+        static string ExtractPackageJsonString(string json, string propertyName)
+        {
+            var pattern = "\"" + Regex.Escape(propertyName) + "\"\\s*:\\s*\"([^\"]+)\"";
+            var match = Regex.Match(json, pattern);
+            return match.Success ? match.Groups[1].Value : null;
         }
 
         static void AssertPythonDefinitionsHaveDocstrings(string repoRoot, string path)

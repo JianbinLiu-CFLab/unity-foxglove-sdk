@@ -251,10 +251,10 @@ def check_required_files(results: list[CheckResult]) -> None:
         add(results, f"required file: {path.name}", path.exists(), rel(path))
 
 
-def check_sample_meta(results: list[CheckResult]) -> None:
+def check_sample_meta(results: list[CheckResult], samples_files: list[Path]) -> None:
     """Ensure Unity sample assets have matching .meta sidecars."""
     missing: list[str] = []
-    for path in iter_files(SAMPLES):
+    for path in samples_files:
         if path.suffix == ".meta" or path.name == "README.md":
             continue
         if path.suffix.lower() not in UNITY_META_EXTENSIONS:
@@ -305,12 +305,15 @@ def check_sample_boundaries(results: list[CheckResult]) -> None:
     add(results, "FullDemo avoids project-level input action assets", not conflicts, "; ".join(conflicts) if conflicts else "no InputSystem_Actions asset")
 
 
-def check_forbidden_public_content(results: list[CheckResult]) -> None:
+def check_forbidden_public_content(results: list[CheckResult], samples_files: list[Path]) -> None:
     """Scan public docs and samples for local-only markers."""
     roots = [SAMPLES, DOCS, PACKAGE / "README.md"]
     offenders: list[str] = []
     for root in roots:
-        paths = [root] if root.is_file() else list(iter_files(root))
+        if root == SAMPLES:
+            paths = samples_files
+        else:
+            paths = [root] if root.is_file() else list(iter_files(root))
         for path in paths:
             if path.suffix.lower() not in {".md", ".json", ".cs", ".unity", ".asset", ".inputactions", ".xml"}:
                 continue
@@ -326,10 +329,10 @@ def check_forbidden_public_content(results: list[CheckResult]) -> None:
     )
 
 
-def check_forbidden_sample_artifacts(results: list[CheckResult]) -> None:
+def check_forbidden_sample_artifacts(results: list[CheckResult], samples_entries: list[Path]) -> None:
     """Reject generated, local, or benchmark files from package samples."""
     offenders: set[Path] = set()
-    for path in SAMPLES.rglob("*"):
+    for path in samples_entries:
         relative_parts = path.relative_to(SAMPLES).parts
         forbidden_index = next(
             (index for index, part in enumerate(relative_parts) if part in FORBIDDEN_SAMPLE_PARTS),
@@ -421,14 +424,16 @@ def print_results(results: list[CheckResult]) -> None:
 def main() -> int:
     """Run all release package checks and return a process exit code."""
     results: list[CheckResult] = []
+    samples_entries = list(SAMPLES.rglob("*")) if SAMPLES.exists() else []
+    samples_files = [path for path in samples_entries if path.is_file()]
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
     check_required_files(results)
-    check_sample_meta(results)
+    check_sample_meta(results, samples_files)
     check_sample_boundaries(results)
-    check_forbidden_public_content(results)
-    check_forbidden_sample_artifacts(results)
+    check_forbidden_public_content(results, samples_files)
+    check_forbidden_sample_artifacts(results, samples_entries)
     check_package_build_artifacts(results)
     check_google_protobuf_collision(results)
     check_third_party_notices(results)

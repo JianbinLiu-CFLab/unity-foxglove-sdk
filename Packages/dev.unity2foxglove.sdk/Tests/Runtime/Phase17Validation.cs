@@ -199,12 +199,12 @@ namespace Unity.FoxgloveSDK.Tests
             // must not serialize one developer's local clone path.
             var demoDir = Path.Combine(repoRoot, "Unity2Foxglove");
             Assert(File.Exists(Path.Combine(demoDir, "README.md")), "Unity2Foxglove README exists");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "README.md"), repoRoot, "Unity2Foxglove/README.md");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Assets"), repoRoot, "Unity2Foxglove/Assets");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Packages"), repoRoot, "Unity2Foxglove/Packages");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "ProjectSettings"), repoRoot, "Unity2Foxglove/ProjectSettings");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Configs"), repoRoot, "Unity2Foxglove/Configs");
-            ScanNoAbsolutePaths(Path.Combine(demoDir, "Docs"), repoRoot, "Unity2Foxglove/Docs");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "README.md"), windowsAbsPath, unixAbsPath, "Unity2Foxglove/README.md");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Assets"), windowsAbsPath, unixAbsPath, "Unity2Foxglove/Assets");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Packages"), windowsAbsPath, unixAbsPath, "Unity2Foxglove/Packages");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "ProjectSettings"), windowsAbsPath, unixAbsPath, "Unity2Foxglove/ProjectSettings");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Configs"), windowsAbsPath, unixAbsPath, "Unity2Foxglove/Configs");
+            ScanNoAbsolutePaths(Path.Combine(demoDir, "Docs"), windowsAbsPath, unixAbsPath, "Unity2Foxglove/Docs");
 
             // ── 17D: Layout consistency ──
             Assert(Directory.Exists(configsDir), "Unity2Foxglove/Configs/ exists");
@@ -230,13 +230,11 @@ namespace Unity.FoxgloveSDK.Tests
         static string NormalizeNewlines(string text)
             => text.Replace("\r\n", "\n").Replace("\r", "\n");
 
-        static void ScanNoAbsolutePaths(string path, string repoRoot, string label)
+        static void ScanNoAbsolutePaths(string path, string windowsAbsPath, string unixAbsPath, string label)
         {
             if (!File.Exists(path) && !Directory.Exists(path))
                 return;
 
-            var windowsAbsPath = repoRoot.Replace('/', '\\');
-            var unixAbsPath = repoRoot.Replace('\\', '/');
             var files = File.Exists(path)
                 ? new[] { path }
                 : Directory.GetFiles(path, "*", SearchOption.AllDirectories);

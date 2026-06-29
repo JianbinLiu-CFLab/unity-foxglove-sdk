@@ -119,26 +119,6 @@ class VersionBump:
             raise ValueError(f"Expected one version property in {self.rel(path)}")
         self.write_if_changed(path, updated, f"set package version {old_version} -> {self.version}")
 
-    def update_phase16_assertion(self) -> None:
-        """Keep the Phase16 package-version assertion aligned with package.json."""
-        path = self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs"
-        text = self.read(path)
-        text = self.sub_exactly_once(
-            path,
-            text,
-            r'"\\"version\\": \\"\d+\.\d+\.\d+\\""',
-            f'"\\"version\\": \\"{self.version}\\""',
-            "Phase16 package.json version assertion literal",
-        )
-        text = self.sub_exactly_once(
-            path,
-            text,
-            r"package\.json version is \d+\.\d+\.\d+",
-            f"package.json version is {self.version}",
-            "Phase16 package.json version status text",
-        )
-        self.write_if_changed(path, text, f"update Phase16 package version assertion to {self.version}")
-
     # Maximum number of old release-note links kept in README.
     KEEP_RELEASE_NOTES = 2
 
@@ -280,7 +260,6 @@ class VersionBump:
         """Apply or report every version-bump edit."""
         old_version = self.package_version()
         self.replace_version_property(old_version)
-        self.update_phase16_assertion()
         self.update_readme(old_version)
         self.update_package_readme(old_version)
         self.update_citation()
