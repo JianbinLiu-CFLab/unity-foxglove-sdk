@@ -166,7 +166,7 @@ namespace Unity.FoxgloveSDK.Editor
             return new Unity2FoxgloveProtobufRegistrySection(
                 "protobuf",
                 catalogEntryHash,
-                Sha256Hex(descriptorData),
+                FoxgloveSchemas.FileDescriptorSetSha256,
                 entries.Count,
                 entries);
         }
