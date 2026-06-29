@@ -12,11 +12,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+RUN_ID = os.environ.get("UNITY2FOXGLOVE_CI_RUN_ID") or f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+CI_ROOT = REPO_ROOT / "build/ci" / RUN_ID
+ISOLATED_DOTNET_ROOT = CI_ROOT / "dotnet"
 
 PASS = "[PASS]"
 FAIL = "[FAIL]"
@@ -29,6 +34,41 @@ SOURCE_GENERATOR_PROJ = (
 )
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
+
+
+def _msbuild_dir(path: Path) -> str:
+    """Return an absolute MSBuild directory property value with a trailing slash."""
+    normalized = str(path.resolve()).replace("\\", "/")
+    return normalized if normalized.endswith("/") else normalized + "/"
+
+
+def dotnet_msbuild_props(suite: str) -> list[str]:
+    """Return isolated bin/obj/restore paths for one dotnet project suite."""
+    suite_root = ISOLATED_DOTNET_ROOT / suite
+    bin_root = suite_root / "bin"
+    obj_root = suite_root / "obj"
+    return [
+        f"-p:BaseOutputPath={_msbuild_dir(bin_root)}",
+        f"-p:BaseIntermediateOutputPath={_msbuild_dir(obj_root)}",
+        f"-p:MSBuildProjectExtensionsPath={_msbuild_dir(obj_root)}",
+        f"-p:RestoreOutputPath={_msbuild_dir(obj_root)}",
+    ]
+
+
+def validator_msbuild_args(msbuild_props: list[str]) -> list[str]:
+    """Convert MSBuild properties into validator pass-through arguments."""
+    args: list[str] = []
+    for prop in msbuild_props:
+        args.extend(["--msbuild-prop", prop])
+    return args
+
+
+ANALYZER_PROPS = dotnet_msbuild_props("analyzer")
+ANALYZER_RUNTIME_TEST_PROPS = dotnet_msbuild_props("analyzer-runtime-tests")
+RUNTIME_TEST_PROPS = dotnet_msbuild_props("runtime-tests")
+UNIT_TEST_PROPS = dotnet_msbuild_props("unit-tests")
+ANALYZER_OUTPUT_DIR = ISOLATED_DOTNET_ROOT / "analyzer-output"
+UNIT_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit"
 
 
 def green(msg: str) -> str:
@@ -60,9 +100,14 @@ def run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
     return ok
 
 
-def restore_with_ignoring_failed_sources(project: str, label: str) -> bool:
+def restore_with_ignoring_failed_sources(
+    project: str,
+    label: str,
+    msbuild_props: list[str] | None = None,
+) -> bool:
     """Restore a project while allowing ignored failed sources."""
-    cmd = ["dotnet", "restore", project, *IGNORE_FAILED_SOURCES_OPTION]
+    msbuild_props = msbuild_props or []
+    cmd = ["dotnet", "restore", project, *msbuild_props, *IGNORE_FAILED_SOURCES_OPTION]
     return run(cmd, label, fatal=True)
 
 
@@ -139,36 +184,51 @@ def main() -> int:
             print(f"{SKIP} Analyzer build (--skip-analyzer)")
         else:
             results["analyzer-restore"] = restore_with_ignoring_failed_sources(
-                SOURCE_GENERATOR_PROJ, "Restore Roslyn analyzer project"
+                SOURCE_GENERATOR_PROJ, "Restore Roslyn analyzer project", ANALYZER_PROPS
             )
             results["analyzer-build"] = run_with_restore_fallback(
                 [
                     "dotnet", "build", SOURCE_GENERATOR_PROJ,
+                    *ANALYZER_PROPS,
                     "-c", "Release",
-                    "-o", "build/SourceGenerators/Release/netstandard2.0",
+                    "-o", str(ANALYZER_OUTPUT_DIR),
                     "--no-restore",
                 ],
                 [
                     "dotnet", "build", SOURCE_GENERATOR_PROJ,
+                    *ANALYZER_PROPS,
                     "-c", "Release",
-                    "-o", "build/SourceGenerators/Release/netstandard2.0",
+                    "-o", str(ANALYZER_OUTPUT_DIR),
                 ],
                 "Build Roslyn analyzer DLL",
             )
             results["analyzer-dll"] = run(
-                [sys.executable, SOURCE_GENERATOR_VALIDATOR],
+                [
+                    sys.executable,
+                    SOURCE_GENERATOR_VALIDATOR,
+                    "--build-output-dir",
+                    str(ANALYZER_OUTPUT_DIR),
+                    *validator_msbuild_args(ANALYZER_PROPS),
+                ],
                 "Source generator DLL freshness"
             )
             if results.get("analyzer-build"):
+                results["analyzer-runtime-restore"] = restore_with_ignoring_failed_sources(
+                    RUNTIME_TESTS_PROJ,
+                    "Restore runtime test project for analyzer freshness",
+                    ANALYZER_RUNTIME_TEST_PROPS,
+                )
                 results["analyzer-freshness"] = run_with_restore_fallback(
                     [
                         "dotnet", "run", "--no-restore",
                         "--project", RUNTIME_TESTS_PROJ,
+                        *ANALYZER_RUNTIME_TEST_PROPS,
                         "--", "--phase115f",
                     ],
                     [
                         "dotnet", "run",
                         "--project", RUNTIME_TESTS_PROJ,
+                        *ANALYZER_RUNTIME_TEST_PROPS,
                         "--", "--phase115f",
                     ],
                     "Analyzer DLL freshness (--phase115f)",
@@ -177,11 +237,19 @@ def main() -> int:
     # --- dotnet validation suite ---
     if args.only in (None, "dotnet"):
         results["dotnet-restore"] = restore_with_ignoring_failed_sources(
-            RUNTIME_TESTS_PROJ, "Restore runtime test project"
+            RUNTIME_TESTS_PROJ, "Restore runtime test project", RUNTIME_TEST_PROPS
         )
         results["dotnet"] = run_with_restore_fallback(
-            ["dotnet", "run", "--no-restore", "--project", RUNTIME_TESTS_PROJ],
-            ["dotnet", "run", "--project", RUNTIME_TESTS_PROJ],
+            [
+                "dotnet", "run", "--no-restore",
+                "--project", RUNTIME_TESTS_PROJ,
+                *RUNTIME_TEST_PROPS,
+            ],
+            [
+                "dotnet", "run",
+                "--project", RUNTIME_TESTS_PROJ,
+                *RUNTIME_TEST_PROPS,
+            ],
             "Dotnet validation suite (default CI)",
         )
         results["mcap-conformance-ci-smoke"] = run(
@@ -195,19 +263,21 @@ def main() -> int:
             "MCAP conformance wrapper CI smoke",
         )
         results["xunit-restore"] = restore_with_ignoring_failed_sources(
-            UNIT_TESTS_PROJ, "Restore xUnit unit test project"
+            UNIT_TESTS_PROJ, "Restore xUnit unit test project", UNIT_TEST_PROPS
         )
         results["xunit"] = run_with_restore_fallback(
             [
                 "dotnet", "test",
                 "--no-restore", UNIT_TESTS_PROJ,
+                *UNIT_TEST_PROPS,
                 "--logger", "trx;LogFileName=unit-tests.trx",
-                "--results-directory", "build/TestResults/Unit",
+                "--results-directory", str(UNIT_TEST_RESULTS_DIR),
             ],
             [
                 "dotnet", "test", UNIT_TESTS_PROJ,
+                *UNIT_TEST_PROPS,
                 "--logger", "trx;LogFileName=unit-tests.trx",
-                "--results-directory", "build/TestResults/Unit",
+                "--results-directory", str(UNIT_TEST_RESULTS_DIR),
             ],
             "xUnit unit tests",
         )
