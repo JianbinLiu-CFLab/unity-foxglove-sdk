@@ -31,11 +31,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
-            var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(projectDirectory);
-            var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(projectDirectory);
+            var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
+            var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
+            var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
             if (string.IsNullOrWhiteSpace(runtimePackage) && string.IsNullOrWhiteSpace(communicationMode))
             {
-                Ros2ForUnityRuntimeSelection.BindActiveRuntimeForPlayMode(projectDirectory);
+                Ros2ForUnityRuntimeSelection.BindActiveRuntimeForPlayMode(status);
                 return;
             }
 

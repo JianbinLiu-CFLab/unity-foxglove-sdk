@@ -246,9 +246,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         public static void BindActiveRuntimeForPlayMode(string projectDirectory)
         {
-            var sessionRuntime = GetSessionRuntimePackage();
-            var status = GetStatus(projectDirectory);
-            if (status.SelectedRuntime == null)
+            BindActiveRuntimeForPlayMode(GetStatus(projectDirectory));
+        }
+
+        public static void BindActiveRuntimeForPlayMode(Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            if (status == null || status.SelectedRuntime == null)
                 return;
 
             var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
@@ -256,7 +259,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 "RMW_IMPLEMENTATION",
                 GetRmwImplementationForCommunicationMode(communicationMode));
 
-            if (string.IsNullOrWhiteSpace(sessionRuntime))
+            if (string.IsNullOrWhiteSpace(GetSessionRuntimePackage()))
                 SessionState.SetString(SessionRuntimeKey, status.SelectedRuntime.PackageName);
 
             if (string.IsNullOrWhiteSpace(GetSessionCommunicationMode()))
@@ -281,8 +284,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         }
 
         public static bool IsEditorRestartRequired(string projectDirectory)
-            => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(projectDirectory))
-               || !string.IsNullOrWhiteSpace(GetCommunicationModeRequiringEditorRestart(projectDirectory));
+            => IsEditorRestartRequired(GetStatus(projectDirectory));
+
+        public static bool IsEditorRestartRequired(Ros2ForUnityRuntimeSelectionStatus status)
+            => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(status))
+               || !string.IsNullOrWhiteSpace(GetCommunicationModeRequiringEditorRestart(status));
 
         public static string GetCommunicationModeRequiringEditorRestart(string projectDirectory)
             => GetCommunicationModeRequiringEditorRestart(GetStatus(projectDirectory));

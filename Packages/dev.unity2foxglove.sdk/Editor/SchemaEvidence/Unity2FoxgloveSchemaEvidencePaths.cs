@@ -17,19 +17,36 @@ namespace Unity.FoxgloveSDK.Editor
     {
         internal const string DefaultCurrentEvidenceRoot = "Assets/Generated";
         private static readonly string CachedProjectRoot = ResolveProjectRoot();
+        private static string _cachedEvidenceRootInput;
+        private static string _cachedEvidenceRootProjectRelative;
+        private static bool _cachedEvidenceRootProjectRelativeValid;
 
         public static string CurrentEvidenceRootProjectRelative
         {
             get
             {
-                if (TryNormalizeAssetsRoot(
-                        Unity2FoxgloveSchemaEvidenceSettings.CurrentEvidenceRoot,
-                        out var normalized,
-                        out _))
-                    return normalized;
+                var currentRoot = Unity2FoxgloveSchemaEvidenceSettings.CurrentEvidenceRoot;
+                if (_cachedEvidenceRootProjectRelativeValid
+                    && string.Equals(_cachedEvidenceRootInput, currentRoot, StringComparison.Ordinal))
+                {
+                    return _cachedEvidenceRootProjectRelative;
+                }
 
-                return DefaultCurrentEvidenceRoot;
+                var normalizedRoot = TryNormalizeAssetsRoot(currentRoot, out var normalized, out _)
+                    ? normalized
+                    : DefaultCurrentEvidenceRoot;
+                _cachedEvidenceRootInput = currentRoot;
+                _cachedEvidenceRootProjectRelative = normalizedRoot;
+                _cachedEvidenceRootProjectRelativeValid = true;
+                return normalizedRoot;
             }
+        }
+
+        public static void InvalidateCurrentEvidenceRootCache()
+        {
+            _cachedEvidenceRootInput = null;
+            _cachedEvidenceRootProjectRelative = null;
+            _cachedEvidenceRootProjectRelativeValid = false;
         }
 
         public static string ResolveCurrentEvidenceRoot()
