@@ -30,6 +30,13 @@ namespace Unity.FoxgloveSDK.IO
         private DateTime _cachedManifestLastWriteUtc;
         private long _cachedManifestLength = -1L;
 
+        private struct FileStamp
+        {
+            public bool Exists;
+            public long Length;
+            public DateTime LastWriteUtc;
+        }
+
         /// <summary>Creates a single-file Remote Data Loader prototype around one local MCAP path.</summary>
         public RemoteMcapDataSourcePrototype(
             string mcapPath,
@@ -272,17 +279,18 @@ namespace Unity.FoxgloveSDK.IO
 
         private RemoteMcapManifest GetCachedManifest()
         {
-            var info = new FileInfo(_mcapPath);
-            if (!info.Exists)
+            return GetCachedManifest(ReadFileStamp());
+        }
+
+        private RemoteMcapManifest GetCachedManifest(FileStamp loadStamp)
+        {
+            if (!loadStamp.Exists)
                 return CreateMissingManifest();
-            var loadLength = info.Length;
-            var loadLastWriteUtc = info.LastWriteTimeUtc;
 
             lock (_manifestCacheGate)
             {
                 if (_cachedManifest != null
-                    && _cachedManifestLength == loadLength
-                    && _cachedManifestLastWriteUtc == loadLastWriteUtc)
+                    && MatchesCachedStamp(loadStamp))
                 {
                     return CloneManifest(_cachedManifest);
                 }
@@ -303,62 +311,77 @@ namespace Unity.FoxgloveSDK.IO
                 return CreateMissingManifest();
             }
 
-            info.Refresh();
-            if (!info.Exists)
+            var storeStamp = ReadFileStamp();
+            if (!storeStamp.Exists)
                 return CreateMissingManifest();
-            if (info.Length != loadLength || info.LastWriteTimeUtc != loadLastWriteUtc)
+            if (!SameStamp(loadStamp, storeStamp))
                 return manifest;
 
             lock (_manifestCacheGate)
             {
                 if (_cachedManifest != null
-                    && _cachedManifestLength == loadLength
-                    && _cachedManifestLastWriteUtc == loadLastWriteUtc)
+                    && MatchesCachedStamp(loadStamp))
                 {
                     return CloneManifest(_cachedManifest);
                 }
 
-                _cachedManifest = CloneManifest(manifest);
+                _cachedManifest = manifest;
                 _cachedManifestBytes = null;
-                _cachedManifestLength = loadLength;
-                _cachedManifestLastWriteUtc = loadLastWriteUtc;
-                return CloneManifest(manifest);
+                _cachedManifestLength = loadStamp.Length;
+                _cachedManifestLastWriteUtc = loadStamp.LastWriteUtc;
+                return CloneManifest(_cachedManifest);
             }
         }
 
         private byte[] GetCachedManifestBytes()
         {
-            var info = new FileInfo(_mcapPath);
+            var stamp = ReadFileStamp();
             lock (_manifestCacheGate)
             {
                 if (_cachedManifestBytes != null
-                    && _cachedManifestLength == (info.Exists ? info.Length : 0L)
-                    && _cachedManifestLastWriteUtc == (info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue))
+                    && MatchesCachedStamp(stamp))
                 {
                     return _cachedManifestBytes;
                 }
             }
 
-            var bytes = Encoding.UTF8.GetBytes(RemoteMcapOfficialManifestSerializer.Serialize(GetCachedManifest()));
-            info.Refresh();
-            var cacheLength = info.Exists ? info.Length : 0L;
-            var cacheLastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue;
+            var manifest = GetCachedManifest(stamp);
+            var bytes = Encoding.UTF8.GetBytes(RemoteMcapOfficialManifestSerializer.Serialize(manifest));
+            var storeStamp = ReadFileStamp();
 
             lock (_manifestCacheGate)
             {
                 if (_cachedManifestBytes != null
-                    && _cachedManifestLength == cacheLength
-                    && _cachedManifestLastWriteUtc == cacheLastWriteUtc)
+                    && MatchesCachedStamp(storeStamp))
                 {
                     return _cachedManifestBytes;
                 }
 
                 _cachedManifestBytes = bytes;
-                _cachedManifestLength = cacheLength;
-                _cachedManifestLastWriteUtc = cacheLastWriteUtc;
+                _cachedManifestLength = storeStamp.Length;
+                _cachedManifestLastWriteUtc = storeStamp.LastWriteUtc;
                 return _cachedManifestBytes;
             }
         }
+
+        private FileStamp ReadFileStamp()
+        {
+            var info = new FileInfo(_mcapPath);
+            return new FileStamp
+            {
+                Exists = info.Exists,
+                Length = info.Exists ? info.Length : 0L,
+                LastWriteUtc = info.Exists ? info.LastWriteTimeUtc : DateTime.MinValue
+            };
+        }
+
+        private bool MatchesCachedStamp(FileStamp stamp)
+            => _cachedManifestLength == stamp.Length && _cachedManifestLastWriteUtc == stamp.LastWriteUtc;
+
+        private static bool SameStamp(FileStamp left, FileStamp right)
+            => left.Exists == right.Exists
+               && left.Length == right.Length
+               && left.LastWriteUtc == right.LastWriteUtc;
 
         private static byte[] ReadAllBytesWithinCap(string path, long maxBytes)
         {

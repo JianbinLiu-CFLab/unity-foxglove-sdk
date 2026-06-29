@@ -39,12 +39,14 @@ namespace Unity.FoxgloveSDK.IO
         /// Messages read ahead of their emission time, waiting to be flushed.
         /// </summary>
         private readonly List<McapMessage> _pending = new();
+        private readonly List<McapMessage> _defaultTickBuffer = new();
         private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
         /// <summary>
         /// Logical front of <see cref="_pending"/>. Avoids O(n) RemoveAt(0)
         /// shifts while replay ticks drain due messages.
         /// </summary>
         private int _pendingHeadIndex;
+        private bool _pendingIsSorted = true;
         private readonly IFoxgloveLogger _logger;
 
         // Per-chunk state
@@ -217,8 +219,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public List<McapMessage> Tick(ulong nowNs)
         {
-            var result = new List<McapMessage>();
-            return Tick(nowNs, result);
+            return Tick(nowNs, _defaultTickBuffer);
         }
 
         /// <summary>
@@ -539,6 +540,7 @@ namespace Unity.FoxgloveSDK.IO
             var clampedTimeNs = ClampReplayTime(timeNs);
             _pending.Clear();
             _pendingHeadIndex = 0;
+            _pendingIsSorted = true;
             _lastEmitTime = clampedTimeNs;
             _currentTimeNs = clampedTimeNs;
 
@@ -590,6 +592,7 @@ namespace Unity.FoxgloveSDK.IO
             _summary = null;
             _pending.Clear();
             _pendingHeadIndex = 0;
+            _pendingIsSorted = true;
             _currentChunkIdx = -1;
             _currentUncompressed = null;
             _readOffset = 0;
@@ -642,6 +645,7 @@ namespace Unity.FoxgloveSDK.IO
         private void AddPending(McapMessage message)
         {
             _pending.Add(message);
+            _pendingIsSorted = false;
         }
 
         private static void AddHistoryMessage(List<McapMessage> result, McapMessage message, int maxMessages, ref int historyHeadIndex)
@@ -693,9 +697,18 @@ namespace Unity.FoxgloveSDK.IO
 
         private void SortPending()
         {
+            if (PendingCount <= 0)
+            {
+                if (_pending.Count > 0)
+                    CompactPending();
+                _pendingIsSorted = true;
+                return;
+            }
+
             CompactPending();
-            if (_pending.Count > 1)
+            if (!_pendingIsSorted && _pending.Count > 1)
                 _pending.Sort(CompareMessages);
+            _pendingIsSorted = true;
         }
 
         private void CompactPendingIfUseful()
