@@ -81,6 +81,7 @@ namespace Unity.FoxgloveSDK.Components
         private double _epochPhysSeconds;
         private long _nextSampleIndex;
         private long _lastReportedDroppedSamples;
+        private ISchemaRegistry _schemaRegisteredRegistry;
 
         private bool PublishEnabled => _publishing;
 
@@ -155,6 +156,7 @@ namespace Unity.FoxgloveSDK.Components
             _hasLastVelocity = false;
             _hasEpoch = false;
             _nextSampleIndex = 0;
+            _schemaRegisteredRegistry = null;
         }
 
         private void OnDisable()
@@ -435,13 +437,19 @@ namespace Unity.FoxgloveSDK.Components
             var schemas = _manager == null || _manager.Runtime == null ? null : _manager.Runtime.Schemas;
             if (schemas == null)
                 return;
+            if (ReferenceEquals(_schemaRegisteredRegistry, schemas))
+                return;
 
             // Idempotent against the live registry: re-registers automatically if the
             // runtime (and its schema registry) is recreated, unlike a global flag.
             if (schemas.TryGetSchema(ImuSchema.SchemaName, out _))
+            {
+                _schemaRegisteredRegistry = schemas;
                 return;
+            }
 
             ProtobufSchemaRegistryLoader.FromBytes(ImuSchema.FileDescriptorSetData, schemas).RegisterAll();
+            _schemaRegisteredRegistry = schemas;
         }
 
         private static ImuSample CreateSample(

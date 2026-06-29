@@ -33,12 +33,19 @@ def load_smoke_module(name: str, relative: str):
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module
-    original_path = list(sys.path)
-    sys.path.insert(0, str(path.parent))
+    inserted_paths = []
+    sibling_path = str(path.parent)
+    if sibling_path not in sys.path:
+        sys.path.insert(0, sibling_path)
+        inserted_paths.append(sibling_path)
     try:
         spec.loader.exec_module(module)
     finally:
-        sys.path[:] = original_path
+        for inserted_path in inserted_paths:
+            try:
+                sys.path.remove(inserted_path)
+            except ValueError:
+                pass
     return module
 
 

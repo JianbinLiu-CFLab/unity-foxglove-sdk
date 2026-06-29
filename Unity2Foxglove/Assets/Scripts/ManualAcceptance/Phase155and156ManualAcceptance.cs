@@ -36,6 +36,7 @@ public sealed partial class Phase155and156ManualAcceptance : MonoBehaviour
 {
     private const string VehicleTopic = "/phase155/vehicle";
     private const string StatusTopic = "/phase155/status";
+    private const float StatusMessageUpdateIntervalSeconds = 0.5f;
 
     [Header("Manager")]
     [Tooltip("Optional manager under test. When empty, the component finds the first FoxgloveManager in the active scene.")]
@@ -88,6 +89,7 @@ public sealed partial class Phase155and156ManualAcceptance : MonoBehaviour
     private RecordingSink recordingSink;
     private bool loggedVehiclePayload;
     private bool loggedStatusPayload;
+    private float nextStatusMessageUpdateTime;
 
     private void Awake()
     {
@@ -179,7 +181,11 @@ public sealed partial class Phase155and156ManualAcceptance : MonoBehaviour
         enabledState = (Time.frameCount / 150) % 2 == 0;
         position = new Vector3(Mathf.Sin(t) * 0.8f, Mathf.Cos(t * 0.6f) * 0.3f, Mathf.PingPong(t * 0.18f, 1f));
         rotation = Quaternion.Euler(0f, t * 20f, Mathf.Sin(t * 0.45f) * 12f);
-        statusMessage = "phase155 frame " + Time.frameCount;
+        if (t >= nextStatusMessageUpdateTime)
+        {
+            nextStatusMessageUpdateTime = t + StatusMessageUpdateIntervalSeconds;
+            statusMessage = "phase155 frame " + Time.frameCount;
+        }
     }
 
     private void OnSinkPayload(FoxTopicContract contract, byte[] payload)
