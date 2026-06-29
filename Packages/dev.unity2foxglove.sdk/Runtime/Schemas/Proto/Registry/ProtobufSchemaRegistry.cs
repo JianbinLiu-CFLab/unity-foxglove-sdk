@@ -75,7 +75,7 @@ namespace Foxglove.Schemas
                     Name = kv.Key,
                     Encoding = SchemaEncoding,
                     Content = Convert.ToBase64String(kv.Value),
-                    RawContent = (byte[])kv.Value.Clone()
+                    RawContent = kv.Value
                 });
             }
         }

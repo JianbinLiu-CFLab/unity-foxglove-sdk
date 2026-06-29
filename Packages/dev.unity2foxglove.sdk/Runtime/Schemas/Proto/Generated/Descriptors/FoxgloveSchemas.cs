@@ -13,7 +13,9 @@ namespace Foxglove.Schemas
         /// <summary>
         /// Raw FileDescriptorSet bytes (75493 bytes).
         /// </summary>
-        public static byte[] FileDescriptorSetData => System.Convert.FromBase64String(
+        public const string FileDescriptorSetSha256 = "39fe4da31ce3f19ad84e5bb05270df6c710dd2bb16376590372609f6d9008521";
+
+        public static readonly byte[] FileDescriptorSetData = System.Convert.FromBase64String(
             "CsgEChRmb3hnbG92ZS9Db2xvci5wcm90bxIIZm94Z2xvdmUiPwoFQ29sb3ISDAoBchgBIAEoAVIBchIMCgFnGAIgASgBUgFnEgwKAWIYAyABKAFSAWISDAoB"
             + "YRgEIAEoAVIBYUrcAwoGEgQCABMBCkEKAQwSAwIAEjI3IEdlbmVyYXRlZCBieSBodHRwczovL2dpdGh1Yi5jb20vZm94Z2xvdmUvZm94Z2xvdmUtc2RrCgoI"
             + "CgECEgMEABEKJAoCBAASBAcAEwEaGCBBIGNvbG9yIGluIFJHQkEgZm9ybWF0CgoKCgMEAAESAwcIDQooCgQEAAIAEgMJAg8aGyBSZWQgdmFsdWUgYmV0d2Vl"

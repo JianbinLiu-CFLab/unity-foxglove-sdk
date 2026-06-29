@@ -355,7 +355,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && timing.Contains("Remember(", StringComparison.Ordinal)
                   && timing.Contains("TakeLatencyMs(", StringComparison.Ordinal)
                   && timing.Contains("Clear(", StringComparison.Ordinal)
-                  && timing.Contains("Dictionary<ulong, long>", StringComparison.Ordinal),
+                  && timing.Contains("MaxTrackedRequests", StringComparison.Ordinal)
+                  && !timing.Contains("Dictionary<ulong, long>", StringComparison.Ordinal),
                 "138Q-16A: camera readback timing state lives in a focused helper");
             Check(camera.Contains("CameraJpegPublishPipeline _jpegPublishPipeline", StringComparison.Ordinal)
                   && camera.Contains("EnsureJpegPublishPipeline();", StringComparison.Ordinal)

@@ -20,6 +20,18 @@ namespace Unity.FoxgloveSDK.Components
         private Camera _captureCamera;
         private RenderTexture _captureRenderTexture;
         private Texture2D _texture2D;
+        private Camera _lastCopiedSourceCamera;
+        private int _lastCaptureWidth;
+        private int _lastCaptureHeight;
+        private float _lastFieldOfView;
+        private bool _lastOrthographic;
+        private float _lastOrthographicSize;
+        private float _lastNearClipPlane;
+        private float _lastFarClipPlane;
+        private int _lastCullingMask;
+        private CameraClearFlags _lastClearFlags;
+        private Color _lastBackgroundColor;
+        private bool _captureCameraDirty = true;
 
         public Camera CaptureCamera => _captureCamera;
 
@@ -41,6 +53,7 @@ namespace Unity.FoxgloveSDK.Components
                 DestroyRenderTexture();
                 _captureRenderTexture = new RenderTexture(width, height, 24, RenderTextureFormat.ARGB32);
                 _captureRenderTexture.Create();
+                _captureCameraDirty = true;
             }
 
             if (_captureCamera == null)
@@ -50,10 +63,10 @@ namespace Unity.FoxgloveSDK.Components
                 go.transform.SetParent(parent, false);
                 _captureCamera = go.AddComponent<Camera>();
                 _captureCamera.enabled = false;
+                _captureCameraDirty = true;
             }
 
-            if (_sourceCamera != null)
-                _captureCamera.CopyFrom(_sourceCamera);
+            SyncCaptureCameraIfDirty(width, height);
             _captureCamera.targetTexture = _captureRenderTexture;
             _captureCamera.enabled = false;
         }
@@ -111,6 +124,44 @@ namespace Unity.FoxgloveSDK.Components
             DestroyUnityObject(_texture2D);
             _texture2D = null;
             _sourceCamera = null;
+            _lastCopiedSourceCamera = null;
+            _captureCameraDirty = true;
+        }
+
+        private void SyncCaptureCameraIfDirty(int width, int height)
+        {
+            if (_sourceCamera == null || _captureCamera == null)
+                return;
+
+            if (!_captureCameraDirty
+                && _lastCopiedSourceCamera == _sourceCamera
+                && _lastCaptureWidth == width
+                && _lastCaptureHeight == height
+                && Mathf.Approximately(_lastFieldOfView, _sourceCamera.fieldOfView)
+                && _lastOrthographic == _sourceCamera.orthographic
+                && Mathf.Approximately(_lastOrthographicSize, _sourceCamera.orthographicSize)
+                && Mathf.Approximately(_lastNearClipPlane, _sourceCamera.nearClipPlane)
+                && Mathf.Approximately(_lastFarClipPlane, _sourceCamera.farClipPlane)
+                && _lastCullingMask == _sourceCamera.cullingMask
+                && _lastClearFlags == _sourceCamera.clearFlags
+                && _lastBackgroundColor == _sourceCamera.backgroundColor)
+            {
+                return;
+            }
+
+            _captureCamera.CopyFrom(_sourceCamera);
+            _lastCopiedSourceCamera = _sourceCamera;
+            _lastCaptureWidth = width;
+            _lastCaptureHeight = height;
+            _lastFieldOfView = _sourceCamera.fieldOfView;
+            _lastOrthographic = _sourceCamera.orthographic;
+            _lastOrthographicSize = _sourceCamera.orthographicSize;
+            _lastNearClipPlane = _sourceCamera.nearClipPlane;
+            _lastFarClipPlane = _sourceCamera.farClipPlane;
+            _lastCullingMask = _sourceCamera.cullingMask;
+            _lastClearFlags = _sourceCamera.clearFlags;
+            _lastBackgroundColor = _sourceCamera.backgroundColor;
+            _captureCameraDirty = false;
         }
 
         private void DestroyRenderTexture()

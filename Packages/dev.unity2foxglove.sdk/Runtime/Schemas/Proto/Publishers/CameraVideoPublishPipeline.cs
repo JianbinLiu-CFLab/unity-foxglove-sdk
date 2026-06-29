@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Components
     internal interface ICameraVideoFrameBytesSource
     {
         int Length { get; }
-        byte[] ToArray();
+        void CopyTo(byte[] destination);
     }
 
     internal sealed class CameraVideoPublishPipeline
@@ -52,6 +52,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly CameraVideoSidecarSession _videoSidecarSession = new CameraVideoSidecarSession();
         private bool _warnedVideoEncoderUnavailable;
         private string _lastLoggedStderr;
+        private byte[] _rgbScratch;
         private byte[] _i420Scratch;
 
         public CameraVideoPublishPipeline(CameraPublishDiagnostics diagnostics, Action<string> logWarning = null)
@@ -148,7 +149,8 @@ namespace Unity.FoxgloveSDK.Components
                 return result;
             }
 
-            var ownedFrameBytes = frameBytes.ToArray();
+            var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length);
+            frameBytes.CopyTo(ownedFrameBytes);
             if (ownedFrameBytes == null || ownedFrameBytes.Length == 0)
             {
                 _diagnostics.RecordVideoSubmitFailure();
@@ -207,6 +209,14 @@ namespace Unity.FoxgloveSDK.Components
                 _i420Scratch = new byte[length];
 
             return _i420Scratch;
+        }
+
+        private byte[] EnsureRgbScratch(int length)
+        {
+            if (_rgbScratch == null || _rgbScratch.Length != length)
+                _rgbScratch = new byte[length];
+
+            return _rgbScratch;
         }
 
         public bool TryDrainEncodedAccessUnits(

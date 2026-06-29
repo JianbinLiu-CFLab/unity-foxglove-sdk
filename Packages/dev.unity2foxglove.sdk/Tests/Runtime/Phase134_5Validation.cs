@@ -128,7 +128,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText(FoxRunHubPath);
             Check(source.Contains("private readonly HashSet<string> _warnedSourceFailures = new();", StringComparison.Ordinal),
                 "134-5B-1: FoxRun hub tracks de-duplicated source failure warnings");
-            Check(source.Contains("TryPublishScheduledTopic(kv.Key, i, ref t[i], nowNs, nowSec)", StringComparison.Ordinal),
+            Check(source.Contains("TryPublishScheduledTopic(kv.Key, state.Topics[i], i, ref state.Timers[i], nowNs, nowSec)", StringComparison.Ordinal),
                 "134-5B-2: FoxRun scheduled updates route through per-topic isolation");
             Check(source.Contains("private bool TryPublishScheduledTopic", StringComparison.Ordinal)
                   && source.Contains("catch (Exception ex)", StringComparison.Ordinal)

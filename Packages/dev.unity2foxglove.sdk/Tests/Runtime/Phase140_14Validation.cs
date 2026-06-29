@@ -108,8 +108,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!method.Contains("Func<byte[]>", StringComparison.Ordinal)
                   && method.Contains("ICameraVideoFrameBytesSource", StringComparison.Ordinal)
-                  && method.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
-                "140-14G-1: video submit accepts a frame byte source and defers the copy until validation passes");
+                  && method.Contains("frameBytes.CopyTo(ownedFrameBytes)", StringComparison.Ordinal),
+                "140-14G-1: video submit accepts a frame byte source and defers scratch copy until validation passes");
         }
 
         private static void VideoFrameSubmitAvoidsPerFrameClosure()

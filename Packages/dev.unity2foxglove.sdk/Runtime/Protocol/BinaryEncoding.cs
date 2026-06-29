@@ -18,6 +18,7 @@ namespace Unity.FoxgloveSDK.Protocol
         private static readonly byte[] EmptyEncodingBytes = Array.Empty<byte>();
         private static readonly byte[] JsonEncodingBytes = System.Text.Encoding.UTF8.GetBytes("json");
         private static readonly byte[] ProtobufEncodingBytes = System.Text.Encoding.UTF8.GetBytes("protobuf");
+        private static readonly byte[] Ros1EncodingBytes = System.Text.Encoding.UTF8.GetBytes("ros1");
 
         /// <summary>
         /// Server→client MessageData frame.
@@ -162,6 +163,8 @@ namespace Unity.FoxgloveSDK.Protocol
                 return JsonEncodingBytes;
             if (string.Equals(encoding, "protobuf", StringComparison.Ordinal))
                 return ProtobufEncodingBytes;
+            if (string.Equals(encoding, "ros1", StringComparison.Ordinal))
+                return Ros1EncodingBytes;
             return System.Text.Encoding.UTF8.GetBytes(encoding);
         }
 

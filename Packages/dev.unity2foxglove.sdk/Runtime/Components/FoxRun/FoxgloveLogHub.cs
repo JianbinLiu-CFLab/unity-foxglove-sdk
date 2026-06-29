@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Components
         private FoxgloveManager _mgr;
         [SerializeField] private bool _enableFallbackSceneScan = true;
         /// <summary>Per-source scheduler state for rate throttling.</summary>
-        private readonly Dictionary<IFoxgloveLogSource, FixedRatePublishState[]> _timers = new();
+        private readonly Dictionary<IFoxgloveLogSource, FoxgloveLogSourceState> _timers = new();
         private readonly FoxTopicBus _topicBus = new();
         private readonly FoxTopicSinkRouter _sinkRouter = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
@@ -312,11 +312,15 @@ namespace Unity.FoxgloveSDK.Components
             {
                 foreach (var kv in _timers)
                 {
-                    if (kv.Key is MonoBehaviour mb && mb == null) { _stale.Add(kv.Key); continue; }
-                    if (kv.Key is MonoBehaviour mb2 && !mb2.isActiveAndEnabled) continue;
-                    var t = kv.Value;
-                    for (int i = 0; i < t.Length; i++)
-                        TryPublishScheduledTopic(kv.Key, i, ref t[i], nowNs, nowSec);
+                    if (kv.Key is MonoBehaviour mb)
+                    {
+                        if (mb == null) { _stale.Add(kv.Key); continue; }
+                        if (!mb.isActiveAndEnabled) continue;
+                    }
+
+                    var state = kv.Value;
+                    for (int i = 0; i < state.Timers.Length; i++)
+                        TryPublishScheduledTopic(kv.Key, state.Topics[i], i, ref state.Timers[i], nowNs, nowSec);
                 }
             }
             finally
@@ -329,6 +333,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool TryPublishScheduledTopic(
             IFoxgloveLogSource source,
+            FoxgloveLogTopicInfo info,
             int topicIndex,
             ref FixedRatePublishState timer,
             ulong nowNs,
@@ -336,7 +341,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             try
             {
-                var info = source.FoxgloveLog_GetTopic(topicIndex);
                 if (info.PublishMode == FoxRunPublishMode.OnTrigger)
                     return false;
 
@@ -477,7 +481,13 @@ namespace Unity.FoxgloveSDK.Components
             var count = source.FoxgloveLog_TopicCount;
             if (count > 0)
             {
-                _timers[source] = new FixedRatePublishState[count];
+                var topics = new FoxgloveLogTopicInfo[count];
+                for (var i = 0; i < count; i++)
+                    topics[i] = source.FoxgloveLog_GetTopic(i);
+
+                _timers[source] = new FoxgloveLogSourceState(
+                    new FixedRatePublishState[count],
+                    topics);
                 RegisterSourceContracts(source, count);
             }
         }
@@ -563,10 +573,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (source == null)
                 return;
-            if (!_timers.TryGetValue(source, out var timers))
+            if (!_timers.TryGetValue(source, out var state))
                 return;
 
-            UnregisterSourceContracts(source, timers.Length);
+            UnregisterSourceContracts(source, state.Timers.Length);
             _timers.Remove(source);
         }
 
@@ -633,6 +643,18 @@ namespace Unity.FoxgloveSDK.Components
                           + fault.Operation + " for topic '" + fault.Topic + "': "
                           + fault.Exception.Message;
             Debug.LogWarning(message);
+        }
+
+        private sealed class FoxgloveLogSourceState
+        {
+            public FoxgloveLogSourceState(FixedRatePublishState[] timers, FoxgloveLogTopicInfo[] topics)
+            {
+                Timers = timers;
+                Topics = topics;
+            }
+
+            public FixedRatePublishState[] Timers { get; }
+            public FoxgloveLogTopicInfo[] Topics { get; }
         }
 
         /// <summary>Clears all timers and nulls the singleton reference.</summary>

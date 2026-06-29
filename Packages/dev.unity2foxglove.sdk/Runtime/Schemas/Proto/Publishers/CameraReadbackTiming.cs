@@ -4,7 +4,7 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Tracks AsyncGPUReadback latency timing for camera diagnostics.
 
-using System.Collections.Generic;
+using System;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
@@ -14,24 +14,38 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class CameraReadbackTiming
     {
-        private readonly object _gate = new object();
-        private readonly Dictionary<ulong, long> _requestTicks = new Dictionary<ulong, long>();
+        private const int MaxTrackedRequests = 8;
+        private readonly ulong[] _requestKeys = new ulong[MaxTrackedRequests];
+        private readonly long[] _requestTicks = new long[MaxTrackedRequests];
+        private int _nextSlot;
 
         public void Remember(ulong unixNs, long ticks)
         {
-            lock (_gate)
-                _requestTicks[unixNs] = ticks;
+            for (var i = 0; i < _requestKeys.Length; i++)
+            {
+                if (_requestKeys[i] != unixNs)
+                    continue;
+
+                _requestTicks[i] = ticks;
+                return;
+            }
+
+            var slot = _nextSlot++ % _requestKeys.Length;
+            _requestKeys[slot] = unixNs;
+            _requestTicks[slot] = ticks;
         }
 
         public double TakeLatencyMs(ulong unixNs)
         {
-            lock (_gate)
+            for (var i = 0; i < _requestKeys.Length; i++)
             {
-                if (_requestTicks.TryGetValue(unixNs, out var ticks))
-                {
-                    _requestTicks.Remove(unixNs);
-                    return ElapsedMs(ticks);
-                }
+                if (_requestKeys[i] != unixNs)
+                    continue;
+
+                var ticks = _requestTicks[i];
+                _requestKeys[i] = 0UL;
+                _requestTicks[i] = 0L;
+                return ElapsedMs(ticks);
             }
 
             return 0;
@@ -39,8 +53,9 @@ namespace Unity.FoxgloveSDK.Components
 
         public void Clear()
         {
-            lock (_gate)
-                _requestTicks.Clear();
+            Array.Clear(_requestKeys, 0, _requestKeys.Length);
+            Array.Clear(_requestTicks, 0, _requestTicks.Length);
+            _nextSlot = 0;
         }
 
         private static double ElapsedMs(long startTicks)

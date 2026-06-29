@@ -80,7 +80,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs");
             var method = Slice(source, "private void RegisterSampleTimestamp", "private ulong ResolveOutputTimestamp");
             Check(method.Contains("EvictOldestSampleTimestamp()", StringComparison.Ordinal)
-                  && method.Contains("_sampleTimestampOrder.Enqueue(sampleTime)", StringComparison.Ordinal)
+                  && method.Contains("_sampleTimestampOrder.AddLast(sampleTime)", StringComparison.Ordinal)
                   && !method.Contains("_sampleTimestampNsByTime.Clear()", StringComparison.Ordinal),
                 "140-15C-1: Media Foundation timestamp tracking evicts one oldest entry instead of clearing all in-flight samples");
         }
@@ -148,9 +148,10 @@ namespace Unity.FoxgloveSDK.Tests
             var method = Slice(source, "public CameraVideoSubmitResult SubmitVideoFrame", "private static double ElapsedMs");
             Check(method.Contains("where TFrameBytes : struct, ICameraVideoFrameBytesSource", StringComparison.Ordinal)
                   && method.Contains("if (frameBytes.Length <= 0)", StringComparison.Ordinal)
-                  && method.Contains("var ownedFrameBytes = frameBytes.ToArray()", StringComparison.Ordinal)
+                  && method.Contains("var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length)", StringComparison.Ordinal)
+                  && method.Contains("frameBytes.CopyTo(ownedFrameBytes)", StringComparison.Ordinal)
                   && !method.Contains("Func<byte[]>", StringComparison.Ordinal),
-                "140-15H-1: Camera video submit keeps the frame byte source contract and avoids per-frame factory closures");
+                "140-15H-1: Camera video submit keeps the frame byte source contract and avoids per-frame factory closures and RGB allocations");
         }
 
         private static void OpenH264I420ScratchIsReusedBeforeSidecarCopy()

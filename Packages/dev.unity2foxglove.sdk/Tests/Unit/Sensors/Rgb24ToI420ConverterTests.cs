@@ -43,11 +43,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var rgb24 = MakeFrame(width, height, seed: 151);
             var i420 = new byte[width * height * 3 / 2];
 
-            Assert.True(Rgb24ToI420Converter.TryConvertRgb24ToI420(rgb24, width, height, i420, flipVertical: true, out var error), error);
+            for (var i = 0; i < 1000; i++)
+                Assert.True(Rgb24ToI420Converter.TryConvertRgb24ToI420(rgb24, width, height, i420, (i & 1) == 0, out var error), error);
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
 
             var before = GC.GetAllocatedBytesForCurrentThread();
-            for (var i = 0; i < 100; i++)
-                Assert.True(Rgb24ToI420Converter.TryConvertRgb24ToI420(rgb24, width, height, i420, (i & 1) == 0, out error), error);
+            for (var i = 0; i < 1000; i++)
+            {
+                if (!Rgb24ToI420Converter.TryConvertRgb24ToI420(rgb24, width, height, i420, (i & 1) == 0, out var error))
+                    throw new InvalidOperationException(error);
+            }
+
             var after = GC.GetAllocatedBytesForCurrentThread();
 
             Assert.Equal(before, after);

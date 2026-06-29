@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "72B-4: ShouldPublishNow routes cadence through the shared scheduler");
             Check(shouldPublish.Contains("Time.unscaledTimeAsDouble"),
                 "72B-5: ordinary publisher cadence keeps the existing unscaled time basis");
-            Check(shouldPublish.Contains("EffectivePublishRateHz"),
+            Check(shouldPublish.Contains("ResolveCachedPublishRateHz()"),
                 "72B-6: Phase 71 effective rate policy remains the source of truth");
             Check(shouldPublish.Contains("nonPositivePublishesEveryFrame: true"),
                 "72B-7: ordinary publishers preserve non-positive no-throttle semantics");
@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("using Unity.FoxgloveSDK.Util;"),
                 "72C-1: FoxRun hub imports the scheduler utility namespace");
-            Check(source.Contains("Dictionary<IFoxgloveLogSource, FixedRatePublishState[]>"),
+            Check(source.Contains("Dictionary<IFoxgloveLogSource, FoxgloveLogSourceState>"),
                 "72C-2: FoxRun hub stores per-topic scheduler state");
             Check(update.Contains("Time.realtimeSinceStartupAsDouble"),
                 "72C-3: FoxRun cadence keeps its existing realtime basis");
@@ -149,7 +149,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "72C-7: FoxRun routes cadence through the shared scheduler");
             Check(update.Contains("nonPositivePublishesEveryFrame: false"),
                 "72C-8: FoxRun keeps explicit non-positive rates disabled instead of every-frame publishers");
-            Check(addSource.Contains("new FixedRatePublishState[count]"),
+            Check(addSource.Contains("new FoxgloveLogSourceState(")
+                  && addSource.Contains("new FixedRatePublishState[count]"),
                 "72C-9: FoxRun AddSource initializes scheduler state arrays");
             Check(!triggerSource.Contains("_timers"),
                 "72C-10: triggered FoxRun publications bypass normal cadence state");
