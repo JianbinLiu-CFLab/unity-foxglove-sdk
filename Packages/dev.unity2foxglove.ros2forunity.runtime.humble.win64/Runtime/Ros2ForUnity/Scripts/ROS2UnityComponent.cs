@@ -43,7 +43,9 @@ public class ROS2UnityComponent : MonoBehaviour
     private int collectionVersion = 0;
     private int snapshotVersion = -1;
     private bool initialized = false;
+    private volatile bool executorStarted = false;
     private volatile bool quitting = false;
+    private volatile bool cachedOk = false;
     private bool runtimeShutdownRequested = false;
     private bool disposed = false;
     private Thread executorThread;
@@ -57,9 +59,24 @@ public class ROS2UnityComponent : MonoBehaviour
         {
             if (disposed)
                 return false;
+
+            if (initialized && cachedOk && nodes != null && ros2forUnity != null)
+                return true;
+
             if (ros2forUnity == null)
                 LazyConstruct();
-            return (nodes != null && ros2forUnity.Ok());
+
+            if (nodes == null)
+            {
+                cachedOk = false;
+                return false;
+            }
+
+            if (initialized && cachedOk)
+                return true;
+
+            cachedOk = ros2forUnity.Ok();
+            return cachedOk;
         }
     }
 
@@ -215,6 +232,7 @@ public class ROS2UnityComponent : MonoBehaviour
             {
                 if (!quitting && !disposed && ros2forUnity != null && nodes != null && ros2forUnity.Ok())
                 {
+                    cachedOk = true;
                     if (snapshotVersion != collectionVersion)
                     {
                         actionsSnapshot.Clear();
@@ -224,6 +242,10 @@ public class ROS2UnityComponent : MonoBehaviour
                         snapshotVersion = collectionVersion;
                     }
                     hasSnapshot = true;
+                }
+                else
+                {
+                    cachedOk = false;
                 }
             }
 
@@ -262,6 +284,11 @@ public class ROS2UnityComponent : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (executorStarted)
+        {
+            return;
+        }
+
         // Start on the first fixed-timestep update so executor spin timing follows Unity physics cadence.
         StartExecutor();
     }
@@ -280,6 +307,7 @@ public class ROS2UnityComponent : MonoBehaviour
             executorThread = new Thread(() => Tick());
             executorThread.IsBackground = true;
             initialized = true;
+            executorStarted = true;
             threadToStart = executorThread;
         }
         threadToStart.Start();
@@ -290,6 +318,7 @@ public class ROS2UnityComponent : MonoBehaviour
         lock (mutex)
         {
             ros2forUnity = null;
+            cachedOk = false;
             runtimeShutdownRequested = true;
         }
     }
@@ -315,6 +344,8 @@ public class ROS2UnityComponent : MonoBehaviour
         {
             executorThread = null;
             initialized = false;
+            executorStarted = false;
+            cachedOk = false;
         }
     }
 
@@ -361,6 +392,8 @@ public class ROS2UnityComponent : MonoBehaviour
 
             // Mark shutdown as started before joining/disposing so OnDestroy and OnApplicationQuit cannot race.
             disposed = true;
+            executorStarted = false;
+            cachedOk = false;
         }
 
         StopExecutor();
@@ -371,6 +404,7 @@ public class ROS2UnityComponent : MonoBehaviour
         {
             instance = ros2forUnity;
             ros2forUnity = null;
+            cachedOk = false;
             executableActions = null;
             executableActionSet = null;
             nodes = null;

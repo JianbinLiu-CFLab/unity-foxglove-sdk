@@ -303,7 +303,8 @@ namespace Unity.FoxgloveSDK.Tests
             var inspector = ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
             var selector = ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs");
             Check(inspector.Contains("Communication Mode", StringComparison.Ordinal)
-                  && inspector.Contains("GetCommunicationModeDisplayName", StringComparison.Ordinal)
+                  && inspector.Contains("GetCommunicationModeIds(selectedRuntime)", StringComparison.Ordinal)
+                  && inspector.Contains("GetCommunicationModeLabels(selectedRuntime)", StringComparison.Ordinal)
                   && inspector.Contains("status.SelectedRuntime.SupportsZenoh", StringComparison.Ordinal)
                   && selector.Contains("FastDDS (default)", StringComparison.Ordinal)
                   && selector.Contains("Zenoh (rmw_zenoh_cpp)", StringComparison.Ordinal),
