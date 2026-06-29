@@ -39,6 +39,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapSequentialReadLimits _limits;
         private readonly byte[] _recordHeaderBuffer = new byte[McapWriter.RecordHeaderLength];
         private readonly byte[] _magicProbeBuffer = new byte[McapWriter.MagicLength];
+        private byte[] _contentBuffer;
         private long _bytesRead;
         private bool _disposed;
 
@@ -63,7 +64,8 @@ namespace Unity.FoxgloveSDK.IO
 
             var filter = new StreamingReadFilter(options);
             var dataCrc = Crc32Helper.Initialize();
-            var leadingMagic = ReadExact(McapWriter.MagicLength);
+            var leadingMagic = _magicProbeBuffer;
+            ReadExact(leadingMagic, 0, McapWriter.MagicLength);
             ValidateMagic(leadingMagic, "leading");
             dataCrc = Crc32Helper.Update(dataCrc, leadingMagic);
 
@@ -79,11 +81,12 @@ namespace Unity.FoxgloveSDK.IO
                 if (contentLength > int.MaxValue)
                     throw new InvalidDataException("MCAP record content exceeds int.MaxValue.");
 
-                var content = ReadExact((int)contentLength);
+                var contentLengthInt = (int)contentLength;
+                var content = ReadExactContent(contentLengthInt);
                 if (beforeDataEnd && opcode != McapWriter.OpcodeDataEnd)
                 {
                     dataCrc = Crc32Helper.Update(dataCrc, headerBytes);
-                    dataCrc = Crc32Helper.Update(dataCrc, content);
+                    dataCrc = Crc32Helper.Update(dataCrc, new ReadOnlySpan<byte>(content, 0, contentLengthInt));
                 }
 
                 if (isFirstRecord)
@@ -91,7 +94,7 @@ namespace Unity.FoxgloveSDK.IO
                     if (opcode != McapWriter.OpcodeHeader)
                         throw new InvalidDataException($"Expected Header (0x01) as the first MCAP record, got 0x{opcode:X2}.");
 
-                    McapRecordDecoder.DecodeHeader(content);
+                    McapRecordDecoder.DecodeHeader(content, 0, contentLengthInt);
                     isFirstRecord = false;
                     continue;
                 }
@@ -102,8 +105,9 @@ namespace Unity.FoxgloveSDK.IO
                     filter,
                     opcode,
                     content,
+                    contentLengthInt,
                     (ulong)recordStart,
-                    (ulong)(headerBytes.Length + content.Length),
+                    (ulong)(headerBytes.Length + contentLengthInt),
                     ref beforeDataEnd,
                     ref dataCrc,
                     ref retainedPayloadBytes,
@@ -121,6 +125,7 @@ namespace Unity.FoxgloveSDK.IO
             StreamingReadFilter filter,
             byte opcode,
             byte[] content,
+            int contentLength,
             ulong recordStart,
             ulong recordLength,
             ref bool beforeDataEnd,
@@ -132,26 +137,28 @@ namespace Unity.FoxgloveSDK.IO
             switch (opcode)
             {
                 case McapWriter.OpcodeHeader:
-                    McapRecordDecoder.DecodeHeader(content);
+                    McapRecordDecoder.DecodeHeader(content, 0, contentLength);
                     break;
                 case McapWriter.OpcodeSchema:
-                    AddSchema(result.Summary.Schemas, McapRecordDecoder.DecodeSchema(content));
+                    AddSchema(result.Summary.Schemas, McapRecordDecoder.DecodeSchema(content, 0, contentLength));
                     break;
                 case McapWriter.OpcodeChannel:
                 {
-                    var channel = McapRecordDecoder.DecodeChannel(content);
+                    var channel = McapRecordDecoder.DecodeChannel(content, 0, contentLength);
                     AddChannel(result.Summary.Channels, channel);
                     filter.AddChannel(channel);
                     break;
                 }
                 case McapWriter.OpcodeMessage:
-                    AddMessage(result, options, filter, McapRecordDecoder.DecodeMessage(content, 0, content.Length), ref retainedPayloadBytes);
+                    AddMessage(result, options, filter, McapRecordDecoder.DecodeMessage(content, 0, contentLength), ref retainedPayloadBytes);
                     break;
                 case McapWriter.OpcodeChunk:
                     result.Summary.Statistics ??= new McapStatistics();
                     result.Summary.Statistics.ChunkCount++;
                     var records = McapRecordDecoder.DecodeChunkRecordsContent(
                         content,
+                        0,
+                        contentLength,
                         out var crcValid,
                         options.ChunkUncompressedSizeLimit);
                     if (!crcValid && options.ValidateCrcs)
@@ -166,7 +173,7 @@ namespace Unity.FoxgloveSDK.IO
                         ref retainedAttachmentBytes);
                     break;
                 case McapWriter.OpcodeAttachment:
-                    var attachment = McapRecordDecoder.DecodeAttachment(content);
+                    var attachment = McapRecordDecoder.DecodeAttachment(content, 0, contentLength);
                     if (options.ValidateCrcs && !attachment.CrcValid)
                         throw new InvalidDataException("MCAP attachment CRC mismatch.");
                     AddAttachment(result, attachment, ref retainedAttachmentBytes);
@@ -182,7 +189,7 @@ namespace Unity.FoxgloveSDK.IO
                     });
                     break;
                 case McapWriter.OpcodeMetadata:
-                    var metadata = McapRecordDecoder.DecodeMetadata(content);
+                    var metadata = McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
                     AddMetadata(result, metadata, ref retainedMetadataBytes);
                     AddMetadataIndex(result.Summary, new McapMetadataIndex
                     {
@@ -192,25 +199,25 @@ namespace Unity.FoxgloveSDK.IO
                     });
                     break;
                 case McapWriter.OpcodeStatistics:
-                    result.Summary.Statistics = McapRecordDecoder.DecodeStatistics(content);
+                    result.Summary.Statistics = McapRecordDecoder.DecodeStatistics(content, 0, contentLength);
                     break;
                 case McapWriter.OpcodeChunkIndex:
-                    result.Summary.ChunkIndexes.Add(McapRecordDecoder.DecodeChunkIndex(content));
+                    result.Summary.ChunkIndexes.Add(McapRecordDecoder.DecodeChunkIndex(content, 0, contentLength));
                     break;
                 case McapWriter.OpcodeAttachmentIndex:
-                    AddAttachmentIndex(result.Summary, McapRecordDecoder.DecodeAttachmentIndex(content));
+                    AddAttachmentIndex(result.Summary, McapRecordDecoder.DecodeAttachmentIndex(content, 0, contentLength));
                     break;
                 case McapWriter.OpcodeMetadataIndex:
-                    AddMetadataIndex(result.Summary, McapRecordDecoder.DecodeMetadataIndex(content));
+                    AddMetadataIndex(result.Summary, McapRecordDecoder.DecodeMetadataIndex(content, 0, contentLength));
                     break;
                 case McapWriter.OpcodeSummaryOffset:
                     break;
                 case McapWriter.OpcodeDataEnd:
-                    ValidateDataEnd(content, dataCrc, options.ValidateCrcs);
+                    ValidateDataEnd(content, contentLength, dataCrc, options.ValidateCrcs);
                     beforeDataEnd = false;
                     break;
                 case McapWriter.OpcodeFooter:
-                    McapRecordDecoder.DecodeFooter(content);
+                    McapRecordDecoder.DecodeFooter(content, 0, contentLength);
                     break;
                 default:
                     break;
@@ -257,14 +264,12 @@ namespace Unity.FoxgloveSDK.IO
                         break;
                     case McapWriter.OpcodeMetadata:
                     {
-                        var content = Slice(uncompressedRecords, off, recordLength);
-                        AddMetadata(result, McapRecordDecoder.DecodeMetadata(content), ref retainedMetadataBytes);
+                        AddMetadata(result, McapRecordDecoder.DecodeMetadata(uncompressedRecords, off, recordLength), ref retainedMetadataBytes);
                         break;
                     }
                     case McapWriter.OpcodeAttachment:
                     {
-                        var content = Slice(uncompressedRecords, off, recordLength);
-                        var attachment = McapRecordDecoder.DecodeAttachment(content);
+                        var attachment = McapRecordDecoder.DecodeAttachment(uncompressedRecords, off, recordLength);
                         if (options.ValidateCrcs && !attachment.CrcValid)
                             throw new InvalidDataException("MCAP attachment CRC mismatch.");
                         AddAttachment(result, attachment, ref retainedAttachmentBytes);
@@ -440,9 +445,9 @@ namespace Unity.FoxgloveSDK.IO
             stats.ChannelMessageCounts[message.ChannelId] = count + 1;
         }
 
-        private static void ValidateDataEnd(byte[] content, uint dataCrc, bool validateCrcs)
+        private static void ValidateDataEnd(byte[] content, int contentLength, uint dataCrc, bool validateCrcs)
         {
-            if (content == null || content.Length != McapWriter.Crc32SizeBytes)
+            if (content == null || contentLength != McapWriter.Crc32SizeBytes)
                 throw new InvalidDataException("MCAP DataEnd content length must be 4 bytes.");
             var off = 0;
             var stored = McapBinaryReader.ReadU32LE(content, ref off);
@@ -462,7 +467,7 @@ namespace Unity.FoxgloveSDK.IO
                 return false;
             _bytesRead++;
 
-            var magic = McapWriter.Magic;
+            var magic = McapWriter.MagicSpan;
             if ((byte)first == magic[0])
             {
                 var probe = _magicProbeBuffer;
@@ -500,11 +505,12 @@ namespace Unity.FoxgloveSDK.IO
             return true;
         }
 
-        private byte[] ReadExact(int count)
+        private byte[] ReadExactContent(int count)
         {
-            var data = new byte[count];
-            ReadExact(data, 0, count);
-            return data;
+            if (_contentBuffer == null || _contentBuffer.Length < count)
+                _contentBuffer = new byte[count];
+            ReadExact(_contentBuffer, 0, count);
+            return _contentBuffer;
         }
 
         private void ReadExact(byte[] buffer, int offset, int count)
@@ -522,7 +528,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private static void ValidateMagic(byte[] actual, string name)
         {
-            var magic = McapWriter.Magic;
+            var magic = McapWriter.MagicSpan;
             if (actual == null || actual.Length != magic.Length)
                 throw new InvalidDataException("MCAP " + name + " magic is truncated.");
             for (var i = 0; i < magic.Length; i++)
@@ -530,14 +536,6 @@ namespace Unity.FoxgloveSDK.IO
                 if (actual[i] != magic[i])
                     throw new InvalidDataException("MCAP " + name + " magic mismatch.");
             }
-        }
-
-        private static byte[] Slice(byte[] source, int offset, int count)
-        {
-            var copy = new byte[count];
-            if (count > 0)
-                Buffer.BlockCopy(source, offset, copy, 0, count);
-            return copy;
         }
 
         private static void AddSchema(List<McapSchema> schemas, McapSchema schema)

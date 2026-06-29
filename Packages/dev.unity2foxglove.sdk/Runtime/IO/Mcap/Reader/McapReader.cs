@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.IO
     {
         private readonly Stream _stream;
         private readonly byte[] _buf = new byte[8];
+        private byte[] _recordContentBuffer;
 
         /// <summary>
         /// Default maximum size for a single MCAP record, set to 256 MiB.
@@ -61,7 +62,7 @@ namespace Unity.FoxgloveSDK.IO
                 throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
 
             // Verify leading magic
-            var magic = new byte[8];
+            var magic = _buf;
             ReadExact(magic, 0, 8);
             var expectedMagic = McapWriter.MagicSpan;
             for (var i = 0; i < expectedMagic.Length; i++)
@@ -70,7 +71,7 @@ namespace Unity.FoxgloveSDK.IO
 
             // Verify trailing magic before trusting footer offsets.
             _stream.Seek(-8, SeekOrigin.End);
-            var trailingMagic = new byte[8];
+            var trailingMagic = _buf;
             ReadExact(trailingMagic, 0, 8);
             for (var i = 0; i < expectedMagic.Length; i++)
                 if (trailingMagic[i] != expectedMagic[i])
@@ -78,11 +79,11 @@ namespace Unity.FoxgloveSDK.IO
 
             // Read Footer before trailing magic.
             _stream.Seek(-(McapWriter.MagicLength + McapWriter.RecordHeaderLength + McapWriter.FooterContentLength), SeekOrigin.End);
-            var (opcode, footerContent) = ReadOneRecord(recordSizeLimit);
+            var (opcode, footerContent, footerContentLength) = ReadOneRecordSegment(recordSizeLimit);
             if (opcode != McapWriter.OpcodeFooter)
                 throw new InvalidDataException($"Expected Footer (0x02) at end of file, got 0x{opcode:X2}");
 
-            var footer = McapRecordDecoder.DecodeFooter(footerContent);
+            var footer = McapRecordDecoder.DecodeFooter(footerContent, 0, footerContentLength);
 
             var footerOffset = (ulong)_stream.Length
                 - McapWriter.MagicLength
@@ -109,8 +110,11 @@ namespace Unity.FoxgloveSDK.IO
             if (summaryLen > int.MaxValue)
                 throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
 
-            // Read summary section
+            // Read summary section once. The same buffer feeds record parsing and
+            // the optional summary CRC, avoiding a second stream pass.
             _stream.Seek(ToSeekOffset(footer.SummaryStart, "summary_start"), SeekOrigin.Begin);
+            var summaryBytes = new byte[(int)summaryLen];
+            ReadExact(summaryBytes, 0, summaryBytes.Length);
             var schemas = new List<McapSchema>();
             var channels = new List<McapChannel>();
             McapStatistics stats = null;
@@ -118,29 +122,37 @@ namespace Unity.FoxgloveSDK.IO
             var metadataIndexes = new List<McapMetadataIndex>();
             var attachmentIndexes = new List<McapAttachmentIndex>();
 
-            var summaryEnd = footerOffset;
-            while ((ulong)_stream.Position < summaryEnd)
+            var summaryOffset = 0;
+            while (summaryOffset < summaryBytes.Length)
             {
-                var recordStart = (ulong)_stream.Position;
-                var (op, content) = ReadOneRecord(recordSizeLimit);
-                if ((ulong)_stream.Position > summaryEnd)
+                var recordStart = footer.SummaryStart + (ulong)summaryOffset;
+                var op = summaryBytes[summaryOffset++];
+                if (op == 0x00)
+                    throw new InvalidDataException("MCAP opcode 0x00 is invalid in summary.");
+                var contentLength = McapBinaryReader.ReadU64LE(summaryBytes, ref summaryOffset);
+                if (contentLength > recordSizeLimit)
+                    throw new InvalidDataException($"Record content length {contentLength} exceeds limit {recordSizeLimit}");
+                if (contentLength > int.MaxValue)
+                    throw new InvalidDataException($"Record content length {contentLength} exceeds int.MaxValue");
+                var recordLength = (int)contentLength;
+                if (recordLength > summaryBytes.Length - summaryOffset)
                     throw new InvalidDataException($"MCAP summary record at offset {recordStart} extends past the footer.");
                 switch (op)
                 {
                     case McapWriter.OpcodeSchema:
-                        schemas.Add(McapRecordDecoder.DecodeSchema(content));
+                        schemas.Add(McapRecordDecoder.DecodeSchema(summaryBytes, summaryOffset, recordLength));
                         break;
                     case McapWriter.OpcodeChannel:
-                        channels.Add(McapRecordDecoder.DecodeChannel(content));
+                        channels.Add(McapRecordDecoder.DecodeChannel(summaryBytes, summaryOffset, recordLength));
                         break;
                     case McapWriter.OpcodeChunkIndex:
-                        chunkIndexes.Add(McapRecordDecoder.DecodeChunkIndex(content));
+                        chunkIndexes.Add(McapRecordDecoder.DecodeChunkIndex(summaryBytes, summaryOffset, recordLength));
                         break;
                     case McapWriter.OpcodeStatistics:
-                        stats = McapRecordDecoder.DecodeStatistics(content);
+                        stats = McapRecordDecoder.DecodeStatistics(summaryBytes, summaryOffset, recordLength);
                         break;
                     case McapWriter.OpcodeMetadataIndex:
-                        metadataIndexes.Add(McapRecordDecoder.DecodeMetadataIndex(content));
+                        metadataIndexes.Add(McapRecordDecoder.DecodeMetadataIndex(summaryBytes, summaryOffset, recordLength));
                         break;
                     case McapWriter.OpcodeAttachment:
                         // Attachment body records should not appear in summary,
@@ -148,23 +160,20 @@ namespace Unity.FoxgloveSDK.IO
                         // the stream cursor incorrectly.
                         break;
                     case McapWriter.OpcodeAttachmentIndex:
-                        attachmentIndexes.Add(McapRecordDecoder.DecodeAttachmentIndex(content));
+                        attachmentIndexes.Add(McapRecordDecoder.DecodeAttachmentIndex(summaryBytes, summaryOffset, recordLength));
                         break;
                     case McapWriter.OpcodeSummaryOffset:
                         break;
                     default:
                         break; // unknown, skip
                 }
+
+                summaryOffset += recordLength;
             }
 
             // Validate summary CRC when non-zero (backward compatible with older files).
             if (footer.SummaryCrc != 0)
             {
-                // Summary section runs from summaryStart to the start of the Footer.
-                _stream.Seek(ToSeekOffset(footer.SummaryStart, "summary_start"), SeekOrigin.Begin);
-                var summaryBytes = new byte[(int)summaryLen];
-                ReadExact(summaryBytes, 0, (int)summaryLen);
-
                 var footerPrefix = McapWriter.BuildFooterCrcPrefix(footer.SummaryStart, footer.SummaryOffsetStart);
 
                 var crc = Crc32Helper.Initialize();
@@ -200,7 +209,7 @@ namespace Unity.FoxgloveSDK.IO
             if (_stream.Length < minFileBytes)
                 throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
 
-            var magic = new byte[McapWriter.MagicLength];
+            var magic = _buf;
             _stream.Seek(0, SeekOrigin.Begin);
             ReadExact(magic, 0, magic.Length);
             var expectedMagic = McapWriter.MagicSpan;
@@ -209,7 +218,7 @@ namespace Unity.FoxgloveSDK.IO
                     throw new InvalidDataException("MCAP leading magic mismatch");
 
             _stream.Seek(-McapWriter.MagicLength, SeekOrigin.End);
-            var trailingMagic = new byte[McapWriter.MagicLength];
+            var trailingMagic = _buf;
             ReadExact(trailingMagic, 0, trailingMagic.Length);
             for (var i = 0; i < expectedMagic.Length; i++)
                 if (trailingMagic[i] != expectedMagic[i])
@@ -220,11 +229,11 @@ namespace Unity.FoxgloveSDK.IO
                 - McapWriter.RecordHeaderLength
                 - McapWriter.FooterContentLength;
             _stream.Seek(ToSeekOffset(footerOffset, "footer"), SeekOrigin.Begin);
-            var (opcode, footerContent) = ReadOneRecord(recordSizeLimit);
+            var (opcode, footerContent, footerContentLength) = ReadOneRecordSegment(recordSizeLimit);
             if (opcode != McapWriter.OpcodeFooter)
                 throw new InvalidDataException($"Expected Footer (0x02) at end of file, got 0x{opcode:X2}");
 
-            var footer = McapRecordDecoder.DecodeFooter(footerContent);
+            var footer = McapRecordDecoder.DecodeFooter(footerContent, 0, footerContentLength);
             if (footer.SummaryStart == 0)
                 throw new InvalidDataException("MCAP amendment requires a summary section.");
             if (footer.SummaryStart > footerOffset)
@@ -248,7 +257,7 @@ namespace Unity.FoxgloveSDK.IO
 
             var dataEndOffset = footer.SummaryStart - dataEndRecordLength;
             _stream.Seek(ToSeekOffset(dataEndOffset, "DataEnd"), SeekOrigin.Begin);
-            var (dataEndOpcode, dataEndContent) = ReadOneRecord(recordSizeLimit);
+            var (dataEndOpcode, dataEndContent, dataEndContentLength) = ReadOneRecordSegment(recordSizeLimit);
             if (dataEndOpcode != McapWriter.OpcodeDataEnd)
                 throw new InvalidDataException($"Expected DataEnd (0x0F) before summary_start, got 0x{dataEndOpcode:X2}");
             var dataEndEndOffset = (ulong)_stream.Position;
@@ -263,7 +272,7 @@ namespace Unity.FoxgloveSDK.IO
                 SummaryCrc = footer.SummaryCrc,
                 DataEndOffset = dataEndOffset,
                 DataEndEndOffset = dataEndEndOffset,
-                DataSectionCrc = McapRecordDecoder.DecodeDataEnd(dataEndContent)
+                DataSectionCrc = McapRecordDecoder.DecodeDataEnd(dataEndContent, 0, dataEndContentLength)
             };
         }
 
@@ -317,7 +326,7 @@ namespace Unity.FoxgloveSDK.IO
             var isFirstRecord = true;
             while ((ulong)_stream.Position < dataSectionEndOffset)
             {
-                var (opcode, content) = ReadOneRecord(recordSizeLimit);
+                var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
                 var recordEnd = (ulong)_stream.Position;
                 if (recordEnd > dataSectionEndOffset)
                     throw new InvalidDataException("MCAP data-section record extends past the message scan bounds.");
@@ -326,14 +335,14 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     if (opcode != McapWriter.OpcodeHeader)
                         throw new InvalidDataException($"Expected Header (0x01) after leading magic, got 0x{opcode:X2}");
-                    McapRecordDecoder.DecodeHeader(content);
+                    McapRecordDecoder.DecodeHeader(content, 0, contentLength);
                     isFirstRecord = false;
                     continue;
                 }
 
                 if (opcode == McapWriter.OpcodeMessage)
                 {
-                    visitor(McapRecordDecoder.DecodeMessage(content, 0, content.Length));
+                    visitor(McapRecordDecoder.DecodeMessage(content, 0, contentLength));
                     continue;
                 }
 
@@ -341,6 +350,8 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var records = McapRecordDecoder.DecodeChunkRecordsContent(
                         content,
+                        0,
+                        contentLength,
                         out var crcValid,
                         chunkUncompressedSizeLimit);
                     if (!crcValid && validateCrcs)
@@ -353,7 +364,7 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (opcode == McapWriter.OpcodeDataEnd)
                 {
-                    McapRecordDecoder.DecodeDataEnd(content);
+                    McapRecordDecoder.DecodeDataEnd(content, 0, contentLength);
                     return;
                 }
 
@@ -401,7 +412,7 @@ namespace Unity.FoxgloveSDK.IO
             while ((ulong)_stream.Position < dataSectionEndOffset)
             {
                 var recordStart = (ulong)_stream.Position;
-                var (opcode, content) = ReadOneRecord(recordSizeLimit);
+                var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
                 var recordEnd = (ulong)_stream.Position;
                 if (recordEnd > dataSectionEndOffset)
                     throw new InvalidDataException("MCAP data-section record extends past the private record scan bounds.");
@@ -410,7 +421,7 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     if (opcode != McapWriter.OpcodeHeader)
                         throw new InvalidDataException($"Expected Header (0x01) after leading magic, got 0x{opcode:X2}");
-                    McapRecordDecoder.DecodeHeader(content);
+                    McapRecordDecoder.DecodeHeader(content, 0, contentLength);
                     isFirstRecord = false;
                     continue;
                 }
@@ -420,7 +431,7 @@ namespace Unity.FoxgloveSDK.IO
                     yield return new McapPrivateRecord
                     {
                         Opcode = opcode,
-                        Data = CloneBytes(content),
+                        Data = CloneBytes(content, contentLength),
                         Offset = recordStart,
                         InChunk = false
                     };
@@ -431,6 +442,8 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var records = McapRecordDecoder.DecodeChunkRecordsContent(
                         content,
+                        0,
+                        contentLength,
                         out var crcValid,
                         chunkUncompressedSizeLimit);
                     if (!crcValid && validateCrcs)
@@ -443,7 +456,7 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (opcode == McapWriter.OpcodeDataEnd)
                 {
-                    McapRecordDecoder.DecodeDataEnd(content);
+                    McapRecordDecoder.DecodeDataEnd(content, 0, contentLength);
                     yield break;
                 }
             }
@@ -481,6 +494,12 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public (byte opcode, byte[] content) ReadOneRecord(ulong sizeLimit = DefaultRecordSizeLimit)
         {
+            var (opcode, content, contentLength) = ReadOneRecordSegment(sizeLimit);
+            return (opcode, CloneBytes(content, contentLength));
+        }
+
+        private (byte opcode, byte[] content, int contentLength) ReadOneRecordSegment(ulong sizeLimit = DefaultRecordSizeLimit)
+        {
             var opcodeRaw = _stream.ReadByte();
             if (opcodeRaw < 0) throw new EndOfStreamException("MCAP stream ended before reading record opcode");
             var opcode = (byte)opcodeRaw;
@@ -491,9 +510,10 @@ namespace Unity.FoxgloveSDK.IO
                 throw new InvalidDataException($"Record content length {contentLength} exceeds limit {sizeLimit}");
             if (contentLength > int.MaxValue)
                 throw new InvalidDataException($"Record content length {contentLength} exceeds int.MaxValue");
-            var content = new byte[contentLength];
-            ReadExact(content, 0, (int)contentLength);
-            return (opcode, content);
+            var contentLengthInt = (int)contentLength;
+            var content = EnsureRecordContentBuffer(contentLengthInt);
+            ReadExact(content, 0, contentLengthInt);
+            return (opcode, content, contentLengthInt);
         }
 
         /// <summary>
@@ -508,7 +528,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             _stream.Seek(ToSeekOffset(chunkStartOffset, "chunk"), SeekOrigin.Begin);
             var recordStart = _stream.Position;
-            var (opcode, content) = ReadOneRecord();
+            var (opcode, content, contentLength) = ReadOneRecordSegment();
             var recordEnd = _stream.Position;
             var actualChunkLength = (ulong)(recordEnd - recordStart);
             if (chunkLength != 0 && actualChunkLength != chunkLength)
@@ -517,7 +537,7 @@ namespace Unity.FoxgloveSDK.IO
             if (opcode != McapWriter.OpcodeChunk)
                 throw new InvalidDataException($"Expected Chunk (0x06) at offset {chunkStartOffset}, got 0x{opcode:X2}");
 
-            return McapRecordDecoder.DecodeChunkRecordsContent(content, out crcValid, uncompressedSizeLimit);
+            return McapRecordDecoder.DecodeChunkRecordsContent(content, 0, contentLength, out crcValid, uncompressedSizeLimit);
         }
 
         /// <summary>
@@ -644,7 +664,7 @@ namespace Unity.FoxgloveSDK.IO
             while ((ulong)_stream.Position < dataSectionEndOffset)
             {
                 var recordStart = (ulong)_stream.Position;
-                var (opcode, content) = ReadOneRecord(recordSizeLimit);
+                var (opcode, content, contentLength) = ReadOneRecordSegment(recordSizeLimit);
                 var recordEnd = (ulong)_stream.Position;
                 if (recordEnd > dataSectionEndOffset)
                     throw new InvalidDataException("MCAP data-section record extends past the data section bounds.");
@@ -653,7 +673,7 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     if (opcode != McapWriter.OpcodeHeader)
                         throw new InvalidDataException($"Expected Header (0x01) after leading magic, got 0x{opcode:X2}");
-                    McapRecordDecoder.DecodeHeader(content);
+                    McapRecordDecoder.DecodeHeader(content, 0, contentLength);
                     isFirstRecord = false;
                     continue;
                 }
@@ -664,18 +684,18 @@ namespace Unity.FoxgloveSDK.IO
                         throw new InvalidDataException("MCAP Header record appeared after the first data-section record.");
                     case McapWriter.OpcodeSchema:
                         if (collectInventory)
-                            McapRecordDecoder.AddSchema(summary.Schemas, McapRecordDecoder.DecodeSchema(content));
+                            McapRecordDecoder.AddSchema(summary.Schemas, McapRecordDecoder.DecodeSchema(content, 0, contentLength));
                         break;
                     case McapWriter.OpcodeChannel:
                         if (collectInventory)
-                            McapRecordDecoder.AddChannel(summary.Channels, McapRecordDecoder.DecodeChannel(content));
+                            McapRecordDecoder.AddChannel(summary.Channels, McapRecordDecoder.DecodeChannel(content, 0, contentLength));
                         break;
                     case McapWriter.OpcodeMessage:
                         if (collectMessages)
                         {
                             McapRecordDecoder.AddSequentialMessage(
                                 summary,
-                                McapRecordDecoder.DecodeMessage(content, 0, content.Length),
+                                McapRecordDecoder.DecodeMessage(content, 0, contentLength),
                                 sequentialLimits,
                                 ref retainedPayloadBytes,
                                 ref messageCount,
@@ -686,7 +706,7 @@ namespace Unity.FoxgloveSDK.IO
                         else
                         {
                             McapRecordDecoder.AddMessageStats(
-                                McapRecordDecoder.DecodeMessageHeader(content, 0, content.Length),
+                                McapRecordDecoder.DecodeMessageHeader(content, 0, contentLength),
                                 ref messageCount,
                                 ref messageStart,
                                 ref messageEnd,
@@ -697,6 +717,8 @@ namespace Unity.FoxgloveSDK.IO
                         chunkCount++;
                         var records = McapRecordDecoder.DecodeChunkRecordsContent(
                             content,
+                            0,
+                            contentLength,
                             out var crcValid,
                             chunkUncompressedSizeLimit);
                         if (!crcValid && validateCrcs)
@@ -717,7 +739,7 @@ namespace Unity.FoxgloveSDK.IO
                         attachmentCount++;
                         if (collectInventory)
                         {
-                            var attachment = McapRecordDecoder.DecodeAttachment(content);
+                            var attachment = McapRecordDecoder.DecodeAttachment(content, 0, contentLength);
                             summary.AttachmentIndexes.Add(new McapAttachmentIndex
                             {
                                 Offset = recordStart,
@@ -734,7 +756,7 @@ namespace Unity.FoxgloveSDK.IO
                         metadataCount++;
                         if (collectInventory)
                         {
-                            var metadata = McapRecordDecoder.DecodeMetadata(content);
+                            var metadata = McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
                             summary.MetadataIndexes.Add(new McapMetadataIndex
                             {
                                 Offset = recordStart,
@@ -744,7 +766,7 @@ namespace Unity.FoxgloveSDK.IO
                         }
                         break;
                     case McapWriter.OpcodeDataEnd:
-                        McapRecordDecoder.DecodeDataEnd(content);
+                        McapRecordDecoder.DecodeDataEnd(content, 0, contentLength);
                         goto Done;
                     default:
                         break;
@@ -779,10 +801,10 @@ namespace Unity.FoxgloveSDK.IO
         public McapAttachment ReadAttachmentAt(ulong offset)
         {
             _stream.Seek(ToSeekOffset(offset, "attachment"), SeekOrigin.Begin);
-            var (opcode, content) = ReadOneRecord();
+            var (opcode, content, contentLength) = ReadOneRecordSegment();
             if (opcode != McapWriter.OpcodeAttachment)
                 throw new InvalidDataException($"Expected Attachment (0x09) at offset {offset}, got 0x{opcode:X2}");
-            return McapRecordDecoder.DecodeAttachment(content);
+            return McapRecordDecoder.DecodeAttachment(content, 0, contentLength);
         }
 
         /// <summary>
@@ -791,10 +813,10 @@ namespace Unity.FoxgloveSDK.IO
         public McapMetadata ReadMetadataAt(ulong offset)
         {
             _stream.Seek(ToSeekOffset(offset, "metadata"), SeekOrigin.Begin);
-            var (opcode, content) = ReadOneRecord();
+            var (opcode, content, contentLength) = ReadOneRecordSegment();
             if (opcode != McapWriter.OpcodeMetadata)
                 throw new InvalidDataException($"Expected Metadata (0x0C) at offset {offset}, got 0x{opcode:X2}");
-            return McapRecordDecoder.DecodeMetadata(content);
+            return McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
         }
 
         private static long ToSeekOffset(ulong offset, string context)
@@ -813,6 +835,23 @@ namespace Unity.FoxgloveSDK.IO
             var copy = new byte[source.Length];
             Buffer.BlockCopy(source, 0, copy, 0, source.Length);
             return copy;
+        }
+
+        private static byte[] CloneBytes(byte[] source, int count)
+        {
+            if (source == null || count <= 0)
+                return Array.Empty<byte>();
+
+            var copy = new byte[count];
+            Buffer.BlockCopy(source, 0, copy, 0, count);
+            return copy;
+        }
+
+        private byte[] EnsureRecordContentBuffer(int count)
+        {
+            if (_recordContentBuffer == null || _recordContentBuffer.Length < count)
+                _recordContentBuffer = new byte[count];
+            return _recordContentBuffer;
         }
 
         /// <summary>
