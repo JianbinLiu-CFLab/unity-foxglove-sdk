@@ -82,13 +82,14 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze
             // Precompute neighbour offsets
             var dx = new int[] { 1, -1, 0, 0 };
             var dz = new int[] { 0, 0, 1, -1 };
+            var neighbours = new List<(int, int, int)>(4);
 
             while (stack.Count > 0)
             {
                 var (cx, cz) = stack.Peek();
 
                 // Collect unvisited neighbours
-                var neighbours = new List<(int, int, int)>();
+                neighbours.Clear();
                 for (var d = 0; d < 4; d++)
                 {
                     var nx = cx + dx[d];
