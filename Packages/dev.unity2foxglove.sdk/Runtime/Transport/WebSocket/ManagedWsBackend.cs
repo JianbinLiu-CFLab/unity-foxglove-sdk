@@ -219,7 +219,7 @@ namespace Unity.FoxgloveSDK.Transport
             long totalQueuedBytes = 0;
             long activeDropped = 0;
 
-            foreach (var kv in _clients.ToArray())
+            foreach (var kv in _clients)
             {
                 var cs = kv.Value.GetClientStats(kv.Key);
                 clientList.Add(cs);
