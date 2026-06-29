@@ -423,7 +423,9 @@ namespace Unity.FoxgloveSDK.IO
         public static void WriteU32(Stream s, uint v) { s.WriteByte((byte)v); s.WriteByte((byte)(v >> 8)); s.WriteByte((byte)(v >> 16)); s.WriteByte((byte)(v >> 24)); }
         /// <summary>Write a 64-bit unsigned integer in little-endian byte order.</summary>
         public static void WriteU64(Stream s, ulong v) { s.WriteByte((byte)v); s.WriteByte((byte)(v >> 8)); s.WriteByte((byte)(v >> 16)); s.WriteByte((byte)(v >> 24)); s.WriteByte((byte)(v >> 32)); s.WriteByte((byte)(v >> 40)); s.WriteByte((byte)(v >> 48)); s.WriteByte((byte)(v >> 56)); }
-        private static void WriteU64(byte[] buffer, int offset, ulong v) { buffer[offset] = (byte)v; buffer[offset + 1] = (byte)(v >> 8); buffer[offset + 2] = (byte)(v >> 16); buffer[offset + 3] = (byte)(v >> 24); buffer[offset + 4] = (byte)(v >> 32); buffer[offset + 5] = (byte)(v >> 40); buffer[offset + 6] = (byte)(v >> 48); buffer[offset + 7] = (byte)(v >> 56); }
+        internal static void WriteU16(byte[] buffer, int offset, ushort v) { buffer[offset] = (byte)v; buffer[offset + 1] = (byte)(v >> 8); }
+        internal static void WriteU32(byte[] buffer, int offset, uint v) { buffer[offset] = (byte)v; buffer[offset + 1] = (byte)(v >> 8); buffer[offset + 2] = (byte)(v >> 16); buffer[offset + 3] = (byte)(v >> 24); }
+        internal static void WriteU64(byte[] buffer, int offset, ulong v) { buffer[offset] = (byte)v; buffer[offset + 1] = (byte)(v >> 8); buffer[offset + 2] = (byte)(v >> 16); buffer[offset + 3] = (byte)(v >> 24); buffer[offset + 4] = (byte)(v >> 32); buffer[offset + 5] = (byte)(v >> 40); buffer[offset + 6] = (byte)(v >> 48); buffer[offset + 7] = (byte)(v >> 56); }
         /// <summary>Write a UTF-8 string with a 4-byte LE length prefix.</summary>
         public static void WriteString(Stream stream, string value)
         {

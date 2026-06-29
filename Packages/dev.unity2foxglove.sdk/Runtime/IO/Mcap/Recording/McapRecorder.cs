@@ -14,6 +14,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Util;
+using ZstdSharp;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -43,11 +44,14 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<MetadataIndexState> _metaIdx = new();
         private readonly List<McapAttachmentIndex> _attachmentIdx = new();
         private uint _attachmentCount;
-        private MemoryStream _chunkBuf = new();
+        private MemoryStream _chunkBuf;
         private readonly MemoryStream _compressionBuf = new();
+        private readonly byte[] _messageRecordHeader = new byte[McapWriter.RecordHeaderLength + 2 + 4 + 8 + 8];
         private readonly object _lock = new object();
         [ThreadStatic] private static SHA256 _sha256;
         private static readonly Dictionary<string, string> EmptyChannelMetadata = new();
+        private Compressor _zstdCompressor;
+        private byte[] _zstdCompressionBuffer;
         private ushort _nextSid = 1, _nextCid = 1;
         private ulong _chunkSt, _chunkEt;
         private ulong _msgSt = ulong.MaxValue, _msgEt;
@@ -85,6 +89,7 @@ namespace Unity.FoxgloveSDK.IO
             _options = McapWriterOptions.Normalize(options);
             _w = new McapWriter(stream, leaveOpen);
             _chunkSz = _options.ChunkSizeBytes;
+            _chunkBuf = new MemoryStream(_chunkSz);
             _compression = _options.Compression;
             try
             {
@@ -250,12 +255,14 @@ namespace Unity.FoxgloveSDK.IO
             var recordLength = checked(McapWriter.RecordHeaderLength + contentLength);
             FlushChunkBeforeLargeWriteIfNeeded(recordLength);
             var off = (ulong)_chunkBuf.Position;
-            _chunkBuf.WriteByte(McapWriter.OpcodeMessage);
-            McapWriter.WriteU64(_chunkBuf, (ulong)contentLength);
-            McapWriter.WriteU16(_chunkBuf, map.McapId);
-            McapWriter.WriteU32(_chunkBuf, seq);
-            McapWriter.WriteU64(_chunkBuf, logNs);
-            McapWriter.WriteU64(_chunkBuf, logNs);
+            var header = _messageRecordHeader;
+            header[0] = McapWriter.OpcodeMessage;
+            McapWriter.WriteU64(header, 1, (ulong)contentLength);
+            McapWriter.WriteU16(header, McapWriter.RecordHeaderLength, map.McapId);
+            McapWriter.WriteU32(header, McapWriter.RecordHeaderLength + 2, seq);
+            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4, logNs);
+            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4 + 8, logNs);
+            _chunkBuf.Write(header, 0, header.Length);
             if (payloadLength > 0)
                 _chunkBuf.Write(payload, 0, payloadLength);
             map.Pending.Add((logNs, off));
@@ -545,6 +552,18 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     _log.LogWarning($"MCAP recorder compression buffer dispose failed during shutdown: {ex.Message}");
                 }
+
+                try
+                {
+                    _zstdCompressor?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"MCAP recorder zstd compressor dispose failed during shutdown: {ex.Message}");
+                }
+
+                _zstdCompressor = null;
+                _zstdCompressionBuffer = null;
             }
         }
 
@@ -585,7 +604,16 @@ namespace Unity.FoxgloveSDK.IO
                 var rawCrc = _options.EnableCrcs
                     ? Util.Crc32Helper.Compute(new ReadOnlySpan<byte>(raw.Array, raw.Offset, raw.Count))
                     : 0;
-                var compressed = McapCompression.Compress(_compression, raw, _options.Lz4CompressionLevel, _compressionBuf);
+                var zstdCompressor = _compression == "zstd"
+                    ? _zstdCompressor ??= new Compressor()
+                    : null;
+                var compressed = McapCompression.Compress(
+                    _compression,
+                    raw,
+                    _options.Lz4CompressionLevel,
+                    _compressionBuf,
+                    zstdCompressor,
+                    ref _zstdCompressionBuffer);
                 var off = (ulong)_w.Position;
                 _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
                 var chunkLen = (ulong)_w.Position - off;

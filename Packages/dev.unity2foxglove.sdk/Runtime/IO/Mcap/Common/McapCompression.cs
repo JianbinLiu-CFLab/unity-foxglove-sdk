@@ -128,6 +128,19 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Compress raw bytes with an explicit LZ4 level and optional caller-owned output buffer.</summary>
         public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data, LZ4Level lz4Level, MemoryStream lz4OutputBuffer)
         {
+            byte[] zstdOutputBuffer = null;
+            return Compress(compression, data, lz4Level, lz4OutputBuffer, null, ref zstdOutputBuffer);
+        }
+
+        /// <summary>Compress raw bytes with optional caller-owned compression state.</summary>
+        internal static ArraySegment<byte> Compress(
+            string compression,
+            ArraySegment<byte> data,
+            LZ4Level lz4Level,
+            MemoryStream lz4OutputBuffer,
+            Compressor zstdCompressor,
+            ref byte[] zstdOutputBuffer)
+        {
             var sourceArray = data.Array ?? Array.Empty<byte>();
             var sourceOffset = data.Array == null ? 0 : data.Offset;
             var sourceCount = data.Array == null ? 0 : data.Count;
@@ -160,13 +173,22 @@ namespace Unity.FoxgloveSDK.IO
                         throw new InvalidOperationException("MCAP LZ4 compression buffer is not publicly visible.");
                     return compressed;
                 case "zstd":
-                    using (var compressor = new Compressor())
+                    var compressor = zstdCompressor ?? new Compressor();
+                    var ownsCompressor = zstdCompressor == null;
+                    try
                     {
-                        var output = new byte[Compressor.GetCompressBound(sourceCount)];
+                        var outputBound = Compressor.GetCompressBound(sourceCount);
+                        if (zstdOutputBuffer == null || zstdOutputBuffer.Length < outputBound)
+                            zstdOutputBuffer = new byte[outputBound];
                         var compressedSize = compressor.Wrap(
                             new ArraySegment<byte>(sourceArray, sourceOffset, sourceCount),
-                            new ArraySegment<byte>(output));
-                        return new ArraySegment<byte>(output, 0, compressedSize);
+                            new ArraySegment<byte>(zstdOutputBuffer, 0, zstdOutputBuffer.Length));
+                        return new ArraySegment<byte>(zstdOutputBuffer, 0, compressedSize);
+                    }
+                    finally
+                    {
+                        if (ownsCompressor)
+                            compressor.Dispose();
                     }
                 default:
                     throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");
