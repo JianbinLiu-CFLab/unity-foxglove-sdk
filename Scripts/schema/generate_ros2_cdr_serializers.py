@@ -394,6 +394,53 @@ def writer_for_field(field: Field) -> list[str]:
     ]
 
 
+def fixed_size_floor(field: Field) -> int:
+    """Return a conservative fixed-size byte floor for a CDR field."""
+
+    primitive_sizes = {
+        "bool": 1,
+        "uint8": 1,
+        "int16": 2,
+        "uint16": 2,
+        "int32": 4,
+        "uint32": 4,
+        "float32": 4,
+        "int64": 8,
+        "uint64": 8,
+        "float64": 8,
+        "builtin_interfaces/Time": 8,
+        "builtin_interfaces/Duration": 8,
+        "geometry_msgs/Point": 24,
+        "geometry_msgs/Vector3": 24,
+        "geometry_msgs/Quaternion": 32,
+        "geometry_msgs/Pose": 56,
+    }
+    base = primitive_sizes.get(field.base_type, 64 if field.base_type.startswith("foxglove_msgs/") else 0)
+    if field.array_kind == "fixed" and field.fixed_length:
+        return 4 + (base * field.fixed_length)
+    if field.array_kind == "sequence":
+        if field.base_type == "uint8":
+            return 512
+        if field.base_type.startswith("foxglove_msgs/") or field.base_type.startswith("geometry_msgs/"):
+            return 1024
+        return 4 + (base * 8)
+    if field.base_type == "string":
+        return 64
+    return base
+
+
+def capacity_hint_for_schema(schema: Schema) -> int:
+    """Estimate an initial CDR writer capacity that avoids obvious resize churn."""
+
+    # Includes the four-byte CDR encapsulation header plus modest per-field padding.
+    floor = 4
+    for field in schema.fields:
+        floor += fixed_size_floor(field) + 8
+
+    floor = max(64, floor)
+    return ((floor + 15) // 16) * 16
+
+
 def reader_for_scalar(field: Field) -> str:
     """Generate a C# reader expression for one scalar field."""
 
@@ -509,8 +556,6 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "",
         "        private static void WriteProtoVector3(Ros2CdrWriter writer, global::Foxglove.Vector3 value)",
         "        {",
-        "            if (writer == null)",
-        "                throw new ArgumentNullException(nameof(writer));",
         "            if (value == null)",
         "                throw new ArgumentNullException(nameof(value));",
         "",
@@ -521,8 +566,6 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "",
         "        private static void WriteProtoQuaternion(Ros2CdrWriter writer, global::Foxglove.Quaternion value)",
         "        {",
-        "            if (writer == null)",
-        "                throw new ArgumentNullException(nameof(writer));",
         "            if (value == null)",
         "                throw new ArgumentNullException(nameof(value));",
         "",
@@ -534,8 +577,6 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "",
         "        private static void WriteProtoPose(Ros2CdrWriter writer, global::Foxglove.Pose value)",
         "        {",
-        "            if (writer == null)",
-        "                throw new ArgumentNullException(nameof(writer));",
         "            if (value == null)",
         "                throw new ArgumentNullException(nameof(value));",
         "",
@@ -552,7 +593,7 @@ def generate_serializers(schemas: list[Schema]) -> str:
                 "        {",
                 "            if (message == null)",
                 "                throw new ArgumentNullException(nameof(message));",
-                "            var writer = new Ros2CdrWriter(256);",
+                f"            var writer = new Ros2CdrWriter({capacity_hint_for_schema(schema)});",
                 f"            Write{schema.name}(writer, message);",
                 "            return writer.ToArray();",
                 "        }",

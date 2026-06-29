@@ -164,8 +164,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("BitConverter.SingleToInt32Bits", source, StringComparison.Ordinal);
             Assert.Contains("BitConverter.DoubleToInt64Bits", source, StringComparison.Ordinal);
             Assert.DoesNotContain("BitConverter.GetBytes", source, StringComparison.Ordinal);
-            Assert.Contains("Encoding.UTF8.GetByteCount(value)", source, StringComparison.Ordinal);
+            Assert.Contains("Encoding.UTF8.GetMaxByteCount(value.Length)", source, StringComparison.Ordinal);
             Assert.Contains("Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Encoding.UTF8.GetByteCount(value)", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Encoding.UTF8.GetBytes(value ?? string.Empty)", source, StringComparison.Ordinal);
             Assert.Contains("public void WriteByteArray(ReadOnlySpan<byte> value)", source, StringComparison.Ordinal);
 
@@ -212,8 +213,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains(".Data.Span", generated, StringComparison.Ordinal);
             Assert.Contains(".Span", generator, StringComparison.Ordinal);
             Assert.DoesNotContain("?.ToByteArray() ?? Array.Empty<byte>()", generator, StringComparison.Ordinal);
-            Assert.Contains("var writer = new Ros2CdrWriter(256)", generated, StringComparison.Ordinal);
-            Assert.Contains("var writer = new Ros2CdrWriter(256)", generator, StringComparison.Ordinal);
+            Assert.Contains("capacity_hint_for_schema", generator, StringComparison.Ordinal);
+            Assert.Contains("new Ros2CdrWriter(240)", generated, StringComparison.Ordinal);
+            Assert.Contains("new Ros2CdrWriter(9488)", generated, StringComparison.Ordinal);
             Assert.Contains("writer.WriteByteArray(message.Data.Span)", generatorTests, StringComparison.Ordinal);
             Assert.Contains("new Ros2CdrWriter(128)", frame, StringComparison.Ordinal);
             Assert.Contains("new Ros2CdrWriter(EstimateCapacity(message))", scene, StringComparison.Ordinal);

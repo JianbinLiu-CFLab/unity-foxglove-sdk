@@ -34,6 +34,16 @@ namespace Unity.FoxgloveSDK.Sensors
                 new float4(matrix.m02, matrix.m12, matrix.m22, matrix.m32),
                 new float4(matrix.m03, matrix.m13, matrix.m23, matrix.m33));
         }
+
+        /// <summary>Create a world-to-local matrix for a rigid Unity transform with unit scale.</summary>
+        public static float4x4 RigidWorldToLocal(Vector3 position, Quaternion rotation)
+        {
+            var transform = float4x4.TRS(
+                new float3(position.x, position.y, position.z),
+                new quaternion(rotation.x, rotation.y, rotation.z, rotation.w),
+                new float3(1f, 1f, 1f));
+            return math.inverse(transform);
+        }
     }
 }
 #endif

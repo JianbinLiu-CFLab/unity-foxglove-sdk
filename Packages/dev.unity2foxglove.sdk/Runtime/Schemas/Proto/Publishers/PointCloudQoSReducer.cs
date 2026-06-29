@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         private readonly Action<string> _logWarning;
         private readonly List<int> _voxelSampleIndices = new List<int>();
+        private readonly List<int> _uniformSampleIndices = new List<int>();
         private readonly HashSet<PointCloudQoS.VoxelKey> _voxelKeys = new HashSet<PointCloudQoS.VoxelKey>();
         private bool _warnedPointCloudBudget;
 
@@ -100,10 +101,12 @@ namespace Unity.FoxgloveSDK.Components
                 FrameId = string.IsNullOrEmpty(frame.FrameId) ? frameId : frame.FrameId,
                 EmitAbsoluteTimeNs = frame.EmitAbsoluteTimeNs
             };
+            copy.Points.Capacity = Math.Min(pointCount, pointBudget);
 
             if (useVoxelGrid)
             {
                 PointCloudQoS.BuildVoxelSampleIndices(frame, voxelSizeMeters, _voxelSampleIndices, _voxelKeys);
+                copy.Points.Capacity = Math.Min(_voxelSampleIndices.Count, pointBudget);
                 if (_voxelSampleIndices.Count <= pointBudget)
                 {
                     foreach (var index in _voxelSampleIndices)
@@ -111,8 +114,8 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 else
                 {
-                    var indices = PointCloudQoS.BuildUniformSampleIndices(_voxelSampleIndices.Count, pointBudget);
-                    foreach (var index in indices)
+                    PointCloudQoS.BuildUniformSampleIndices(_voxelSampleIndices.Count, pointBudget, _uniformSampleIndices);
+                    foreach (var index in _uniformSampleIndices)
                         copy.Points.Add(frame.Points[_voxelSampleIndices[index]]);
                 }
             }
@@ -129,8 +132,8 @@ namespace Unity.FoxgloveSDK.Components
             }
             else
             {
-                var indices = PointCloudQoS.BuildUniformSampleIndices(pointCount, pointBudget);
-                foreach (var index in indices)
+                PointCloudQoS.BuildUniformSampleIndices(pointCount, pointBudget, _uniformSampleIndices);
+                foreach (var index in _uniformSampleIndices)
                     copy.Points.Add(frame.Points[index]);
             }
 
@@ -142,7 +145,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             copy.ValidCount = copy.Points.Count;
-            packedLayout = PointCloudPackedDataBuilder.BuildLayout(copy);
+            packedLayout = sourceLayout;
 
             return copy;
         }

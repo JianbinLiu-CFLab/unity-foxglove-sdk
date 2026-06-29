@@ -22,6 +22,13 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         private readonly double[] _azmRad;
         private readonly int _columns;
         private readonly int _columnStep;
+        private readonly double[] _sinAlt;
+        private readonly double[] _cosAlt;
+        private readonly double[] _sinRingAzm;
+        private readonly double[] _cosRingAzm;
+        private readonly double[] _sinColumnAzm;
+        private readonly double[] _cosColumnAzm;
+        private readonly int _effectiveColumns;
 
         public string ProductLine { get; }
 
@@ -47,7 +54,31 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             _columnStep = Math.Max(1, columnStep);
             _altRad = altitudeRad ?? throw new ArgumentNullException(nameof(altitudeRad));
             _azmRad = azimuthRad ?? throw new ArgumentNullException(nameof(azimuthRad));
-            RayCount = _altRad.Length * EffectiveColumnCount(_columns, _columnStep);
+            _effectiveColumns = EffectiveColumnCount(_columns, _columnStep);
+            _sinAlt = new double[_altRad.Length];
+            _cosAlt = new double[_altRad.Length];
+            _sinRingAzm = new double[_altRad.Length];
+            _cosRingAzm = new double[_altRad.Length];
+            for (var i = 0; i < _altRad.Length; i++)
+            {
+                _sinAlt[i] = Math.Sin(_altRad[i]);
+                _cosAlt[i] = Math.Cos(_altRad[i]);
+                var ringAzm = i < _azmRad.Length ? _azmRad[i] : 0d;
+                _sinRingAzm[i] = Math.Sin(ringAzm);
+                _cosRingAzm[i] = Math.Cos(ringAzm);
+            }
+
+            _sinColumnAzm = new double[_effectiveColumns];
+            _cosColumnAzm = new double[_effectiveColumns];
+            for (var i = 0; i < _effectiveColumns; i++)
+            {
+                var column = Math.Min(_columns - 1, i * _columnStep);
+                var columnAzm = column * (2.0 * Math.PI) / _columns;
+                _sinColumnAzm[i] = Math.Sin(columnAzm);
+                _cosColumnAzm[i] = Math.Cos(columnAzm);
+            }
+
+            RayCount = _altRad.Length * _effectiveColumns;
         }
 
         /// <summary>
@@ -66,9 +97,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             out Vector3 direction, out float timeOffset)
         {
             var rings = _altRad.Length;
-            var effectiveColumns = EffectiveColumnCount(_columns, _columnStep);
-            var ring = index / effectiveColumns;
-            var column = Math.Min(_columns - 1, (index % effectiveColumns) * _columnStep);
+            var columnSlot = index % _effectiveColumns;
+            var ring = index / _effectiveColumns;
+            var column = Math.Min(_columns - 1, columnSlot * _columnStep);
 
             if (ring < 0 || ring >= rings || column < 0 || column >= _columns)
             {
@@ -77,22 +108,21 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 return false;
             }
 
-            var alt = _altRad[ring];
-            var ringAzm = _azmRad[ring];
-
             // Column sweep: 360 degrees over columns_per_frame.
             // (column, ring) -> beam direction matched against the original
             // LidarRayGenerator (Phase 138 verified in Foxglove).
-            var columnAzm = column * (2.0 * Math.PI) / _columns;
-            var totalAzm = columnAzm + ringAzm;
+            var sinTotalAzm = _sinColumnAzm[columnSlot] * _cosRingAzm[ring]
+                + _cosColumnAzm[columnSlot] * _sinRingAzm[ring];
+            var cosTotalAzm = _cosColumnAzm[columnSlot] * _cosRingAzm[ring]
+                - _sinColumnAzm[columnSlot] * _sinRingAzm[ring];
 
             // Sensor frame: x-right, y-up, z-forward (Unity left-handed).
             // Positive altitude -> beam points up (+Y). Azimuth sweeps CW
             // around +Y (column 0 forward, column N/4 = +X right).
             direction = new Vector3(
-                (float)(Math.Cos(alt) * Math.Sin(totalAzm)),
-                (float)(Math.Sin(alt)),
-                (float)(Math.Cos(alt) * Math.Cos(totalAzm)));
+                (float)(_cosAlt[ring] * sinTotalAzm),
+                (float)_sinAlt[ring],
+                (float)(_cosAlt[ring] * cosTotalAzm));
             timeOffset = (float)column / _columns;
             return true;
         }

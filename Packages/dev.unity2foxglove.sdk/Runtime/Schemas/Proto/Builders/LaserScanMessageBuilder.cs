@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Google.Protobuf;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -84,7 +83,7 @@ namespace Foxglove.Schemas
         {
             if (values == null)
                 return Array.Empty<double>();
-            return values as IReadOnlyList<double> ?? values.ToArray();
+            return values as IReadOnlyList<double> ?? Materialize(values);
         }
 
         private static IReadOnlyList<double> ToRequiredReadOnlyList(IEnumerable<double> values, string parameterName)
@@ -92,12 +91,23 @@ namespace Foxglove.Schemas
             if (values == null)
                 throw new ArgumentNullException(parameterName);
 
-            return values as IReadOnlyList<double> ?? values.ToArray();
+            return values as IReadOnlyList<double> ?? Materialize(values);
+        }
+
+        private static List<double> Materialize(IEnumerable<double> values)
+        {
+            var list = new List<double>();
+            foreach (var value in values)
+                list.Add(value);
+            return list;
         }
 
         private static List<double> ToMutableList(IReadOnlyList<double> values)
         {
-            return values.ToList();
+            var list = new List<double>(values.Count);
+            for (var i = 0; i < values.Count; i++)
+                list.Add(values[i]);
+            return list;
         }
 
         private static void ValidateIntensities(IReadOnlyList<double> ranges, IReadOnlyList<double> intensities)

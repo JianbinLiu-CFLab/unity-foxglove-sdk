@@ -380,8 +380,9 @@ namespace Foxglove.Schemas.Video
             int maxRetainedBytes)
         {
             var buffer = new byte[Math.Min(4096, Math.Max(256, maxLineBytes))];
-            var retained = new List<byte>(Math.Min(maxLineBytes, maxRetainedBytes));
             var lineLimit = Math.Max(1, Math.Min(maxLineBytes, maxRetainedBytes));
+            var retained = new byte[lineLimit];
+            var retainedCount = 0;
             var truncated = false;
 
             while (!token.IsCancellationRequested)
@@ -395,8 +396,8 @@ namespace Foxglove.Schemas.Video
                     var value = buffer[i];
                     if (value == (byte)'\n')
                     {
-                        PublishDiagnosticLine(retained, truncated, publishLine);
-                        retained.Clear();
+                        PublishDiagnosticLine(retained, retainedCount, truncated, publishLine);
+                        retainedCount = 0;
                         truncated = false;
                         continue;
                     }
@@ -404,22 +405,22 @@ namespace Foxglove.Schemas.Video
                     if (value == (byte)'\r')
                         continue;
 
-                    if (retained.Count < lineLimit)
-                        retained.Add(value);
+                    if (retainedCount < lineLimit)
+                        retained[retainedCount++] = value;
                     else
                         truncated = true;
                 }
             }
 
-            if (retained.Count > 0 || truncated)
-                PublishDiagnosticLine(retained, truncated, publishLine);
+            if (retainedCount > 0 || truncated)
+                PublishDiagnosticLine(retained, retainedCount, truncated, publishLine);
         }
 
-        private static void PublishDiagnosticLine(List<byte> retained, bool truncated, Action<string> publishLine)
+        private static void PublishDiagnosticLine(byte[] retained, int retainedCount, bool truncated, Action<string> publishLine)
         {
-            var text = retained.Count == 0
+            var text = retainedCount == 0
                 ? string.Empty
-                : Encoding.UTF8.GetString(retained.ToArray());
+                : Encoding.UTF8.GetString(retained, 0, retainedCount);
             publishLine(truncated ? text + " [truncated]" : text);
         }
 

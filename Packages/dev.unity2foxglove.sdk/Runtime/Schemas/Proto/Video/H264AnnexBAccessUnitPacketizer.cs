@@ -76,8 +76,7 @@ namespace Foxglove.Schemas.Video
             }
 
             _buffer.Capacity = Math.Max(_buffer.Capacity, _buffer.Count + count);
-            for (var i = 0; i < count; i++)
-                _buffer.Add(data[offset + i]);
+            _buffer.AddRange(new ArraySegment<byte>(data, offset, count));
             ParseBufferedBytes(flush: false);
         }
 

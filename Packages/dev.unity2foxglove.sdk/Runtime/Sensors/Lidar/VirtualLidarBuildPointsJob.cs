@@ -78,8 +78,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 output.AcquisitionZ = acquisitionConverted.z;
                 output.Intensity = SyntheticIntensity;
                 output.Reflectivity = SyntheticReflectivity;
-                output.TimeOffsetSeconds = index < RayTimeOffsets.Length ? RayTimeOffsets[index] : 0f;
-                output.Ring = index < RayRings.Length ? RayRings[index] : (ushort)0;
+                output.TimeOffsetSeconds = RayTimeOffsets[index];
+                output.Ring = RayRings[index];
                 output.IsValid = 1;
                 output.HasAcquisitionFrame = 1;
             }

@@ -180,6 +180,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     layout.HasReflectivity |= point.HasReflectivity;
                     layout.HasRing |= point.HasRing;
                     layout.HasTimeOffset |= point.HasTimeOffset;
+                    if (layout.HasIntensity && layout.HasReflectivity && layout.HasRing && layout.HasTimeOffset)
+                        break;
                 }
 
                 layout.HasAbsoluteTime = frame.EmitAbsoluteTimeNs && layout.HasTimeOffset;

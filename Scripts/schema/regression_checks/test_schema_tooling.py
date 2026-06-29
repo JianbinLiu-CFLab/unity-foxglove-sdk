@@ -63,7 +63,7 @@ class SchemaToolingTests(unittest.TestCase):
 
         self.assertIn("if (value == null)", generated)
         self.assertIn("throw new ArgumentNullException(nameof(value));", generated)
-        self.assertIn("var writer = new Ros2CdrWriter(256);", generated)
+        self.assertIn("var writer = new Ros2CdrWriter(528);", generated)
         self.assertIn("writer.WriteByteArray(message.Data.Span);", generated)
         self.assertIn("writer.WriteFloat64(value.W);", generated)
         self.assertNotIn("value?.W ?? 1.0", generated)

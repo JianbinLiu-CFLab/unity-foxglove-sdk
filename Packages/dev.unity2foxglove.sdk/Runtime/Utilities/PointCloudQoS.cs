@@ -104,21 +104,34 @@ namespace Unity.FoxgloveSDK.Util
         /// </summary>
         public static int[] BuildUniformSampleIndices(int sourceCount, int targetCount)
         {
+            var indices = new List<int>();
+            BuildUniformSampleIndices(sourceCount, targetCount, indices);
+            return indices.Count == 0 ? Array.Empty<int>() : indices.ToArray();
+        }
+
+        internal static void BuildUniformSampleIndices(int sourceCount, int targetCount, List<int> indices)
+        {
+            if (indices == null)
+                throw new ArgumentNullException(nameof(indices));
+
+            indices.Clear();
             if (sourceCount <= 0 || targetCount <= 0)
-                return Array.Empty<int>();
+                return;
 
             if (targetCount >= sourceCount)
             {
-                var all = new int[sourceCount];
-                for (var i = 0; i < all.Length; i++)
-                    all[i] = i;
-                return all;
+                for (var i = 0; i < sourceCount; i++)
+                    indices.Add(i);
+                return;
             }
 
             if (targetCount == 1)
-                return new[] { 0 };
+            {
+                indices.Add(0);
+                return;
+            }
 
-            var indices = new int[targetCount];
+            indices.Capacity = Math.Max(indices.Capacity, targetCount);
             var step = (double)(sourceCount - 1) / (targetCount - 1);
             var previous = -1;
             for (var i = 0; i < targetCount; i++)
@@ -132,11 +145,9 @@ namespace Unity.FoxgloveSDK.Util
                 if (index >= sourceCount)
                     index = sourceCount - 1;
 
-                indices[i] = index;
+                indices.Add(index);
                 previous = index;
             }
-
-            return indices;
         }
 
         /// <summary>

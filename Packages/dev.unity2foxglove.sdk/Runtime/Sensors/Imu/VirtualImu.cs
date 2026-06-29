@@ -267,11 +267,11 @@ namespace Unity.FoxgloveSDK.Components
                 var webSocketBudget = ResolveWebSocketSamplesPerFrame(queuedAtFrameStart);
                 var webSocketSkipCount = queuedAtFrameStart - webSocketBudget;
                 var webSocketPublished = 0;
+                var nativeFrameHandler = ImuNativeFrameReady;
 
                 while (_queue.Count > 0)
                 {
                     var sample = _queue.Dequeue();
-                    var nativeFrameHandler = ImuNativeFrameReady;
                     ImuNativeFrame nativeFrame = null;
                     if (nativeFrameHandler != null)
                     {
