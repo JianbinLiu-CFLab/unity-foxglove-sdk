@@ -24,7 +24,6 @@ CHECKED_IN_DLL = (
     / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll"
 )
 BUILD_OUTPUT_DIR = REPO_ROOT / "build/SourceGenerators/Release/netstandard2.0"
-BUILT_DLL = BUILD_OUTPUT_DIR / "FoxgloveLogSourceGenerator.dll"
 
 
 def sha256(path: Path) -> str:
@@ -36,16 +35,17 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def run_build() -> bool:
+def run_build(build_output_dir: Path, msbuild_props: list[str]) -> bool:
     """Build the source generator project in Release mode."""
     command = [
         "dotnet",
         "build",
         str(PROJECT),
+        *msbuild_props,
         "-c",
         "Release",
         "-o",
-        str(BUILD_OUTPUT_DIR),
+        str(build_output_dir),
         "-v:minimal",
     ]
     try:
@@ -57,21 +57,22 @@ def run_build() -> bool:
     return True
 
 
-def validate_or_update(update: bool) -> int:
+def validate_or_update(update: bool, build_output_dir: Path, msbuild_props: list[str]) -> int:
     """Validate or update the checked-in analyzer DLL."""
     if not PROJECT.exists():
         print(f"[FAIL] Source generator project missing: {PROJECT}", file=sys.stderr)
         return 1
 
-    if not run_build():
+    if not run_build(build_output_dir, msbuild_props):
         return 1
 
-    if not BUILT_DLL.exists():
-        print(f"[FAIL] Release build did not produce {BUILT_DLL}", file=sys.stderr)
+    built_dll = build_output_dir / "FoxgloveLogSourceGenerator.dll"
+    if not built_dll.exists():
+        print(f"[FAIL] Release build did not produce {built_dll}", file=sys.stderr)
         return 1
 
     if update:
-        shutil.copy2(BUILT_DLL, CHECKED_IN_DLL)
+        shutil.copy2(built_dll, CHECKED_IN_DLL)
         print(f"[PASS] Updated checked-in source generator DLL: {CHECKED_IN_DLL.relative_to(REPO_ROOT)}")
         print(f"       sha256={sha256(CHECKED_IN_DLL)}")
         return 0
@@ -80,11 +81,11 @@ def validate_or_update(update: bool) -> int:
         print(f"[FAIL] Checked-in analyzer DLL missing: {CHECKED_IN_DLL.relative_to(REPO_ROOT)}", file=sys.stderr)
         return 1
 
-    built_hash = sha256(BUILT_DLL)
+    built_hash = sha256(built_dll)
     checked_hash = sha256(CHECKED_IN_DLL)
-    if BUILT_DLL.read_bytes() != CHECKED_IN_DLL.read_bytes():
+    if built_dll.read_bytes() != CHECKED_IN_DLL.read_bytes():
         print("[FAIL] Checked-in source generator DLL is stale.", file=sys.stderr)
-        print(f"       built:   {BUILT_DLL.relative_to(REPO_ROOT)} sha256={built_hash}", file=sys.stderr)
+        print(f"       built:   {built_dll.relative_to(REPO_ROOT)} sha256={built_hash}", file=sys.stderr)
         print(f"       checked: {CHECKED_IN_DLL.relative_to(REPO_ROOT)} sha256={checked_hash}", file=sys.stderr)
         print("       Run: python Scripts/package/validate_source_generator_dll.py --update", file=sys.stderr)
         return 1
@@ -102,8 +103,20 @@ def main() -> int:
         action="store_true",
         help="Copy the fresh Release build over the checked-in analyzer DLL.",
     )
+    parser.add_argument(
+        "--build-output-dir",
+        type=Path,
+        default=BUILD_OUTPUT_DIR,
+        help="Directory for the fresh Release build output.",
+    )
+    parser.add_argument(
+        "--msbuild-prop",
+        action="append",
+        default=[],
+        help="Additional MSBuild property argument to pass to dotnet build, such as -p:BaseOutputPath=...",
+    )
     args = parser.parse_args()
-    return validate_or_update(args.update)
+    return validate_or_update(args.update, args.build_output_dir, args.msbuild_prop)
 
 
 if __name__ == "__main__":
