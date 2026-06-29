@@ -898,8 +898,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool WriteSourceFileIfChanged(string path, byte[] bytes)
         {
-            if (File.Exists(path) && File.ReadAllBytes(path).SequenceEqual(bytes))
-                return false;
+            if (File.Exists(path))
+            {
+                var existing = new FileInfo(path);
+                if (existing.Length == bytes.Length && File.ReadAllBytes(path).SequenceEqual(bytes))
+                    return false;
+            }
 
             WriteBytesWithTempReplace(path, bytes);
             return true;
