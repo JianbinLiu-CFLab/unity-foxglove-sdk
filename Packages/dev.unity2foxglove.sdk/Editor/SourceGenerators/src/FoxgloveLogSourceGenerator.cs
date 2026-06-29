@@ -80,15 +80,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private static bool IsCandidate(SyntaxNode node)
         {
             if (node is FieldDeclarationSyntax f && f.AttributeLists.Count > 0)
-                return HasFoxRunAttr(f.AttributeLists) || HasFoxRunFieldAttr(f.AttributeLists);
+                return HasFoxRunAttr(f.AttributeLists);
             if (node is PropertyDeclarationSyntax p && p.AttributeLists.Count > 0)
-                return HasFoxRunAttr(p.AttributeLists) || HasFoxRunFieldAttr(p.AttributeLists);
+                return HasFoxRunAttr(p.AttributeLists);
             return false;
         }
 
         /// <summary>
-        /// Checks whether any attribute in the given lists matches <c>FoxRun</c> by
-        /// short or fully-qualified name.
+        /// Checks whether any attribute in the given lists matches <c>FoxRun</c>
+        /// or <c>FoxRunField</c> by short or fully-qualified name.
         /// </summary>
         private static bool HasFoxRunAttr(SyntaxList<AttributeListSyntax> lists)
         {
@@ -98,19 +98,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     var name = a.Name.ToString();
                     if (name == AttrShortName || name == AttrAttributeName
                         || name.EndsWith(AttrQualifiedNameSuffix, StringComparison.Ordinal)
-                        || name.EndsWith(AttrQualifiedAttributeNameSuffix, StringComparison.Ordinal))
-                        return true;
-                }
-            return false;
-        }
-
-        private static bool HasFoxRunFieldAttr(SyntaxList<AttributeListSyntax> lists)
-        {
-            foreach (var al in lists)
-                foreach (var a in al.Attributes)
-                {
-                    var name = a.Name.ToString();
-                    if (name == FieldAttrShortName || name == FieldAttrAttributeName
+                        || name.EndsWith(AttrQualifiedAttributeNameSuffix, StringComparison.Ordinal)
+                        || name == FieldAttrShortName || name == FieldAttrAttributeName
                         || name.EndsWith(FieldAttrQualifiedNameSuffix, StringComparison.Ordinal)
                         || name.EndsWith(FieldAttrQualifiedAttributeNameSuffix, StringComparison.Ordinal))
                         return true;

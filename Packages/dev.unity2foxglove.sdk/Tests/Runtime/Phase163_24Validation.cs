@@ -53,8 +53,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(validator.Contains("dotnet", StringComparison.Ordinal)
                   && validator.Contains("build", StringComparison.Ordinal)
-                  && validator.Contains("BUILT_DLL.read_bytes() != CHECKED_IN_DLL.read_bytes()", StringComparison.Ordinal),
-                "163-24B-1: source generator DLL validator rebuilds and byte-compares the checked-in analyzer");
+                  && validator.Contains("built_hash = sha256(built_dll)", StringComparison.Ordinal)
+                  && validator.Contains("checked_hash = sha256(CHECKED_IN_DLL)", StringComparison.Ordinal)
+                  && validator.Contains("if built_hash != checked_hash:", StringComparison.Ordinal)
+                  && !validator.Contains("BUILT_DLL.read_bytes() != CHECKED_IN_DLL.read_bytes()", StringComparison.Ordinal),
+                "163-24B-1: source generator DLL validator rebuilds and hash-compares the checked-in analyzer");
         }
 
         private static void UnityIl2CppBuildPreflightsGeneratedArtifacts()

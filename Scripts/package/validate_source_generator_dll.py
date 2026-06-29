@@ -83,7 +83,7 @@ def validate_or_update(update: bool, build_output_dir: Path, msbuild_props: list
 
     built_hash = sha256(built_dll)
     checked_hash = sha256(CHECKED_IN_DLL)
-    if built_dll.read_bytes() != CHECKED_IN_DLL.read_bytes():
+    if built_hash != checked_hash:
         print("[FAIL] Checked-in source generator DLL is stale.", file=sys.stderr)
         print(f"       built:   {built_dll.relative_to(REPO_ROOT)} sha256={built_hash}", file=sys.stderr)
         print(f"       checked: {CHECKED_IN_DLL.relative_to(REPO_ROOT)} sha256={checked_hash}", file=sys.stderr)

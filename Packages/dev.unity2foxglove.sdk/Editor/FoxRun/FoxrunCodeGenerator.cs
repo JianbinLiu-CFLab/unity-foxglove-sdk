@@ -100,8 +100,9 @@ namespace Unity.FoxgloveSDK.Editor
         public static List<string> GenerateSourceFiles(out FoxRunCanonicalManifest manifest)
         {
             var result = new List<string>();
-            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            var serviceScan = ScanFoxServiceMethods(ignoreReflectionTypeLoadExceptions: true);
+            var editorScan = ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: true);
+            var scan = editorScan.FoxRun;
+            var serviceScan = editorScan.Services;
             var byClass = scan.ByClass;
             var model = LowerReflectionMembers(scan.ReflectionMembers);
             ValidateGenerationModel(model);
@@ -253,6 +254,62 @@ namespace Unity.FoxgloveSDK.Editor
         private static string GetManifestOutputDirectory()
         {
             return Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory();
+        }
+
+        private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices(bool ignoreReflectionTypeLoadExceptions)
+        {
+            var byClass = new Dictionary<(string Ns, string ClassName), List<MemberData>>();
+            var manifestMembers = new List<FoxRunManifestMember>();
+            var reflectionMembers = new List<FoxRunReflectionGenerationMember>();
+            var serviceEntries = new List<FoxServiceScanEntry>();
+
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    foreach (var type in asm.GetTypes())
+                    {
+                        if (!type.IsClass || type.IsAbstract) continue;
+                        if (!IsPartial(type)) continue;
+                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
+
+                        var ns = type.Namespace ?? "";
+                        var key = (ns, type.Name);
+
+                        var members = ScanType(type);
+                        if (members.Count > 0)
+                        {
+                            if (!byClass.TryGetValue(key, out var list))
+                                byClass[key] = list = new List<MemberData>();
+
+                            foreach (var member in members)
+                            {
+                                list.Add(member);
+                                manifestMembers.Add(member.ToManifestMember());
+                                reflectionMembers.Add(member.ToReflectionMember());
+                            }
+                        }
+
+                        var methods = ScanServiceType(type);
+                        if (methods.Count > 0)
+                        {
+                            var owner = string.IsNullOrEmpty(ns) ? type.Name : ns + "." + type.Name;
+                            foreach (var method in methods)
+                                serviceEntries.Add(new FoxServiceScanEntry(key, owner, method));
+                        }
+                    }
+                }
+                catch (ReflectionTypeLoadException ex)
+                {
+                    if (!ignoreReflectionTypeLoadExceptions)
+                        throw;
+                    WarnSkippedAssembly(asm, ex);
+                }
+            }
+
+            return new FoxRunAndServiceScanResult(
+                new FoxRunScanResult(byClass, manifestMembers, reflectionMembers),
+                BuildFoxServiceScanResult(serviceEntries));
         }
 
         private static FoxRunScanResult ScanFoxRunMembers(bool ignoreReflectionTypeLoadExceptions)
@@ -431,6 +488,11 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
 
+            return BuildFoxServiceScanResult(entries);
+        }
+
+        private static FoxServiceScanResult BuildFoxServiceScanResult(List<FoxServiceScanEntry> entries)
+        {
             var duplicateNames = new HashSet<string>(StringComparer.Ordinal);
             foreach (var group in entries.GroupBy(entry => entry.Method.ServiceName, StringComparer.Ordinal))
             {
@@ -821,6 +883,18 @@ namespace Unity.FoxgloveSDK.Editor
                 ByClass = byClass;
                 ManifestMembers = manifestMembers;
                 ReflectionMembers = reflectionMembers;
+            }
+        }
+
+        private sealed class FoxRunAndServiceScanResult
+        {
+            public readonly FoxRunScanResult FoxRun;
+            public readonly FoxServiceScanResult Services;
+
+            public FoxRunAndServiceScanResult(FoxRunScanResult foxRun, FoxServiceScanResult services)
+            {
+                FoxRun = foxRun;
+                Services = services;
             }
         }
 
