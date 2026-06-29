@@ -452,10 +452,7 @@ namespace Unity.FoxgloveSDK.Components
             // and ResetScanState; StartNewScan must not clear it or a cross-revolution restart
             // would drop the in-tick remainder.
             _activeScanStartPhysSeconds = scanStartPhysSeconds;
-            _activeScanWorldToLocal = Matrix4x4
-                .TRS(transform.position, transform.rotation, Vector3.one)
-                .inverse
-                .ToFloat4x4();
+            _activeScanWorldToLocal = CoordinateConverterFloat3.RigidWorldToLocal(transform.position, transform.rotation);
             _activeScanFrame = new PointCloudFrame
             {
                 UnixNs = _scanClock.GetScanStartUnixNs(scanStartPhysSeconds),

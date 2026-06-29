@@ -5,7 +5,6 @@
 // Purpose: Owns pending scan scheduling and pending-batch completion for VirtualLidar.
 
 using System;
-using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -26,7 +25,8 @@ namespace Unity.FoxgloveSDK.Components
     {
         private readonly LidarScanDiagnostics _scanDiagnostics = new LidarScanDiagnostics();
         private readonly UnityEngine.Object _logContext;
-        private readonly List<int> _scanCrossings = new();
+        private readonly int[] _scanCrossings = new int[4];
+        private int _scanCrossingCount;
 
         private static readonly ProfilerMarker ScheduleScanMarker = new ProfilerMarker("VirtualLidar.ScheduleScan");
         private static readonly ProfilerMarker BuildPointsMarker = new ProfilerMarker("VirtualLidar.BuildPoints");
@@ -96,13 +96,10 @@ namespace Unity.FoxgloveSDK.Components
                 // active scan-reference coordinates for legacy visualization and the
                 // acquisition-time coordinates needed by raw PointCloud2 Native streams.
                 var queryParams = new QueryParameters(layerMask.value);
-                var acquisitionWorldToLocal = Matrix4x4
-                    .TRS(worldPos, worldRot, Vector3.one)
-                    .inverse
-                    .ToFloat4x4();
+                var acquisitionWorldToLocal = CoordinateConverterFloat3.RigidWorldToLocal(worldPos, worldRot);
 
                 // Build one batch for all columns this tick (cap at one revolution).
-                _scanCrossings.Clear();
+                _scanCrossingCount = 0;
                 var batchCount = 0;
                 var commands = scanBuffers.Commands;
                 var results = scanBuffers.Results;
@@ -143,7 +140,10 @@ namespace Unity.FoxgloveSDK.Components
                     scanColumnCursor++;
                     if (scanColumnCursor >= scanBuffers.ScanColumnCount)
                     {
-                        _scanCrossings.Add(batchCount);
+                        if (_scanCrossingCount >= _scanCrossings.Length)
+                            throw new InvalidOperationException("LiDAR scan batch crossed more revolutions than the fixed crossing buffer supports.");
+
+                        _scanCrossings[_scanCrossingCount++] = batchCount;
                         scanColumnCursor = 0;
                     }
                 }
@@ -151,7 +151,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (batchCount <= 0)
                     return;
 
-                var requiredCrossingCount = _scanCrossings.Count;
+                var requiredCrossingCount = _scanCrossingCount;
                 if (_pendingScanCrossings.Length < requiredCrossingCount)
                 {
                     // grow-only: retain the peak crossing buffer to avoid per-tick churn;

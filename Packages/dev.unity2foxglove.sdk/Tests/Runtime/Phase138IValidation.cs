@@ -305,7 +305,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && lidar.Contains("var remainingColumns = _scanBuffers.ScanColumnCount - _scanColumnCursor", StringComparison.Ordinal)
                   && lidar.Contains("Math.Min(budgetColumns, remainingColumns)", StringComparison.Ordinal)
                   && lidar.Contains("StartNewScan(Time.fixedTimeAsDouble)", StringComparison.Ordinal)
-                  && lidar.Contains("_activeScanWorldToLocal = Matrix4x4", StringComparison.Ordinal)
+                  && lidar.Contains("_activeScanWorldToLocal = CoordinateConverterFloat3.RigidWorldToLocal", StringComparison.Ordinal)
                   && !lidar.Contains("ComputeProtectedScanPeriodSeconds", StringComparison.Ordinal)
                   && !lidar.Contains("_protectMainThreadFrameRate", StringComparison.Ordinal)
                   && !lidar.Contains("_protectedScanRateHz", StringComparison.Ordinal)
