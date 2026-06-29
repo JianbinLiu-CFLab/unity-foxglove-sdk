@@ -54,6 +54,7 @@ class ArtifactPaths:
     artifact: Path
     sha256_file: Path
     output: Path
+    force: bool = False
 
 
 def parse_args(argv: list[str]) -> ArtifactPaths:
@@ -62,8 +63,9 @@ def parse_args(argv: list[str]) -> ArtifactPaths:
     parser.add_argument("--zip", type=Path, default=DEFAULT_ARTIFACT, help="Runtime zip artifact to inspect.")
     parser.add_argument("--sha256-file", type=Path, default=DEFAULT_SHA256, help="Optional sha256 sidecar file.")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help="Inventory JSON output path.")
+    parser.add_argument("--force", action="store_true", help="Regenerate the inventory even when the artifact hash matches the existing output.")
     args = parser.parse_args(argv)
-    return ArtifactPaths(args.zip.resolve(), args.sha256_file.resolve(), args.out.resolve())
+    return ArtifactPaths(args.zip.resolve(), args.sha256_file.resolve(), args.out.resolve(), args.force)
 
 
 def sha256_file(path: Path) -> str:
@@ -151,6 +153,10 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
     if sidecar_hash and sidecar_hash != artifact_hash:
         raise ValueError(f"sha256 sidecar mismatch: {sidecar_hash} != {artifact_hash}")
 
+    cached_inventory = read_cached_inventory(paths.output, artifact_hash) if not paths.force else None
+    if cached_inventory is not None:
+        return cached_inventory
+
     files: list[dict[str, object]] = []
     with zipfile.ZipFile(paths.artifact) as archive:
         infos = sorted((info for info in archive.infolist() if not info.is_dir()), key=lambda item: item.filename)
@@ -204,6 +210,17 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
         ],
         "files": files,
     }
+
+
+def read_cached_inventory(path: Path, artifact_hash: str) -> dict[str, object] | None:
+    """Return an existing inventory when it already describes this artifact."""
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return data if isinstance(data, dict) and data.get("sha256") == artifact_hash else None
 
 
 def write_inventory(paths: ArtifactPaths, inventory: dict[str, object]) -> None:

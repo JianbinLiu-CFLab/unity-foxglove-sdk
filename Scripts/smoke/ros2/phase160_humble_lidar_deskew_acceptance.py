@@ -413,7 +413,9 @@ def write_probe_script(workspace_root: pathlib.Path) -> pathlib.Path:
     output_dir = workspace_root / "build" / "ros2_smoke"
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / "phase160_humble_pointcloud_tf_probe.py"
-    path.write_text(probe_script_text(), encoding="utf-8")
+    text = probe_script_text()
+    if not path.exists() or path.read_text(encoding="utf-8", errors="replace") != text:
+        path.write_text(text, encoding="utf-8")
     return path
 
 
