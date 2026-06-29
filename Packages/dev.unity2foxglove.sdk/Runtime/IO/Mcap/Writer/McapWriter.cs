@@ -6,9 +6,9 @@
 // and static LE helpers for fields used by McapRecorder.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Util;
 
@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Stream _stream;
         private readonly bool _leaveOpen;
         private readonly MemoryStream _recordBuffer = new MemoryStream();
+        [ThreadStatic] private static List<KeyValuePair<string, string>> _stringMapScratch;
         private bool _disposed;
 
         /// <summary>Current byte position in the underlying stream.</summary>
@@ -160,7 +161,7 @@ namespace Unity.FoxgloveSDK.IO
                 WriteU16(m, schemaId);
                 WriteString(m, topic);
                 WriteString(m, encoding);
-                WriteStringMap(m, meta ?? new());
+                WriteStringMap(m, meta);
             });
         /// <summary>Write a Message record (opcode <c>0x05</c>).</summary>
         public void WriteMessage(ushort channelId, uint seq, ulong logTime, ulong publishTime, byte[] data) =>
@@ -191,7 +192,7 @@ namespace Unity.FoxgloveSDK.IO
             });
         /// <summary>Write a Metadata record (opcode <c>0x0C</c>).</summary>
         public void WriteMetadata(string name, Dictionary<string,string> meta) =>
-            WriteBufferedRecord(OpcodeMetadata, m => { WriteString(m, name); WriteStringMap(m, meta ?? new()); });
+            WriteBufferedRecord(OpcodeMetadata, m => { WriteString(m, name); WriteStringMap(m, meta); });
         /// <summary>Write a Metadata Index record (opcode <c>0x0D</c>).</summary>
         public void WriteMetadataIndex(ulong metadataOffset, ulong metadataLength, string name) =>
             WriteBufferedRecord(OpcodeMetadataIndex, m =>
@@ -424,7 +425,25 @@ namespace Unity.FoxgloveSDK.IO
         public static void WriteU64(Stream s, ulong v) { s.WriteByte((byte)v); s.WriteByte((byte)(v >> 8)); s.WriteByte((byte)(v >> 16)); s.WriteByte((byte)(v >> 24)); s.WriteByte((byte)(v >> 32)); s.WriteByte((byte)(v >> 40)); s.WriteByte((byte)(v >> 48)); s.WriteByte((byte)(v >> 56)); }
         private static void WriteU64(byte[] buffer, int offset, ulong v) { buffer[offset] = (byte)v; buffer[offset + 1] = (byte)(v >> 8); buffer[offset + 2] = (byte)(v >> 16); buffer[offset + 3] = (byte)(v >> 24); buffer[offset + 4] = (byte)(v >> 32); buffer[offset + 5] = (byte)(v >> 40); buffer[offset + 6] = (byte)(v >> 48); buffer[offset + 7] = (byte)(v >> 56); }
         /// <summary>Write a UTF-8 string with a 4-byte LE length prefix.</summary>
-        public static void WriteString(Stream stream, string value) { var b = Encoding.UTF8.GetBytes(value ?? ""); WriteU32(stream, (uint)b.Length); if (b.Length > 0) stream.Write(b, 0, b.Length); }
+        public static void WriteString(Stream stream, string value)
+        {
+            value ??= string.Empty;
+            var byteCount = Encoding.UTF8.GetByteCount(value);
+            WriteU32(stream, (uint)byteCount);
+            if (byteCount == 0)
+                return;
+
+            var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                var written = Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, 0);
+                stream.Write(buffer, 0, written);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
         /// <summary>Write raw bytes with a 4-byte LE length prefix.</summary>
         public static void WriteLengthPrefixedBytes(Stream stream, byte[] data) { WriteU32(stream, (uint)(data?.Length ?? 0)); if (data != null && data.Length > 0) stream.Write(data, 0, data.Length); }
         /// <summary>Write a string-to-string map: key-value pairs sorted by key, with a 4-byte LE total-length prefix.</summary>
@@ -436,7 +455,25 @@ namespace Unity.FoxgloveSDK.IO
                 return;
             }
 
-            var ordered = map.OrderBy(kv => kv.Key, StringComparer.Ordinal).ToList();
+            if (map.Count == 1)
+            {
+                foreach (var kv in map)
+                {
+                    var singleLength = checked((uint)(4 + Encoding.UTF8.GetByteCount(kv.Key ?? "")));
+                    singleLength += checked((uint)(4 + Encoding.UTF8.GetByteCount(kv.Value ?? "")));
+                    WriteU32(stream, singleLength);
+                    WriteString(stream, kv.Key);
+                    WriteString(stream, kv.Value);
+                    return;
+                }
+            }
+
+            var ordered = _stringMapScratch ??= new List<KeyValuePair<string, string>>(map.Count);
+            ordered.Clear();
+            foreach (var kv in map)
+                ordered.Add(kv);
+            ordered.Sort((a, b) => StringComparer.Ordinal.Compare(a.Key, b.Key));
+
             var totalLength = 0u;
             foreach (var kv in ordered)
             {
@@ -450,6 +487,8 @@ namespace Unity.FoxgloveSDK.IO
                 WriteString(stream, kv.Key);
                 WriteString(stream, kv.Value);
             }
+
+            ordered.Clear();
         }
 
         /// <summary>[Obsolete] Use <see cref="WriteString"/>.</summary>
@@ -499,7 +538,7 @@ namespace Unity.FoxgloveSDK.IO
                         channel.SchemaId,
                         channel.Topic,
                         channel.MessageEncoding,
-                        channel.Metadata ?? new Dictionary<string, string>());
+                        channel.Metadata);
                 }
             });
 
@@ -517,7 +556,7 @@ namespace Unity.FoxgloveSDK.IO
                         statistics.ChunkCount,
                         statistics.MessageStartTime,
                         statistics.MessageEndTime,
-                        statistics.ChannelMessageCounts ?? new Dictionary<ushort, ulong>());
+                        statistics.ChannelMessageCounts);
                 }
             });
 

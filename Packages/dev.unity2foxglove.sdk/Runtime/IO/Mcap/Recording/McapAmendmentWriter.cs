@@ -5,6 +5,7 @@
 // Purpose: Post-recording MCAP metadata and attachment amendment writer.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 
@@ -321,17 +322,24 @@ namespace Unity.FoxgloveSDK.IO
 
         private static void CopyExact(Stream source, Stream destination, ulong byteCount)
         {
-            var buffer = new byte[64 * 1024];
-            var remaining = byteCount;
-            while (remaining > 0)
+            var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+            try
             {
-                var count = remaining > (ulong)buffer.Length ? buffer.Length : (int)remaining;
-                var read = source.Read(buffer, 0, count);
-                if (read <= 0)
-                    throw new EndOfStreamException("MCAP source ended while copying the data section.");
+                var remaining = byteCount;
+                while (remaining > 0)
+                {
+                    var count = remaining > (ulong)buffer.Length ? buffer.Length : (int)remaining;
+                    var read = source.Read(buffer, 0, count);
+                    if (read <= 0)
+                        throw new EndOfStreamException("MCAP source ended while copying the data section.");
 
-                destination.Write(buffer, 0, read);
-                remaining -= (ulong)read;
+                    destination.Write(buffer, 0, read);
+                    remaining -= (ulong)read;
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
         }
 

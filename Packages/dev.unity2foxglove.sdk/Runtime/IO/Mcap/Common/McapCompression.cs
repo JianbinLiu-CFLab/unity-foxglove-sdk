@@ -123,6 +123,10 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Compress raw bytes from an existing segment with an explicit LZ4 level.</summary>
         public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data, LZ4Level lz4Level)
+            => Compress(compression, data, lz4Level, null);
+
+        /// <summary>Compress raw bytes with an explicit LZ4 level and optional caller-owned output buffer.</summary>
+        public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data, LZ4Level lz4Level, MemoryStream lz4OutputBuffer)
         {
             var sourceArray = data.Array ?? Array.Empty<byte>();
             var sourceOffset = data.Array == null ? 0 : data.Offset;
@@ -135,12 +139,26 @@ namespace Unity.FoxgloveSDK.IO
                         ? new ArraySegment<byte>(Array.Empty<byte>())
                         : data;
                 case "lz4":
-                    using (var ms = new MemoryStream())
+                    if (lz4OutputBuffer == null)
                     {
-                        using (var lz4 = LZ4Stream.Encode(ms, lz4Level, leaveOpen: true))
-                            lz4.Write(sourceArray, sourceOffset, sourceCount);
-                        return new ArraySegment<byte>(ms.ToArray());
+                        using (var ms = new MemoryStream())
+                        {
+                            using (var lz4 = LZ4Stream.Encode(ms, lz4Level, leaveOpen: true))
+                                lz4.Write(sourceArray, sourceOffset, sourceCount);
+                            return new ArraySegment<byte>(ms.ToArray());
+                        }
                     }
+
+                    lz4OutputBuffer.SetLength(0);
+                    using (var lz4 = LZ4Stream.Encode(lz4OutputBuffer, lz4Level, leaveOpen: true))
+                    {
+                        if (sourceCount > 0)
+                            lz4.Write(sourceArray, sourceOffset, sourceCount);
+                    }
+
+                    if (!lz4OutputBuffer.TryGetBuffer(out var compressed))
+                        throw new InvalidOperationException("MCAP LZ4 compression buffer is not publicly visible.");
+                    return compressed;
                 case "zstd":
                     using (var compressor = new Compressor())
                     {
