@@ -26,6 +26,18 @@ namespace Unity.FoxgloveSDK.Tests
         // Mirrors the adoption manifest and release-side hash sidecar; this check catches accidental artifact swaps.
         private const string JazzyArtifactSha256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3";
 
+        private static readonly string[] OptionalEditorForbiddenTokenList =
+        {
+            "using ROS2;",
+            "namespace ROS2",
+            "ROS2UnityComponent",
+            "ROS2Node",
+            "IPublisher<",
+            "ISubscription<",
+            "std_msgs",
+            "ros2cs"
+        };
+
         private static int _passed;
 
         /// <summary>
@@ -374,19 +386,7 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static IReadOnlyList<string> OptionalEditorForbiddenTokens()
-        {
-            return new[]
-            {
-                "using ROS2;",
-                "namespace ROS2",
-                "ROS2UnityComponent",
-                "ROS2Node",
-                "IPublisher<",
-                "ISubscription<",
-                "std_msgs",
-                "ros2cs"
-            };
-        }
+            => OptionalEditorForbiddenTokenList;
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {

@@ -6,7 +6,6 @@
 
 #if UNITY_EDITOR
 using System;
-using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -20,7 +19,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
             var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
-            var installed = status.InstalledRuntimes.ToArray();
+            var installed = ToRuntimeArray(status.InstalledRuntimes);
+            var installedLabels = BuildRuntimeLabels(installed);
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("ROS2 For Unity Runtime", EditorStyles.boldLabel);
@@ -31,7 +31,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             }
 
-            DrawRuntimePopup(projectDirectory, status, installed);
+            DrawRuntimePopup(projectDirectory, status, installed, installedLabels);
             DrawPendingResolveMessage();
 
             if (!string.IsNullOrWhiteSpace(status.Diagnostic))
@@ -113,17 +113,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Ros2ForUnityRuntimeSelectionStatus status)
         {
             var selectedRuntime = status.SelectedRuntime;
-            var modes = Ros2ForUnityRuntimeSelection.GetCommunicationModeIds(selectedRuntime).ToArray();
+            var modes = Ros2ForUnityRuntimeSelection.GetCommunicationModeIds(selectedRuntime);
             var selectedMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(selectedRuntime);
-            var selectedIndex = Math.Max(0, Array.FindIndex(modes, mode =>
-                string.Equals(mode, selectedMode, StringComparison.Ordinal)));
-            var labels = modes.Select(Ros2ForUnityRuntimeSelection.GetCommunicationModeDisplayName).ToArray();
+            var selectedIndex = Math.Max(0, IndexOfMode(modes, selectedMode));
+            var labels = Ros2ForUnityRuntimeSelection.GetCommunicationModeLabels(selectedRuntime);
 
             using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
             {
                 EditorGUI.BeginChangeCheck();
                 var changedIndex = EditorGUILayout.Popup("Communication Mode", selectedIndex, labels);
-                if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < modes.Length)
+                if (EditorGUI.EndChangeCheck() && changedIndex >= 0 && changedIndex < modes.Count)
                 {
                     Ros2ForUnityRuntimeSelection.SetCommunicationMode(
                         projectDirectory,
@@ -139,16 +138,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static void DrawRuntimePopup(
             string projectDirectory,
             Ros2ForUnityRuntimeSelectionStatus status,
-            Ros2ForUnityRuntimeDescriptor[] installed)
+            Ros2ForUnityRuntimeDescriptor[] installed,
+            string[] installedLabels)
         {
             var selectedIndex = Array.FindIndex(installed, runtime =>
                 status.SelectedRuntime != null
                 && string.Equals(runtime.PackageName, status.SelectedRuntime.PackageName, StringComparison.Ordinal));
-            var installedLabels = installed.Select(runtime => runtime.DisplayName).ToArray();
             var popupLabels = installedLabels;
             if (selectedIndex < 0)
             {
-                popupLabels = new[] { "No active runtime" }.Concat(installedLabels).ToArray();
+                popupLabels = new string[installedLabels.Length + 1];
+                popupLabels[0] = "No active runtime";
+                Array.Copy(installedLabels, 0, popupLabels, 1, installedLabels.Length);
                 selectedIndex = 0;
             }
 
@@ -182,6 +183,37 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             EditorGUILayout.HelpBox(_pendingResolveMessage, MessageType.Info);
+        }
+
+        private static Ros2ForUnityRuntimeDescriptor[] ToRuntimeArray(
+            System.Collections.Generic.IReadOnlyList<Ros2ForUnityRuntimeDescriptor> runtimes)
+        {
+            if (runtimes is Ros2ForUnityRuntimeDescriptor[] array)
+                return array;
+
+            var result = new Ros2ForUnityRuntimeDescriptor[runtimes.Count];
+            for (var i = 0; i < runtimes.Count; i++)
+                result[i] = runtimes[i];
+            return result;
+        }
+
+        private static string[] BuildRuntimeLabels(Ros2ForUnityRuntimeDescriptor[] runtimes)
+        {
+            var labels = new string[runtimes.Length];
+            for (var i = 0; i < runtimes.Length; i++)
+                labels[i] = runtimes[i].DisplayName;
+            return labels;
+        }
+
+        private static int IndexOfMode(System.Collections.Generic.IReadOnlyList<string> modes, string selectedMode)
+        {
+            for (var i = 0; i < modes.Count; i++)
+            {
+                if (string.Equals(modes[i], selectedMode, StringComparison.Ordinal))
+                    return i;
+            }
+
+            return -1;
         }
     }
 }

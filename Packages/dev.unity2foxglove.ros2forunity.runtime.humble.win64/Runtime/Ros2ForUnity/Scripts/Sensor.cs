@@ -192,7 +192,7 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
             }
         }
 
-        if (readingToPublish == null || componentToUse == null || nodeToUse == null || !componentToUse.Ok())
+        if (readingToPublish == null || componentToUse == null || nodeToUse == null)
         {
             return;
         }

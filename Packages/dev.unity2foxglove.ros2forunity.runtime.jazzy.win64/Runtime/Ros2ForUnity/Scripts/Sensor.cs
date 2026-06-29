@@ -87,8 +87,6 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     private ROS2Node ros2Node;
     private string ownerAgentName;
     private string cachedFrameName;
-    private string cachedFrameNameOwner;
-    private string cachedFrameNameFrameId;
     private double lastTimestamp;
     private double timeSinceLastFixedUpdate;
 
@@ -97,16 +95,12 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
 
     public override string frameName()
     {
-        if (cachedFrameName == null
-            || cachedFrameNameOwner != ownerAgentName
-            || cachedFrameNameFrameId != frameID)
+        if (cachedFrameName != null)
         {
-            cachedFrameNameOwner = ownerAgentName;
-            cachedFrameNameFrameId = frameID;
-            cachedFrameName = ownerAgentName + "/" + frameID;
+            return cachedFrameName;
         }
 
-        return cachedFrameName;
+        return String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
     }
 
     /// <summary>
@@ -147,6 +141,7 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
         }
 
         ownerAgentName = agentName;
+        cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
         ros2UnityComponent = ros2Unity;
         ros2Node = node;
         string nsName = agentName.Replace(" ", "_");
@@ -164,18 +159,15 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
         if (!HasNewData())
             return;
 
-        if (publisher != null && publishing)
+        if (publisher != null && publishing && ros2Node != null)
         {
-            if (ros2UnityComponent.Ok())
+            readings = AcquireValue();
+            if (readings != null)
             {
-                readings = AcquireValue();
-                if (readings != null)
-                {
-                    readings.SetHeaderFrame(frameName());
-                    MessageWithHeader readingsHeader = readings as MessageWithHeader;
-                    ros2Node.clock.UpdateROSTimestamp(ref readingsHeader);
-                    publisher.Publish(readings);
-                }
+                readings.SetHeaderFrame(frameName());
+                MessageWithHeader readingsHeader = readings as MessageWithHeader;
+                ros2Node.clock.UpdateROSTimestamp(ref readingsHeader);
+                publisher.Publish(readings);
             }
         }
     }

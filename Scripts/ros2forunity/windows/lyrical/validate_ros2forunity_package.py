@@ -37,6 +37,8 @@ RVIZ_MARKERARRAY_SAMPLE = PACKAGE / "Samples~" / "RViz2 MarkerArray Acceptance"
 RVIZ_V1_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization v1"
 STANDARD_MESSAGES_SAMPLE = PACKAGE / "Samples~" / "ROS2 Standard Message Expansion"
 
+JSON_CACHE: dict[Path, dict] = {}
+
 RUNTIME_BINARY_SUFFIXES = {
     ".dll",
     ".so",
@@ -126,11 +128,18 @@ def _is_runtime_token_exempt(path: Path, runtime_root: Path) -> bool:
 
 def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
     """Load JSON and record whether parsing succeeded."""
+    cache_key = path.resolve()
+    cached = JSON_CACHE.get(cache_key)
+    if cached is not None:
+        add(results, name, True, rel(path))
+        return cached
+
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         add(results, name, False, f"{rel(path)}: {exc}")
         return {}
+    JSON_CACHE[cache_key] = data
     add(results, name, True, rel(path))
     return data
 

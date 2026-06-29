@@ -349,11 +349,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var method = TestSources.Slice(transformations, "public static Matrix4x4 Unity2RosMatrix4x4()", "}");
 
             Assert.Contains("private string cachedFrameName;", sensor, StringComparison.Ordinal);
-            Assert.Contains("private string cachedFrameNameOwner;", sensor, StringComparison.Ordinal);
-            Assert.Contains("private string cachedFrameNameFrameId;", sensor, StringComparison.Ordinal);
-            Assert.Contains("cachedFrameNameOwner != ownerAgentName", frameName, StringComparison.Ordinal);
-            Assert.Contains("cachedFrameNameFrameId != frameID", frameName, StringComparison.Ordinal);
-            Assert.Contains("cachedFrameName = ownerAgentName + \"/\" + frameID;", frameName, StringComparison.Ordinal);
+            Assert.DoesNotContain("private string cachedFrameNameOwner;", sensor, StringComparison.Ordinal);
+            Assert.DoesNotContain("private string cachedFrameNameFrameId;", sensor, StringComparison.Ordinal);
+            Assert.Contains("cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + \"/\" + frameID;", sensor, StringComparison.Ordinal);
+            Assert.Contains("if (cachedFrameName != null)", frameName, StringComparison.Ordinal);
             Assert.Contains("return cachedFrameName;", frameName, StringComparison.Ordinal);
             Assert.Contains("static readonly Matrix4x4 Unity2RosMatrix", transformations, StringComparison.Ordinal);
             Assert.Contains("return Unity2RosMatrix;", method, StringComparison.Ordinal);

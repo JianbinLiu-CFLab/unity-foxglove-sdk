@@ -16,6 +16,8 @@ import subprocess
 import time
 from datetime import datetime
 
+_QT_PLUGIN_PATH_CACHE: dict[pathlib.Path, pathlib.Path | None] = {}
+
 
 def find_workspace_root() -> pathlib.Path:
     """Find the repository root from either cwd or this module location."""
@@ -427,10 +429,7 @@ def launch_rviz(
     ]
     rviz_env = env.copy()
     rviz_env["PATH"] = os.pathsep.join(rviz_path)
-    qt_plugin_path = next(
-        (candidate for candidate in qt_plugin_candidates if (candidate / "platforms" / "qwindows.dll").exists()),
-        None,
-    )
+    qt_plugin_path = cached_qt_plugin_path(ros2_root, qt_plugin_candidates)
     if qt_plugin_path is not None:
         rviz_env["QT_PLUGIN_PATH"] = str(qt_plugin_path)
         rviz_env["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(qt_plugin_path / "platforms")
@@ -518,3 +517,17 @@ def launch_rviz(
 
     log_event(log_prefix, f"Launched RViz2 pid={process.pid} config={config}")
     return process
+
+
+def cached_qt_plugin_path(
+    ros2_root: pathlib.Path,
+    qt_plugin_candidates: tuple[pathlib.Path, ...],
+) -> pathlib.Path | None:
+    """Resolve the RViz Qt plugin path once per ROS2 root."""
+    key = ros2_root.resolve()
+    if key not in _QT_PLUGIN_PATH_CACHE:
+        _QT_PLUGIN_PATH_CACHE[key] = next(
+            (candidate for candidate in qt_plugin_candidates if (candidate / "platforms" / "qwindows.dll").exists()),
+            None,
+        )
+    return _QT_PLUGIN_PATH_CACHE[key]

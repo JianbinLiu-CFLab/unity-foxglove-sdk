@@ -31,11 +31,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
-            var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(projectDirectory);
-            var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(projectDirectory);
+            var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
+            var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
+            var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
             if (string.IsNullOrWhiteSpace(runtimePackage) && string.IsNullOrWhiteSpace(communicationMode))
             {
-                Ros2ForUnityRuntimeSelection.BindActiveRuntimeForPlayMode(projectDirectory);
+                Ros2ForUnityRuntimeSelection.BindActiveRuntimeForPlayMode(status);
                 return;
             }
 
@@ -59,6 +60,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void OnCompilationStarted(object context)
         {
+            Ros2ForUnityRuntimeSelection.InvalidateStatusCache();
             if (StopPlayModeBeforeNativeReload("script compilation"))
                 SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, true);
         }
@@ -93,8 +95,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return false;
 
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
-            var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
-            if (status.SelectedRuntime == null)
+            if (!Ros2ForUnityRuntimeSelection.HasManifestRuntimePackage(projectDirectory))
                 return false;
 
             Debug.LogError(

@@ -43,7 +43,9 @@ public class ROS2UnityComponent : MonoBehaviour
     private List<Action> executableActions;
     private HashSet<Action> executableActionSet;
     private bool initialized = false;
+    private volatile bool executorStarted = false;
     private volatile bool quitting = false;
+    private volatile bool cachedOk = false;
     private bool runtimeShutdownRequested = false;
     private bool disposed = false;
     private Thread executorThread;
@@ -58,6 +60,10 @@ public class ROS2UnityComponent : MonoBehaviour
         {
             if (disposed)
                 return false;
+
+            if (initialized && cachedOk && nodes != null && ros2forUnity != null)
+                return true;
+
             needsConstruct = ros2forUnity == null;
         }
 
@@ -75,7 +81,17 @@ public class ROS2UnityComponent : MonoBehaviour
 
         lock (mutex)
         {
-            return (!disposed && nodes != null && ros2forUnity != null && ros2forUnity.Ok());
+            if (disposed || nodes == null || ros2forUnity == null)
+            {
+                cachedOk = false;
+                return false;
+            }
+
+            if (initialized && cachedOk)
+                return true;
+
+            cachedOk = ros2forUnity.Ok();
+            return cachedOk;
         }
     }
 
@@ -228,6 +244,7 @@ public class ROS2UnityComponent : MonoBehaviour
             {
                 if (!quitting && !disposed && ros2forUnity != null && nodes != null && executableActions != null && ros2csNodes != null && ros2forUnity.Ok())
                 {
+                    cachedOk = true;
                     foreach (Action action in executableActions)
                     {
                         try
@@ -255,6 +272,10 @@ public class ROS2UnityComponent : MonoBehaviour
                         }
                     }
                 }
+                else
+                {
+                    cachedOk = false;
+                }
             }
             Thread.Sleep(interval);
         }
@@ -262,6 +283,11 @@ public class ROS2UnityComponent : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (executorStarted)
+        {
+            return;
+        }
+
         StartExecutor();
     }
 
@@ -279,6 +305,7 @@ public class ROS2UnityComponent : MonoBehaviour
             executorThread = new Thread(() => Tick());
             executorThread.IsBackground = true;
             initialized = true;
+            executorStarted = true;
             threadToStart = executorThread;
         }
 
@@ -290,6 +317,7 @@ public class ROS2UnityComponent : MonoBehaviour
         lock (mutex)
         {
             ros2forUnity = null;
+            cachedOk = false;
             runtimeShutdownRequested = true;
         }
     }
@@ -314,6 +342,8 @@ public class ROS2UnityComponent : MonoBehaviour
             {
                 executorThread = null;
                 initialized = false;
+                executorStarted = false;
+                cachedOk = false;
             }
         }
 
@@ -401,6 +431,8 @@ public class ROS2UnityComponent : MonoBehaviour
 
             disposed = true;
             initialized = false;
+            executorStarted = false;
+            cachedOk = false;
             instance = ros2forUnity;
             ros2forUnity = null;
             executableActions = null;

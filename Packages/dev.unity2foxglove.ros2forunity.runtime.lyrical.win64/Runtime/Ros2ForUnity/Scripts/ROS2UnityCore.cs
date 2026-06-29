@@ -40,6 +40,7 @@ namespace ROS2
         private int collectionVersion = 0;
         private int snapshotVersion = -1;
         private volatile bool quitting = false;
+        private volatile bool cachedOk = false;
         private bool disposed = false;
         private Thread executorThread;
         private int interval = 2;  // Spinning / executor interval in ms
@@ -50,7 +51,17 @@ namespace ROS2
         {
             lock (mutex)
             {
-                return (!disposed && nodes != null && ros2forUnity.Ok());
+                if (disposed || nodes == null || ros2forUnity == null)
+                {
+                    cachedOk = false;
+                    return false;
+                }
+
+                if (cachedOk)
+                    return true;
+
+                cachedOk = ros2forUnity.Ok();
+                return cachedOk;
             }
         }
 
@@ -175,6 +186,7 @@ namespace ROS2
                 {
                     if (!quitting && !disposed && ros2forUnity != null && nodes != null && ros2forUnity.Ok())
                     {
+                        cachedOk = true;
                         if (snapshotVersion != collectionVersion)
                         {
                             actionsSnapshot.Clear();
@@ -184,6 +196,10 @@ namespace ROS2
                             snapshotVersion = collectionVersion;
                         }
                         hasSnapshot = true;
+                    }
+                    else
+                    {
+                        cachedOk = false;
                     }
                 }
 
@@ -239,6 +255,7 @@ namespace ROS2
 
                 // Mark disposal as started before joining/disposing to make concurrent Dispose calls idempotent.
                 disposed = true;
+                cachedOk = false;
             }
 
             StopExecutor();
@@ -249,6 +266,7 @@ namespace ROS2
             {
                 instance = ros2forUnity;
                 ros2forUnity = null;
+                cachedOk = false;
                 executableActions = null;
                 executableActionSet = null;
                 nodes = null;

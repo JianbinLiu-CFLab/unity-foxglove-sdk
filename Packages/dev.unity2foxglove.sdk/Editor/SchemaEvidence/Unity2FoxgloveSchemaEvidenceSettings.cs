@@ -7,6 +7,7 @@
 using Unity.FoxgloveSDK.Core;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -43,6 +44,7 @@ namespace Unity.FoxgloveSDK.Editor
                     return;
 
                 instance._currentEvidenceRoot = normalized;
+                Unity2FoxgloveSchemaEvidencePaths.InvalidateCurrentEvidenceRootCache();
                 SaveAndSync();
             }
         }
@@ -82,13 +84,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         internal static void SyncOpenSceneManagers()
         {
-            foreach (var manager in Resources.FindObjectsOfTypeAll<Unity.FoxgloveSDK.Components.FoxgloveManager>())
-            {
-                if (manager == null || EditorUtility.IsPersistent(manager))
-                    continue;
-
-                SyncManager(manager);
-            }
+            for (var i = 0; i < SceneManager.sceneCount; i++)
+                SyncManagersInScene(SceneManager.GetSceneAt(i));
         }
 
         internal static void SyncManagersInScene(UnityEngine.SceneManagement.Scene scene)
@@ -148,6 +145,7 @@ namespace Unity.FoxgloveSDK.Editor
             else if (changed && !string.Equals(previousRoot, normalized, System.StringComparison.Ordinal))
             {
                 instance._currentEvidenceRoot = normalized;
+                Unity2FoxgloveSchemaEvidencePaths.InvalidateCurrentEvidenceRootCache();
                 shouldSave = true;
             }
 
@@ -169,6 +167,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     instance._defaultIdentityMode = SchemaIdentityMode.Off;
                     instance._currentEvidenceRoot = Unity2FoxgloveSchemaEvidencePaths.DefaultCurrentEvidenceRoot;
+                    Unity2FoxgloveSchemaEvidencePaths.InvalidateCurrentEvidenceRootCache();
                     SaveAndSync();
                 }
             }

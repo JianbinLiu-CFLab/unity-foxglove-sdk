@@ -101,7 +101,8 @@ namespace Unity.FoxgloveSDK.Transport
                 return string.Empty;
 
             using var sha = SHA256.Create();
-            var hash = sha.ComputeHash(File.ReadAllBytes(path));
+            using var stream = File.OpenRead(path);
+            var hash = sha.ComputeHash(stream);
             return BitConverter.ToString(hash).Replace("-", ":");
         }
 

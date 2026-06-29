@@ -39,6 +39,7 @@ namespace ROS2
         private List<Action> executableActions;
         private HashSet<Action> executableActionSet;
         private volatile bool quitting = false;
+        private volatile bool cachedOk = false;
         private bool disposed = false;
         private Thread executorThread;
         private int interval = 2;  // Spinning / executor interval in ms
@@ -49,7 +50,17 @@ namespace ROS2
         {
             lock (mutex)
             {
-                return (!disposed && nodes != null && ros2forUnity.Ok());
+                if (disposed || nodes == null || ros2forUnity == null)
+                {
+                    cachedOk = false;
+                    return false;
+                }
+
+                if (cachedOk)
+                    return true;
+
+                cachedOk = ros2forUnity.Ok();
+                return cachedOk;
             }
         }
 
@@ -167,6 +178,7 @@ namespace ROS2
                 {
                     if (!quitting && !disposed && ros2forUnity != null && nodes != null && ros2forUnity.Ok())
                     {
+                        cachedOk = true;
                         foreach (Action action in executableActions)
                         {
                             try
@@ -193,6 +205,10 @@ namespace ROS2
                                 }
                             }
                         }
+                    }
+                    else
+                    {
+                        cachedOk = false;
                     }
                 }
                 Thread.Sleep(interval);
@@ -278,6 +294,7 @@ namespace ROS2
                 }
 
                 disposed = true;
+                cachedOk = false;
                 instance = ros2forUnity;
                 ros2forUnity = null;
                 executableActions = null;

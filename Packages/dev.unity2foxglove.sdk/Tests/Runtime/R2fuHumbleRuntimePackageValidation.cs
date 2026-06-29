@@ -5,6 +5,7 @@
 // Purpose: Phase 160 validation for the R2FU Humble Win64 runtime package.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -31,6 +32,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj";
         private const string ExpectedSha =
             "2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f";
+
+        private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.Ordinal);
 
         private static int _passed;
 
@@ -291,7 +294,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = RepoPath(relativePath);
             Check(File.Exists(path), $"160-file: {relativePath} exists");
-            return File.ReadAllText(path);
+            if (FileTextCache.TryGetValue(path, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(path);
+            FileTextCache[path] = text;
+            return text;
         }
 
         private static string RepoPath(string relativePath)

@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -296,6 +297,9 @@ namespace Unity.FoxgloveSDK.Editor
         private const string KeyUsageOid = "2.5.29.15";
         private const string ServerAuthenticationOid = "1.3.6.1.5.5.7.3.1";
         private static readonly byte[] LocalDevKeyUsageDer = { 0x03, 0x02, 0x02, 0xA4 };
+        private static readonly Dictionary<string, Type> MonoSecurityTypeCache = new Dictionary<string, Type>();
+        private static readonly Dictionary<string, PropertyInfo> PropertyCache = new Dictionary<string, PropertyInfo>();
+        private static readonly Dictionary<string, MethodInfo[]> MethodCache = new Dictionary<string, MethodInfo[]>();
 
         public FoxgloveLocalDevCertificateResult Generate(
             FoxgloveLocalDevCertificateGenerator.GenerationContext context)
@@ -403,15 +407,24 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static Type RequireMonoSecurityType(string fullName)
         {
+            if (MonoSecurityTypeCache.TryGetValue(fullName, out var cachedType))
+                return cachedType;
+
             var type = Type.GetType(fullName + ", " + MonoSecurityAssemblyName, false);
             if (type != null)
+            {
+                MonoSecurityTypeCache[fullName] = type;
                 return type;
+            }
 
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 type = assembly.GetType(fullName, false);
                 if (type != null)
+                {
+                    MonoSecurityTypeCache[fullName] = type;
                     return type;
+                }
             }
 
             try
@@ -427,6 +440,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (type == null)
                 throw new NotSupportedException($"Unity Mono.Security type is not available: {fullName}");
 
+            MonoSecurityTypeCache[fullName] = type;
             return type;
         }
 
@@ -437,37 +451,30 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static object GetProperty(object target, string name)
         {
-            var property = target.GetType().GetProperty(name);
-            if (property == null)
-                throw new MissingMethodException(target.GetType().FullName, name);
-
-            return property.GetValue(target, null);
+            return ResolveProperty(target.GetType(), name).GetValue(target, null);
         }
 
         private static void SetProperty(object target, string name, object value)
         {
-            var property = target.GetType().GetProperty(name);
-            if (property == null)
-                throw new MissingMethodException(target.GetType().FullName, name);
-
-            property.SetValue(target, value, null);
+            ResolveProperty(target.GetType(), name).SetValue(target, value, null);
         }
 
         private static object Invoke(object target, string name, params object[] args)
         {
-            var methods = target.GetType().GetMethods();
+            var type = target.GetType();
+            var methods = ResolveMethods(type, name, BindingFlags.Public | BindingFlags.Instance);
             foreach (var method in methods)
             {
                 if (method.Name == name && ParametersMatch(method.GetParameters(), args))
                     return method.Invoke(target, args);
             }
 
-            throw new MissingMethodException(target.GetType().FullName, name);
+            throw new MissingMethodException(type.FullName, name);
         }
 
         private static object InvokeStatic(Type type, string name, params object[] args)
         {
-            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static);
+            var methods = ResolveMethods(type, name, BindingFlags.Public | BindingFlags.Static);
             foreach (var method in methods)
             {
                 if (method.Name == name && ParametersMatch(method.GetParameters(), args))
@@ -475,6 +482,33 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             throw new MissingMethodException(type.FullName, name);
+        }
+
+        private static PropertyInfo ResolveProperty(Type type, string name)
+        {
+            var key = type.AssemblyQualifiedName + "|" + name;
+            if (PropertyCache.TryGetValue(key, out var cached))
+                return cached;
+
+            var property = type.GetProperty(name);
+            if (property == null)
+                throw new MissingMethodException(type.FullName, name);
+
+            PropertyCache[key] = property;
+            return property;
+        }
+
+        private static MethodInfo[] ResolveMethods(Type type, string name, BindingFlags flags)
+        {
+            var key = type.AssemblyQualifiedName + "|" + (int)flags + "|" + name;
+            if (MethodCache.TryGetValue(key, out var cached))
+                return cached;
+
+            var methods = type.GetMethods(flags)
+                .Where(method => method.Name == name)
+                .ToArray();
+            MethodCache[key] = methods;
+            return methods;
         }
 
         private static bool ParametersMatch(ParameterInfo[] parameters, object[] args)

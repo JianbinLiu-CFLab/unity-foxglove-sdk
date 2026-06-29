@@ -75,10 +75,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public const string ZenohCommunicationMode = "zenoh";
         public const string FastDdsRmwImplementation = "rmw_fastrtps_cpp";
         public const string ZenohRmwImplementation = "rmw_zenoh_cpp";
+        private static readonly string[] FastDdsOnlyCommunicationModes = { FastDdsCommunicationMode };
+        private static readonly string[] ZenohCommunicationModes = { FastDdsCommunicationMode, ZenohCommunicationMode };
+        private static readonly string[] FastDdsOnlyCommunicationLabels = { "FastDDS (default)" };
+        private static readonly string[] ZenohCommunicationLabels =
+        {
+            "FastDDS (default)",
+            "Zenoh (rmw_zenoh_cpp)"
+        };
         private const string SessionRuntimeKey = "Unity2Foxglove.R2FU.SessionRuntime";
         private const string SessionCommunicationModeKey = "Unity2Foxglove.R2FU.SessionCommunicationMode";
         private const string CommunicationModeEditorUserSettingsKey =
             "Unity2Foxglove.R2FU.CommunicationMode";
+        private static string _cachedCandidatesProjectDirectory;
+        private static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> _cachedCandidates;
+        private static string _cachedManifestProjectDirectory;
+        private static DateTime _cachedManifestWriteTimeUtc;
+        private static long _cachedManifestLength = -1;
+        private static IReadOnlyList<string> _cachedManifestRuntimePackages;
 
         public static string ProjectDirectoryFromApplication()
         {
@@ -172,6 +186,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             manifest = AddRuntimePackageDependency(manifest, candidate.PackageName, projectDirectory);
             ValidateManifestJson(manifest, manifestPath);
             WriteManifestAtomically(manifestPath, manifest);
+            InvalidateStatusCache();
             ApplyCommunicationModeEnvironment(projectDirectory);
             Client.Resolve();
         }
@@ -185,8 +200,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public static IReadOnlyList<string> GetCommunicationModeIds(Ros2ForUnityRuntimeDescriptor runtime)
         {
             if (runtime != null && runtime.SupportsZenoh)
-                return new[] { FastDdsCommunicationMode, ZenohCommunicationMode };
-            return new[] { FastDdsCommunicationMode };
+                return ZenohCommunicationModes;
+            return FastDdsOnlyCommunicationModes;
+        }
+
+        public static string[] GetCommunicationModeLabels(Ros2ForUnityRuntimeDescriptor runtime)
+        {
+            if (runtime != null && runtime.SupportsZenoh)
+                return ZenohCommunicationLabels;
+            return FastDdsOnlyCommunicationLabels;
         }
 
         public static string GetCommunicationModeDisplayName(string mode)
@@ -246,9 +268,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         public static void BindActiveRuntimeForPlayMode(string projectDirectory)
         {
-            var sessionRuntime = GetSessionRuntimePackage();
-            var status = GetStatus(projectDirectory);
-            if (status.SelectedRuntime == null)
+            BindActiveRuntimeForPlayMode(GetStatus(projectDirectory));
+        }
+
+        public static void BindActiveRuntimeForPlayMode(Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            if (status == null || status.SelectedRuntime == null)
                 return;
 
             var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
@@ -256,7 +281,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 "RMW_IMPLEMENTATION",
                 GetRmwImplementationForCommunicationMode(communicationMode));
 
-            if (string.IsNullOrWhiteSpace(sessionRuntime))
+            if (string.IsNullOrWhiteSpace(GetSessionRuntimePackage()))
                 SessionState.SetString(SessionRuntimeKey, status.SelectedRuntime.PackageName);
 
             if (string.IsNullOrWhiteSpace(GetSessionCommunicationMode()))
@@ -281,8 +306,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         }
 
         public static bool IsEditorRestartRequired(string projectDirectory)
-            => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(projectDirectory))
-               || !string.IsNullOrWhiteSpace(GetCommunicationModeRequiringEditorRestart(projectDirectory));
+            => IsEditorRestartRequired(GetStatus(projectDirectory));
+
+        public static bool IsEditorRestartRequired(Ros2ForUnityRuntimeSelectionStatus status)
+            => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(status))
+               || !string.IsNullOrWhiteSpace(GetCommunicationModeRequiringEditorRestart(status));
 
         public static string GetCommunicationModeRequiringEditorRestart(string projectDirectory)
             => GetCommunicationModeRequiringEditorRestart(GetStatus(projectDirectory));
@@ -318,17 +346,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes(string projectDirectory)
         {
+            if (_cachedCandidates != null
+                && string.Equals(_cachedCandidatesProjectDirectory, projectDirectory, StringComparison.Ordinal))
+            {
+                return _cachedCandidates;
+            }
+
             var packagesDirectory = RepositoryPackagesDirectory(projectDirectory);
             if (string.IsNullOrWhiteSpace(packagesDirectory) || !Directory.Exists(packagesDirectory))
-                return Array.Empty<Ros2ForUnityRuntimeDescriptor>();
+            {
+                _cachedCandidatesProjectDirectory = projectDirectory;
+                _cachedCandidates = Array.Empty<Ros2ForUnityRuntimeDescriptor>();
+                return _cachedCandidates;
+            }
 
-            return Directory
+            var candidates = Directory
                 .GetDirectories(packagesDirectory, RuntimePackagePrefix + "*", SearchOption.TopDirectoryOnly)
                 .Where(path => !IsEmbeddedPackage(projectDirectory, path))
                 .Select(TryCreateDescriptor)
                 .Where(descriptor => descriptor != null)
                 .OrderBy(descriptor => descriptor.DisplayName, StringComparer.Ordinal)
                 .ToArray();
+            _cachedCandidatesProjectDirectory = projectDirectory;
+            _cachedCandidates = candidates;
+            return candidates;
         }
 
         public static string RepositoryPackagesDirectory(string projectDirectory)
@@ -344,18 +385,57 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             var manifestPath = ManifestPath(projectDirectory);
             if (!File.Exists(manifestPath))
-                return Array.Empty<string>();
+            {
+                _cachedManifestProjectDirectory = projectDirectory;
+                _cachedManifestWriteTimeUtc = DateTime.MinValue;
+                _cachedManifestLength = -1;
+                _cachedManifestRuntimePackages = Array.Empty<string>();
+                return _cachedManifestRuntimePackages;
+            }
+
+            var manifestInfo = new FileInfo(manifestPath);
+            if (_cachedManifestRuntimePackages != null
+                && string.Equals(_cachedManifestProjectDirectory, projectDirectory, StringComparison.Ordinal)
+                && _cachedManifestWriteTimeUtc == manifestInfo.LastWriteTimeUtc
+                && _cachedManifestLength == manifestInfo.Length)
+            {
+                return _cachedManifestRuntimePackages;
+            }
 
             var dependencies = ReadManifestDependencies(File.ReadAllText(manifestPath), manifestPath);
             if (dependencies == null)
-                return Array.Empty<string>();
+            {
+                _cachedManifestProjectDirectory = projectDirectory;
+                _cachedManifestWriteTimeUtc = manifestInfo.LastWriteTimeUtc;
+                _cachedManifestLength = manifestInfo.Length;
+                _cachedManifestRuntimePackages = Array.Empty<string>();
+                return _cachedManifestRuntimePackages;
+            }
 
-            return dependencies
+            var packages = dependencies
                 .Properties()
                 .Select(property => property.Name)
                 .Where(name => name.StartsWith(RuntimePackagePrefix, StringComparison.Ordinal))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
+            _cachedManifestProjectDirectory = projectDirectory;
+            _cachedManifestWriteTimeUtc = manifestInfo.LastWriteTimeUtc;
+            _cachedManifestLength = manifestInfo.Length;
+            _cachedManifestRuntimePackages = packages;
+            return packages;
+        }
+
+        public static bool HasManifestRuntimePackage(string projectDirectory)
+            => ReadManifestRuntimePackages(projectDirectory).Count > 0;
+
+        public static void InvalidateStatusCache()
+        {
+            _cachedCandidatesProjectDirectory = null;
+            _cachedCandidates = null;
+            _cachedManifestProjectDirectory = null;
+            _cachedManifestWriteTimeUtc = DateTime.MinValue;
+            _cachedManifestLength = -1;
+            _cachedManifestRuntimePackages = null;
         }
 
         private static Ros2ForUnityRuntimeDescriptor TryCreateDescriptor(string packageDirectory)

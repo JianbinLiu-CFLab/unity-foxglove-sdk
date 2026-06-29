@@ -7,7 +7,6 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
-using System.Text;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -79,10 +78,16 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string ToUpperHex(byte[] bytes)
         {
-            var sb = new StringBuilder(bytes.Length * 2);
-            foreach (var b in bytes)
-                sb.Append(b.ToString("X2"));
-            return sb.ToString();
+            const string hex = "0123456789ABCDEF";
+            var chars = new char[bytes.Length * 2];
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                var b = bytes[i];
+                chars[i * 2] = hex[b >> 4];
+                chars[(i * 2) + 1] = hex[b & 0x0F];
+            }
+
+            return new string(chars);
         }
     }
 }

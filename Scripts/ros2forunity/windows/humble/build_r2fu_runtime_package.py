@@ -522,26 +522,29 @@ def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
     )
 
 
-def ensure_generated_meta(package: Path, target: Path, is_dir: bool) -> None:
+def ensure_generated_meta(package: Path, target: Path, is_dir: bool, existing_paths: set[str]) -> None:
     """Create a deterministic .meta file when the artifact did not provide one."""
     meta = target.with_name(target.name + ".meta")
-    if path_exists(meta):
+    meta_key = meta.as_posix()
+    if meta_key in existing_paths:
         return
     relative = target.relative_to(package).as_posix()
     write_text(meta, generated_meta_text(target, relative, is_dir))
+    existing_paths.add(meta_key)
 
 
 def write_generated_metas(package: Path) -> None:
     """Generate metadata for package-owned files and directories lacking upstream metadata."""
     paths = list(package.rglob("*"))
+    existing_paths = {path.as_posix() for path in paths}
     directories = sorted((path for path in paths if path.is_dir()), key=lambda item: item.as_posix())
     files = sorted((path for path in paths if path.is_file()), key=lambda item: item.as_posix())
     for directory in directories:
-        ensure_generated_meta(package, directory, is_dir=True)
+        ensure_generated_meta(package, directory, is_dir=True, existing_paths=existing_paths)
     for path in files:
         if path.name.endswith(".meta") or path.name == ".gitkeep":
             continue
-        ensure_generated_meta(package, path, is_dir=False)
+        ensure_generated_meta(package, path, is_dir=False, existing_paths=existing_paths)
 
 
 def package_json() -> dict[str, object]:
