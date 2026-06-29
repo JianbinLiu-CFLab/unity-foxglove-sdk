@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import subprocess
 import sys
@@ -98,6 +99,48 @@ def run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
         if fatal:
             raise SystemExit(result.returncode)
     return ok
+
+
+def run_captured(cmd: list[str], label: str) -> tuple[str, bool, int, str, str]:
+    """Run a subprocess and capture output for later ordered replay."""
+    result = subprocess.run(
+        cmd,
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        errors="replace",
+    )
+    return label, result.returncode == 0, result.returncode, result.stdout, result.stderr
+
+
+def run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
+    """Run independent commands concurrently and replay their output in declaration order."""
+    print(f"\n{cyan('--- package validators (parallel) ---')}")
+    results_by_label: dict[str, tuple[bool, int, str, str]] = {}
+    with ThreadPoolExecutor(max_workers=len(commands)) as executor:
+        futures = {
+            executor.submit(run_captured, cmd, label): label
+            for label, cmd in commands
+        }
+        for future in as_completed(futures):
+            label, ok, returncode, stdout, stderr = future.result()
+            results_by_label[label] = (ok, returncode, stdout, stderr)
+
+    ordered_results: dict[str, bool] = {}
+    for label, _ in commands:
+        ok, returncode, stdout, stderr = results_by_label[label]
+        print(f"\n{cyan('--- ' + label + ' ---')}")
+        if stdout:
+            print(stdout, end="" if stdout.endswith("\n") else "\n")
+        if stderr:
+            print(stderr, end="" if stderr.endswith("\n") else "\n", file=sys.stderr)
+        if ok:
+            print(green(f"{PASS} {label}"))
+        else:
+            print(red(f"{FAIL} {label} (exit {returncode})"))
+        ordered_results[label] = ok
+    return ordered_results
 
 
 def restore_with_ignoring_failed_sources(
@@ -284,26 +327,24 @@ def main() -> int:
 
     # --- package validators ---
     if args.only in (None, "packages"):
-        results["validate-package"] = run(
-            [sys.executable, "Scripts/package/validate_unity_package.py"],
-            "validate_unity_package.py"
-        )
-        results["validate-entrypoints"] = run(
-            [sys.executable, "Scripts/package/validate_local_entrypoints.py"],
-            "validate_local_entrypoints.py"
-        )
-        results["validate-schema-generated"] = run(
-            [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR],
-            "validate_schema_generated_outputs.py"
-        )
-        results["validate-r2fu"] = run(
-            [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],
-            "validate_r2fu_runtime_package.py"
-        )
-        results["validate-adapter"] = run(
-            [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"],
-            "validate_ros2forunity_package.py"
-        )
+        package_results = run_parallel([
+            ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
+            ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
+            ("validate_schema_generated_outputs.py", [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR]),
+            (
+                "validate_r2fu_runtime_package.py",
+                [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py"],
+            ),
+            (
+                "validate_ros2forunity_package.py",
+                [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"],
+            ),
+        ])
+        results["validate-package"] = package_results["validate_unity_package.py"]
+        results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]
+        results["validate-schema-generated"] = package_results["validate_schema_generated_outputs.py"]
+        results["validate-r2fu"] = package_results["validate_r2fu_runtime_package.py"]
+        results["validate-adapter"] = package_results["validate_ros2forunity_package.py"]
 
     # --- boundary check ---
     if args.only in (None, "boundary"):
