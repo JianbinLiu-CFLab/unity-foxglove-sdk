@@ -122,11 +122,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             error = string.Empty;
             var stack = new Stack<GuardFrame>();
-            var lines = text.Replace("\r\n", "\n").Split('\n');
+            using var reader = new StringReader(text);
 
-            for (var i = 0; i < lines.Length; i++)
+            var lineNumber = 0;
+            string line;
+            while ((line = reader.ReadLine()) != null)
             {
-                var line = lines[i];
+                lineNumber++;
                 var trimmed = line.TrimStart();
 
                 if (trimmed.StartsWith("#if ", StringComparison.Ordinal))
@@ -183,7 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var token = FindToken(line, tokens);
                 if (token != null && !CurrentGuarded(stack))
                 {
-                    error = " Unguarded R2FU reference on line " + (i + 1) + ": " + trimmed;
+                    error = " Unguarded R2FU reference on line " + lineNumber + ": " + trimmed;
                     return false;
                 }
             }
