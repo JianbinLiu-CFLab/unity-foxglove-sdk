@@ -108,8 +108,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(component.Contains("[DisallowMultipleComponent]", StringComparison.Ordinal),
                 "134-22-G1: ROS2UnityComponent enforces one component per GameObject");
             Check(component.Contains("needsConstruct", StringComparison.Ordinal)
-                  && component.Contains("!disposed && nodes != null && ros2forUnity != null", StringComparison.Ordinal),
-                "134-22-G2: ROS2UnityComponent Ok avoids expensive lazy construction inside the first state lock");
+                  && component.Contains("private volatile bool cachedOk = false", StringComparison.Ordinal)
+                  && component.Contains("if (initialized && cachedOk && nodes != null && ros2forUnity != null)", StringComparison.Ordinal)
+                  && component.Contains("needsConstruct = ros2forUnity == null;", StringComparison.Ordinal),
+                "134-22-G2: ROS2UnityComponent Ok uses a cached steady-state fast path before lazy construction");
             Check(component.Contains("!disposed && ros2forUnity != null && nodes != null && executableActions != null && ros2csNodes != null", StringComparison.Ordinal),
                 "134-22-G3: ROS2UnityComponent Tick has explicit disposed/null parity guard");
             Check(component.Contains("Thread threadToStart = null", StringComparison.Ordinal)
