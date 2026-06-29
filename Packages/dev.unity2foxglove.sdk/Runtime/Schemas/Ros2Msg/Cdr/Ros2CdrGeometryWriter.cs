@@ -107,6 +107,12 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
 
+            WriteVector3Unchecked(writer, value);
+        }
+
+        /// <summary>Write geometry_msgs/Vector3 after the caller has validated the writer.</summary>
+        internal static void WriteVector3Unchecked(Ros2CdrWriter writer, FoxgloveVector3 value)
+        {
             writer.WriteFloat64(value?.X ?? 0.0);
             writer.WriteFloat64(value?.Y ?? 0.0);
             writer.WriteFloat64(value?.Z ?? 0.0);
@@ -118,6 +124,12 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
 
+            WriteQuaternionUnchecked(writer, value);
+        }
+
+        /// <summary>Write geometry_msgs/Quaternion after the caller has validated the writer.</summary>
+        internal static void WriteQuaternionUnchecked(Ros2CdrWriter writer, FoxgloveQuaternion value)
+        {
             writer.WriteFloat64(value?.X ?? 0.0);
             writer.WriteFloat64(value?.Y ?? 0.0);
             writer.WriteFloat64(value?.Z ?? 0.0);
@@ -130,8 +142,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (writer == null)
                 throw new ArgumentNullException(nameof(writer));
 
-            WritePoint(writer, value?.Position);
-            WriteQuaternion(writer, value?.Orientation);
+            WriteVector3Unchecked(writer, value?.Position);
+            WriteQuaternionUnchecked(writer, value?.Orientation);
         }
 
         /// <summary>Write an identity geometry_msgs/Pose.</summary>

@@ -132,10 +132,13 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         public void WriteString(string value)
         {
             value ??= string.Empty;
-            var byteCount = Encoding.UTF8.GetByteCount(value);
-            WriteUInt32(checked((uint)byteCount + 1U));
-            EnsureCapacity(byteCount + 1);
-            _position += Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position);
+            Align(4);
+            var lengthPosition = _position;
+            EnsureCapacity(4 + Encoding.UTF8.GetMaxByteCount(value.Length) + 1);
+            _position += 4;
+            var byteCount = Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position);
+            BinaryPrimitives.WriteUInt32LittleEndian(_buffer.AsSpan(lengthPosition, 4), checked((uint)byteCount + 1U));
+            _position += byteCount;
             _buffer[_position++] = 0x00;
         }
 
@@ -221,7 +224,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
             var padding = alignment - relative;
             EnsureCapacity(padding);
-            Array.Clear(_buffer, _position, padding);
+            _buffer.AsSpan(_position, padding).Clear();
             _position += padding;
         }
 
@@ -231,9 +234,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (required <= _buffer.Length)
                 return;
 
-            var newLength = _buffer.Length;
-            while (newLength < required)
-                newLength = checked(newLength * 2);
+            var newLength = Math.Max(checked(_buffer.Length * 2), required);
 
             Array.Resize(ref _buffer, newLength);
         }
