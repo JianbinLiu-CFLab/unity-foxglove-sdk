@@ -216,7 +216,13 @@ namespace Unity.FoxgloveSDK.Core
             try
             {
                 var timestamp = _clock.NowNs;
-                var entry = JsonConvert.SerializeObject(new { name, type, value, timestamp });
+                var entry = JsonConvert.SerializeObject(new ParameterMetadataEntry
+                {
+                    Name = name,
+                    Type = type,
+                    Value = value,
+                    Timestamp = timestamp
+                });
                 recorder.WriteMetadata("foxglove.parameters", entry);
             }
             catch (Exception ex)
@@ -240,6 +246,21 @@ namespace Unity.FoxgloveSDK.Core
             public string FilePath { get; }
             public McapWriterOptions WriterOptions { get; }
             public string CoordinateMode { get; }
+        }
+
+        private sealed class ParameterMetadataEntry
+        {
+            [JsonProperty("name")]
+            public string Name { get; set; }
+
+            [JsonProperty("type")]
+            public string Type { get; set; }
+
+            [JsonProperty("value")]
+            public JToken Value { get; set; }
+
+            [JsonProperty("timestamp")]
+            public ulong Timestamp { get; set; }
         }
     }
 }

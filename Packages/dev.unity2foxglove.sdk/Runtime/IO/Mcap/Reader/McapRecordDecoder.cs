@@ -23,20 +23,29 @@ namespace Unity.FoxgloveSDK.IO
             byte[] content,
             out bool crcValid,
             ulong uncompressedSizeLimit)
+            => DecodeChunkRecordsContent(content, 0, content?.Length ?? 0, out crcValid, uncompressedSizeLimit);
+
+        internal static byte[] DecodeChunkRecordsContent(
+            byte[] content,
+            int offset,
+            int contentLen,
+            out bool crcValid,
+            ulong uncompressedSizeLimit)
         {
-            int off = 0;
-            McapBinaryReader.ReadU64LE(content, ref off);
-            McapBinaryReader.ReadU64LE(content, ref off);
-            var uncompSize = McapBinaryReader.ReadU64LE(content, ref off);
-            var crc = McapBinaryReader.ReadU32LE(content, ref off);
-            var compression = McapBinaryReader.ReadString(content, ref off);
-            var compSize = McapBinaryReader.ReadU64LE(content, ref off);
+            var end = ValidateRecordSegment(content, offset, contentLen, "chunk");
+            var off = offset;
+            ReadU64LE(content, ref off, end, "chunk message_start_time");
+            ReadU64LE(content, ref off, end, "chunk message_end_time");
+            var uncompSize = ReadU64LE(content, ref off, end, "chunk uncompressed_size");
+            var crc = ReadU32LE(content, ref off, end, "chunk uncompressed_crc");
+            var compression = ReadString(content, ref off, end, "chunk compression");
+            var compSize = ReadU64LE(content, ref off, end, "chunk compressed_size");
 
             if (compSize > int.MaxValue || uncompSize > int.MaxValue)
                 throw new InvalidDataException($"Chunk compressed/uncompressed size exceeds int.MaxValue");
             if (uncompressedSizeLimit > 0 && uncompSize > uncompressedSizeLimit)
                 throw new InvalidDataException($"Chunk uncompressed size {uncompSize} exceeds limit {uncompressedSizeLimit}");
-            if (off + (int)compSize > content.Length)
+            if ((int)compSize > end - off)
                 throw new InvalidDataException("Chunk compressed data is truncated");
 
             var maxOutputBytes = uncompressedSizeLimit > int.MaxValue
@@ -198,12 +207,16 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         internal static uint DecodeDataEnd(byte[] content)
+            => DecodeDataEnd(content, 0, content?.Length ?? 0);
+
+        internal static uint DecodeDataEnd(byte[] content, int offset, int contentLen)
         {
-            if (content == null || content.Length != McapWriter.Crc32SizeBytes)
+            if (contentLen != McapWriter.Crc32SizeBytes)
                 throw new InvalidDataException("MCAP DataEnd content length must be 4 bytes.");
 
-            var off = 0;
-            return McapBinaryReader.ReadU32LE(content, ref off);
+            var end = ValidateRecordSegment(content, offset, contentLen, "DataEnd");
+            var off = offset;
+            return ReadU32LE(content, ref off, end, "DataEnd CRC");
         }
 
         // Decode helpers
@@ -212,12 +225,16 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP header record from raw content bytes.
         /// </summary>
         public static McapHeader DecodeHeader(byte[] content)
+            => DecodeHeader(content, 0, content?.Length ?? 0);
+
+        internal static McapHeader DecodeHeader(byte[] content, int offset, int contentLen)
         {
-            var off = 0;
+            var end = ValidateRecordSegment(content, offset, contentLen, "header");
+            var off = offset;
             return new McapHeader
             {
-                Profile = McapBinaryReader.ReadString(content, ref off),
-                Library = McapBinaryReader.ReadString(content, ref off)
+                Profile = ReadString(content, ref off, end, "header profile"),
+                Library = ReadString(content, ref off, end, "header library")
             };
         }
 
@@ -296,6 +313,12 @@ namespace Unity.FoxgloveSDK.IO
         {
             EnsureSegmentBytes(off, sizeof(uint), end, fieldName);
             return McapBinaryReader.ReadU32LE(buf, ref off);
+        }
+
+        internal static ulong ReadU64LE(byte[] buf, ref int off, int end, string fieldName)
+        {
+            EnsureSegmentBytes(off, sizeof(ulong), end, fieldName);
+            return McapBinaryReader.ReadU64LE(buf, ref off);
         }
 
         internal static string ReadString(byte[] buf, ref int off, int end, string fieldName)
@@ -407,31 +430,32 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP chunk index record from raw content bytes.
         /// </summary>
         public static McapChunkIndex DecodeChunkIndex(byte[] content)
-        {
-            if (content == null)
-                throw new ArgumentNullException(nameof(content));
+            => DecodeChunkIndex(content, 0, content?.Length ?? 0);
 
-            var off = 0;
+        internal static McapChunkIndex DecodeChunkIndex(byte[] content, int offset, int contentLen)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "chunk index");
+            var off = offset;
             var ci = new McapChunkIndex
             {
-                MessageStartTime = McapBinaryReader.ReadU64LE(content, ref off),
-                MessageEndTime = McapBinaryReader.ReadU64LE(content, ref off),
-                ChunkStartOffset = McapBinaryReader.ReadU64LE(content, ref off),
-                ChunkLength = McapBinaryReader.ReadU64LE(content, ref off)
+                MessageStartTime = ReadU64LE(content, ref off, end, "chunk index message_start_time"),
+                MessageEndTime = ReadU64LE(content, ref off, end, "chunk index message_end_time"),
+                ChunkStartOffset = ReadU64LE(content, ref off, end, "chunk index chunk_start_offset"),
+                ChunkLength = ReadU64LE(content, ref off, end, "chunk index chunk_length")
             };
-            var mioSize = McapBinaryReader.ReadU32LE(content, ref off);
+            var mioSize = ReadU32LE(content, ref off, end, "chunk index message_index_offsets length");
             ValidateSizedU16U64VectorLength(mioSize, "message_index_offsets");
             var mioCount = mioSize / U16U64PairSize;
             for (var i = 0; i < mioCount; i++)
             {
-                var cid = McapBinaryReader.ReadU16LE(content, ref off);
-                var offset = McapBinaryReader.ReadU64LE(content, ref off);
-                ci.MessageIndexOffsets[cid] = offset;
+                var cid = ReadU16LE(content, ref off, end, "chunk index channel id");
+                var messageIndexOffset = ReadU64LE(content, ref off, end, "chunk index message index offset");
+                ci.MessageIndexOffsets[cid] = messageIndexOffset;
             }
-            ci.MessageIndexLength = McapBinaryReader.ReadU64LE(content, ref off);
-            ci.Compression = McapBinaryReader.ReadString(content, ref off);
-            ci.CompressedSize = McapBinaryReader.ReadU64LE(content, ref off);
-            ci.UncompressedSize = McapBinaryReader.ReadU64LE(content, ref off);
+            ci.MessageIndexLength = ReadU64LE(content, ref off, end, "chunk index message_index_length");
+            ci.Compression = ReadString(content, ref off, end, "chunk index compression");
+            ci.CompressedSize = ReadU64LE(content, ref off, end, "chunk index compressed_size");
+            ci.UncompressedSize = ReadU64LE(content, ref off, end, "chunk index uncompressed_size");
             return ci;
         }
 
@@ -439,29 +463,30 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP statistics record from raw content bytes.
         /// </summary>
         public static McapStatistics DecodeStatistics(byte[] content)
-        {
-            if (content == null)
-                throw new ArgumentNullException(nameof(content));
+            => DecodeStatistics(content, 0, content?.Length ?? 0);
 
-            var off = 0;
+        internal static McapStatistics DecodeStatistics(byte[] content, int offset, int contentLen)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "statistics");
+            var off = offset;
             var s = new McapStatistics
             {
-                MessageCount = McapBinaryReader.ReadU64LE(content, ref off),
-                SchemaCount = McapBinaryReader.ReadU16LE(content, ref off),
-                ChannelCount = McapBinaryReader.ReadU32LE(content, ref off),
-                AttachmentCount = McapBinaryReader.ReadU32LE(content, ref off),
-                MetadataCount = McapBinaryReader.ReadU32LE(content, ref off),
-                ChunkCount = McapBinaryReader.ReadU32LE(content, ref off),
-                MessageStartTime = McapBinaryReader.ReadU64LE(content, ref off),
-                MessageEndTime = McapBinaryReader.ReadU64LE(content, ref off)
+                MessageCount = ReadU64LE(content, ref off, end, "statistics message_count"),
+                SchemaCount = ReadU16LE(content, ref off, end, "statistics schema_count"),
+                ChannelCount = ReadU32LE(content, ref off, end, "statistics channel_count"),
+                AttachmentCount = ReadU32LE(content, ref off, end, "statistics attachment_count"),
+                MetadataCount = ReadU32LE(content, ref off, end, "statistics metadata_count"),
+                ChunkCount = ReadU32LE(content, ref off, end, "statistics chunk_count"),
+                MessageStartTime = ReadU64LE(content, ref off, end, "statistics message_start_time"),
+                MessageEndTime = ReadU64LE(content, ref off, end, "statistics message_end_time")
             };
-            var cmsSize = McapBinaryReader.ReadU32LE(content, ref off);
+            var cmsSize = ReadU32LE(content, ref off, end, "statistics channel_message_counts length");
             ValidateSizedU16U64VectorLength(cmsSize, "channel_message_counts");
             var cmsCount = cmsSize / U16U64PairSize;
             for (var i = 0; i < cmsCount; i++)
             {
-                var cid = McapBinaryReader.ReadU16LE(content, ref off);
-                var count = McapBinaryReader.ReadU64LE(content, ref off);
+                var cid = ReadU16LE(content, ref off, end, "statistics channel id");
+                var count = ReadU64LE(content, ref off, end, "statistics channel message count");
                 s.ChannelMessageCounts[cid] = count;
             }
             return s;
@@ -471,16 +496,17 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP metadata index record from raw content bytes.
         /// </summary>
         public static McapMetadataIndex DecodeMetadataIndex(byte[] content)
-        {
-            if (content == null)
-                throw new ArgumentNullException(nameof(content));
+            => DecodeMetadataIndex(content, 0, content?.Length ?? 0);
 
-            var off = 0;
+        internal static McapMetadataIndex DecodeMetadataIndex(byte[] content, int offset, int contentLen)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "metadata index");
+            var off = offset;
             return new McapMetadataIndex
             {
-                Offset = McapBinaryReader.ReadU64LE(content, ref off),
-                Length = McapBinaryReader.ReadU64LE(content, ref off),
-                Name = McapBinaryReader.ReadString(content, ref off)
+                Offset = ReadU64LE(content, ref off, end, "metadata index offset"),
+                Length = ReadU64LE(content, ref off, end, "metadata index length"),
+                Name = ReadString(content, ref off, end, "metadata index name")
             };
         }
 
@@ -488,9 +514,12 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP metadata record from raw content bytes.
         /// </summary>
         public static McapMetadata DecodeMetadata(byte[] content)
+            => DecodeMetadata(content, 0, content?.Length ?? 0);
+
+        internal static McapMetadata DecodeMetadata(byte[] content, int offset, int contentLen)
         {
-            var end = ValidateRecordSegment(content, 0, content?.Length ?? 0, "metadata");
-            var off = 0;
+            var end = ValidateRecordSegment(content, offset, contentLen, "metadata");
+            var off = offset;
             var name = ReadString(content, ref off, end, "metadata name");
             var meta = ReadMap(content, ref off, end, "metadata");
             RequireExactSegmentEnd(off, end, "metadata");
@@ -501,18 +530,22 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP attachment record from raw content bytes.
         /// </summary>
         public static McapAttachment DecodeAttachment(byte[] content)
+            => DecodeAttachment(content, 0, content?.Length ?? 0);
+
+        internal static McapAttachment DecodeAttachment(byte[] content, int offset, int contentLen)
         {
-            var off = 0;
-            var logTime = McapBinaryReader.ReadU64LE(content, ref off);
-            var createTime = McapBinaryReader.ReadU64LE(content, ref off);
-            var name = McapBinaryReader.ReadString(content, ref off);
-            var mediaType = McapBinaryReader.ReadString(content, ref off);
-            var dataSize = McapBinaryReader.ReadU64LE(content, ref off);
+            var end = ValidateRecordSegment(content, offset, contentLen, "attachment");
+            var off = offset;
+            var logTime = ReadU64LE(content, ref off, end, "attachment log_time");
+            var createTime = ReadU64LE(content, ref off, end, "attachment create_time");
+            var name = ReadString(content, ref off, end, "attachment name");
+            var mediaType = ReadString(content, ref off, end, "attachment media_type");
+            var dataSize = ReadU64LE(content, ref off, end, "attachment data size");
             if (dataSize > int.MaxValue)
                 throw new InvalidDataException($"Attachment data size {dataSize} exceeds int.MaxValue");
-            if (content.Length - off < McapWriter.Crc32SizeBytes)
+            if (end - off < McapWriter.Crc32SizeBytes)
                 throw new InvalidDataException("Attachment content is truncated: CRC field extends past record");
-            var remaining = content.Length - off - McapWriter.Crc32SizeBytes;
+            var remaining = end - off - McapWriter.Crc32SizeBytes;
             if (dataSize > (ulong)remaining)
                 throw new InvalidDataException("Attachment content is truncated: data extends past CRC field");
             var data = new byte[dataSize];
@@ -523,7 +556,7 @@ namespace Unity.FoxgloveSDK.IO
             var crcValid = true;
             if (storedCrc != 0)
             {
-                var computed = Crc32Helper.Compute(new ReadOnlySpan<byte>(content, 0, content.Length - McapWriter.Crc32SizeBytes));
+                var computed = Crc32Helper.Compute(new ReadOnlySpan<byte>(content, offset, contentLen - McapWriter.Crc32SizeBytes));
                 crcValid = computed == storedCrc;
             }
             return new McapAttachment
@@ -542,20 +575,21 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP attachment index record from raw content bytes.
         /// </summary>
         public static McapAttachmentIndex DecodeAttachmentIndex(byte[] content)
-        {
-            if (content == null)
-                throw new ArgumentNullException(nameof(content));
+            => DecodeAttachmentIndex(content, 0, content?.Length ?? 0);
 
-            var off = 0;
+        internal static McapAttachmentIndex DecodeAttachmentIndex(byte[] content, int offset, int contentLen)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "attachment index");
+            var off = offset;
             return new McapAttachmentIndex
             {
-                Offset = McapBinaryReader.ReadU64LE(content, ref off),
-                Length = McapBinaryReader.ReadU64LE(content, ref off),
-                LogTime = McapBinaryReader.ReadU64LE(content, ref off),
-                CreateTime = McapBinaryReader.ReadU64LE(content, ref off),
-                DataSize = McapBinaryReader.ReadU64LE(content, ref off),
-                Name = McapBinaryReader.ReadString(content, ref off),
-                MediaType = McapBinaryReader.ReadString(content, ref off)
+                Offset = ReadU64LE(content, ref off, end, "attachment index offset"),
+                Length = ReadU64LE(content, ref off, end, "attachment index length"),
+                LogTime = ReadU64LE(content, ref off, end, "attachment index log_time"),
+                CreateTime = ReadU64LE(content, ref off, end, "attachment index create_time"),
+                DataSize = ReadU64LE(content, ref off, end, "attachment index data size"),
+                Name = ReadString(content, ref off, end, "attachment index name"),
+                MediaType = ReadString(content, ref off, end, "attachment index media_type")
             };
         }
 
@@ -563,18 +597,19 @@ namespace Unity.FoxgloveSDK.IO
         /// Decodes an MCAP footer record from raw content bytes.
         /// </summary>
         public static McapFooter DecodeFooter(byte[] content)
-        {
-            if (content == null)
-                throw new ArgumentNullException(nameof(content));
+            => DecodeFooter(content, 0, content?.Length ?? 0);
 
-            var off = 0;
+        internal static McapFooter DecodeFooter(byte[] content, int offset, int contentLen)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "footer");
+            var off = offset;
             var footer = new McapFooter
             {
-                SummaryStart = McapBinaryReader.ReadU64LE(content, ref off),
-                SummaryOffsetStart = McapBinaryReader.ReadU64LE(content, ref off),
-                SummaryCrc = McapBinaryReader.ReadU32LE(content, ref off)
+                SummaryStart = ReadU64LE(content, ref off, end, "footer summary_start"),
+                SummaryOffsetStart = ReadU64LE(content, ref off, end, "footer summary_offset_start"),
+                SummaryCrc = ReadU32LE(content, ref off, end, "footer summary_crc")
             };
-            RequireExactSegmentEnd(off, content.Length, "footer");
+            RequireExactSegmentEnd(off, end, "footer");
             return footer;
         }
     }

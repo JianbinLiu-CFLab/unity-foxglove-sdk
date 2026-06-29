@@ -123,6 +123,23 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>Compress raw bytes from an existing segment with an explicit LZ4 level.</summary>
         public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data, LZ4Level lz4Level)
+            => Compress(compression, data, lz4Level, null);
+
+        /// <summary>Compress raw bytes with an explicit LZ4 level and optional caller-owned output buffer.</summary>
+        public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data, LZ4Level lz4Level, MemoryStream lz4OutputBuffer)
+        {
+            byte[] zstdOutputBuffer = null;
+            return Compress(compression, data, lz4Level, lz4OutputBuffer, null, ref zstdOutputBuffer);
+        }
+
+        /// <summary>Compress raw bytes with optional caller-owned compression state.</summary>
+        internal static ArraySegment<byte> Compress(
+            string compression,
+            ArraySegment<byte> data,
+            LZ4Level lz4Level,
+            MemoryStream lz4OutputBuffer,
+            Compressor zstdCompressor,
+            ref byte[] zstdOutputBuffer)
         {
             var sourceArray = data.Array ?? Array.Empty<byte>();
             var sourceOffset = data.Array == null ? 0 : data.Offset;
@@ -135,20 +152,43 @@ namespace Unity.FoxgloveSDK.IO
                         ? new ArraySegment<byte>(Array.Empty<byte>())
                         : data;
                 case "lz4":
-                    using (var ms = new MemoryStream())
+                    if (lz4OutputBuffer == null)
                     {
-                        using (var lz4 = LZ4Stream.Encode(ms, lz4Level, leaveOpen: true))
-                            lz4.Write(sourceArray, sourceOffset, sourceCount);
-                        return new ArraySegment<byte>(ms.ToArray());
+                        using (var ms = new MemoryStream())
+                        {
+                            using (var lz4 = LZ4Stream.Encode(ms, lz4Level, leaveOpen: true))
+                                lz4.Write(sourceArray, sourceOffset, sourceCount);
+                            return new ArraySegment<byte>(ms.ToArray());
+                        }
                     }
-                case "zstd":
-                    using (var compressor = new Compressor())
+
+                    lz4OutputBuffer.SetLength(0);
+                    using (var lz4 = LZ4Stream.Encode(lz4OutputBuffer, lz4Level, leaveOpen: true))
                     {
-                        var output = new byte[Compressor.GetCompressBound(sourceCount)];
+                        if (sourceCount > 0)
+                            lz4.Write(sourceArray, sourceOffset, sourceCount);
+                    }
+
+                    if (!lz4OutputBuffer.TryGetBuffer(out var compressed))
+                        throw new InvalidOperationException("MCAP LZ4 compression buffer is not publicly visible.");
+                    return compressed;
+                case "zstd":
+                    var compressor = zstdCompressor ?? new Compressor();
+                    var ownsCompressor = zstdCompressor == null;
+                    try
+                    {
+                        var outputBound = Compressor.GetCompressBound(sourceCount);
+                        if (zstdOutputBuffer == null || zstdOutputBuffer.Length < outputBound)
+                            zstdOutputBuffer = new byte[outputBound];
                         var compressedSize = compressor.Wrap(
                             new ArraySegment<byte>(sourceArray, sourceOffset, sourceCount),
-                            new ArraySegment<byte>(output));
-                        return new ArraySegment<byte>(output, 0, compressedSize);
+                            new ArraySegment<byte>(zstdOutputBuffer, 0, zstdOutputBuffer.Length));
+                        return new ArraySegment<byte>(zstdOutputBuffer, 0, compressedSize);
+                    }
+                    finally
+                    {
+                        if (ownsCompressor)
+                            compressor.Dispose();
                     }
                 default:
                     throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");

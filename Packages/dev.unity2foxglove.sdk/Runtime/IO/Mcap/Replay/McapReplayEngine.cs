@@ -436,6 +436,7 @@ namespace Unity.FoxgloveSDK.IO
             if (clampedTo < clampedFrom)
                 return result;
 
+            var historyHeadIndex = 0;
             foreach (var chunkIndex in _summary.ChunkIndexes)
             {
                 if (chunkIndex.MessageStartTime > clampedTo)
@@ -493,10 +494,11 @@ namespace Unity.FoxgloveSDK.IO
                         LogTime = logNs,
                         PublishTime = pubNs,
                         Data = data
-                    }, maxMessages);
+                    }, maxMessages, ref historyHeadIndex);
                 }
             }
 
+            CompactHistory(result, ref historyHeadIndex);
             if (maxMessages <= 0 && result.Count > 1)
                 result.Sort(CompareMessages);
             return result;
@@ -642,7 +644,7 @@ namespace Unity.FoxgloveSDK.IO
             _pending.Add(message);
         }
 
-        private static void AddHistoryMessage(List<McapMessage> result, McapMessage message, int maxMessages)
+        private static void AddHistoryMessage(List<McapMessage> result, McapMessage message, int maxMessages, ref int historyHeadIndex)
         {
             if (maxMessages <= 0)
             {
@@ -650,18 +652,22 @@ namespace Unity.FoxgloveSDK.IO
                 return;
             }
 
-            if (result.Count >= maxMessages && CompareMessages(message, result[0]) <= 0)
+            var activeCount = result.Count - historyHeadIndex;
+            if (activeCount >= maxMessages && CompareMessages(message, result[historyHeadIndex]) <= 0)
                 return;
 
-            result.Insert(FindHistoryInsertIndex(result, message), message);
-            if (result.Count > maxMessages)
-                result.RemoveAt(0);
+            result.Insert(FindHistoryInsertIndex(result, message, historyHeadIndex, result.Count), message);
+            activeCount++;
+            if (activeCount > maxMessages)
+                historyHeadIndex++;
+            if (historyHeadIndex > 512 && historyHeadIndex * 2 >= result.Count)
+                CompactHistory(result, ref historyHeadIndex);
         }
 
-        private static int FindHistoryInsertIndex(List<McapMessage> result, McapMessage message)
+        private static int FindHistoryInsertIndex(List<McapMessage> result, McapMessage message, int start, int end)
         {
-            var low = 0;
-            var high = result.Count;
+            var low = start;
+            var high = end;
             while (low < high)
             {
                 var mid = low + ((high - low) / 2);
@@ -671,6 +677,18 @@ namespace Unity.FoxgloveSDK.IO
                     high = mid;
             }
             return low;
+        }
+
+        private static void CompactHistory(List<McapMessage> result, ref int historyHeadIndex)
+        {
+            if (historyHeadIndex <= 0)
+                return;
+
+            if (historyHeadIndex >= result.Count)
+                result.Clear();
+            else
+                result.RemoveRange(0, historyHeadIndex);
+            historyHeadIndex = 0;
         }
 
         private void SortPending()

@@ -10,11 +10,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Util;
+using ZstdSharp;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -37,14 +37,21 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
         private readonly HashSet<ushort> _seenChannelIds = new();
         private readonly List<ChannelWriteState> _allChannelWriteStates = new();
+        private readonly Dictionary<ushort, ulong> _messageIndexOffsetsScratch = new();
         private readonly List<SchemaRecordState> _schemas = new();
         private readonly List<ChannelRecordState> _channels = new();
         private readonly List<ChunkIndexState> _chunkIdx = new();
         private readonly List<MetadataIndexState> _metaIdx = new();
         private readonly List<McapAttachmentIndex> _attachmentIdx = new();
         private uint _attachmentCount;
-        private MemoryStream _chunkBuf = new();
+        private MemoryStream _chunkBuf;
+        private readonly MemoryStream _compressionBuf = new();
+        private readonly byte[] _messageRecordHeader = new byte[McapWriter.RecordHeaderLength + 2 + 4 + 8 + 8];
         private readonly object _lock = new object();
+        [ThreadStatic] private static SHA256 _sha256;
+        private static readonly Dictionary<string, string> EmptyChannelMetadata = new();
+        private Compressor _zstdCompressor;
+        private byte[] _zstdCompressionBuffer;
         private ushort _nextSid = 1, _nextCid = 1;
         private ulong _chunkSt, _chunkEt;
         private ulong _msgSt = ulong.MaxValue, _msgEt;
@@ -82,6 +89,7 @@ namespace Unity.FoxgloveSDK.IO
             _options = McapWriterOptions.Normalize(options);
             _w = new McapWriter(stream, leaveOpen);
             _chunkSz = _options.ChunkSizeBytes;
+            _chunkBuf = new MemoryStream(_chunkSz);
             _compression = _options.Compression;
             try
             {
@@ -158,11 +166,9 @@ namespace Unity.FoxgloveSDK.IO
                 if (!_topicChannelWriteState.ContainsKey(topic))
                     _topicChannelWriteState[topic] = state;
 
-                var meta = new Dictionary<string, string>();
-                if (!string.IsNullOrEmpty(CoordinateMode))
-                    meta["coordinate_mode"] = CoordinateMode;
+                var meta = CreateChannelMetadata();
                 _w.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
-                _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = new Dictionary<string, string>(meta) });
+                _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = SnapshotChannelMetadata(meta) });
                 RecordTopicSignature(topic, signature);
             }
         }
@@ -214,11 +220,9 @@ namespace Unity.FoxgloveSDK.IO
                         var mcapId = _nextCid++;
                         map = new ChannelWriteState { McapId = mcapId, Topic = topic };
                         _clientChannelWriteState[key] = map;
-                        var meta = string.IsNullOrEmpty(CoordinateMode)
-                            ? new Dictionary<string, string>()
-                            : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
+                        var meta = CreateChannelMetadata();
                         _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
-                        _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = meta });
+                        _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = SnapshotChannelMetadata(meta) });
                         RecordTopicSignature(topic, signature);
                     }
                 }
@@ -251,12 +255,14 @@ namespace Unity.FoxgloveSDK.IO
             var recordLength = checked(McapWriter.RecordHeaderLength + contentLength);
             FlushChunkBeforeLargeWriteIfNeeded(recordLength);
             var off = (ulong)_chunkBuf.Position;
-            _chunkBuf.WriteByte(McapWriter.OpcodeMessage);
-            McapWriter.WriteU64(_chunkBuf, (ulong)contentLength);
-            McapWriter.WriteU16(_chunkBuf, map.McapId);
-            McapWriter.WriteU32(_chunkBuf, seq);
-            McapWriter.WriteU64(_chunkBuf, logNs);
-            McapWriter.WriteU64(_chunkBuf, logNs);
+            var header = _messageRecordHeader;
+            header[0] = McapWriter.OpcodeMessage;
+            McapWriter.WriteU64(header, 1, (ulong)contentLength);
+            McapWriter.WriteU16(header, McapWriter.RecordHeaderLength, map.McapId);
+            McapWriter.WriteU32(header, McapWriter.RecordHeaderLength + 2, seq);
+            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4, logNs);
+            McapWriter.WriteU64(header, McapWriter.RecordHeaderLength + 2 + 4 + 8, logNs);
+            _chunkBuf.Write(header, 0, header.Length);
             if (payloadLength > 0)
                 _chunkBuf.Write(payload, 0, payloadLength);
             map.Pending.Add((logNs, off));
@@ -404,7 +410,7 @@ namespace Unity.FoxgloveSDK.IO
                         SchemaId = channel.SchemaId,
                         Topic = channel.Topic,
                         MessageEncoding = channel.Encoding,
-                        Metadata = channel.Metadata ?? new Dictionary<string, string>()
+                        Metadata = channel.Metadata ?? EmptyChannelMetadata
                     });
                 }
             }
@@ -421,7 +427,7 @@ namespace Unity.FoxgloveSDK.IO
                     ChunkCount = (uint)_chunkCount,
                     MessageStartTime = _msgCount > 0 ? _msgSt : 0,
                     MessageEndTime = _msgCount > 0 ? _msgEt : 0,
-                    ChannelMessageCounts = AllChannelWriteStates().ToDictionary(m => m.McapId, m => (ulong)m.Seq)
+                    ChannelMessageCounts = BuildChannelMessageCounts()
                 };
             }
 
@@ -537,6 +543,27 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     _log.LogWarning($"MCAP recorder chunk buffer dispose failed during shutdown: {ex.Message}");
                 }
+
+                try
+                {
+                    _compressionBuf.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"MCAP recorder compression buffer dispose failed during shutdown: {ex.Message}");
+                }
+
+                try
+                {
+                    _zstdCompressor?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning($"MCAP recorder zstd compressor dispose failed during shutdown: {ex.Message}");
+                }
+
+                _zstdCompressor = null;
+                _zstdCompressionBuffer = null;
             }
         }
 
@@ -577,13 +604,24 @@ namespace Unity.FoxgloveSDK.IO
                 var rawCrc = _options.EnableCrcs
                     ? Util.Crc32Helper.Compute(new ReadOnlySpan<byte>(raw.Array, raw.Offset, raw.Count))
                     : 0;
-                var compressed = McapCompression.Compress(_compression, raw, _options.Lz4CompressionLevel);
+                var zstdCompressor = _compression == "zstd"
+                    ? _zstdCompressor ??= new Compressor()
+                    : null;
+                var compressed = McapCompression.Compress(
+                    _compression,
+                    raw,
+                    _options.Lz4CompressionLevel,
+                    _compressionBuf,
+                    zstdCompressor,
+                    ref _zstdCompressionBuffer);
                 var off = (ulong)_w.Position;
                 _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
                 var chunkLen = (ulong)_w.Position - off;
-                var mio = new Dictionary<ushort, ulong>();
+                var channelStates = AllChannelWriteStates();
+                var mio = _messageIndexOffsetsScratch;
+                mio.Clear();
                 ulong mioTLen = 0;
-                foreach (var map in AllChannelWriteStates())
+                foreach (var map in channelStates)
                 {
                     if (map.Pending.Count == 0) continue;
                     if (_options.HasIndex(McapIndexTypes.Message))
@@ -596,9 +634,9 @@ namespace Unity.FoxgloveSDK.IO
                     }
                 }
                 if (_options.HasIndex(McapIndexTypes.Chunk))
-                    _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = mio, MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
+                    _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = new Dictionary<ushort, ulong>(mio), MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
                 _chunkCount++;
-                ResetActiveChunkState();
+                ResetActiveChunkState(channelStates);
             }
             catch (Exception ex)
             {
@@ -608,10 +646,10 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
-        private void ResetActiveChunkState()
+        private void ResetActiveChunkState(List<ChannelWriteState> channelStates = null)
         {
             _chunkBuf.SetLength(0);
-            foreach (var map in AllChannelWriteStates())
+            foreach (var map in channelStates ?? AllChannelWriteStates())
                 map.Pending.Clear();
             _chunkSt = 0;
             _chunkEt = 0;
@@ -632,7 +670,11 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// Compute the Base64 SHA-256 hash of a string.
         /// </summary>
-        static string Sha256(string c) { using var h = SHA256.Create(); return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(c))); }
+        static string Sha256(string c)
+        {
+            var h = _sha256 ??= SHA256.Create();
+            return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(c)));
+        }
 
         // Schema management
         ushort GetOrCreateSchema(string sName, string sEnc, string sContent)
@@ -704,9 +746,32 @@ namespace Unity.FoxgloveSDK.IO
             // We treat empty schemaContent as an empty hash.
             var content = schemaContent ?? "";
             if (content.Length == 0) return "";
-            using var sha = SHA256.Create();
+            var sha = _sha256 ??= SHA256.Create();
             var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(schemaName + "\0" + schemaEncoding + "\0" + content));
             return BitConverter.ToString(bytes).Replace("-", "");
+        }
+
+        private Dictionary<ushort, ulong> BuildChannelMessageCounts()
+        {
+            var channelStates = AllChannelWriteStates();
+            var counts = new Dictionary<ushort, ulong>(channelStates.Count);
+            foreach (var state in channelStates)
+                counts[state.McapId] = state.Seq;
+            return counts;
+        }
+
+        private Dictionary<string, string> CreateChannelMetadata()
+        {
+            return string.IsNullOrEmpty(CoordinateMode)
+                ? EmptyChannelMetadata
+                : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
+        }
+
+        private static Dictionary<string, string> SnapshotChannelMetadata(Dictionary<string, string> metadata)
+        {
+            return metadata == null || metadata.Count == 0
+                ? EmptyChannelMetadata
+                : new Dictionary<string, string>(metadata);
         }
 
         /// <summary>
