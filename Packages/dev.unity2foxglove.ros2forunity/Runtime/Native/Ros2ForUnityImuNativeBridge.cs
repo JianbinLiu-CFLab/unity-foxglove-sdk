@@ -32,6 +32,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 #if UNITY_EDITOR
         private static volatile bool _editorEnteredPlayMode;
         private static double _editorEnteredPlayModeAt;
+        private static bool _editorPlayModeStable;
         private static volatile bool _editorQuitting;
 #endif
 
@@ -48,48 +49,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool IsShuttingDown
             => _isStopping
                || _runtimeShuttingDown
-               || !Application.isPlaying
                || !_playModeSceneLoaded
-               || !IsStableUserSceneLoaded()
-               || IsEditorPlayModeTransition()
-               || IsBackupSceneActive()
-               || IsBackupScene(gameObject.scene)
-               || IsAnyBackupSceneLoaded();
-
-        private static bool IsBackupSceneActive()
-        {
-            return IsBackupScene(SceneManager.GetActiveScene());
-        }
-
-        private static bool IsAnyBackupSceneLoaded()
-        {
-            for (var i = 0; i < SceneManager.sceneCount; i++)
-            {
-                if (IsBackupScene(SceneManager.GetSceneAt(i)))
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static bool IsBackupScene(Scene scene)
-        {
-            var path = scene.path ?? string.Empty;
-            var name = scene.name ?? string.Empty;
-            return path.StartsWith("Temp/__Backupscenes/", StringComparison.Ordinal)
-                   || path.Contains("__Backupscenes", StringComparison.Ordinal)
-                   || name.Contains("__Backupscenes", StringComparison.Ordinal)
-                   || name.EndsWith(".backup", StringComparison.Ordinal);
-        }
-
-        private static bool IsStableUserSceneLoaded()
-        {
-            var scene = SceneManager.GetActiveScene();
-            var path = scene.path ?? string.Empty;
-            return scene.isLoaded
-                   && (path.StartsWith("Assets/", StringComparison.Ordinal)
-                       || path.StartsWith("Packages/", StringComparison.Ordinal));
-        }
+               || Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(IsEditorPlayModeTransition())
+               || Ros2ForUnityNativeBridgeSceneGate.IsBackupScene(gameObject.scene);
 
 #if UNITY_EDITOR
         [InitializeOnLoadMethod]
@@ -115,6 +77,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _editorEnteredPlayModeAt = _editorEnteredPlayMode
                 ? EditorApplication.timeSinceStartup
                 : 0.0;
+            _editorPlayModeStable = false;
             if (state == PlayModeStateChange.EnteredPlayMode)
                 _runtimeShuttingDown = false;
             else if (state == PlayModeStateChange.ExitingPlayMode || state == PlayModeStateChange.EnteredEditMode)
@@ -123,11 +86,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private static bool IsEditorPlayModeTransition()
         {
-            return _editorQuitting
-                   || EditorApplication.isCompiling
-                   || EditorApplication.isUpdating
-                   || !_editorEnteredPlayMode
-                   || EditorApplication.timeSinceStartup - _editorEnteredPlayModeAt < 3.0;
+            if (_editorQuitting
+                || EditorApplication.isCompiling
+                || EditorApplication.isUpdating
+                || !_editorEnteredPlayMode)
+                return true;
+
+            if (_editorPlayModeStable)
+                return false;
+
+            var elapsed = EditorApplication.timeSinceStartup - _editorEnteredPlayModeAt;
+            _editorPlayModeStable = elapsed >= 3.0;
+            return !_editorPlayModeStable;
         }
 #else
         private static bool IsEditorPlayModeTransition()
@@ -145,14 +115,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 #if UNITY_EDITOR
             _editorEnteredPlayMode = false;
             _editorEnteredPlayModeAt = 0.0;
+            _editorPlayModeStable = false;
             _editorQuitting = false;
 #endif
+            Ros2ForUnityNativeBridgeSceneGate.Reset();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())
+            if (Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(editorTransition: false))
             {
                 _runtimeShuttingDown = true;
                 _playModeSceneLoaded = false;
@@ -184,7 +156,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             _isStopping = false;
             _ros2RuntimeWasReady = false;
-            if (IsStableUserSceneLoaded() && !IsEditorPlayModeTransition() && !IsBackupSceneActive() && !IsAnyBackupSceneLoaded())
+            if (!Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(IsEditorPlayModeTransition()))
                 _runtimeShuttingDown = false;
             Application.quitting += OnApplicationQuitting;
         }

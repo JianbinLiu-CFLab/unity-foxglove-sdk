@@ -300,7 +300,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            var path = ResolveProjectPath(_replayFilePath);
+            var path = ResolveReplayFilePathCached();
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             {
                 StopRemoteMcapFileServer();
@@ -339,7 +339,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var path = _enableReplay && !string.IsNullOrWhiteSpace(_replayFilePath)
-                ? ResolveProjectPath(_replayFilePath)
+                ? ResolveReplayFilePathCached()
                 : null;
             if (_remoteMcapFileServerConfigKnown
                 && _remoteMcapFileServerKnownEnabled == _enableRemoteMcapFileServer
@@ -352,6 +352,19 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             StartRemoteMcapFileServerIfNeeded();
+        }
+
+        private string ResolveReplayFilePathCached()
+        {
+            if (string.Equals(_cachedReplayFilePathInput, _replayFilePath, System.StringComparison.Ordinal)
+                && _cachedResolvedReplayFilePath != null)
+            {
+                return _cachedResolvedReplayFilePath;
+            }
+
+            _cachedReplayFilePathInput = _replayFilePath;
+            _cachedResolvedReplayFilePath = ResolveProjectPath(_replayFilePath);
+            return _cachedResolvedReplayFilePath;
         }
 
         private RemoteMcapHttpOptions BuildRemoteMcapFileServerOptions(string resolvedPath)

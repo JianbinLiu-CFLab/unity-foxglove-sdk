@@ -287,28 +287,33 @@ namespace Unity.FoxgloveSDK.Tests
                 var path = RepoPath(relativePath);
                 CheckLifecycle(File.Exists(path), labelPrefix + "-file: " + relativePath + " exists");
                 var source = File.ReadAllText(path);
+                var lifecycleSource = source;
+                var sharedGatePath = RepoPath(AdapterPackage + "/Runtime/Native/Ros2ForUnityTransformNativeBridge.cs");
+                if (!string.Equals(path, sharedGatePath, StringComparison.OrdinalIgnoreCase))
+                    lifecycleSource += "\n" + File.ReadAllText(sharedGatePath);
 
-                CheckLifecycle(source.Contains("using UnityEngine.SceneManagement;", StringComparison.Ordinal)
-                      && source.Contains("IsBackupSceneActive()", StringComparison.Ordinal)
-                      && source.Contains("Temp/__Backupscenes", StringComparison.Ordinal)
-                      && source.Contains("scene.name", StringComparison.Ordinal)
-                      && source.Contains("EndsWith(\".backup\"", StringComparison.Ordinal),
+                CheckLifecycle(lifecycleSource.Contains("using UnityEngine.SceneManagement;", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("IsBackupSceneActive()", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("Temp/__Backupscenes", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("scene.name", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("EndsWith(\".backup\"", StringComparison.Ordinal),
                     labelPrefix + "-backup-scene: " + bridge + " treats Unity backup scenes as R2FU shutdown windows");
                 CheckLifecycle(source.Contains("gameObject.scene", StringComparison.Ordinal)
                       && source.Contains("IsBackupScene(gameObject.scene)", StringComparison.Ordinal),
                     labelPrefix + "-owner-backup-scene: " + bridge + " blocks ROS2 prewarm when the bridge object lives in Unity backup scenes");
-                CheckLifecycle(source.Contains("IsAnyBackupSceneLoaded()", StringComparison.Ordinal)
-                      && source.Contains("SceneManager.sceneCount", StringComparison.Ordinal)
-                      && source.Contains("SceneManager.GetSceneAt", StringComparison.Ordinal),
+                CheckLifecycle(lifecycleSource.Contains("IsAnyBackupSceneLoaded()", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("SceneManager.sceneCount", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("SceneManager.GetSceneAt", StringComparison.Ordinal),
                     labelPrefix + "-loaded-backup-scene: " + bridge + " blocks ROS2 prewarm while any Unity backup scene is loaded");
                 CheckLifecycle(source.Contains("_playModeSceneLoaded", StringComparison.Ordinal)
                       && source.Contains("RuntimeInitializeLoadType.SubsystemRegistration", StringComparison.Ordinal)
                       && source.Contains("RuntimeInitializeLoadType.AfterSceneLoad", StringComparison.Ordinal),
                     labelPrefix + "-after-scene-load-gate: " + bridge + " blocks ROS2 prewarm during Unity Play Mode backup/restore transitions");
-                CheckLifecycle(source.Contains("IsStableUserSceneLoaded()", StringComparison.Ordinal)
-                      && source.Contains("StartsWith(\"Assets/\"", StringComparison.Ordinal)
-                      && source.Contains("StartsWith(\"Packages/\"", StringComparison.Ordinal)
-                      && source.Contains("!IsStableUserSceneLoaded()", StringComparison.Ordinal),
+                CheckLifecycle(lifecycleSource.Contains("IsStableUserSceneLoaded()", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("StartsWith(\"Assets/\"", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("StartsWith(\"Packages/\"", StringComparison.Ordinal)
+                      && (source.Contains("!IsStableUserSceneLoaded()", StringComparison.Ordinal)
+                          || source.Contains("Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(IsEditorPlayModeTransition())", StringComparison.Ordinal)),
                     labelPrefix + "-stable-user-scene-gate: " + bridge + " prewarms ROS2 only from stable project scenes");
                 CheckLifecycle(source.Contains("InitializeEditorPlayModeGate", StringComparison.Ordinal)
                       && source.Contains("EditorApplication.playModeStateChanged", StringComparison.Ordinal)
@@ -321,12 +326,16 @@ namespace Unity.FoxgloveSDK.Tests
                       && source.Contains("EditorApplication.timeSinceStartup", StringComparison.Ordinal)
                       && source.Contains("IsEditorPlayModeTransition()", StringComparison.Ordinal),
                     labelPrefix + "-editor-play-mode-gate: " + bridge + " blocks ROS2 prewarm until Unity reports stable Play Mode and no editor update/quitting transition");
-                CheckLifecycle(source.Contains("if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                var oldBootstrapGate = source.Contains("if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                    && source.IndexOf("if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
+                       < source.IndexOf("_playModeSceneLoaded = true", StringComparison.Ordinal);
+                var cachedBootstrapGate = source.Contains("if (Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(editorTransition: false))", StringComparison.Ordinal)
+                    && source.IndexOf("if (Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(editorTransition: false))", StringComparison.Ordinal)
+                       < source.IndexOf("_playModeSceneLoaded = true", StringComparison.Ordinal);
+                CheckLifecycle((oldBootstrapGate || cachedBootstrapGate)
                       && source.Contains("_runtimeShuttingDown = true", StringComparison.Ordinal)
                       && source.Contains("_playModeSceneLoaded = false", StringComparison.Ordinal)
-                      && source.Contains("return;", StringComparison.Ordinal)
-                      && source.IndexOf("if (!IsStableUserSceneLoaded() || IsBackupSceneActive() || IsAnyBackupSceneLoaded())", StringComparison.Ordinal)
-                         < source.IndexOf("_playModeSceneLoaded = true", StringComparison.Ordinal),
+                      && source.Contains("return;", StringComparison.Ordinal),
                     labelPrefix + "-bootstrap-backup-gate: " + bridge + " does not bootstrap native bridges from Unity backup scenes");
                 CheckLifecycle(BridgeUpdatePrewarmsRos2FromGuardedPlayMode(source),
                     labelPrefix + "-update-prewarm: " + bridge + " first-initializes ROS2 only from guarded bridge Update");
