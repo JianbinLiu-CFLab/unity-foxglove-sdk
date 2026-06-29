@@ -26,63 +26,83 @@ namespace Unity.FoxgloveSDK.Core
         {
             _services.SweepTimeouts(FoxgloveServiceRegistry.DefaultTimeout);
 
-            foreach (var call in _services.GetPendingCalls())
+            _pendingServiceCallsScratch.Clear();
+            _services.CopyPendingCallsTo(_pendingServiceCallsScratch);
+            try
             {
-                var handler = _services.GetHandler(call.ServiceId);
-                if (handler == null)
+                foreach (var call in _pendingServiceCallsScratch)
                 {
-                    _services.Fail(call.ClientId, call.CallId, $"No handler registered for service {call.ServiceId}");
-                    continue;
-                }
-
-                try
-                {
-                    if (call.JsonPayload == null)
+                    var handler = _services.GetHandler(call.ServiceId);
+                    if (handler == null)
                     {
-                        _services.Fail(call.ClientId, call.CallId, "Malformed JSON payload");
+                        _services.Fail(call.ClientId, call.CallId, $"No handler registered for service {call.ServiceId}");
                         continue;
                     }
 
-                    var input = call.JsonPayload;
-                    var result = handler(input);
-                    if (result == null)
+                    try
                     {
-                        _services.Fail(call.ClientId, call.CallId, "Service handler returned null");
-                        continue;
-                    }
+                        if (call.JsonPayload == null)
+                        {
+                            _services.Fail(call.ClientId, call.CallId, "Malformed JSON payload");
+                            continue;
+                        }
 
-                    var responseBytes = Encoding.UTF8.GetBytes(result.ToString(Formatting.None));
-                    _services.CompleteResponse(call.ClientId, call.CallId, "json", responseBytes);
-                }
-                catch (Exception ex)
-                {
-                    _services.Fail(call.ClientId, call.CallId, $"Handler exception: {ex.Message}");
+                        var input = call.JsonPayload;
+                        var result = handler(input);
+                        if (result == null)
+                        {
+                            _services.Fail(call.ClientId, call.CallId, "Service handler returned null");
+                            continue;
+                        }
+
+                        var responseBytes = Encoding.UTF8.GetBytes(result.ToString(Formatting.None));
+                        _services.CompleteResponse(call.ClientId, call.CallId, "json", responseBytes);
+                    }
+                    catch (Exception ex)
+                    {
+                        _services.Fail(call.ClientId, call.CallId, $"Handler exception: {ex.Message}");
+                    }
                 }
             }
-
-            foreach (var call in _services.DrainCompleted())
+            finally
             {
-                var recorder = Volatile.Read(ref _recorder);
-                if (call.FailureMessage != null)
+                _pendingServiceCallsScratch.Clear();
+            }
+
+            _completedServiceCallsScratch.Clear();
+            _services.DrainCompletedTo(_completedServiceCallsScratch);
+            try
+            {
+                foreach (var call in _completedServiceCallsScratch)
                 {
-                    var fail = new ServiceCallFailure
-                    { ServiceId = call.ServiceId, CallId = call.CallId, Message = call.FailureMessage };
-                    _transport.SendText(call.ClientId, JsonConvert.SerializeObject(fail));
-                    recorder?.WriteMetadata("foxglove.services",
-                        JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
-                            status = "failure", message = call.FailureMessage,
-                            timestamp = _clock.NowNs }));
+                    var recorder = Volatile.Read(ref _recorder);
+                    if (call.FailureMessage != null)
+                    {
+                        var fail = new ServiceCallFailure
+                        { ServiceId = call.ServiceId, CallId = call.CallId, Message = call.FailureMessage };
+                        _transport.SendText(call.ClientId, JsonConvert.SerializeObject(fail));
+                        if (recorder != null)
+                            recorder.WriteMetadata("foxglove.services",
+                                JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
+                                    status = "failure", message = call.FailureMessage,
+                                    timestamp = _clock.NowNs }));
+                    }
+                    else
+                    {
+                        var frame = BinaryEncoding.EncodeServerServiceCallResponse(
+                            call.ServiceId, call.CallId, call.ResponseEncoding ?? "json", call.ResponsePayload);
+                        _transport.SendBinary(call.ClientId, frame);
+                        if (recorder != null)
+                            recorder.WriteMetadata("foxglove.services",
+                                JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
+                                    status = "completed", payloadSize = call.ResponsePayload?.Length ?? 0,
+                                    timestamp = _clock.NowNs }));
+                    }
                 }
-                else
-                {
-                    var frame = BinaryEncoding.EncodeServerServiceCallResponse(
-                        call.ServiceId, call.CallId, call.ResponseEncoding ?? "json", call.ResponsePayload);
-                    _transport.SendBinary(call.ClientId, frame);
-                    recorder?.WriteMetadata("foxglove.services",
-                        JsonConvert.SerializeObject(new { serviceId = call.ServiceId, callId = call.CallId,
-                            status = "completed", payloadSize = call.ResponsePayload?.Length ?? 0,
-                            timestamp = _clock.NowNs }));
-                }
+            }
+            finally
+            {
+                _completedServiceCallsScratch.Clear();
             }
         }
 

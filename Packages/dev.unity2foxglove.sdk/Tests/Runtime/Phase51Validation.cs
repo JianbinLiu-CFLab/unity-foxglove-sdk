@@ -155,9 +155,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Services/FoxgloveServiceRegistry.cs");
             var drain = ExtractMethodBody(source, "DrainCompleted");
+            var drainTo = ExtractMethodBody(source, "DrainCompletedTo");
             Check(!drain.Contains("_pending.ToList()"),
                 "51B-5: DrainCompleted does not allocate LINQ snapshots while holding ownership");
-            Check(drain.Contains("RemovePendingCall"),
+            Check((drain + drainTo).Contains("RemovePendingCall"),
                 "51B-6: DrainCompleted removes completed calls through the pending ownership helper");
         }
 

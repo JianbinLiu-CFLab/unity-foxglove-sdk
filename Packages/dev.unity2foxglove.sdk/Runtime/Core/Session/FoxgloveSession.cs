@@ -47,6 +47,11 @@ namespace Unity.FoxgloveSDK.Core
         private readonly List<uint> _singleUnadvertiseChannelIds = new(1);
         private readonly object _paramSubScratchLock = new();
         private readonly List<uint> _paramSubScratch = new();
+        private readonly object _parameterBroadcastScratchLock = new();
+        private readonly HashSet<string> _parameterBroadcastSeen = new();
+        private readonly List<string> _parameterBroadcastNames = new();
+        private readonly List<FoxgloveServiceCall> _pendingServiceCallsScratch = new();
+        private readonly List<FoxgloveServiceCall> _completedServiceCallsScratch = new();
         private readonly ISchemaRegistry _schemaRegistry;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;

@@ -74,6 +74,20 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
+        /// <summary>Copy all graph subscriber client IDs into a caller-owned list.</summary>
+        public void CopySubscribersTo(List<uint> destination)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
+            lock (_lock)
+            {
+                destination.Clear();
+                foreach (var clientId in _graphSubscribers)
+                    destination.Add(clientId);
+            }
+        }
+
         /// <summary>Clear graph subscribers and all topology state.</summary>
         public void Clear()
         {
