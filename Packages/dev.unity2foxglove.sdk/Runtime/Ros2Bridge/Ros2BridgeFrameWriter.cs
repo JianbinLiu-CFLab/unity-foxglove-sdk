@@ -22,9 +22,12 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public static byte[] Write(Ros2BridgeFrame frame)
         {
             var headerBytes = BuildHeaderBytes(frame);
-            using var stream = new MemoryStream(16 + headerBytes.Length + frame.PayloadLength);
+            var buffer = new byte[checked(16 + headerBytes.Length + frame.PayloadLength)];
+            using var stream = new MemoryStream(buffer, 0, buffer.Length, writable: true, publiclyVisible: true);
             Write(frame, stream, headerBytes);
-            return stream.ToArray();
+            if (stream.Position != buffer.Length)
+                throw new InvalidOperationException("ROS 2 bridge frame writer produced an unexpected byte count.");
+            return buffer;
         }
 
         internal static void Write(Ros2BridgeFrame frame, Stream destination)
