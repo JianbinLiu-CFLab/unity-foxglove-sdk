@@ -221,6 +221,14 @@ def csharp_base64_literal(value: str, indent: str) -> str:
     return "\n".join(lines)
 
 
+def write_text_if_changed(path: Path, text: str) -> None:
+    """Write UTF-8 text with LF line endings only when content changed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file() and path.read_text(encoding="utf-8") == text:
+        return
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
 def generate(input_dir: Path, output: Path) -> str:
     """Generate the C# catalog source and return a short status message."""
     if not input_dir.is_dir():
@@ -399,7 +407,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
     }}
 }}
 """
-    output.write_text(text, encoding="utf-8", newline="\n")
+    write_text_if_changed(output, text)
     return f"Generated {len(files)} ROS 2 .msg schema entries at {output}"
 
 

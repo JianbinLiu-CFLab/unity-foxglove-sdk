@@ -159,6 +159,26 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertIn("warning", stderr.getvalue().lower())
         self.assertIn("source commit", stderr.getvalue().lower())
 
+    def test_generators_skip_identical_text_writes(self) -> None:
+        """Schema generators should not churn generated file mtimes when text is unchanged."""
+        cdr = load_module("cdr_generator_write_cache", "Scripts/schema/generate_ros2_cdr_serializers.py")
+        catalog = load_module("schema_catalog_write_cache", "Scripts/schema/generate_ros2_msg_schema_catalog.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cdr_output = root / "Ros2CdrGeneratedSerializers.g.cs"
+            catalog_output = root / "FoxgloveRos2MsgSchemaCatalog.cs"
+            cdr_output.write_text("same\n", encoding="utf-8")
+            catalog_output.write_text("same\n", encoding="utf-8")
+            cdr_mtime = cdr_output.stat().st_mtime_ns
+            catalog_mtime = catalog_output.stat().st_mtime_ns
+
+            cdr.write_text(cdr_output, "same\n")
+            catalog.write_text_if_changed(catalog_output, "same\n")
+
+            self.assertEqual(cdr_mtime, cdr_output.stat().st_mtime_ns)
+            self.assertEqual(catalog_mtime, catalog_output.stat().st_mtime_ns)
+
     def test_generated_output_validator_reports_stale_committed_files(self) -> None:
         """Fresh generator output should be byte-compared against committed files."""
         module = load_module("schema_generated_validator", "Scripts/schema/validate_schema_generated_outputs.py")
