@@ -108,6 +108,11 @@ namespace Unity.FoxgloveSDK.Transport
             return _sendQueue.Enqueue(new QueuedFrame(OpText, payload, priority));
         }
 
+        internal EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)
+        {
+            return _sendQueue.Enqueue(new QueuedFrame(OpText, utf8Json ?? Array.Empty<byte>(), priority));
+        }
+
         /// <summary>Send raw bytes in a binary frame.</summary>
         public EnqueueResult SendBinary(byte[] data, FramePriority priority)
         {
