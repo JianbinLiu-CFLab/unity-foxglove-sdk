@@ -24,28 +24,75 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE = ROOT / "Scripts" / "smoke"
+_MODULE_CACHE = {}
+_SOURCE_CACHE = {}
 
 
-def load_smoke_module(name: str, relative: str):
+def _resolved_sys_path(entry: str) -> Path:
+    """Resolve a sys.path entry, treating the empty entry as the current directory."""
+    return Path(entry or os.getcwd()).resolve()
+
+
+def _remove_sys_path_entries(paths: set[Path]) -> list[tuple[int, str]]:
+    """Temporarily remove selected sys.path entries while preserving restore order."""
+    removed = []
+    for index in range(len(sys.path) - 1, -1, -1):
+        if _resolved_sys_path(sys.path[index]) in paths:
+            removed.append((index, sys.path.pop(index)))
+    removed.reverse()
+    return removed
+
+
+def _restore_sys_path_entries(removed: list[tuple[int, str]]) -> None:
+    """Restore entries removed by _remove_sys_path_entries."""
+    for index, entry in removed:
+        sys.path.insert(min(index, len(sys.path)), entry)
+
+
+def read_source(relative: str) -> str:
+    """Read a smoke/helper source file once per test process."""
+    path = (SMOKE / relative).resolve()
+    if path not in _SOURCE_CACHE:
+        _SOURCE_CACHE[path] = path.read_text(encoding="utf-8")
+    return _SOURCE_CACHE[path]
+
+
+def read_repo_source(relative: str) -> str:
+    """Read a repository source file once per test process."""
+    path = (ROOT / relative).resolve()
+    if path not in _SOURCE_CACHE:
+        _SOURCE_CACHE[path] = path.read_text(encoding="utf-8")
+    return _SOURCE_CACHE[path]
+
+
+def load_smoke_module(name: str, relative: str, *, include_sibling_path: bool = True, excluded_paths=()):
     """Load one smoke helper with only its sibling directory on sys.path."""
-    path = SMOKE / relative
+    path = (SMOKE / relative).resolve()
+    cached = _MODULE_CACHE.get(path)
+    if cached is not None:
+        sys.modules[name] = cached
+        return cached
+
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     sys.modules[spec.name] = module
     inserted_paths = []
+    removed_paths = _remove_sys_path_entries({Path(item).resolve() for item in excluded_paths})
     sibling_path = str(path.parent)
-    if sibling_path not in sys.path:
+    if include_sibling_path and sibling_path not in sys.path:
         sys.path.insert(0, sibling_path)
         inserted_paths.append(sibling_path)
     try:
         spec.loader.exec_module(module)
+        _MODULE_CACHE[path] = module
     finally:
         for inserted_path in inserted_paths:
             try:
                 sys.path.remove(inserted_path)
             except ValueError:
                 pass
+        _restore_sys_path_entries(removed_paths)
     return module
 
 
@@ -227,16 +274,12 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
     def test_phase110_import_does_not_exit_when_ros2_env_helper_is_missing(self) -> None:
         """Importing the helper as a module should not terminate a composite runner."""
-        path = SMOKE / "ros2" / "phase110_string_smoke_acceptance.py"
-        spec = importlib.util.spec_from_file_location("phase110_import_under_test", path)
-        module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        original_path = list(sys.path)
-        sys.path = [entry for entry in sys.path if Path(entry or os.getcwd()).resolve() != (SMOKE / "ros2").resolve()]
-        try:
-            spec.loader.exec_module(module)
-        finally:
-            sys.path[:] = original_path
+        module = load_smoke_module(
+            "phase110_import_under_test",
+            "ros2/phase110_string_smoke_acceptance.py",
+            include_sibling_path=False,
+            excluded_paths=(SMOKE / "ros2",),
+        )
 
         self.assertTrue(hasattr(module, "main"))
 
@@ -364,30 +407,28 @@ class CoreSmokeScriptTests(unittest.TestCase):
             "ros2/phase138u_lidar_deskew_rviz2_acceptance.py",
         ):
             with self.subTest(relative=relative):
-                source = (SMOKE / relative).read_text(encoding="utf-8")
+                source = read_source(relative)
                 self.assertNotIn("deadline = time.time() + spin_seconds", source)
                 self.assertNotIn("while time.time() < deadline", source)
                 self.assertIn("deadline = time.monotonic() + spin_seconds", source)
 
     def test_bridge_shell_preflight_reports_missing_foxglove_msgs(self) -> None:
         """The shell bridge sample should explain missing foxglove_msgs."""
-        script = ROOT / "Tools" / "ros2_bridge" / "unity2foxglove_ros2_bridge" / "scripts" / "run_bridge_sample.sh"
-        source = script.read_text(encoding="utf-8")
+        source = read_repo_source("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.sh")
 
         self.assertIn("if ! ros2 pkg prefix foxglove_msgs", source)
         self.assertIn("foxglove_msgs is not installed", source)
 
     def test_bridge_powershell_preserves_ros2_error_output(self) -> None:
         """The PowerShell bridge sample should not discard ros2 diagnostics."""
-        script = ROOT / "Tools" / "ros2_bridge" / "unity2foxglove_ros2_bridge" / "scripts" / "run_bridge_sample.ps1"
-        source = script.read_text(encoding="utf-8")
+        source = read_repo_source("Tools/ros2_bridge/unity2foxglove_ros2_bridge/scripts/run_bridge_sample.ps1")
 
         self.assertNotIn("| Out-Null", source)
         self.assertIn("$output", source)
 
     def test_phase138t_cleanup_uses_configured_camera_frame(self) -> None:
         """Camera raw RViz cleanup should not hardcode os_sensor."""
-        source = (SMOKE / "ros2" / "launch_phase138t_camera_raw_rviz2.py").read_text(encoding="utf-8")
+        source = read_source("ros2/launch_phase138t_camera_raw_rviz2.py")
 
         self.assertNotIn("--child-frame-id os_sensor", source)
         self.assertNotIn("child_frame_id: 'os_sensor'", source)
