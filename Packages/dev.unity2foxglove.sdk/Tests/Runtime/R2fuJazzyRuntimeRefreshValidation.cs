@@ -5,6 +5,7 @@
 // Purpose: Phase 161 validation for the R2FU Jazzy Win64 runtime refresh.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -31,6 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3";
 
         private static int _passed;
+        private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         public static void Validate()
         {
@@ -425,7 +427,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var path = RepoPath(relativePath);
             Check(File.Exists(path), $"161-file: {relativePath} exists");
-            return File.ReadAllText(path);
+            if (FileTextCache.TryGetValue(path, out var cached))
+                return cached;
+
+            var text = File.ReadAllText(path);
+            FileTextCache[path] = text;
+            return text;
         }
 
         private static string RepoPath(string relativePath)
