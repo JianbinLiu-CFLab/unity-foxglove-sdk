@@ -253,6 +253,7 @@
     <Compile Include="Phase164_49Validation.cs" />
     <Compile Include="Phase164_50Validation.cs" />
     <Compile Include="Phase164_51Validation.cs" />
+    <Compile Include="Phase164_52Validation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />

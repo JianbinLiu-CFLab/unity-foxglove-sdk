@@ -455,8 +455,13 @@ def remove_tree_manually(root: Path) -> None:
 def write_text(path: Path, content: str) -> None:
     """Write UTF-8 text with a trailing newline."""
     Path(windows_long_path(path.parent)).mkdir(parents=True, exist_ok=True)
+    normalized = content.rstrip() + "\n"
+    if path.exists():
+        existing = path.read_text(encoding="utf-8", errors="replace")
+        if existing == normalized:
+            return
     with open(windows_long_path(path), "w", encoding="utf-8", newline="\n") as stream:
-        stream.write(content.rstrip() + "\n")
+        stream.write(normalized)
 
 
 def write_json(path: Path, data: dict[str, object]) -> None:
