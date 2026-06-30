@@ -138,11 +138,14 @@ namespace Unity.FoxgloveSDK.Tests
                 ("WsFrameCodec.Encode", "Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsFrameCodec.cs"),
             };
 
-            foreach (var (marker, relativePath) in checks)
+            foreach (var group in checks.GroupBy(item => item.relativePath))
             {
-                var text = ReadRepoText(relativePath);
-                Check(text.Contains("\"" + marker + "\"", StringComparison.Ordinal),
-                    "Bounded profiler marker exists: " + marker);
+                var text = ReadRepoText(group.Key);
+                foreach (var (marker, _) in group)
+                {
+                    Check(text.Contains("\"" + marker + "\"", StringComparison.Ordinal),
+                        "Bounded profiler marker exists: " + marker);
+                }
             }
         }
 

@@ -142,6 +142,40 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertIn("local Windows path", results[-1].detail)
         self.assertIn("to-do marker", results[-1].detail)
 
+    def test_validation_naming_allows_legacy_phase_files(self) -> None:
+        """Existing Phase-prefixed validation files remain grandfathered."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            runtime = root / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            legacy = runtime / "Phase164_57Validation.cs"
+            legacy.write_text("// legacy validation\n", encoding="utf-8")
+
+            self.validator.PACKAGE = root
+            results = []
+            self.validator.check_validation_naming(results)
+
+        self.assertTrue(results[-1].ok)
+
+    def test_validation_naming_rejects_new_phase_files(self) -> None:
+        """New validations should use descriptive filenames instead of Phase numbers."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            runtime = root / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            offender = runtime / "Phase164_59Validation.cs"
+            offender.write_text("// new validation\n", encoding="utf-8")
+            variant = runtime / "Phase164_59FooValidation.cs"
+            variant.write_text("// new validation variant\n", encoding="utf-8")
+
+            self.validator.PACKAGE = root
+            results = []
+            self.validator.check_validation_naming(results)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Phase164_59Validation.cs", results[-1].detail)
+        self.assertIn("Phase164_59FooValidation.cs", results[-1].detail)
+
 
 class ValidateSourceGeneratorDllTests(unittest.TestCase):
     """Regression coverage for source generator DLL validator diagnostics."""

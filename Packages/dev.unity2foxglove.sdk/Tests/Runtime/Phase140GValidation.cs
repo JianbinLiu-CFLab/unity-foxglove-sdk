@@ -209,7 +209,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static Dictionary<int, double[]> ReadCovariances(byte[] payload)
         {
-            var result = new Dictionary<int, double[]>();
+            var result = new Dictionary<int, double[]>(capacity: 3);
             var input = new CodedInputStream(payload);
             uint tag;
             while ((tag = input.ReadTag()) != 0)
@@ -221,11 +221,12 @@ namespace Unity.FoxgloveSDK.Tests
                     if (length % sizeof(double) != 0)
                         throw new Exception("[FAIL] covariance field " + field + " has invalid packed length");
 
-                    var values = new List<double>(length / sizeof(double));
-                    for (var i = 0; i < length / sizeof(double); i++)
-                        values.Add(input.ReadDouble());
+                    var count = length / sizeof(double);
+                    var values = new double[count];
+                    for (var i = 0; i < count; i++)
+                        values[i] = input.ReadDouble();
 
-                    result[field] = values.ToArray();
+                    result[field] = values;
                     continue;
                 }
 

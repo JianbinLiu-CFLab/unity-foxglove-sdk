@@ -293,10 +293,6 @@ namespace Unity.FoxgloveSDK.Performance
         private static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
             Action warmup, Action<int> measured, PerformanceThresholdConfig thresholds)
         {
-            // GC before warmup
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
             // Warmup
             warmup();
 
@@ -434,24 +430,27 @@ namespace Unity.FoxgloveSDK.Performance
         private static DataLoaderFixture CreateDataLoaderIndexedFixture(int topics, int messagesPerChannel)
         {
             var path = Path.Combine(DataLoaderFixtureDirectory(),
-                $"phase118_dataloader_indexed_{topics}_{messagesPerChannel}.mcap");
-            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
-            using (var recorder = new McapRecorder(fs))
+                $"phase118_dataloader_indexed_v1_{topics}_{messagesPerChannel}.mcap");
+            if (!File.Exists(path) || new FileInfo(path).Length == 0)
             {
-                for (var t = 0; t < topics; t++)
-                    recorder.AddChannel((uint)(t + 1), $"/perf/dataloader/indexed/{t}", "json",
-                        $"test.PerfDataLoaderIndexed{t}", "jsonschema", "{\"type\":\"object\"}");
-
-                for (var i = 0; i < messagesPerChannel; i++)
+                using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
+                using (var recorder = new McapRecorder(fs))
                 {
                     for (var t = 0; t < topics; t++)
-                    {
-                        var logTime = (ulong)i * 1000UL + (ulong)t;
-                        recorder.WriteMessage((uint)(t + 1), logTime, MakeJsonPayload(t, i));
-                    }
-                }
+                        recorder.AddChannel((uint)(t + 1), $"/perf/dataloader/indexed/{t}", "json",
+                            $"test.PerfDataLoaderIndexed{t}", "jsonschema", "{\"type\":\"object\"}");
 
-                recorder.Close();
+                    for (var i = 0; i < messagesPerChannel; i++)
+                    {
+                        for (var t = 0; t < topics; t++)
+                        {
+                            var logTime = (ulong)i * 1000UL + (ulong)t;
+                            recorder.WriteMessage((uint)(t + 1), logTime, MakeJsonPayload(t, i));
+                        }
+                    }
+
+                    recorder.Close();
+                }
             }
 
             return DescribeDataLoaderFixture(path, "indexed", topics, topics, messagesPerChannel,
@@ -461,31 +460,34 @@ namespace Unity.FoxgloveSDK.Performance
         private static DataLoaderFixture CreateDataLoaderDirectFixture(int topics, int messagesPerChannel)
         {
             var path = Path.Combine(DataLoaderFixtureDirectory(),
-                $"phase118_dataloader_direct_{topics}_{messagesPerChannel}.mcap");
-            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
-            using (var writer = new McapWriter(fs))
+                $"phase118_dataloader_direct_v1_{topics}_{messagesPerChannel}.mcap");
+            if (!File.Exists(path) || new FileInfo(path).Length == 0)
             {
-                writer.WriteMagic();
-                writer.WriteHeader("", "phase118-dataloader-direct");
-                for (var t = 0; t < topics; t++)
-                    writer.WriteSchema((ushort)(t + 1), $"test.PerfDataLoaderDirect{t}", "jsonschema",
-                        Encoding.UTF8.GetBytes("{\"type\":\"object\"}"));
-                for (var t = 0; t < topics; t++)
-                    writer.WriteChannel((ushort)(t + 1), (ushort)(t + 1), $"/perf/dataloader/direct/{t}",
-                        "json", new Dictionary<string, string>());
-
-                for (var i = 0; i < messagesPerChannel; i++)
+                using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
+                using (var writer = new McapWriter(fs))
                 {
+                    writer.WriteMagic();
+                    writer.WriteHeader("", "phase118-dataloader-direct");
                     for (var t = 0; t < topics; t++)
-                    {
-                        var logTime = (ulong)i * 1000UL + (ulong)t;
-                        writer.WriteMessage((ushort)(t + 1), (uint)(i + 1), logTime, logTime,
-                            MakeJsonPayload(t, i));
-                    }
-                }
+                        writer.WriteSchema((ushort)(t + 1), $"test.PerfDataLoaderDirect{t}", "jsonschema",
+                            Encoding.UTF8.GetBytes("{\"type\":\"object\"}"));
+                    for (var t = 0; t < topics; t++)
+                        writer.WriteChannel((ushort)(t + 1), (ushort)(t + 1), $"/perf/dataloader/direct/{t}",
+                            "json", new Dictionary<string, string>());
 
-                writer.WriteFooter(0, 0, 0);
-                writer.WriteMagic();
+                    for (var i = 0; i < messagesPerChannel; i++)
+                    {
+                        for (var t = 0; t < topics; t++)
+                        {
+                            var logTime = (ulong)i * 1000UL + (ulong)t;
+                            writer.WriteMessage((ushort)(t + 1), (uint)(i + 1), logTime, logTime,
+                                MakeJsonPayload(t, i));
+                        }
+                    }
+
+                    writer.WriteFooter(0, 0, 0);
+                    writer.WriteMagic();
+                }
             }
 
             return DescribeDataLoaderFixture(path, "direct", topics, topics, messagesPerChannel,
@@ -955,7 +957,7 @@ namespace Unity.FoxgloveSDK.Performance
             }, count =>
             {
                 int outer = count / topics;
-                var ms = new MemoryStream();
+                using var ms = new MemoryStream(EstimateMcapRecordCapacity(topics, outer));
                 using var recorder = new McapRecorder(ms, null, McapRecorder.DefaultChunkSizeBytes, compression);
                 for (int t = 0; t < topics; t++)
                     recorder.AddChannel((uint)(t + 1), $"/perf/mcap/{t}", "json", "test.PerfMcap", "jsonschema", "{\"type\":\"object\"}");
@@ -988,6 +990,13 @@ namespace Unity.FoxgloveSDK.Performance
             }
 
             return result;
+        }
+
+        private static int EstimateMcapRecordCapacity(int topics, int messages)
+        {
+            var estimate = 4096L + (long)Math.Max(1, topics) * 512L
+                + (long)Math.Max(1, topics) * Math.Max(1, messages) * 128L;
+            return estimate > int.MaxValue ? int.MaxValue : (int)estimate;
         }
 
         private static PerformanceScenarioResult RunMcapRecordNonePrebuiltPayload(

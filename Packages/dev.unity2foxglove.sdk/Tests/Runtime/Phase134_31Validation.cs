@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(project.Contains("<Compile Include=\"Phase134_31Validation.cs\" />", StringComparison.Ordinal),
                 "134-31H-1: Phase134_31Validation is compiled by the runtime test project");
-            Check(registry.Contains("Ci(\"--phase134-31\", \"Phase 134-31\", Phase134_31Validation.Validate)", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase134-31\", \"Phase 134-31: regression coverage for generator/build architecture scripts\", Phase134_31Validation.Validate)", StringComparison.Ordinal),
                 "134-31H-2: Phase134_31Validation is wired into the validation registry");
         }
 

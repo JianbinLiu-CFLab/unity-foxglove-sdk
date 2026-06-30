@@ -518,22 +518,19 @@ namespace Demo
             }
         }
 
-        private static MetadataReference[] BasicReferences()
+        private static readonly MetadataReference[] BasicReferences =
         {
-            return new[]
-            {
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-                MetadataReference.CreateFromFile(typeof(Unity.FoxgloveSDK.Components.FoxRunMessageAttribute).Assembly.Location)
-            };
-        }
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Unity.FoxgloveSDK.Components.FoxRunMessageAttribute).Assembly.Location)
+        };
 
         private static GeneratorDriverRunResult RunGenerator(string source)
         {
             var compilation = CSharpCompilation.Create(
                 "Phase154GeneratorProbe",
                 new[] { CSharpSyntaxTree.ParseText(source) },
-                BasicReferences(),
+                BasicReferences,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());

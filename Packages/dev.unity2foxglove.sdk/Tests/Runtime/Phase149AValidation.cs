@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase149AValidation
     {
         private static int _passCount;
+        private static byte[] _indexedFixtureBytes;
 
         public static void Validate()
         {
@@ -255,7 +256,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static MemoryStream CreateIndexedFixture()
         {
-            var ms = new MemoryStream();
+            _indexedFixtureBytes ??= CreateIndexedFixtureBytes();
+            return new MemoryStream(_indexedFixtureBytes, writable: false);
+        }
+
+        private static byte[] CreateIndexedFixtureBytes()
+        {
+            using var ms = new MemoryStream();
             using (var recorder = new McapRecorder(ms, null, chunkSizeBytes: 96, leaveOpen: true))
             {
                 recorder.AddChannel(1, "/phase149a/a", "json", "phase149a.A", "jsonschema", "{\"type\":\"object\"}");
@@ -268,8 +275,7 @@ namespace Unity.FoxgloveSDK.Tests
                 recorder.Close();
             }
 
-            ms.Position = 0;
-            return ms;
+            return ms.ToArray();
         }
 
         private static MemoryStream CreateUnindexedFixture()
