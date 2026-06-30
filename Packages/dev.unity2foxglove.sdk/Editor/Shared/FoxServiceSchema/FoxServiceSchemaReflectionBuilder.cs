@@ -53,7 +53,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (TryGetListElementType(type, side, out var elementType))
                 return FoxServiceSchemaModel.ArrayOf(Build(elementType, side, depth + 1, memo, stack));
 
-            var typeKey = type.AssemblyQualifiedName ?? type.FullName ?? type.Name;
+            var typeKey = FullTypeName(type);
             if (memo.TryGetValue(typeKey, out var cached))
                 return cached;
             if (!stack.Add(typeKey))
@@ -201,6 +201,14 @@ namespace Unity.FoxgloveSDK.Editor
             if (definition == typeof(IReadOnlyDictionary<,>)) return "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
             if (definition == typeof(SortedDictionary<,>)) return "System.Collections.Generic.SortedDictionary<TKey, TValue>";
             return (definition.FullName ?? definition.Name).Replace('+', '.');
+        }
+
+        private static string FullTypeName(Type type)
+        {
+            if (type == null)
+                return string.Empty;
+
+            return (type.FullName ?? type.Name).Replace('+', '.');
         }
 
     }

@@ -25,6 +25,8 @@ namespace Unity.FoxgloveSDK.Editor
     public static class FoxrunCodeGenerator
     {
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
+        private static readonly PropertyInfo IsByRefLikeProperty =
+            typeof(Type).GetProperty("IsByRefLike", BindingFlags.Instance | BindingFlags.Public);
         private const int ReplaceAttempts = 3;
         private const int ReplaceRetryDelayMilliseconds = 50;
 
@@ -667,11 +669,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool IsByRefLike(Type type)
         {
-            var property = typeof(Type).GetProperty("IsByRefLike", BindingFlags.Instance | BindingFlags.Public);
-            return property != null
-                   && property.PropertyType == typeof(bool)
+            return IsByRefLikeProperty != null
+                   && IsByRefLikeProperty.PropertyType == typeof(bool)
                    && type != null
-                   && (bool)property.GetValue(type);
+                   && (bool)IsByRefLikeProperty.GetValue(type);
         }
 
         private static void ValidateServiceDtoType(string target, string serviceName, Type type, string side, string rootPath)
