@@ -33,6 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int _passed;
         private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        private static readonly Dictionary<string, string> NativeBridgeLifecycleSourceCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         public static void Validate()
         {
@@ -288,11 +289,11 @@ namespace Unity.FoxgloveSDK.Tests
                 var relativePath = AdapterPackage + "/Runtime/Native/" + bridge;
                 var path = RepoPath(relativePath);
                 CheckLifecycle(File.Exists(path), labelPrefix + "-file: " + relativePath + " exists");
-                var source = File.ReadAllText(path);
+                var source = ReadLifecycleSource(path);
                 var lifecycleSource = source;
                 var sharedGatePath = RepoPath(AdapterPackage + "/Runtime/Native/Ros2ForUnityTransformNativeBridge.cs");
                 if (!string.Equals(path, sharedGatePath, StringComparison.OrdinalIgnoreCase))
-                    lifecycleSource += "\n" + File.ReadAllText(sharedGatePath);
+                    lifecycleSource += "\n" + ReadLifecycleSource(sharedGatePath);
 
                 CheckLifecycle(lifecycleSource.Contains("using UnityEngine.SceneManagement;", StringComparison.Ordinal)
                       && lifecycleSource.Contains("IsBackupSceneActive()", StringComparison.Ordinal)
@@ -354,6 +355,17 @@ namespace Unity.FoxgloveSDK.Tests
                 passed++;
                 Console.WriteLine("[PASS] " + message);
             }
+        }
+
+        private static string ReadLifecycleSource(string path)
+        {
+            if (!NativeBridgeLifecycleSourceCache.TryGetValue(path, out var source))
+            {
+                source = File.ReadAllText(path);
+                NativeBridgeLifecycleSourceCache[path] = source;
+            }
+
+            return source;
         }
 
         private static bool BridgeUpdatePrewarmsRos2FromGuardedPlayMode(string source)

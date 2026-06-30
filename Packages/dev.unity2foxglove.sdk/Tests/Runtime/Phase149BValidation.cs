@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Tests
     public static class Phase149BValidation
     {
         private static int _passCount;
+        private static byte[] _indexedFixtureBytes;
 
         public static void Validate()
         {
@@ -270,8 +271,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static string CreateIndexedFixture()
         {
             var path = TempPath();
-            using (var fs = File.Create(path))
-            using (var recorder = new McapRecorder(fs, null, chunkSizeBytes: 128, leaveOpen: true))
+            _indexedFixtureBytes ??= CreateIndexedFixtureBytes();
+            File.WriteAllBytes(path, _indexedFixtureBytes);
+            return path;
+        }
+
+        private static byte[] CreateIndexedFixtureBytes()
+        {
+            using var ms = new MemoryStream();
+            using (var recorder = new McapRecorder(ms, null, chunkSizeBytes: 128, leaveOpen: true))
             {
                 recorder.AddChannel(1, "/phase149b/a", "json", "phase149b.A", "jsonschema", "{\"type\":\"object\"}");
                 recorder.AddChannel(2, "/phase149b/b", "json", "phase149b.B", "jsonschema", "{\"type\":\"object\"}");
@@ -287,7 +295,7 @@ namespace Unity.FoxgloveSDK.Tests
                 recorder.Close();
             }
 
-            return path;
+            return ms.ToArray();
         }
 
         private static string CreateDataCrcFixture()
