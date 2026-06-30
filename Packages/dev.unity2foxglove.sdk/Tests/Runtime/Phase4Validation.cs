@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class Phase4Validation
     {
+        private static readonly DefaultSchemaRegistry CoreSchemaRegistry = CreateCoreSchemaRegistry();
+
         private static int _passCount;
 
         private static void Assert(bool condition, string label)
@@ -50,10 +52,7 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         private static void TestCompressedImageSchemaRegistered()
         {
-            var registry = new DefaultSchemaRegistry();
-            FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
-
-            Assert(registry.TryGetSchema("foxglove.CompressedImage", out var entry),
+            Assert(CoreSchemaRegistry.TryGetSchema("foxglove.CompressedImage", out var entry),
                 "Registry has CompressedImage");
             Assert(entry.Encoding == "jsonschema", "CompressedImage encoding is jsonschema");
 
@@ -120,10 +119,8 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         private static void TestRegisterSchemaChannelCamera()
         {
-            var registry = new DefaultSchemaRegistry();
-            FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
             var fake = new Phase4FakeTransport();
-            var session = new FoxgloveSession("Test", fake, schemaRegistry: registry);
+            var session = new FoxgloveSession("Test", fake, schemaRegistry: CoreSchemaRegistry);
 
             session.RegisterSchemaChannel(30, "/unity/camera", "foxglove.CompressedImage");
             var advJson = fake.BroadcastTexts[0];
@@ -135,6 +132,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "advertise schemaEncoding is jsonschema");
             Assert(ch["schema"]?.ToString().Contains("foxglove.CompressedImage") == true,
                 "advertise schema contains title");
+        }
+
+        private static DefaultSchemaRegistry CreateCoreSchemaRegistry()
+        {
+            var registry = new DefaultSchemaRegistry();
+            FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
+            return registry;
         }
 
         /// <summary>

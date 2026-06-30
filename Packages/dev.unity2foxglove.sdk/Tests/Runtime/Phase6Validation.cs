@@ -407,9 +407,16 @@ namespace Unity.FoxgloveSDK.Tests
             Assert(!session.Services.DrainCompleted().Any(),
                 "Large timeout leaves fresh service call pending");
 
-            Thread.Sleep(20);
-            session.Services.SweepTimeouts(TimeSpan.FromMilliseconds(1));
-            session.DrainServiceCalls();
+            var timeout = TimeSpan.FromMilliseconds(1);
+            var deadline = DateTime.UtcNow + TimeSpan.FromMilliseconds(50);
+            do
+            {
+                Thread.Sleep(1);
+                session.Services.SweepTimeouts(timeout);
+                session.DrainServiceCalls();
+            }
+            while (!fake.SentTexts(1).Any(t => t.Contains("serviceCallFailure")) && DateTime.UtcNow < deadline);
+
             var texts = fake.SentTexts(1);
             Assert(texts.Any(t => t.Contains("serviceCallFailure")), "Timeout produces serviceCallFailure");
         }
