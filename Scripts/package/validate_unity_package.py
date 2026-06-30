@@ -142,6 +142,10 @@ THIRD_PARTY_NOTICE_REQUIREMENTS = (
 )
 
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
+VALIDATION_PHASE_FILENAME_RE = re.compile(r"^Phase(?P<phase>\d+)(?P<trailing>[A-Za-z0-9_-]*)Validation\.cs$")
+VALIDATION_PHASE_FILENAME_INDEX_RE = re.compile(r"^[_-](?P<index>\d+)")
+LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE = 164
+LEGACY_VALIDATION_FILENAME_CUTOFF_INDEX = 58
 
 # Directory path parts that indicate local/generated sample artifacts.
 FORBIDDEN_SAMPLE_PARTS = {
@@ -400,6 +404,45 @@ def check_package_build_artifacts(results: list[CheckResult], package_entries: l
     )
 
 
+def check_validation_naming(results: list[CheckResult], package_files: list[Path] | None = None) -> None:
+    """Reject new Phase-number-prefixed runtime validation source filenames."""
+    runtime_tests = PACKAGE / "Tests" / "Runtime"
+    if package_files is None:
+        runtime_files = list(iter_files(runtime_tests))
+    else:
+        runtime_files = [
+            path
+            for path in package_files
+            if path.is_file() and path_is_relative_to(path, runtime_tests)
+        ]
+
+    offenders: list[str] = []
+    for path in runtime_files:
+        match = VALIDATION_PHASE_FILENAME_RE.match(path.name)
+        if match is None:
+            continue
+
+        phase = int(match.group("phase"))
+        trailing = match.group("trailing")
+        index_match = VALIDATION_PHASE_FILENAME_INDEX_RE.match(trailing)
+        index = int(index_match.group("index")) if index_match is not None else None
+        if phase > LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE:
+            offenders.append(rel(path))
+        elif phase == LEGACY_VALIDATION_FILENAME_CUTOFF_PHASE and (
+            trailing == "" or index is None or index >= LEGACY_VALIDATION_FILENAME_CUTOFF_INDEX
+        ):
+            offenders.append(rel(path))
+
+    add(
+        results,
+        "runtime validation source filenames are descriptive",
+        not offenders,
+        "; ".join(offenders[:MAX_REPORTED_OFFENDERS])
+        if offenders
+        else "no new Phase-number-prefixed validation filenames",
+    )
+
+
 def check_google_protobuf_collision(results: list[CheckResult]) -> None:
     """Ensure Google.Protobuf plugin asmdefs do not collide with DLL names."""
     plugin_dir = PACKAGE / "Plugins" / "Google.Protobuf"
@@ -455,9 +498,10 @@ def main() -> int:
     """Run all release package checks and return a process exit code."""
     results: list[CheckResult] = []
     package_entries = list(PACKAGE.rglob("*")) if PACKAGE.exists() else []
+    package_files = [path for path in package_entries if path.is_file()]
     samples_entries = [path for path in package_entries if path_is_relative_to(path, SAMPLES)]
     samples_files = [path for path in samples_entries if path.is_file()]
-    docs_files = [path for path in package_entries if path.is_file() and path_is_relative_to(path, DOCS)]
+    docs_files = [path for path in package_files if path_is_relative_to(path, DOCS)]
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
@@ -467,6 +511,7 @@ def main() -> int:
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
     check_package_build_artifacts(results, package_entries)
+    check_validation_naming(results, package_files)
     check_google_protobuf_collision(results)
     check_third_party_notices(results)
 

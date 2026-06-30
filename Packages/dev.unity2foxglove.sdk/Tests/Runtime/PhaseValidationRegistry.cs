@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -308,6 +309,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase164-56", "Phase 164-56: optimization guards for latest runtime validations", Phase164_56Validation.Validate, includeInDefault: false),
             Ci("--phase164-57", "Phase 164-57: optimization guards for unit, conformance, and performance tests", Phase164_57Validation.Validate, includeInDefault: false),
             Ci("--phase164-58", "Validation registry descriptive names", ValidationRegistryDescriptiveNamesValidation.Validate, includeInDefault: false),
+            Ci("--phase164-59", "Validation naming guardrails", ValidationNamingGuardsValidation.Validate, includeInDefault: false),
             Local("--phase138", "Phase 138: Virtual LiDAR Digital Twin validation", Phase138Validation.Validate),
             Local("--phase138b", "Phase 138B: multi-vendor LiDAR middleware validation", Phase138BValidation.Validate),
             Local("--phase138c2", "Phase 138C2: regression checks for shared-channel routing and subscription ids", Phase138C2Validation.Validate),
@@ -361,6 +363,69 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static readonly IReadOnlyDictionary<string, PhaseValidationCase> FlagIndex;
 
+        private static readonly Regex PhaseOnlyNamePattern = new Regex(
+            @"^Phase \d+[A-Za-z]*(?:-\d+)?$",
+            RegexOptions.Compiled);
+
+        private static readonly HashSet<string> LegacyPhaseOnlyNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Phase 28",
+            "Phase 31",
+            "Phase 36",
+            "Phase 137G",
+            "Phase 164-4",
+            "Phase 164-5",
+            "Phase 164-6",
+            "Phase 164-7",
+            "Phase 164-8",
+            "Phase 164-9",
+            "Phase 164-10",
+            "Phase 164-11",
+            "Phase 164-12",
+            "Phase 164-13",
+            "Phase 164-14",
+            "Phase 164-15",
+            "Phase 164-16",
+            "Phase 164-17",
+            "Phase 164-18",
+            "Phase 164-19",
+            "Phase 164-20",
+            "Phase 164-21",
+            "Phase 164-22",
+            "Phase 164-23",
+            "Phase 164-24",
+            "Phase 164-25",
+            "Phase 164-26",
+            "Phase 164-27",
+            "Phase 164-28",
+            "Phase 164-29",
+            "Phase 164-30",
+            "Phase 164-31",
+            "Phase 164-32",
+            "Phase 164-33",
+            "Phase 164-34",
+            "Phase 164-35",
+            "Phase 164-36",
+            "Phase 164-37",
+            "Phase 164-38",
+            "Phase 164-39",
+            "Phase 164-40",
+            "Phase 164-41",
+            "Phase 164-42",
+            "Phase 164-43",
+            "Phase 164-44",
+            "Phase 164-45",
+            "Phase 164-46",
+            "Phase 164-47",
+            "Phase 164-48",
+            "Phase 164-49",
+            "Phase 164-50",
+            "Phase 164-51",
+            "Phase 164-52",
+            "Phase 164-53",
+            "Phase 164-54",
+        };
+
         static PhaseValidationRegistry()
         {
             var flagIndex = new Dictionary<string, PhaseValidationCase>(StringComparer.Ordinal);
@@ -381,6 +446,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             if (duplicateName != null)
                 throw new InvalidOperationException("Duplicate validation name registered: " + duplicateName.Key);
+
+            var phaseOnlyName = All.FirstOrDefault(item =>
+                PhaseOnlyNamePattern.IsMatch(item.Name)
+                && !LegacyPhaseOnlyNames.Contains(item.Name));
+
+            if (phaseOnlyName != null)
+                throw new InvalidOperationException(
+                    "Validation name must be descriptive, not just a phase number: " + phaseOnlyName.Name);
         }
 
         /// <summary>
