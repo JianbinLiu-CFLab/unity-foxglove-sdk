@@ -21,6 +21,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapIndexedReader _reader;
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly long _sourceLengthBytes;
+        private static readonly List<ushort> EmptyChannelIds = new List<ushort>(0);
+        private static readonly List<string> EmptyTopics = new List<string>(0);
         private McapDataLoaderInitialization _initialization;
         private Dictionary<ushort, McapSchema> _schemaMap;
         private Dictionary<ushort, McapChannel> _channelMap;
@@ -86,8 +88,7 @@ namespace Unity.FoxgloveSDK.IO
                 return _initialization;
 
             _schemaMap = BuildSchemaMap(_reader.Schemas);
-            _channelMap = BuildChannelMap(_reader.Channels);
-            BuildQueryMaps(_reader.Channels, out _topicChannelMap, out _knownChannelIds);
+            BuildChannelAndQueryMaps(_reader.Channels, out _channelMap, out _topicChannelMap, out _knownChannelIds);
             _initialization = new McapDataLoaderInitialization();
             AddSchemas(_initialization, _reader.Schemas);
             AddChannels(_initialization, _reader.Channels, _reader.Summary?.Statistics);
@@ -247,27 +248,13 @@ namespace Unity.FoxgloveSDK.IO
             return map;
         }
 
-        private static Dictionary<ushort, McapChannel> BuildChannelMap(IReadOnlyList<McapChannel> channels)
-        {
-            var map = new Dictionary<ushort, McapChannel>();
-            if (channels == null)
-                return map;
-
-            for (var i = 0; i < channels.Count; i++)
-            {
-                var channel = channels[i];
-                if (channel != null)
-                    map[channel.Id] = channel;
-            }
-
-            return map;
-        }
-
-        private static void BuildQueryMaps(
+        private static void BuildChannelAndQueryMaps(
             IReadOnlyList<McapChannel> channels,
+            out Dictionary<ushort, McapChannel> channelMap,
             out Dictionary<string, List<ushort>> topicChannelMap,
             out HashSet<ushort> knownChannelIds)
         {
+            channelMap = new Dictionary<ushort, McapChannel>();
             topicChannelMap = new Dictionary<string, List<ushort>>(StringComparer.Ordinal);
             knownChannelIds = new HashSet<ushort>();
             if (channels == null)
@@ -279,6 +266,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (channel == null)
                     continue;
 
+                channelMap[channel.Id] = channel;
                 knownChannelIds.Add(channel.Id);
                 var topic = channel.Topic ?? string.Empty;
                 if (!topicChannelMap.TryGetValue(topic, out var ids))
@@ -725,10 +713,10 @@ namespace Unity.FoxgloveSDK.IO
                 () => ((IEnumerable<McapDecodedMessage>)Array.Empty<McapDecodedMessage>()).GetEnumerator());
 
         private static List<ushort> CopyUShorts(List<ushort> source)
-            => source == null ? new List<ushort>() : new List<ushort>(source);
+            => source == null || source.Count == 0 ? EmptyChannelIds : new List<ushort>(source);
 
         private static List<string> CopyStrings(List<string> source)
-            => source == null ? new List<string>() : new List<string>(source);
+            => source == null || source.Count == 0 ? EmptyTopics : new List<string>(source);
 
         private void ThrowIfDisposed()
         {
