@@ -208,37 +208,15 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Scans the Assets directory for at least one link.xml containing
-        /// valid preserve rules (Unity requires link.xml under Assets).
+        /// Verifies the active Assets link.xml contains valid preserve rules
+        /// (Unity requires link.xml under Assets).
         /// </summary>
         private static void TestAssetsLinkXmlActiveExists()
         {
             var root = FindRepoRoot();
             Assert(root != null, "Repo root found for Assets link.xml (active)");
-            var assetsDir = Path.Combine(root, "Unity2Foxglove", "Assets");
-            var candidates = Directory.GetFiles(assetsDir, "link.xml", SearchOption.AllDirectories);
-            Assert(candidates.Length > 0,
-                $"At least one Assets/**/link.xml found in {assetsDir} (Unity requires link.xml in Assets, not packaged Runtime)");
-
-            // Verify at least one candidate has valid preserve rules
-            var valid = false;
-            foreach (var path in candidates)
-            {
-                try
-                {
-                    var content = File.ReadAllText(path);
-                    if (content.Contains("Newtonsoft.Json") && content.Contains("Unity.FoxgloveSDK"))
-                    {
-                        valid = true;
-                        break;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("[WARN] Could not inspect link.xml candidate '" + path + "': " + ex.Message);
-                }
-            }
-            Assert(valid, "At least one Assets/**/link.xml preserves Newtonsoft.Json and Unity.FoxgloveSDK");
+            var path = Path.Combine(root, "Unity2Foxglove", "Assets", "link.xml");
+            AssertLinkXml(path, "Active Assets link.xml");
         }
     }
 }

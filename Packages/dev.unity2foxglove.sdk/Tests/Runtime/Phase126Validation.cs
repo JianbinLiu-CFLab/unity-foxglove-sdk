@@ -61,8 +61,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(program.Contains("PhaseValidationRegistry.Find", StringComparison.Ordinal)
-                  && program.Contains("RunTests(argList.Contains(\"--local-evidence\"))", StringComparison.Ordinal),
+            Check(program.Contains("PhaseValidationRegistry.FindAll", StringComparison.Ordinal)
+                  && program.Contains("RunTests(argSet.Contains(\"--local-evidence\"))", StringComparison.Ordinal),
                 "126B-1: Program.cs dispatches through the phase validation registry");
             Check(registry.Contains("ValidationCategory.CiSafe", StringComparison.Ordinal)
                   && registry.Contains("ValidationCategory.LocalEvidence", StringComparison.Ordinal)
