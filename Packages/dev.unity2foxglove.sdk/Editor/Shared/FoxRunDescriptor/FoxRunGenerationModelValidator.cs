@@ -160,7 +160,8 @@ namespace Unity.FoxgloveSDK.Editor
 
             foreach (var group in byTopic)
             {
-                var schemas = group
+                var members = group.ToList();
+                var schemas = members
                     .Select(member => member.SchemaName)
                     .Where(schema => !string.IsNullOrEmpty(schema))
                     .Distinct(StringComparer.Ordinal)
@@ -172,9 +173,9 @@ namespace Unity.FoxgloveSDK.Editor
                         "",
                         "Topic has conflicting SchemaName values across FoxRun members."));
 
-                if (group.Any(member => member.IsAggregateMember) && group.Any(member => !member.IsAggregateMember))
+                if (members.Any(member => member.IsAggregateMember) && members.Any(member => !member.IsAggregateMember))
                 {
-                    var first = group.First();
+                    var first = members[0];
                     diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                         "FOXRUN019",
                         first.DeclaringType + "." + first.MemberName,
@@ -182,7 +183,7 @@ namespace Unity.FoxgloveSDK.Editor
                         "Topic '" + group.Key + "' cannot mix FoxRunMessage aggregate fields with field-level FoxRun members."));
                 }
 
-                var duplicateJsonName = group
+                var duplicateJsonName = members
                     .Where(member => member.IsAggregateMember)
                     .GroupBy(member => member.JsonFieldName, StringComparer.Ordinal)
                     .FirstOrDefault(names => names.Count() > 1);
@@ -196,7 +197,7 @@ namespace Unity.FoxgloveSDK.Editor
                         "FoxRun aggregate topic '" + group.Key + "' has duplicate JSON field name '" + duplicateJsonName.Key + "'."));
                 }
 
-                var collision = group
+                var collision = members
                     .GroupBy(member => member.MemberName.TrimStart('_'), StringComparer.Ordinal)
                     .FirstOrDefault(names => names.Count() > 1);
                 if (collision != null)
@@ -209,12 +210,12 @@ namespace Unity.FoxgloveSDK.Editor
                         "FoxRun member names collide after stripping leading underscores for topic '" + group.Key + "'."));
                 }
 
-                var mixedPolicy = group.Select(member => member.PublishMode).Distinct().Count() > 1
-                    || group.Select(member => member.ChangeEpsilon).Distinct().Count() > 1
-                    || group.Select(member => member.ForceIntervalSeconds).Distinct().Count() > 1;
+                var mixedPolicy = members.Select(member => member.PublishMode).Distinct().Count() > 1
+                    || members.Select(member => member.ChangeEpsilon).Distinct().Count() > 1
+                    || members.Select(member => member.ForceIntervalSeconds).Distinct().Count() > 1;
                 if (mixedPolicy)
                 {
-                    var first = group.First();
+                    var first = members[0];
                     diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
                         "FOXRUN005",
                         first.DeclaringType + "." + first.MemberName,
@@ -222,11 +223,11 @@ namespace Unity.FoxgloveSDK.Editor
                         "Topic '" + group.Key + "' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values."));
                 }
 
-                var mixedConditions = group.Select(member => member.When).Distinct(StringComparer.Ordinal).Count() > 1
-                    || group.Select(member => member.Unless).Distinct(StringComparer.Ordinal).Count() > 1;
+                var mixedConditions = members.Select(member => member.When).Distinct(StringComparer.Ordinal).Count() > 1
+                    || members.Select(member => member.Unless).Distinct(StringComparer.Ordinal).Count() > 1;
                 if (mixedConditions)
                 {
-                    var first = group.First();
+                    var first = members[0];
                     diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                         "FOXRUN017",
                         first.DeclaringType + "." + first.MemberName,
