@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
         private static List<string> SerializeRecords(IEnumerable<SerializableMcapRecord> records)
         {
             return records
-                .Select(record => McapConformanceJson.WriteStreamed(new List<SerializableMcapRecord> { record }))
+                .Select(McapConformanceJson.WriteSingle)
                 .ToList();
         }
 

@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -46,7 +45,27 @@ namespace Unity.FoxgloveSDK.Tests
 
         public bool Matches(IReadOnlyCollection<string> args)
         {
-            return AllFlags().Any(args.Contains);
+            if (!string.IsNullOrEmpty(Flag) && ContainsFlag(args, Flag))
+                return true;
+
+            for (var i = 0; i < Aliases.Count; i++)
+            {
+                if (ContainsFlag(args, Aliases[i]))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool ContainsFlag(IEnumerable<string> args, string value)
+        {
+            foreach (var arg in args)
+            {
+                if (string.Equals(arg, value, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
         }
     }
 }

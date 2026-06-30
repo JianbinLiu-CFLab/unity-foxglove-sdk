@@ -18,6 +18,9 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 ["records"] = records
             }, Formatting.None) + "\n";
 
+        public static string WriteSingle(SerializableMcapRecord record)
+            => "{\"records\":[" + JsonConvert.SerializeObject(record, Formatting.None) + "]}\n";
+
         public static string WriteIndexed(IndexedReadResult result)
             => JsonConvert.SerializeObject(new Dictionary<string, object>
             {
