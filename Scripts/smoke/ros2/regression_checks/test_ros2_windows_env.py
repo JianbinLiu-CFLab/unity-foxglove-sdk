@@ -52,6 +52,21 @@ class Ros2WindowsEnvTests(unittest.TestCase):
         log_event.assert_called_once()
         self.assertIn("rmw_zenoh_cpp", log_event.call_args.args[1])
 
+    def test_ros2_opt_bin_paths_are_cached_per_root(self) -> None:
+        """Repeated env/RViz setup should not rescan the same ROS2 opt tree."""
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            vendor_bin = ros2_root / "opt" / "zenoh_cpp_vendor" / "bin"
+            vendor_bin.mkdir(parents=True)
+
+            first = ros2env.ros2_opt_bin_paths(ros2_root)
+            second = ros2env.ros2_opt_bin_paths(ros2_root)
+            first.clear()
+            third = ros2env.ros2_opt_bin_paths(ros2_root)
+
+        self.assertEqual([vendor_bin], second)
+        self.assertEqual([vendor_bin], third)
+
     def test_launch_rviz_includes_ros2_opt_vendor_bin_paths(self) -> None:
         """RViz2 must see opt vendor DLL directories such as zenoh_cpp_vendor/bin."""
         with tempfile.TemporaryDirectory() as temp:

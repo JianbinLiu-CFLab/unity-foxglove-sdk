@@ -16,6 +16,7 @@ import subprocess
 import time
 from datetime import datetime
 
+_ROS2_OPT_BIN_PATHS_CACHE: dict[pathlib.Path, tuple[pathlib.Path, ...]] = {}
 _QT_PLUGIN_PATH_CACHE: dict[pathlib.Path, pathlib.Path | None] = {}
 
 
@@ -105,8 +106,14 @@ def infer_ros_distro(ros2_root: pathlib.Path) -> str:
 def ros2_opt_bin_paths(ros2_root: pathlib.Path) -> list[pathlib.Path]:
     """Return existing ROS2 vendor DLL directories under opt."""
 
+    key = ros2_root.resolve()
+    cached = _ROS2_OPT_BIN_PATHS_CACHE.get(key)
+    if cached is not None:
+        return list(cached)
+
     opt_root = ros2_root / "opt"
     if not opt_root.is_dir():
+        _ROS2_OPT_BIN_PATHS_CACHE[key] = ()
         return []
     priority_vendors = ("rviz_ogre_vendor", "gz_math_vendor")
     priority_paths = [opt_root / name / "bin" for name in priority_vendors]
@@ -115,6 +122,7 @@ def ros2_opt_bin_paths(ros2_root: pathlib.Path) -> list[pathlib.Path]:
     for path in (*priority_paths, *discovered):
         if path.is_dir() and path not in result:
             result.append(path)
+    _ROS2_OPT_BIN_PATHS_CACHE[key] = tuple(result)
     return result
 
 

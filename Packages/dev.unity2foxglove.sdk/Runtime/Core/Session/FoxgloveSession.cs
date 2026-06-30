@@ -53,6 +53,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly List<FoxgloveServiceCall> _pendingServiceCallsScratch = new();
         private readonly List<FoxgloveServiceCall> _completedServiceCallsScratch = new();
         private readonly ISchemaRegistry _schemaRegistry;
+        private static readonly ThreadLocal<JsonSerializer> JsonSerializerCache =
+            new ThreadLocal<JsonSerializer>(JsonSerializer.CreateDefault);
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
         private ISinkChannelFilter _liveWebSocketChannelFilter;
@@ -537,7 +539,7 @@ namespace Unity.FoxgloveSDK.Core
                 using (var writer = new StreamWriter(stream, new UTF8Encoding(false), 1024, leaveOpen: true))
                 using (var jsonWriter = new JsonTextWriter(writer))
                 {
-                    JsonSerializer.CreateDefault().Serialize(jsonWriter, message);
+                    JsonSerializerCache.Value.Serialize(jsonWriter, message);
                 }
 
                 Publish(channelId, stream.ToArray(), logTimeNs);
@@ -798,10 +800,14 @@ namespace Unity.FoxgloveSDK.Core
             if (channels == null || channels.Count == 0)
                 return channels ?? Array.Empty<AdvertiseChannel>();
 
+            var filter = Volatile.Read(ref _liveWebSocketChannelFilter);
+            if (filter == null)
+                return channels;
+
             var filtered = new List<AdvertiseChannel>();
             foreach (var channel in channels)
             {
-                if (AllowLiveWebSocket(channel))
+                if (channel != null && filter.AllowChannel(CreateFilterContext(FoxgloveSinkKind.LiveWebSocket, channel)))
                     filtered.Add(channel);
             }
 

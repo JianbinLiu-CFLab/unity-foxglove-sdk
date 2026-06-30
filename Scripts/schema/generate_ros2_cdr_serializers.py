@@ -1125,6 +1125,8 @@ def write_text(path: Path, text: str) -> None:
     """Write UTF-8 text with LF line endings, creating parent directories."""
 
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file() and path.read_text(encoding="utf-8") == text:
+        return
     path.write_text(text, encoding="utf-8", newline="\n")
 
 

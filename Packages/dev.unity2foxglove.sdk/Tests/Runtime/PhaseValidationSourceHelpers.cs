@@ -6,6 +6,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -49,7 +50,16 @@ namespace Unity.FoxgloveSDK.Tests
             var files = Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs")
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
-            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
+
+            var source = new StringBuilder();
+            foreach (var file in files)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(file));
+            }
+
+            return source.ToString();
         }
 
         public static bool SourceMethodContains(string source, string methodName, string needle)

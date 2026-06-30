@@ -290,6 +290,11 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase164-38", "Phase 164-38", Phase164_38Validation.Validate, includeInDefault: false),
             Ci("--phase164-39", "Phase 164-39", Phase164_39Validation.Validate, includeInDefault: false),
             Ci("--phase164-40", "Phase 164-40", Phase164_40Validation.Validate, includeInDefault: false),
+            Ci("--phase164-41", "Phase 164-41", Phase164_41Validation.Validate, includeInDefault: false),
+            Ci("--phase164-42", "Phase 164-42", Phase164_42Validation.Validate, includeInDefault: false),
+            Ci("--phase164-43", "Phase 164-43", Phase164_43Validation.Validate, includeInDefault: false),
+            Ci("--phase164-44", "Phase 164-44", Phase164_44Validation.Validate, includeInDefault: false),
+            Ci("--phase164-45", "Phase 164-45", Phase164_45Validation.Validate, includeInDefault: false),
             Local("--phase138", "Phase 138", Phase138Validation.Validate),
             Local("--phase138b", "Phase 138B", Phase138BValidation.Validate),
             Local("--phase138c2", "Phase 138C2", Phase138C2Validation.Validate),
@@ -341,15 +346,21 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase141f", "FoxService DTO graph walker convergence", FoxServiceDtoGraphWalkerConvergenceValidation.Validate, includeInDefault: false),
         };
 
+        private static readonly IReadOnlyDictionary<string, PhaseValidationCase> FlagIndex;
+
         static PhaseValidationRegistry()
         {
-            var duplicate = All
-                .SelectMany(item => item.AllFlags())
-                .GroupBy(flag => flag, StringComparer.Ordinal)
-                .FirstOrDefault(group => group.Count() > 1);
+            var flagIndex = new Dictionary<string, PhaseValidationCase>(StringComparer.Ordinal);
+            foreach (var item in All)
+            {
+                foreach (var flag in item.AllFlags())
+                {
+                    if (!flagIndex.TryAdd(flag, item))
+                        throw new InvalidOperationException("Duplicate validation flag registered: " + flag);
+                }
+            }
 
-            if (duplicate != null)
-                throw new InvalidOperationException("Duplicate validation flag registered: " + duplicate.Key);
+            FlagIndex = flagIndex;
 
             var duplicateName = All
                 .GroupBy(item => item.Name, StringComparer.Ordinal)
@@ -375,7 +386,13 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         public static PhaseValidationCase Find(IReadOnlyCollection<string> args)
         {
-            return All.FirstOrDefault(item => item.Matches(args));
+            foreach (var arg in args)
+            {
+                if (FlagIndex.TryGetValue(arg, out var validation))
+                    return validation;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -383,7 +400,12 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         public static IEnumerable<PhaseValidationCase> FindAll(IReadOnlyCollection<string> args)
         {
-            return All.Where(item => item.Matches(args));
+            var emitted = new HashSet<PhaseValidationCase>();
+            foreach (var arg in args)
+            {
+                if (FlagIndex.TryGetValue(arg, out var validation) && emitted.Add(validation))
+                    yield return validation;
+            }
         }
 
         /// <summary>
