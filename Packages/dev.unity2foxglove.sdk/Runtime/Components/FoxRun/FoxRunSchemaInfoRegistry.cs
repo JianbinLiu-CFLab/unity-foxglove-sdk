@@ -5,6 +5,7 @@
 // Purpose: Runtime registry for generated FoxRun schema metadata.
 
 using System;
+using System.Collections.Generic;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Components
@@ -17,6 +18,7 @@ namespace Unity.FoxgloveSDK.Components
         private static bool _hasConflict;
         private static string _conflictMessage = string.Empty;
         private static string _conflictingHash = string.Empty;
+        private static readonly Dictionary<string, string> GeneratedSchemaCache = new Dictionary<string, string>(StringComparer.Ordinal);
 
         public static event Action<string, Exception> GeneratedSchemaRegistrationFailed;
 
@@ -94,7 +96,7 @@ namespace Unity.FoxgloveSDK.Components
                         {
                             Name = contract.SchemaName,
                             Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
-                            Content = FoxRunJsonSchemaBuilder.Build(contract)
+                            Content = GetOrBuildGeneratedSchema(contract)
                         });
                     }
                     catch (Exception ex) when (IsRecoverableSchemaException(ex))
@@ -121,6 +123,24 @@ namespace Unity.FoxgloveSDK.Components
                    && !(ex is StackOverflowException)
                    && !(ex is AccessViolationException)
                    && !(ex is AppDomainUnloadedException);
+        }
+
+        private static string GetOrBuildGeneratedSchema(FoxRunSchemaContractInfo contract)
+        {
+            var key = !string.IsNullOrEmpty(contract.ContractHash)
+                ? contract.ContractHash
+                : contract.SchemaName ?? string.Empty;
+
+            lock (Sync)
+            {
+                if (!GeneratedSchemaCache.TryGetValue(key, out var schema))
+                {
+                    schema = FoxRunJsonSchemaBuilder.Build(contract);
+                    GeneratedSchemaCache[key] = schema;
+                }
+
+                return schema;
+            }
         }
 
         private static bool IsGeneratedAggregateContract(FoxRunSchemaContractInfo contract)
@@ -151,6 +171,7 @@ namespace Unity.FoxgloveSDK.Components
                 _hasConflict = false;
                 _conflictMessage = string.Empty;
                 _conflictingHash = string.Empty;
+                GeneratedSchemaCache.Clear();
                 GeneratedSchemaRegistrationFailed = null;
             }
         }

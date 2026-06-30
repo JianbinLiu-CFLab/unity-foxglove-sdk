@@ -5,29 +5,19 @@
 // Purpose: Allocation-free reflection property lookup cache for replay adapters.
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace Unity.FoxgloveSDK.Core
 {
     internal static class ReplayPropertyCache
     {
-        private static readonly object Gate = new();
-        private static readonly Dictionary<PropertyCacheKey, PropertyInfo> Cache = new();
+        private static readonly ConcurrentDictionary<PropertyCacheKey, PropertyInfo> Cache = new();
 
         internal static PropertyInfo Resolve(Type type, string propertyName, BindingFlags bindingFlags)
         {
             var key = new PropertyCacheKey(type, propertyName, bindingFlags);
-            lock (Gate)
-            {
-                if (!Cache.TryGetValue(key, out var property))
-                {
-                    property = type.GetProperty(propertyName, bindingFlags);
-                    Cache[key] = property;
-                }
-
-                return property;
-            }
+            return Cache.GetOrAdd(key, static cachedKey => cachedKey.Resolve());
         }
 
         private readonly struct PropertyCacheKey : IEquatable<PropertyCacheKey>
@@ -47,6 +37,9 @@ namespace Unity.FoxgloveSDK.Core
                 => _type == other._type
                    && _bindingFlags == other._bindingFlags
                    && string.Equals(_propertyName, other._propertyName, StringComparison.Ordinal);
+
+            public PropertyInfo Resolve()
+                => _type?.GetProperty(_propertyName, _bindingFlags);
 
             public override bool Equals(object obj)
                 => obj is PropertyCacheKey other && Equals(other);

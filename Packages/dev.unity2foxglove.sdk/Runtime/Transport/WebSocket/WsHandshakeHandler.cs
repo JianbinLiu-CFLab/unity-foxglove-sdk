@@ -8,9 +8,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -21,6 +21,17 @@ namespace Unity.FoxgloveSDK.Transport
     {
         private const int MaxHandshakeLineBytes = 8192;
         private const int MaxHandshakeHeaders = 100;
+        private static readonly byte[] UpgradeRequiredResponse =
+            Encoding.ASCII.GetBytes("HTTP/1.1 426 Upgrade Required\r\nSec-WebSocket-Version: 13\r\n\r\n");
+        private static readonly byte[] ForbiddenResponse =
+            Encoding.ASCII.GetBytes("HTTP/1.1 403 Forbidden\r\n\r\n");
+        private static readonly byte[] UnauthorizedResponse =
+            Encoding.ASCII.GetBytes("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        private static readonly byte[] BadRequestResponse =
+            Encoding.ASCII.GetBytes("HTTP/1.1 400 Bad Request\r\n\r\n");
+        private static readonly byte[] ServiceUnavailableResponse =
+            Encoding.ASCII.GetBytes("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+        private static readonly ThreadLocal<SHA1> AcceptKeySha1 = new(SHA1.Create);
 
         private readonly ManagedWebSocketOptions _options;
         private readonly IFoxgloveLogger _logger;
@@ -85,7 +96,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (!headers.TryGetValue("Sec-WebSocket-Version", out var version)
                 || !version.Equals("13", StringComparison.Ordinal))
             {
-                WriteResponse(stream, "HTTP/1.1 426 Upgrade Required\r\nSec-WebSocket-Version: 13\r\n\r\n");
+                WriteResponse(stream, UpgradeRequiredResponse);
                 return (false, null);
             }
 
@@ -97,7 +108,7 @@ namespace Unity.FoxgloveSDK.Transport
             {
                 _logger.LogWarning(
                     $"Rejected WebSocket Origin '{origin}'. Add it to allowed origins to permit browser clients.");
-                WriteResponse(stream, "HTTP/1.1 403 Forbidden\r\n\r\n");
+                WriteResponse(stream, ForbiddenResponse);
                 return (false, null);
             }
 
@@ -109,7 +120,7 @@ namespace Unity.FoxgloveSDK.Transport
                     _logger.LogWarning(token == null
                         ? "Rejected WebSocket client with missing token."
                         : "Rejected WebSocket client with invalid token.");
-                    WriteResponse(stream, "HTTP/1.1 401 Unauthorized\r\n\r\n");
+                    WriteResponse(stream, UnauthorizedResponse);
                     return (false, null);
                 }
             }
@@ -118,13 +129,13 @@ namespace Unity.FoxgloveSDK.Transport
             if (selected == null)
             {
                 _logger.LogError("Client connected without accepted subprotocol, closing.");
-                WriteResponse(stream, "HTTP/1.1 400 Bad Request\r\n\r\n");
+                WriteResponse(stream, BadRequestResponse);
                 return (false, null);
             }
 
             if (canAcceptClient != null && !canAcceptClient())
             {
-                WriteResponse(stream, "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+                WriteResponse(stream, ServiceUnavailableResponse);
                 return (false, null);
             }
 
@@ -146,13 +157,27 @@ namespace Unity.FoxgloveSDK.Transport
             if (!headers.TryGetValue("Sec-WebSocket-Protocol", out var clientProtocols))
                 return null;
 
-            foreach (var cp in clientProtocols.Split(',').Select(p => p.Trim()))
+            var start = 0;
+            while (start <= clientProtocols.Length)
             {
+                var comma = clientProtocols.IndexOf(',', start);
+                var end = comma >= 0 ? comma : clientProtocols.Length;
+                while (start < end && char.IsWhiteSpace(clientProtocols[start]))
+                    start++;
+                while (end > start && char.IsWhiteSpace(clientProtocols[end - 1]))
+                    end--;
+
+                var length = end - start;
                 foreach (var accepted in Subprotocol.Accepted)
                 {
-                    if (cp.Equals(accepted, StringComparison.OrdinalIgnoreCase))
+                    if (length == accepted.Length
+                        && string.Compare(clientProtocols, start, accepted, 0, length, StringComparison.OrdinalIgnoreCase) == 0)
                         return accepted;
                 }
+
+                if (comma < 0)
+                    break;
+                start = comma + 1;
             }
 
             return null;
@@ -173,7 +198,7 @@ namespace Unity.FoxgloveSDK.Transport
         private static string ComputeAcceptKey(string wsKey)
         {
             const string magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-            using var sha1 = SHA1.Create();
+            var sha1 = AcceptKeySha1.Value;
             var hash = sha1.ComputeHash(Encoding.ASCII.GetBytes(wsKey + magic));
             return Convert.ToBase64String(hash);
         }
@@ -181,6 +206,11 @@ namespace Unity.FoxgloveSDK.Transport
         private static void WriteResponse(Stream stream, string response)
         {
             var bytes = Encoding.ASCII.GetBytes(response);
+            WriteResponse(stream, bytes);
+        }
+
+        private static void WriteResponse(Stream stream, byte[] bytes)
+        {
             stream.Write(bytes, 0, bytes.Length);
         }
 

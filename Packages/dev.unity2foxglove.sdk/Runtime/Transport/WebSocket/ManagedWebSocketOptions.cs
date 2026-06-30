@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Transport
         public const int DefaultMaxClients = 64;
 
         private string _sharedToken = string.Empty;
+        private byte[] _sharedTokenBytes = Array.Empty<byte>();
 
         /// <summary>Maximum active WebSocket clients accepted by the managed backend.</summary>
         public int MaxClients { get; set; } = DefaultMaxClients;
@@ -61,7 +62,11 @@ namespace Unity.FoxgloveSDK.Transport
         public string SharedToken
         {
             get => _sharedToken;
-            set => _sharedToken = value ?? string.Empty;
+            set
+            {
+                _sharedToken = value ?? string.Empty;
+                _sharedTokenBytes = Encoding.UTF8.GetBytes(_sharedToken);
+            }
         }
 
         /// <summary>Whether the configured token gate should reject missing or wrong tokens.</summary>
@@ -76,7 +81,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (providedToken == null)
                 return false;
 
-            return FixedTimeEqualsUtf8(_sharedToken, providedToken);
+            return FixedTimeEqualsUtf8(_sharedTokenBytes, providedToken);
         }
 
         /// <summary>Read one decoded query value from an HTTP request target such as <c>/?token=x</c>.</summary>
@@ -127,6 +132,11 @@ namespace Unity.FoxgloveSDK.Transport
         public static bool FixedTimeEqualsUtf8(string expected, string actual)
         {
             var expectedBytes = Encoding.UTF8.GetBytes(expected ?? string.Empty);
+            return FixedTimeEqualsUtf8(expectedBytes, actual);
+        }
+
+        private static bool FixedTimeEqualsUtf8(byte[] expectedBytes, string actual)
+        {
             var actualBytes = Encoding.UTF8.GetBytes(actual ?? string.Empty);
             var max = Math.Max(expectedBytes.Length, actualBytes.Length);
             var diff = expectedBytes.Length ^ actualBytes.Length;

@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -19,7 +18,9 @@ namespace Unity.FoxgloveSDK.Editor
             for (var current = type; current != null && current != typeof(object); current = current.BaseType)
             {
                 var flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly;
-                foreach (var member in current.GetMembers(flags).OrderBy(MemberOrder))
+                var members = current.GetMembers(flags);
+                Array.Sort(members, CompareMemberOrder);
+                foreach (var member in members)
                 {
                     if (!(member is FieldInfo) && !(member is PropertyInfo))
                         continue;
@@ -32,7 +33,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string JsonPropertyName(MemberInfo member)
         {
-            foreach (var attribute in member.GetCustomAttributes(true))
+            foreach (var attribute in member.GetCustomAttributes(false))
             {
                 var attributeType = attribute.GetType();
                 if (!string.Equals(attributeType.FullName, "Newtonsoft.Json.JsonPropertyAttribute", StringComparison.Ordinal))
@@ -47,13 +48,23 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         public static bool IsIgnored(MemberInfo member)
-            => member.GetCustomAttributes(true).Any(attribute =>
+        {
+            foreach (var attribute in member.GetCustomAttributes(false))
             {
                 var typeName = attribute.GetType().FullName ?? string.Empty;
-                return typeName == "Newtonsoft.Json.JsonIgnoreAttribute"
-                       || typeName == "System.Text.Json.Serialization.JsonIgnoreAttribute"
-                       || typeName == "System.NonSerializedAttribute";
-            });
+                if (typeName == "Newtonsoft.Json.JsonIgnoreAttribute"
+                    || typeName == "System.Text.Json.Serialization.JsonIgnoreAttribute"
+                    || typeName == "System.NonSerializedAttribute")
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int CompareMemberOrder(MemberInfo left, MemberInfo right)
+            => MemberOrder(left).CompareTo(MemberOrder(right));
 
         private static int MemberOrder(MemberInfo member)
         {

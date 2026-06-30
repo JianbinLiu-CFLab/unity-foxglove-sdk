@@ -15,7 +15,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     internal static class TempMcapHelper
     {
-        private static readonly List<string> _paths = new();
+        private static readonly List<string> _paths = new(16);
 
         /// <summary>
         /// Creates a temporary .mcap file path under <c>Path.GetTempPath()</c>

@@ -6,20 +6,30 @@
 
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Editor
 {
     public static class FoxRunManifestHasher
     {
+        private const string LowerHex = "0123456789abcdef";
+        private static readonly ThreadLocal<SHA256> Sha256 = new ThreadLocal<SHA256>(SHA256.Create);
+
         public static string Sha256Hex(string canonicalJson)
         {
-            using var sha = SHA256.Create();
             var bytes = Encoding.UTF8.GetBytes(canonicalJson ?? string.Empty);
+            var sha = Sha256.Value;
             var hash = sha.ComputeHash(bytes);
-            var sb = new StringBuilder(hash.Length * 2);
-            foreach (var b in hash)
-                sb.Append(b.ToString("x2"));
-            return sb.ToString();
+            var chars = new char[hash.Length * 2];
+            for (var i = 0; i < hash.Length; i++)
+            {
+                var value = hash[i];
+                var offset = i * 2;
+                chars[offset] = LowerHex[value >> 4];
+                chars[offset + 1] = LowerHex[value & 0x0F];
+            }
+
+            return new string(chars);
         }
 
         public static bool IsLowercaseSha256Hex(string value)

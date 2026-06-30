@@ -22,6 +22,8 @@ namespace Unity.FoxgloveSDK.UnitTests
     [Trait("Domain", "Mcap")]
     public class McapReaderIndexingTests
     {
+        private static readonly byte[] SimpleFiveMessageMcap = CreateSimpleMessageMcapBytes(5);
+
         [Fact]
         public void SummaryOffsetOutsideSummarySectionThrows()
         {
@@ -161,7 +163,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void FileOrderMaxMessagesKeepsFirstMatches()
         {
-            using var stream = CreateSimpleMessageMcap(5);
+            using var stream = OpenSimpleMessageMcap(SimpleFiveMessageMcap);
             using var indexed = new McapIndexedReader(stream, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
             var messages = indexed.ReadMessages(new McapReadOptions
             {
@@ -175,7 +177,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void StreamingFileOrderMaxMessagesKeepsFirstMatches()
         {
-            using var stream = CreateSimpleMessageMcap(5);
+            using var stream = OpenSimpleMessageMcap(SimpleFiveMessageMcap);
             using var streaming = new McapStreamingReader(stream, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
             var result = streaming.Read(new McapReadOptions
             {
@@ -283,7 +285,17 @@ namespace Unity.FoxgloveSDK.UnitTests
 
         private static MemoryStream CreateSimpleMessageMcap(int messageCount)
         {
-            var stream = new MemoryStream();
+            return new MemoryStream(CreateSimpleMessageMcapBytes(messageCount), writable: false);
+        }
+
+        private static MemoryStream OpenSimpleMessageMcap(byte[] bytes)
+        {
+            return new MemoryStream(bytes, writable: false);
+        }
+
+        private static byte[] CreateSimpleMessageMcapBytes(int messageCount)
+        {
+            using var stream = new MemoryStream();
             using (var writer = new McapWriter(stream, leaveOpen: true))
             {
                 writer.WriteMagic();
@@ -297,8 +309,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                 writer.WriteMagic();
             }
 
-            stream.Position = 0;
-            return stream;
+            return stream.ToArray();
         }
 
         private static MemoryStream CreateChunkMcap(out ulong chunkStart, out ulong chunkLength)

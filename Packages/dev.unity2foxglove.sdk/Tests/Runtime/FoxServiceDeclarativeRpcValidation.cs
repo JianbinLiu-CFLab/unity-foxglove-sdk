@@ -18,6 +18,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class FoxServiceDeclarativeRpcValidation
     {
+        private static readonly Lazy<MetadataReference[]> CachedReferences = new Lazy<MetadataReference[]>(CreateReferences);
         private static int _passCount;
 
         public static void Validate()
@@ -232,6 +233,9 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static MetadataReference[] References()
+            => CachedReferences.Value;
+
+        private static MetadataReference[] CreateReferences()
         {
             var trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
             if (string.IsNullOrWhiteSpace(trustedPlatformAssemblies))
