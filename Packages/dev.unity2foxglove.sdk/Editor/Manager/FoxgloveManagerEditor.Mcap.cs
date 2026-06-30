@@ -106,7 +106,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUI.indentLevel++;
             EditorGUILayout.HelpBox(
-                "Serves the selected Replay File Path as a local MCAP URL so Foxglove can load it and control replay time. When enabled, Unity follows the Foxglove timeline; Replay Auto Play is disabled.",
+                "Serves the selected Replay File Path as a local MCAP URL using the direct /v1/files/... route so Foxglove can load it and control replay time. When enabled, Unity follows the Foxglove timeline; Replay Auto Play is disabled.",
                 MessageType.Info);
 
             DrawProperty("_enableRemoteMcapFileServer", "Foxglove as Replay Timeline");

@@ -150,6 +150,19 @@ namespace Unity.FoxgloveSDK.Core
         private static readonly byte[] DuplicateCursorResponseBytes =
             Encoding.UTF8.GetBytes("{\"accepted\":false,\"message\":\"Duplicate cursor ignored.\"}");
 
+        private readonly struct CorsDecision
+        {
+            public CorsDecision(bool allowed, string responseOrigin)
+            {
+                Allowed = allowed;
+                ResponseOrigin = responseOrigin ?? string.Empty;
+            }
+
+            public bool Allowed { get; }
+
+            public string ResponseOrigin { get; }
+        }
+
         private readonly IFoxgloveLogger _logger;
         private volatile HttpListener _listener;
         private Func<ReplayCursorRequest, UnityReplayCursorEndpointQueueResult> _queue;
@@ -257,84 +270,86 @@ namespace Unity.FoxgloveSDK.Core
 
         private void Handle(HttpListenerContext context)
         {
+            var cors = ResolveCors(context.Request);
             if (!IPAddress.IsLoopback(context.Request.RemoteEndPoint.Address))
             {
-                TryWrite(context, 403, "{\"error\":\"loopback only\"}");
+                TryWrite(context, 403, "{\"error\":\"loopback only\"}", cors);
                 return;
             }
 
             if (!string.Equals(context.Request.Url.AbsolutePath, _options.Path, StringComparison.Ordinal))
             {
-                TryWrite(context, 404, "{\"error\":\"not found\"}");
+                TryWrite(context, 404, "{\"error\":\"not found\"}", cors);
                 return;
             }
 
-            if (!IsCorsOriginAllowed(context.Request))
+            if (!cors.Allowed)
             {
-                TryWrite(context, 403, "{\"error\":\"origin not allowed\"}");
+                TryWrite(context, 403, "{\"error\":\"origin not allowed\"}", cors);
                 return;
             }
 
             if (string.Equals(context.Request.HttpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
-                TryWrite(context, 204, string.Empty);
+                TryWrite(context, 204, string.Empty, cors);
                 return;
             }
 
             if (!IsAuthorized(context.Request))
             {
-                TryWrite(context, 401, "{\"error\":\"unauthorized\"}");
+                TryWrite(context, 401, "{\"error\":\"unauthorized\"}", cors);
                 return;
             }
 
             if (string.Equals(context.Request.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase))
             {
                 var state = _stateProvider?.Invoke() ?? ReplayCursorState.Unavailable("Replay cursor state provider is unavailable.");
-                TryWrite(context, 200, state.ToJson());
+                TryWrite(context, 200, state.ToJson(), cors);
                 return;
             }
 
             if (!string.Equals(context.Request.HttpMethod, "POST", StringComparison.OrdinalIgnoreCase))
             {
-                TryWrite(context, 405, "{\"error\":\"method not allowed\"}");
+                TryWrite(context, 405, "{\"error\":\"method not allowed\"}", cors);
                 return;
             }
 
             if (context.Request.ContentLength64 > _options.MaxBodyBytes)
             {
-                TryWrite(context, 413, "{\"error\":\"request body too large\"}");
+                TryWrite(context, 413, "{\"error\":\"request body too large\"}", cors);
                 return;
             }
 
             var body = ReadBody(context.Request);
             if (body == null)
             {
-                TryWrite(context, 413, "{\"error\":\"request body too large\"}");
+                TryWrite(context, 413, "{\"error\":\"request body too large\"}", cors);
                 return;
             }
 
             if (!ReplayCursorRequest.TryParseJson(body, out var request, out var error))
             {
-                TryWrite(context, 400, "{\"error\":" + JsonEscape(error) + "}");
+                TryWrite(context, 400, "{\"error\":" + JsonEscape(error) + "}", cors);
                 return;
             }
 
             var result = _queue?.Invoke(request) ?? new UnityReplayCursorEndpointQueueResult(false, "Cursor queue is unavailable.");
             if (result.Success && string.Equals(result.Message, "Cursor accepted.", StringComparison.Ordinal))
             {
-                TryWrite(context, 202, AcceptedCursorResponseBytes);
+                TryWrite(context, 202, AcceptedCursorResponseBytes, cors);
                 return;
             }
             if (!result.Success && string.Equals(result.Message, "Duplicate cursor ignored.", StringComparison.Ordinal))
             {
-                TryWrite(context, 409, DuplicateCursorResponseBytes);
+                TryWrite(context, 409, DuplicateCursorResponseBytes, cors);
                 return;
             }
 
             TryWrite(
                 context,
                 result.Success ? 202 : 409,
-                "{\"accepted\":" + (result.Success ? "true" : "false") + ",\"message\":" + JsonEscape(result.Message) + "}");
+                "{\"accepted\":" + (result.Success ? "true" : "false") + ",\"message\":" + JsonEscape(result.Message) + "}",
+                cors);
         }
 
         private bool IsAuthorized(HttpListenerRequest request)
@@ -350,8 +365,21 @@ namespace Unity.FoxgloveSDK.Core
                 StringComparison.Ordinal);
         }
 
-        private bool IsCorsOriginAllowed(HttpListenerRequest request)
-            => IsCorsOriginAllowed(request?.Headers["Origin"]);
+        private CorsDecision ResolveCors(HttpListenerRequest request)
+        {
+            var origin = request?.Headers["Origin"];
+            if (string.IsNullOrWhiteSpace(origin))
+            {
+                return new CorsDecision(true, string.Empty);
+            }
+
+            if (!IsCorsOriginAllowed(origin))
+            {
+                return new CorsDecision(false, string.Empty);
+            }
+
+            return new CorsDecision(true, NormalizeOriginForHeader(origin));
+        }
 
         private bool IsCorsOriginAllowed(string origin)
         {
@@ -404,11 +432,19 @@ namespace Unity.FoxgloveSDK.Core
 
         private void TryWrite(HttpListenerContext context, int statusCode, string body)
         {
+            TryWrite(context, statusCode, body, ResolveCors(context.Request));
+        }
+
+        private void TryWrite(HttpListenerContext context, int statusCode, string body, CorsDecision cors)
+        {
             body ??= string.Empty;
-            TryWrite(context, statusCode, Encoding.UTF8.GetBytes(body));
+            TryWrite(context, statusCode, Encoding.UTF8.GetBytes(body), cors);
         }
 
         private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes)
+            => TryWrite(context, statusCode, bytes, ResolveCors(context.Request));
+
+        private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes, CorsDecision cors)
         {
             bytes ??= Array.Empty<byte>();
             try
@@ -416,10 +452,9 @@ namespace Unity.FoxgloveSDK.Core
                 context.Response.StatusCode = statusCode;
                 context.Response.ContentType = "application/json";
                 context.Response.ContentEncoding = Encoding.UTF8;
-                var origin = context.Request.Headers["Origin"];
-                if (!string.IsNullOrWhiteSpace(origin) && IsCorsOriginAllowed(origin))
+                if (!string.IsNullOrEmpty(cors.ResponseOrigin))
                 {
-                    context.Response.Headers["Access-Control-Allow-Origin"] = NormalizeOriginForHeader(origin);
+                    context.Response.Headers["Access-Control-Allow-Origin"] = cors.ResponseOrigin;
                 }
 
                 context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";

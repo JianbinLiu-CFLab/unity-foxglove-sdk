@@ -279,11 +279,12 @@ namespace Unity.FoxgloveSDK.IO
 
         private RemoteMcapManifest GetCachedManifest()
         {
-            return GetCachedManifest(ReadFileStamp());
+            return CloneManifest(GetCachedManifestCore(ReadFileStamp(), out _));
         }
 
-        private RemoteMcapManifest GetCachedManifest(FileStamp loadStamp)
+        private RemoteMcapManifest GetCachedManifestCore(FileStamp loadStamp, out FileStamp storeStamp)
         {
+            storeStamp = loadStamp;
             if (!loadStamp.Exists)
                 return CreateMissingManifest();
 
@@ -292,7 +293,7 @@ namespace Unity.FoxgloveSDK.IO
                 if (_cachedManifest != null
                     && MatchesCachedStamp(loadStamp))
                 {
-                    return CloneManifest(_cachedManifest);
+                    return _cachedManifest;
                 }
             }
 
@@ -311,7 +312,7 @@ namespace Unity.FoxgloveSDK.IO
                 return CreateMissingManifest();
             }
 
-            var storeStamp = ReadFileStamp();
+            storeStamp = ReadFileStamp();
             if (!storeStamp.Exists)
                 return CreateMissingManifest();
             if (!SameStamp(loadStamp, storeStamp))
@@ -322,14 +323,14 @@ namespace Unity.FoxgloveSDK.IO
                 if (_cachedManifest != null
                     && MatchesCachedStamp(loadStamp))
                 {
-                    return CloneManifest(_cachedManifest);
+                    return _cachedManifest;
                 }
 
                 _cachedManifest = manifest;
                 _cachedManifestBytes = null;
                 _cachedManifestLength = loadStamp.Length;
                 _cachedManifestLastWriteUtc = loadStamp.LastWriteUtc;
-                return CloneManifest(_cachedManifest);
+                return _cachedManifest;
             }
         }
 
@@ -345,9 +346,8 @@ namespace Unity.FoxgloveSDK.IO
                 }
             }
 
-            var manifest = GetCachedManifest(stamp);
+            var manifest = GetCachedManifestCore(stamp, out var storeStamp);
             var bytes = Encoding.UTF8.GetBytes(RemoteMcapOfficialManifestSerializer.Serialize(manifest));
-            var storeStamp = ReadFileStamp();
 
             lock (_manifestCacheGate)
             {
