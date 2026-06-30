@@ -5,6 +5,7 @@
 // Purpose: Phase 53 FoxRun explicit trigger telemetry validation.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
@@ -17,6 +18,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase53Validation
     {
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>(StringComparer.Ordinal);
+        private static string CachedRepoRoot;
         private static int _passed;
 
         /// <summary>
@@ -27,6 +30,8 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 53: FoxRun Triggered Event Telemetry ===");
             _passed = 0;
+            SourceCache.Clear();
+            CachedRepoRoot = null;
 
             VerifyOnTriggerModeContract();
             VerifyEmitterGeneratesTriggerMethods();
@@ -167,15 +172,26 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            var root = Phase16Validation.FindRepoRoot();
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
+            var root = CachedRepoRoot;
             if (root == null)
+            {
+                root = Phase16Validation.FindRepoRoot();
+                CachedRepoRoot = root;
+            }
+
+            if (string.IsNullOrEmpty(root))
                 throw new DirectoryNotFoundException("Could not find repository root for '" + relativePath + "'.");
 
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new FileNotFoundException("Could not find file '" + relativePath + "'.", path);
 
-            return File.ReadAllText(path);
+            var text = File.ReadAllText(path);
+            SourceCache.Add(relativePath, text);
+            return text;
         }
 
         private static void Check(bool condition, string label)

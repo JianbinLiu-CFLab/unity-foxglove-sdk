@@ -27,6 +27,8 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         private const string RuntimeScripts =
             "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts";
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, SyntaxTree> ParseCache = new Dictionary<string, SyntaxTree>(StringComparer.Ordinal);
         private static int _passed;
 
         /// <summary>
@@ -38,6 +40,8 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 115H: Post-105 Comment Governance Refresh ===");
             _passed = 0;
+            SourceCache.Clear();
+            ParseCache.Clear();
 
             VerifyValidationWiring();
             VerifyVendoredLocalPatchGovernance();
@@ -59,7 +63,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(project.Contains("Phase115HValidation.cs", StringComparison.Ordinal),
                 "115H-B2: runtime test project compiles Phase115HValidation");
             Check(
-                DocumentationContainsTerms(
+                DocumentationContainsTermsInText(
                     LongSummaryFixture(),
                     "public sealed class LongSummaryFixture",
                     "semantic", "descriptor"),
@@ -244,17 +248,26 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void CheckSummaryBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
-            var text = ReadRepoText(relativePath);
-            Check(DocumentationContainsTerms(text, declaration, requiredTerms), message);
+            Check(DocumentationContainsTerms(relativePath, declaration, requiredTerms), message);
         }
 
-        private static bool DocumentationContainsTerms(string text, string declaration, params string[] requiredTerms)
+        private static bool DocumentationContainsTerms(string relativePath, string declaration, params string[] requiredTerms)
+        {
+            var text = ReadRepoText(relativePath);
+            var tree = ReadRepoSyntaxTree(relativePath, text);
+            return DocumentationContainsTerms(tree, text, declaration, requiredTerms);
+        }
+
+        private static bool DocumentationContainsTermsInText(string text, string declaration, params string[] requiredTerms)
+            => DocumentationContainsTerms(CSharpSyntaxTree.ParseText(text), text, declaration, requiredTerms);
+
+        private static bool DocumentationContainsTerms(SyntaxTree tree, string text, string declaration, params string[] requiredTerms)
         {
             var index = text.IndexOf(declaration, StringComparison.Ordinal);
             if (index < 0)
                 throw new InvalidOperationException("Phase115H could not find declaration: " + declaration);
 
-            var root = CSharpSyntaxTree.ParseText(text).GetRoot();
+            var root = tree.GetRoot();
             var declarationNode = root.FindToken(index).Parent?
                 .AncestorsAndSelf()
                 .OfType<MemberDeclarationSyntax>()
@@ -285,10 +298,25 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
             var path = RepoPath(relativePath);
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing required Phase115H file: " + relativePath, path);
-            return File.ReadAllText(path);
+            var text = File.ReadAllText(path);
+            SourceCache.Add(relativePath, text);
+            return text;
+        }
+
+        private static SyntaxTree ReadRepoSyntaxTree(string relativePath, string text)
+        {
+            if (ParseCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
+            var tree = CSharpSyntaxTree.ParseText(text);
+            ParseCache.Add(relativePath, tree);
+            return tree;
         }
 
         private static string RepoPath(string relativePath)
