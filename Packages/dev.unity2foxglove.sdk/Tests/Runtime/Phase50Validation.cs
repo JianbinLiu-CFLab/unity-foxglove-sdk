@@ -319,7 +319,6 @@ namespace Unity.FoxgloveSDK.Tests
         {
             using var backend = new ManagedWsBackend();
             backend.Start("127.0.0.1", port);
-            Thread.Sleep(50);
 
             using var client = new TcpClient();
             client.ReceiveTimeout = 2000;
