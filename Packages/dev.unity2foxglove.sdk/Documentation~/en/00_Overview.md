@@ -1,4 +1,4 @@
-﻿## 1. Purpose
+## 1. Purpose
 
 Use this manual as the entry point for installing Unity2Foxglove, connecting Unity to Foxglove, recording or replaying MCAP files, and building an IL2CPP Player.
 

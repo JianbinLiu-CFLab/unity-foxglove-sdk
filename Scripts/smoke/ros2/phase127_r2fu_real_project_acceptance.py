@@ -61,13 +61,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--wait-seconds",
         type=float,
-        default=90.0,
+        default=45.0,
         help="How long to wait for Unity's /in subscription.",
     )
     parser.add_argument(
         "--echo-spin-seconds",
         type=float,
-        default=20.0,
+        default=10.0,
         help="ROS2 spin time for echoing one Unity /out message.",
     )
     parser.add_argument(
@@ -75,6 +75,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=4,
         help="How many bounded /out echo attempts to make before failing.",
+    )
+    parser.add_argument(
+        "--echo-retry-sleep",
+        type=float,
+        default=1.0,
+        help="Seconds to sleep between bounded /out echo attempts.",
     )
     parser.add_argument(
         "--publish-count",
@@ -139,7 +145,9 @@ def wait_for_subscription(
             last_output = f"<topic info timed out after {exc.timeout:.1f}s>"
         if has_positive_subscription_count(last_output):
             return last_output
-        time.sleep(2)
+        remaining = deadline - time.monotonic()
+        if remaining > 0.0:
+            time.sleep(min(2.0, remaining))
 
     topic_list = ros2env.run_ros2(
         pixi_python,
@@ -163,6 +171,7 @@ def echo_unity_tick(
     env: dict[str, str],
     spin_seconds: float,
     attempts: int,
+    retry_sleep_seconds: float,
 ) -> str:
     """Echo Unity's /out topic, treating ROS graph probes as advisory only."""
 
@@ -186,8 +195,8 @@ def echo_unity_tick(
         except RuntimeError as exc:
             last_output = str(exc)
 
-        if attempt < max(1, attempts):
-            time.sleep(2)
+        if attempt < max(1, attempts) and retry_sleep_seconds > 0.0:
+            time.sleep(retry_sleep_seconds)
 
     raise RuntimeError(f"Did not receive Phase127 Unity tick on {OUT_TOPIC}.\n{last_output}")
 
@@ -230,6 +239,7 @@ def main(argv: list[str]) -> int:
         env,
         args.echo_spin_seconds,
         args.echo_attempts,
+        args.echo_retry_sleep,
     )
     print(echo.rstrip())
 

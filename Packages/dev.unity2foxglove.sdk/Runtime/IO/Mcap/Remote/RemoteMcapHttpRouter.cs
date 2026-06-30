@@ -199,10 +199,10 @@ namespace Unity.FoxgloveSDK.IO
             if (string.IsNullOrEmpty(value) || !value.EndsWith("Z", StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            var withoutZone = value.Substring(0, value.Length - 1);
+            var withoutZone = value.AsSpan(0, value.Length - 1);
             var dot = withoutZone.IndexOf('.');
-            var secondsPart = dot >= 0 ? withoutZone.Substring(0, dot) : withoutZone;
-            var fractionPart = dot >= 0 ? withoutZone.Substring(dot + 1) : string.Empty;
+            var secondsPart = dot >= 0 ? withoutZone.Slice(0, dot) : withoutZone;
+            var fractionPart = dot >= 0 ? withoutZone.Slice(dot + 1) : ReadOnlySpan<char>.Empty;
             if (fractionPart.Length > MaxIsoFractionDigits)
                 return false;
             for (var i = 0; i < fractionPart.Length; i++)
@@ -226,11 +226,12 @@ namespace Unity.FoxgloveSDK.IO
             try
             {
                 var fractionalNanoseconds = 0UL;
-                if (fractionPart.Length > 0)
+                for (var i = 0; i < fractionPart.Length; i++)
                 {
-                    var padded = fractionPart.PadRight(MaxIsoFractionDigits, '0');
-                    fractionalNanoseconds = ulong.Parse(padded, CultureInfo.InvariantCulture);
+                    fractionalNanoseconds = fractionalNanoseconds * 10UL + (ulong)(fractionPart[i] - '0');
                 }
+                for (var i = fractionPart.Length; i < MaxIsoFractionDigits; i++)
+                    fractionalNanoseconds *= 10UL;
 
                 nanoseconds = checked((ulong)unixSeconds * NanosecondsPerSecond + fractionalNanoseconds);
                 return true;

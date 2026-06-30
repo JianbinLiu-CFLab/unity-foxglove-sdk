@@ -36,6 +36,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// <summary>World-to-sensor matrix captured at the current acquisition batch pose.</summary>
         [ReadOnly] public float4x4 AcquisitionWorldToLocal;
 
+        /// <summary>Whether the active output path consumes acquisition-time coordinates.</summary>
+        [ReadOnly] public bool ComputeAcquisitionFrame;
+
         /// <summary>Minimum accepted hit range in meters.</summary>
         [ReadOnly] public float MinRange;
 
@@ -67,21 +70,24 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             {
                 var world = new float4(new float3(hit.point.x, hit.point.y, hit.point.z), 1f);
                 var local = math.mul(WorldToLocal, world).xyz;
-                var acquisitionLocal = math.mul(AcquisitionWorldToLocal, world).xyz;
                 var converted = CoordinateConverterFloat3.UnityToFoxglovePosition(local);
-                var acquisitionConverted = CoordinateConverterFloat3.UnityToFoxglovePosition(acquisitionLocal);
                 output.X = converted.x;
                 output.Y = converted.y;
                 output.Z = converted.z;
-                output.AcquisitionX = acquisitionConverted.x;
-                output.AcquisitionY = acquisitionConverted.y;
-                output.AcquisitionZ = acquisitionConverted.z;
+                if (ComputeAcquisitionFrame)
+                {
+                    var acquisitionLocal = math.mul(AcquisitionWorldToLocal, world).xyz;
+                    var acquisitionConverted = CoordinateConverterFloat3.UnityToFoxglovePosition(acquisitionLocal);
+                    output.AcquisitionX = acquisitionConverted.x;
+                    output.AcquisitionY = acquisitionConverted.y;
+                    output.AcquisitionZ = acquisitionConverted.z;
+                    output.HasAcquisitionFrame = 1;
+                }
                 output.Intensity = SyntheticIntensity;
                 output.Reflectivity = SyntheticReflectivity;
                 output.TimeOffsetSeconds = RayTimeOffsets[index];
                 output.Ring = RayRings[index];
                 output.IsValid = 1;
-                output.HasAcquisitionFrame = 1;
             }
 
             Points[index] = output;

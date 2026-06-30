@@ -1,4 +1,4 @@
-﻿# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
+# Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Purpose: Run the Phase 121 MCAP conformance baseline through a cross-platform Python entry point.

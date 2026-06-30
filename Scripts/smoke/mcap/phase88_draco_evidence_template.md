@@ -1,4 +1,4 @@
-﻿# Phase 88 Draco Evidence Template
+# Phase 88 Draco Evidence Template
 
 Mirror the final verdict, commit under test, Draco commit, and probe output
 summary in the handoff or PR description.

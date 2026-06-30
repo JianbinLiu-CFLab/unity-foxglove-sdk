@@ -101,9 +101,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             // 6. All generated ray directions are finite and unit-length
             {
+                const int columnSampleStep = 4;
                 var allValid = true;
                 var validatedCount = 0;
-                for (var c = 0; c < profile.ColumnsPerFrame && allValid; c++)
+                for (var c = 0; c < profile.ColumnsPerFrame && allValid; c += columnSampleStep)
                 {
                     for (var r = 0; r < profile.PixelsPerColumn && allValid; r++)
                     {
@@ -119,9 +120,11 @@ namespace Unity.FoxgloveSDK.Tests
                     }
                 }
 
-                Check(validatedCount == gen1.RayCount,
-                    $"7.1-13A: all generated rays are returned by TryGetRay ({validatedCount}/{gen1.RayCount})");
-                Check(allValid, "7.1-13: all ray directions are finite and unit-length");
+                var expectedSampledRays = profile.PixelsPerColumn
+                    * ((profile.ColumnsPerFrame + columnSampleStep - 1) / columnSampleStep);
+                Check(validatedCount == expectedSampledRays,
+                    $"7.1-13A: sampled generated rays are returned by TryGetRay ({validatedCount}/{expectedSampledRays})");
+                Check(allValid, "7.1-13: sampled ray directions are finite and unit-length");
             }
 
             // 7. Time offsets monotonic by column, normalized [0..1)

@@ -5,6 +5,7 @@
 // Purpose: Phase 138H validation for shared timeline and streaming LiDAR scan state.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -44,12 +45,14 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo/Phase138LidarVehicleController.cs";
         private const string ImportedDemoBootstrapRelativePath =
             "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo/Phase138MazeDemoBootstrap.cs";
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>(StringComparer.Ordinal);
 
         /// <summary>Run all Phase 138H checks.</summary>
         public static void Validate()
         {
             Console.WriteLine();
             Console.WriteLine("=== Phase 138H: LiDAR-IMU Time Sync + Streaming Scan ===");
+            SourceCache.Clear();
 
             VerifySharedSensorClock();
             VerifyStreamingLiDARState();
@@ -278,22 +281,35 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadText(string repoRoot, string relativePath)
         {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
             if (repoRoot == null)
                 throw new InvalidOperationException(
                     "Phase 138H cannot find the repository root while reading " + relativePath + ".");
             var path = Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new InvalidOperationException($"Phase 138H cannot find expected file: {path}");
-            return File.ReadAllText(path);
+            var text = File.ReadAllText(path);
+            SourceCache.Add(relativePath, text);
+            return text;
         }
 
         private static string TryReadText(string repoRoot, string relativePath)
         {
+            if (SourceCache.TryGetValue(relativePath, out var cached))
+                return cached;
+
             if (repoRoot == null)
                 throw new InvalidOperationException(
                     "Phase 138H cannot find the repository root while reading " + relativePath + ".");
             var path = Path.Combine(repoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            return File.Exists(path) ? File.ReadAllText(path) : null;
+            if (!File.Exists(path))
+                return null;
+
+            var text = File.ReadAllText(path);
+            SourceCache.Add(relativePath, text);
+            return text;
         }
 
         private static bool NearlyEqual(System.Numerics.Vector3 actual, System.Numerics.Vector3 expected, float epsilon = 0.000001f)

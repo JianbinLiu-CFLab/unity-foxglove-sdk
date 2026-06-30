@@ -440,6 +440,7 @@ namespace Unity.FoxgloveSDK.Components
                     _syntheticReflectivity,
                     _scanPattern,
                     _activeScanWorldToLocal,
+                    RequiresNativeAcquisitionFrame(),
                     _scanBuffers);
             }
         }
@@ -478,6 +479,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool UseNativePointCloudSnapshotPath()
             => _pointCloudPublisher != null && _pointCloudPublisher.CanQueueVirtualLidarNativeFrame;
+
+        private bool RequiresNativeAcquisitionFrame()
+            => _pointCloudPublisher != null && _pointCloudPublisher.RequiresVirtualLidarAcquisitionFrame;
 
         private void PublishActiveScan()
         {

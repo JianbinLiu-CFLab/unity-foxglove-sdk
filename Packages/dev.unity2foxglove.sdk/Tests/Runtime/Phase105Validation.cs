@@ -260,7 +260,7 @@ namespace Unity.FoxgloveSDK.Tests
             var lines = ReadRepoLines(relativePath);
             var window = WindowBefore(lines, declaration, 16, message);
             var ok = window.Contains("/// <summary>", StringComparison.Ordinal)
-                     && requiredTerms.All(term => window.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
+                     && requiredTerms.All(term => window.Contains(term, StringComparison.OrdinalIgnoreCase));
             Check(ok, message);
         }
 
@@ -269,18 +269,18 @@ namespace Unity.FoxgloveSDK.Tests
             var lines = ReadRepoLines(relativePath);
             var window = WindowBefore(lines, declaration, 10, message);
             var ok = (window.Contains("//", StringComparison.Ordinal) || window.Contains("///", StringComparison.Ordinal))
-                     && requiredTerms.All(term => window.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0);
+                     && requiredTerms.All(term => window.Contains(term, StringComparison.OrdinalIgnoreCase));
             Check(ok, message);
         }
 
-        private static string WindowBefore(string[] lines, string declaration, int lookbackLines, string checkMessage)
+        private static LineWindow WindowBefore(string[] lines, string declaration, int lookbackLines, string checkMessage)
         {
             var index = Array.FindIndex(lines, line => line.Contains(declaration, StringComparison.Ordinal));
             if (index < 0)
                 throw new InvalidOperationException(checkMessage + " (missing declaration: " + declaration + ")");
 
             var start = Math.Max(0, index - lookbackLines);
-            return string.Join("\n", lines.Skip(start).Take(index - start));
+            return new LineWindow(lines, start, index);
         }
 
         private static string[] ReadRepoLines(string relativePath)
@@ -297,10 +297,38 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRepoText(string relativePath)
         {
             var root = Phase16Validation.FindRepoRoot();
+            if (string.IsNullOrEmpty(root))
+                throw new DirectoryNotFoundException("Could not find repository root for Phase105 validation.");
+
             var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing required Phase105 file: " + relativePath, path);
             return File.ReadAllText(path);
+        }
+
+        private readonly struct LineWindow
+        {
+            private readonly string[] _lines;
+            private readonly int _start;
+            private readonly int _endExclusive;
+
+            public LineWindow(string[] lines, int start, int endExclusive)
+            {
+                _lines = lines;
+                _start = start;
+                _endExclusive = endExclusive;
+            }
+
+            public bool Contains(string value, StringComparison comparison)
+            {
+                for (var i = _start; i < _endExclusive; i++)
+                {
+                    if (_lines[i].IndexOf(value, comparison) >= 0)
+                        return true;
+                }
+
+                return false;
+            }
         }
     }
 }

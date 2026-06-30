@@ -431,7 +431,9 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     private static bool ContainsMachineRosPath(string path)
     {
         var normalized = NormalizePath(path);
-        return normalized.Contains("ros2_jazzy")
+        return normalized.Contains("ros2_humble")
+               || normalized.Contains("ros2_jazzy")
+               || normalized.Contains("ros2_lyrical")
                || normalized.Contains("ros2-windows")
                || normalized.Contains("/.pixi/envs/default");
     }
@@ -458,6 +460,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
     {
         private readonly GameObject _host;
         private readonly ROS2UnityComponent _ros2Unity;
+        private readonly MethodInfo _startExecutor;
         private readonly string _initialPath;
         private readonly bool _requireInbound;
         private readonly object _receiveGate = new object();
@@ -504,6 +507,9 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
             _host = new GameObject("Phase127_R2FU_RuntimeSmoke");
             _host.hideFlags = HideFlags.HideAndDontSave;
             _ros2Unity = _host.AddComponent<ROS2UnityComponent>();
+            _startExecutor = typeof(ROS2UnityComponent).GetMethod(
+                "StartExecutor",
+                BindingFlags.Instance | BindingFlags.NonPublic);
         }
 
         public static void Start()
@@ -619,10 +625,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
             if (_executorStarted)
                 return;
 
-            var method = typeof(ROS2UnityComponent).GetMethod(
-                "StartExecutor",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            if (method == null)
+            if (_startExecutor == null)
             {
                 if (!_warnedMissingStartExecutor)
                 {
@@ -635,7 +638,7 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
                 return;
             }
 
-            method.Invoke(_ros2Unity, null);
+            _startExecutor.Invoke(_ros2Unity, null);
             _executorStarted = true;
             Debug.Log(LogPrefix + " UNITY2FOXGLOVE_R2FU_EXECUTOR_STARTED=True");
         }
@@ -827,7 +830,9 @@ public sealed class Phase127R2FURealProjectSmoke : MonoBehaviour
         private static bool ContainsMachineRosPath(string path)
         {
             var normalized = NormalizePath(path);
-            return normalized.Contains("ros2_jazzy")
+            return normalized.Contains("ros2_humble")
+                   || normalized.Contains("ros2_jazzy")
+                   || normalized.Contains("ros2_lyrical")
                    || normalized.Contains("ros2-windows")
                    || normalized.Contains("/.pixi/envs/default");
         }

@@ -1,4 +1,4 @@
-﻿## 1. Purpose
+## 1. Purpose
 
 Use this page to build and verify a standalone Unity Player with Unity2Foxglove enabled.
 

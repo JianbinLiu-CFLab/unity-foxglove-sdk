@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #

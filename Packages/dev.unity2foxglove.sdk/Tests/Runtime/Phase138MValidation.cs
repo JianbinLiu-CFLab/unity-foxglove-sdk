@@ -5,6 +5,7 @@
 // Purpose: Phase 138M validation for cart-mounted camera time sync and ROS camera schemas.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -19,6 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase138MValidation
     {
+        private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>(StringComparer.Ordinal);
         private static int _passed;
 
         /// <summary>Runs all Phase 138M validation checks.</summary>
@@ -27,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 138M: Cart Camera Time Sync for FAST-LIVO2 Prep ===");
             _passed = 0;
+            SourceCache.Clear();
 
             StandardCameraRos2BuildersUseSensorMsgs();
             StandardCameraSchemasAreRegistered();
@@ -349,11 +352,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadCameraPublisherSources()
         {
+            const string cacheKey = "FoxgloveCameraPublisher*.cs";
+            if (SourceCache.TryGetValue(cacheKey, out var cached))
+                return cached;
+
             var dir = RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers");
             var output = new StringBuilder();
             foreach (var file in Directory.GetFiles(dir, "FoxgloveCameraPublisher*.cs"))
                 output.AppendLine(File.ReadAllText(file));
-            return output.ToString();
+            var text = output.ToString();
+            SourceCache[cacheKey] = text;
+            return text;
         }
 
         private static string RepoPath(string relativePath)

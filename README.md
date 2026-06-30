@@ -1,4 +1,4 @@
-﻿# 1. Unity2Foxglove
+# 1. Unity2Foxglove
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Unity](https://img.shields.io/badge/Unity-6000.0%2B-black?logo=unity)](https://unity.com/)
