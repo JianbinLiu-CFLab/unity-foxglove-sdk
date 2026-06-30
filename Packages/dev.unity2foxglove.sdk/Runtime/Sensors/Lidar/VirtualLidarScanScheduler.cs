@@ -73,6 +73,7 @@ namespace Unity.FoxgloveSDK.Components
             float syntheticReflectivity,
             ILidarScanPattern scanPattern,
             float4x4 activeScanWorldToLocal,
+            bool computeAcquisitionFrame,
             VirtualLidarScanBuffers scanBuffers)
         {
             using (ScheduleScanMarker.Auto())
@@ -92,11 +93,13 @@ namespace Unity.FoxgloveSDK.Components
                     return;
                 }
 
-                // Rays are cast from the current tick pose. The build job keeps both the
-                // active scan-reference coordinates for legacy visualization and the
-                // acquisition-time coordinates needed by raw PointCloud2 Native streams.
+                // Rays are cast from the current tick pose. The build job always keeps
+                // active scan-reference coordinates and only computes acquisition-time
+                // coordinates for raw PointCloud2 Native or deskew consumers.
                 var queryParams = new QueryParameters(layerMask.value);
-                var acquisitionWorldToLocal = CoordinateConverterFloat3.RigidWorldToLocal(worldPos, worldRot);
+                var acquisitionWorldToLocal = computeAcquisitionFrame
+                    ? CoordinateConverterFloat3.RigidWorldToLocal(worldPos, worldRot)
+                    : float4x4.identity;
 
                 // Build one batch for all columns this tick (cap at one revolution).
                 _scanCrossingCount = 0;
@@ -178,6 +181,7 @@ namespace Unity.FoxgloveSDK.Components
                     RayRings = rayRings,
                     WorldToLocal = activeScanWorldToLocal,
                     AcquisitionWorldToLocal = acquisitionWorldToLocal,
+                    ComputeAcquisitionFrame = computeAcquisitionFrame,
                     MinRange = minRange,
                     MaxRange = maxRangeMeters,
                     SyntheticIntensity = syntheticIntensity,

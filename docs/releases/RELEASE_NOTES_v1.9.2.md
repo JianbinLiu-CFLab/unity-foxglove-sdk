@@ -1,4 +1,4 @@
-﻿# Unity2Foxglove v1.9.2 Release Notes
+# Unity2Foxglove v1.9.2 Release Notes
 
 Release date: 2026-05-24
 

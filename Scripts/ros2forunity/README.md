@@ -1,4 +1,4 @@
-﻿# ROS2 For Unity Tooling
+# ROS2 For Unity Tooling
 
 This folder contains ROS2 For Unity operator scripts. Tooling is split first by
 platform and then by ROS distro so Windows, Ubuntu, Jazzy, and Lyrical flows do

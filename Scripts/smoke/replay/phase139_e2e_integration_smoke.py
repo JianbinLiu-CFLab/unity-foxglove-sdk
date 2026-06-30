@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Phase139 end-to-end smoke helper for Unity2Foxglove.
 
 This script is intentionally a helper for local acceptance, not a replacement

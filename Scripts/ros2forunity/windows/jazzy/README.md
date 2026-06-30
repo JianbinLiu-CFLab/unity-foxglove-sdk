@@ -1,4 +1,4 @@
-﻿# Windows Jazzy ROS2 For Unity Tooling
+# Windows Jazzy ROS2 For Unity Tooling
 
 This directory contains the current Windows Jazzy ROS2 For Unity runtime
 package build, sync, inspect, validation, and distro-specific acceptance scripts.

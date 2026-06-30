@@ -97,6 +97,8 @@ namespace Unity.FoxgloveSDK.Components
         internal bool CanQueueVirtualLidarPointCloud2NativeFrame => _outputMode == PointCloudOutputMode.PointCloud2Native;
         /// <summary>True when any VirtualLidar native queue is active for this mode.</summary>
         internal bool CanQueueVirtualLidarNativeFrame => CanQueueVirtualLidarDracoFrame || CanQueueVirtualLidarPointCloud2NativeFrame;
+        /// <summary>True when VirtualLidar must compute acquisition-time point coordinates.</summary>
+        internal bool RequiresVirtualLidarAcquisitionFrame => CanQueueVirtualLidarPointCloud2NativeFrame || EnableMotionCompensatedPointCloud2;
         /// <summary>Whether the selected output mode supports JSON payloads.</summary>
         public override bool SupportsJsonEncoding => ActiveProfile.SupportsJson;
 

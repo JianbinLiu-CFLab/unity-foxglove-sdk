@@ -1,4 +1,4 @@
-﻿## 1. Purpose
+## 1. Purpose
 
 Use this page when Unity, Foxglove, MCAP, FoxRun, or IL2CPP behavior does not match the expected guide results.
 

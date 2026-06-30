@@ -53,16 +53,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SourceHygieneHasNoPhase138OPollution()
         {
-            var roots = new[]
+            var pollutionRoots = new[]
             {
                 "Packages/dev.unity2foxglove.sdk",
                 "Packages/dev.unity2foxglove.ros2forunity",
                 "Scripts",
                 "Unity2Foxglove/Assets/Samples"
-            };
-            var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ".cs", ".py", ".md"
             };
             var forbidden = new[]
             {
@@ -74,28 +70,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "\u951F"
             };
 
-            var polluted = new List<string>();
-            foreach (var root in roots)
-            {
-                if (!Directory.Exists(root))
-                    continue;
+            var result = ScanTrackedSourceHygiene(pollutionRoots, forbidden);
 
-                foreach (var path in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
-                {
-                    if (!extensions.Contains(Path.GetExtension(path)))
-                        continue;
-
-                    var text = File.ReadAllText(path);
-                    if (forbidden.Any(token => text.Contains(token, StringComparison.Ordinal)))
-                        polluted.Add(path.Replace('\\', '/'));
-                }
-            }
-
-            Check(polluted.Count == 0,
+            Check(result.Polluted.Count == 0,
                 "138P-1: tracked source has no placeholder XML comments, replacement characters, or known mojibake tokens"
-                + (polluted.Count == 0 ? "" : " (" + string.Join(", ", polluted.Take(8)) + ")"));
-            Check(!TrackedSourceHasUtf8Bom(),
-                "138P-2: tracked source files have no UTF-8 BOM");
+                + (result.Polluted.Count == 0 ? "" : " (" + string.Join(", ", result.Polluted.Take(8)) + ")"));
+            Check(result.Utf8BomFiles.Count == 0,
+                "138P-2: tracked source files have no UTF-8 BOM"
+                + (result.Utf8BomFiles.Count == 0 ? "" : " (" + string.Join(", ", result.Utf8BomFiles.Take(8)) + ")"));
         }
 
         private static void VirtualImuUsesAxialAngularVelocityConversion()
@@ -474,34 +456,85 @@ namespace Unity.FoxgloveSDK.Tests
             Check(dropped > 0 && lastError.Contains("exceeds", StringComparison.OrdinalIgnoreCase), label);
         }
 
-        private static bool TrackedSourceHasUtf8Bom()
+        private static SourceHygieneScanResult ScanTrackedSourceHygiene(string[] pollutionRoots, string[] forbiddenTokens)
         {
-            Span<byte> header = stackalloc byte[3];
-            foreach (var root in new[] { "Packages", "Scripts", "Unity2Foxglove/Assets/Samples" })
+            var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".cs", ".py", ".md"
+            };
+            var scanRoots = new[] { "Packages", "Scripts", "Unity2Foxglove/Assets/Samples" };
+            var result = new SourceHygieneScanResult();
+            foreach (var root in scanRoots)
             {
                 if (!Directory.Exists(root))
                     continue;
 
                 foreach (var path in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
                 {
-                    var ext = Path.GetExtension(path);
-                    if (!string.Equals(ext, ".cs", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(ext, ".py", StringComparison.OrdinalIgnoreCase)
-                        && !string.Equals(ext, ".md", StringComparison.OrdinalIgnoreCase))
-                    {
+                    if (!extensions.Contains(Path.GetExtension(path)))
                         continue;
-                    }
 
-                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                    if (stream.Read(header) == header.Length
-                        && header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)
+                    var normalizedPath = path.Replace('\\', '/');
+                    var shouldCheckPollution = IsUnderAnyRoot(normalizedPath, pollutionRoots);
+                    var file = ReadSourceHygieneFile(path, shouldCheckPollution);
+                    if (file.HasUtf8Bom)
+                        result.Utf8BomFiles.Add(normalizedPath);
+                    if (shouldCheckPollution
+                        && forbiddenTokens.Any(token => file.Text.Contains(token, StringComparison.Ordinal)))
                     {
-                        return true;
+                        result.Polluted.Add(normalizedPath);
                     }
                 }
             }
 
+            return result;
+        }
+
+        private static SourceHygieneFile ReadSourceHygieneFile(string path, bool readText)
+        {
+            Span<byte> header = stackalloc byte[3];
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var hasUtf8Bom = stream.Read(header) == header.Length
+                             && header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF;
+            if (!readText)
+                return new SourceHygieneFile(hasUtf8Bom, string.Empty);
+
+            stream.Position = 0;
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 4096);
+            return new SourceHygieneFile(hasUtf8Bom, reader.ReadToEnd());
+        }
+
+        private static bool IsUnderAnyRoot(string normalizedPath, string[] roots)
+        {
+            foreach (var root in roots)
+            {
+                var normalizedRoot = root.Replace('\\', '/').TrimEnd('/');
+                if (normalizedPath.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                    || normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
             return false;
+        }
+
+        private sealed class SourceHygieneScanResult
+        {
+            public readonly List<string> Polluted = new List<string>();
+            public readonly List<string> Utf8BomFiles = new List<string>();
+        }
+
+        private readonly struct SourceHygieneFile
+        {
+            public SourceHygieneFile(bool hasUtf8Bom, string text)
+            {
+                HasUtf8Bom = hasUtf8Bom;
+                Text = text;
+            }
+
+            public bool HasUtf8Bom { get; }
+            public string Text { get; }
         }
 
         private static MemoryStream CreateMcapWithPatchedSummaryStart(ulong summaryStart)

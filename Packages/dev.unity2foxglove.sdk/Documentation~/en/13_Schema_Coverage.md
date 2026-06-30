@@ -1,4 +1,4 @@
-﻿## 1. Purpose
+## 1. Purpose
 
 Use this page to understand how Unity2Foxglove validates official Foxglove schema coverage, and where generic schema parity differs from dedicated Unity publisher UX.
 

@@ -1,4 +1,4 @@
-﻿# Scripts
+# Scripts
 
 Project-level helper scripts. Scripts under this directory are Python entry points so they can run on Windows, Ubuntu/Linux, and macOS without requiring PowerShell. All paths are resolved relative to each script location or the workspace root; no hardcoded absolute paths are required.
 

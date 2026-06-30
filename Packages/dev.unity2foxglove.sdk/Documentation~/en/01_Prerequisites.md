@@ -1,4 +1,4 @@
-﻿## 1. Purpose
+## 1. Purpose
 
 Use this page to prepare the software needed for a first Unity2Foxglove setup.
 

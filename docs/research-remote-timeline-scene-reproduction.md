@@ -1,4 +1,4 @@
-﻿# Remote Timeline-Controlled Scene Reproduction for Unity-Based Telemetry Replay
+# Remote Timeline-Controlled Scene Reproduction for Unity-Based Telemetry Replay
 
 **Draft Research Note - Unity2Foxglove Project. First drafted 2026-05-12; updated 2026-06-09.**
 

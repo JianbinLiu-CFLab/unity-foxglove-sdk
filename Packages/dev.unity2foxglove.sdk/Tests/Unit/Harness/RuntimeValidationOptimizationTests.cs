@@ -239,7 +239,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 Assert.DoesNotContain("output += File.ReadAllText(file)", method, StringComparison.Ordinal);
             }
 
-            foreach (var file in new[] { "Phase138IValidation.cs", "Phase138JValidation.cs", "Phase138QValidation.cs" })
+            foreach (var file in new[] { "Phase138HValidation.cs", "Phase138IValidation.cs", "Phase138JValidation.cs", "Phase138MValidation.cs", "Phase138QValidation.cs" })
             {
                 var source = TestSources.Runtime(file);
                 Assert.Contains("private static readonly Dictionary<string, string>", source, StringComparison.Ordinal);
@@ -251,7 +251,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void VirtualSensorValidationHotPathsAvoidExtraReadsAndAllocations()
         {
-            var phase138P = TestSources.ExtractMethod(TestSources.Runtime("Phase138PValidation.cs"), "private static bool TrackedSourceHasUtf8Bom()");
+            var phase138P = TestSources.ExtractMethod(TestSources.Runtime("Phase138PValidation.cs"), "private static SourceHygieneFile ReadSourceHygieneFile(");
+            var phase138PSource = TestSources.Runtime("Phase138PValidation.cs");
             var phase138S = TestSources.ExtractMethod(TestSources.Runtime("Phase138SValidation.cs"), "private static string ReadDirectory(");
             var phase138L = TestSources.ExtractMethod(TestSources.Runtime("Phase138LValidation.cs"), "private static bool HasField(");
             var phase138C2 = TestSources.Runtime("Phase138C2Validation.cs");
@@ -259,7 +260,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("FileStream", phase138P, StringComparison.Ordinal);
             Assert.Contains("Span<byte>", phase138P, StringComparison.Ordinal);
             Assert.Contains("stream.Read(header)", phase138P, StringComparison.Ordinal);
-            Assert.DoesNotContain("File.ReadAllBytes(path)", phase138P, StringComparison.Ordinal);
+            Assert.DoesNotContain("File.ReadAllBytes(path)", phase138PSource, StringComparison.Ordinal);
+            Assert.Contains("ScanTrackedSourceHygiene", phase138PSource, StringComparison.Ordinal);
+            Assert.DoesNotContain("private static bool TrackedSourceHasUtf8Bom()", phase138PSource, StringComparison.Ordinal);
             Assert.Contains("var content = File.ReadAllText(file);", phase138S, StringComparison.Ordinal);
             Assert.Contains("sb.AppendLine(content)", phase138S, StringComparison.Ordinal);
             Assert.Contains("bytes += content.Length", phase138S, StringComparison.Ordinal);
