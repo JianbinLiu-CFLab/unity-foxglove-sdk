@@ -11,6 +11,7 @@ using UnityEngine.SceneManagement;
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditor.Compilation;
+using UnityEditor.SceneManagement;
 #endif
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
@@ -132,6 +133,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             CompilationPipeline.compilationStarted += OnCompilationStarted;
             CompilationPipeline.compilationFinished -= OnCompilationFinished;
             CompilationPipeline.compilationFinished += OnCompilationFinished;
+            EditorApplication.hierarchyChanged -= OnEditorHierarchyChanged;
+            EditorApplication.hierarchyChanged += OnEditorHierarchyChanged;
+            EditorSceneManager.sceneOpened -= OnEditorSceneOpened;
+            EditorSceneManager.sceneOpened += OnEditorSceneOpened;
+            EditorSceneManager.sceneClosed -= OnEditorSceneClosed;
+            EditorSceneManager.sceneClosed += OnEditorSceneClosed;
         }
 
         private static void ResetEditorState()
@@ -168,6 +175,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             _editorCompiling = false;
             RefreshNativeReloadWindow();
+            RefreshSceneState();
+        }
+
+        private static void OnEditorHierarchyChanged()
+        {
+            _isStablePlayModeScene = false;
+            RefreshSceneState();
+        }
+
+        private static void OnEditorSceneOpened(Scene scene, OpenSceneMode mode)
+        {
+            _isStablePlayModeScene = false;
+            RefreshSceneState();
+        }
+
+        private static void OnEditorSceneClosed(Scene scene)
+        {
+            _isStablePlayModeScene = false;
             RefreshSceneState();
         }
 

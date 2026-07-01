@@ -84,6 +84,15 @@ namespace Unity.FoxgloveSDK.Tests
             CheckHotPathFreeOfSceneQueries(RequiredMethod(source, "internal static bool IsShuttingDownForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs")
                                           + "\n" + RequiredMethod(source, "internal static bool IsBridgeSceneUnsafe", "Ros2ForUnityNativeBridgeLifecycleGate.cs"),
                 "165-A9: lifecycle gate bridge-facing methods stay allocation-free scene-handle reads");
+            Check(source.Contains("EditorApplication.hierarchyChanged", StringComparison.Ordinal)
+                  && source.Contains("EditorSceneManager.sceneOpened", StringComparison.Ordinal)
+                  && source.Contains("EditorSceneManager.sceneClosed", StringComparison.Ordinal),
+                "165-A10: lifecycle gate refreshes cached scene state from editor hierarchy and scene restore events");
+
+            var hierarchyHandler = RequiredMethod(source, "private static void OnEditorHierarchyChanged", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
+            Check(hierarchyHandler.Contains("_isStablePlayModeScene = false", StringComparison.Ordinal)
+                  && hierarchyHandler.Contains("RefreshSceneState();", StringComparison.Ordinal),
+                "165-A11: editor hierarchy refresh conservatively closes native bootstrap before rechecking scenes");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()
