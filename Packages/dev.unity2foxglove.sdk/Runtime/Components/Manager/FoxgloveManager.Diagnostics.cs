@@ -23,14 +23,27 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _frameStallDiagnosticsEnabled;
         [Tooltip("Main-thread frame time threshold, in milliseconds, before a frame-stall diagnostic is logged.")]
         [SerializeField, Min(10f)] private float _frameStallDiagnosticsThresholdMs = 200f;
+        [Tooltip("When enabled, frame-stall diagnostics include FoxgloveManager Update sub-stage timings.")]
+        [SerializeField] private bool _frameStallStageTimingDiagnosticsEnabled;
 
         private readonly PublishCadenceDiagnostics _publishCadenceDiagnostics = new();
         private double _nextPublishCadenceDiagnosticsSummaryTime;
         private double _lastFrameStallDiagnosticsTime;
         private long _lastFrameStallGcBytes;
+        private long _lastFrameStallMonoUsedBytes;
+        private long _lastFrameStallTotalAllocatedBytes;
+        private long _lastFrameStallTransportDroppedDataFrames;
         private int _lastFrameStallGcCount0;
         private int _lastFrameStallGcCount1;
         private int _lastFrameStallGcCount2;
+        private double _frameStallStageRuntimeTickMs;
+        private double _frameStallStageClientLifecycleDrainMs;
+        private double _frameStallStageClientMessageDrainMs;
+        private double _frameStallStagePublishCadenceDiagnosticsMs;
+        private double _frameStallStageLiveOutputModeWatchersMs;
+        private double _frameStallStageRemoteMcapRefreshMs;
+        private double _frameStallStageReplayCursorEndpointRefreshMs;
+        private double _frameStallStageManagerUpdateMs;
         private bool _publishCadenceDiagnosticsWasEnabled;
         private bool _frameStallDiagnosticsWasEnabled;
 
@@ -103,9 +116,13 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     _lastFrameStallDiagnosticsTime = 0d;
                     _lastFrameStallGcBytes = 0L;
+                    _lastFrameStallMonoUsedBytes = 0L;
+                    _lastFrameStallTotalAllocatedBytes = 0L;
+                    _lastFrameStallTransportDroppedDataFrames = 0L;
                     _lastFrameStallGcCount0 = 0;
                     _lastFrameStallGcCount1 = 0;
                     _lastFrameStallGcCount2 = 0;
+                    ResetFrameStallStageTimingValues();
                     _frameStallDiagnosticsWasEnabled = false;
                 }
 
@@ -124,10 +141,19 @@ namespace Unity.FoxgloveSDK.Components
             var timeScale = Time.timeScale;
             var monoUsedBytes = Profiler.GetMonoUsedSizeLong();
             var totalAllocatedBytes = Profiler.GetTotalAllocatedMemoryLong();
+            var transportStats = GetTransportStatsSnapshot();
+            var transportSupported = transportStats.Supported;
+            var transportClients = transportSupported ? transportStats.ActiveClientCount : 0;
+            var transportDroppedTotal = transportSupported ? transportStats.TotalDroppedDataFrames : 0L;
+            var transportQueuedFrames = transportSupported ? transportStats.TotalQueuedFrames : 0L;
+            var transportQueuedBytes = transportSupported ? transportStats.TotalQueuedBytes : 0L;
             if (!_frameStallDiagnosticsWasEnabled || _lastFrameStallDiagnosticsTime <= 0d)
             {
                 _lastFrameStallDiagnosticsTime = now;
                 _lastFrameStallGcBytes = gcBytes;
+                _lastFrameStallMonoUsedBytes = monoUsedBytes;
+                _lastFrameStallTotalAllocatedBytes = totalAllocatedBytes;
+                _lastFrameStallTransportDroppedDataFrames = transportDroppedTotal;
                 _lastFrameStallGcCount0 = gcCount0;
                 _lastFrameStallGcCount1 = gcCount1;
                 _lastFrameStallGcCount2 = gcCount2;
@@ -137,11 +163,17 @@ namespace Unity.FoxgloveSDK.Components
 
             var deltaMs = (now - _lastFrameStallDiagnosticsTime) * 1000d;
             var gcBytesDelta = gcBytes - _lastFrameStallGcBytes;
+            var monoUsedBytesDelta = monoUsedBytes - _lastFrameStallMonoUsedBytes;
+            var totalAllocatedBytesDelta = totalAllocatedBytes - _lastFrameStallTotalAllocatedBytes;
+            var transportDroppedDelta = transportDroppedTotal - _lastFrameStallTransportDroppedDataFrames;
             var gcCount0Delta = gcCount0 - _lastFrameStallGcCount0;
             var gcCount1Delta = gcCount1 - _lastFrameStallGcCount1;
             var gcCount2Delta = gcCount2 - _lastFrameStallGcCount2;
             _lastFrameStallDiagnosticsTime = now;
             _lastFrameStallGcBytes = gcBytes;
+            _lastFrameStallMonoUsedBytes = monoUsedBytes;
+            _lastFrameStallTotalAllocatedBytes = totalAllocatedBytes;
+            _lastFrameStallTransportDroppedDataFrames = transportDroppedTotal;
             _lastFrameStallGcCount0 = gcCount0;
             _lastFrameStallGcCount1 = gcCount1;
             _lastFrameStallGcCount2 = gcCount2;
@@ -163,7 +195,24 @@ namespace Unity.FoxgloveSDK.Components
                 gcCount1Delta,
                 gcCount2Delta,
                 monoUsedBytes,
-                totalAllocatedBytes);
+                monoUsedBytesDelta,
+                totalAllocatedBytes,
+                totalAllocatedBytesDelta,
+                transportSupported,
+                transportClients,
+                transportDroppedDelta,
+                transportDroppedTotal,
+                transportQueuedFrames,
+                transportQueuedBytes,
+                _frameStallStageTimingDiagnosticsEnabled,
+                _frameStallStageRuntimeTickMs,
+                _frameStallStageClientLifecycleDrainMs,
+                _frameStallStageClientMessageDrainMs,
+                _frameStallStagePublishCadenceDiagnosticsMs,
+                _frameStallStageLiveOutputModeWatchersMs,
+                _frameStallStageRemoteMcapRefreshMs,
+                _frameStallStageReplayCursorEndpointRefreshMs,
+                _frameStallStageManagerUpdateMs);
         }
 
         private static void LogFrameStallDiagnostics(
@@ -179,7 +228,24 @@ namespace Unity.FoxgloveSDK.Components
             int gcCount1Delta,
             int gcCount2Delta,
             long monoUsedBytes,
-            long totalAllocatedBytes)
+            long monoUsedBytesDelta,
+            long totalAllocatedBytes,
+            long totalAllocatedBytesDelta,
+            bool transportSupported,
+            int transportClients,
+            long transportDroppedDelta,
+            long transportDroppedTotal,
+            long transportQueuedFrames,
+            long transportQueuedBytes,
+            bool stageTimingEnabled,
+            double stageRuntimeTickMs,
+            double stageClientLifecycleDrainMs,
+            double stageClientMessageDrainMs,
+            double stagePublishCadenceDiagnosticsMs,
+            double stageLiveOutputModeWatchersMs,
+            double stageRemoteMcapRefreshMs,
+            double stageReplayCursorEndpointRefreshMs,
+            double stageManagerUpdateMs)
         {
 #if UNITY_EDITOR
             var editorState = string.Format(
@@ -192,7 +258,7 @@ namespace Unity.FoxgloveSDK.Components
 #endif
             var message = string.Format(
                 CultureInfo.InvariantCulture,
-                "[Foxglove] Frame stall diagnostics: frame={0} realDeltaMs={1:F2} thresholdMs={2:F2} deltaTimeMs={3:F2} unscaledDeltaTimeMs={4:F2} fixedDeltaMs={5:F2} timeScale={6:F2} focused={7} playing={8} {9} gcBytesDelta={10} gcCountDelta={11}/{12}/{13} monoUsedBytes={14} totalAllocatedBytes={15}",
+                "[Foxglove] Frame stall diagnostics: frame={0} realDeltaMs={1:F2} thresholdMs={2:F2} deltaTimeMs={3:F2} unscaledDeltaTimeMs={4:F2} fixedDeltaMs={5:F2} timeScale={6:F2} focused={7} playing={8} {9} gcBytesDelta={10} gcCountDelta={11}/{12}/{13} monoUsedBytes={14} monoUsedBytesDelta={15} totalAllocatedBytes={16} totalAllocatedBytesDelta={17} transportSupported={18} transportClients={19} transportDroppedDelta={20} transportDroppedTotal={21} transportQueuedFrames={22} transportQueuedBytes={23} stageTiming={24} stageRuntimeTickMs={25:F2} stageClientLifecycleDrainMs={26:F2} stageClientMessageDrainMs={27:F2} stagePublishCadenceMs={28:F2} stageLiveOutputWatchersMs={29:F2} stageRemoteMcapMs={30:F2} stageReplayCursorMs={31:F2} stageManagerUpdateMs={32:F2}",
                 frameCount,
                 deltaMs,
                 thresholdMs,
@@ -208,8 +274,96 @@ namespace Unity.FoxgloveSDK.Components
                 gcCount1Delta,
                 gcCount2Delta,
                 monoUsedBytes,
-                totalAllocatedBytes);
+                monoUsedBytesDelta,
+                totalAllocatedBytes,
+                totalAllocatedBytesDelta,
+                transportSupported,
+                transportClients,
+                transportDroppedDelta,
+                transportDroppedTotal,
+                transportQueuedFrames,
+                transportQueuedBytes,
+                stageTimingEnabled,
+                stageRuntimeTickMs,
+                stageClientLifecycleDrainMs,
+                stageClientMessageDrainMs,
+                stagePublishCadenceDiagnosticsMs,
+                stageLiveOutputModeWatchersMs,
+                stageRemoteMcapRefreshMs,
+                stageReplayCursorEndpointRefreshMs,
+                stageManagerUpdateMs);
             LogDiagnosticsWithoutStackTrace(message);
+        }
+
+        private enum FrameStallStage
+        {
+            RuntimeTick,
+            ClientLifecycleDrain,
+            ClientMessageDrain,
+            PublishCadenceDiagnostics,
+            LiveOutputModeWatchers,
+            RemoteMcapRefresh,
+            ReplayCursorEndpointRefresh
+        }
+
+        private double BeginFrameStallStageTiming()
+        {
+            if (!_frameStallDiagnosticsEnabled || !_frameStallStageTimingDiagnosticsEnabled)
+            {
+                ResetFrameStallStageTimingValues();
+                return 0d;
+            }
+
+            ResetFrameStallStageTimingValues();
+            return Time.realtimeSinceStartupAsDouble;
+        }
+
+        private void RecordFrameStallStageTiming(ref double frameStallStageStart, FrameStallStage stage)
+        {
+            if (!_frameStallDiagnosticsEnabled || !_frameStallStageTimingDiagnosticsEnabled || frameStallStageStart <= 0d)
+                return;
+
+            var now = Time.realtimeSinceStartupAsDouble;
+            var elapsedMs = (now - frameStallStageStart) * 1000d;
+            frameStallStageStart = now;
+            _frameStallStageManagerUpdateMs += elapsedMs;
+
+            switch (stage)
+            {
+                case FrameStallStage.RuntimeTick:
+                    _frameStallStageRuntimeTickMs = elapsedMs;
+                    break;
+                case FrameStallStage.ClientLifecycleDrain:
+                    _frameStallStageClientLifecycleDrainMs = elapsedMs;
+                    break;
+                case FrameStallStage.ClientMessageDrain:
+                    _frameStallStageClientMessageDrainMs = elapsedMs;
+                    break;
+                case FrameStallStage.PublishCadenceDiagnostics:
+                    _frameStallStagePublishCadenceDiagnosticsMs = elapsedMs;
+                    break;
+                case FrameStallStage.LiveOutputModeWatchers:
+                    _frameStallStageLiveOutputModeWatchersMs = elapsedMs;
+                    break;
+                case FrameStallStage.RemoteMcapRefresh:
+                    _frameStallStageRemoteMcapRefreshMs = elapsedMs;
+                    break;
+                case FrameStallStage.ReplayCursorEndpointRefresh:
+                    _frameStallStageReplayCursorEndpointRefreshMs = elapsedMs;
+                    break;
+            }
+        }
+
+        private void ResetFrameStallStageTimingValues()
+        {
+            _frameStallStageRuntimeTickMs = 0d;
+            _frameStallStageClientLifecycleDrainMs = 0d;
+            _frameStallStageClientMessageDrainMs = 0d;
+            _frameStallStagePublishCadenceDiagnosticsMs = 0d;
+            _frameStallStageLiveOutputModeWatchersMs = 0d;
+            _frameStallStageRemoteMcapRefreshMs = 0d;
+            _frameStallStageReplayCursorEndpointRefreshMs = 0d;
+            _frameStallStageManagerUpdateMs = 0d;
         }
 
         private static void LogPublishCadenceSummary(string summary)

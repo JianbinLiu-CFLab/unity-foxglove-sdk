@@ -153,13 +153,35 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "timeScale")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "gcBytesDelta")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "gcCount0Delta")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "gcCount1Delta")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "gcCount2Delta")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "monoUsedBytes")
-                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "totalAllocatedBytes"),
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "monoUsedBytesDelta")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "totalAllocatedBytes")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "totalAllocatedBytesDelta"),
                 "140H2-5C: frame stall log includes frame timing, editor, focus, play, GC, and memory state");
             Check(editor.Contains("DrawFrameStallDiagnostics", StringComparison.Ordinal)
                   && editor.Contains("Frame Stall Diagnostics", StringComparison.Ordinal)
                   && editor.Contains("Stall Threshold Ms", StringComparison.Ordinal),
                 "140H2-5D: manager Inspector exposes frame stall diagnostics under Diagnostics");
+            Check(MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "GetTransportStatsSnapshot()")
+                  && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "transportDroppedDelta")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "transportDroppedDelta")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "transportDroppedTotal")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "transportQueuedFrames")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "transportQueuedBytes"),
+                "140H2-5E: frame stall log records transport queue and dropped-frame deltas");
+            Check(diagnostics.Contains("_frameStallStageTimingDiagnosticsEnabled", StringComparison.Ordinal)
+                  && MethodContains(manager, "private void Update()", "BeginFrameStallStageTiming()")
+                  && MethodContains(manager, "private void Update()", "RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.RuntimeTick)")
+                  && MethodContains(manager, "private void Update()", "RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.ClientLifecycleDrain)")
+                  && MethodContains(manager, "private void Update()", "RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.ClientMessageDrain)")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageRuntimeTickMs")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageClientLifecycleDrainMs")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageClientMessageDrainMs")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageManagerUpdateMs")
+                  && editor.Contains("Stage Timing Diagnostics", StringComparison.Ordinal),
+                "140H2-5F: frame stall diagnostics can include manager Update sub-stage timings");
         }
 
         private static void ValidationRegistryExposesPhase140H2()
