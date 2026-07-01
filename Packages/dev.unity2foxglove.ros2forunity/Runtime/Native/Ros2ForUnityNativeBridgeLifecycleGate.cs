@@ -25,6 +25,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static volatile bool _applicationQuitting;
         private static volatile bool _nativeReloadWindow;
         private static volatile bool _isStablePlayModeScene;
+        private static volatile int _lastRefreshedActiveSceneHandle = int.MinValue;
         private static int[] _unsafeSceneHandles = Array.Empty<int>();
 
 #if UNITY_EDITOR
@@ -39,10 +40,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal static bool IsStablePlayModeScene => _isStablePlayModeScene;
 
         internal static bool CanBootstrapBridge
-            => _isStablePlayModeScene && !_applicationQuitting && !IsHardEditorShutdownWindow;
+            => _isStablePlayModeScene
+               && !_applicationQuitting
+               && !IsHardEditorShutdownWindow
+               && IsActiveSceneCacheCurrent;
 
         internal static bool IsShuttingDownForBridge(Scene ownerScene)
-            => _nativeReloadWindow || !_isStablePlayModeScene || IsBridgeSceneUnsafe(ownerScene);
+            => _nativeReloadWindow
+               || !_isStablePlayModeScene
+               || !IsActiveSceneCacheCurrent || IsBridgeSceneUnsafe(ownerScene);
 
         internal static bool IsBridgeSceneUnsafe(Scene scene)
         {
@@ -56,6 +62,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             return false;
         }
+
+        // Scene lifecycle callbacks can lag one Update behind Unity backup-scene
+        // swaps. Keep bridge entry fail-closed if the cached active scene changed.
+        private static bool IsActiveSceneCacheCurrent
+            => SceneManager.GetActiveScene().handle == _lastRefreshedActiveSceneHandle;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetForSubsystemRegistration()
@@ -114,6 +125,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _applicationQuitting = false;
             _nativeReloadWindow = false;
             _isStablePlayModeScene = false;
+            _lastRefreshedActiveSceneHandle = int.MinValue;
             _unsafeSceneHandles = Array.Empty<int>();
 #if UNITY_EDITOR
             ResetEditorState();
@@ -252,6 +264,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var activeSceneStable = IsStableUserScene(activeScene);
             var unsafeHandles = BuildUnsafeSceneHandles(activeScene, out var anyBackupSceneLoaded);
 
+            _lastRefreshedActiveSceneHandle = activeScene.handle;
             _unsafeSceneHandles = unsafeHandles;
             _isStablePlayModeScene = Application.isPlaying
                                      && activeSceneStable

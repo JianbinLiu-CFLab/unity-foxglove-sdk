@@ -93,6 +93,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(hierarchyHandler.Contains("_isStablePlayModeScene = false", StringComparison.Ordinal)
                   && hierarchyHandler.Contains("RefreshSceneState();", StringComparison.Ordinal),
                 "165-A11: editor hierarchy refresh conservatively closes native bootstrap before rechecking scenes");
+            Check(source.Contains("_lastRefreshedActiveSceneHandle", StringComparison.Ordinal)
+                  && source.Contains("_lastRefreshedActiveSceneHandle = activeScene.handle", StringComparison.Ordinal)
+                  && source.Contains("SceneManager.GetActiveScene().handle == _lastRefreshedActiveSceneHandle", StringComparison.Ordinal)
+                  && source.Contains("CanBootstrapBridge", StringComparison.Ordinal)
+                  && source.Contains("IsActiveSceneCacheCurrent", StringComparison.Ordinal)
+                  && source.Contains("!IsActiveSceneCacheCurrent || IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
+                "165-A12: lifecycle gate fail-closes bridge bootstrap when active scene changes before event refresh");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()
