@@ -261,6 +261,7 @@
     <Compile Include="Phase164_57Validation.cs" />
     <Compile Include="ValidationRegistryDescriptiveNamesValidation.cs" />
     <Compile Include="ValidationNamingGuardsValidation.cs" />
+    <Compile Include="R2fuNativeBridgeHotPathLifecycleValidation.cs" />
     <Compile Include="R2fuActiveRuntimeSelectorValidation.cs" />
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />
