@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
             VirtualImuEditorExposesWebSocketVisualizationCap();
             VirtualImuKeepsNativeHandoffOutsideWebSocketCap();
             VirtualImuCoalescesToLatestWebSocketSamples();
+            VirtualImuDropDiagnosticsAreNonWarningAndThrottled();
             ManagerExposesOptInFrameStallDiagnostics();
             TransportAndBaseSchedulersRemainOutOfScope();
             ValidationRegistryExposesPhase140H2();
@@ -94,6 +95,19 @@ namespace Unity.FoxgloveSDK.Tests
                 "140H2-3C: WebSocket serialization/publish is isolated in a helper");
         }
 
+        private static void VirtualImuDropDiagnosticsAreNonWarningAndThrottled()
+        {
+            var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var dropLog = ExtractMethod(virtualImu, "private void LogDroppedSamplesIfNeeded()");
+            Check(dropLog.Contains("Debug.Log(", StringComparison.Ordinal)
+                  && !dropLog.Contains("Debug.LogWarning(", StringComparison.Ordinal),
+                "140H2-3D: sustained IMU queue back-pressure uses non-warning diagnostics");
+            Check(virtualImu.Contains("DroppedSamplesLogIntervalSeconds", StringComparison.Ordinal)
+                  && virtualImu.Contains("_nextDroppedSamplesLogTime", StringComparison.Ordinal)
+                  && dropLog.Contains("Time.unscaledTime", StringComparison.Ordinal),
+                "140H2-3E: sustained IMU queue back-pressure diagnostics are throttled");
+        }
+
         private static void TransportAndBaseSchedulersRemainOutOfScope()
         {
             var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
@@ -149,7 +163,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ValidationRegistryExposesPhase140H2()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase140h2\", \"Phase 140H2\", Phase140H2Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase140h2\", \"Phase 140H2: IMU WebSocket visualization burst boundary validation\", Phase140H2Validation.Validate", StringComparison.Ordinal),
                 "140H2-6A: validation registry exposes --phase140h2");
         }
 
