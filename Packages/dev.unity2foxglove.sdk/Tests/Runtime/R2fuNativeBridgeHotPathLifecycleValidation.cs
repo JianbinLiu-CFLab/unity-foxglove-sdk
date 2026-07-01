@@ -78,6 +78,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "165-A6: lifecycle gate exposes cheap bridge-facing lifecycle state");
             Check(!source.Contains("Time.frameCount", StringComparison.Ordinal),
                 "165-A7: lifecycle gate does not rely on per-frame scene-query memoization");
+            Check(source.Contains("EditorPlayModeStableDelaySeconds = 3.0", StringComparison.Ordinal)
+                  && source.Contains("early Editor Play Mode", StringComparison.Ordinal),
+                "165-A8: lifecycle gate documents the intentional early Play Mode native bootstrap delay");
+            CheckHotPathFreeOfSceneQueries(RequiredMethod(source, "internal static bool IsShuttingDownForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs")
+                                          + "\n" + RequiredMethod(source, "internal static bool IsBridgeSceneUnsafe", "Ros2ForUnityNativeBridgeLifecycleGate.cs"),
+                "165-A9: lifecycle gate bridge-facing methods stay allocation-free scene-handle reads");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()

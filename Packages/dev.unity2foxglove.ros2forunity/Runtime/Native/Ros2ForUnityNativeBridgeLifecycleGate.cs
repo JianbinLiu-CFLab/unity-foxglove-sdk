@@ -17,6 +17,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     internal static class Ros2ForUnityNativeBridgeLifecycleGate
     {
+        // Keep early Editor Play Mode out of native bootstrap so scene restore,
+        // domain reload, and backup-scene cleanup cannot race ROS2 initialization.
         private const double EditorPlayModeStableDelaySeconds = 3.0;
 
         private static volatile bool _applicationQuitting;
