@@ -4,4 +4,5 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Unity.FoxgloveSDK.Proto")]
+[assembly: InternalsVisibleTo("Unity.FoxgloveSDK.Ros2Msg.Generated")]
 [assembly: InternalsVisibleTo("Unity.FoxgloveSDK.Sensors")]

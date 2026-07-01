@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Ros2Bridge
+// Module: Runtime/Schemas/Ros2Msg/Generated
 // Purpose: Message-to-CDR-to-bridge publisher wrapper for the Phase 94 spike.
 
 using System;

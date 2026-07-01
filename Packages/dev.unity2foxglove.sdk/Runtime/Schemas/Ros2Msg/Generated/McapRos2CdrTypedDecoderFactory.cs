@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Runtime/Schemas/Proto/DataLoader
+// Module: Runtime/Schemas/Ros2Msg/Generated
 // Purpose: Packaged Foxglove ROS 2 CDR typed decoder factory for MCAP DataLoader.
 
 using System;

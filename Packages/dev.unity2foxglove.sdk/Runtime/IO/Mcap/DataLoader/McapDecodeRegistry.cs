@@ -218,19 +218,23 @@ namespace Unity.FoxgloveSDK.IO
 
         private static IMcapMessageDecoderFactory TryCreateProtobufFactory()
         {
-            return TryCreateAssemblyFactory("Unity.FoxgloveSDK.IO.McapFoxgloveProtobufDecoderFactory");
+            return TryCreateAssemblyFactory(
+                "Unity.FoxgloveSDK.IO.McapFoxgloveProtobufDecoderFactory",
+                "Unity.FoxgloveSDK.Proto");
         }
 
         private static IMcapMessageDecoderFactory TryCreateRos2CdrTypedFactory()
         {
-            return TryCreateAssemblyFactory("Unity.FoxgloveSDK.IO.McapRos2CdrTypedDecoderFactory");
+            return TryCreateAssemblyFactory(
+                "Unity.FoxgloveSDK.IO.McapRos2CdrTypedDecoderFactory",
+                "Unity.FoxgloveSDK.Ros2Msg.Generated");
         }
 
-        private static IMcapMessageDecoderFactory TryCreateAssemblyFactory(string typeName)
+        private static IMcapMessageDecoderFactory TryCreateAssemblyFactory(string typeName, string preferredAssemblyName)
         {
             try
             {
-                var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto", throwOnError: false);
+                var type = Type.GetType(typeName + ", " + preferredAssemblyName, throwOnError: false);
                 if (type == null)
                 {
                     var assemblies = AppDomain.CurrentDomain.GetAssemblies();

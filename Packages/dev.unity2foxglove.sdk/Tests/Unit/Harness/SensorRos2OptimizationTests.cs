@@ -241,7 +241,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void BridgeFrameOwnedPayloadPathPreservesPublicCopySemantics()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            var publisher = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Bridge/Ros2BridgePublisher.cs");
+            var publisher = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
 
             Assert.Contains("internal static Ros2BridgeFrame CreateOwned", source, StringComparison.Ordinal);
             Assert.Contains("clonePayload: false", source, StringComparison.Ordinal);

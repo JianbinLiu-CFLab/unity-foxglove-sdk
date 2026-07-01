@@ -32,7 +32,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void McapReplayPreflightCleansEditorCallbacks()
         {
             var drawer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/McapReplayPreflightDrawer.cs");
-            var managerRos2 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
+            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var managerDisable = Slice(manager, "private void OnDisable()", "private void CacheSerializedProperties()");
 
             Check(drawer.Contains("McapReplayPreflightDrawer : IDisposable", StringComparison.Ordinal)
                   && drawer.Contains("AssemblyReloadEvents.beforeAssemblyReload += CancelPendingWork", StringComparison.Ordinal)
@@ -42,8 +43,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && drawer.Contains("EditorApplication.update -= CompleteFindLatestRecordingIfReady", StringComparison.Ordinal)
                   && drawer.Contains("_pendingLatestSerializedObject = null", StringComparison.Ordinal),
                 "163-25A-2: MCAP preflight cleanup drops update callbacks and stale serialized targets");
-            Check(managerRos2.Contains("_mcapReplayPreflight.Dispose();", StringComparison.Ordinal),
-                "163-25A-3: manager editor disables MCAP preflight drawer with other sub-drawers");
+            Check(managerDisable.Contains("_mcapReplayPreflight.Dispose();", StringComparison.Ordinal)
+                  && managerDisable.Contains("_ros2BridgeHealthDrawer.Dispose();", StringComparison.Ordinal),
+                "163-25A-3: manager editor disables MCAP preflight drawer with other sub-drawers from its single lifecycle owner");
         }
 
         private static void CameraInfoInspectorHandlesOptionalFields()
@@ -91,6 +93,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(camera.Contains("private bool _showRos2Outputs;", StringComparison.Ordinal)
                   && camera.Contains("private bool _showAdvancedJpeg;", StringComparison.Ordinal)
                   && camera.Contains("private bool _showDiagnostics;", StringComparison.Ordinal)
+                  && camera.Contains("private void DrawRos2OutputsSection(", StringComparison.Ordinal)
+                  && !camera.Contains("private static void DrawRos2OutputsSection(", StringComparison.Ordinal)
                   && !camera.Contains("private static bool _showRos2Outputs", StringComparison.Ordinal),
                 "163-25E-1: camera publisher foldout state is instance-scoped");
             Check(Slice(camera, "private void OnDisable()", "private static GUIContent Label").Contains("_openH264CheckTask = null;", StringComparison.Ordinal),

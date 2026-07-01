@@ -112,6 +112,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void OnDisable()
         {
+            _ros2BridgeHealthDrawer.Dispose();
+            _mcapReplayPreflight.Dispose();
             _transportStatsThisRepaint = TransportStatsSnapshot.Unsupported;
             _transportStatsFrame = -1;
             _cachedServiceHub = null;

@@ -151,7 +151,7 @@ namespace Unity.FoxgloveSDK.Tests
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
-            var wrapper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Ros2Bridge/Ros2BridgePublisher.cs");
+            var wrapper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
 
             Check(manager.Contains("_ros2BridgeNamespace") && manager.Contains("_ros2BridgeQosPreset"),
                 "96D-1: Manager owns bridge namespace and QoS settings");

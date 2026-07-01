@@ -46,8 +46,9 @@ namespace Unity.FoxgloveSDK.Components
         }
 
 #if UNITY_EDITOR
-        private void OnValidate()
+        protected override void OnValidate()
         {
+            base.OnValidate();
             ApplySystemInfoDefaults(clampSerializedRate: true);
         }
 #endif

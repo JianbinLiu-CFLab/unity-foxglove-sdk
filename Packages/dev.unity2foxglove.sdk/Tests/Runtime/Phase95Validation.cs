@@ -240,6 +240,11 @@ namespace Unity.FoxgloveSDK.Tests
                     "95E-7: publisher mirrors ROS2 Bridge payload " + Path.GetFileName(file));
             }
 
+            var sceneCubePublisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveSceneCubePublisher.cs");
+            Check(sceneCubePublisher.Contains("protected override void OnValidate()", StringComparison.Ordinal)
+                  && sceneCubePublisher.Contains("base.OnValidate();", StringComparison.Ordinal),
+                "95E-7a: SceneCube publisher validates through the base publisher OnValidate override");
+
             Check(!ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCompressedPointCloudPublisher.cs").Contains("PublishRos2Bridge"),
                 "95E-8: legacy compressed point cloud spike stays out of bridge productization");
             Check(managerEditor.Contains("ROS2 Bridge") && ros2BridgeEditor.Contains("Queued Frames") && ros2BridgeEditor.Contains("Last Error"),
