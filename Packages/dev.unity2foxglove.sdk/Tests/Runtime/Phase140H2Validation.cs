@@ -143,7 +143,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()", "Profiler.GetTotalAllocatedMemoryLong"),
                 "140H2-5B: manager samples frame stalls once per main-thread Update");
             Check(MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "UnityEditor.EditorApplication.isCompiling")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "UnityEditor.EditorApplication.isUpdating")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "Application.isFocused")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "Application.isPlaying")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "frameCount")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "deltaTimeMs")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "unscaledDeltaTimeMs")
