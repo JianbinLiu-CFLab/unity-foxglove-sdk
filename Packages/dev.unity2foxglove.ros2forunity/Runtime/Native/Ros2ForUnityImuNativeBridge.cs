@@ -11,10 +11,6 @@ using ROS2;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.Imu;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -27,14 +23,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const int WarningIntervalFrames = 240;
 
         private static Ros2ForUnityImuNativeBridge _instance;
-        private static volatile bool _runtimeShuttingDown;
-        private static volatile bool _playModeSceneLoaded;
-#if UNITY_EDITOR
-        private static volatile bool _editorEnteredPlayMode;
-        private static double _editorEnteredPlayModeAt;
-        private static bool _editorPlayModeStable;
-        private static volatile bool _editorQuitting;
-#endif
 
         private readonly Dictionary<int, ImuBinding> _bindings = new Dictionary<int, ImuBinding>();
         private readonly HashSet<int> _seen = new HashSet<int>();
@@ -48,91 +36,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private bool IsShuttingDown
             => _isStopping
-               || _runtimeShuttingDown
-               || !_playModeSceneLoaded
-               || Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(IsEditorPlayModeTransition())
-               || Ros2ForUnityNativeBridgeSceneGate.IsBackupScene(gameObject.scene);
-
-#if UNITY_EDITOR
-        [InitializeOnLoadMethod]
-        private static void InitializeEditorPlayModeGate()
-        {
-            EditorApplication.playModeStateChanged -= OnEditorPlayModeStateChanged;
-            EditorApplication.playModeStateChanged += OnEditorPlayModeStateChanged;
-            EditorApplication.quitting -= OnEditorQuitting;
-            EditorApplication.quitting += OnEditorQuitting;
-            _editorEnteredPlayMode = false;
-            _editorQuitting = false;
-        }
-
-        private static void OnEditorQuitting()
-        {
-            _editorQuitting = true;
-            _runtimeShuttingDown = true;
-        }
-
-        private static void OnEditorPlayModeStateChanged(PlayModeStateChange state)
-        {
-            _editorEnteredPlayMode = state == PlayModeStateChange.EnteredPlayMode;
-            _editorEnteredPlayModeAt = _editorEnteredPlayMode
-                ? EditorApplication.timeSinceStartup
-                : 0.0;
-            _editorPlayModeStable = false;
-            if (state == PlayModeStateChange.EnteredPlayMode)
-                _runtimeShuttingDown = false;
-            else if (state == PlayModeStateChange.ExitingPlayMode || state == PlayModeStateChange.EnteredEditMode)
-                _runtimeShuttingDown = true;
-        }
-
-        private static bool IsEditorPlayModeTransition()
-        {
-            if (_editorQuitting
-                || EditorApplication.isCompiling
-                || EditorApplication.isUpdating
-                || !_editorEnteredPlayMode)
-                return true;
-
-            if (_editorPlayModeStable)
-                return false;
-
-            var elapsed = EditorApplication.timeSinceStartup - _editorEnteredPlayModeAt;
-            _editorPlayModeStable = elapsed >= 3.0;
-            return !_editorPlayModeStable;
-        }
-#else
-        private static bool IsEditorPlayModeTransition()
-        {
-            return false;
-        }
-#endif
+               || Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(gameObject.scene);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {
             _instance = null;
-            _runtimeShuttingDown = false;
-            _playModeSceneLoaded = false;
-#if UNITY_EDITOR
-            _editorEnteredPlayMode = false;
-            _editorEnteredPlayModeAt = 0.0;
-            _editorPlayModeStable = false;
-            _editorQuitting = false;
-#endif
-            Ros2ForUnityNativeBridgeSceneGate.Reset();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
         {
-            if (Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(editorTransition: false))
-            {
-                _runtimeShuttingDown = true;
-                _playModeSceneLoaded = false;
+            if (!Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)
                 return;
-            }
-
-            _runtimeShuttingDown = false;
-            _playModeSceneLoaded = true;
 
             if (_instance != null)
                 return;
@@ -156,8 +72,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             _isStopping = false;
             _ros2RuntimeWasReady = false;
-            if (!Ros2ForUnityNativeBridgeSceneGate.IsSceneUnsafe(IsEditorPlayModeTransition()))
-                _runtimeShuttingDown = false;
             Application.quitting += OnApplicationQuitting;
         }
 
@@ -324,7 +238,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
 
             _isStopping = true;
-            _runtimeShuttingDown = true;
             ClearBindings();
         }
 

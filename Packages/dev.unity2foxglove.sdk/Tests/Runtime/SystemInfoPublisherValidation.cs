@@ -50,6 +50,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "145A-4: publisher is not advertised as protobuf-capable");
             Check(source.Contains("SupportsRos2Encoding => false", StringComparison.Ordinal),
                 "145A-5: publisher is not advertised as ROS2-capable");
+            Check(source.Contains("protected override void OnValidate()", StringComparison.Ordinal)
+                  && source.Contains("base.OnValidate();", StringComparison.Ordinal),
+                "145A-6: publisher validates through the base publisher OnValidate override");
         }
 
         private static void PublisherAdvertisesStructuredJsonTelemetry()
@@ -115,7 +118,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText(RegistryPath);
 
-            Check(source.Contains("Ci(\"--phase145\", \"Phase 145\", SystemInfoPublisherValidation.Validate", StringComparison.Ordinal),
+            Check(source.Contains("Ci(\"--phase145\", \"Phase 145: validation for the structured System Info publisher\", SystemInfoPublisherValidation.Validate", StringComparison.Ordinal),
                 "145E-1: validation registry wires --phase145 to SystemInfoPublisherValidation");
         }
 

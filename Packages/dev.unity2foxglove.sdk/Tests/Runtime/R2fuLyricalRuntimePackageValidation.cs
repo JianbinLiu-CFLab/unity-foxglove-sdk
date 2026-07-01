@@ -464,7 +464,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var registry = ReadRepoText(RegistryPath);
             var adapterManifest = ReadRepoText(AdapterPackage + "/Compliance/ros2-for-unity-adoption-manifest.json");
-            Check(registry.Contains("Ci(\"--phase162\", \"Phase 162\", R2fuLyricalRuntimePackageValidation.ValidatePhase162", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase162\", \"Phase 162: phase 146B validation for the R2FU Lyrical Win64 runtime package\", R2fuLyricalRuntimePackageValidation.ValidatePhase162", StringComparison.Ordinal),
                 "162-H1: validation registry wires --phase162");
             Check(adapterManifest.Contains("\"artifactSha256\": \"" + Phase162ArtifactSha + "\"", StringComparison.Ordinal)
                   && adapterManifest.Contains("\"supportedRmwImplementations\"", StringComparison.Ordinal)

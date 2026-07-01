@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Components
         private const int MaxQueueSamples = 512;
         private const int DefaultTargetRateHz = 200;
         private const int DefaultMaxWebSocketSamplesPerFrame = 32;
+        private const float DroppedSamplesLogIntervalSeconds = 5f;
         private static readonly double[] DefaultOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         private static readonly double[] DefaultAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
         private static readonly double[] DefaultLinearAccelerationCovariance = { 0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04 };
@@ -81,6 +82,7 @@ namespace Unity.FoxgloveSDK.Components
         private double _epochPhysSeconds;
         private long _nextSampleIndex;
         private long _lastReportedDroppedSamples;
+        private float _nextDroppedSamplesLogTime;
         private ISchemaRegistry _schemaRegisteredRegistry;
 
         private bool PublishEnabled => _publishing;
@@ -140,6 +142,7 @@ namespace Unity.FoxgloveSDK.Components
             _maxQueuedSamples = ComputeMaxQueuedSamples();
             _queue.Resize(_maxQueuedSamples, ImuSampleQueue.MinCapacity);
             _lastReportedDroppedSamples = 0;
+            _nextDroppedSamplesLogTime = 0f;
             _lastWorldVelocity = _rigidbody.linearVelocity;
             _lastBodyAcceleration = Vector3.zero;
             _lastBodyAngularVelocity = Vector3.zero;
@@ -156,6 +159,7 @@ namespace Unity.FoxgloveSDK.Components
             _hasLastVelocity = false;
             _hasEpoch = false;
             _nextSampleIndex = 0;
+            _nextDroppedSamplesLogTime = 0f;
             _schemaRegisteredRegistry = null;
         }
 
@@ -422,11 +426,14 @@ namespace Unity.FoxgloveSDK.Components
             var dropped = _queue.DroppedCount;
             if (dropped <= _lastReportedDroppedSamples)
                 return;
+            if (Time.unscaledTime < _nextDroppedSamplesLogTime)
+                return;
 
-            Debug.LogWarning(
-                $"[VirtualImu] IMU sample queue dropped {dropped - _lastReportedDroppedSamples} sample(s) under back-pressure; total dropped={dropped}.",
+            Debug.Log(
+                $"[VirtualImu] IMU sample queue dropped {dropped - _lastReportedDroppedSamples} oldest sample(s) under back-pressure; total dropped={dropped}.",
                 this);
             _lastReportedDroppedSamples = dropped;
+            _nextDroppedSamplesLogTime = Time.unscaledTime + DroppedSamplesLogIntervalSeconds;
         }
 
         private void EnsureSchemaRegistered()

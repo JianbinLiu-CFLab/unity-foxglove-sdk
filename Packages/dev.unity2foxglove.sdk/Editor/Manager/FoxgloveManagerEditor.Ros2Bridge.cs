@@ -73,11 +73,5 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.Space();
             _ros2BridgeHealthDrawer.Draw(serializedObject);
         }
-
-        private void OnDisable()
-        {
-            _ros2BridgeHealthDrawer.Dispose();
-            _mcapReplayPreflight.Dispose();
-        }
     }
 }

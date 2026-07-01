@@ -72,8 +72,9 @@ namespace Unity.FoxgloveSDK.Components
         }
 
 #if UNITY_EDITOR
-        private void OnValidate()
+        protected override void OnValidate()
         {
+            base.OnValidate();
             UnityEditor.EditorApplication.delayCall += () =>
             {
                 if (this != null)

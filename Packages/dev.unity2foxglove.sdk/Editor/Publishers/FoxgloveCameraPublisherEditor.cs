@@ -304,7 +304,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static void DrawRos2OutputsSection(
+        private void DrawRos2OutputsSection(
             SerializedProperty sensorUnitProfile,
             SerializedProperty useSharedSensorClock,
             SerializedProperty publishStandardRos2CompressedImage,

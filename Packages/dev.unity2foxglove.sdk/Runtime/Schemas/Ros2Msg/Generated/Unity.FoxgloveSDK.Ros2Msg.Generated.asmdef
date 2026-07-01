@@ -1,5 +1,5 @@
 {
-  "name": "Unity.FoxgloveSDK.Proto",
+  "name": "Unity.FoxgloveSDK.Ros2Msg.Generated",
   "rootNamespace": "",
   "references": [
     "Unity.FoxgloveSDK",

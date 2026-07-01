@@ -4,6 +4,7 @@
   "references": [
     "Unity.FoxgloveSDK",
     "Unity.FoxgloveSDK.Proto",
+    "Unity.FoxgloveSDK.Proto.Generated",
     "Unity.FoxgloveSDK.Sensors"
   ],
   "includePlatforms": [
