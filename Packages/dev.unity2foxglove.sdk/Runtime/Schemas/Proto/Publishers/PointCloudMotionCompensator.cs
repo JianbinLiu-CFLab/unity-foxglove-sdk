@@ -204,7 +204,10 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            var transformsByOffsetNs = new Dictionary<uint, Matrix4x4>();
+            var poseSearchIndex = 0;
+            var hasLastTransform = false;
+            var lastOffsetNs = 0U;
+            var lastSensorToReference = Matrix4x4.Identity;
             for (var i = 0; i < pointCount; i++)
             {
                 var point = source[i];
@@ -215,17 +218,28 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 var offsetNs = TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds);
-                if (!transformsByOffsetNs.TryGetValue(offsetNs, out var sensorToReference))
+                Matrix4x4 sensorToReference;
+                if (hasLastTransform && offsetNs == lastOffsetNs)
+                {
+                    sensorToReference = lastSensorToReference;
+                }
+                else
                 {
                     var pointUnixNs = AddNanoseconds(scanStartUnixNs, offsetNs);
-                    if (!SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, pointUnixNs, out var pointPose))
+                    if (!SensorMotionPoseHistoryMath.TryInterpolateMonotonic(
+                            request.PoseSamples,
+                            pointUnixNs,
+                            ref poseSearchIndex,
+                            out var pointPose))
                     {
                         error = "pose history does not cover a point timestamp";
                         return false;
                     }
 
                     sensorToReference = LocalToWorld(pointPose) * worldToReference;
-                    transformsByOffsetNs[offsetNs] = sensorToReference;
+                    hasLastTransform = true;
+                    lastOffsetNs = offsetNs;
+                    lastSensorToReference = sensorToReference;
                 }
 
                 var transformed = Vector3.Transform(GetAcquisitionPoint(point), sensorToReference);

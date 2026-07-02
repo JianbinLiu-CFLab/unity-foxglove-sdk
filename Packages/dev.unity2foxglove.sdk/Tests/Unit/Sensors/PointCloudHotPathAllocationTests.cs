@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
     public sealed class PointCloudHotPathAllocationTests
     {
         [Fact]
-        public void PointCloud2BuilderUsesExactOwnedArrayWithoutPooledFrameData()
+        public void PointCloud2BuilderUsesOwnedArrayWithoutPooledFrameData()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
 
@@ -51,6 +51,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("finally", worker, StringComparison.Ordinal);
             Assert.Contains("TryCompensateVirtualLidarInto", worker, StringComparison.Ordinal);
             Assert.Contains("TryCompensateVirtualLidarInto", compensator, StringComparison.Ordinal);
+            Assert.DoesNotContain("Dictionary<uint, Matrix4x4>", compensator, StringComparison.Ordinal);
+            Assert.Contains("TryInterpolateMonotonic", compensator, StringComparison.Ordinal);
+            Assert.Contains("lastOffsetNs", compensator, StringComparison.Ordinal);
             Assert.DoesNotContain("ArrayPool<byte>.Shared.Rent", worker, StringComparison.Ordinal);
         }
 
@@ -60,7 +63,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
 
             Assert.Contains("BuildVirtualLidarFullStride(VirtualLidarPointData[] points", source, StringComparison.Ordinal);
-            Assert.Contains("private static int CountValid(VirtualLidarPointData[] points, int pointCount)", source, StringComparison.Ordinal);
+            Assert.Contains("var capacity = ValidatePackedDataBudget(pointCount, stride);", source, StringComparison.Ordinal);
+            Assert.Contains("var validCount = 0;", source, StringComparison.Ordinal);
+            Assert.Contains("validCount++;", source, StringComparison.Ordinal);
+            Assert.Contains("Array.Resize(ref data, offset);", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("private static int CountValid(VirtualLidarPointData[] points", source, StringComparison.Ordinal);
             Assert.Contains("for (var i = 0; i < pointCount; i++)", source, StringComparison.Ordinal);
         }
 

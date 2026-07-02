@@ -137,6 +137,20 @@ namespace Unity.FoxgloveSDK.Components
             ulong unixNs,
             out SensorMotionPoseSample pose)
         {
+            var searchIndex = 0;
+            return TryInterpolateMonotonic(samples, unixNs, ref searchIndex, out pose);
+        }
+
+        /// <summary>
+        /// Interpolate a pose while reusing a caller-owned search index for
+        /// mostly monotonic point timestamps.
+        /// </summary>
+        public static bool TryInterpolateMonotonic(
+            SensorMotionPoseSample[] samples,
+            ulong unixNs,
+            ref int searchIndex,
+            out SensorMotionPoseSample pose)
+        {
             pose = default;
             if (samples == null || samples.Length == 0)
                 return false;
@@ -153,28 +167,36 @@ namespace Unity.FoxgloveSDK.Components
             if (unixNs < samples[0].UnixNs || unixNs > samples[samples.Length - 1].UnixNs)
                 return false;
 
-            for (var i = 1; i < samples.Length; i++)
+            if (searchIndex < 0 || searchIndex >= samples.Length)
+                searchIndex = 0;
+            while (searchIndex > 0 && unixNs < samples[searchIndex].UnixNs)
+                searchIndex--;
+
+            var rightIndex = Math.Max(1, searchIndex + 1);
+            while (rightIndex < samples.Length && unixNs > samples[rightIndex].UnixNs)
+                rightIndex++;
+
+            if (rightIndex >= samples.Length)
             {
-                var right = samples[i];
-                if (unixNs > right.UnixNs)
-                    continue;
-
-                var left = samples[i - 1];
-                if (right.UnixNs == left.UnixNs)
-                {
-                    pose = right;
-                    return true;
-                }
-
-                var t = (double)(unixNs - left.UnixNs) / (right.UnixNs - left.UnixNs);
-                pose = new SensorMotionPoseSample(
-                    unixNs,
-                    Vector3.Lerp(left.Translation, right.Translation, (float)t),
-                    Quaternion.Slerp(left.Rotation, right.Rotation, (float)t));
+                searchIndex = samples.Length - 2;
+                pose = samples[samples.Length - 1];
                 return true;
             }
 
-            pose = samples[samples.Length - 1];
+            var right = samples[rightIndex];
+            var left = samples[rightIndex - 1];
+            searchIndex = rightIndex - 1;
+            if (right.UnixNs == left.UnixNs)
+            {
+                pose = right;
+                return true;
+            }
+
+            var t = (double)(unixNs - left.UnixNs) / (right.UnixNs - left.UnixNs);
+            pose = new SensorMotionPoseSample(
+                unixNs,
+                Vector3.Lerp(left.Translation, right.Translation, (float)t),
+                Quaternion.Slerp(left.Rotation, right.Rotation, (float)t));
             return true;
         }
     }
