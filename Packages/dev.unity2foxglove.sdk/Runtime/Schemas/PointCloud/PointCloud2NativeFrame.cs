@@ -26,7 +26,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             byte[] data,
             bool isDense,
             string topic = null,
-            bool isMotionCompensatedVisualization = false)
+            bool isMotionCompensatedVisualization = false,
+            bool ownsPooledData = false)
         {
             if (height == 0U)
                 throw new ArgumentOutOfRangeException(nameof(height));
@@ -62,7 +63,11 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             ValidCount = checked((int)((ulong)height * width));
             Topic = topic ?? string.Empty;
             IsMotionCompensatedVisualization = isMotionCompensatedVisualization;
+            _ownsPooledData = ownsPooledData && Data.Length != 0;
         }
+
+        private readonly bool _ownsPooledData;
+        private bool _dataRecycled;
 
         /// <summary>Frame timestamp, in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
@@ -102,5 +107,14 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         /// <summary>True when this frame is a deskewed visualization stream, not raw sensor truth.</summary>
         public bool IsMotionCompensatedVisualization { get; }
+
+        internal void RecycleData()
+        {
+            if (!_ownsPooledData || _dataRecycled)
+                return;
+
+            _dataRecycled = true;
+            PointCloudPackedByteBufferPool.Return(Data);
+        }
     }
 }

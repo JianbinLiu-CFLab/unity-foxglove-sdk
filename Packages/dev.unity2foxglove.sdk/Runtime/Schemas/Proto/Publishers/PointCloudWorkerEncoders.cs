@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Components
                 try
                 {
                     var rawPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                    var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                    var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
                         request.LidarPoints,
                         request.LidarPointCount,
                         request.EmitAbsoluteTimeNs,
@@ -166,7 +166,7 @@ namespace Unity.FoxgloveSDK.Components
                         {
                             motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
                             var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                            var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                            var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
                                 compensatedScratch,
                                 compensatedPointCount,
                                 request.EmitAbsoluteTimeNs);
@@ -248,7 +248,8 @@ namespace Unity.FoxgloveSDK.Components
                 data: packed.Data,
                 isDense: true,
                 topic: topic,
-                isMotionCompensatedVisualization: isMotionCompensatedVisualization);
+                isMotionCompensatedVisualization: isMotionCompensatedVisualization,
+                ownsPooledData: packed.OwnsPooledData);
         }
 
         private static byte[] BuildPointCloud2NativePayload(PointCloud2NativeFrame frame)

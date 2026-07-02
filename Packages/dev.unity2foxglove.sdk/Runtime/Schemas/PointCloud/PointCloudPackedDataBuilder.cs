@@ -49,10 +49,16 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     {
         /// <summary>Create packed point-cloud data.</summary>
         public PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data)
+            : this(pointStride, fields, data, ownsPooledData: false)
+        {
+        }
+
+        internal PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data, bool ownsPooledData)
         {
             PointStride = pointStride;
             Fields = fields ?? Array.Empty<PointCloudPackedField>();
             Data = data ?? Array.Empty<byte>();
+            OwnsPooledData = ownsPooledData && Data.Length != 0;
         }
 
         /// <summary>Bytes per packed point.</summary>
@@ -64,6 +70,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         /// that need to retain mutable data should clone it first.
         /// </summary>
         public byte[] Data { get; }
+        internal bool OwnsPooledData { get; }
     }
 
     /// <summary>Builds the shared packed PointCloud.data layout.</summary>
@@ -225,6 +232,57 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             private static PointCloudPackedField Field(string name, uint offset, PointCloudPackedNumericType type)
             {
                 return new PointCloudPackedField(name, offset, type);
+            }
+        }
+    }
+
+    internal static class PointCloudPackedByteBufferPool
+    {
+        private const int MaxBuffersPerSize = 4;
+        private const long MaxRetainedBytes = 64L * 1024L * 1024L;
+        private static readonly object Gate = new object();
+        private static readonly Dictionary<int, Stack<byte[]>> BuffersBySize = new Dictionary<int, Stack<byte[]>>();
+        private static long RetainedBytes;
+
+        public static byte[] Rent(int length)
+        {
+            if (length < 0)
+                throw new ArgumentOutOfRangeException(nameof(length));
+            if (length == 0)
+                return Array.Empty<byte>();
+
+            lock (Gate)
+            {
+                if (BuffersBySize.TryGetValue(length, out var buffers) && buffers.Count > 0)
+                {
+                    RetainedBytes -= length;
+                    return buffers.Pop();
+                }
+            }
+
+            return new byte[length];
+        }
+
+        public static void Return(byte[] buffer)
+        {
+            if (buffer == null || buffer.Length == 0)
+                return;
+            if (buffer.Length > PointCloudPackedDataBuilder.MaxPackedDataBytes)
+                return;
+
+            lock (Gate)
+            {
+                if (!BuffersBySize.TryGetValue(buffer.Length, out var buffers))
+                {
+                    buffers = new Stack<byte[]>(MaxBuffersPerSize);
+                    BuffersBySize[buffer.Length] = buffers;
+                }
+
+                if (buffers.Count < MaxBuffersPerSize && RetainedBytes + buffer.Length <= MaxRetainedBytes)
+                {
+                    buffers.Push(buffer);
+                    RetainedBytes += buffer.Length;
+                }
             }
         }
     }

@@ -165,6 +165,7 @@ namespace Unity.FoxgloveSDK.Components
             if (result == null)
                 return;
 
+            result.RecycleResultPayloads();
             result.Request.RecycleSourceSnapshot();
         }
     }

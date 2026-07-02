@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Components
         where TRequest : class, IPointCloudWorkerRequest
     {
         TRequest Request { get; }
+        void RecycleResultPayloads();
     }
 
     /// <summary>
@@ -251,6 +252,10 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Milliseconds spent on worker-side encoding.</summary>
         public double EncodeMs { get; }
+
+        public void RecycleResultPayloads()
+        {
+        }
     }
 
     /// <summary>
@@ -333,5 +338,11 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Milliseconds spent packing the deskewed visualization PointCloud2 frame.</summary>
         public double DeskewPackMs { get; }
+
+        public void RecycleResultPayloads()
+        {
+            NativeFrame?.RecycleData();
+            MotionCompensatedNativeFrame?.RecycleData();
+        }
     }
 }

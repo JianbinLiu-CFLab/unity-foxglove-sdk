@@ -59,6 +59,31 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             int pointCount,
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates = false)
+            => BuildVirtualLidarFullStride(
+                points,
+                pointCount,
+                emitAbsoluteTimeNs,
+                useAcquisitionFrameCoordinates,
+                usePooledBuffer: false);
+
+        internal static PointCloudPackedData BuildVirtualLidarFullStridePooled(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            bool emitAbsoluteTimeNs,
+            bool useAcquisitionFrameCoordinates = false)
+            => BuildVirtualLidarFullStride(
+                points,
+                pointCount,
+                emitAbsoluteTimeNs,
+                useAcquisitionFrameCoordinates,
+                usePooledBuffer: true);
+
+        private static PointCloudPackedData BuildVirtualLidarFullStride(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            bool emitAbsoluteTimeNs,
+            bool useAcquisitionFrameCoordinates,
+            bool usePooledBuffer)
         {
             if (points == null)
                 throw new ArgumentNullException(nameof(points));
@@ -70,27 +95,38 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             var capacity = ValidatePackedDataBudget(validCount, stride);
             var fields = BuildFields(emitAbsoluteTimeNs);
 
-            var data = new byte[capacity];
-            var offset = 0;
-            for (var i = 0; i < pointCount; i++)
+            var data = usePooledBuffer
+                ? PointCloudPackedByteBufferPool.Rent(capacity)
+                : new byte[capacity];
+            try
             {
-                var point = points[i];
-                if (point.IsValid == 0)
-                    continue;
+                var offset = 0;
+                for (var i = 0; i < pointCount; i++)
+                {
+                    var point = points[i];
+                    if (point.IsValid == 0)
+                        continue;
 
-                var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
-                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionX : point.X);
-                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionY : point.Y);
-                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionZ : point.Z);
-                WriteSingleLittleEndian(data, ref offset, point.Intensity);
-                WriteSingleLittleEndian(data, ref offset, point.Reflectivity);
-                WriteUInt16LittleEndian(data, ref offset, point.Ring);
-                WriteSingleLittleEndian(data, ref offset, point.TimeOffsetSeconds);
-                if (emitAbsoluteTimeNs)
-                    WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
+                    var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
+                    WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionX : point.X);
+                    WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionY : point.Y);
+                    WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionZ : point.Z);
+                    WriteSingleLittleEndian(data, ref offset, point.Intensity);
+                    WriteSingleLittleEndian(data, ref offset, point.Reflectivity);
+                    WriteUInt16LittleEndian(data, ref offset, point.Ring);
+                    WriteSingleLittleEndian(data, ref offset, point.TimeOffsetSeconds);
+                    if (emitAbsoluteTimeNs)
+                        WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
+                }
+
+                return new PointCloudPackedData(stride, fields, data, ownsPooledData: usePooledBuffer);
             }
-
-            return new PointCloudPackedData(stride, fields, data);
+            catch
+            {
+                if (usePooledBuffer)
+                    PointCloudPackedByteBufferPool.Return(data);
+                throw;
+            }
         }
 
         /// <summary>

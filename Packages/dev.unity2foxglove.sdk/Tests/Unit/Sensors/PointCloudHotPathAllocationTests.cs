@@ -41,10 +41,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
-        public void PointCloud2NativeWorkerPoolsDeskewScratchButNotFinalFrameData()
+        public void PointCloud2NativeWorkerPoolsDeskewScratchAndFinalFrameData()
         {
             var worker = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
             var compensator = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudMotionCompensator.cs");
+            var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
+            var frame = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2NativeFrame.cs");
+            var payloads = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerPayloads.cs");
+            var pointCloudPipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
 
             Assert.Contains("ArrayPool<VirtualLidarPointData>.Shared.Rent", worker, StringComparison.Ordinal);
             Assert.Contains("ArrayPool<VirtualLidarPointData>.Shared.Return", worker, StringComparison.Ordinal);
@@ -55,6 +59,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("TryInterpolateMonotonic", compensator, StringComparison.Ordinal);
             Assert.Contains("lastOffsetNs", compensator, StringComparison.Ordinal);
             Assert.DoesNotContain("ArrayPool<byte>.Shared.Rent", worker, StringComparison.Ordinal);
+            Assert.Contains("BuildVirtualLidarFullStridePooled", worker, StringComparison.Ordinal);
+            Assert.Contains("PointCloudPackedByteBufferPool.Rent", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("PointCloudPackedByteBufferPool.Return", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("ownsPooledData", frame, StringComparison.Ordinal);
+            Assert.Contains("internal void RecycleData()", frame, StringComparison.Ordinal);
+            Assert.Contains("RecycleResultPayloads()", payloads, StringComparison.Ordinal);
+            Assert.Contains("NativeFrame?.RecycleData()", payloads, StringComparison.Ordinal);
+            Assert.Contains("MotionCompensatedNativeFrame?.RecycleData()", payloads, StringComparison.Ordinal);
+            Assert.Contains("result.RecycleResultPayloads()", pointCloudPipeline, StringComparison.Ordinal);
         }
 
         [Fact]
