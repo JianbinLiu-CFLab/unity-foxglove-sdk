@@ -17,14 +17,39 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
     public sealed class PointCloudHotPathAllocationTests
     {
         [Fact]
-        public void PointCloud2BuilderUsesExactOwnedArray()
+        public void PointCloud2BuilderUsesExactOwnedArrayWithoutPooledFrameData()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
 
             Assert.Contains("var data = new byte[capacity];", source, StringComparison.Ordinal);
-            Assert.Contains("new MemoryStream(data, 0, data.Length", source, StringComparison.Ordinal);
             Assert.DoesNotContain("stream.ToArray()", source, StringComparison.Ordinal);
             Assert.DoesNotContain("ArrayPool<byte>.Shared.Rent", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloud2BuilderWritesPackedBytesWithoutStreamWriters()
+        {
+            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
+
+            Assert.DoesNotContain("new MemoryStream", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("new BinaryWriter", source, StringComparison.Ordinal);
+            Assert.Contains("WriteSingleLittleEndian", source, StringComparison.Ordinal);
+            Assert.Contains("BinaryPrimitives.WriteUInt16LittleEndian", source, StringComparison.Ordinal);
+            Assert.Contains("BinaryPrimitives.WriteUInt32LittleEndian", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloud2NativeWorkerPoolsDeskewScratchButNotFinalFrameData()
+        {
+            var worker = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            var compensator = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudMotionCompensator.cs");
+
+            Assert.Contains("ArrayPool<VirtualLidarPointData>.Shared.Rent", worker, StringComparison.Ordinal);
+            Assert.Contains("ArrayPool<VirtualLidarPointData>.Shared.Return", worker, StringComparison.Ordinal);
+            Assert.Contains("finally", worker, StringComparison.Ordinal);
+            Assert.Contains("TryCompensateVirtualLidarInto", worker, StringComparison.Ordinal);
+            Assert.Contains("TryCompensateVirtualLidarInto", compensator, StringComparison.Ordinal);
+            Assert.DoesNotContain("ArrayPool<byte>.Shared.Rent", worker, StringComparison.Ordinal);
         }
 
         [Fact]

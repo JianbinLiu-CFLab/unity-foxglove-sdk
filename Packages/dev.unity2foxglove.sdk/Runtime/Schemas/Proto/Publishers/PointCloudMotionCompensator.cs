@@ -114,6 +114,66 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            var output = new VirtualLidarPointData[pointCount];
+            if (!TryCompensateVirtualLidarInto(
+                    source,
+                    pointCount,
+                    scanStartUnixNs,
+                    request,
+                    output,
+                    out var outputPointCount,
+                    out var referenceUnixNs,
+                    out error))
+            {
+                return false;
+            }
+
+            result = new PointCloudMotionCompensationResult(output, outputPointCount, referenceUnixNs);
+            return true;
+        }
+
+        /// <summary>
+        /// Builds a deskewed snapshot into a caller-owned buffer.
+        /// </summary>
+        public static bool TryCompensateVirtualLidarInto(
+            IReadOnlyList<VirtualLidarPointData> source,
+            int pointCount,
+            ulong scanStartUnixNs,
+            PointCloudMotionCompensationRequest request,
+            VirtualLidarPointData[] output,
+            out int outputPointCount,
+            out ulong referenceUnixNs,
+            out string error)
+        {
+            outputPointCount = 0;
+            referenceUnixNs = scanStartUnixNs;
+            error = null;
+            if (source == null)
+            {
+                error = "source points are missing";
+                return false;
+            }
+            if (request == null)
+            {
+                error = "motion compensation request is missing";
+                return false;
+            }
+            if (output == null)
+            {
+                error = "output buffer is missing";
+                return false;
+            }
+            if (pointCount < 0 || pointCount > source.Count)
+            {
+                error = "point count is outside the source buffer";
+                return false;
+            }
+            if (pointCount > output.Length)
+            {
+                error = "output buffer is smaller than the requested point count";
+                return false;
+            }
+
             if (!TryGetTimeRange(source, pointCount, scanStartUnixNs, out var firstUnixNs, out var lastUnixNs))
             {
                 error = "valid point time offsets are absent";
@@ -122,14 +182,13 @@ namespace Unity.FoxgloveSDK.Components
 
             if (request.InputConvention == PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame)
             {
-                var referenceOutput = new VirtualLidarPointData[pointCount];
-                CopyReferenceFramePoints(source, pointCount, referenceOutput);
-                var scanReferenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
-                result = new PointCloudMotionCompensationResult(referenceOutput, pointCount, scanReferenceUnixNs);
+                CopyReferenceFramePoints(source, pointCount, output);
+                referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
+                outputPointCount = pointCount;
                 return true;
             }
 
-            var referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
+            referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
             if (request.PoseSamples.Length < 2
                 || !SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, firstUnixNs, out _)
                 || !SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, lastUnixNs, out _)
@@ -138,8 +197,6 @@ namespace Unity.FoxgloveSDK.Components
                 error = "pose history does not cover the whole scan interval";
                 return false;
             }
-
-            var output = new VirtualLidarPointData[pointCount];
 
             if (!Matrix4x4.Invert(LocalToWorld(referencePose), out var worldToReference))
             {
@@ -183,7 +240,7 @@ namespace Unity.FoxgloveSDK.Components
                 output[i] = point;
             }
 
-            result = new PointCloudMotionCompensationResult(output, pointCount, referenceUnixNs);
+            outputPointCount = pointCount;
             return true;
         }
 

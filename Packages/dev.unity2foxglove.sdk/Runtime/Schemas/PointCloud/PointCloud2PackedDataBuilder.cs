@@ -5,8 +5,8 @@
 // Purpose: Native LiDAR PointCloud2 packed data construction without managed point objects.
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.IO;
 
 namespace Unity.FoxgloveSDK.Schemas.PointCloud
 {
@@ -73,29 +73,26 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             var fields = BuildFields(emitAbsoluteTimeNs);
 
             var data = new byte[capacity];
-            using (var stream = new MemoryStream(data, 0, data.Length, true, true))
-            using (var writer = new BinaryWriter(stream))
+            var offset = 0;
+            for (var i = 0; i < pointCount; i++)
             {
-                for (var i = 0; i < pointCount; i++)
-                {
-                    var point = points[i];
-                    if (point.IsValid == 0)
-                        continue;
+                var point = points[i];
+                if (point.IsValid == 0)
+                    continue;
 
-                    var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
-                    writer.Write(useAcquisition ? point.AcquisitionX : point.X);
-                    writer.Write(useAcquisition ? point.AcquisitionY : point.Y);
-                    writer.Write(useAcquisition ? point.AcquisitionZ : point.Z);
-                    writer.Write(point.Intensity);
-                    writer.Write(point.Reflectivity);
-                    writer.Write(point.Ring);
-                    writer.Write(point.TimeOffsetSeconds);
-                    if (emitAbsoluteTimeNs)
-                        writer.Write(PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
-                }
-
-                return new PointCloudPackedData(stride, fields, data);
+                var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
+                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionX : point.X);
+                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionY : point.Y);
+                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionZ : point.Z);
+                WriteSingleLittleEndian(data, ref offset, point.Intensity);
+                WriteSingleLittleEndian(data, ref offset, point.Reflectivity);
+                WriteUInt16LittleEndian(data, ref offset, point.Ring);
+                WriteSingleLittleEndian(data, ref offset, point.TimeOffsetSeconds);
+                if (emitAbsoluteTimeNs)
+                    WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
             }
+
+            return new PointCloudPackedData(stride, fields, data);
         }
 
         private static int CountValid(IReadOnlyList<VirtualLidarPointData> points, int pointCount)
@@ -125,6 +122,28 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         private static IReadOnlyList<PointCloudPackedField> BuildFields(bool emitAbsoluteTimeNs)
         {
             return emitAbsoluteTimeNs ? AbsoluteTimeFields : BaseFields;
+        }
+
+        private static void WriteSingleLittleEndian(byte[] data, ref int offset, float value)
+        {
+            var destination = data.AsSpan(offset, sizeof(float));
+            if (!BitConverter.TryWriteBytes(destination, value))
+                throw new InvalidOperationException("Unable to write PointCloud2 float field.");
+            if (!BitConverter.IsLittleEndian)
+                destination.Reverse();
+            offset += sizeof(float);
+        }
+
+        private static void WriteUInt16LittleEndian(byte[] data, ref int offset, ushort value)
+        {
+            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(offset, sizeof(ushort)), value);
+            offset += sizeof(ushort);
+        }
+
+        private static void WriteUInt32LittleEndian(byte[] data, ref int offset, uint value)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(offset, sizeof(uint)), value);
+            offset += sizeof(uint);
         }
 
         private static PointCloudPackedField Field(string name, uint offset, PointCloudPackedNumericType type)

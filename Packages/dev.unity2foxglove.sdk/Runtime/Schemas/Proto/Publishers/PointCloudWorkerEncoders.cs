@@ -5,6 +5,7 @@
 // Purpose: Unity-free worker encoders for point-cloud publish payloads.
 
 using System;
+using System.Buffers;
 using Foxglove.Schemas;
 using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Core;
@@ -108,6 +109,7 @@ namespace Unity.FoxgloveSDK.Components
                 var rawPayloadBuildMs = 0d;
                 var motionCompensationMs = 0d;
                 var deskewPackMs = 0d;
+                VirtualLidarPointData[] compensatedScratch = null;
 
                 try
                 {
@@ -146,12 +148,15 @@ namespace Unity.FoxgloveSDK.Components
                     if (request.HasMotionCompensation)
                     {
                         var motionCompensationStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                        if (!PointCloudMotionCompensator.TryCompensateVirtualLidar(
+                        compensatedScratch = ArrayPool<VirtualLidarPointData>.Shared.Rent(request.LidarPointCount);
+                        if (!PointCloudMotionCompensator.TryCompensateVirtualLidarInto(
                                 request.LidarPoints,
                                 request.LidarPointCount,
                                 request.UnixNs,
                                 request.MotionCompensation,
-                                out var compensated,
+                                compensatedScratch,
+                                out var compensatedPointCount,
+                                out var compensatedReferenceUnixNs,
                                 out var compensationError))
                         {
                             motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
@@ -162,8 +167,8 @@ namespace Unity.FoxgloveSDK.Components
                             motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
                             var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
                             var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
-                                compensated.Points,
-                                compensated.PointCount,
+                                compensatedScratch,
+                                compensatedPointCount,
                                 request.EmitAbsoluteTimeNs);
                             var compensatedValidCount = compensatedPacked.PointStride == 0U
                                 ? 0
@@ -172,7 +177,7 @@ namespace Unity.FoxgloveSDK.Components
                                 request,
                                 compensatedPacked,
                                 compensatedValidCount,
-                                compensated.ReferenceUnixNs,
+                                compensatedReferenceUnixNs,
                                 request.MotionCompensation.Topic,
                                 isMotionCompensatedVisualization: true);
                             deskewPackMs = DiagnosticElapsedMs(deskewPackStart);
@@ -184,6 +189,11 @@ namespace Unity.FoxgloveSDK.Components
                 catch (Exception ex)
                 {
                     error = "Unable to serialize native PointCloud2 payload off thread: " + ex.Message;
+                }
+                finally
+                {
+                    if (compensatedScratch != null)
+                        ArrayPool<VirtualLidarPointData>.Shared.Return(compensatedScratch, clearArray: false);
                 }
 
                 return new PointCloud2NativeResult(
