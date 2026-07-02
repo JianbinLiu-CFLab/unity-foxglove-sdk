@@ -101,9 +101,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var virtualImu = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var dropLog = ExtractMethod(virtualImu, "private void LogDroppedSamplesIfNeeded()");
-            Check(dropLog.Contains("Debug.Log(", StringComparison.Ordinal)
+            Check(dropLog.Contains("Debug.LogFormat(", StringComparison.Ordinal)
+                  && dropLog.Contains("LogOption.NoStacktrace", StringComparison.Ordinal)
+                  && !dropLog.Contains("Debug.Log(", StringComparison.Ordinal)
                   && !dropLog.Contains("Debug.LogWarning(", StringComparison.Ordinal),
-                "140H2-3D: sustained IMU queue back-pressure uses non-warning diagnostics");
+                "140H2-3D: sustained IMU queue back-pressure uses no-stacktrace non-warning diagnostics");
             Check(virtualImu.Contains("DroppedSamplesLogIntervalSeconds", StringComparison.Ordinal)
                   && virtualImu.Contains("_nextDroppedSamplesLogTime", StringComparison.Ordinal)
                   && dropLog.Contains("Time.unscaledTime", StringComparison.Ordinal),
