@@ -7,9 +7,29 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Schemas.PointCloud
 {
+    /// <summary>Fine-grained pack timings for PointCloud2 worker stall diagnostics.</summary>
+    internal struct PointCloud2PackTimings
+    {
+        /// <summary>Milliseconds spent counting valid source points.</summary>
+        public double CountValidMs;
+
+        /// <summary>Milliseconds spent renting or allocating the packed destination buffer.</summary>
+        public double BufferRentMs;
+
+        /// <summary>Milliseconds spent in the packed byte write loop.</summary>
+        public double WriteLoopMs;
+
+        /// <summary>Packed destination buffer length in bytes.</summary>
+        public int BufferLength;
+
+        /// <summary>True when the destination buffer was reused from the pool; false when newly allocated.</summary>
+        public bool BufferReused;
+    }
+
     /// <summary>Builds PointCloud2 packed bytes from native LiDAR point snapshots.</summary>
     internal static class PointCloud2PackedDataBuilder
     {
@@ -64,7 +84,9 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
-                usePooledBuffer: false);
+                usePooledBuffer: false,
+                collectTimings: false,
+                out _);
 
         internal static PointCloudPackedData BuildVirtualLidarFullStridePooled(
             VirtualLidarPointData[] points,
@@ -76,30 +98,63 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
-                usePooledBuffer: true);
+                usePooledBuffer: true,
+                collectTimings: false,
+                out _);
+
+        internal static PointCloudPackedData BuildVirtualLidarFullStridePooled(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            bool emitAbsoluteTimeNs,
+            bool collectTimings,
+            out PointCloud2PackTimings timings,
+            bool useAcquisitionFrameCoordinates = false)
+            => BuildVirtualLidarFullStride(
+                points,
+                pointCount,
+                emitAbsoluteTimeNs,
+                useAcquisitionFrameCoordinates,
+                usePooledBuffer: true,
+                collectTimings,
+                out timings);
 
         private static PointCloudPackedData BuildVirtualLidarFullStride(
             VirtualLidarPointData[] points,
             int pointCount,
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates,
-            bool usePooledBuffer)
+            bool usePooledBuffer,
+            bool collectTimings,
+            out PointCloud2PackTimings timings)
         {
             if (points == null)
                 throw new ArgumentNullException(nameof(points));
             if (pointCount < 0 || pointCount > points.Length)
                 throw new ArgumentOutOfRangeException(nameof(pointCount));
 
+            timings = default;
+
+            var countValidStart = collectTimings ? Stopwatch.GetTimestamp() : 0L;
             var validCount = CountValid(points, pointCount);
+            if (collectTimings)
+                timings.CountValidMs = ElapsedMilliseconds(countValidStart);
+
             var stride = emitAbsoluteTimeNs ? AbsoluteTimeStride : BaseStride;
             var capacity = ValidatePackedDataBudget(validCount, stride);
             var fields = BuildFields(emitAbsoluteTimeNs);
 
+            var bufferReused = false;
+            var bufferRentStart = collectTimings ? Stopwatch.GetTimestamp() : 0L;
             var data = usePooledBuffer
-                ? PointCloudPackedByteBufferPool.Rent(capacity)
+                ? PointCloudPackedByteBufferPool.Rent(capacity, out bufferReused)
                 : new byte[capacity];
+            if (collectTimings)
+                timings.BufferRentMs = ElapsedMilliseconds(bufferRentStart);
+            timings.BufferLength = capacity;
+            timings.BufferReused = bufferReused;
             try
             {
+                var writeLoopStart = collectTimings ? Stopwatch.GetTimestamp() : 0L;
                 var offset = 0;
                 for (var i = 0; i < pointCount; i++)
                 {
@@ -119,6 +174,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                         WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
                 }
 
+                if (collectTimings)
+                    timings.WriteLoopMs = ElapsedMilliseconds(writeLoopStart);
                 return new PointCloudPackedData(stride, fields, data, ownsPooledData: usePooledBuffer);
             }
             catch
@@ -128,6 +185,9 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 throw;
             }
         }
+
+        private static double ElapsedMilliseconds(long startTimestamp)
+            => (Stopwatch.GetTimestamp() - startTimestamp) * 1000d / Stopwatch.Frequency;
 
         /// <summary>
         /// Builds the full SLAM PointCloud2 field layout from compacted valid

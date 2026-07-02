@@ -66,11 +66,15 @@ namespace Unity.FoxgloveSDK.Components
             if (!_logPerformanceDiagnostics || result == null)
                 return;
 
+            var encodeDiagnostics = result.EncodeDiagnostics;
             Debug.LogFormat(
                 LogType.Log,
                 LogOption.NoStacktrace,
                 this,
-                "[Foxglove] PointCloud2 native worker timing: topic={0} points={1} bytes={2} rawPackMs={3} rawPayloadBuildMs={4} motionCompensationMs={5} deskewPackMs={6} encodeMs={7} success={8}",
+                "[Foxglove] PointCloud2 native worker timing: topic={0} points={1} bytes={2} rawPackMs={3} rawPayloadBuildMs={4} motionCompensationMs={5} deskewPackMs={6} encodeMs={7} success={8} " +
+                "rawCountValidMs={9} rawBufRentMs={10} rawWriteLoopMs={11} rawBufLen={12} rawBufReused={13} " +
+                "deskewCountValidMs={14} deskewBufRentMs={15} deskewWriteLoopMs={16} deskewBufLen={17} deskewBufReused={18} " +
+                "gcDelta={19}/{20}/{21} poolRetained={22}/{23}",
                 new object[]
                 {
                     result.NativeFrame == null || string.IsNullOrWhiteSpace(result.NativeFrame.Topic)
@@ -83,7 +87,22 @@ namespace Unity.FoxgloveSDK.Components
                     FormatPointCloud2NativeMilliseconds(result.MotionCompensationMs),
                     FormatPointCloud2NativeMilliseconds(result.DeskewPackMs),
                     FormatPointCloud2NativeMilliseconds(result.EncodeMs),
-                    result.Success
+                    result.Success,
+                    FormatPointCloud2NativeMilliseconds(encodeDiagnostics.RawCountValidMs),
+                    FormatPointCloud2NativeMilliseconds(encodeDiagnostics.RawBufferRentMs),
+                    FormatPointCloud2NativeMilliseconds(encodeDiagnostics.RawWriteLoopMs),
+                    encodeDiagnostics.RawBufferLength,
+                    encodeDiagnostics.RawBufferReused,
+                    FormatPointCloud2NativeMilliseconds(encodeDiagnostics.DeskewCountValidMs),
+                    FormatPointCloud2NativeMilliseconds(encodeDiagnostics.DeskewBufferRentMs),
+                    FormatPointCloud2NativeMilliseconds(encodeDiagnostics.DeskewWriteLoopMs),
+                    encodeDiagnostics.DeskewBufferLength,
+                    encodeDiagnostics.DeskewBufferReused,
+                    encodeDiagnostics.GcGen0Delta,
+                    encodeDiagnostics.GcGen1Delta,
+                    encodeDiagnostics.GcGen2Delta,
+                    encodeDiagnostics.PoolRetainedBuffers,
+                    encodeDiagnostics.PoolRetainedBytes
                 });
         }
 

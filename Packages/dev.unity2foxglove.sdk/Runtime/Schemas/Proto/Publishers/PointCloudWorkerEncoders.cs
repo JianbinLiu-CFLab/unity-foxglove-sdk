@@ -109,6 +109,16 @@ namespace Unity.FoxgloveSDK.Components
                 var rawPayloadBuildMs = 0d;
                 var motionCompensationMs = 0d;
                 var deskewPackMs = 0d;
+                var encodeDiagnostics = default(PointCloud2NativeEncodeDiagnostics);
+                var gcGen0Before = 0;
+                var gcGen1Before = 0;
+                var gcGen2Before = 0;
+                if (request.LogPerformanceDiagnostics)
+                {
+                    gcGen0Before = GC.CollectionCount(0);
+                    gcGen1Before = GC.CollectionCount(1);
+                    gcGen2Before = GC.CollectionCount(2);
+                }
                 VirtualLidarPointData[] compensatedScratch = null;
 
                 try
@@ -118,8 +128,15 @@ namespace Unity.FoxgloveSDK.Components
                         request.LidarPoints,
                         request.LidarPointCount,
                         request.EmitAbsoluteTimeNs,
+                        request.LogPerformanceDiagnostics,
+                        out var rawPackTimings,
                         useAcquisitionFrameCoordinates: true);
                     rawPackMs = DiagnosticElapsedMs(rawPackStart);
+                    encodeDiagnostics.RawCountValidMs = rawPackTimings.CountValidMs;
+                    encodeDiagnostics.RawBufferRentMs = rawPackTimings.BufferRentMs;
+                    encodeDiagnostics.RawWriteLoopMs = rawPackTimings.WriteLoopMs;
+                    encodeDiagnostics.RawBufferLength = rawPackTimings.BufferLength;
+                    encodeDiagnostics.RawBufferReused = rawPackTimings.BufferReused;
                     validCount = packed.PointStride == 0U ? 0 : checked((int)(packed.Data.Length / packed.PointStride));
                     nativeFrame = BuildPointCloud2NativeFrame(request, packed, validCount);
 
@@ -169,7 +186,14 @@ namespace Unity.FoxgloveSDK.Components
                             var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
                                 compensatedScratch,
                                 compensatedPointCount,
-                                request.EmitAbsoluteTimeNs);
+                                request.EmitAbsoluteTimeNs,
+                                request.LogPerformanceDiagnostics,
+                                out var deskewPackTimings);
+                            encodeDiagnostics.DeskewCountValidMs = deskewPackTimings.CountValidMs;
+                            encodeDiagnostics.DeskewBufferRentMs = deskewPackTimings.BufferRentMs;
+                            encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
+                            encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
+                            encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
                             var compensatedValidCount = compensatedPacked.PointStride == 0U
                                 ? 0
                                 : checked((int)(compensatedPacked.Data.Length / compensatedPacked.PointStride));
@@ -196,6 +220,16 @@ namespace Unity.FoxgloveSDK.Components
                         ArrayPool<VirtualLidarPointData>.Shared.Return(compensatedScratch, clearArray: false);
                 }
 
+                if (request.LogPerformanceDiagnostics)
+                {
+                    encodeDiagnostics.GcGen0Delta = GC.CollectionCount(0) - gcGen0Before;
+                    encodeDiagnostics.GcGen1Delta = GC.CollectionCount(1) - gcGen1Before;
+                    encodeDiagnostics.GcGen2Delta = GC.CollectionCount(2) - gcGen2Before;
+                    PointCloudPackedByteBufferPool.SnapshotRetained(
+                        out encodeDiagnostics.PoolRetainedBuffers,
+                        out encodeDiagnostics.PoolRetainedBytes);
+                }
+
                 return new PointCloud2NativeResult(
                     request,
                     success,
@@ -210,7 +244,8 @@ namespace Unity.FoxgloveSDK.Components
                     rawPackMs,
                     rawPayloadBuildMs,
                     motionCompensationMs,
-                    deskewPackMs);
+                    deskewPackMs,
+                    encodeDiagnostics);
             }
             finally
             {

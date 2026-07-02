@@ -245,7 +245,28 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         private static long RetainedBytes;
 
         public static byte[] Rent(int length)
+            => Rent(length, out _);
+
+        /// <summary>
+        /// Snapshot of buffers currently held by the pool. Zero retained while rents
+        /// still miss means every pooled buffer is in flight (completed results not
+        /// yet recycled), not a size-key mismatch.
+        /// </summary>
+        public static void SnapshotRetained(out int retainedBufferCount, out long retainedBytes)
         {
+            lock (Gate)
+            {
+                var count = 0;
+                foreach (var buffers in BuffersBySize.Values)
+                    count += buffers.Count;
+                retainedBufferCount = count;
+                retainedBytes = RetainedBytes;
+            }
+        }
+
+        public static byte[] Rent(int length, out bool reused)
+        {
+            reused = false;
             if (length < 0)
                 throw new ArgumentOutOfRangeException(nameof(length));
             if (length == 0)
@@ -256,6 +277,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 if (BuffersBySize.TryGetValue(length, out var buffers) && buffers.Count > 0)
                 {
                     RetainedBytes -= length;
+                    reused = true;
                     return buffers.Pop();
                 }
             }

@@ -259,6 +259,59 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
+    /// Fine-grained PointCloud2 Native encode diagnostics for stall investigation.
+    /// Captures per-stage pack timings, packed-buffer pool behavior, and GC
+    /// collection deltas observed across one worker encode.
+    /// </summary>
+    internal struct PointCloud2NativeEncodeDiagnostics
+    {
+        /// <summary>Raw pack valid-count scan milliseconds.</summary>
+        public double RawCountValidMs;
+
+        /// <summary>Raw packed buffer rent/allocation milliseconds.</summary>
+        public double RawBufferRentMs;
+
+        /// <summary>Raw pack write-loop milliseconds.</summary>
+        public double RawWriteLoopMs;
+
+        /// <summary>Raw packed buffer length in bytes.</summary>
+        public int RawBufferLength;
+
+        /// <summary>True when the raw packed buffer was reused from the pool.</summary>
+        public bool RawBufferReused;
+
+        /// <summary>Deskew pack valid-count scan milliseconds.</summary>
+        public double DeskewCountValidMs;
+
+        /// <summary>Deskew packed buffer rent/allocation milliseconds.</summary>
+        public double DeskewBufferRentMs;
+
+        /// <summary>Deskew pack write-loop milliseconds.</summary>
+        public double DeskewWriteLoopMs;
+
+        /// <summary>Deskew packed buffer length in bytes.</summary>
+        public int DeskewBufferLength;
+
+        /// <summary>True when the deskew packed buffer was reused from the pool.</summary>
+        public bool DeskewBufferReused;
+
+        /// <summary>GC gen0 collection count delta across the encode.</summary>
+        public int GcGen0Delta;
+
+        /// <summary>GC gen1 collection count delta across the encode.</summary>
+        public int GcGen1Delta;
+
+        /// <summary>GC gen2 collection count delta across the encode.</summary>
+        public int GcGen2Delta;
+
+        /// <summary>Packed buffers held by the pool after this encode; zero while rents miss means buffers are in flight.</summary>
+        public int PoolRetainedBuffers;
+
+        /// <summary>Bytes held by the packed buffer pool after this encode.</summary>
+        public long PoolRetainedBytes;
+    }
+
+    /// <summary>
     /// Completed background PointCloud2 pack result with prepared CDR bytes for
     /// main-thread publish.
     /// </summary>
@@ -279,7 +332,8 @@ namespace Unity.FoxgloveSDK.Components
             double rawPackMs,
             double rawPayloadBuildMs,
             double motionCompensationMs,
-            double deskewPackMs)
+            double deskewPackMs,
+            PointCloud2NativeEncodeDiagnostics encodeDiagnostics = default)
         {
             Request = request;
             Success = success;
@@ -295,6 +349,7 @@ namespace Unity.FoxgloveSDK.Components
             RawPayloadBuildMs = rawPayloadBuildMs;
             MotionCompensationMs = motionCompensationMs;
             DeskewPackMs = deskewPackMs;
+            EncodeDiagnostics = encodeDiagnostics;
         }
 
         /// <summary>Original worker request.</summary>
@@ -338,6 +393,9 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Milliseconds spent packing the deskewed visualization PointCloud2 frame.</summary>
         public double DeskewPackMs { get; }
+
+        /// <summary>Fine-grained pack/pool/GC diagnostics captured across this encode.</summary>
+        public PointCloud2NativeEncodeDiagnostics EncodeDiagnostics { get; }
 
         public void RecycleResultPayloads()
         {
