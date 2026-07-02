@@ -32,23 +32,11 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private PointCloudMotionCompensationRequest TryCreateMotionCompensationRequest(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
             PointCloudMotionCompensationSettings settings,
             bool publishNativeFrame)
         {
             if (!settings.EmitDeskewedOutput || !publishNativeFrame)
                 return null;
-
-            if (points == null || pointCount <= 0)
-                return null;
-
-            if (!TryGetPointTimeRange(points, pointCount, unixNs, out var firstUnixNs, out var lastUnixNs))
-            {
-                WarnMotionCompensation("skipped: valid point time offsets are absent");
-                return null;
-            }
 
             if (settings.IsLikelySlamReplacementTopic(PointCloud2NativeTopic))
             {
@@ -71,42 +59,6 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             Debug.LogWarning("[Foxglove] PointCloud2 motion compensation " + reason);
-        }
-
-        private static bool TryGetPointTimeRange(
-            VirtualLidarPointData[] points,
-            int pointCount,
-            ulong unixNs,
-            out ulong firstUnixNs,
-            out ulong lastUnixNs)
-        {
-            firstUnixNs = unixNs;
-            lastUnixNs = unixNs;
-            var found = false;
-            var count = Math.Min(pointCount, points.Length);
-            for (var i = 0; i < count; i++)
-            {
-                var point = points[i];
-                if (point.IsValid == 0)
-                    continue;
-
-                var offsetNs = PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds);
-                var pointUnixNs = checked(unixNs + offsetNs);
-                if (!found)
-                {
-                    firstUnixNs = pointUnixNs;
-                    lastUnixNs = pointUnixNs;
-                    found = true;
-                    continue;
-                }
-
-                if (pointUnixNs < firstUnixNs)
-                    firstUnixNs = pointUnixNs;
-                if (pointUnixNs > lastUnixNs)
-                    lastUnixNs = pointUnixNs;
-            }
-
-            return found;
         }
 
     }

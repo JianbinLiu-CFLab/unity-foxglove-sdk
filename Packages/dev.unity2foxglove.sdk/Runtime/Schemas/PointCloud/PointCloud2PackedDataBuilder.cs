@@ -78,12 +78,14 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             VirtualLidarPointData[] points,
             int pointCount,
             bool emitAbsoluteTimeNs,
-            bool useAcquisitionFrameCoordinates = false)
+            bool useAcquisitionFrameCoordinates = false,
+            bool zeroTimeOffset = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
+                zeroTimeOffset,
                 usePooledBuffer: false,
                 collectTimings: false,
                 out _);
@@ -92,12 +94,14 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             VirtualLidarPointData[] points,
             int pointCount,
             bool emitAbsoluteTimeNs,
-            bool useAcquisitionFrameCoordinates = false)
+            bool useAcquisitionFrameCoordinates = false,
+            bool zeroTimeOffset = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
+                zeroTimeOffset,
                 usePooledBuffer: true,
                 collectTimings: false,
                 out _);
@@ -108,12 +112,14 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             bool emitAbsoluteTimeNs,
             bool collectTimings,
             out PointCloud2PackTimings timings,
-            bool useAcquisitionFrameCoordinates = false)
+            bool useAcquisitionFrameCoordinates = false,
+            bool zeroTimeOffset = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
+                zeroTimeOffset,
                 usePooledBuffer: true,
                 collectTimings,
                 out timings);
@@ -123,6 +129,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             int pointCount,
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates,
+            bool zeroTimeOffset,
             bool usePooledBuffer,
             bool collectTimings,
             out PointCloud2PackTimings timings)
@@ -169,9 +176,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     WriteSingleLittleEndian(data, ref offset, point.Intensity);
                     WriteSingleLittleEndian(data, ref offset, point.Reflectivity);
                     WriteUInt16LittleEndian(data, ref offset, point.Ring);
-                    WriteSingleLittleEndian(data, ref offset, point.TimeOffsetSeconds);
+                    var timeOffsetSeconds = zeroTimeOffset ? 0f : point.TimeOffsetSeconds;
+                    WriteSingleLittleEndian(data, ref offset, timeOffsetSeconds);
                     if (emitAbsoluteTimeNs)
-                        WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
+                        WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(timeOffsetSeconds));
                 }
 
                 if (collectTimings)

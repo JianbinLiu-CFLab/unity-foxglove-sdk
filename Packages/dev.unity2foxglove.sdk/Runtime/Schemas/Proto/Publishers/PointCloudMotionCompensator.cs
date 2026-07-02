@@ -174,21 +174,26 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (!TryGetTimeRange(source, pointCount, scanStartUnixNs, out var firstUnixNs, out var lastUnixNs))
+            if (!TryResolveReferenceTimeRange(
+                    source,
+                    pointCount,
+                    scanStartUnixNs,
+                    request,
+                    out var firstUnixNs,
+                    out var lastUnixNs,
+                    out referenceUnixNs,
+                    out error))
             {
-                error = "valid point time offsets are absent";
                 return false;
             }
 
             if (request.InputConvention == PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame)
             {
                 CopyReferenceFramePoints(source, pointCount, output);
-                referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
                 outputPointCount = pointCount;
                 return true;
             }
 
-            referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
             if (request.PoseSamples.Length < 2
                 || !SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, firstUnixNs, out _)
                 || !SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, lastUnixNs, out _)
@@ -255,6 +260,65 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             outputPointCount = pointCount;
+            return true;
+        }
+
+        /// <summary>Resolve the deskewed output timestamp without materializing a second point snapshot.</summary>
+        public static bool TryResolveReferenceUnixNs(
+            IReadOnlyList<VirtualLidarPointData> source,
+            int pointCount,
+            ulong scanStartUnixNs,
+            PointCloudMotionCompensationRequest request,
+            out ulong referenceUnixNs,
+            out string error)
+        {
+            return TryResolveReferenceTimeRange(
+                source,
+                pointCount,
+                scanStartUnixNs,
+                request,
+                out _,
+                out _,
+                out referenceUnixNs,
+                out error);
+        }
+
+        private static bool TryResolveReferenceTimeRange(
+            IReadOnlyList<VirtualLidarPointData> source,
+            int pointCount,
+            ulong scanStartUnixNs,
+            PointCloudMotionCompensationRequest request,
+            out ulong firstUnixNs,
+            out ulong lastUnixNs,
+            out ulong referenceUnixNs,
+            out string error)
+        {
+            firstUnixNs = scanStartUnixNs;
+            lastUnixNs = scanStartUnixNs;
+            referenceUnixNs = scanStartUnixNs;
+            error = null;
+            if (source == null)
+            {
+                error = "source points are missing";
+                return false;
+            }
+            if (request == null)
+            {
+                error = "motion compensation request is missing";
+                return false;
+            }
+            if (pointCount < 0 || pointCount > source.Count)
+            {
+                error = "point count is outside the source buffer";
+                return false;
+            }
+            if (!TryGetTimeRange(source, pointCount, scanStartUnixNs, out firstUnixNs, out lastUnixNs))
+            {
+                error = "valid point time offsets are absent";
+                return false;
+            }
+
+            referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
             return true;
         }
 

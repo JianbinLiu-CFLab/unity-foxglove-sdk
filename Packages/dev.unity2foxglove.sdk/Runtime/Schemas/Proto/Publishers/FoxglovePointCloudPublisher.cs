@@ -28,7 +28,10 @@ namespace Unity.FoxgloveSDK.Components
         private const int DracoFailureWarningIntervalFrames = 120;
         private const int MaxCompletedDracoEncodeResults = 8;
         private const int PointCloud2NativeFailureWarningIntervalFrames = 120;
-        private const int MaxCompletedPointCloud2NativeResults = 8;
+        // PointCloud2 Native frames are large enough that draining stale completed
+        // results in a burst can hitch the main loop. Keep the latest completed
+        // frame only; the pending side is already last-value-wins.
+        private const int MaxCompletedPointCloud2NativeResults = 1;
         private const int DracoWorkerStopWaitMs = 5000;
         private const int PointCloud2NativeWorkerStopWaitMs = 5000;
 

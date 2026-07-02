@@ -226,6 +226,8 @@ namespace Unity.FoxgloveSDK.Components
                     completeMs,
                     0d,
                     0d,
+                    0d,
+                    0d,
                     useNativeSnapshot,
                     _pendingScanCrossingCount,
                     fixedDeltaTime);
@@ -239,6 +241,8 @@ namespace Unity.FoxgloveSDK.Components
             var buildMs = 0d;
 
             var appendStart = DiagnosticStart(logPerformanceDiagnostics);
+            var copyMs = 0d;
+            var boundaryPublishMs = 0d;
             var validPoints = 0;
             var ci = 0;
             var segmentStart = 0;
@@ -246,6 +250,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 while (ci < _pendingScanCrossingCount && k == _pendingScanCrossings[ci])
                 {
+                    var copyStart = DiagnosticStart(logPerformanceDiagnostics);
                     AppendOrCopyPendingPointDataSegment(
                         scanBuffers,
                         segmentStart,
@@ -256,13 +261,17 @@ namespace Unity.FoxgloveSDK.Components
                         ref activeScanPointSnapshotCount,
                         ref activeScanValidPoints,
                         ref validPoints);
+                    copyMs += DiagnosticElapsedMs(copyStart);
+                    var boundaryPublishStart = DiagnosticStart(logPerformanceDiagnostics);
                     onScanBoundary?.Invoke();
+                    boundaryPublishMs += DiagnosticElapsedMs(boundaryPublishStart);
                     _pendingScanState = PendingScanState.Published;
                     segmentStart = k;
                     ci++;
                 }
             }
 
+            var finalCopyStart = DiagnosticStart(logPerformanceDiagnostics);
             AppendOrCopyPendingPointDataSegment(
                 scanBuffers,
                 segmentStart,
@@ -273,9 +282,12 @@ namespace Unity.FoxgloveSDK.Components
                 ref activeScanPointSnapshotCount,
                 ref activeScanValidPoints,
                 ref validPoints);
+            copyMs += DiagnosticElapsedMs(finalCopyStart);
             while (ci < _pendingScanCrossingCount && _pendingBatchCount == _pendingScanCrossings[ci])
             {
+                var boundaryPublishStart = DiagnosticStart(logPerformanceDiagnostics);
                 onScanBoundary?.Invoke();
+                boundaryPublishMs += DiagnosticElapsedMs(boundaryPublishStart);
                 _pendingScanState = PendingScanState.Published;
                 ci++;
             }
@@ -289,6 +301,8 @@ namespace Unity.FoxgloveSDK.Components
                 completeMs,
                 buildMs,
                 appendMs,
+                copyMs,
+                boundaryPublishMs,
                 useNativeSnapshot,
                 _pendingScanCrossingCount,
                 fixedDeltaTime);
@@ -424,6 +438,8 @@ namespace Unity.FoxgloveSDK.Components
             double completeMs,
             double buildMs,
             double appendMs,
+            double copyMs,
+            double boundaryPublishMs,
             bool nativeSnapshot,
             int crossings,
             float fixedDeltaTimeSeconds)
@@ -435,13 +451,15 @@ namespace Unity.FoxgloveSDK.Components
                 LogType.Log,
                 LogOption.NoStacktrace,
                 _logContext,
-                "[LidarDiag] batch timing: scanId={0} rays={1} valid={2} completeMs={3:F2} buildMs={4:F2} appendMs={5:F2} fixedDeltaMs={6:F2} nativeSnapshot={7} crossings={8}",
+                "[LidarDiag] batch timing: scanId={0} rays={1} valid={2} completeMs={3:F2} buildMs={4:F2} appendMs={5:F2} copyMs={6:F2} boundaryPublishMs={7:F2} fixedDeltaMs={8:F2} nativeSnapshot={9} crossings={10}",
                 scanId,
                 rayCount,
                 validPointCount,
                 completeMs,
                 buildMs,
                 appendMs,
+                copyMs,
+                boundaryPublishMs,
                 fixedDeltaTimeSeconds * 1000f,
                 nativeSnapshot,
                 crossings);

@@ -227,7 +227,9 @@ namespace Unity.FoxgloveSDK.Tests
             var lidarEditor = Read("Packages/dev.unity2foxglove.sdk/Editor/Sensors/VirtualLidarEditor.cs");
             var payloads = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerPayloads.cs");
             var encoders = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
             var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var motionPublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs");
             Check(MethodContains(lidar, "private void FixedUpdate()", "BeginLidarFixedUpdateTiming()")
                   && MethodContains(lidar, "private void FixedUpdate()", "LogLidarFixedUpdateTiming")
@@ -241,6 +243,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(scheduler.Contains("[LidarDiag] batch timing:", StringComparison.Ordinal)
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "completeMs")
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "appendMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "copyMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "boundaryPublishMs")
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "nativeSnapshot")
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "crossings"),
                 "140H2-5L: VirtualLidar scan scheduler emits immediate pending-batch timing diagnostics");
@@ -263,6 +267,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && diagnostics.Contains("motionCompensationMs", StringComparison.Ordinal)
                   && diagnostics.Contains("deskewPackMs", StringComparison.Ordinal),
                 "140H2-5O: point-cloud publisher logs worker sub-stage timings when diagnostics are enabled");
+            Check(publisher.Contains("MaxCompletedPointCloud2NativeResults = 1", StringComparison.Ordinal)
+                  && publisher.Contains("latest completed", StringComparison.Ordinal),
+                "140H2-5Q: PointCloud2 native completed queue keeps latest result only to avoid main-thread drain bursts");
+            Check(!MethodContains(motionPublisher, "private PointCloudMotionCompensationRequest TryCreateMotionCompensationRequest", "TryGetPointTimeRange(")
+                  && encoders.Contains("TryCompensateVirtualLidarInto", StringComparison.Ordinal),
+                "140H2-5R: PointCloud2 native scan-boundary queueing leaves point time-range scans to the worker");
+            Check(MethodContains(encoders, "public static PointCloud2NativeResult EncodePointCloud2NativeRequest", "BuildScanReferenceDeskewedPointCloud2Frame")
+                  && !MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "compensatedScratch"),
+                "140H2-5S: PointCloud2 native scan-reference deskew packs directly without a second point snapshot");
         }
 
         private static void ValidationRegistryExposesPhase140H2()

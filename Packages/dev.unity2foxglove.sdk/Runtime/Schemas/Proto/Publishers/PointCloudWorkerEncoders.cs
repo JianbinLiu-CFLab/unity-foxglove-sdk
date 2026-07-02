@@ -165,46 +165,72 @@ namespace Unity.FoxgloveSDK.Components
                     if (request.HasMotionCompensation)
                     {
                         var motionCompensationStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                        compensatedScratch = ArrayPool<VirtualLidarPointData>.Shared.Rent(request.LidarPointCount);
-                        if (!PointCloudMotionCompensator.TryCompensateVirtualLidarInto(
-                                request.LidarPoints,
-                                request.LidarPointCount,
-                                request.UnixNs,
-                                request.MotionCompensation,
-                                compensatedScratch,
-                                out var compensatedPointCount,
-                                out var compensatedReferenceUnixNs,
-                                out var compensationError))
+                        if (request.MotionCompensation.InputConvention == PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame)
                         {
-                            motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
-                            error = "Unable to build motion-compensated PointCloud2 frame: " + compensationError;
+                            if (!PointCloudMotionCompensator.TryResolveReferenceUnixNs(
+                                    request.LidarPoints,
+                                    request.LidarPointCount,
+                                    request.UnixNs,
+                                    request.MotionCompensation,
+                                    out var referenceUnixNs,
+                                    out var compensationError))
+                            {
+                                motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
+                                error = "Unable to build motion-compensated PointCloud2 frame: " + compensationError;
+                            }
+                            else
+                            {
+                                motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
+                                motionCompensatedNativeFrame = BuildScanReferenceDeskewedPointCloud2Frame(
+                                    request,
+                                    referenceUnixNs,
+                                    out deskewPackMs,
+                                    ref encodeDiagnostics);
+                            }
                         }
                         else
                         {
-                            motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
-                            var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
-                            var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
-                                compensatedScratch,
-                                compensatedPointCount,
-                                request.EmitAbsoluteTimeNs,
-                                request.LogPerformanceDiagnostics,
-                                out var deskewPackTimings);
-                            encodeDiagnostics.DeskewCountValidMs = deskewPackTimings.CountValidMs;
-                            encodeDiagnostics.DeskewBufferRentMs = deskewPackTimings.BufferRentMs;
-                            encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
-                            encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
-                            encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
-                            var compensatedValidCount = compensatedPacked.PointStride == 0U
-                                ? 0
-                                : checked((int)(compensatedPacked.Data.Length / compensatedPacked.PointStride));
-                            motionCompensatedNativeFrame = BuildPointCloud2NativeFrame(
-                                request,
-                                compensatedPacked,
-                                compensatedValidCount,
-                                compensatedReferenceUnixNs,
-                                request.MotionCompensation.Topic,
-                                isMotionCompensatedVisualization: true);
-                            deskewPackMs = DiagnosticElapsedMs(deskewPackStart);
+                            compensatedScratch = ArrayPool<VirtualLidarPointData>.Shared.Rent(request.LidarPointCount);
+                            if (!PointCloudMotionCompensator.TryCompensateVirtualLidarInto(
+                                    request.LidarPoints,
+                                    request.LidarPointCount,
+                                    request.UnixNs,
+                                    request.MotionCompensation,
+                                    compensatedScratch,
+                                    out var compensatedPointCount,
+                                    out var compensatedReferenceUnixNs,
+                                    out var compensationError))
+                            {
+                                motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
+                                error = "Unable to build motion-compensated PointCloud2 frame: " + compensationError;
+                            }
+                            else
+                            {
+                                motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
+                                var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
+                                var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                                    compensatedScratch,
+                                    compensatedPointCount,
+                                    request.EmitAbsoluteTimeNs,
+                                    request.LogPerformanceDiagnostics,
+                                    out var deskewPackTimings);
+                                encodeDiagnostics.DeskewCountValidMs = deskewPackTimings.CountValidMs;
+                                encodeDiagnostics.DeskewBufferRentMs = deskewPackTimings.BufferRentMs;
+                                encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
+                                encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
+                                encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
+                                var compensatedValidCount = compensatedPacked.PointStride == 0U
+                                    ? 0
+                                    : checked((int)(compensatedPacked.Data.Length / compensatedPacked.PointStride));
+                                motionCompensatedNativeFrame = BuildPointCloud2NativeFrame(
+                                    request,
+                                    compensatedPacked,
+                                    compensatedValidCount,
+                                    compensatedReferenceUnixNs,
+                                    request.MotionCompensation.Topic,
+                                    isMotionCompensatedVisualization: true);
+                                deskewPackMs = DiagnosticElapsedMs(deskewPackStart);
+                            }
                         }
                     }
 
@@ -264,6 +290,39 @@ namespace Unity.FoxgloveSDK.Components
                 request.UnixNs,
                 request.NativeTopic,
                 isMotionCompensatedVisualization: false);
+
+        private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame(
+            PointCloud2NativeRequest request,
+            ulong referenceUnixNs,
+            out double deskewPackMs,
+            ref PointCloud2NativeEncodeDiagnostics encodeDiagnostics)
+        {
+            var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
+            var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                request.LidarPoints,
+                request.LidarPointCount,
+                request.EmitAbsoluteTimeNs,
+                request.LogPerformanceDiagnostics,
+                out var deskewPackTimings,
+                zeroTimeOffset: true);
+            encodeDiagnostics.DeskewCountValidMs = deskewPackTimings.CountValidMs;
+            encodeDiagnostics.DeskewBufferRentMs = deskewPackTimings.BufferRentMs;
+            encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
+            encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
+            encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
+            var compensatedValidCount = compensatedPacked.PointStride == 0U
+                ? 0
+                : checked((int)(compensatedPacked.Data.Length / compensatedPacked.PointStride));
+            var frame = BuildPointCloud2NativeFrame(
+                request,
+                compensatedPacked,
+                compensatedValidCount,
+                referenceUnixNs,
+                request.MotionCompensation.Topic,
+                isMotionCompensatedVisualization: true);
+            deskewPackMs = DiagnosticElapsedMs(deskewPackStart);
+            return frame;
+        }
 
         private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
             PointCloud2NativeRequest request,

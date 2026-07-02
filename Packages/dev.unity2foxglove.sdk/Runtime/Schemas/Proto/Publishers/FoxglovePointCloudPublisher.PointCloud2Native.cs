@@ -47,9 +47,6 @@ namespace Unity.FoxgloveSDK.Components
             var motionSettings = ResolveMotionCompensationSettings();
             var publishRaw = motionSettings.PreserveRawOutput;
             var motionCompensation = TryCreateMotionCompensationRequest(
-                points,
-                pointCount,
-                unixNs,
                 motionSettings,
                 publishNativeFrame);
 

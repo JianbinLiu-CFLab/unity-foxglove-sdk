@@ -151,6 +151,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void PointCloud2BuilderCanPackReferenceFrameWithZeroedTimeOffsets()
+        {
+            var points = new[]
+            {
+                new VirtualLidarPointData { X = 1f, Y = 2f, Z = 3f, AcquisitionX = 9f, AcquisitionY = 9f, AcquisitionZ = 9f, HasAcquisitionFrame = 1, Intensity = 0.25f, Reflectivity = 0.5f, Ring = 7, TimeOffsetSeconds = 0.001f, IsValid = 1 },
+                new VirtualLidarPointData { X = 4f, Y = 5f, Z = 6f, AcquisitionX = 8f, AcquisitionY = 8f, AcquisitionZ = 8f, HasAcquisitionFrame = 1, Intensity = 0.75f, Reflectivity = 0.125f, Ring = 8, TimeOffsetSeconds = 0.002f, IsValid = 1 }
+            };
+
+            var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                points,
+                pointCount: points.Length,
+                emitAbsoluteTimeNs: true,
+                useAcquisitionFrameCoordinates: false,
+                zeroTimeOffset: true);
+
+            Assert.Equal(30U, packed.PointStride);
+            Assert.Equal(60, packed.Data.Length);
+            using var reader = new BinaryReader(new MemoryStream(packed.Data));
+            AssertPoint(reader, 1f, 2f, 3f, 0.25f, 0.5f, 7, 0f, 0U);
+            AssertPoint(reader, 4f, 5f, 6f, 0.75f, 0.125f, 8, 0f, 0U);
+            Assert.Equal(packed.Data.Length, reader.BaseStream.Position);
+        }
+
+        [Fact]
         public void DracoEncoderUsesPooledXyzWithoutSizingOutputFromRentalLength()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudNativeEncoder.cs");
