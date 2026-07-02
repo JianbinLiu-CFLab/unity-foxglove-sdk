@@ -36,7 +36,10 @@ namespace Unity.FoxgloveSDK.Components
 
             ResolveManager();
             if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
@@ -51,10 +54,16 @@ namespace Unity.FoxgloveSDK.Components
                 publishNativeFrame);
 
             if (!publishRaw && motionCompensation == null)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             if (publishRaw && !publishWebSocket && !publishBridge && !publishNativeFrame && motionCompensation == null)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             QueueVirtualLidarPointCloud2Native(
                 points,

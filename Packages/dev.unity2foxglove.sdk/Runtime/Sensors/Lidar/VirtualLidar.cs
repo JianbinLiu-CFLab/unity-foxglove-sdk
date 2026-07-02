@@ -299,7 +299,6 @@ namespace Unity.FoxgloveSDK.Components
 
             DisposeScanBuffers();
             _scanBuffers.Allocate(_scanPattern, _maxRaysPerScan);
-            _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
             _activeScanPointSnapshotCount = 0;
         }
 
@@ -307,8 +306,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             ScanScheduler.DrainPendingScan();
             _scanBuffers.Dispose();
-            _activeScanPointSnapshot = null;
-            _activeScanPointSnapshotCount = 0;
+            ReleaseActiveScanSnapshot();
         }
 
         private void OnDestroy()
@@ -512,15 +510,35 @@ namespace Unity.FoxgloveSDK.Components
             _activeScanPointSnapshotCount = 0;
             if (UseNativePointCloudSnapshotPath())
             {
-                if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _scanBuffers.EffectiveRayCount)
-                    _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
+                EnsureActiveScanSnapshotCapacity();
             }
             else
             {
+                ReleaseActiveScanSnapshot();
                 _activeScanFrame.Points.Clear();
                 if (_activeScanFrame.Points.Capacity < _scanBuffers.EffectiveRayCount)
                     _activeScanFrame.Points.Capacity = _scanBuffers.EffectiveRayCount;
             }
+        }
+
+        private void EnsureActiveScanSnapshotCapacity()
+        {
+            if (_activeScanPointSnapshot != null && _activeScanPointSnapshot.Length >= _scanBuffers.EffectiveRayCount)
+                return;
+
+            var nextSnapshot = VirtualLidarPointSnapshotPool.Rent(_scanBuffers.EffectiveRayCount);
+            if (_activeScanPointSnapshot != null && _activeScanPointSnapshotCount > 0)
+                Array.Copy(_activeScanPointSnapshot, nextSnapshot, Math.Min(_activeScanPointSnapshotCount, nextSnapshot.Length));
+
+            VirtualLidarPointSnapshotPool.Return(_activeScanPointSnapshot);
+            _activeScanPointSnapshot = nextSnapshot;
+        }
+
+        private void ReleaseActiveScanSnapshot()
+        {
+            VirtualLidarPointSnapshotPool.Return(_activeScanPointSnapshot);
+            _activeScanPointSnapshot = null;
+            _activeScanPointSnapshotCount = 0;
         }
 
         private bool UseNativePointCloudSnapshotPath()

@@ -15,7 +15,8 @@ namespace Unity.FoxgloveSDK.Components
     /// drain/stop lifecycle for point-cloud payload encoders.
     /// </summary>
     internal sealed class PointCloudEncodePipeline<TRequest, TResult>
-        where TRequest : class, IBackgroundEncodeRequest
+        where TRequest : class, IPointCloudWorkerRequest
+        where TResult : class, IPointCloudWorkerResult<TRequest>
     {
         private readonly BackgroundEncodePipeline<TRequest, TResult> _pipeline;
         private readonly List<TResult> _drainedResults = new List<TResult>();
@@ -54,7 +55,9 @@ namespace Unity.FoxgloveSDK.Components
                 threadName,
                 completedCapacity,
                 workerStopWaitMs,
-                encode);
+                encode,
+                onDropRequest: DropRequest,
+                onDropResult: DropResult);
 
             _isSuccess = isSuccess ?? throw new ArgumentNullException(nameof(isSuccess));
             _failureMessage = failureMessage ?? throw new ArgumentNullException(nameof(failureMessage));
@@ -102,16 +105,23 @@ namespace Unity.FoxgloveSDK.Components
 
             foreach (var result in _drainedResults)
             {
-                if (!_isSuccess(result))
+                try
                 {
-                    LogFailure(_failureMessage(result));
-                    continue;
-                }
+                    if (!_isSuccess(result))
+                    {
+                        LogFailure(_failureMessage(result));
+                        continue;
+                    }
 
-                _warnedFailure = false;
-                _failureCount = 0;
-                _warnedReplacedPending = false;
-                _publishCompleted(result);
+                    _warnedFailure = false;
+                    _failureCount = 0;
+                    _warnedReplacedPending = false;
+                    _publishCompleted(result);
+                }
+                finally
+                {
+                    DropResult(result);
+                }
             }
 
             onResultsProcessed?.Invoke();
@@ -142,6 +152,17 @@ namespace Unity.FoxgloveSDK.Components
 
             _warnedFailure = true;
             _logWarning(_formatFailureWarning(message));
+        }
+
+        private static void DropRequest(TRequest request)
+            => request?.RecycleSourceSnapshot();
+
+        private static void DropResult(TResult result)
+        {
+            if (result == null)
+                return;
+
+            result.Request.RecycleSourceSnapshot();
         }
     }
 }

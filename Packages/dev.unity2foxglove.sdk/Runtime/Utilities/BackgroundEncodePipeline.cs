@@ -28,6 +28,8 @@ namespace Unity.FoxgloveSDK.Util
         private readonly Queue<TResult> _completed = new Queue<TResult>();
         private readonly Func<TRequest, TResult> _encode;
         private readonly Action<Exception> _onEncodeError;
+        private readonly Action<TRequest> _onDropRequest;
+        private readonly Action<TResult> _onDropResult;
         private readonly string _threadName;
         private readonly int _completedCapacity;
         private readonly int _stopWaitMs;
@@ -40,7 +42,9 @@ namespace Unity.FoxgloveSDK.Util
             int completedCapacity,
             int stopWaitMs,
             Func<TRequest, TResult> encode,
-            Action<Exception> onEncodeError = null)
+            Action<Exception> onEncodeError = null,
+            Action<TRequest> onDropRequest = null,
+            Action<TResult> onDropResult = null)
         {
             if (string.IsNullOrWhiteSpace(threadName))
                 throw new ArgumentException("Thread name is required.", nameof(threadName));
@@ -54,6 +58,8 @@ namespace Unity.FoxgloveSDK.Util
             _stopWaitMs = stopWaitMs;
             _encode = encode ?? throw new ArgumentNullException(nameof(encode));
             _onEncodeError = onEncodeError;
+            _onDropRequest = onDropRequest;
+            _onDropResult = onDropResult;
         }
 
         public bool Enqueue(TRequest request, out bool replacedPending, out string startError)
@@ -63,14 +69,18 @@ namespace Unity.FoxgloveSDK.Util
 
             var startWorker = false;
             var workerGeneration = 0;
+            TRequest replacedRequest;
             startError = null;
             lock (_worker.Gate)
             {
-                replacedPending = _pending != null;
+                replacedRequest = _pending;
+                replacedPending = replacedRequest != null;
                 workerGeneration = _worker.StartOrReuseLocked(out startWorker);
                 request.Generation = workerGeneration;
                 _pending = request;
             }
+
+            DropRequest(replacedRequest);
 
             if (!startWorker)
                 return true;
@@ -82,9 +92,19 @@ namespace Unity.FoxgloveSDK.Util
             }
             catch (Exception ex)
             {
+                TRequest droppedRequest = null;
                 lock (_worker.Gate)
-                    _worker.MarkStartFailedIfCurrentLocked(workerGeneration);
+                {
+                    if (ReferenceEquals(_pending, request))
+                    {
+                        droppedRequest = _pending;
+                        _pending = null;
+                    }
 
+                    _worker.MarkStartFailedIfCurrentLocked(workerGeneration);
+                }
+
+                DropRequest(droppedRequest);
                 startError = ex.Message;
                 return false;
             }
@@ -116,18 +136,30 @@ namespace Unity.FoxgloveSDK.Util
         public bool Stop(bool clearCompleted, out bool waitedForWorker)
         {
             var shouldWait = false;
+            TRequest pendingRequest;
+            List<TResult> droppedResults = null;
             lock (_worker.Gate)
             {
                 _worker.RequestStopLocked();
+                pendingRequest = _pending;
                 _pending = null;
                 shouldWait = _worker.IsRunning;
                 if (clearCompleted)
                 {
+                    if (_completed.Count > 0)
+                    {
+                        droppedResults = new List<TResult>(_completed.Count);
+                        droppedResults.AddRange(_completed);
+                    }
+
                     _completed.Clear();
                     _droppedCompletedCount = 0;
                     _encodeErrorCount = 0;
                 }
             }
+
+            DropRequest(pendingRequest);
+            DropResults(droppedResults);
 
             waitedForWorker = shouldWait;
             if (!shouldWait)
@@ -178,7 +210,10 @@ namespace Unity.FoxgloveSDK.Util
                     }
 
                     if (request.Generation != workerGeneration)
+                    {
+                        DropRequest(request);
                         continue;
+                    }
 
                     TResult result;
                     try
@@ -203,23 +238,40 @@ namespace Unity.FoxgloveSDK.Util
                             // Diagnostics callbacks must not terminate the worker.
                         }
 
+                        DropRequest(request);
                         continue;
                     }
 
+                    var shouldDropResult = false;
+                    List<TResult> droppedResults = null;
                     lock (_worker.Gate)
                     {
                         if (_worker.ShouldStopLocked(workerGeneration)
                             || request.Generation != workerGeneration)
-                            continue;
-
-                        while (_completed.Count >= _completedCapacity)
                         {
-                            _completed.Dequeue();
-                            _droppedCompletedCount++;
+                            shouldDropResult = true;
                         }
+                        else
+                        {
+                            while (_completed.Count >= _completedCapacity)
+                            {
+                                var droppedResult = _completed.Dequeue();
+                                droppedResults ??= new List<TResult>();
+                                droppedResults.Add(droppedResult);
+                                _droppedCompletedCount++;
+                            }
 
-                        _completed.Enqueue(result);
+                            _completed.Enqueue(result);
+                        }
                     }
+
+                    if (shouldDropResult)
+                    {
+                        DropResult(result);
+                        continue;
+                    }
+
+                    DropResults(droppedResults);
                 }
             }
             finally
@@ -231,6 +283,45 @@ namespace Unity.FoxgloveSDK.Util
                 if (signalIdle)
                     _worker.Idle.Set();
             }
+        }
+
+        private void DropRequest(TRequest request)
+        {
+            if (request == null || _onDropRequest == null)
+                return;
+
+            try
+            {
+                _onDropRequest(request);
+            }
+            catch
+            {
+                // Drop callbacks are cleanup paths and must not terminate workers.
+            }
+        }
+
+        private void DropResult(TResult result)
+        {
+            if (_onDropResult == null)
+                return;
+
+            try
+            {
+                _onDropResult(result);
+            }
+            catch
+            {
+                // Drop callbacks are cleanup paths and must not terminate workers.
+            }
+        }
+
+        private void DropResults(List<TResult> results)
+        {
+            if (results == null)
+                return;
+
+            foreach (var droppedResult in results)
+                DropResult(droppedResult);
         }
     }
 }

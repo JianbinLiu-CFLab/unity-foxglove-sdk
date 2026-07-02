@@ -361,7 +361,14 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             if (activeScanPointSnapshot == null || activeScanPointSnapshot.Length < scanBuffers.EffectiveRayCount)
-                activeScanPointSnapshot = new VirtualLidarPointData[scanBuffers.EffectiveRayCount];
+            {
+                var nextSnapshot = VirtualLidarPointSnapshotPool.Rent(scanBuffers.EffectiveRayCount);
+                if (activeScanPointSnapshot != null && activeScanPointSnapshotCount > 0)
+                    Array.Copy(activeScanPointSnapshot, nextSnapshot, Math.Min(activeScanPointSnapshotCount, nextSnapshot.Length));
+
+                VirtualLidarPointSnapshotPool.Return(activeScanPointSnapshot);
+                activeScanPointSnapshot = nextSnapshot;
+            }
 
             var writableLength = Math.Min(length, activeScanPointSnapshot.Length - activeScanPointSnapshotCount);
             if (writableLength <= 0)
