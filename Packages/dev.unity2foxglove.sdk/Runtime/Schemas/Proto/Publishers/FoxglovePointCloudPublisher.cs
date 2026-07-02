@@ -443,7 +443,7 @@ namespace Unity.FoxgloveSDK.Components
                     message => "[Foxglove] Draco point-cloud mode disabled: " + message,
                     PublishCompletedDracoPayload,
                     Debug.LogWarning,
-                    Debug.Log,
+                    LogPointCloudDropDiagnostic,
                     "[Foxglove] Draco point-cloud encode request replaced; stale pending encode dropped.",
                     "Unable to queue background Draco encode: ",
                     dropped => $"[Foxglove] Draco point-cloud encode results dropped before main-thread drain: {dropped}.",
@@ -463,7 +463,7 @@ namespace Unity.FoxgloveSDK.Components
                     message => "[Foxglove] PointCloud2 native mode disabled: " + message,
                     PublishCompletedPointCloud2NativePayload,
                     Debug.LogWarning,
-                    Debug.Log,
+                    LogPointCloudDropDiagnostic,
                     "[Foxglove] PointCloud2 native request replaced; stale pending payload dropped.",
                     "Unable to queue background PointCloud2 pack: ",
                     dropped => $"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {dropped}.",
@@ -471,6 +471,9 @@ namespace Unity.FoxgloveSDK.Components
                     PointCloud2NativeFailureWarningIntervalFrames);
             }
         }
+
+        private static void LogPointCloudDropDiagnostic(string message)
+            => Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", message ?? string.Empty);
 
 
 
