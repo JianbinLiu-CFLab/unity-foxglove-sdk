@@ -49,16 +49,41 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     {
         /// <summary>Create packed point-cloud data.</summary>
         public PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data)
-            : this(pointStride, fields, data, ownsPooledData: false)
+            : this(pointStride, fields, data, ownsPooledData: false, validPointCount: null, preferPooledDataRetention: false)
         {
         }
 
         internal PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data, bool ownsPooledData)
+            : this(pointStride, fields, data, ownsPooledData, validPointCount: null, preferPooledDataRetention: false)
+        {
+        }
+
+        internal PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data, bool ownsPooledData, int? validPointCount)
+            : this(pointStride, fields, data, ownsPooledData, validPointCount, preferPooledDataRetention: false)
+        {
+        }
+
+        internal PointCloudPackedData(
+            uint pointStride,
+            IReadOnlyList<PointCloudPackedField> fields,
+            byte[] data,
+            bool ownsPooledData,
+            int? validPointCount,
+            bool preferPooledDataRetention)
         {
             PointStride = pointStride;
             Fields = fields ?? Array.Empty<PointCloudPackedField>();
             Data = data ?? Array.Empty<byte>();
+            if (PointStride != 0U && (ulong)Data.Length % PointStride != 0UL)
+                throw new ArgumentException("Packed point-cloud data length must be an even multiple of point stride.", nameof(data));
+
+            PointCount = PointStride == 0U ? 0 : checked((int)((ulong)Data.Length / PointStride));
+            ValidPointCount = validPointCount ?? PointCount;
+            if (ValidPointCount < 0 || ValidPointCount > PointCount)
+                throw new ArgumentOutOfRangeException(nameof(validPointCount));
+
             OwnsPooledData = ownsPooledData && Data.Length != 0;
+            PreferPooledDataRetention = OwnsPooledData && preferPooledDataRetention;
         }
 
         /// <summary>Bytes per packed point.</summary>
@@ -70,7 +95,12 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         /// that need to retain mutable data should clone it first.
         /// </summary>
         public byte[] Data { get; }
+        /// <summary>Number of point slots stored in <see cref="Data"/>.</summary>
+        public int PointCount { get; }
+        /// <summary>Number of valid source points represented by the payload.</summary>
+        public int ValidPointCount { get; }
         internal bool OwnsPooledData { get; }
+        internal bool PreferPooledDataRetention { get; }
     }
 
     /// <summary>Builds the shared packed PointCloud.data layout.</summary>
@@ -242,6 +272,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         private const long MaxRetainedBytes = 64L * 1024L * 1024L;
         private static readonly object Gate = new object();
         private static readonly Dictionary<int, Stack<byte[]>> BuffersBySize = new Dictionary<int, Stack<byte[]>>();
+        private static readonly HashSet<int> PreferredSizes = new HashSet<int>();
         private static long RetainedBytes;
 
         public static byte[] Rent(int length)
@@ -286,6 +317,9 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         }
 
         public static void Return(byte[] buffer)
+            => Return(buffer, preferRetention: false);
+
+        public static void Return(byte[] buffer, bool preferRetention)
         {
             if (buffer == null || buffer.Length == 0)
                 return;
@@ -294,6 +328,12 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
             lock (Gate)
             {
+                if (preferRetention)
+                {
+                    PreferredSizes.Add(buffer.Length);
+                    EvictNonPreferredBuffersFor(buffer.Length, buffer.Length);
+                }
+
                 if (!BuffersBySize.TryGetValue(buffer.Length, out var buffers))
                 {
                     buffers = new Stack<byte[]>(MaxBuffersPerSize);
@@ -305,6 +345,27 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     buffers.Push(buffer);
                     RetainedBytes += buffer.Length;
                 }
+            }
+        }
+
+        private static void EvictNonPreferredBuffersFor(int requestedBytes, int preferredSize)
+        {
+            while (RetainedBytes + requestedBytes > MaxRetainedBytes)
+            {
+                var evicted = false;
+                foreach (var pair in BuffersBySize)
+                {
+                    if (pair.Key == preferredSize || PreferredSizes.Contains(pair.Key) || pair.Value.Count == 0)
+                        continue;
+
+                    pair.Value.Pop();
+                    RetainedBytes -= pair.Key;
+                    evicted = true;
+                    break;
+                }
+
+                if (!evicted)
+                    break;
             }
         }
     }

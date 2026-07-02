@@ -71,13 +71,44 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void PointCloud2PooledDeskewBuffersArePreferredOverOneShotRawSizes()
+        {
+            var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
+            var payloads = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerPayloads.cs");
+            var frame = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2NativeFrame.cs");
+
+            Assert.Contains("preferRetention", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("EvictNonPreferredBuffersFor", packedBuilder, StringComparison.Ordinal);
+            Assert.True(
+                payloads.IndexOf("MotionCompensatedNativeFrame?.RecycleData()", StringComparison.Ordinal)
+                < payloads.IndexOf("NativeFrame?.RecycleData()", StringComparison.Ordinal));
+            Assert.Contains("PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention)", frame, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloud2PreferredPooledBuffersCanEvictNoisyExactSizes()
+        {
+            const int preferredLength = 983040;
+            for (var i = 0; i < 80; i++)
+                PointCloudPackedByteBufferPool.Return(new byte[900000 + i]);
+
+            PointCloudPackedByteBufferPool.Return(new byte[preferredLength], preferRetention: true);
+
+            var rented = PointCloudPackedByteBufferPool.Rent(preferredLength, out var reused);
+
+            Assert.True(reused);
+            Assert.Equal(preferredLength, rented.Length);
+        }
+
+        [Fact]
         public void PointCloud2BuilderUsesArraySpecializedVirtualLidarPackPath()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
 
             Assert.Contains("BuildVirtualLidarFullStride(VirtualLidarPointData[] points", source, StringComparison.Ordinal);
             Assert.Contains("var validCount = CountValid(points, pointCount);", source, StringComparison.Ordinal);
-            Assert.Contains("var capacity = ValidatePackedDataBudget(validCount, stride);", source, StringComparison.Ordinal);
+            Assert.Contains("var packedPointCount = preserveSourcePointCount ? pointCount : validCount;", source, StringComparison.Ordinal);
+            Assert.Contains("var capacity = ValidatePackedDataBudget(packedPointCount, stride);", source, StringComparison.Ordinal);
             Assert.Contains("private static int CountValid(VirtualLidarPointData[] points, int pointCount)", source, StringComparison.Ordinal);
             Assert.Contains("validCount++;", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Array.Resize(ref data, offset);", source, StringComparison.Ordinal);
@@ -148,6 +179,63 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             AssertPoint(reader, 1f, 2f, 3f, 0.25f, 0.5f, 7, 0.001f, 1_000_000U);
             AssertPoint(reader, 4f, 5f, 6f, 0.75f, 0.125f, 8, 0.002f, 2_000_000U);
             Assert.Equal(packed.Data.Length, reader.BaseStream.Position);
+        }
+
+        [Fact]
+        public void PointCloud2BuilderCanPreserveSourceWidthWithInvalidNanRows()
+        {
+            var points = new[]
+            {
+                new VirtualLidarPointData { X = 1f, Y = 2f, Z = 3f, Intensity = 0.25f, Reflectivity = 0.5f, Ring = 7, TimeOffsetSeconds = 0.001f, IsValid = 1 },
+                new VirtualLidarPointData { X = 99f, Y = 99f, Z = 99f, IsValid = 0 },
+                new VirtualLidarPointData { X = 4f, Y = 5f, Z = 6f, Intensity = 0.75f, Reflectivity = 0.125f, Ring = 8, TimeOffsetSeconds = 0.002f, IsValid = 1 }
+            };
+
+            var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
+                points,
+                pointCount: points.Length,
+                emitAbsoluteTimeNs: true,
+                preserveSourcePointCount: true);
+
+            Assert.Equal(30U, packed.PointStride);
+            Assert.Equal(90, packed.Data.Length);
+            Assert.Equal(3, packed.PointCount);
+            Assert.Equal(2, packed.ValidPointCount);
+            using var reader = new BinaryReader(new MemoryStream(packed.Data));
+            AssertPoint(reader, 1f, 2f, 3f, 0.25f, 0.5f, 7, 0.001f, 1_000_000U);
+            Assert.True(float.IsNaN(reader.ReadSingle()));
+            Assert.True(float.IsNaN(reader.ReadSingle()));
+            Assert.True(float.IsNaN(reader.ReadSingle()));
+            Assert.Equal(0f, reader.ReadSingle());
+            Assert.Equal(0f, reader.ReadSingle());
+            Assert.Equal((ushort)0, reader.ReadUInt16());
+            Assert.Equal(0f, reader.ReadSingle());
+            Assert.Equal(0U, reader.ReadUInt32());
+            AssertPoint(reader, 4f, 5f, 6f, 0.75f, 0.125f, 8, 0.002f, 2_000_000U);
+            Assert.Equal(packed.Data.Length, reader.BaseStream.Position);
+        }
+
+        [Fact]
+        public void PointCloud2NativeFrameTracksValidCountSeparatelyFromPublishedPointSlots()
+        {
+            var data = new byte[90];
+            var fields = new[] { new PointCloudPackedField("x", 0, PointCloudPackedNumericType.Float32) };
+
+            var frame = new PointCloud2NativeFrame(
+                unixNs: 1UL,
+                frameId: "lidar",
+                height: 1U,
+                width: 3U,
+                fields: fields,
+                pointStep: 30U,
+                data: data,
+                isDense: false,
+                validCount: 2);
+
+            Assert.Equal(3U, frame.Width);
+            Assert.Equal(90U, frame.RowStep);
+            Assert.Equal(2, frame.ValidCount);
+            Assert.False(frame.IsDense);
         }
 
         [Fact]

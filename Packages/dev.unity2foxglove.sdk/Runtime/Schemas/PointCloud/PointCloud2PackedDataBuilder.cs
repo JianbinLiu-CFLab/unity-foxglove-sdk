@@ -79,13 +79,15 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             int pointCount,
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates = false,
-            bool zeroTimeOffset = false)
+            bool zeroTimeOffset = false,
+            bool preserveSourcePointCount = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
                 zeroTimeOffset,
+                preserveSourcePointCount,
                 usePooledBuffer: false,
                 collectTimings: false,
                 out _);
@@ -95,13 +97,15 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             int pointCount,
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates = false,
-            bool zeroTimeOffset = false)
+            bool zeroTimeOffset = false,
+            bool preserveSourcePointCount = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
                 zeroTimeOffset,
+                preserveSourcePointCount,
                 usePooledBuffer: true,
                 collectTimings: false,
                 out _);
@@ -113,13 +117,15 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             bool collectTimings,
             out PointCloud2PackTimings timings,
             bool useAcquisitionFrameCoordinates = false,
-            bool zeroTimeOffset = false)
+            bool zeroTimeOffset = false,
+            bool preserveSourcePointCount = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
                 emitAbsoluteTimeNs,
                 useAcquisitionFrameCoordinates,
                 zeroTimeOffset,
+                preserveSourcePointCount,
                 usePooledBuffer: true,
                 collectTimings,
                 out timings);
@@ -130,6 +136,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates,
             bool zeroTimeOffset,
+            bool preserveSourcePointCount,
             bool usePooledBuffer,
             bool collectTimings,
             out PointCloud2PackTimings timings)
@@ -147,7 +154,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 timings.CountValidMs = ElapsedMilliseconds(countValidStart);
 
             var stride = emitAbsoluteTimeNs ? AbsoluteTimeStride : BaseStride;
-            var capacity = ValidatePackedDataBudget(validCount, stride);
+            var packedPointCount = preserveSourcePointCount ? pointCount : validCount;
+            var capacity = ValidatePackedDataBudget(packedPointCount, stride);
             var fields = BuildFields(emitAbsoluteTimeNs);
 
             var bufferReused = false;
@@ -167,7 +175,11 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 {
                     var point = points[i];
                     if (point.IsValid == 0)
+                    {
+                        if (preserveSourcePointCount)
+                            WriteInvalidPoint(data, ref offset, emitAbsoluteTimeNs);
                         continue;
+                    }
 
                     var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
                     WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionX : point.X);
@@ -184,7 +196,13 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
                 if (collectTimings)
                     timings.WriteLoopMs = ElapsedMilliseconds(writeLoopStart);
-                return new PointCloudPackedData(stride, fields, data, ownsPooledData: usePooledBuffer);
+                return new PointCloudPackedData(
+                    stride,
+                    fields,
+                    data,
+                    ownsPooledData: usePooledBuffer,
+                    validPointCount: validCount,
+                    preferPooledDataRetention: preserveSourcePointCount);
             }
             catch
             {
@@ -312,6 +330,19 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         {
             BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(offset, sizeof(uint)), value);
             offset += sizeof(uint);
+        }
+
+        private static void WriteInvalidPoint(byte[] data, ref int offset, bool emitAbsoluteTimeNs)
+        {
+            WriteSingleLittleEndian(data, ref offset, float.NaN);
+            WriteSingleLittleEndian(data, ref offset, float.NaN);
+            WriteSingleLittleEndian(data, ref offset, float.NaN);
+            WriteSingleLittleEndian(data, ref offset, 0f);
+            WriteSingleLittleEndian(data, ref offset, 0f);
+            WriteUInt16LittleEndian(data, ref offset, 0);
+            WriteSingleLittleEndian(data, ref offset, 0f);
+            if (emitAbsoluteTimeNs)
+                WriteUInt32LittleEndian(data, ref offset, 0U);
         }
 
         private static PointCloudPackedField Field(string name, uint offset, PointCloudPackedNumericType type)

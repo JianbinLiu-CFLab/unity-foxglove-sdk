@@ -399,8 +399,8 @@ namespace Unity.FoxgloveSDK.Components
 
         public void RecycleResultPayloads()
         {
-            NativeFrame?.RecycleData();
             MotionCompensatedNativeFrame?.RecycleData();
+            NativeFrame?.RecycleData();
         }
     }
 }

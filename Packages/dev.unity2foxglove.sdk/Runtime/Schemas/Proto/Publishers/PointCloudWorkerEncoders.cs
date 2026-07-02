@@ -137,8 +137,8 @@ namespace Unity.FoxgloveSDK.Components
                     encodeDiagnostics.RawWriteLoopMs = rawPackTimings.WriteLoopMs;
                     encodeDiagnostics.RawBufferLength = rawPackTimings.BufferLength;
                     encodeDiagnostics.RawBufferReused = rawPackTimings.BufferReused;
-                    validCount = packed.PointStride == 0U ? 0 : checked((int)(packed.Data.Length / packed.PointStride));
-                    nativeFrame = BuildPointCloud2NativeFrame(request, packed, validCount);
+                    validCount = packed.ValidPointCount;
+                    nativeFrame = BuildPointCloud2NativeFrame(request, packed);
 
                     byte[] ros2Payload = null;
                     if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
@@ -219,13 +219,9 @@ namespace Unity.FoxgloveSDK.Components
                                 encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
                                 encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
                                 encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
-                                var compensatedValidCount = compensatedPacked.PointStride == 0U
-                                    ? 0
-                                    : checked((int)(compensatedPacked.Data.Length / compensatedPacked.PointStride));
                                 motionCompensatedNativeFrame = BuildPointCloud2NativeFrame(
                                     request,
                                     compensatedPacked,
-                                    compensatedValidCount,
                                     compensatedReferenceUnixNs,
                                     request.MotionCompensation.Topic,
                                     isMotionCompensatedVisualization: true);
@@ -281,12 +277,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
             PointCloud2NativeRequest request,
-            PointCloudPackedData packed,
-            int validCount)
+            PointCloudPackedData packed)
             => BuildPointCloud2NativeFrame(
                 request,
                 packed,
-                validCount,
                 request.UnixNs,
                 request.NativeTopic,
                 isMotionCompensatedVisualization: false);
@@ -304,19 +298,16 @@ namespace Unity.FoxgloveSDK.Components
                 request.EmitAbsoluteTimeNs,
                 request.LogPerformanceDiagnostics,
                 out var deskewPackTimings,
-                zeroTimeOffset: true);
+                zeroTimeOffset: true,
+                preserveSourcePointCount: true);
             encodeDiagnostics.DeskewCountValidMs = deskewPackTimings.CountValidMs;
             encodeDiagnostics.DeskewBufferRentMs = deskewPackTimings.BufferRentMs;
             encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
             encodeDiagnostics.DeskewBufferLength = deskewPackTimings.BufferLength;
             encodeDiagnostics.DeskewBufferReused = deskewPackTimings.BufferReused;
-            var compensatedValidCount = compensatedPacked.PointStride == 0U
-                ? 0
-                : checked((int)(compensatedPacked.Data.Length / compensatedPacked.PointStride));
             var frame = BuildPointCloud2NativeFrame(
                 request,
                 compensatedPacked,
-                compensatedValidCount,
                 referenceUnixNs,
                 request.MotionCompensation.Topic,
                 isMotionCompensatedVisualization: true);
@@ -327,7 +318,6 @@ namespace Unity.FoxgloveSDK.Components
         private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(
             PointCloud2NativeRequest request,
             PointCloudPackedData packed,
-            int validCount,
             ulong unixNs,
             string topic,
             bool isMotionCompensatedVisualization)
@@ -336,14 +326,16 @@ namespace Unity.FoxgloveSDK.Components
                 unixNs,
                 request.FrameId,
                 height: 1U,
-                width: checked((uint)validCount),
+                width: checked((uint)packed.PointCount),
                 fields: packed.Fields,
                 pointStep: packed.PointStride,
                 data: packed.Data,
-                isDense: true,
+                isDense: packed.ValidPointCount == packed.PointCount,
                 topic: topic,
                 isMotionCompensatedVisualization: isMotionCompensatedVisualization,
-                ownsPooledData: packed.OwnsPooledData);
+                ownsPooledData: packed.OwnsPooledData,
+                validCount: packed.ValidPointCount,
+                preferPooledDataRetention: packed.PreferPooledDataRetention);
         }
 
         private static byte[] BuildPointCloud2NativePayload(PointCloud2NativeFrame frame)

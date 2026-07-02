@@ -231,6 +231,8 @@ namespace Unity.FoxgloveSDK.Tests
             var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
             var motionPublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs");
+            var nativeFrame = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2NativeFrame.cs");
+            var packedBuilder = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
             Check(MethodContains(lidar, "private void FixedUpdate()", "BeginLidarFixedUpdateTiming()")
                   && MethodContains(lidar, "private void FixedUpdate()", "LogLidarFixedUpdateTiming")
                   && MethodContains(lidar, "private static void LogLidarFixedUpdateTiming", "[LidarDiag] fixed-update timing:")
@@ -276,6 +278,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(MethodContains(encoders, "public static PointCloud2NativeResult EncodePointCloud2NativeRequest", "BuildScanReferenceDeskewedPointCloud2Frame")
                   && !MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "compensatedScratch"),
                 "140H2-5S: PointCloud2 native scan-reference deskew packs directly without a second point snapshot");
+            Check(MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "preserveSourcePointCount: true")
+                  && encoders.Contains("validCount: packed.ValidPointCount", StringComparison.Ordinal)
+                  && nativeFrame.Contains("validCount = -1", StringComparison.Ordinal),
+                "140H2-5T: PointCloud2 native deskew keeps stable source-width buffers with separate valid-count metadata");
+            Check(packedBuilder.Contains("EvictNonPreferredBuffersFor", StringComparison.Ordinal)
+                  && nativeFrame.Contains("PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention)", StringComparison.Ordinal)
+                  && payloads.IndexOf("MotionCompensatedNativeFrame?.RecycleData()", StringComparison.Ordinal)
+                     < payloads.IndexOf("NativeFrame?.RecycleData()", StringComparison.Ordinal),
+                "140H2-5U: PointCloud2 native deskew buffers are recycled before raw and preferred over one-shot raw sizes");
         }
 
         private static void ValidationRegistryExposesPhase140H2()
