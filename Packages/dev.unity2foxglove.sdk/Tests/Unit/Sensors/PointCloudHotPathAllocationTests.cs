@@ -33,7 +33,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.DoesNotContain("new MemoryStream", source, StringComparison.Ordinal);
             Assert.DoesNotContain("new BinaryWriter", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("BitConverter.TryWriteBytes", source, StringComparison.Ordinal);
             Assert.Contains("WriteSingleLittleEndian", source, StringComparison.Ordinal);
+            Assert.Contains("BitConverter.SingleToInt32Bits", source, StringComparison.Ordinal);
             Assert.Contains("BinaryPrimitives.WriteUInt16LittleEndian", source, StringComparison.Ordinal);
             Assert.Contains("BinaryPrimitives.WriteUInt32LittleEndian", source, StringComparison.Ordinal);
         }
@@ -50,6 +52,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("TryCompensateVirtualLidarInto", worker, StringComparison.Ordinal);
             Assert.Contains("TryCompensateVirtualLidarInto", compensator, StringComparison.Ordinal);
             Assert.DoesNotContain("ArrayPool<byte>.Shared.Rent", worker, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloud2BuilderUsesArraySpecializedVirtualLidarPackPath()
+        {
+            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
+
+            Assert.Contains("BuildVirtualLidarFullStride(VirtualLidarPointData[] points", source, StringComparison.Ordinal);
+            Assert.Contains("private static int CountValid(VirtualLidarPointData[] points, int pointCount)", source, StringComparison.Ordinal);
+            Assert.Contains("for (var i = 0; i < pointCount; i++)", source, StringComparison.Ordinal);
         }
 
         [Fact]

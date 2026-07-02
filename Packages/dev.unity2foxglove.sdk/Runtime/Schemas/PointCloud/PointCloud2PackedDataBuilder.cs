@@ -41,6 +41,62 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         /// Builds the full SLAM PointCloud2 field layout from compacted valid
         /// VirtualLidar rays without allocating PointCloudFrame.Points.
         /// </summary>
+        internal static PointCloudPackedData BuildVirtualLidarFullStride(VirtualLidarPointData[] points, bool emitAbsoluteTimeNs, bool useAcquisitionFrameCoordinates = false)
+        {
+            if (points == null)
+                throw new ArgumentNullException(nameof(points));
+
+            return BuildVirtualLidarFullStride(points, points.Length, emitAbsoluteTimeNs, useAcquisitionFrameCoordinates);
+        }
+
+        /// <summary>
+        /// Builds the full SLAM PointCloud2 field layout from the first
+        /// <paramref name="pointCount"/> native VirtualLidar source slots using
+        /// direct array indexing for worker hot paths.
+        /// </summary>
+        internal static PointCloudPackedData BuildVirtualLidarFullStride(
+            VirtualLidarPointData[] points,
+            int pointCount,
+            bool emitAbsoluteTimeNs,
+            bool useAcquisitionFrameCoordinates = false)
+        {
+            if (points == null)
+                throw new ArgumentNullException(nameof(points));
+            if (pointCount < 0 || pointCount > points.Length)
+                throw new ArgumentOutOfRangeException(nameof(pointCount));
+
+            var validCount = CountValid(points, pointCount);
+            var stride = emitAbsoluteTimeNs ? AbsoluteTimeStride : BaseStride;
+            var capacity = ValidatePackedDataBudget(validCount, stride);
+            var fields = BuildFields(emitAbsoluteTimeNs);
+
+            var data = new byte[capacity];
+            var offset = 0;
+            for (var i = 0; i < pointCount; i++)
+            {
+                var point = points[i];
+                if (point.IsValid == 0)
+                    continue;
+
+                var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
+                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionX : point.X);
+                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionY : point.Y);
+                WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionZ : point.Z);
+                WriteSingleLittleEndian(data, ref offset, point.Intensity);
+                WriteSingleLittleEndian(data, ref offset, point.Reflectivity);
+                WriteUInt16LittleEndian(data, ref offset, point.Ring);
+                WriteSingleLittleEndian(data, ref offset, point.TimeOffsetSeconds);
+                if (emitAbsoluteTimeNs)
+                    WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
+            }
+
+            return new PointCloudPackedData(stride, fields, data);
+        }
+
+        /// <summary>
+        /// Builds the full SLAM PointCloud2 field layout from compacted valid
+        /// VirtualLidar rays without allocating PointCloudFrame.Points.
+        /// </summary>
         internal static PointCloudPackedData BuildVirtualLidarFullStride(
             IReadOnlyList<VirtualLidarPointData> points,
             bool emitAbsoluteTimeNs,
@@ -95,6 +151,18 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return new PointCloudPackedData(stride, fields, data);
         }
 
+        private static int CountValid(VirtualLidarPointData[] points, int pointCount)
+        {
+            var validCount = 0;
+            for (var i = 0; i < pointCount; i++)
+            {
+                if (points[i].IsValid != 0)
+                    validCount++;
+            }
+
+            return validCount;
+        }
+
         private static int CountValid(IReadOnlyList<VirtualLidarPointData> points, int pointCount)
         {
             var validCount = 0;
@@ -126,11 +194,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         private static void WriteSingleLittleEndian(byte[] data, ref int offset, float value)
         {
-            var destination = data.AsSpan(offset, sizeof(float));
-            if (!BitConverter.TryWriteBytes(destination, value))
-                throw new InvalidOperationException("Unable to write PointCloud2 float field.");
-            if (!BitConverter.IsLittleEndian)
-                destination.Reverse();
+            BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(offset, sizeof(float)), BitConverter.SingleToInt32Bits(value));
             offset += sizeof(float);
         }
 
