@@ -218,6 +218,17 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_pendingProfileHash != scanBuffers.ComputeProfileHash())
             {
+                LogLidarBatchTiming(
+                    logPerformanceDiagnostics,
+                    _pendingScanId,
+                    _pendingBatchCount,
+                    0,
+                    completeMs,
+                    0d,
+                    0d,
+                    useNativeSnapshot,
+                    _pendingScanCrossingCount,
+                    fixedDeltaTime);
                 RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: false, profileInvalidation: true, fixedDeltaTime);
                 ClearPendingScan();
                 return;
@@ -270,6 +281,17 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var appendMs = DiagnosticElapsedMs(appendStart);
+            LogLidarBatchTiming(
+                logPerformanceDiagnostics,
+                _pendingScanId,
+                _pendingBatchCount,
+                validPoints,
+                completeMs,
+                buildMs,
+                appendMs,
+                useNativeSnapshot,
+                _pendingScanCrossingCount,
+                fixedDeltaTime);
             RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, validPoints, completeMs, buildMs, appendMs, asyncOverrun: false, profileInvalidation: false, fixedDeltaTime);
             ClearPendingScan();
         }
@@ -386,6 +408,37 @@ namespace Unity.FoxgloveSDK.Components
 
         private static double DiagnosticElapsedMs(long startTicks)
             => startTicks == 0L ? 0d : (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+
+        private void LogLidarBatchTiming(
+            bool logPerformanceDiagnostics,
+            int scanId,
+            int rayCount,
+            int validPointCount,
+            double completeMs,
+            double buildMs,
+            double appendMs,
+            bool nativeSnapshot,
+            int crossings,
+            float fixedDeltaTimeSeconds)
+        {
+            if (!logPerformanceDiagnostics)
+                return;
+
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                _logContext,
+                "[LidarDiag] batch timing: scanId={0} rays={1} valid={2} completeMs={3:F2} buildMs={4:F2} appendMs={5:F2} fixedDeltaMs={6:F2} nativeSnapshot={7} crossings={8}",
+                scanId,
+                rayCount,
+                validPointCount,
+                completeMs,
+                buildMs,
+                appendMs,
+                fixedDeltaTimeSeconds * 1000f,
+                nativeSnapshot,
+                crossings);
+        }
 
         private void RecordLidarDiagnostics(
             bool logPerformanceDiagnostics,

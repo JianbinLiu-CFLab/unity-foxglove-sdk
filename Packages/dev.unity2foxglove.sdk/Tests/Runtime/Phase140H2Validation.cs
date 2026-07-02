@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             VirtualImuDropDiagnosticsAreNonWarningAndThrottled();
             ManagerExposesOptInFrameStallDiagnostics();
             PointCloud2NativeDiagnosticsExposeRawDeskewAndR2fuTiming();
+            LidarAndPointCloudWorkerDiagnosticsExposeSubStageTiming();
             TransportAndBaseSchedulersRemainOutOfScope();
             ValidationRegistryExposesPhase140H2();
 
@@ -215,6 +216,51 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(bridge, "private void OnPointCloud2NativeFrameReady", "Ros2ForUnityPointCloud2MessageBuilder.Build(frame)")
                   && MethodContains(bridge, "private void OnPointCloud2NativeFrameReady", "publisher.Publish"),
                 "140H2-5J: R2FU PointCloud2 native bridge publish path records sub-stage timings");
+        }
+
+        private static void LidarAndPointCloudWorkerDiagnosticsExposeSubStageTiming()
+        {
+            var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
+            var scheduler = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
+            var lidarEditor = Read("Packages/dev.unity2foxglove.sdk/Editor/Sensors/VirtualLidarEditor.cs");
+            var payloads = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerPayloads.cs");
+            var encoders = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs");
+            Check(MethodContains(lidar, "private void FixedUpdate()", "BeginLidarFixedUpdateTiming()")
+                  && MethodContains(lidar, "private void FixedUpdate()", "LogLidarFixedUpdateTiming")
+                  && MethodContains(lidar, "private static void LogLidarFixedUpdateTiming", "[LidarDiag] fixed-update timing:")
+                  && MethodContains(lidar, "private static void LogLidarFixedUpdateTiming", "columnsToEmit")
+                  && MethodContains(lidar, "private static void LogLidarFixedUpdateTiming", "scheduleMs"),
+                "140H2-5K: VirtualLidar emits immediate FixedUpdate schedule timing diagnostics");
+            Check(lidarEditor.Contains("serializedObject.FindProperty(\"_logPerformanceDiagnostics\")", StringComparison.Ordinal)
+                  && lidarEditor.Contains("Log Performance Diagnostics", StringComparison.Ordinal),
+                "140H2-5P: VirtualLidar Inspector exposes the performance diagnostics toggle");
+            Check(scheduler.Contains("[LidarDiag] batch timing:", StringComparison.Ordinal)
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "completeMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "appendMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "nativeSnapshot")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "crossings"),
+                "140H2-5L: VirtualLidar scan scheduler emits immediate pending-batch timing diagnostics");
+            Check(payloads.Contains("RawPackMs", StringComparison.Ordinal)
+                  && payloads.Contains("RawPayloadBuildMs", StringComparison.Ordinal)
+                  && payloads.Contains("MotionCompensationMs", StringComparison.Ordinal)
+                  && payloads.Contains("DeskewPackMs", StringComparison.Ordinal)
+                  && payloads.Contains("LogPerformanceDiagnostics", StringComparison.Ordinal)
+                  && nativePublisher.Contains("_logPerformanceDiagnostics", StringComparison.Ordinal),
+                "140H2-5M: PointCloud2 native worker result carries sub-stage timings");
+            Check(encoders.Contains("rawPackStart", StringComparison.Ordinal)
+                  && encoders.Contains("rawPayloadBuildMs", StringComparison.Ordinal)
+                  && encoders.Contains("motionCompensationStart", StringComparison.Ordinal)
+                  && encoders.Contains("deskewPackStart", StringComparison.Ordinal)
+                  && encoders.Contains("DiagnosticStart(request.LogPerformanceDiagnostics)", StringComparison.Ordinal),
+                "140H2-5N: PointCloud2 native worker measures raw pack, payload, motion, and deskew stages");
+            Check(nativePublisher.Contains("LogPointCloud2NativeWorkerTiming(result)", StringComparison.Ordinal)
+                  && diagnostics.Contains("[Foxglove] PointCloud2 native worker timing:", StringComparison.Ordinal)
+                  && diagnostics.Contains("rawPackMs", StringComparison.Ordinal)
+                  && diagnostics.Contains("motionCompensationMs", StringComparison.Ordinal)
+                  && diagnostics.Contains("deskewPackMs", StringComparison.Ordinal),
+                "140H2-5O: point-cloud publisher logs worker sub-stage timings when diagnostics are enabled");
         }
 
         private static void ValidationRegistryExposesPhase140H2()

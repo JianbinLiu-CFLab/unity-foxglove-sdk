@@ -14,6 +14,7 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -426,6 +427,7 @@ namespace Unity.FoxgloveSDK.Components
                     return;
                 _scanColumnProgress -= columnsToEmit;
 
+                var scheduleStart = BeginLidarFixedUpdateTiming();
                 ScanScheduler.SchedulePendingScan(
                     columnsToEmit,
                     _logPerformanceDiagnostics,
@@ -442,7 +444,51 @@ namespace Unity.FoxgloveSDK.Components
                     _activeScanWorldToLocal,
                     RequiresNativeAcquisitionFrame(),
                     _scanBuffers);
+                LogLidarFixedUpdateTiming(
+                    _logPerformanceDiagnostics,
+                    this,
+                    columnsToEmit,
+                    budgetColumns,
+                    _scanColumnCursor,
+                    _scanColumnProgress,
+                    _scanBuffers.EffectiveRayCount,
+                    Time.fixedDeltaTime,
+                    ElapsedLidarFixedUpdateTiming(scheduleStart));
             }
+        }
+
+        private long BeginLidarFixedUpdateTiming()
+            => _logPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
+
+        private static double ElapsedLidarFixedUpdateTiming(long startTicks)
+            => startTicks == 0L ? 0d : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
+
+        private static void LogLidarFixedUpdateTiming(
+            bool logPerformanceDiagnostics,
+            UnityEngine.Object context,
+            int columnsToEmit,
+            int budgetColumns,
+            int scanColumnCursor,
+            double scanColumnProgress,
+            int effectiveRayCount,
+            float fixedDeltaTimeSeconds,
+            double scheduleMs)
+        {
+            if (!logPerformanceDiagnostics)
+                return;
+
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                context,
+                "[LidarDiag] fixed-update timing: columnsToEmit={0} budgetColumns={1} cursor={2} progress={3:F2} effectiveRays={4} fixedDeltaMs={5:F2} scheduleMs={6:F2}",
+                columnsToEmit,
+                budgetColumns,
+                scanColumnCursor,
+                scanColumnProgress,
+                effectiveRayCount,
+                fixedDeltaTimeSeconds * 1000f,
+                scheduleMs);
         }
 
         private void StartNewScan(double scanStartPhysSeconds)

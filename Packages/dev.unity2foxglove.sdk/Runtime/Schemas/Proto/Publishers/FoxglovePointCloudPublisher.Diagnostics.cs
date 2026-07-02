@@ -61,6 +61,32 @@ namespace Unity.FoxgloveSDK.Components
                 frame == null || frame.Data == null ? 0 : frame.Data.Length);
         }
 
+        private void LogPointCloud2NativeWorkerTiming(PointCloud2NativeResult result)
+        {
+            if (!_logPerformanceDiagnostics || result == null)
+                return;
+
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                this,
+                "[Foxglove] PointCloud2 native worker timing: topic={0} points={1} bytes={2} rawPackMs={3} rawPayloadBuildMs={4} motionCompensationMs={5} deskewPackMs={6} encodeMs={7} success={8}",
+                new object[]
+                {
+                    result.NativeFrame == null || string.IsNullOrWhiteSpace(result.NativeFrame.Topic)
+                        ? "(none)"
+                        : result.NativeFrame.Topic,
+                    result.ValidCount,
+                    result.PayloadBytes,
+                    FormatPointCloud2NativeMilliseconds(result.RawPackMs),
+                    FormatPointCloud2NativeMilliseconds(result.RawPayloadBuildMs),
+                    FormatPointCloud2NativeMilliseconds(result.MotionCompensationMs),
+                    FormatPointCloud2NativeMilliseconds(result.DeskewPackMs),
+                    FormatPointCloud2NativeMilliseconds(result.EncodeMs),
+                    result.Success
+                });
+        }
+
         private static double ElapsedPointCloud2NativeMilliseconds(long startTimestamp)
             => (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
 

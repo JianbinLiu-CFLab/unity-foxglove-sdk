@@ -104,27 +104,40 @@ namespace Unity.FoxgloveSDK.Components
                 PointCloud2NativeFrame motionCompensatedNativeFrame = null;
                 var validCount = 0;
                 var payloadBytes = 0;
+                var rawPackMs = 0d;
+                var rawPayloadBuildMs = 0d;
+                var motionCompensationMs = 0d;
+                var deskewPackMs = 0d;
 
                 try
                 {
+                    var rawPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
                     var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
                         request.LidarPoints,
                         request.LidarPointCount,
                         request.EmitAbsoluteTimeNs,
                         useAcquisitionFrameCoordinates: true);
+                    rawPackMs = DiagnosticElapsedMs(rawPackStart);
                     validCount = packed.PointStride == 0U ? 0 : checked((int)(packed.Data.Length / packed.PointStride));
                     nativeFrame = BuildPointCloud2NativeFrame(request, packed, validCount);
 
                     byte[] ros2Payload = null;
                     if (request.PublishWebSocket && request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
                     {
+                        var rawPayloadStart = DiagnosticStart(request.LogPerformanceDiagnostics);
                         ros2Payload = BuildPointCloud2NativePayload(nativeFrame);
+                        rawPayloadBuildMs += DiagnosticElapsedMs(rawPayloadStart);
                         webSocketPayload = ros2Payload;
                     }
 
                     if (request.PublishBridge)
                     {
-                        ros2Payload ??= BuildPointCloud2NativePayload(nativeFrame);
+                        if (ros2Payload == null)
+                        {
+                            var rawPayloadStart = DiagnosticStart(request.LogPerformanceDiagnostics);
+                            ros2Payload = BuildPointCloud2NativePayload(nativeFrame);
+                            rawPayloadBuildMs += DiagnosticElapsedMs(rawPayloadStart);
+                        }
                         bridgePayload = ros2Payload;
                     }
 
@@ -132,6 +145,7 @@ namespace Unity.FoxgloveSDK.Components
 
                     if (request.HasMotionCompensation)
                     {
+                        var motionCompensationStart = DiagnosticStart(request.LogPerformanceDiagnostics);
                         if (!PointCloudMotionCompensator.TryCompensateVirtualLidar(
                                 request.LidarPoints,
                                 request.LidarPointCount,
@@ -140,10 +154,13 @@ namespace Unity.FoxgloveSDK.Components
                                 out var compensated,
                                 out var compensationError))
                         {
+                            motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
                             error = "Unable to build motion-compensated PointCloud2 frame: " + compensationError;
                         }
                         else
                         {
+                            motionCompensationMs = DiagnosticElapsedMs(motionCompensationStart);
+                            var deskewPackStart = DiagnosticStart(request.LogPerformanceDiagnostics);
                             var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStride(
                                 compensated.Points,
                                 compensated.PointCount,
@@ -158,6 +175,7 @@ namespace Unity.FoxgloveSDK.Components
                                 compensated.ReferenceUnixNs,
                                 request.MotionCompensation.Topic,
                                 isMotionCompensatedVisualization: true);
+                            deskewPackMs = DiagnosticElapsedMs(deskewPackStart);
                         }
                     }
 
@@ -178,7 +196,11 @@ namespace Unity.FoxgloveSDK.Components
                     error,
                     validCount,
                     payloadBytes,
-                    ElapsedMs(encodeStart));
+                    ElapsedMs(encodeStart),
+                    rawPackMs,
+                    rawPayloadBuildMs,
+                    motionCompensationMs,
+                    deskewPackMs);
             }
             finally
             {
@@ -262,5 +284,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private static double ElapsedMs(long startTicks)
             => (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
+
+        private static long DiagnosticStart(bool enabled)
+            => enabled ? Stopwatch.GetTimestamp() : 0L;
+
+        private static double DiagnosticElapsedMs(long startTicks)
+            => startTicks == 0L ? 0d : ElapsedMs(startTicks);
     }
 }

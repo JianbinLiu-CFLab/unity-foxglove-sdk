@@ -162,6 +162,7 @@ namespace Unity.FoxgloveSDK.Components
                 publishBridge,
                 publishNativeFrame,
                 webSocketEncoding,
+                _logPerformanceDiagnostics,
                 nativeTopic,
                 motionCompensation);
             EnqueuePointCloud2NativeRequest(request);
@@ -179,6 +180,7 @@ namespace Unity.FoxgloveSDK.Components
         private void PublishCompletedPointCloud2NativePayload(PointCloud2NativeResult result)
         {
             _diagnostics.RecordPointCloud2NativeResult(_logPerformanceDiagnostics, result);
+            LogPointCloud2NativeWorkerTiming(result);
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
                 PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
 

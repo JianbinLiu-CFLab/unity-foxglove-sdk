@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _frameId, _columnStep, _maxRaysPerScan, _maxRangeMeters,
             _scanRateSource, _scanRateHzOverride,
             _layerMask, _publishEmptyFrames, _drawDebugRays;
+        private SerializedProperty _logPerformanceDiagnostics;
         private SerializedProperty _syntheticReflectivity, _syntheticIntensity;
 
         private void OnEnable()
@@ -31,6 +32,7 @@ namespace Unity.FoxgloveSDK.Editor
             _layerMask = serializedObject.FindProperty("_layerMask");
             _publishEmptyFrames = serializedObject.FindProperty("_publishEmptyFrames");
             _drawDebugRays = serializedObject.FindProperty("_drawDebugRays");
+            _logPerformanceDiagnostics = serializedObject.FindProperty("_logPerformanceDiagnostics");
             _syntheticReflectivity = serializedObject.FindProperty("_syntheticReflectivity");
             _syntheticIntensity = serializedObject.FindProperty("_syntheticIntensity");
         }
@@ -57,6 +59,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_layerMask);
             EditorGUILayout.PropertyField(_publishEmptyFrames);
             EditorGUILayout.PropertyField(_drawDebugRays);
+            EditorGUILayout.PropertyField(_logPerformanceDiagnostics, new GUIContent("Log Performance Diagnostics"));
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Synthetic Values", EditorStyles.boldLabel);

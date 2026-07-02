@@ -110,6 +110,7 @@ namespace Unity.FoxgloveSDK.Components
             bool publishBridge,
             bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding,
+            bool logPerformanceDiagnostics,
             string nativeTopic = null,
             PointCloudMotionCompensationRequest motionCompensation = null)
         {
@@ -122,6 +123,7 @@ namespace Unity.FoxgloveSDK.Components
             PublishBridge = publishBridge;
             PublishNativeFrame = publishNativeFrame;
             WebSocketEncoding = webSocketEncoding;
+            LogPerformanceDiagnostics = logPerformanceDiagnostics;
             NativeTopic = nativeTopic;
             MotionCompensation = motionCompensation;
         }
@@ -152,6 +154,9 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Effective websocket encoding selected when this request was queued.</summary>
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
+
+        /// <summary>True when worker sub-stage timing diagnostics should be captured.</summary>
+        public bool LogPerformanceDiagnostics { get; }
 
         /// <summary>Optional topic override for the raw native DDS frame.</summary>
         public string NativeTopic { get; }
@@ -230,7 +235,11 @@ namespace Unity.FoxgloveSDK.Components
             string error,
             int validCount,
             int payloadBytes,
-            double encodeMs)
+            double encodeMs,
+            double rawPackMs,
+            double rawPayloadBuildMs,
+            double motionCompensationMs,
+            double deskewPackMs)
         {
             Request = request;
             Success = success;
@@ -242,6 +251,10 @@ namespace Unity.FoxgloveSDK.Components
             ValidCount = validCount;
             PayloadBytes = payloadBytes;
             EncodeMs = encodeMs;
+            RawPackMs = rawPackMs;
+            RawPayloadBuildMs = rawPayloadBuildMs;
+            MotionCompensationMs = motionCompensationMs;
+            DeskewPackMs = deskewPackMs;
         }
 
         /// <summary>Original worker request.</summary>
@@ -273,5 +286,17 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Milliseconds spent on worker-side packing and optional deskew construction.</summary>
         public double EncodeMs { get; }
+
+        /// <summary>Milliseconds spent compacting the raw VirtualLidar snapshot into PointCloud2 storage.</summary>
+        public double RawPackMs { get; }
+
+        /// <summary>Milliseconds spent building raw ROS2 CDR payload bytes for websocket or bridge output.</summary>
+        public double RawPayloadBuildMs { get; }
+
+        /// <summary>Milliseconds spent computing motion compensation before deskewed PointCloud2 packing.</summary>
+        public double MotionCompensationMs { get; }
+
+        /// <summary>Milliseconds spent packing the deskewed visualization PointCloud2 frame.</summary>
+        public double DeskewPackMs { get; }
     }
 }
