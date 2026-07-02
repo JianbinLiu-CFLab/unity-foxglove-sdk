@@ -99,6 +99,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void PointCloudBackpressureDropsUseDiagnosticLogInsteadOfWarningStackTraces()
+        {
+            var pointCloudPipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudEncodePipeline.cs");
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("private readonly Action<string> _logDropDiagnostic;", pointCloudPipeline, StringComparison.Ordinal);
+            Assert.Contains("_logDropDiagnostic(_replacedPendingWarning);", pointCloudPipeline, StringComparison.Ordinal);
+            Assert.Contains("_logDropDiagnostic(_droppedCompletedWarning(droppedCompletedResults));", pointCloudPipeline, StringComparison.Ordinal);
+            Assert.DoesNotContain("_logWarning(_replacedPendingWarning);", pointCloudPipeline, StringComparison.Ordinal);
+            Assert.DoesNotContain("_logWarning(_droppedCompletedWarning(droppedCompletedResults));", pointCloudPipeline, StringComparison.Ordinal);
+            Assert.Contains("Debug.LogWarning,\n                    Debug.Log,\n                    \"[Foxglove] Draco point-cloud encode request replaced", publisher, StringComparison.Ordinal);
+            Assert.Contains("Debug.LogWarning,\n                    Debug.Log,\n                    \"[Foxglove] PointCloud2 native request replaced", publisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PointCloud2BuilderPacksOnlyValidPointsIntoExactSizedData()
         {
             var points = new[]

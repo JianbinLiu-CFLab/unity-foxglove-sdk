@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Func<string, string> _formatFailureWarning;
         private readonly Action<TResult> _publishCompleted;
         private readonly Action<string> _logWarning;
+        private readonly Action<string> _logDropDiagnostic;
         private readonly string _replacedPendingWarning;
         private readonly string _queueFailureMessagePrefix;
         private readonly Func<int, string> _droppedCompletedWarning;
@@ -45,6 +46,7 @@ namespace Unity.FoxgloveSDK.Components
             Func<string, string> formatFailureWarning,
             Action<TResult> publishCompleted,
             Action<string> logWarning,
+            Action<string> logDropDiagnostic,
             string replacedPendingWarning,
             string queueFailureMessagePrefix,
             Func<int, string> droppedCompletedWarning,
@@ -64,6 +66,7 @@ namespace Unity.FoxgloveSDK.Components
             _formatFailureWarning = formatFailureWarning ?? throw new ArgumentNullException(nameof(formatFailureWarning));
             _publishCompleted = publishCompleted ?? throw new ArgumentNullException(nameof(publishCompleted));
             _logWarning = logWarning ?? throw new ArgumentNullException(nameof(logWarning));
+            _logDropDiagnostic = logDropDiagnostic ?? throw new ArgumentNullException(nameof(logDropDiagnostic));
             _replacedPendingWarning = replacedPendingWarning;
             _queueFailureMessagePrefix = queueFailureMessagePrefix;
             _droppedCompletedWarning = droppedCompletedWarning ?? throw new ArgumentNullException(nameof(droppedCompletedWarning));
@@ -78,7 +81,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (logQosDrops && !_warnedReplacedPending)
                 {
-                    _logWarning(_replacedPendingWarning);
+                    _logDropDiagnostic(_replacedPendingWarning);
                     _warnedReplacedPending = true;
                 }
 
@@ -95,7 +98,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _pipeline.Drain(_drainedResults, out var droppedCompletedResults);
             if (droppedCompletedResults > 0 && logQosDrops)
-                _logWarning(_droppedCompletedWarning(droppedCompletedResults));
+                _logDropDiagnostic(_droppedCompletedWarning(droppedCompletedResults));
 
             if (droppedCompletedResults > 0)
                 onDroppedCompleted?.Invoke(droppedCompletedResults);
