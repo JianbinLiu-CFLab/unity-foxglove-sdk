@@ -65,20 +65,19 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             if (pointCount < 0 || pointCount > points.Length)
                 throw new ArgumentOutOfRangeException(nameof(pointCount));
 
+            var validCount = CountValid(points, pointCount);
             var stride = emitAbsoluteTimeNs ? AbsoluteTimeStride : BaseStride;
-            var capacity = ValidatePackedDataBudget(pointCount, stride);
+            var capacity = ValidatePackedDataBudget(validCount, stride);
             var fields = BuildFields(emitAbsoluteTimeNs);
 
             var data = new byte[capacity];
             var offset = 0;
-            var validCount = 0;
             for (var i = 0; i < pointCount; i++)
             {
                 var point = points[i];
                 if (point.IsValid == 0)
                     continue;
 
-                validCount++;
                 var useAcquisition = useAcquisitionFrameCoordinates && point.HasAcquisitionFrame != 0;
                 WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionX : point.X);
                 WriteSingleLittleEndian(data, ref offset, useAcquisition ? point.AcquisitionY : point.Y);
@@ -90,9 +89,6 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 if (emitAbsoluteTimeNs)
                     WriteUInt32LittleEndian(data, ref offset, PointCloudPackedDataBuilder.TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds));
             }
-
-            if (offset != data.Length)
-                Array.Resize(ref data, offset);
 
             return new PointCloudPackedData(stride, fields, data);
         }
@@ -153,6 +149,18 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             }
 
             return new PointCloudPackedData(stride, fields, data);
+        }
+
+        private static int CountValid(VirtualLidarPointData[] points, int pointCount)
+        {
+            var validCount = 0;
+            for (var i = 0; i < pointCount; i++)
+            {
+                if (points[i].IsValid != 0)
+                    validCount++;
+            }
+
+            return validCount;
         }
 
         private static int CountValid(IReadOnlyList<VirtualLidarPointData> points, int pointCount)
