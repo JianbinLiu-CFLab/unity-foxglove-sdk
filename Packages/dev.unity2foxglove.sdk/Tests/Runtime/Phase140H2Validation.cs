@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             VirtualImuCoalescesToLatestWebSocketSamples();
             VirtualImuDropDiagnosticsAreNonWarningAndThrottled();
             ManagerExposesOptInFrameStallDiagnostics();
+            PointCloud2NativeDiagnosticsExposeRawDeskewAndR2fuTiming();
             TransportAndBaseSchedulersRemainOutOfScope();
             ValidationRegistryExposesPhase140H2();
 
@@ -182,6 +183,38 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageManagerUpdateMs")
                   && editor.Contains("Stage Timing Diagnostics", StringComparison.Ordinal),
                 "140H2-5F: frame stall diagnostics can include manager Update sub-stage timings");
+        }
+
+        private static void PointCloud2NativeDiagnosticsExposeRawDeskewAndR2fuTiming()
+        {
+            var publisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
+            var nativePublisher = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Diagnostics.cs");
+            var bridge = Read("Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
+            Check(diagnostics.Contains("BeginPointCloud2NativeTiming", StringComparison.Ordinal)
+                  && diagnostics.Contains("LogPointCloud2NativeTiming", StringComparison.Ordinal)
+                  && diagnostics.Contains("[Foxglove] PointCloud2 native timing:", StringComparison.Ordinal)
+                  && publisher.Contains("public bool PerformanceDiagnosticsEnabled", StringComparison.Ordinal)
+                  && editor.Contains("serializedObject.FindProperty(\"_logPerformanceDiagnostics\")", StringComparison.Ordinal)
+                  && editor.Contains("Log Performance Diagnostics", StringComparison.Ordinal),
+                "140H2-5G: point-cloud publisher exposes opt-in PointCloud2 native timing diagnostics");
+            Check(MethodContains(publisher, "protected virtual void Update()", "var pointCloud2NativeDrainStart = BeginPointCloud2NativeTiming();")
+                  && MethodContains(publisher, "protected virtual void Update()", "LogPointCloud2NativeTiming(pointCloud2NativeDrainStart, \"pipelineDrain\""),
+                "140H2-5H: PointCloud2 native pipeline drain timing is recorded around main-thread result processing");
+            Check(MethodContains(nativePublisher, "private void PublishCompletedPointCloud2NativePayload", "\"rawNativeFrameReady\"")
+                  && MethodContains(nativePublisher, "private void PublishCompletedPointCloud2NativePayload", "\"deskewedNativeFrameReady\"")
+                  && MethodContains(nativePublisher, "private void PublishPointCloud2NativeFrameReady", "LogPointCloud2NativeTiming"),
+                "140H2-5I: raw and deskewed PointCloud2 native handoffs record separate timing stages");
+            Check(bridge.Contains("PointCloud2 native publish timing", StringComparison.Ordinal)
+                  && bridge.Contains("stageTryEnsurePublisherMs", StringComparison.Ordinal)
+                  && bridge.Contains("stageTfAnchorMs", StringComparison.Ordinal)
+                  && bridge.Contains("stageBuildMessageMs", StringComparison.Ordinal)
+                  && bridge.Contains("stagePublishMs", StringComparison.Ordinal)
+                  && bridge.Contains("stageTotalMs", StringComparison.Ordinal)
+                  && MethodContains(bridge, "private void OnPointCloud2NativeFrameReady", "Ros2ForUnityPointCloud2MessageBuilder.Build(frame)")
+                  && MethodContains(bridge, "private void OnPointCloud2NativeFrameReady", "publisher.Publish"),
+                "140H2-5J: R2FU PointCloud2 native bridge publish path records sub-stage timings");
         }
 
         private static void ValidationRegistryExposesPhase140H2()

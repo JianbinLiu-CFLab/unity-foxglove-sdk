@@ -127,7 +127,7 @@ namespace Unity.FoxgloveSDK.Components
                     data: packed.Data,
                     isDense: true,
                     topic: PointCloud2NativeTopic);
-                handler(nativeFrame);
+                PublishPointCloud2NativeFrameReady(nativeFrame, "preparedNativeFrameReady");
             }
             catch (Exception ex)
             {
@@ -186,15 +186,18 @@ namespace Unity.FoxgloveSDK.Components
                 PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
 
             if (result.Request.PublishNativeFrame && result.NativeFrame != null)
-                PublishPointCloud2NativeFrameReady(result.NativeFrame);
+                PublishPointCloud2NativeFrameReady(result.NativeFrame, "rawNativeFrameReady");
 
             if (result.MotionCompensatedNativeFrame != null)
-                PublishPointCloud2NativeFrameReady(result.MotionCompensatedNativeFrame);
+                PublishPointCloud2NativeFrameReady(result.MotionCompensatedNativeFrame, "deskewedNativeFrameReady");
             else if (result.Request.HasMotionCompensation && !string.IsNullOrWhiteSpace(result.Error))
                 WarnMotionCompensation("skipped: " + result.Error);
         }
 
         private void PublishPointCloud2NativeFrameReady(PointCloud2NativeFrame frame)
+            => PublishPointCloud2NativeFrameReady(frame, "nativeFrameReady");
+
+        private void PublishPointCloud2NativeFrameReady(PointCloud2NativeFrame frame, string stage)
         {
             if (frame == null)
                 return;
@@ -203,6 +206,7 @@ namespace Unity.FoxgloveSDK.Components
             if (handler == null)
                 return;
 
+            var timingStart = BeginPointCloud2NativeTiming();
             try
             {
                 handler(frame);
@@ -210,6 +214,10 @@ namespace Unity.FoxgloveSDK.Components
             catch (Exception ex)
             {
                 Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
+            }
+            finally
+            {
+                LogPointCloud2NativeTiming(timingStart, stage, frame);
             }
         }
     }

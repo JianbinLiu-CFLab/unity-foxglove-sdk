@@ -123,6 +123,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True when this publisher is configured for standard PointCloud2 native output.</summary>
         public bool IsPointCloud2NativeOutput => _outputMode == PointCloudOutputMode.PointCloud2Native;
 
+        /// <summary>True when opt-in point-cloud performance diagnostics should emit detailed timing logs.</summary>
+        public bool PerformanceDiagnosticsEnabled => _logPerformanceDiagnostics;
+
         /// <summary>Resolved publisher topic for optional native ROS2 PointCloud2 adapters.</summary>
         public string PointCloud2NativeTopic => string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic;
 
@@ -308,10 +311,15 @@ namespace Unity.FoxgloveSDK.Components
                 _logQosDrops,
                 dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
                 () => _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage));
+            var pointCloud2NativeDrainStart = BeginPointCloud2NativeTiming();
             _pointCloud2NativePipeline.Drain(
                 _logQosDrops,
                 dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
-                () => _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage));
+                () =>
+                {
+                    _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
+                    LogPointCloud2NativeTiming(pointCloud2NativeDrainStart, "pipelineDrain", PointCloud2NativeTopic, 0, 0);
+                });
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();

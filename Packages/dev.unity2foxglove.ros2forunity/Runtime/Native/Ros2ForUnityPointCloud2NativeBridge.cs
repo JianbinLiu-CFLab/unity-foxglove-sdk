@@ -7,11 +7,13 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using ROS2;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -332,21 +334,84 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (frame == null || !Ros2NativeOutputPolicy.Enabled || _owner.IsShuttingDown)
                     return;
 
+                var timingEnabled = ShouldLogPointCloud2NativeTiming;
+                var totalStart = BeginPointCloud2NativeTiming(timingEnabled);
                 if (!_owner.TryGetRos2Unity(out var ros2Unity))
                     return;
 
                 var frameTopic = ResolveFrameTopic(frame);
+                var ensurePublisherStart = BeginPointCloud2NativeTiming(timingEnabled);
                 if (!TryEnsurePublisher(ros2Unity, frameTopic, out var publisher))
-                    return;
+                {
+                    if (timingEnabled)
+                    {
+                        LogPointCloud2NativePublishTiming(
+                            frameTopic,
+                            frame,
+                            ElapsedPointCloud2NativeMilliseconds(ensurePublisherStart),
+                            0D,
+                            0D,
+                            0D,
+                            ElapsedPointCloud2NativeMilliseconds(totalStart),
+                            "publisherUnavailable");
+                    }
 
+                    return;
+                }
+
+                var ensurePublisherMs = ElapsedPointCloud2NativeMilliseconds(ensurePublisherStart);
+                var tfAnchorMs = 0D;
+                var buildMessageMs = 0D;
+                var publishMs = 0D;
+                var buildMessageStart = 0L;
+                var publishStart = 0L;
                 try
                 {
+                    var tfAnchorStart = BeginPointCloud2NativeTiming(timingEnabled);
                     PublishTfAnchor(frame);
-                    publisher.Publish(Ros2ForUnityPointCloud2MessageBuilder.Build(frame));
+                    tfAnchorMs = ElapsedPointCloud2NativeMilliseconds(tfAnchorStart);
+
+                    buildMessageStart = BeginPointCloud2NativeTiming(timingEnabled);
+                    var message = Ros2ForUnityPointCloud2MessageBuilder.Build(frame);
+                    buildMessageMs = ElapsedPointCloud2NativeMilliseconds(buildMessageStart);
+
+                    publishStart = BeginPointCloud2NativeTiming(timingEnabled);
+                    publisher.Publish(message);
+                    publishMs = ElapsedPointCloud2NativeMilliseconds(publishStart);
                     _warnedPublishFailure = false;
+                    if (timingEnabled)
+                    {
+                        LogPointCloud2NativePublishTiming(
+                            frameTopic,
+                            frame,
+                            ensurePublisherMs,
+                            tfAnchorMs,
+                            buildMessageMs,
+                            publishMs,
+                            ElapsedPointCloud2NativeMilliseconds(totalStart),
+                            "ok");
+                    }
                 }
                 catch (Exception ex)
                 {
+                    if (timingEnabled)
+                    {
+                        if (buildMessageStart != 0L && buildMessageMs == 0D)
+                            buildMessageMs = ElapsedPointCloud2NativeMilliseconds(buildMessageStart);
+                        if (publishStart != 0L && publishMs == 0D)
+                            publishMs = ElapsedPointCloud2NativeMilliseconds(publishStart);
+
+                        LogPointCloud2NativePublishTiming(
+                            frameTopic,
+                            frame,
+                            ensurePublisherMs,
+                            tfAnchorMs,
+                            buildMessageMs,
+                            publishMs,
+                            ElapsedPointCloud2NativeMilliseconds(totalStart),
+                            "failed");
+                    }
+
                     RecordPublishFailure("ROS2 PointCloud2 publish failed for " + frameTopic + ": " + ex.Message);
                 }
             }
@@ -516,6 +581,53 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 _warnedPublishFailure = true;
                 Debug.LogWarning("[Foxglove][R2FU] " + message);
+            }
+
+            private bool ShouldLogPointCloud2NativeTiming
+                => _source != null && _source.PerformanceDiagnosticsEnabled;
+
+            private static long BeginPointCloud2NativeTiming(bool enabled)
+                => enabled ? Stopwatch.GetTimestamp() : 0L;
+
+            private static double ElapsedPointCloud2NativeMilliseconds(long startTimestamp)
+                => startTimestamp == 0L
+                    ? 0D
+                    : (Stopwatch.GetTimestamp() - startTimestamp) * 1000.0 / Stopwatch.Frequency;
+
+            private static string FormatPointCloud2NativeMilliseconds(double milliseconds)
+                => milliseconds.ToString("F2", CultureInfo.InvariantCulture);
+
+            private void LogPointCloud2NativePublishTiming(
+                string topic,
+                PointCloud2NativeFrame frame,
+                double tryEnsurePublisherMs,
+                double tfAnchorMs,
+                double buildMessageMs,
+                double publishMs,
+                double totalMs,
+                string result)
+            {
+                if (!ShouldLogPointCloud2NativeTiming)
+                    return;
+
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    _source,
+                    "[Foxglove][R2FU] PointCloud2 native publish timing: topic={0} points={1} bytes={2} deskewed={3} result={4} stageTryEnsurePublisherMs={5} stageTfAnchorMs={6} stageBuildMessageMs={7} stagePublishMs={8} stageTotalMs={9}",
+                    new object[]
+                    {
+                        string.IsNullOrWhiteSpace(topic) ? "(none)" : topic,
+                        frame == null ? 0 : frame.ValidCount,
+                        frame == null || frame.Data == null ? 0 : frame.Data.Length,
+                        frame != null && frame.IsMotionCompensatedVisualization ? "true" : "false",
+                        string.IsNullOrWhiteSpace(result) ? "unknown" : result,
+                        FormatPointCloud2NativeMilliseconds(tryEnsurePublisherMs),
+                        FormatPointCloud2NativeMilliseconds(tfAnchorMs),
+                        FormatPointCloud2NativeMilliseconds(buildMessageMs),
+                        FormatPointCloud2NativeMilliseconds(publishMs),
+                        FormatPointCloud2NativeMilliseconds(totalMs)
+                    });
             }
 
             private void CleanupRos2()
