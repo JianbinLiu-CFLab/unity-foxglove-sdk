@@ -67,6 +67,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _enableMotionCompensation;
         [SerializeField] private PointCloudMotionCompensationOutputPolicy _motionCompensationOutputPolicy = PointCloudMotionCompensationOutputPolicy.RawAndDeskewedTopic;
         [SerializeField] private string _deskewedPointCloud2NativeTopic = PointCloudMotionCompensationOptions.DefaultDeskewedTopic;
+        [Tooltip("Optional cap for deskewed PointCloud2 visualization output. Set 0 to publish a deskewed frame for every eligible raw scan.")]
+        [SerializeField, Min(0f)] private float _deskewedPointCloud2NativeMaxPublishRateHz = 2f;
         [SerializeField] private PointCloudMotionCompensationReferenceTime _motionCompensationReferenceTime = PointCloudMotionCompensationReferenceTime.ScanStart;
         [SerializeField] private PointCloudMotionCompensationSource _motionCompensationSource = PointCloudMotionCompensationSource.SensorTransform;
 
@@ -85,8 +87,11 @@ namespace Unity.FoxgloveSDK.Components
         private readonly PointCloudPublishDiagnostics _diagnostics = new PointCloudPublishDiagnostics();
         private readonly SensorMotionPoseHistory _motionPoseHistory = new SensorMotionPoseHistory();
         private ulong _lastNativeDracoPublishUnixNs;
+        private ulong _lastDeskewedPointCloud2NativePublishUnixNs;
         private float _cachedNativeDracoMaxPublishRateHz = float.NaN;
         private ulong _cachedNativeDracoPublishIntervalNs;
+        private float _cachedDeskewedPointCloud2NativeMaxPublishRateHz = float.NaN;
+        private ulong _cachedDeskewedPointCloud2NativePublishIntervalNs;
         private int _unityThreadId;
         private int _motionCompensationWarningCount;
 
@@ -205,6 +210,7 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnDisable()
         {
             _lastNativeDracoPublishUnixNs = 0UL;
+            _lastDeskewedPointCloud2NativePublishUnixNs = 0UL;
             _motionCompensationWarningCount = 0;
             _motionPoseHistory.Clear();
             _pendingFrameSlot.Take();

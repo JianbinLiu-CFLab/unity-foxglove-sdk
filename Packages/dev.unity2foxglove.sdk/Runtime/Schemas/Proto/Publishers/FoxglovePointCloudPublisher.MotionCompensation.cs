@@ -51,6 +51,40 @@ namespace Unity.FoxgloveSDK.Components
                 _motionPoseHistory.Snapshot());
         }
 
+        private bool ShouldQueueDeskewedPointCloud2Frame(ulong unixNs)
+        {
+            var rateHz = _deskewedPointCloud2NativeMaxPublishRateHz;
+            if (rateHz <= 0f)
+                return true;
+
+            var intervalNs = ResolveDeskewedPointCloud2NativePublishIntervalNs(rateHz);
+            var timestampNs = unixNs == 0UL ? FoxgloveTimeUtil.NowUnixTimeNs() : unixNs;
+
+            if (_lastDeskewedPointCloud2NativePublishUnixNs != 0UL
+                && timestampNs >= _lastDeskewedPointCloud2NativePublishUnixNs
+                && timestampNs - _lastDeskewedPointCloud2NativePublishUnixNs < intervalNs)
+            {
+                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
+                return false;
+            }
+
+            // A backward clock jump, usually from replay seek or sensor clock reset,
+            // intentionally resets the deskewed visualization cadence baseline.
+            _lastDeskewedPointCloud2NativePublishUnixNs = timestampNs;
+            return true;
+        }
+
+        private ulong ResolveDeskewedPointCloud2NativePublishIntervalNs(float rateHz)
+        {
+            if (!rateHz.Equals(_cachedDeskewedPointCloud2NativeMaxPublishRateHz))
+            {
+                _cachedDeskewedPointCloud2NativeMaxPublishRateHz = rateHz;
+                _cachedDeskewedPointCloud2NativePublishIntervalNs = (ulong)Math.Max(1d, Math.Round(1_000_000_000d / rateHz));
+            }
+
+            return _cachedDeskewedPointCloud2NativePublishIntervalNs;
+        }
+
         private void WarnMotionCompensation(string reason)
         {
             if (_motionCompensationWarningCount < int.MaxValue)

@@ -200,7 +200,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly VirtualLidarScanClock _scanClock = new VirtualLidarScanClock();
         private readonly VirtualLidarScanBuffers _scanBuffers = new VirtualLidarScanBuffers();
         private readonly VirtualLidarScanFramePublisher _scanFramePublisher = new VirtualLidarScanFramePublisher();
-        private Action _onScanBoundary;
+        private LidarScanBoundaryHandler _onScanBoundary;
         private VirtualLidarScanScheduler _scanScheduler;
 
         private static readonly ProfilerMarker UpdateMarker = new ProfilerMarker("VirtualLidar.Update");
@@ -219,12 +219,16 @@ namespace Unity.FoxgloveSDK.Components
 
         private VirtualLidarScanScheduler ScanScheduler => _scanScheduler ??= new VirtualLidarScanScheduler(this);
 
-        private Action OnScanBoundaryAction => _onScanBoundary ??= new Action(OnScanBoundary);
+        private LidarScanBoundaryHandler OnScanBoundaryAction => _onScanBoundary ??= OnScanBoundary;
 
-        private void OnScanBoundary()
+        private void OnScanBoundary(ref LidarScanBoundaryTimings timings)
         {
-            PublishActiveScan();
+            var publishStart = timings.Start();
+            PublishActiveScan(ref timings);
+            timings.PublishActiveScanMs += timings.ElapsedMs(publishStart);
+            var startNewScanStart = timings.Start();
             StartNewScan(Time.fixedTimeAsDouble);
+            timings.StartNewScanMs += timings.ElapsedMs(startNewScanStart);
         }
 
         private void Start()
@@ -547,7 +551,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool RequiresNativeAcquisitionFrame()
             => _pointCloudPublisher != null && _pointCloudPublisher.RequiresVirtualLidarAcquisitionFrame;
 
-        private void PublishActiveScan()
+        private void PublishActiveScan(ref LidarScanBoundaryTimings timings)
         {
             if (_activeScanFrame == null)
                 return;
@@ -558,7 +562,8 @@ namespace Unity.FoxgloveSDK.Components
                 _activeScanFrame,
                 _activeScanValidPoints,
                 ref _activeScanPointSnapshot,
-                ref _activeScanPointSnapshotCount);
+                ref _activeScanPointSnapshotCount,
+                ref timings);
 
             LastFrame = _activeScanFrame;
             _frameCounter++;

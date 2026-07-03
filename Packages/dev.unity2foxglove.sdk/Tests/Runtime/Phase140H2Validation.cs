@@ -247,6 +247,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "appendMs")
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "copyMs")
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "boundaryPublishMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "publishActiveScanMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "motionRequestMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "enqueueMs")
+                  && MethodContains(scheduler, "private void LogLidarBatchTiming", "startNewScanMs")
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "nativeSnapshot")
                   && MethodContains(scheduler, "private void LogLidarBatchTiming", "crossings"),
                 "140H2-5L: VirtualLidar scan scheduler emits immediate pending-batch timing diagnostics");
@@ -278,10 +282,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(MethodContains(encoders, "public static PointCloud2NativeResult EncodePointCloud2NativeRequest", "BuildScanReferenceDeskewedPointCloud2Frame")
                   && !MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "compensatedScratch"),
                 "140H2-5S: PointCloud2 native scan-reference deskew packs directly without a second point snapshot");
-            Check(MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "preserveSourcePointCount: true")
+            Check(MethodContains(encoders, "public static PointCloud2NativeResult EncodePointCloud2NativeRequest", "preserveSourcePointCount: true")
+                  && MethodContains(encoders, "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame", "preserveSourcePointCount: true")
                   && encoders.Contains("validCount: packed.ValidPointCount", StringComparison.Ordinal)
                   && nativeFrame.Contains("validCount = -1", StringComparison.Ordinal),
-                "140H2-5T: PointCloud2 native deskew keeps stable source-width buffers with separate valid-count metadata");
+                "140H2-5T: PointCloud2 native raw and deskew keep stable source-width buffers with separate valid-count metadata");
             Check(packedBuilder.Contains("EvictNonPreferredBuffersFor", StringComparison.Ordinal)
                   && packedBuilder.Contains("MaxPreferredSizes", StringComparison.Ordinal)
                   && encoders.Contains("preferPooledBufferRetention: true", StringComparison.Ordinal)

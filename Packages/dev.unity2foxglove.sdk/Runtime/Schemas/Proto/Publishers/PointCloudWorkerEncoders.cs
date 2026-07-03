@@ -131,6 +131,7 @@ namespace Unity.FoxgloveSDK.Components
                         request.LogPerformanceDiagnostics,
                         out var rawPackTimings,
                         useAcquisitionFrameCoordinates: true,
+                        preserveSourcePointCount: true,
                         preferPooledBufferRetention: true);
                     rawPackMs = DiagnosticElapsedMs(rawPackStart);
                     encodeDiagnostics.RawCountValidMs = rawPackTimings.CountValidMs;

@@ -218,6 +218,11 @@ namespace Unity.FoxgloveSDK.Tests
                 RegexOptions.Singleline);
             Check(!dracoQueueTakesNativeFrameDemand && pointCloud2QueueTakesNativeFrameDemand,
                 "138L-2Yb: DDS native-frame demand stays on the PointCloud2 native queue, not the Draco queue");
+            Check(workerEncoders.Contains("useAcquisitionFrameCoordinates: true", StringComparison.Ordinal)
+                  && workerEncoders.Contains("preserveSourcePointCount: true", StringComparison.Ordinal)
+                  && workerEncoders.Contains("preferPooledBufferRetention: true", StringComparison.Ordinal)
+                  && workerEncoders.Contains("validCount: packed.ValidPointCount", StringComparison.Ordinal),
+                "138L-2Yc: PointCloud2Native worker keeps raw source-slot width stable while tracking valid points separately");
         }
 
         private static void SensorPointCloud2SchemaIsRegisteredWithoutChangingFoxgloveSnapshot()

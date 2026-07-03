@@ -86,7 +86,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         /// <summary>PointCloud2 height. Phase 138L emits unorganized clouds with height 1.</summary>
         public uint Height { get; }
 
-        /// <summary>PointCloud2 width, equal to compacted valid point count for unorganized clouds.</summary>
+        /// <summary>PointCloud2 width, equal to the published point-slot count for unorganized clouds.</summary>
         public uint Width { get; }
 
         /// <summary>Point field descriptors and byte offsets.</summary>
@@ -104,10 +104,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         /// </summary>
         public byte[] Data { get; }
 
-        /// <summary>True when invalid rays were compacted out of the payload.</summary>
+        /// <summary>True when every published point slot contains a valid point.</summary>
         public bool IsDense { get; }
 
-        /// <summary>Number of compacted valid points in the payload.</summary>
+        /// <summary>Number of valid points represented by the published point slots.</summary>
         public int ValidCount { get; }
 
         /// <summary>Optional per-frame output topic override for native DDS adapters.</summary>

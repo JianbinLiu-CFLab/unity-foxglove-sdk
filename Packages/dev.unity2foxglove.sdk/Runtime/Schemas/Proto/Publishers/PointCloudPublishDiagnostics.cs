@@ -6,6 +6,7 @@
 
 using System;
 using Unity.FoxgloveSDK.Schemas;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -110,5 +111,34 @@ namespace Unity.FoxgloveSDK.Components
             _encodeMsMax = 0d;
             _encodeResults = 0;
         }
+    }
+
+    internal delegate void LidarScanBoundaryHandler(ref LidarScanBoundaryTimings timings);
+
+    /// <summary>Sub-stage timing buckets captured inside a scan-boundary callback.</summary>
+    internal struct LidarScanBoundaryTimings
+    {
+        public LidarScanBoundaryTimings(bool enabled)
+        {
+            Enabled = enabled;
+            PublishActiveScanMs = 0d;
+            MotionRequestMs = 0d;
+            EnqueueMs = 0d;
+            StartNewScanMs = 0d;
+        }
+
+        public bool Enabled { get; }
+        public double PublishActiveScanMs;
+        public double MotionRequestMs;
+        public double EnqueueMs;
+        public double StartNewScanMs;
+
+        public long Start()
+            => Enabled ? Stopwatch.GetTimestamp() : 0L;
+
+        public double ElapsedMs(long startTicks)
+            => startTicks == 0L
+                ? 0d
+                : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
     }
 }

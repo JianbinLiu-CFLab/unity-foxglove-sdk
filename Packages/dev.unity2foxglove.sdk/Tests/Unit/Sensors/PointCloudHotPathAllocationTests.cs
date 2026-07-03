@@ -71,6 +71,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void PointCloud2DeskewRateGateRunsBeforeMotionRequestCreation()
+        {
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+            var nativePublisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.PointCloud2Native.cs");
+            var motionPublisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs");
+            var editor = Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
+
+            Assert.Contains("_deskewedPointCloud2NativeMaxPublishRateHz = 2f", publisher, StringComparison.Ordinal);
+            Assert.Contains("Deskewed Max Rate Hz", editor, StringComparison.Ordinal);
+            Assert.Contains("ShouldQueueDeskewedPointCloud2Frame(unixNs)", nativePublisher, StringComparison.Ordinal);
+            Assert.Contains("var queueDeskewedOutput = motionSettings.EmitDeskewedOutput", nativePublisher, StringComparison.Ordinal);
+            Assert.Contains("var motionCompensation = queueDeskewedOutput", nativePublisher, StringComparison.Ordinal);
+            Assert.True(
+                nativePublisher.IndexOf("ShouldQueueDeskewedPointCloud2Frame(unixNs)", StringComparison.Ordinal)
+                < nativePublisher.IndexOf("TryCreateMotionCompensationRequest(", StringComparison.Ordinal));
+            Assert.Contains("FoxgloveTimeUtil.NowUnixTimeNs()", motionPublisher, StringComparison.Ordinal);
+            Assert.Contains("_lastDeskewedPointCloud2NativePublishUnixNs = timestampNs", motionPublisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PointCloud2PooledDeskewBuffersArePreferredOverOneShotRawSizes()
         {
             var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
@@ -84,11 +104,37 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("EvictNonPreferredBuffersFor", packedBuilder, StringComparison.Ordinal);
             Assert.Contains("preferPooledBufferRetention", pointCloud2Builder, StringComparison.Ordinal);
             Assert.Contains("useAcquisitionFrameCoordinates: true", worker, StringComparison.Ordinal);
+            Assert.Contains("preserveSourcePointCount: true", worker, StringComparison.Ordinal);
             Assert.Contains("preferPooledBufferRetention: true", worker, StringComparison.Ordinal);
             Assert.True(
                 payloads.IndexOf("MotionCompensatedNativeFrame?.RecycleData()", StringComparison.Ordinal)
                 < payloads.IndexOf("NativeFrame?.RecycleData()", StringComparison.Ordinal));
             Assert.Contains("PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention)", frame, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloud2NativeWorkerKeepsRawSlotWidthStableForPoolReuse()
+        {
+            var worker = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+
+            var rawPackStart = worker.IndexOf("var rawPackStart", StringComparison.Ordinal);
+            var rawPackCall = worker.IndexOf(
+                "var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled",
+                rawPackStart,
+                StringComparison.Ordinal);
+            var nextPayloadStage = worker.IndexOf("byte[] ros2Payload = null;", rawPackCall, StringComparison.Ordinal);
+
+            Assert.True(rawPackStart >= 0);
+            Assert.True(rawPackCall >= rawPackStart);
+            Assert.True(nextPayloadStage > rawPackCall);
+
+            var rawPackBlock = worker.Substring(rawPackCall, nextPayloadStage - rawPackCall);
+            Assert.Contains("useAcquisitionFrameCoordinates: true", rawPackBlock, StringComparison.Ordinal);
+            Assert.Contains("preserveSourcePointCount: true", rawPackBlock, StringComparison.Ordinal);
+            Assert.Contains("preferPooledBufferRetention: true", rawPackBlock, StringComparison.Ordinal);
+            Assert.Contains("width: checked((uint)packed.PointCount)", worker, StringComparison.Ordinal);
+            Assert.Contains("isDense: packed.ValidPointCount == packed.PointCount", worker, StringComparison.Ordinal);
+            Assert.Contains("validCount: packed.ValidPointCount", worker, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -104,6 +150,52 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.True(reused);
             Assert.Equal(preferredLength, rented.Length);
+        }
+
+        [Fact]
+        public void PointCloud2StableSourceWidthPoolConvergesAcrossVariableValidCounts()
+        {
+            const int pointCount = 4096;
+            const int expectedBytes = pointCount * 30;
+            var points = new VirtualLidarPointData[pointCount];
+
+            PopulateLidarPoints(points, validModulo: 2);
+            var warmup = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                points,
+                pointCount,
+                emitAbsoluteTimeNs: true,
+                collectTimings: true,
+                out _,
+                useAcquisitionFrameCoordinates: true,
+                preserveSourcePointCount: true,
+                preferPooledBufferRetention: true);
+            PointCloudPackedByteBufferPool.Return(warmup.Data, preferRetention: true);
+
+            var reusedCount = 0;
+            const int measuredRuns = 20;
+            for (var run = 0; run < measuredRuns; run++)
+            {
+                PopulateLidarPoints(points, validModulo: 2 + run % 5);
+                var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                    points,
+                    pointCount,
+                    emitAbsoluteTimeNs: true,
+                    collectTimings: true,
+                    out var timings,
+                    useAcquisitionFrameCoordinates: true,
+                    preserveSourcePointCount: true,
+                    preferPooledBufferRetention: true);
+
+                Assert.Equal(expectedBytes, timings.BufferLength);
+                Assert.Equal(pointCount, packed.PointCount);
+                Assert.InRange(packed.ValidPointCount, 1, pointCount - 1);
+                if (timings.BufferReused)
+                    reusedCount++;
+
+                PointCloudPackedByteBufferPool.Return(packed.Data, preferRetention: true);
+            }
+
+            Assert.True(reusedCount >= 19, $"Expected stable-width raw buffers to reuse after warmup; reused {reusedCount}/{measuredRuns}.");
         }
 
         [Fact]
@@ -313,6 +405,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(ring, reader.ReadUInt16());
             Assert.Equal(timeOffsetSeconds, reader.ReadSingle());
             Assert.Equal(absoluteTimeNs, reader.ReadUInt32());
+        }
+
+        private static void PopulateLidarPoints(VirtualLidarPointData[] points, int validModulo)
+        {
+            for (var i = 0; i < points.Length; i++)
+            {
+                var valid = i % validModulo != 0;
+                points[i] = new VirtualLidarPointData
+                {
+                    X = i,
+                    Y = i * 0.5f,
+                    Z = i * 0.25f,
+                    AcquisitionX = i,
+                    AcquisitionY = i * 0.5f,
+                    AcquisitionZ = i * 0.25f,
+                    HasAcquisitionFrame = 1,
+                    Intensity = 0.5f,
+                    Reflectivity = 0.25f,
+                    Ring = (ushort)(i % 128),
+                    TimeOffsetSeconds = i * 0.000001f,
+                    IsValid = valid ? (byte)1 : (byte)0
+                };
+            }
         }
 
         private static string Text(string relativePath)
