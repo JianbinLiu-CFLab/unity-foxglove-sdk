@@ -74,11 +74,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         public void PointCloud2PooledDeskewBuffersArePreferredOverOneShotRawSizes()
         {
             var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
+            var pointCloud2Builder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2PackedDataBuilder.cs");
+            var worker = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
             var payloads = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerPayloads.cs");
             var frame = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloud2NativeFrame.cs");
 
             Assert.Contains("preferRetention", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("MaxPreferredSizes", packedBuilder, StringComparison.Ordinal);
             Assert.Contains("EvictNonPreferredBuffersFor", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("preferPooledBufferRetention", pointCloud2Builder, StringComparison.Ordinal);
+            Assert.Contains("useAcquisitionFrameCoordinates: true", worker, StringComparison.Ordinal);
+            Assert.Contains("preferPooledBufferRetention: true", worker, StringComparison.Ordinal);
             Assert.True(
                 payloads.IndexOf("MotionCompensatedNativeFrame?.RecycleData()", StringComparison.Ordinal)
                 < payloads.IndexOf("NativeFrame?.RecycleData()", StringComparison.Ordinal));
@@ -140,6 +146,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("DropRequest(replacedRequest)", backgroundPipeline, StringComparison.Ordinal);
             Assert.Contains("DropResult(droppedResult)", backgroundPipeline, StringComparison.Ordinal);
             Assert.Contains("result.Request.RecycleSourceSnapshot", pointCloudPipeline, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloudEncodeWorkerStaysWarmAcrossIdleScanBoundaries()
+        {
+            var backgroundPipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
+
+            Assert.Contains("AutoResetEvent _workerSignal", backgroundPipeline, StringComparison.Ordinal);
+            Assert.Contains("_workerSignal.Set();", backgroundPipeline, StringComparison.Ordinal);
+            Assert.Contains("_workerSignal.WaitOne();", backgroundPipeline, StringComparison.Ordinal);
+            Assert.DoesNotContain("if (request == null)\r\n                        {\r\n                            _worker.MarkStoppedIfCurrentLocked(workerGeneration);\r\n                            return;\r\n                        }", backgroundPipeline, StringComparison.Ordinal);
         }
 
         [Fact]

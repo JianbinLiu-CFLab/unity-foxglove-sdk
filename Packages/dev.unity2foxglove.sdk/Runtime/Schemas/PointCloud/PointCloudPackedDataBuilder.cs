@@ -269,10 +269,12 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     internal static class PointCloudPackedByteBufferPool
     {
         private const int MaxBuffersPerSize = 4;
+        private const int MaxPreferredSizes = 4;
         private const long MaxRetainedBytes = 64L * 1024L * 1024L;
         private static readonly object Gate = new object();
         private static readonly Dictionary<int, Stack<byte[]>> BuffersBySize = new Dictionary<int, Stack<byte[]>>();
         private static readonly HashSet<int> PreferredSizes = new HashSet<int>();
+        private static readonly List<int> PreferredSizeOrder = new List<int>(MaxPreferredSizes);
         private static long RetainedBytes;
 
         public static byte[] Rent(int length)
@@ -330,7 +332,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             {
                 if (preferRetention)
                 {
-                    PreferredSizes.Add(buffer.Length);
+                    RememberPreferredSize(buffer.Length);
                     EvictNonPreferredBuffersFor(buffer.Length, buffer.Length);
                 }
 
@@ -366,6 +368,27 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
                 if (!evicted)
                     break;
+            }
+        }
+
+        private static void RememberPreferredSize(int size)
+        {
+            var existingIndex = PreferredSizeOrder.IndexOf(size);
+            if (existingIndex >= 0)
+            {
+                PreferredSizeOrder.RemoveAt(existingIndex);
+            }
+            else
+            {
+                PreferredSizes.Add(size);
+            }
+
+            PreferredSizeOrder.Add(size);
+            while (PreferredSizeOrder.Count > MaxPreferredSizes)
+            {
+                var evictedSize = PreferredSizeOrder[0];
+                PreferredSizeOrder.RemoveAt(0);
+                PreferredSizes.Remove(evictedSize);
             }
         }
     }

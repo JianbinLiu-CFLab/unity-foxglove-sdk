@@ -130,7 +130,8 @@ namespace Unity.FoxgloveSDK.Components
                         request.EmitAbsoluteTimeNs,
                         request.LogPerformanceDiagnostics,
                         out var rawPackTimings,
-                        useAcquisitionFrameCoordinates: true);
+                        useAcquisitionFrameCoordinates: true,
+                        preferPooledBufferRetention: true);
                     rawPackMs = DiagnosticElapsedMs(rawPackStart);
                     encodeDiagnostics.RawCountValidMs = rawPackTimings.CountValidMs;
                     encodeDiagnostics.RawBufferRentMs = rawPackTimings.BufferRentMs;

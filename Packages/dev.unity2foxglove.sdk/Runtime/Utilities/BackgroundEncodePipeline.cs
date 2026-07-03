@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Util
         where TRequest : class, IBackgroundEncodeRequest
     {
         private readonly BackgroundWorkerLifecycle _worker = new BackgroundWorkerLifecycle();
+        private readonly AutoResetEvent _workerSignal = new AutoResetEvent(false);
         private readonly Queue<TResult> _completed = new Queue<TResult>();
         private readonly Func<TRequest, TResult> _encode;
         private readonly Action<Exception> _onEncodeError;
@@ -81,6 +82,7 @@ namespace Unity.FoxgloveSDK.Util
             }
 
             DropRequest(replacedRequest);
+            _workerSignal.Set();
 
             if (!startWorker)
                 return true;
@@ -158,6 +160,7 @@ namespace Unity.FoxgloveSDK.Util
                 }
             }
 
+            _workerSignal.Set();
             DropRequest(pendingRequest);
             DropResults(droppedResults);
 
@@ -202,11 +205,12 @@ namespace Unity.FoxgloveSDK.Util
 
                         request = _pending;
                         _pending = null;
-                        if (request == null)
-                        {
-                            _worker.MarkStoppedIfCurrentLocked(workerGeneration);
-                            return;
-                        }
+                    }
+
+                    if (request == null)
+                    {
+                        _workerSignal.WaitOne();
+                        continue;
                     }
 
                     if (request.Generation != workerGeneration)

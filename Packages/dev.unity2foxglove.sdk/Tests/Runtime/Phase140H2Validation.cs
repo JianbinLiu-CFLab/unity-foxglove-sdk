@@ -283,10 +283,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && nativeFrame.Contains("validCount = -1", StringComparison.Ordinal),
                 "140H2-5T: PointCloud2 native deskew keeps stable source-width buffers with separate valid-count metadata");
             Check(packedBuilder.Contains("EvictNonPreferredBuffersFor", StringComparison.Ordinal)
+                  && packedBuilder.Contains("MaxPreferredSizes", StringComparison.Ordinal)
+                  && encoders.Contains("preferPooledBufferRetention: true", StringComparison.Ordinal)
                   && nativeFrame.Contains("PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention)", StringComparison.Ordinal)
                   && payloads.IndexOf("MotionCompensatedNativeFrame?.RecycleData()", StringComparison.Ordinal)
                      < payloads.IndexOf("NativeFrame?.RecycleData()", StringComparison.Ordinal),
-                "140H2-5U: PointCloud2 native deskew buffers are recycled before raw and preferred over one-shot raw sizes");
+                "140H2-5U: PointCloud2 native raw and deskew hot buffers are preferred over noisy one-shot sizes");
+            var backgroundPipeline = Read("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
+            Check(backgroundPipeline.Contains("AutoResetEvent _workerSignal", StringComparison.Ordinal)
+                  && backgroundPipeline.Contains("_workerSignal.Set();", StringComparison.Ordinal)
+                  && backgroundPipeline.Contains("_workerSignal.WaitOne();", StringComparison.Ordinal)
+                  && !backgroundPipeline.Contains("_worker.MarkStoppedIfCurrentLocked(workerGeneration);\r\n                            return;", StringComparison.Ordinal),
+                "140H2-5V: point-cloud encode worker stays warm across idle LiDAR scan boundaries");
         }
 
         private static void ValidationRegistryExposesPhase140H2()

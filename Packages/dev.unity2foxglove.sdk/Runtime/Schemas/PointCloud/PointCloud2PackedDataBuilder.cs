@@ -80,7 +80,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates = false,
             bool zeroTimeOffset = false,
-            bool preserveSourcePointCount = false)
+            bool preserveSourcePointCount = false,
+            bool preferPooledBufferRetention = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
@@ -88,6 +89,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 useAcquisitionFrameCoordinates,
                 zeroTimeOffset,
                 preserveSourcePointCount,
+                preferPooledBufferRetention,
                 usePooledBuffer: false,
                 collectTimings: false,
                 out _);
@@ -98,7 +100,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             bool emitAbsoluteTimeNs,
             bool useAcquisitionFrameCoordinates = false,
             bool zeroTimeOffset = false,
-            bool preserveSourcePointCount = false)
+            bool preserveSourcePointCount = false,
+            bool preferPooledBufferRetention = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
@@ -106,6 +109,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 useAcquisitionFrameCoordinates,
                 zeroTimeOffset,
                 preserveSourcePointCount,
+                preferPooledBufferRetention,
                 usePooledBuffer: true,
                 collectTimings: false,
                 out _);
@@ -118,7 +122,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             out PointCloud2PackTimings timings,
             bool useAcquisitionFrameCoordinates = false,
             bool zeroTimeOffset = false,
-            bool preserveSourcePointCount = false)
+            bool preserveSourcePointCount = false,
+            bool preferPooledBufferRetention = false)
             => BuildVirtualLidarFullStride(
                 points,
                 pointCount,
@@ -126,6 +131,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 useAcquisitionFrameCoordinates,
                 zeroTimeOffset,
                 preserveSourcePointCount,
+                preferPooledBufferRetention,
                 usePooledBuffer: true,
                 collectTimings,
                 out timings);
@@ -137,6 +143,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             bool useAcquisitionFrameCoordinates,
             bool zeroTimeOffset,
             bool preserveSourcePointCount,
+            bool preferPooledBufferRetention,
             bool usePooledBuffer,
             bool collectTimings,
             out PointCloud2PackTimings timings)
@@ -202,7 +209,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     data,
                     ownsPooledData: usePooledBuffer,
                     validPointCount: validCount,
-                    preferPooledDataRetention: preserveSourcePointCount);
+                    preferPooledDataRetention: preserveSourcePointCount || preferPooledBufferRetention);
             }
             catch
             {
