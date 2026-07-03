@@ -36,15 +36,24 @@ namespace Unity.FoxgloveSDK.Components
 
             ResolveManager();
             if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             if (!publishWebSocket && !publishBridge)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             if (!ShouldQueueVirtualLidarDracoFrame(unixNs))
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             QueueVirtualLidarDracoEncode(
                 points,

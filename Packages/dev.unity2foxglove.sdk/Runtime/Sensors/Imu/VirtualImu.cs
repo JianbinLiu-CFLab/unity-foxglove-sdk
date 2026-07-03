@@ -429,9 +429,13 @@ namespace Unity.FoxgloveSDK.Components
             if (Time.unscaledTime < _nextDroppedSamplesLogTime)
                 return;
 
-            Debug.Log(
-                $"[VirtualImu] IMU sample queue dropped {dropped - _lastReportedDroppedSamples} oldest sample(s) under back-pressure; total dropped={dropped}.",
-                this);
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                this,
+                "[VirtualImu] IMU sample queue dropped {0} oldest sample(s) under back-pressure; total dropped={1}.",
+                dropped - _lastReportedDroppedSamples,
+                dropped);
             _lastReportedDroppedSamples = dropped;
             _nextDroppedSamplesLogTime = Time.unscaledTime + DroppedSamplesLogIntervalSeconds;
         }

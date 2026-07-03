@@ -106,7 +106,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(project.Contains("Phase163_35Validation.cs", StringComparison.Ordinal),
                 "163-35G: runtime test project compiles Phase163_35Validation");
-            Check(registry.Contains("Ci(\"--phase163-35\", \"Phase 163-35\", Phase163_35Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-35\", \"Phase 163-35: validation for demo sensor and manual smoke review boundaries\", Phase163_35Validation.Validate", StringComparison.Ordinal),
                 "163-35H: validation registry exposes --phase163-35");
         }
 

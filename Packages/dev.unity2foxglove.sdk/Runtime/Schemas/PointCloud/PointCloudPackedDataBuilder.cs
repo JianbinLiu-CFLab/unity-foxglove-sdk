@@ -49,10 +49,41 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     {
         /// <summary>Create packed point-cloud data.</summary>
         public PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data)
+            : this(pointStride, fields, data, ownsPooledData: false, validPointCount: null, preferPooledDataRetention: false)
+        {
+        }
+
+        internal PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data, bool ownsPooledData)
+            : this(pointStride, fields, data, ownsPooledData, validPointCount: null, preferPooledDataRetention: false)
+        {
+        }
+
+        internal PointCloudPackedData(uint pointStride, IReadOnlyList<PointCloudPackedField> fields, byte[] data, bool ownsPooledData, int? validPointCount)
+            : this(pointStride, fields, data, ownsPooledData, validPointCount, preferPooledDataRetention: false)
+        {
+        }
+
+        internal PointCloudPackedData(
+            uint pointStride,
+            IReadOnlyList<PointCloudPackedField> fields,
+            byte[] data,
+            bool ownsPooledData,
+            int? validPointCount,
+            bool preferPooledDataRetention)
         {
             PointStride = pointStride;
             Fields = fields ?? Array.Empty<PointCloudPackedField>();
             Data = data ?? Array.Empty<byte>();
+            if (PointStride != 0U && (ulong)Data.Length % PointStride != 0UL)
+                throw new ArgumentException("Packed point-cloud data length must be an even multiple of point stride.", nameof(data));
+
+            PointCount = PointStride == 0U ? 0 : checked((int)((ulong)Data.Length / PointStride));
+            ValidPointCount = validPointCount ?? PointCount;
+            if (ValidPointCount < 0 || ValidPointCount > PointCount)
+                throw new ArgumentOutOfRangeException(nameof(validPointCount));
+
+            OwnsPooledData = ownsPooledData && Data.Length != 0;
+            PreferPooledDataRetention = OwnsPooledData && preferPooledDataRetention;
         }
 
         /// <summary>Bytes per packed point.</summary>
@@ -64,6 +95,12 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         /// that need to retain mutable data should clone it first.
         /// </summary>
         public byte[] Data { get; }
+        /// <summary>Number of point slots stored in <see cref="Data"/>.</summary>
+        public int PointCount { get; }
+        /// <summary>Number of valid source points represented by the payload.</summary>
+        public int ValidPointCount { get; }
+        internal bool OwnsPooledData { get; }
+        internal bool PreferPooledDataRetention { get; }
     }
 
     /// <summary>Builds the shared packed PointCloud.data layout.</summary>
@@ -225,6 +262,133 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             private static PointCloudPackedField Field(string name, uint offset, PointCloudPackedNumericType type)
             {
                 return new PointCloudPackedField(name, offset, type);
+            }
+        }
+    }
+
+    internal static class PointCloudPackedByteBufferPool
+    {
+        private const int MaxBuffersPerSize = 4;
+        private const int MaxPreferredSizes = 4;
+        private const long MaxRetainedBytes = 64L * 1024L * 1024L;
+        private static readonly object Gate = new object();
+        private static readonly Dictionary<int, Stack<byte[]>> BuffersBySize = new Dictionary<int, Stack<byte[]>>();
+        private static readonly HashSet<int> PreferredSizes = new HashSet<int>();
+        private static readonly List<int> PreferredSizeOrder = new List<int>(MaxPreferredSizes);
+        private static long RetainedBytes;
+
+        public static byte[] Rent(int length)
+            => Rent(length, out _);
+
+        /// <summary>
+        /// Snapshot of buffers currently held by the pool. Zero retained while rents
+        /// still miss means every pooled buffer is in flight (completed results not
+        /// yet recycled), not a size-key mismatch.
+        /// </summary>
+        public static void SnapshotRetained(out int retainedBufferCount, out long retainedBytes)
+        {
+            lock (Gate)
+            {
+                var count = 0;
+                foreach (var buffers in BuffersBySize.Values)
+                    count += buffers.Count;
+                retainedBufferCount = count;
+                retainedBytes = RetainedBytes;
+            }
+        }
+
+        public static byte[] Rent(int length, out bool reused)
+        {
+            reused = false;
+            if (length < 0)
+                throw new ArgumentOutOfRangeException(nameof(length));
+            if (length == 0)
+                return Array.Empty<byte>();
+
+            lock (Gate)
+            {
+                if (BuffersBySize.TryGetValue(length, out var buffers) && buffers.Count > 0)
+                {
+                    RetainedBytes -= length;
+                    reused = true;
+                    return buffers.Pop();
+                }
+            }
+
+            return new byte[length];
+        }
+
+        public static void Return(byte[] buffer)
+            => Return(buffer, preferRetention: false);
+
+        public static void Return(byte[] buffer, bool preferRetention)
+        {
+            if (buffer == null || buffer.Length == 0)
+                return;
+            if (buffer.Length > PointCloudPackedDataBuilder.MaxPackedDataBytes)
+                return;
+
+            lock (Gate)
+            {
+                if (preferRetention)
+                {
+                    RememberPreferredSize(buffer.Length);
+                    EvictNonPreferredBuffersFor(buffer.Length, buffer.Length);
+                }
+
+                if (!BuffersBySize.TryGetValue(buffer.Length, out var buffers))
+                {
+                    buffers = new Stack<byte[]>(MaxBuffersPerSize);
+                    BuffersBySize[buffer.Length] = buffers;
+                }
+
+                if (buffers.Count < MaxBuffersPerSize && RetainedBytes + buffer.Length <= MaxRetainedBytes)
+                {
+                    buffers.Push(buffer);
+                    RetainedBytes += buffer.Length;
+                }
+            }
+        }
+
+        private static void EvictNonPreferredBuffersFor(int requestedBytes, int preferredSize)
+        {
+            while (RetainedBytes + requestedBytes > MaxRetainedBytes)
+            {
+                var evicted = false;
+                foreach (var pair in BuffersBySize)
+                {
+                    if (pair.Key == preferredSize || PreferredSizes.Contains(pair.Key) || pair.Value.Count == 0)
+                        continue;
+
+                    pair.Value.Pop();
+                    RetainedBytes -= pair.Key;
+                    evicted = true;
+                    break;
+                }
+
+                if (!evicted)
+                    break;
+            }
+        }
+
+        private static void RememberPreferredSize(int size)
+        {
+            var existingIndex = PreferredSizeOrder.IndexOf(size);
+            if (existingIndex >= 0)
+            {
+                PreferredSizeOrder.RemoveAt(existingIndex);
+            }
+            else
+            {
+                PreferredSizes.Add(size);
+            }
+
+            PreferredSizeOrder.Add(size);
+            while (PreferredSizeOrder.Count > MaxPreferredSizes)
+            {
+                var evictedSize = PreferredSizeOrder[0];
+                PreferredSizeOrder.RemoveAt(0);
+                PreferredSizes.Remove(evictedSize);
             }
         }
     }

@@ -15,7 +15,8 @@ namespace Unity.FoxgloveSDK.Components
     /// drain/stop lifecycle for point-cloud payload encoders.
     /// </summary>
     internal sealed class PointCloudEncodePipeline<TRequest, TResult>
-        where TRequest : class, IBackgroundEncodeRequest
+        where TRequest : class, IPointCloudWorkerRequest
+        where TResult : class, IPointCloudWorkerResult<TRequest>
     {
         private readonly BackgroundEncodePipeline<TRequest, TResult> _pipeline;
         private readonly List<TResult> _drainedResults = new List<TResult>();
@@ -24,6 +25,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Func<string, string> _formatFailureWarning;
         private readonly Action<TResult> _publishCompleted;
         private readonly Action<string> _logWarning;
+        private readonly Action<string> _logDropDiagnostic;
         private readonly string _replacedPendingWarning;
         private readonly string _queueFailureMessagePrefix;
         private readonly Func<int, string> _droppedCompletedWarning;
@@ -44,6 +46,7 @@ namespace Unity.FoxgloveSDK.Components
             Func<string, string> formatFailureWarning,
             Action<TResult> publishCompleted,
             Action<string> logWarning,
+            Action<string> logDropDiagnostic,
             string replacedPendingWarning,
             string queueFailureMessagePrefix,
             Func<int, string> droppedCompletedWarning,
@@ -54,13 +57,16 @@ namespace Unity.FoxgloveSDK.Components
                 threadName,
                 completedCapacity,
                 workerStopWaitMs,
-                encode);
+                encode,
+                onDropRequest: DropRequest,
+                onDropResult: DropResult);
 
             _isSuccess = isSuccess ?? throw new ArgumentNullException(nameof(isSuccess));
             _failureMessage = failureMessage ?? throw new ArgumentNullException(nameof(failureMessage));
             _formatFailureWarning = formatFailureWarning ?? throw new ArgumentNullException(nameof(formatFailureWarning));
             _publishCompleted = publishCompleted ?? throw new ArgumentNullException(nameof(publishCompleted));
             _logWarning = logWarning ?? throw new ArgumentNullException(nameof(logWarning));
+            _logDropDiagnostic = logDropDiagnostic ?? throw new ArgumentNullException(nameof(logDropDiagnostic));
             _replacedPendingWarning = replacedPendingWarning;
             _queueFailureMessagePrefix = queueFailureMessagePrefix;
             _droppedCompletedWarning = droppedCompletedWarning ?? throw new ArgumentNullException(nameof(droppedCompletedWarning));
@@ -75,7 +81,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (logQosDrops && !_warnedReplacedPending)
                 {
-                    _logWarning(_replacedPendingWarning);
+                    _logDropDiagnostic(_replacedPendingWarning);
                     _warnedReplacedPending = true;
                 }
 
@@ -92,7 +98,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _pipeline.Drain(_drainedResults, out var droppedCompletedResults);
             if (droppedCompletedResults > 0 && logQosDrops)
-                _logWarning(_droppedCompletedWarning(droppedCompletedResults));
+                _logDropDiagnostic(_droppedCompletedWarning(droppedCompletedResults));
 
             if (droppedCompletedResults > 0)
                 onDroppedCompleted?.Invoke(droppedCompletedResults);
@@ -102,16 +108,23 @@ namespace Unity.FoxgloveSDK.Components
 
             foreach (var result in _drainedResults)
             {
-                if (!_isSuccess(result))
+                try
                 {
-                    LogFailure(_failureMessage(result));
-                    continue;
-                }
+                    if (!_isSuccess(result))
+                    {
+                        LogFailure(_failureMessage(result));
+                        continue;
+                    }
 
-                _warnedFailure = false;
-                _failureCount = 0;
-                _warnedReplacedPending = false;
-                _publishCompleted(result);
+                    _warnedFailure = false;
+                    _failureCount = 0;
+                    _warnedReplacedPending = false;
+                    _publishCompleted(result);
+                }
+                finally
+                {
+                    DropResult(result);
+                }
             }
 
             onResultsProcessed?.Invoke();
@@ -142,6 +155,18 @@ namespace Unity.FoxgloveSDK.Components
 
             _warnedFailure = true;
             _logWarning(_formatFailureWarning(message));
+        }
+
+        private static void DropRequest(TRequest request)
+            => request?.RecycleSourceSnapshot();
+
+        private static void DropResult(TResult result)
+        {
+            if (result == null)
+                return;
+
+            result.RecycleResultPayloads();
+            result.Request.RecycleSourceSnapshot();
         }
     }
 }

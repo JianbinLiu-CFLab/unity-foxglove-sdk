@@ -49,6 +49,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _maxPackedBytes;
         private SerializedProperty _voxelSizeMeters;
         private SerializedProperty _logQosDrops;
+        private SerializedProperty _logPerformanceDiagnostics;
         private SerializedProperty _nativeDracoMaxPublishRateHz;
         private SerializedProperty _suppressTransformFallbackAfterSourceFrames;
         private SerializedProperty _publishRateSource;
@@ -81,6 +82,7 @@ namespace Unity.FoxgloveSDK.Editor
             _maxPackedBytes = serializedObject.FindProperty("_maxPackedBytes");
             _voxelSizeMeters = serializedObject.FindProperty("_voxelSizeMeters");
             _logQosDrops = serializedObject.FindProperty("_logQosDrops");
+            _logPerformanceDiagnostics = serializedObject.FindProperty("_logPerformanceDiagnostics");
             _nativeDracoMaxPublishRateHz = serializedObject.FindProperty("_nativeDracoMaxPublishRateHz");
             _suppressTransformFallbackAfterSourceFrames = serializedObject.FindProperty("_suppressTransformFallbackAfterSourceFrames");
             _publishRateSource = serializedObject.FindProperty("_publishRateSource");
@@ -238,6 +240,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             DrawProperty(_logQosDrops, "Log Budget Drops");
+            DrawProperty(_logPerformanceDiagnostics, "Log Performance Diagnostics");
             EditorGUILayout.HelpBox(
                 "Heavy point-cloud work is skipped when there is no live subscriber or active MCAP recording demand.",
                 MessageType.Info);

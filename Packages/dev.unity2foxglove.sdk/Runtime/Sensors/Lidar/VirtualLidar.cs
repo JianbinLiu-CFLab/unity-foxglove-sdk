@@ -14,6 +14,7 @@ using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Sensors;
 using Unity.FoxgloveSDK.Sensors.Lidar;
+using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -298,7 +299,6 @@ namespace Unity.FoxgloveSDK.Components
 
             DisposeScanBuffers();
             _scanBuffers.Allocate(_scanPattern, _maxRaysPerScan);
-            _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
             _activeScanPointSnapshotCount = 0;
         }
 
@@ -306,8 +306,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             ScanScheduler.DrainPendingScan();
             _scanBuffers.Dispose();
-            _activeScanPointSnapshot = null;
-            _activeScanPointSnapshotCount = 0;
+            ReleaseActiveScanSnapshot();
         }
 
         private void OnDestroy()
@@ -426,6 +425,7 @@ namespace Unity.FoxgloveSDK.Components
                     return;
                 _scanColumnProgress -= columnsToEmit;
 
+                var scheduleStart = BeginLidarFixedUpdateTiming();
                 ScanScheduler.SchedulePendingScan(
                     columnsToEmit,
                     _logPerformanceDiagnostics,
@@ -442,7 +442,51 @@ namespace Unity.FoxgloveSDK.Components
                     _activeScanWorldToLocal,
                     RequiresNativeAcquisitionFrame(),
                     _scanBuffers);
+                LogLidarFixedUpdateTiming(
+                    _logPerformanceDiagnostics,
+                    this,
+                    columnsToEmit,
+                    budgetColumns,
+                    _scanColumnCursor,
+                    _scanColumnProgress,
+                    _scanBuffers.EffectiveRayCount,
+                    Time.fixedDeltaTime,
+                    ElapsedLidarFixedUpdateTiming(scheduleStart));
             }
+        }
+
+        private long BeginLidarFixedUpdateTiming()
+            => _logPerformanceDiagnostics ? Stopwatch.GetTimestamp() : 0L;
+
+        private static double ElapsedLidarFixedUpdateTiming(long startTicks)
+            => startTicks == 0L ? 0d : (Stopwatch.GetTimestamp() - startTicks) * 1000d / Stopwatch.Frequency;
+
+        private static void LogLidarFixedUpdateTiming(
+            bool logPerformanceDiagnostics,
+            UnityEngine.Object context,
+            int columnsToEmit,
+            int budgetColumns,
+            int scanColumnCursor,
+            double scanColumnProgress,
+            int effectiveRayCount,
+            float fixedDeltaTimeSeconds,
+            double scheduleMs)
+        {
+            if (!logPerformanceDiagnostics)
+                return;
+
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                context,
+                "[LidarDiag] fixed-update timing: columnsToEmit={0} budgetColumns={1} cursor={2} progress={3:F2} effectiveRays={4} fixedDeltaMs={5:F2} scheduleMs={6:F2}",
+                columnsToEmit,
+                budgetColumns,
+                scanColumnCursor,
+                scanColumnProgress,
+                effectiveRayCount,
+                fixedDeltaTimeSeconds * 1000f,
+                scheduleMs);
         }
 
         private void StartNewScan(double scanStartPhysSeconds)
@@ -466,15 +510,35 @@ namespace Unity.FoxgloveSDK.Components
             _activeScanPointSnapshotCount = 0;
             if (UseNativePointCloudSnapshotPath())
             {
-                if (_activeScanPointSnapshot == null || _activeScanPointSnapshot.Length < _scanBuffers.EffectiveRayCount)
-                    _activeScanPointSnapshot = new VirtualLidarPointData[_scanBuffers.EffectiveRayCount];
+                EnsureActiveScanSnapshotCapacity();
             }
             else
             {
+                ReleaseActiveScanSnapshot();
                 _activeScanFrame.Points.Clear();
                 if (_activeScanFrame.Points.Capacity < _scanBuffers.EffectiveRayCount)
                     _activeScanFrame.Points.Capacity = _scanBuffers.EffectiveRayCount;
             }
+        }
+
+        private void EnsureActiveScanSnapshotCapacity()
+        {
+            if (_activeScanPointSnapshot != null && _activeScanPointSnapshot.Length >= _scanBuffers.EffectiveRayCount)
+                return;
+
+            var nextSnapshot = VirtualLidarPointSnapshotPool.Rent(_scanBuffers.EffectiveRayCount);
+            if (_activeScanPointSnapshot != null && _activeScanPointSnapshotCount > 0)
+                Array.Copy(_activeScanPointSnapshot, nextSnapshot, Math.Min(_activeScanPointSnapshotCount, nextSnapshot.Length));
+
+            VirtualLidarPointSnapshotPool.Return(_activeScanPointSnapshot);
+            _activeScanPointSnapshot = nextSnapshot;
+        }
+
+        private void ReleaseActiveScanSnapshot()
+        {
+            VirtualLidarPointSnapshotPool.Return(_activeScanPointSnapshot);
+            _activeScanPointSnapshot = null;
+            _activeScanPointSnapshotCount = 0;
         }
 
         private bool UseNativePointCloudSnapshotPath()

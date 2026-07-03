@@ -114,22 +114,86 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            if (!TryGetTimeRange(source, pointCount, scanStartUnixNs, out var firstUnixNs, out var lastUnixNs))
+            var output = new VirtualLidarPointData[pointCount];
+            if (!TryCompensateVirtualLidarInto(
+                    source,
+                    pointCount,
+                    scanStartUnixNs,
+                    request,
+                    output,
+                    out var outputPointCount,
+                    out var referenceUnixNs,
+                    out error))
             {
-                error = "valid point time offsets are absent";
+                return false;
+            }
+
+            result = new PointCloudMotionCompensationResult(output, outputPointCount, referenceUnixNs);
+            return true;
+        }
+
+        /// <summary>
+        /// Builds a deskewed snapshot into a caller-owned buffer.
+        /// </summary>
+        public static bool TryCompensateVirtualLidarInto(
+            IReadOnlyList<VirtualLidarPointData> source,
+            int pointCount,
+            ulong scanStartUnixNs,
+            PointCloudMotionCompensationRequest request,
+            VirtualLidarPointData[] output,
+            out int outputPointCount,
+            out ulong referenceUnixNs,
+            out string error)
+        {
+            outputPointCount = 0;
+            referenceUnixNs = scanStartUnixNs;
+            error = null;
+            if (source == null)
+            {
+                error = "source points are missing";
+                return false;
+            }
+            if (request == null)
+            {
+                error = "motion compensation request is missing";
+                return false;
+            }
+            if (output == null)
+            {
+                error = "output buffer is missing";
+                return false;
+            }
+            if (pointCount < 0 || pointCount > source.Count)
+            {
+                error = "point count is outside the source buffer";
+                return false;
+            }
+            if (pointCount > output.Length)
+            {
+                error = "output buffer is smaller than the requested point count";
+                return false;
+            }
+
+            if (!TryResolveReferenceTimeRange(
+                    source,
+                    pointCount,
+                    scanStartUnixNs,
+                    request,
+                    out var firstUnixNs,
+                    out var lastUnixNs,
+                    out referenceUnixNs,
+                    out error))
+            {
                 return false;
             }
 
             if (request.InputConvention == PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame)
             {
-                var referenceOutput = new VirtualLidarPointData[pointCount];
-                CopyReferenceFramePoints(source, pointCount, referenceOutput);
-                var scanReferenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
-                result = new PointCloudMotionCompensationResult(referenceOutput, pointCount, scanReferenceUnixNs);
+                CopyReferenceFramePoints(source, pointCount, output);
+                outputPointCount = pointCount;
                 return true;
             }
 
-            var referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
             if (request.PoseSamples.Length < 2
                 || !SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, firstUnixNs, out _)
                 || !SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, lastUnixNs, out _)
@@ -139,15 +203,16 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            var output = new VirtualLidarPointData[pointCount];
-
             if (!Matrix4x4.Invert(LocalToWorld(referencePose), out var worldToReference))
             {
                 error = "reference pose is not invertible";
                 return false;
             }
 
-            var transformsByOffsetNs = new Dictionary<uint, Matrix4x4>();
+            var poseSearchIndex = 0;
+            var hasLastTransform = false;
+            var lastOffsetNs = 0U;
+            var lastSensorToReference = Matrix4x4.Identity;
             for (var i = 0; i < pointCount; i++)
             {
                 var point = source[i];
@@ -158,17 +223,28 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 var offsetNs = TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds);
-                if (!transformsByOffsetNs.TryGetValue(offsetNs, out var sensorToReference))
+                Matrix4x4 sensorToReference;
+                if (hasLastTransform && offsetNs == lastOffsetNs)
+                {
+                    sensorToReference = lastSensorToReference;
+                }
+                else
                 {
                     var pointUnixNs = AddNanoseconds(scanStartUnixNs, offsetNs);
-                    if (!SensorMotionPoseHistoryMath.TryInterpolate(request.PoseSamples, pointUnixNs, out var pointPose))
+                    if (!SensorMotionPoseHistoryMath.TryInterpolateMonotonic(
+                            request.PoseSamples,
+                            pointUnixNs,
+                            ref poseSearchIndex,
+                            out var pointPose))
                     {
                         error = "pose history does not cover a point timestamp";
                         return false;
                     }
 
                     sensorToReference = LocalToWorld(pointPose) * worldToReference;
-                    transformsByOffsetNs[offsetNs] = sensorToReference;
+                    hasLastTransform = true;
+                    lastOffsetNs = offsetNs;
+                    lastSensorToReference = sensorToReference;
                 }
 
                 var transformed = Vector3.Transform(GetAcquisitionPoint(point), sensorToReference);
@@ -183,7 +259,66 @@ namespace Unity.FoxgloveSDK.Components
                 output[i] = point;
             }
 
-            result = new PointCloudMotionCompensationResult(output, pointCount, referenceUnixNs);
+            outputPointCount = pointCount;
+            return true;
+        }
+
+        /// <summary>Resolve the deskewed output timestamp without materializing a second point snapshot.</summary>
+        public static bool TryResolveReferenceUnixNs(
+            IReadOnlyList<VirtualLidarPointData> source,
+            int pointCount,
+            ulong scanStartUnixNs,
+            PointCloudMotionCompensationRequest request,
+            out ulong referenceUnixNs,
+            out string error)
+        {
+            return TryResolveReferenceTimeRange(
+                source,
+                pointCount,
+                scanStartUnixNs,
+                request,
+                out _,
+                out _,
+                out referenceUnixNs,
+                out error);
+        }
+
+        private static bool TryResolveReferenceTimeRange(
+            IReadOnlyList<VirtualLidarPointData> source,
+            int pointCount,
+            ulong scanStartUnixNs,
+            PointCloudMotionCompensationRequest request,
+            out ulong firstUnixNs,
+            out ulong lastUnixNs,
+            out ulong referenceUnixNs,
+            out string error)
+        {
+            firstUnixNs = scanStartUnixNs;
+            lastUnixNs = scanStartUnixNs;
+            referenceUnixNs = scanStartUnixNs;
+            error = null;
+            if (source == null)
+            {
+                error = "source points are missing";
+                return false;
+            }
+            if (request == null)
+            {
+                error = "motion compensation request is missing";
+                return false;
+            }
+            if (pointCount < 0 || pointCount > source.Count)
+            {
+                error = "point count is outside the source buffer";
+                return false;
+            }
+            if (!TryGetTimeRange(source, pointCount, scanStartUnixNs, out firstUnixNs, out lastUnixNs))
+            {
+                error = "valid point time offsets are absent";
+                return false;
+            }
+
+            referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
             return true;
         }
 

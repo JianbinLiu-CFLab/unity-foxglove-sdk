@@ -57,10 +57,11 @@ namespace Unity.FoxgloveSDK.Editor
                     "_frameStallDiagnosticsThresholdMs",
                     "Stall Threshold Ms",
                     "Main-thread frame time threshold before a frame-stall diagnostic is logged.");
+                DrawProperty("_frameStallStageTimingDiagnosticsEnabled", "Stage Timing Diagnostics");
             }
 
             EditorGUILayout.HelpBox(
-                "Logs long Play Mode frame gaps with focus, Play Mode, Editor compile/update, and GC-memory delta state.",
+                "Logs long Play Mode frame gaps with focus, Play Mode, Editor compile/update, GC-memory delta, transport queue/drop, and optional Manager Update sub-stage timing state.",
                 MessageType.Info);
         }
 

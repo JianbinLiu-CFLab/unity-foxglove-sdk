@@ -28,7 +28,10 @@ namespace Unity.FoxgloveSDK.Components
         private const int DracoFailureWarningIntervalFrames = 120;
         private const int MaxCompletedDracoEncodeResults = 8;
         private const int PointCloud2NativeFailureWarningIntervalFrames = 120;
-        private const int MaxCompletedPointCloud2NativeResults = 8;
+        // PointCloud2 Native frames are large enough that draining stale completed
+        // results in a burst can hitch the main loop. Keep the latest completed
+        // frame only; the pending side is already last-value-wins.
+        private const int MaxCompletedPointCloud2NativeResults = 1;
         private const int DracoWorkerStopWaitMs = 5000;
         private const int PointCloud2NativeWorkerStopWaitMs = 5000;
 
@@ -122,6 +125,9 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>True when this publisher is configured for standard PointCloud2 native output.</summary>
         public bool IsPointCloud2NativeOutput => _outputMode == PointCloudOutputMode.PointCloud2Native;
+
+        /// <summary>True when opt-in point-cloud performance diagnostics should emit detailed timing logs.</summary>
+        public bool PerformanceDiagnosticsEnabled => _logPerformanceDiagnostics;
 
         /// <summary>Resolved publisher topic for optional native ROS2 PointCloud2 adapters.</summary>
         public string PointCloud2NativeTopic => string.IsNullOrWhiteSpace(_topic) ? DefaultTopic : _topic;
@@ -308,10 +314,15 @@ namespace Unity.FoxgloveSDK.Components
                 _logQosDrops,
                 dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
                 () => _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage));
+            var pointCloud2NativeDrainStart = BeginPointCloud2NativeTiming();
             _pointCloud2NativePipeline.Drain(
                 _logQosDrops,
                 dropped => _diagnostics.RecordDrop(_logPerformanceDiagnostics, dropped),
-                () => _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage));
+                () =>
+                {
+                    _diagnostics.LogIfReady(_logPerformanceDiagnostics, LogPointCloudDiagnosticMessage);
+                    LogPointCloud2NativeTiming(pointCloud2NativeDrainStart, "pipelineDrain", PointCloud2NativeTopic, 0, 0);
+                });
             if (!_publishOnEnable) return;
             if (!ShouldPublishNow()) return;
             var publishWebSocket = ShouldPreparePublishPayload();
@@ -435,6 +446,7 @@ namespace Unity.FoxgloveSDK.Components
                     message => "[Foxglove] Draco point-cloud mode disabled: " + message,
                     PublishCompletedDracoPayload,
                     Debug.LogWarning,
+                    LogPointCloudDropDiagnostic,
                     "[Foxglove] Draco point-cloud encode request replaced; stale pending encode dropped.",
                     "Unable to queue background Draco encode: ",
                     dropped => $"[Foxglove] Draco point-cloud encode results dropped before main-thread drain: {dropped}.",
@@ -454,6 +466,7 @@ namespace Unity.FoxgloveSDK.Components
                     message => "[Foxglove] PointCloud2 native mode disabled: " + message,
                     PublishCompletedPointCloud2NativePayload,
                     Debug.LogWarning,
+                    LogPointCloudDropDiagnostic,
                     "[Foxglove] PointCloud2 native request replaced; stale pending payload dropped.",
                     "Unable to queue background PointCloud2 pack: ",
                     dropped => $"[Foxglove] PointCloud2 native payloads dropped before main-thread drain: {dropped}.",
@@ -461,6 +474,9 @@ namespace Unity.FoxgloveSDK.Components
                     PointCloud2NativeFailureWarningIntervalFrames);
             }
         }
+
+        private static void LogPointCloudDropDiagnostic(string message)
+            => Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", message ?? string.Empty);
 
 
 

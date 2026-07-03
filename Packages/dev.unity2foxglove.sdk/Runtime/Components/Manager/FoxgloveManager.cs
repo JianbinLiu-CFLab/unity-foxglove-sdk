@@ -474,14 +474,22 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void Update()
         {
+            var frameStallStageStart = BeginFrameStallStageTiming();
             _runtime?.Tick();
+            RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.RuntimeTick);
             DrainClientEventQueue(_clientLifecycleEvents);
+            RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.ClientLifecycleDrain);
             DrainClientEventQueue(_clientMessageEvents);
-            RecordFrameStallDiagnosticsIfNeeded();
+            RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.ClientMessageDrain);
             FlushPublishCadenceDiagnosticsIfNeeded();
+            RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.PublishCadenceDiagnostics);
             ApplyLiveOutputModeWatchers();
+            RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.LiveOutputModeWatchers);
             RefreshRemoteMcapFileServerIfNeeded();
+            RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.RemoteMcapRefresh);
             RefreshReplayCursorEndpointIfNeeded();
+            RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.ReplayCursorEndpointRefresh);
+            RecordFrameStallDiagnosticsIfNeeded();
         }
 
         /// <summary>

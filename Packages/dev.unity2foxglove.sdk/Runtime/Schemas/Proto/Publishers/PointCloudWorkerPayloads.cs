@@ -10,12 +10,29 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
+    /// <summary>Point-cloud worker request that may own a pooled source snapshot.</summary>
+    internal interface IPointCloudWorkerRequest : IBackgroundEncodeRequest
+    {
+        void RecycleSourceSnapshot();
+    }
+
+    /// <summary>Point-cloud worker result with access to its owning request.</summary>
+    internal interface IPointCloudWorkerResult<out TRequest>
+        where TRequest : class, IPointCloudWorkerRequest
+    {
+        TRequest Request { get; }
+        void RecycleResultPayloads();
+    }
+
     /// <summary>
     /// Captures one background Draco encode request plus the publish routes that
     /// should receive its completed payload.
     /// </summary>
-    internal sealed class DracoEncodeRequest : IBackgroundEncodeRequest
+    internal sealed class DracoEncodeRequest : IPointCloudWorkerRequest
     {
+        private VirtualLidarPointData[] _lidarPoints;
+        private int _lidarPointCount;
+
         /// <summary>Create a Draco request from a managed PointCloudFrame.</summary>
         public DracoEncodeRequest(
             PointCloudFrame frame,
@@ -45,8 +62,8 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEffectiveEncoding webSocketEncoding,
             double cloneMs)
         {
-            LidarPoints = lidarPoints;
-            LidarPointCount = lidarPointCount;
+            _lidarPoints = lidarPoints;
+            _lidarPointCount = lidarPointCount;
             UnixNs = unixNs;
             FrameId = frameId;
             EmitAbsoluteTimeNs = emitAbsoluteTimeNs;
@@ -60,13 +77,13 @@ namespace Unity.FoxgloveSDK.Components
         public PointCloudFrame Frame { get; }
 
         /// <summary>Native LiDAR points cloned for worker-side Draco encoding.</summary>
-        public VirtualLidarPointData[] LidarPoints { get; }
+        public VirtualLidarPointData[] LidarPoints => _lidarPoints;
 
         /// <summary>Number of native LiDAR point slots to encode.</summary>
-        public int LidarPointCount { get; }
+        public int LidarPointCount => _lidarPointCount;
 
         /// <summary>True when this request carries a native VirtualLidar snapshot.</summary>
-        public bool HasVirtualLidarSnapshot => LidarPoints != null;
+        public bool HasVirtualLidarSnapshot => _lidarPoints != null;
 
         /// <summary>Frame id used for metadata generated from native snapshots.</summary>
         public string FrameId { get; }
@@ -91,14 +108,25 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Worker lifecycle generation used to orphan stale completed work.</summary>
         public int Generation { get; set; }
+
+        public void RecycleSourceSnapshot()
+        {
+            var snapshot = _lidarPoints;
+            _lidarPoints = null;
+            _lidarPointCount = 0;
+            VirtualLidarPointSnapshotPool.Return(snapshot);
+        }
     }
 
     /// <summary>
     /// Captures one background PointCloud2 pack request plus the publish routes
     /// that should receive its completed CDR payload.
     /// </summary>
-    internal sealed class PointCloud2NativeRequest : IBackgroundEncodeRequest
+    internal sealed class PointCloud2NativeRequest : IPointCloudWorkerRequest
     {
+        private VirtualLidarPointData[] _lidarPoints;
+        private int _lidarPointCount;
+
         /// <summary>Create a PointCloud2 Native packing request from a VirtualLidar snapshot.</summary>
         public PointCloud2NativeRequest(
             VirtualLidarPointData[] lidarPoints,
@@ -110,11 +138,12 @@ namespace Unity.FoxgloveSDK.Components
             bool publishBridge,
             bool publishNativeFrame,
             PublisherEffectiveEncoding webSocketEncoding,
+            bool logPerformanceDiagnostics,
             string nativeTopic = null,
             PointCloudMotionCompensationRequest motionCompensation = null)
         {
-            LidarPoints = lidarPoints;
-            LidarPointCount = lidarPointCount;
+            _lidarPoints = lidarPoints;
+            _lidarPointCount = lidarPointCount;
             UnixNs = unixNs;
             FrameId = frameId;
             EmitAbsoluteTimeNs = emitAbsoluteTimeNs;
@@ -122,15 +151,16 @@ namespace Unity.FoxgloveSDK.Components
             PublishBridge = publishBridge;
             PublishNativeFrame = publishNativeFrame;
             WebSocketEncoding = webSocketEncoding;
+            LogPerformanceDiagnostics = logPerformanceDiagnostics;
             NativeTopic = nativeTopic;
             MotionCompensation = motionCompensation;
         }
 
         /// <summary>Native LiDAR points cloned for worker-side PointCloud2 packing.</summary>
-        public VirtualLidarPointData[] LidarPoints { get; }
+        public VirtualLidarPointData[] LidarPoints => _lidarPoints;
 
         /// <summary>Number of native LiDAR point slots to pack.</summary>
-        public int LidarPointCount { get; }
+        public int LidarPointCount => _lidarPointCount;
 
         /// <summary>Frame timestamp in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
@@ -153,6 +183,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Effective websocket encoding selected when this request was queued.</summary>
         public PublisherEffectiveEncoding WebSocketEncoding { get; }
 
+        /// <summary>True when worker sub-stage timing diagnostics should be captured.</summary>
+        public bool LogPerformanceDiagnostics { get; }
+
         /// <summary>Optional topic override for the raw native DDS frame.</summary>
         public string NativeTopic { get; }
 
@@ -164,13 +197,21 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Worker lifecycle generation used to orphan stale completed work.</summary>
         public int Generation { get; set; }
+
+        public void RecycleSourceSnapshot()
+        {
+            var snapshot = _lidarPoints;
+            _lidarPoints = null;
+            _lidarPointCount = 0;
+            VirtualLidarPointSnapshotPool.Return(snapshot);
+        }
     }
 
     /// <summary>
     /// Completed background Draco encode result, including prepared websocket and
     /// ROS2 bridge payload bytes for main-thread publish.
     /// </summary>
-    internal sealed class DracoEncodeResult
+    internal sealed class DracoEncodeResult : IPointCloudWorkerResult<DracoEncodeRequest>
     {
         /// <summary>Create a completed Draco worker result.</summary>
         public DracoEncodeResult(
@@ -211,13 +252,70 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Milliseconds spent on worker-side encoding.</summary>
         public double EncodeMs { get; }
+
+        public void RecycleResultPayloads()
+        {
+        }
+    }
+
+    /// <summary>
+    /// Fine-grained PointCloud2 Native encode diagnostics for stall investigation.
+    /// Captures per-stage pack timings, packed-buffer pool behavior, and GC
+    /// collection deltas observed across one worker encode.
+    /// </summary>
+    internal struct PointCloud2NativeEncodeDiagnostics
+    {
+        /// <summary>Raw pack valid-count scan milliseconds.</summary>
+        public double RawCountValidMs;
+
+        /// <summary>Raw packed buffer rent/allocation milliseconds.</summary>
+        public double RawBufferRentMs;
+
+        /// <summary>Raw pack write-loop milliseconds.</summary>
+        public double RawWriteLoopMs;
+
+        /// <summary>Raw packed buffer length in bytes.</summary>
+        public int RawBufferLength;
+
+        /// <summary>True when the raw packed buffer was reused from the pool.</summary>
+        public bool RawBufferReused;
+
+        /// <summary>Deskew pack valid-count scan milliseconds.</summary>
+        public double DeskewCountValidMs;
+
+        /// <summary>Deskew packed buffer rent/allocation milliseconds.</summary>
+        public double DeskewBufferRentMs;
+
+        /// <summary>Deskew pack write-loop milliseconds.</summary>
+        public double DeskewWriteLoopMs;
+
+        /// <summary>Deskew packed buffer length in bytes.</summary>
+        public int DeskewBufferLength;
+
+        /// <summary>True when the deskew packed buffer was reused from the pool.</summary>
+        public bool DeskewBufferReused;
+
+        /// <summary>GC gen0 collection count delta across the encode.</summary>
+        public int GcGen0Delta;
+
+        /// <summary>GC gen1 collection count delta across the encode.</summary>
+        public int GcGen1Delta;
+
+        /// <summary>GC gen2 collection count delta across the encode.</summary>
+        public int GcGen2Delta;
+
+        /// <summary>Packed buffers held by the pool after this encode; zero while rents miss means buffers are in flight.</summary>
+        public int PoolRetainedBuffers;
+
+        /// <summary>Bytes held by the packed buffer pool after this encode.</summary>
+        public long PoolRetainedBytes;
     }
 
     /// <summary>
     /// Completed background PointCloud2 pack result with prepared CDR bytes for
     /// main-thread publish.
     /// </summary>
-    internal sealed class PointCloud2NativeResult
+    internal sealed class PointCloud2NativeResult : IPointCloudWorkerResult<PointCloud2NativeRequest>
     {
         /// <summary>Create a completed PointCloud2 Native worker result.</summary>
         public PointCloud2NativeResult(
@@ -230,7 +328,12 @@ namespace Unity.FoxgloveSDK.Components
             string error,
             int validCount,
             int payloadBytes,
-            double encodeMs)
+            double encodeMs,
+            double rawPackMs,
+            double rawPayloadBuildMs,
+            double motionCompensationMs,
+            double deskewPackMs,
+            PointCloud2NativeEncodeDiagnostics encodeDiagnostics = default)
         {
             Request = request;
             Success = success;
@@ -242,6 +345,11 @@ namespace Unity.FoxgloveSDK.Components
             ValidCount = validCount;
             PayloadBytes = payloadBytes;
             EncodeMs = encodeMs;
+            RawPackMs = rawPackMs;
+            RawPayloadBuildMs = rawPayloadBuildMs;
+            MotionCompensationMs = motionCompensationMs;
+            DeskewPackMs = deskewPackMs;
+            EncodeDiagnostics = encodeDiagnostics;
         }
 
         /// <summary>Original worker request.</summary>
@@ -273,5 +381,26 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Milliseconds spent on worker-side packing and optional deskew construction.</summary>
         public double EncodeMs { get; }
+
+        /// <summary>Milliseconds spent compacting the raw VirtualLidar snapshot into PointCloud2 storage.</summary>
+        public double RawPackMs { get; }
+
+        /// <summary>Milliseconds spent building raw ROS2 CDR payload bytes for websocket or bridge output.</summary>
+        public double RawPayloadBuildMs { get; }
+
+        /// <summary>Milliseconds spent computing motion compensation before deskewed PointCloud2 packing.</summary>
+        public double MotionCompensationMs { get; }
+
+        /// <summary>Milliseconds spent packing the deskewed visualization PointCloud2 frame.</summary>
+        public double DeskewPackMs { get; }
+
+        /// <summary>Fine-grained pack/pool/GC diagnostics captured across this encode.</summary>
+        public PointCloud2NativeEncodeDiagnostics EncodeDiagnostics { get; }
+
+        public void RecycleResultPayloads()
+        {
+            MotionCompensatedNativeFrame?.RecycleData();
+            NativeFrame?.RecycleData();
+        }
     }
 }

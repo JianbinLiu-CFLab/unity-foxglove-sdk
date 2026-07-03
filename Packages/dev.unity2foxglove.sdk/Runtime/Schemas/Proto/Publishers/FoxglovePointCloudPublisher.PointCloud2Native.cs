@@ -36,7 +36,10 @@ namespace Unity.FoxgloveSDK.Components
 
             ResolveManager();
             if (_manager == null || _manager.Runtime?.ReplayEnabled == true)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
@@ -44,17 +47,20 @@ namespace Unity.FoxgloveSDK.Components
             var motionSettings = ResolveMotionCompensationSettings();
             var publishRaw = motionSettings.PreserveRawOutput;
             var motionCompensation = TryCreateMotionCompensationRequest(
-                points,
-                pointCount,
-                unixNs,
                 motionSettings,
                 publishNativeFrame);
 
             if (!publishRaw && motionCompensation == null)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             if (publishRaw && !publishWebSocket && !publishBridge && !publishNativeFrame && motionCompensation == null)
+            {
+                VirtualLidarPointSnapshotPool.Return(points);
                 return true;
+            }
 
             QueueVirtualLidarPointCloud2Native(
                 points,
@@ -127,7 +133,7 @@ namespace Unity.FoxgloveSDK.Components
                     data: packed.Data,
                     isDense: true,
                     topic: PointCloud2NativeTopic);
-                handler(nativeFrame);
+                PublishPointCloud2NativeFrameReady(nativeFrame, "preparedNativeFrameReady");
             }
             catch (Exception ex)
             {
@@ -162,6 +168,7 @@ namespace Unity.FoxgloveSDK.Components
                 publishBridge,
                 publishNativeFrame,
                 webSocketEncoding,
+                _logPerformanceDiagnostics,
                 nativeTopic,
                 motionCompensation);
             EnqueuePointCloud2NativeRequest(request);
@@ -179,6 +186,7 @@ namespace Unity.FoxgloveSDK.Components
         private void PublishCompletedPointCloud2NativePayload(PointCloud2NativeResult result)
         {
             _diagnostics.RecordPointCloud2NativeResult(_logPerformanceDiagnostics, result);
+            LogPointCloud2NativeWorkerTiming(result);
             if (result.Request.PublishWebSocket && result.Request.WebSocketEncoding == PublisherEffectiveEncoding.Ros2)
                 PublishRos2(result.WebSocketPayload, result.Request.UnixNs);
 
@@ -186,15 +194,18 @@ namespace Unity.FoxgloveSDK.Components
                 PublishRos2Bridge(result.BridgePayload, result.Request.UnixNs);
 
             if (result.Request.PublishNativeFrame && result.NativeFrame != null)
-                PublishPointCloud2NativeFrameReady(result.NativeFrame);
+                PublishPointCloud2NativeFrameReady(result.NativeFrame, "rawNativeFrameReady");
 
             if (result.MotionCompensatedNativeFrame != null)
-                PublishPointCloud2NativeFrameReady(result.MotionCompensatedNativeFrame);
+                PublishPointCloud2NativeFrameReady(result.MotionCompensatedNativeFrame, "deskewedNativeFrameReady");
             else if (result.Request.HasMotionCompensation && !string.IsNullOrWhiteSpace(result.Error))
                 WarnMotionCompensation("skipped: " + result.Error);
         }
 
         private void PublishPointCloud2NativeFrameReady(PointCloud2NativeFrame frame)
+            => PublishPointCloud2NativeFrameReady(frame, "nativeFrameReady");
+
+        private void PublishPointCloud2NativeFrameReady(PointCloud2NativeFrame frame, string stage)
         {
             if (frame == null)
                 return;
@@ -203,6 +214,7 @@ namespace Unity.FoxgloveSDK.Components
             if (handler == null)
                 return;
 
+            var timingStart = BeginPointCloud2NativeTiming();
             try
             {
                 handler(frame);
@@ -210,6 +222,10 @@ namespace Unity.FoxgloveSDK.Components
             catch (Exception ex)
             {
                 Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
+            }
+            finally
+            {
+                LogPointCloud2NativeTiming(timingStart, stage, frame);
             }
         }
     }

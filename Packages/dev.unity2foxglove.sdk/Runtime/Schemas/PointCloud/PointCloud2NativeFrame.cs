@@ -26,7 +26,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             byte[] data,
             bool isDense,
             string topic = null,
-            bool isMotionCompensatedVisualization = false)
+            bool isMotionCompensatedVisualization = false,
+            bool ownsPooledData = false,
+            int validCount = -1,
+            bool preferPooledDataRetention = false)
         {
             if (height == 0U)
                 throw new ArgumentOutOfRangeException(nameof(height));
@@ -50,6 +53,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     nameof(data));
             }
 
+            var publishedPointCount = checked((int)((ulong)height * width));
+            if (validCount < -1 || validCount > publishedPointCount)
+                throw new ArgumentOutOfRangeException(nameof(validCount));
+
             UnixNs = unixNs;
             FrameId = frameId ?? string.Empty;
             Height = height;
@@ -59,10 +66,16 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             RowStep = rowStep;
             Data = data;
             IsDense = isDense;
-            ValidCount = checked((int)((ulong)height * width));
+            ValidCount = validCount < 0 ? publishedPointCount : validCount;
             Topic = topic ?? string.Empty;
             IsMotionCompensatedVisualization = isMotionCompensatedVisualization;
+            _ownsPooledData = ownsPooledData && Data.Length != 0;
+            _preferPooledDataRetention = _ownsPooledData && preferPooledDataRetention;
         }
+
+        private readonly bool _ownsPooledData;
+        private readonly bool _preferPooledDataRetention;
+        private bool _dataRecycled;
 
         /// <summary>Frame timestamp, in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
@@ -102,5 +115,14 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         /// <summary>True when this frame is a deskewed visualization stream, not raw sensor truth.</summary>
         public bool IsMotionCompensatedVisualization { get; }
+
+        internal void RecycleData()
+        {
+            if (!_ownsPooledData || _dataRecycled)
+                return;
+
+            _dataRecycled = true;
+            PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention);
+        }
     }
 }
