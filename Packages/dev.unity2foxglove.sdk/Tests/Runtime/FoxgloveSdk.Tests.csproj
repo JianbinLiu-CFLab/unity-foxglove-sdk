@@ -266,7 +266,7 @@
     <Compile Include="R2fuLyricalRuntimePackageValidation.cs" />
     <Compile Include="R2fuHumbleRuntimePackageValidation.cs" />
     <Compile Include="R2fuJazzyRuntimeRefreshValidation.cs" />
-    <Compile Include="Phase168Validation.cs" />
+    <Compile Include="MessagePackRawChannelEncodingValidation.cs" />
     <Compile Include="Phase138Validation.cs" />
     <Compile Include="Phase138BValidation.cs" />
     <Compile Include="Phase138HValidation.cs" />

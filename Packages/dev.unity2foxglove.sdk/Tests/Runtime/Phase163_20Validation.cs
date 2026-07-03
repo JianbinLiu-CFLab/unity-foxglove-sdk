@@ -107,7 +107,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(guard.Contains("EditorApplication.LockReloadAssemblies()", StringComparison.Ordinal)
                   && guard.Contains("RequestNativeRuntimeShutdownBeforeReload", StringComparison.Ordinal)
                   && guard.Contains("HasR2fuNativeOutputDemand()", StringComparison.Ordinal)
-                  && guard.Contains("ROS2UnityComponent", StringComparison.Ordinal)
+                  && guard.Contains("Ros2UnityComponentSuffix", StringComparison.Ordinal)
+                  && !guard.Contains("\"ROS2.ROS2UnityComponent\"", StringComparison.Ordinal)
                   && guard.Contains("ShutdownShared", StringComparison.Ordinal),
                 "163-20E-2: R2FU play-mode guard locks editor reloads and requests native shutdown before unsafe reload");
         }

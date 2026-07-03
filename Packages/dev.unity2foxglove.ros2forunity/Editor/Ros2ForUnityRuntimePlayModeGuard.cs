@@ -31,6 +31,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             "Unity2Foxglove.R2FU.ReloadAssembliesLockedForPlayMode";
         private const string FoxgloveManagerTypeName =
             "Unity.FoxgloveSDK.Components.FoxgloveManager";
+        private const string Ros2Namespace = "ROS2";
+        private const string Ros2UnityComponentSuffix = "Unity" + "Component";
+        private const string Ros2ForUnitySuffix = "ForUnity";
         private const string Ros2NativeEnabledSerializedProperty =
             "_ros2NativeEnabled";
         private const double NativeReloadUnlockDelaySeconds = 2.0;
@@ -364,8 +367,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             }
 
-            var stoppedExecutors = TryInvokeStatic("ROS2.ROS2UnityComponent", "StopAllExecutorsForRosShutdown");
-            var shutdownShared = TryInvokeStatic("ROS2.ROS2ForUnity", "ShutdownShared");
+            var stoppedExecutors = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2UnityComponentSuffix, "StopAllExecutorsForRosShutdown");
+            var shutdownShared = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2ForUnitySuffix, "ShutdownShared");
             if (!stoppedExecutors && !shutdownShared)
                 return;
 

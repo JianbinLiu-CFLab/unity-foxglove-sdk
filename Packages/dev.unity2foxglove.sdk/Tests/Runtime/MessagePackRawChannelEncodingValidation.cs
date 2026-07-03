@@ -15,7 +15,7 @@ using Unity.FoxgloveSDK.Schemas.MsgPack;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    public static class Phase168Validation
+    public static class MessagePackRawChannelEncodingValidation
     {
         private static int _passCount;
 
