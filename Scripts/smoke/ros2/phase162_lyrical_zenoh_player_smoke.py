@@ -292,6 +292,8 @@ def run_phase138u_with_rviz_capture(
     original_launch_rviz = phase138u.ros2env.launch_rviz
 
     def launch_rviz_and_capture(*args, **kwargs):
+        """Launch RViz2 through the original helper and remember the process."""
+
         process = original_launch_rviz(*args, **kwargs)
         captured_rviz_processes.append(process)
         return process
