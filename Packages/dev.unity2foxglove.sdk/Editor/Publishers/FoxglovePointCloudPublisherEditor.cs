@@ -262,7 +262,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty(_nativeDracoMaxPublishRateHz, "Native LiDAR Max Rate Hz");
             DrawProperty(_suppressTransformFallbackAfterSourceFrames, "Suppress Transform Fallback After Source");
             EditorGUILayout.HelpBox(
-                "Virtual LiDAR can hand full-resolution Draco snapshots directly to the worker, bypassing the regular Update publish gate. Leave Max Rate at 0 to publish every completed source scan; use a positive value only as an explicit visualization safety valve. Source-driven publishers suppress transform fallback frames so sparse child-transform points cannot overwrite real LiDAR clouds.",
+                "Virtual LiDAR can hand full-resolution Draco snapshots directly to the worker, bypassing the regular Update publish gate. Keep a positive Max Rate for responsive Foxglove visualization; set 0 only when you explicitly want every completed source scan. Source-driven publishers suppress transform fallback frames so sparse child-transform points cannot overwrite real LiDAR clouds.",
                 MessageType.Info);
 
             var checkRequested = false;
