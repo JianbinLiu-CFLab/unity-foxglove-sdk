@@ -8,6 +8,7 @@
 
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Util;
+using System.Collections.Generic;
 using UnityEngine;
 #if UNITY_2020_3_OR_NEWER
 using Unity.Profiling;
@@ -79,6 +80,11 @@ namespace Unity.FoxgloveSDK.Components
         /// True when this publisher can serialize ROS 2 CDR payload bytes.
         /// </summary>
         public virtual bool SupportsRos2Encoding => false;
+
+        /// <summary>
+        /// True when this publisher can serialize pre-encoded MessagePack payload bytes.
+        /// </summary>
+        public virtual bool SupportsMsgPackEncoding => false;
 
         /// <summary>
         /// ROS 2 .msg schema name used when <see cref="SupportsRos2Encoding"/> is true.
@@ -404,6 +410,11 @@ namespace Unity.FoxgloveSDK.Components
                 return _manager.TryPrepareRos2Publish(_topic, Ros2SchemaName, out _, requireDemand: true);
             }
 
+            if (attemptedEncoding == PublisherEffectiveEncoding.MsgPack)
+            {
+                return _manager.TryPrepareMsgPackPublish(_topic, out _, requireDemand: true);
+            }
+
             var wireEncoding = PublisherEncodingPolicy.ToProtocolEncoding(attemptedEncoding);
             return _manager.TryPrepareSchemaPublish(_topic, SchemaName, wireEncoding, out _, requireDemand: true);
         }
@@ -504,6 +515,30 @@ namespace Unity.FoxgloveSDK.Components
             _manager.PublishProto(_topic, SchemaName, payload, logTimeNs);
         }
 
+        /// <summary>Publish MessagePack bytes through the manager. Safe no-op if manager is null.</summary>
+        protected void PublishMsgPack(byte[] payload, ulong logTimeNs)
+        {
+            var resolution = ResolvePublisherEncoding();
+            PublishMsgPack(payload, logTimeNs, resolution);
+        }
+
+        /// <summary>Publish MessagePack bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
+        protected void PublishMsgPack(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
+        {
+            if (_manager == null) return;
+            if (!ValidateConfiguredTopic("publish")) return;
+
+            WarnIfEncodingFallback(resolution);
+            if (!resolution.IsSupported) return;
+            if (resolution.Effective != PublisherEffectiveEncoding.MsgPack)
+            {
+                WarnEncodingMismatch(resolution, "MsgPack");
+                return;
+            }
+
+            _manager.PublishMsgPack(_topic, payload, logTimeNs);
+        }
+
         /// <summary>Publish ROS 2 CDR bytes through the manager. Safe no-op if manager is null.</summary>
         protected void PublishRos2(byte[] payload, ulong logTimeNs)
         {
@@ -569,7 +604,8 @@ namespace Unity.FoxgloveSDK.Components
                 _encodingOverride,
                 SupportsJsonEncoding,
                 SupportsProtobufEncoding,
-                SupportsRos2Encoding);
+                SupportsRos2Encoding,
+                SupportsMsgPackEncoding);
         }
 
         protected virtual Ros2BridgeOutputResolution ResolveRos2BridgeOutput()
@@ -638,18 +674,12 @@ namespace Unity.FoxgloveSDK.Components
 
         private string BuildSupportedEncodingSummary()
         {
-            var json = SupportsJsonEncoding;
-            var protobuf = SupportsProtobufEncoding;
-            var ros2 = SupportsRos2Encoding;
-
-            if (json && protobuf && ros2) return "JSON, Protobuf, ROS2";
-            if (json && protobuf) return "JSON, Protobuf";
-            if (json && ros2) return "JSON, ROS2";
-            if (protobuf && ros2) return "Protobuf, ROS2";
-            if (json) return "JSON";
-            if (protobuf) return "Protobuf";
-            if (ros2) return "ROS2";
-            return "none";
+            var labels = new List<string>(4);
+            if (SupportsJsonEncoding) labels.Add("JSON");
+            if (SupportsProtobufEncoding) labels.Add("Protobuf");
+            if (SupportsMsgPackEncoding) labels.Add("MsgPack");
+            if (SupportsRos2Encoding) labels.Add("ROS2");
+            return labels.Count == 0 ? "none" : string.Join(", ", labels);
         }
 
         private void WarnIfEncodingFallback(PublisherEncodingResolution resolution)
@@ -663,7 +693,7 @@ namespace Unity.FoxgloveSDK.Components
 
             if (resolution.Effective == PublisherEffectiveEncoding.Unsupported)
             {
-                Debug.LogWarning($"[Foxglove] {GetType().Name} does not support JSON, Protobuf, or ROS2; dropping messages.");
+                Debug.LogWarning($"[Foxglove] {GetType().Name} does not support JSON, Protobuf, MsgPack, or ROS2; dropping messages.");
                 return;
             }
 
@@ -741,7 +771,9 @@ namespace Unity.FoxgloveSDK.Components
                 return 2;
             if (string.Equals(attemptedEncoding, "ROS2", System.StringComparison.Ordinal))
                 return 3;
-            return 4;
+            if (string.Equals(attemptedEncoding, "MsgPack", System.StringComparison.Ordinal))
+                return 4;
+            return 5;
         }
 
         private static int BridgeWarningKey(Ros2BridgeEffectiveOutput requested, Ros2BridgeEffectiveOutput effective)

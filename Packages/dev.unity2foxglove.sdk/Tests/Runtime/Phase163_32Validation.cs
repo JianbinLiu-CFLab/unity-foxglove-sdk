@@ -145,11 +145,19 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var guard = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
             var onPlayMode = ExtractCSharpMethod(guard, "OnPlayModeStateChanged");
+            var onExitingEditMode = ExtractCSharpMethod(guard, "OnExitingEditMode");
             var requireRouter = ExtractCSharpMethod(guard, "TryGetMissingZenohRouterDiagnostic");
+            var nativeDemand = ExtractCSharpMethod(guard, "HasR2fuNativeOutputDemand");
             var processProbe = ExtractCSharpMethod(guard, "IsZenohRouterProcessRunning");
 
-            Check(onPlayMode.Contains("TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic)", StringComparison.Ordinal)
-                  && onPlayMode.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+            Check(onPlayMode.Contains("OnExitingEditMode();", StringComparison.Ordinal)
+                  && onExitingEditMode.Contains("TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic)", StringComparison.Ordinal)
+                  && onExitingEditMode.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && requireRouter.Contains("HasR2fuNativeOutputDemand()", StringComparison.Ordinal)
+                  && guard.Contains("Ros2NativeEnabledSerializedProperty", StringComparison.Ordinal)
+                  && guard.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
+                  && nativeDemand.Contains("FindProperty(Ros2NativeEnabledSerializedProperty)", StringComparison.Ordinal)
+                  && nativeDemand.Contains("Resources.FindObjectsOfTypeAll<MonoBehaviour>()", StringComparison.Ordinal)
                   && requireRouter.Contains("Ros2ForUnityRuntimeSelection.ZenohCommunicationMode", StringComparison.Ordinal)
                   && requireRouter.Contains("IsZenohRouterProcessRunning()", StringComparison.Ordinal)
                   && processProbe.Contains("Process.GetProcesses()", StringComparison.Ordinal)

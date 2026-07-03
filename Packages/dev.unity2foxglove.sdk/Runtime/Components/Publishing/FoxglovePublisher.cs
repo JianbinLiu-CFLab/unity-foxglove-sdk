@@ -37,6 +37,12 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Called at publish time. Subclass builds the message object.</summary>
         protected abstract TMessage CreateMessage();
 
+        /// <summary>
+        /// Optionally create a pre-serialized MessagePack payload for publishers
+        /// that explicitly opt into MessagePack support.
+        /// </summary>
+        protected virtual byte[] CreateMsgPackPayload(TMessage message) => null;
+
         protected virtual void Update()
         {
             if (_manager == null) return;
@@ -49,6 +55,14 @@ namespace Unity.FoxgloveSDK.Components
             if (message == null) return;
 
             var unixNs = CurrentLogTimeNs;
+            if (resolution.Effective == PublisherEffectiveEncoding.MsgPack)
+            {
+                var payload = CreateMsgPackPayload(message);
+                if (payload != null)
+                    PublishMsgPack(payload, unixNs, resolution);
+                return;
+            }
+
             Publish(message, unixNs, resolution);
         }
     }

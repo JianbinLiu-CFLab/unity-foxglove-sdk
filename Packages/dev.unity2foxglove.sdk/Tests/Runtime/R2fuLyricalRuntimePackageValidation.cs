@@ -221,7 +221,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText(RegistryPath);
             var project = ReadRepoText(ProjectPath);
 
-            Check(registry.Contains("Ci(\"--phase146b\", \"Phase 146B\", R2fuLyricalRuntimePackageValidation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase146b\", \"Phase 146B: validation for the R2FU Lyrical Win64 runtime package\", R2fuLyricalRuntimePackageValidation.Validate", StringComparison.Ordinal),
                 "146B-F1: validation registry wires --phase146b");
             Check(project.Contains("R2fuLyricalRuntimePackageValidation.cs", StringComparison.Ordinal),
                 "146B-F2: runtime validation project compiles the 146B validation");

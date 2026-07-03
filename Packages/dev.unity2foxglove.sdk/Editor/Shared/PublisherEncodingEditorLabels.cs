@@ -13,8 +13,8 @@ namespace Unity.FoxgloveSDK.Editor
 {
     internal static class PublisherEncodingEditorLabels
     {
-        private static readonly string[] GlobalEncodingLabels = { "JSON", "Protobuf", "ROS2" };
-        private static readonly string[] PublisherOverrideLabels = { "Use Manager", "JSON", "Protobuf", "ROS2" };
+        private static readonly string[] GlobalEncodingLabels = { "JSON", "Protobuf", "ROS2", "MsgPack" };
+        private static readonly string[] PublisherOverrideLabels = { "Use Manager", "JSON", "Protobuf", "ROS2", "MsgPack" };
         private static readonly string[] BridgeOverrideLabels = { "Use Manager", "Disabled", "Enabled" };
         private static readonly string[] BridgeQosPresetLabels = { "Reliable Default", "Sensor Data", "Transient Local", "Custom" };
 

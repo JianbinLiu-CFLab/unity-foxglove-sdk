@@ -199,6 +199,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase161", "Phase 161: validation for the R2FU Jazzy Win64 runtime refresh", R2fuJazzyRuntimeRefreshValidation.Validate, includeInDefault: false),
             Ci("--phase162", "Phase 162: phase 146B validation for the R2FU Lyrical Win64 runtime package", R2fuLyricalRuntimePackageValidation.ValidatePhase162, includeInDefault: false),
             Ci("--phase165", "R2FU native bridge hot path performance", R2fuNativeBridgeHotPathLifecycleValidation.Validate, includeInDefault: false),
+            Ci("--phase168", "Phase 168: validation for MessagePack raw channel encoding support", MessagePackRawChannelEncodingValidation.Validate, includeInDefault: false),
             Ci("--phase163-2", "Phase 163-2: phase163-2 review regression checks for FoxgloveManager lifecycle contracts", Phase163_2Validation.Validate, includeInDefault: false),
             Ci("--phase163-3", "Phase 163-3: phase163-3 review regression checks for session protocol and client routing", Phase163_3Validation.Validate, includeInDefault: false),
             Ci("--phase163-4", "Phase 163-4: phase163-4 review regression checks for registries, assets, parameters, and services", Phase163_4Validation.Validate, includeInDefault: false),

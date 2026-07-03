@@ -270,6 +270,7 @@ namespace Unity.FoxgloveSDK.Editor
         public bool SupportsJson { get; }
         public bool SupportsProtobuf { get; }
         public bool SupportsRos2 { get; }
+        public bool SupportsMsgPack { get; }
         public bool IsTemplate { get; }
         public string ProductNote { get; }
 
@@ -283,6 +284,7 @@ namespace Unity.FoxgloveSDK.Editor
             bool supportsJson,
             bool supportsProtobuf,
             bool supportsRos2,
+            bool supportsMsgPack,
             bool isTemplate,
             string productNote)
         {
@@ -295,6 +297,7 @@ namespace Unity.FoxgloveSDK.Editor
             SupportsJson = supportsJson;
             SupportsProtobuf = supportsProtobuf;
             SupportsRos2 = supportsRos2;
+            SupportsMsgPack = supportsMsgPack;
             IsTemplate = isTemplate;
             ProductNote = productNote ?? string.Empty;
         }

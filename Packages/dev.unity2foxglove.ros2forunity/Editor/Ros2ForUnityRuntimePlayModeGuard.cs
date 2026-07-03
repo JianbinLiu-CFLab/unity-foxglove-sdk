@@ -6,6 +6,7 @@
 
 #if UNITY_EDITOR
 using System;
+using System.Reflection;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -26,12 +27,47 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private const string CompilationStartedWhileR2fuPlayModeKey =
             "Unity2Foxglove.R2FU.CompilationStartedWhilePlayMode";
+        private const string ReloadAssembliesLockedForR2fuKey =
+            "Unity2Foxglove.R2FU.ReloadAssembliesLockedForPlayMode";
+        private const string FoxgloveManagerTypeName =
+            "Unity.FoxgloveSDK.Components.FoxgloveManager";
+        private const string Ros2Namespace = "ROS2";
+        private const string Ros2UnityComponentSuffix = "Unity" + "Component";
+        private const string Ros2ForUnitySuffix = "ForUnity";
+        private const string Ros2NativeEnabledSerializedProperty =
+            "_ros2NativeEnabled";
+        private const double NativeReloadUnlockDelaySeconds = 2.0;
+
+        private static bool _reloadAssembliesLockedForR2fu;
+        private static double _unlockReloadAssembliesAfter;
 
         private static void OnPlayModeStateChanged(PlayModeStateChange state)
         {
-            if (state != PlayModeStateChange.ExitingEditMode)
+            if (state == PlayModeStateChange.ExitingEditMode)
+            {
+                OnExitingEditMode();
                 return;
+            }
 
+            if (state == PlayModeStateChange.EnteredPlayMode)
+            {
+                LockReloadAssembliesForNativePlayMode("entered Play Mode");
+                return;
+            }
+
+            if (state == PlayModeStateChange.ExitingPlayMode)
+            {
+                RequestNativeRuntimeShutdownBeforeReload("Play Mode exit");
+                ScheduleReloadAssembliesUnlock();
+                return;
+            }
+
+            if (state == PlayModeStateChange.EnteredEditMode)
+                ScheduleReloadAssembliesUnlock();
+        }
+
+        private static void OnExitingEditMode()
+        {
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
             var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
             var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
@@ -54,6 +90,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 }
 
                 Ros2ForUnityRuntimeSelection.BindActiveRuntimeForPlayMode(status);
+                LockReloadAssembliesForNativePlayMode("entering Play Mode");
                 return;
             }
 
@@ -81,6 +118,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             diagnostic = string.Empty;
             if (status == null || status.SelectedRuntime == null || !status.SelectedRuntime.SupportsZenoh)
+                return false;
+            if (!HasR2fuNativeOutputDemand())
                 return false;
 
             var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(status.SelectedRuntime);
@@ -158,11 +197,59 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                        || value.IndexOf("zenohd", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
+        private static bool HasR2fuNativeOutputDemand()
+        {
+            foreach (var behaviour in Resources.FindObjectsOfTypeAll<MonoBehaviour>())
+            {
+                if (behaviour == null)
+                    continue;
+
+                var type = behaviour.GetType();
+                if (!string.Equals(type.FullName, FoxgloveManagerTypeName, StringComparison.Ordinal))
+                    continue;
+
+                var gameObject = behaviour.gameObject;
+                if (gameObject == null || !gameObject.scene.IsValid() || !gameObject.scene.isLoaded)
+                    continue;
+
+                var serialized = new SerializedObject(behaviour);
+                var ros2NativeEnabled = serialized.FindProperty(Ros2NativeEnabledSerializedProperty);
+                if (ros2NativeEnabled != null && ros2NativeEnabled.propertyType == SerializedPropertyType.Boolean)
+                {
+                    if (ros2NativeEnabled.boolValue)
+                        return true;
+                    continue;
+                }
+
+                var property = type.GetProperty(
+                    "Ros2NativeEnabled",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                if (property == null || property.PropertyType != typeof(bool))
+                    continue;
+
+                try
+                {
+                    if ((bool)property.GetValue(behaviour, null))
+                        return true;
+                }
+                catch (Exception)
+                {
+                    // Ignore editor reflection races while Unity is entering Play Mode.
+                }
+            }
+
+            return false;
+        }
+
         private static void OnCompilationStarted(object context)
         {
             Ros2ForUnityRuntimeSelection.InvalidateStatusCache();
             if (StopPlayModeBeforeNativeReload("script compilation"))
+            {
                 SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, true);
+                LockReloadAssembliesForNativePlayMode("script compilation");
+                RequestNativeRuntimeShutdownBeforeReload("script compilation");
+            }
         }
 
         private static void OnCompilationFinished(object context)
@@ -178,6 +265,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             SessionState.SetBool(CompilationStartedWhileR2fuPlayModeKey, false);
+            RequestNativeRuntimeShutdownBeforeReload(
+                compilationStartedWhilePlaying
+                    ? "script compilation assembly reload"
+                    : "assembly reload");
             StopPlayModeBeforeNativeReload(
                 compilationStartedWhilePlaying
                     ? "script compilation assembly reload"
@@ -205,6 +296,150 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             EditorApplication.isPlaying = false;
             return true;
+        }
+
+        private static void LockReloadAssembliesForNativePlayMode(string reason)
+        {
+            var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
+            if (!Ros2ForUnityRuntimeSelection.HasManifestRuntimePackage(projectDirectory))
+                return;
+            if (!_reloadAssembliesLockedForR2fu && !HasR2fuNativeOutputDemand())
+                return;
+
+            if (_reloadAssembliesLockedForR2fu)
+                return;
+
+            EditorApplication.LockReloadAssemblies();
+            _reloadAssembliesLockedForR2fu = true;
+            SessionState.SetBool(ReloadAssembliesLockedForR2fuKey, true);
+
+            Debug.LogWarning(
+                "Unity2Foxglove ROS2 For Unity locked editor assembly reloads while native ROS2/RMW DLLs are active ("
+                + reason
+                + "). Exit Play Mode before changing scripts; pending script reloads will resume after native shutdown.");
+        }
+
+        private static void ScheduleReloadAssembliesUnlock()
+        {
+            if (!_reloadAssembliesLockedForR2fu
+                && !SessionState.GetBool(ReloadAssembliesLockedForR2fuKey, false))
+            {
+                return;
+            }
+
+            _unlockReloadAssembliesAfter = EditorApplication.timeSinceStartup + NativeReloadUnlockDelaySeconds;
+            EditorApplication.update -= OnEditorUpdateUntilReloadUnlock;
+            EditorApplication.update += OnEditorUpdateUntilReloadUnlock;
+        }
+
+        private static void OnEditorUpdateUntilReloadUnlock()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+            if (EditorApplication.isUpdating)
+                return;
+            if (EditorApplication.timeSinceStartup < _unlockReloadAssembliesAfter)
+                return;
+
+            EditorApplication.update -= OnEditorUpdateUntilReloadUnlock;
+            try
+            {
+                EditorApplication.UnlockReloadAssemblies();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "Unity2Foxglove ROS2 For Unity failed to unlock editor assembly reloads after Play Mode exit: "
+                    + ex.GetType().Name
+                    + ": "
+                    + ex.Message);
+            }
+
+            _reloadAssembliesLockedForR2fu = false;
+            SessionState.SetBool(ReloadAssembliesLockedForR2fuKey, false);
+        }
+
+        private static void RequestNativeRuntimeShutdownBeforeReload(string reason)
+        {
+            if (!EditorApplication.isPlayingOrWillChangePlaymode
+                && !SessionState.GetBool(ReloadAssembliesLockedForR2fuKey, false))
+            {
+                return;
+            }
+
+            var stoppedExecutors = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2UnityComponentSuffix, "StopAllExecutorsForRosShutdown");
+            var shutdownShared = TryInvokeStatic(Ros2Namespace + ".ROS2" + Ros2ForUnitySuffix, "ShutdownShared");
+            if (!stoppedExecutors && !shutdownShared)
+                return;
+
+            Debug.LogWarning(
+                "Unity2Foxglove ROS2 For Unity requested native ROS2 shutdown before "
+                + reason
+                + " to avoid unloading ROS2/RMW DLLs while executor threads are active.");
+        }
+
+        private static bool TryInvokeStatic(string typeName, string methodName)
+        {
+            var type = FindLoadedType(typeName);
+            var method = type?.GetMethod(
+                methodName,
+                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            if (method == null)
+                return false;
+
+            try
+            {
+                method.Invoke(null, null);
+                return true;
+            }
+            catch (TargetInvocationException ex)
+            {
+                var inner = ex.InnerException ?? ex;
+                Debug.LogWarning(
+                    "Unity2Foxglove ROS2 For Unity native shutdown hook failed: "
+                    + typeName
+                    + "."
+                    + methodName
+                    + " threw "
+                    + inner.GetType().Name
+                    + ": "
+                    + inner.Message);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning(
+                    "Unity2Foxglove ROS2 For Unity native shutdown hook failed: "
+                    + typeName
+                    + "."
+                    + methodName
+                    + " threw "
+                    + ex.GetType().Name
+                    + ": "
+                    + ex.Message);
+            }
+
+            return false;
+        }
+
+        private static Type FindLoadedType(string typeName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type type;
+                try
+                {
+                    type = assembly.GetType(typeName, throwOnError: false);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+
+                if (type != null)
+                    return type;
+            }
+
+            return null;
         }
     }
 }

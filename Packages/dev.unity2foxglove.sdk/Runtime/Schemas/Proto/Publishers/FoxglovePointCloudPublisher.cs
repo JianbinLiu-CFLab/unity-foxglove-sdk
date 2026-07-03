@@ -26,7 +26,10 @@ namespace Unity.FoxgloveSDK.Components
     public partial class FoxglovePointCloudPublisher : FoxglovePublisherBase
     {
         private const int DracoFailureWarningIntervalFrames = 120;
-        private const int MaxCompletedDracoEncodeResults = 8;
+        // Keep the latest completed Draco frame only. Publishing several stale
+        // completed point clouds in one Update creates visible Foxglove bursts
+        // when Unity is unfocused or a client render stalls.
+        private const int MaxCompletedDracoEncodeResults = 1;
         private const int PointCloud2NativeFailureWarningIntervalFrames = 120;
         // PointCloud2 Native frames are large enough that draining stale completed
         // results in a burst can hitch the main loop. Keep the latest completed

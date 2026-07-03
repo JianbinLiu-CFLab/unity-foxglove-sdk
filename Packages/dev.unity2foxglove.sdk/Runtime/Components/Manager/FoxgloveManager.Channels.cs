@@ -43,6 +43,17 @@ namespace Unity.FoxgloveSDK.Components
             return new FoxgloveRawChannel(this, _channelSessionGeneration, channelId, topic, encoding, normalizedSchemaName);
         }
 
+        /// <summary>
+        /// Create or reuse a schemaless MessagePack channel for the current running Foxglove session.
+        /// </summary>
+        /// <remarks>Call from the Unity main thread, matching the manager's publishing lifecycle contract.</remarks>
+        public FoxgloveMsgPackChannel CreateMsgPackChannel(string topic)
+        {
+            EnsureChannelFactoryCanRegister();
+            var channelId = GetOrRegisterChannel(topic, MsgPackEncoding);
+            return new FoxgloveMsgPackChannel(this, _channelSessionGeneration, channelId, topic);
+        }
+
         internal ulong CurrentChannelSessionGeneration => _channelSessionGeneration;
 
         internal void PublishJsonChannel(ulong generation, uint channelId, string topic, object message, ulong timestampNs)
@@ -70,6 +81,15 @@ namespace Unity.FoxgloveSDK.Components
 
             _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), timestampNs);
             RecordPublishCadence(topic, ProtobufEncoding);
+        }
+
+        internal void PublishMsgPackChannel(ulong generation, uint channelId, string topic, byte[] payload, ulong timestampNs)
+        {
+            if (!TryPrepareChannelLog(generation, topic, "publish MsgPack channel"))
+                return;
+
+            _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), timestampNs);
+            RecordPublishCadence(topic, MsgPackEncoding);
         }
 
         private void EnsureChannelFactoryCanRegister()
