@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectorScopesCommunicationModePerRuntime();
             RuntimeSelectorSurfacesMissingZenohPayload();
             LyricalRuntimeCapturesSourcedDistroBeforeStandalonePatch();
+            LyricalRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             LyricalRuntimeDoesNotRestartAfterSharedShutdown();
             LyricalBuilderAndValidatorRegenerateRuntimePatches();
             LyricalValidationUsesRepoRootDiscovery();
@@ -102,6 +103,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && constructor.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal)
                   && !runtime.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
                 "163-32D-2: Lyrical standalone startup warns then ignores external ROS_DISTRO before integrity checks");
+        }
+
+        private static void LyricalRuntimeLifecycleLogsAvoidEditorStackTraceExtraction()
+        {
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
+            var constructor = ExtractCSharpMethod(runtime, "ROS2ForUnity");
+            var shutdown = ExtractCSharpMethod(runtime, "CompleteShutdownShared");
+
+            Check(runtime.Contains("private static void LogRuntimeInfoWithoutStackTrace", StringComparison.Ordinal)
+                  && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
+                  && shutdown.Contains("LogRuntimeInfoWithoutStackTrace(\"Shutting down Ros2 For Unity\")", StringComparison.Ordinal),
+                "163-32D-3: Lyrical runtime lifecycle logs avoid Editor stack trace extraction");
         }
 
         private static void LyricalRuntimeDoesNotRestartAfterSharedShutdown()

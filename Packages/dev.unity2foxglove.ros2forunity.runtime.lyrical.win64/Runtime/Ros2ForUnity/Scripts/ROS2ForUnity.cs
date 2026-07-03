@@ -598,7 +598,7 @@ internal class ROS2ForUnity : IDisposable
             string rmwImpl = Ros2cs.GetRMWImplementation();
             ValidateRmwImplementation(rmwImpl);
 
-            Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+            LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 
 #if UNITY_EDITOR
             RegisterEditorHandlers();
@@ -712,7 +712,7 @@ internal class ROS2ForUnity : IDisposable
                 return;
             }
 
-            Debug.Log("Shutting down Ros2 For Unity");
+            LogRuntimeInfoWithoutStackTrace("Shutting down Ros2 For Unity");
             try
             {
 #if UNITY_EDITOR
@@ -732,6 +732,11 @@ internal class ROS2ForUnity : IDisposable
                 UnregisterCtrlCHandlerStatic();
             }
         }
+    }
+
+    private static void LogRuntimeInfoWithoutStackTrace(string message)
+    {
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", message);
     }
 
     private static void UnregisterCtrlCHandlerStatic()

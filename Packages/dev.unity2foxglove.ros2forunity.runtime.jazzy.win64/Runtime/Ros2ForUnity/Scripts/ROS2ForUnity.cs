@@ -638,7 +638,7 @@ internal class ROS2ForUnity
             : "unknown";
         ValidateRmwImplementation(rmwImpl);
 
-        Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+        LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 
 #if UNITY_EDITOR
         EditorApplication.playModeStateChanged += this.EditorPlayStateChanged;
@@ -687,11 +687,16 @@ internal class ROS2ForUnity
 
         if (shouldShutdown)
         {
-            Debug.Log("Shutting down Ros2 For Unity");
+            LogRuntimeInfoWithoutStackTrace("Shutting down Ros2 For Unity");
             ROS2UnityComponent.StopAllExecutorsForRosShutdown();
             SuppressRos2csFinalizer();
             Ros2cs.Shutdown();
         }
+    }
+
+    private static void LogRuntimeInfoWithoutStackTrace(string message)
+    {
+        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", message);
     }
 
 #if UNITY_EDITOR

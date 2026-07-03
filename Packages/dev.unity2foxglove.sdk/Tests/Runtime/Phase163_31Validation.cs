@@ -22,6 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectionKeepsJazzyFastDdsOnly();
             RuntimeSelectionUsesPlatformSensitiveEmbeddedPackageComparison();
             JazzyRuntimeCapturesSourcedDistroBeforeStandalonePatch();
+            JazzyRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             JazzyRuntimeStopsComponentExecutorsBeforeSharedShutdown();
             JazzyComponentDoesNotRestartDeadRuntimeAfterSharedShutdown();
             JazzyBuilderRegeneratesStandaloneIntegrityPatch();
@@ -72,6 +73,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && constructor.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal)
                   && !source.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
                 "163-31C-2: Jazzy standalone startup ignores externally sourced ROS_DISTRO after patching native env");
+        }
+
+        private static void JazzyRuntimeLifecycleLogsAvoidEditorStackTraceExtraction()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
+            var constructor = ExtractMethod(source, "ROS2ForUnity");
+            var destroy = ExtractMethod(source, "DestroyROS2ForUnity");
+
+            Check(source.Contains("private static void LogRuntimeInfoWithoutStackTrace", StringComparison.Ordinal)
+                  && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
+                  && destroy.Contains("LogRuntimeInfoWithoutStackTrace(\"Shutting down Ros2 For Unity\")", StringComparison.Ordinal),
+                "163-31C-3: Jazzy runtime lifecycle logs avoid Editor stack trace extraction");
         }
 
         private static void JazzyRuntimeStopsComponentExecutorsBeforeSharedShutdown()

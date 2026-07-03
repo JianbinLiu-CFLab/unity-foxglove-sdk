@@ -167,7 +167,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private bool EnsureRos2UnityReady()
         {
-            if (IsShuttingDown)
+            if (!Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(gameObject.scene))
                 return false;
 
             if (_ros2Unity == null)

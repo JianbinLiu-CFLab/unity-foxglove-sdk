@@ -164,6 +164,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "totalAllocatedBytes")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "totalAllocatedBytesDelta"),
                 "140H2-5C: frame stall log includes frame timing, editor, focus, play, GC, and memory state");
+            Check(diagnostics.Contains("FrameStallEditorAssetRefreshProbe", StringComparison.Ordinal)
+                  && diagnostics.Contains("OnPostprocessAllAssets", StringComparison.Ordinal)
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "editorAssetRefreshRecent")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "editorAssetRefreshAgeMs"),
+                "140H2-5C2: frame stall log identifies stalls near Editor asset refreshes");
             Check(editor.Contains("DrawFrameStallDiagnostics", StringComparison.Ordinal)
                   && editor.Contains("Frame Stall Diagnostics", StringComparison.Ordinal)
                   && editor.Contains("Stall Threshold Ms", StringComparison.Ordinal),

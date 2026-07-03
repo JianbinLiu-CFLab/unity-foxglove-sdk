@@ -76,6 +76,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "165-A5: lifecycle gate preserves backup-scene detection coverage");
             Check(source.Contains("IsShuttingDownForBridge", StringComparison.Ordinal)
                   && source.Contains("IsBridgeSceneUnsafe", StringComparison.Ordinal)
+                  && source.Contains("CanInitializeNativeRuntimeForBridge", StringComparison.Ordinal)
                   && source.Contains("IsStablePlayModeScene", StringComparison.Ordinal),
                 "165-A6: lifecycle gate exposes cheap bridge-facing lifecycle state");
             Check(!source.Contains("Time.frameCount", StringComparison.Ordinal),
@@ -102,6 +103,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("IsActiveSceneCacheCurrent", StringComparison.Ordinal)
                   && source.Contains("!IsActiveSceneCacheCurrent || IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
                 "165-A12: lifecycle gate fail-closes bridge bootstrap when active scene changes before event refresh");
+            var nativeInitGate = RequiredMethod(source, "internal static bool CanInitializeNativeRuntimeForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
+            Check(nativeInitGate.Contains("RefreshSceneState();", StringComparison.Ordinal)
+                  && nativeInitGate.Contains("!_nativeReloadWindow", StringComparison.Ordinal)
+                  && nativeInitGate.Contains("_isStablePlayModeScene", StringComparison.Ordinal)
+                  && nativeInitGate.Contains("!IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
+                "165-A13: lifecycle gate refreshes scene state before cold native runtime initialization");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()
@@ -126,6 +133,12 @@ namespace Unity.FoxgloveSDK.Tests
 
                 Check(source.Contains("Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge", StringComparison.Ordinal),
                     "165-B1: " + bridge + " delegates shutdown checks to the shared lifecycle gate");
+                Check(ensureBody.Contains("Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(gameObject.scene)", StringComparison.Ordinal)
+                      && ensureBody.IndexOf("CanInitializeNativeRuntimeForBridge", StringComparison.Ordinal)
+                         < ensureBody.IndexOf("GetComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
+                      && ensureBody.IndexOf("CanInitializeNativeRuntimeForBridge", StringComparison.Ordinal)
+                         < ensureBody.IndexOf("_ros2Unity.Ok()", StringComparison.Ordinal),
+                    "165-B1b: " + bridge + " refreshes lifecycle state before first-initializing R2FU native runtime");
                 Check(!source.Contains("Ros2ForUnityNativeBridgeSceneGate", StringComparison.Ordinal)
                       && !source.Contains("InitializeEditorPlayModeGate", StringComparison.Ordinal)
                       && !source.Contains("IsEditorPlayModeTransition()", StringComparison.Ordinal),
