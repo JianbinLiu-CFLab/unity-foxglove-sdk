@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
                 && timestampNs >= _lastDeskewedPointCloud2NativePublishUnixNs
                 && timestampNs - _lastDeskewedPointCloud2NativePublishUnixNs < intervalNs)
             {
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
+                _diagnostics.RecordDeskewRateSkip(_logPerformanceDiagnostics);
                 return false;
             }
 

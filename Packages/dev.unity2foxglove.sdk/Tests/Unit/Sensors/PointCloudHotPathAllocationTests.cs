@@ -91,6 +91,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void PointCloud2DeskewRateGateUsesSeparateDiagnosticCounter()
+        {
+            var diagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var motionPublisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("private int _deskewRateSkips;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("public void RecordDeskewRateSkip(bool enabled", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("deskewRateSkip={8}", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_deskewRateSkips = 0;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_diagnostics.RecordDeskewRateSkip(_logPerformanceDiagnostics);", motionPublisher, StringComparison.Ordinal);
+            Assert.DoesNotContain("_diagnostics.RecordDrop(_logPerformanceDiagnostics);\n                return false;", motionPublisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PointCloud2PooledDeskewBuffersArePreferredOverOneShotRawSizes()
         {
             var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
@@ -110,6 +126,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 payloads.IndexOf("MotionCompensatedNativeFrame?.RecycleData()", StringComparison.Ordinal)
                 < payloads.IndexOf("NativeFrame?.RecycleData()", StringComparison.Ordinal));
             Assert.Contains("PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention)", frame, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloudPackedByteBufferPoolRemovesEmptyExactSizeBuckets()
+        {
+            var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
+
+            Assert.Contains("BuffersBySize.Remove(length);", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("BuffersBySize.Remove(emptySizeToRemove.Value);", packedBuilder, StringComparison.Ordinal);
+            Assert.True(
+                packedBuilder.IndexOf("if (RetainedBytes + buffer.Length > MaxRetainedBytes)", StringComparison.Ordinal)
+                < packedBuilder.IndexOf("if (!BuffersBySize.TryGetValue(buffer.Length", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -135,6 +163,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("width: checked((uint)packed.PointCount)", worker, StringComparison.Ordinal);
             Assert.Contains("isDense: packed.ValidPointCount == packed.PointCount", worker, StringComparison.Ordinal);
             Assert.Contains("validCount: packed.ValidPointCount", worker, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void PointCloud2NativeWorkerKeepsDeskewSlotWidthStableForPoolReuse()
+        {
+            var worker = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs");
+
+            var scanReferenceStart = worker.IndexOf(
+                "private static PointCloud2NativeFrame BuildScanReferenceDeskewedPointCloud2Frame",
+                StringComparison.Ordinal);
+            var scanReferenceEnd = worker.IndexOf(
+                "private static PointCloud2NativeFrame BuildPointCloud2NativeFrame(",
+                scanReferenceStart,
+                StringComparison.Ordinal);
+            Assert.True(scanReferenceStart >= 0);
+            Assert.True(scanReferenceEnd > scanReferenceStart);
+            var scanReferenceBlock = worker.Substring(scanReferenceStart, scanReferenceEnd - scanReferenceStart);
+            Assert.Contains("preserveSourcePointCount: true", scanReferenceBlock, StringComparison.Ordinal);
+
+            var legacyCompensationStart = worker.IndexOf("TryCompensateVirtualLidarInto", StringComparison.Ordinal);
+            var legacyPackCall = worker.IndexOf(
+                "var compensatedPacked = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled",
+                legacyCompensationStart,
+                StringComparison.Ordinal);
+            var legacyFrameBuild = worker.IndexOf(
+                "motionCompensatedNativeFrame = BuildPointCloud2NativeFrame",
+                legacyPackCall,
+                StringComparison.Ordinal);
+            Assert.True(legacyCompensationStart >= 0);
+            Assert.True(legacyPackCall > legacyCompensationStart);
+            Assert.True(legacyFrameBuild > legacyPackCall);
+            var legacyPackBlock = worker.Substring(legacyPackCall, legacyFrameBuild - legacyPackCall);
+            Assert.Contains("preserveSourcePointCount: true", legacyPackBlock, StringComparison.Ordinal);
+            Assert.Contains("preferPooledBufferRetention: true", legacyPackBlock, StringComparison.Ordinal);
         }
 
         [Fact]

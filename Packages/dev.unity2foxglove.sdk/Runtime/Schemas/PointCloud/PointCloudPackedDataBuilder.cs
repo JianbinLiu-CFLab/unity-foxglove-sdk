@@ -310,8 +310,11 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 if (BuffersBySize.TryGetValue(length, out var buffers) && buffers.Count > 0)
                 {
                     RetainedBytes -= length;
+                    var buffer = buffers.Pop();
+                    if (buffers.Count == 0)
+                        BuffersBySize.Remove(length);
                     reused = true;
-                    return buffers.Pop();
+                    return buffer;
                 }
             }
 
@@ -336,13 +339,16 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     EvictNonPreferredBuffersFor(buffer.Length, buffer.Length);
                 }
 
+                if (RetainedBytes + buffer.Length > MaxRetainedBytes)
+                    return;
+
                 if (!BuffersBySize.TryGetValue(buffer.Length, out var buffers))
                 {
                     buffers = new Stack<byte[]>(MaxBuffersPerSize);
                     BuffersBySize[buffer.Length] = buffers;
                 }
 
-                if (buffers.Count < MaxBuffersPerSize && RetainedBytes + buffer.Length <= MaxRetainedBytes)
+                if (buffers.Count < MaxBuffersPerSize)
                 {
                     buffers.Push(buffer);
                     RetainedBytes += buffer.Length;
@@ -355,16 +361,29 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             while (RetainedBytes + requestedBytes > MaxRetainedBytes)
             {
                 var evicted = false;
+                int? emptySizeToRemove = null;
                 foreach (var pair in BuffersBySize)
                 {
-                    if (pair.Key == preferredSize || PreferredSizes.Contains(pair.Key) || pair.Value.Count == 0)
+                    if (pair.Value.Count == 0)
+                    {
+                        emptySizeToRemove = pair.Key;
+                        evicted = true;
+                        break;
+                    }
+
+                    if (pair.Key == preferredSize || PreferredSizes.Contains(pair.Key))
                         continue;
 
                     pair.Value.Pop();
                     RetainedBytes -= pair.Key;
+                    if (pair.Value.Count == 0)
+                        emptySizeToRemove = pair.Key;
                     evicted = true;
                     break;
                 }
+
+                if (emptySizeToRemove.HasValue)
+                    BuffersBySize.Remove(emptySizeToRemove.Value);
 
                 if (!evicted)
                     break;
