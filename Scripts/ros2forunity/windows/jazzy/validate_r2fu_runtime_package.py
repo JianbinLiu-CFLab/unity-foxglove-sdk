@@ -676,11 +676,15 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "ROS2ForUnity configures standalone native environment before init",
         all(token in runtime for token in env_tokens)
         and "sourcedRosDistroBeforeStandalonePatch" in runtime
+        and "SetStandaloneRosDistro" in runtime
+        and "WarnIfStandaloneRosDistroOverride" in runtime
         and "private static void FailIntegrity" in runtime
-        and "CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)" in runtime
+        and "CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)" in runtime
+        and "ROS2 version in standalone process environment does not match this runtime package" not in runtime
         and "ROS2UnityComponent.StopAllExecutorsForRosShutdown()" in runtime
         and runtime.find("SetStandalonePrefixPath();") < runtime.find("Ros2cs.Init()")
         and runtime.find("SetStandaloneRmwImplementation();") < runtime.find("Ros2cs.Init()")
+        and runtime.find("SetStandaloneRosDistro(currentRos2Version);") < runtime.find("Ros2cs.Init()")
         and runtime.find("SetEnvPathVariable();") < runtime.find("Ros2cs.Init()"),
         "ROS2ForUnity.cs",
     )

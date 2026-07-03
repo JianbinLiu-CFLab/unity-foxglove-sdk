@@ -279,6 +279,12 @@ internal class ROS2ForUnity
         SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", expectedRmwImplementation);
     }
 
+    private static void SetStandaloneRosDistro(string ros2Codename)
+    {
+        // U2F-LOCAL-PATCH: standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell.
+        SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
+    }
+
     private static string NormalizeEnvPathEntry(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -341,6 +347,19 @@ internal class ROS2ForUnity
         return ros2SourcedCodename;
     }
 
+    private static void WarnIfStandaloneRosDistroOverride(string sourcedRosDistro, string packagedRos2Version)
+    {
+        if (string.IsNullOrEmpty(sourcedRosDistro)
+            || string.Equals(sourcedRosDistro, packagedRos2Version, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Debug.LogWarning(
+            "Ignoring sourced ROS_DISTRO '" + sourcedRosDistro +
+            "' because standalone runtime package provides '" + packagedRos2Version + "'.");
+    }
+
     /// <summary>
     /// Checks if both ros2cs and ros2-for-unity were build for the same ros version as well as
     /// the current sourced ros version matches ros2cs binaries.
@@ -367,13 +386,6 @@ internal class ROS2ForUnity
                 "This is caused by mixing versions/builds.");
         }
 
-        if (IsStandalone()
-            && !string.IsNullOrEmpty(ros2SourcedCodename)
-            && ros2SourcedCodename != ros2FromRos2csMetadata) {
-            FailIntegrity(
-                "ROS2 version in standalone process environment does not match this runtime package. " +
-                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".");
-        }
     }
 
     private static void FailIntegrity(string errMessage)
@@ -571,11 +583,16 @@ internal class ROS2ForUnity
         string currentRos2Version = standaloneBuild
             ? GetMetadataValue(ros2csMetadata, "/ros2cs/ros2")
             : GetROSVersion();
+        if (standaloneBuild)
+        {
+            SetStandaloneRosDistro(currentRos2Version);
+        }
         string standalone = standaloneBuild ? "standalone" : "non-standalone";
 
         // Self checks
         CheckROSSupport(currentRos2Version);
-        CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);
+        WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);
+        CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);
 
         if (GetOS() == Platform.Windows) {
             // Windows version can run standalone, modifies PATH to ensure all plugins visibility

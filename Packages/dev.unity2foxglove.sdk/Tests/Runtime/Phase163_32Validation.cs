@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
             var selector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
             var descriptorCtor = ExtractCSharpMethod(selector, "Ros2ForUnityRuntimeDescriptor");
-            var diagnostic = ExtractCSharpMethod(selector, "GetZenohPayloadDiagnostic");
+            var diagnostic = ExtractCSharpMethod(selector, "ComputeZenohPayloadDiagnostic");
 
             Check(selector.Contains("public string ZenohPayloadDiagnostic", StringComparison.Ordinal)
                   && descriptorCtor.Contains("ZenohPayloadDiagnostic = zenohPayloadDiagnostic", StringComparison.Ordinal)
@@ -98,8 +98,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(constructor.Contains("string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();", StringComparison.Ordinal)
                   && constructor.IndexOf("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
                      < constructor.IndexOf("SetStandaloneRosDistro(packagedRos2Version);", StringComparison.Ordinal)
-                  && constructor.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal),
-                "163-32D-2: Lyrical standalone startup snapshots external ROS_DISTRO before patching native env");
+                  && constructor.Contains("WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);", StringComparison.Ordinal)
+                  && constructor.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal)
+                  && !runtime.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-32D-2: Lyrical standalone startup warns then ignores external ROS_DISTRO before integrity checks");
         }
 
         private static void LyricalRuntimeDoesNotRestartAfterSharedShutdown()
@@ -136,17 +138,20 @@ namespace Unity.FoxgloveSDK.Tests
             Check(patch.Contains("old_check_signature", StringComparison.Ordinal)
                   && patch.Contains("private void CheckIntegrity(string ros2SourcedCodename)", StringComparison.Ordinal)
                   && patch.Contains("sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced()", StringComparison.Ordinal)
-                  && patch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal),
-                "163-32F-1: Lyrical builder regenerates standalone integrity ordering");
+                  && patch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && patch.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && !patch.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-32F-1: Lyrical builder regenerates standalone ROS_DISTRO override isolation");
             Check(packagePath.Contains("re.search(", StringComparison.Ordinal)
                   && packagePath.Contains("UnityEditor\\.PackageManager\\.PackageInfo", StringComparison.Ordinal)
                   && !packagePath.Contains("text.index(\"#if UNITY_EDITOR\")", StringComparison.Ordinal),
                 "163-32F-2: Lyrical validator checks PackageManager lookup guard around the lookup itself");
             Check(sourcePatch.Contains("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
-                  && sourcePatch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && sourcePatch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && !sourcePatch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
                   && sourcePatch.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && sourcePatch.Contains("MarkRuntimeShutdown()", StringComparison.Ordinal),
-                "163-32F-3: Lyrical validator requires standalone integrity and no-reinit shutdown patches");
+                "163-32F-3: Lyrical validator requires standalone env isolation and no-reinit shutdown patches");
         }
 
         private static void LyricalValidationUsesRepoRootDiscovery()

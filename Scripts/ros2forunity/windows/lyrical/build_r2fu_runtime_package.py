@@ -958,26 +958,34 @@ def patch_standalone_environment_isolation(text: str) -> str:
             SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
         }
 '''
-    new_distro = '''        // U2F-LOCAL-PATCH: hide any externally sourced ROS_DISTRO from standalone checks.
+    new_distro = '''        // U2F-LOCAL-PATCH: standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell.
         SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
 '''
     text = text.replace(old_distro, new_distro)
+    if "WarnIfStandaloneRosDistroOverride" not in text:
+        text = text.replace(
+            "\n    private static void SetStandaloneRcutilsConsoleMode()\n",
+            "\n    private static void WarnIfStandaloneRosDistroOverride(string sourcedRosDistro, string packagedRos2Version)\n"
+            "    {\n"
+            "        if (string.IsNullOrEmpty(sourcedRosDistro)\n"
+            "            || string.Equals(sourcedRosDistro, packagedRos2Version, StringComparison.OrdinalIgnoreCase))\n"
+            "        {\n"
+            "            return;\n"
+            "        }\n\n"
+            "        Debug.LogWarning(\n"
+            "            \"Ignoring sourced ROS_DISTRO '\" + sourcedRosDistro +\n"
+            "            \"' because standalone runtime package provides '\" + packagedRos2Version + \"'.\");\n"
+            "    }\n\n"
+            "    private static void SetStandaloneRcutilsConsoleMode()\n",
+            1,
+        )
 
     old_integrity = '''        if (IsStandalone() && !string.IsNullOrEmpty(ros2SourcedCodename)) {
             string errMessage = "You should not source ROS2 in 'ros2-for-unity' standalone build.";
             FailIntegrity(errMessage);
         }
 '''
-    new_integrity = '''        if (IsStandalone()
-            && !string.IsNullOrEmpty(ros2SourcedCodename)
-            && ros2SourcedCodename != ros2FromRos2csMetadata) {
-            string errMessage =
-                "ROS2 version in standalone process environment does not match this runtime package. " +
-                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".";
-            FailIntegrity(errMessage);
-        }
-'''
-    text = text.replace(old_integrity, new_integrity)
+    text = text.replace(old_integrity, "")
 
     startup_marker = "            // Load metadata\n            LoadMetadata();\n"
     startup_patch = '''            // Load metadata
@@ -1000,10 +1008,28 @@ def patch_standalone_environment_isolation(text: str) -> str:
             startup_marker + "            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n",
             1,
         )
+    text = text.replace(
+        '            string standalone = IsStandalone() ? "standalone" : "non-standalone";\n',
+        '            bool standaloneBuild = IsStandalone();\n'
+        '            string standalone = standaloneBuild ? "standalone" : "non-standalone";\n',
+        1,
+    )
 
     text = text.replace(
         "            CheckIntegrity();\n",
-        "            CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);\n",
+        "            WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);\n"
+        "            CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);\n",
+        1,
+    )
+    text = text.replace(
+        "            CheckIntegrity(" + "sourcedRosDistroBeforeStandalonePatch);\n",
+        "            WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);\n"
+        "            CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);\n",
+        1,
+    )
+    text = text.replace(
+        "                if (IsStandalone())\n",
+        "                if (standaloneBuild)\n",
         1,
     )
 

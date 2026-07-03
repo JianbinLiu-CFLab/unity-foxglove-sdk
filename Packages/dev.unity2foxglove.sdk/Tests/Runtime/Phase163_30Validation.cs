@@ -42,8 +42,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(constructor.Contains("string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();", StringComparison.Ordinal)
                   && constructor.IndexOf("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
                      < constructor.IndexOf("SetStandaloneRosDistro(packagedRos2Version)", StringComparison.Ordinal)
-                  && constructor.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal),
-                "163-30A-2: Humble standalone startup captures external ROS_DISTRO before overwriting it");
+                  && constructor.Contains("WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);", StringComparison.Ordinal)
+                  && constructor.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal)
+                  && !source.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-30A-2: Humble standalone startup warns then ignores external ROS_DISTRO before integrity checks");
         }
 
         private static void HumbleExecutorDoesNotRestartDeadRuntimeAfterSharedShutdown()
@@ -108,8 +110,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(patch.Contains("old_check_signature", StringComparison.Ordinal)
                   && patch.Contains("private void CheckIntegrity(string ros2SourcedCodename)", StringComparison.Ordinal)
                   && patch.Contains("sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced()", StringComparison.Ordinal)
-                  && patch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal),
-                "163-30F: Humble runtime builder regenerates the standalone ROS_DISTRO capture patch");
+                  && patch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && patch.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && !patch.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-30F: Humble runtime builder regenerates standalone ROS_DISTRO override isolation");
         }
 
         private static void PhaseWiringIsPresent()

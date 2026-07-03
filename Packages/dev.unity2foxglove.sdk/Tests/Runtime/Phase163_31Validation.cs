@@ -68,8 +68,10 @@ namespace Unity.FoxgloveSDK.Tests
                      < constructor.IndexOf("SetStandalonePrefixPath();", StringComparison.Ordinal)
                   && constructor.IndexOf("SetStandalonePrefixPath();", StringComparison.Ordinal)
                      < constructor.IndexOf("CheckROSSupport(currentRos2Version);", StringComparison.Ordinal)
-                  && constructor.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal),
-                "163-31C-2: Jazzy standalone startup snapshots external ROS_DISTRO before patching native env");
+                  && constructor.Contains("WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);", StringComparison.Ordinal)
+                  && constructor.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal)
+                  && !source.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-31C-2: Jazzy standalone startup ignores externally sourced ROS_DISTRO after patching native env");
         }
 
         private static void JazzyRuntimeStopsComponentExecutorsBeforeSharedShutdown()
@@ -112,9 +114,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(patch.Contains("old_check_signature", StringComparison.Ordinal)
                   && patch.Contains("private void CheckIntegrity(string ros2SourcedCodename)", StringComparison.Ordinal)
                   && patch.Contains("sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced()", StringComparison.Ordinal)
-                  && patch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && patch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && patch.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && !patch.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal)
                   && patch.Contains("FailIntegrity", StringComparison.Ordinal),
-                "163-31F: Jazzy runtime builder regenerates the standalone integrity and env-order patch");
+                "163-31F: Jazzy runtime builder regenerates standalone env isolation without fatal sourced-distro checks");
         }
 
         private static void JazzyValidatorChecksLocalPackageManagerGuardAndLifecyclePatch()
@@ -131,10 +135,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && !packagePath.Contains("text.index(\"#if UNITY_EDITOR\")", StringComparison.Ordinal),
                 "163-31G-2: Jazzy validator checks the PackageManager guard around the lookup itself");
             Check(sourcePatch.Contains("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
+                  && sourcePatch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && !sourcePatch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
                   && sourcePatch.Contains("FailIntegrity", StringComparison.Ordinal)
                   && sourcePatch.Contains("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
                   && sourcePatch.Contains("runtimeShutdownRequested", StringComparison.Ordinal),
-                "163-31G-3: Jazzy validator requires runtime integrity and shared-shutdown lifecycle patches");
+                "163-31G-3: Jazzy validator requires standalone env isolation and shared-shutdown lifecycle patches");
         }
 
         private static void PhaseWiringIsPresent()

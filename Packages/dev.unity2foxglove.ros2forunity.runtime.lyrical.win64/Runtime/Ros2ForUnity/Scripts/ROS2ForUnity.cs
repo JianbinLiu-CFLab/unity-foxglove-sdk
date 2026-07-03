@@ -285,8 +285,21 @@ internal class ROS2ForUnity : IDisposable
 
     private static void SetStandaloneRosDistro(string ros2Codename)
     {
-        // U2F-LOCAL-PATCH: hide any externally sourced ROS_DISTRO from standalone checks.
+        // U2F-LOCAL-PATCH: standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell.
         SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
+    }
+
+    private static void WarnIfStandaloneRosDistroOverride(string sourcedRosDistro, string packagedRos2Version)
+    {
+        if (string.IsNullOrEmpty(sourcedRosDistro)
+            || string.Equals(sourcedRosDistro, packagedRos2Version, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Debug.LogWarning(
+            "Ignoring sourced ROS_DISTRO '" + sourcedRosDistro +
+            "' because standalone runtime package provides '" + packagedRos2Version + "'.");
     }
 
     private static void SetStandaloneRcutilsConsoleMode()
@@ -343,14 +356,6 @@ internal class ROS2ForUnity : IDisposable
             FailIntegrity(errMessage);
         }
 
-        if (IsStandalone()
-            && !string.IsNullOrEmpty(ros2SourcedCodename)
-            && ros2SourcedCodename != ros2FromRos2csMetadata) {
-            string errMessage =
-                "ROS2 version in standalone process environment does not match this runtime package. " +
-                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".";
-            FailIntegrity(errMessage);
-        }
     }
 
     private static void FailIntegrity(string errMessage)
@@ -554,11 +559,13 @@ internal class ROS2ForUnity : IDisposable
                 SetStandaloneRcutilsConsoleMode();
             }
             string currentRos2Version = GetROSVersion();
-            string standalone = IsStandalone() ? "standalone" : "non-standalone";
+            bool standaloneBuild = IsStandalone();
+            string standalone = standaloneBuild ? "standalone" : "non-standalone";
 
             // Self checks
             CheckROSSupport(currentRos2Version);
-            CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);
+            WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);
+            CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);
 
             // Library loading
             if (GetOS() == Platform.Windows) {
@@ -567,7 +574,7 @@ internal class ROS2ForUnity : IDisposable
                 {
                     SetEnvPathVariable();
                 }
-                if (IsStandalone())
+                if (standaloneBuild)
                 {
                     SetStandaloneRosDistro(currentRos2Version);
                     SetStandalonePrefixPath();

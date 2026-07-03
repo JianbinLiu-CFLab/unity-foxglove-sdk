@@ -948,6 +948,22 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
             "        // U2F-LOCAL-PATCH: standalone Jazzy runtime owns its RMW selection.\n"
             "        SetProcessEnvironmentVariable(\"RMW_IMPLEMENTATION\", expectedRmwImplementation);\n"
             "    }\n\n"
+            "    private static void SetStandaloneRosDistro(string ros2Codename)\n"
+            "    {\n"
+            "        // U2F-LOCAL-PATCH: standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell.\n"
+            "        SetProcessEnvironmentVariable(\"ROS_DISTRO\", ros2Codename);\n"
+            "    }\n\n"
+            "    private static string NormalizeEnvPathEntry(string value)\n",
+            1,
+        )
+    elif "SetStandaloneRosDistro" not in text:
+        text = text.replace(
+            "\n    private static string NormalizeEnvPathEntry(string value)\n",
+            "\n    private static void SetStandaloneRosDistro(string ros2Codename)\n"
+            "    {\n"
+            "        // U2F-LOCAL-PATCH: standalone runtime owns ROS_DISTRO even when Unity was launched from another ROS shell.\n"
+            "        SetProcessEnvironmentVariable(\"ROS_DISTRO\", ros2Codename);\n"
+            "    }\n\n"
             "    private static string NormalizeEnvPathEntry(string value)\n",
             1,
         )
@@ -965,6 +981,24 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
     {
 '''
     text = text.replace(old_check_signature, new_check_signature)
+    if "WarnIfStandaloneRosDistroOverride" not in text:
+        text = text.replace(
+            "\n    /// <summary>\n    /// Checks if both ros2cs and ros2-for-unity were build for the same ros version as well as\n",
+            "\n    private static void WarnIfStandaloneRosDistroOverride(string sourcedRosDistro, string packagedRos2Version)\n"
+            "    {\n"
+            "        if (string.IsNullOrEmpty(sourcedRosDistro)\n"
+            "            || string.Equals(sourcedRosDistro, packagedRos2Version, StringComparison.OrdinalIgnoreCase))\n"
+            "        {\n"
+            "            return;\n"
+            "        }\n\n"
+            "        Debug.LogWarning(\n"
+            "            \"Ignoring sourced ROS_DISTRO '\" + sourcedRosDistro +\n"
+            "            \"' because standalone runtime package provides '\" + packagedRos2Version + \"'.\");\n"
+            "    }\n\n"
+            "    /// <summary>\n"
+            "    /// Checks if both ros2cs and ros2-for-unity were build for the same ros version as well as\n",
+            1,
+        )
 
     old_metadata_mismatch = '''        if (ros2FromRos4UMetadata != ros2FromRos2csMetadata) {
             Debug.LogError(
@@ -1002,14 +1036,7 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
         }
     }
 '''
-    new_standalone_sourced = '''        if (IsStandalone()
-            && !string.IsNullOrEmpty(ros2SourcedCodename)
-            && ros2SourcedCodename != ros2FromRos2csMetadata) {
-            FailIntegrity(
-                "ROS2 version in standalone process environment does not match this runtime package. " +
-                "Sourced: " + ros2SourcedCodename + ", packaged: " + ros2FromRos2csMetadata + ".");
-        }
-    }
+    new_standalone_sourced = '''    }
 
     private static void FailIntegrity(string errMessage)
     {
@@ -1025,7 +1052,6 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
     }
 '''
     text = text.replace(old_standalone_sourced, new_standalone_sourced)
-
     if "sourcedRosDistroBeforeStandalonePatch" not in text:
         old_startup = '''        // Load metadata
         LoadMetadata();
@@ -1052,13 +1078,24 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
         string currentRos2Version = standaloneBuild
             ? GetMetadataValue(ros2csMetadata, "/ros2cs/ros2")
             : GetROSVersion();
+        if (standaloneBuild)
+        {
+            SetStandaloneRosDistro(currentRos2Version);
+        }
         string standalone = standaloneBuild ? "standalone" : "non-standalone";
 
         // Self checks
         CheckROSSupport(currentRos2Version);
-        CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);
+        WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);
+        CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);
 '''
         text = text.replace(old_startup, new_startup)
+    text = text.replace(
+        "        CheckIntegrity(" + "sourcedRosDistroBeforeStandalonePatch);\n",
+        "        WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);\n"
+        "        CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);\n",
+        1,
+    )
 
     if "SetStandalonePrefixPath();" not in text:
         text = text.replace(
