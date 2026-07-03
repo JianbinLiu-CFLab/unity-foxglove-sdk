@@ -368,12 +368,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
 
                 _readyLogged = true;
-                Debug.Log(
-                    "[Foxglove][R2FU] Transform DDS ready: topic="
-                    + TfTopic
-                    + " source="
-                    + (_source == null ? "unknown" : _source.Topic)
-                    + ".");
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    _source,
+                    "[Foxglove][R2FU] Transform DDS ready: topic={0} source={1}.",
+                    new object[]
+                    {
+                        TfTopic,
+                        _source == null ? "unknown" : _source.Topic
+                    });
             }
 
             private static bool IsValidFrame(FrameTransformMessage frame)

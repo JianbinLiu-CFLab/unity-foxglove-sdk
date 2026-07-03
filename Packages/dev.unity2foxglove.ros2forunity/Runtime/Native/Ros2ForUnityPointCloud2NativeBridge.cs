@@ -140,7 +140,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_bindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
+                    {
+                        existing.PrewarmPublishers(_ros2Unity);
                         continue;
+                    }
 
                     existing.Dispose();
                     _bindings.Remove(instanceId);
@@ -148,6 +151,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var binding = new Binding(this, publisher, topic);
                 binding.Subscribe();
+                binding.PrewarmPublishers(_ros2Unity);
                 _bindings.Add(instanceId, binding);
             }
 
@@ -320,6 +324,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 => IsEligible(_source)
                    && NormalizeTopic(_source.PointCloud2NativeTopic) == Topic;
 
+            public void PrewarmPublishers(ROS2UnityComponent ros2Unity)
+            {
+                if (ros2Unity == null || _source == null || _owner.IsShuttingDown)
+                    return;
+
+                if (!TryEnsurePublisher(ros2Unity, Topic, out _))
+                    return;
+
+                var deskewedTopic = ResolvePrewarmDeskewedTopic();
+                if (!string.IsNullOrWhiteSpace(deskewedTopic)
+                    && !string.Equals(deskewedTopic, Topic, StringComparison.Ordinal))
+                {
+                    TryEnsurePublisher(ros2Unity, deskewedTopic, out _);
+                }
+
+                PrewarmTfAnchorPublisher();
+            }
+
             public void Dispose()
             {
                 if (_subscribed && _source != null)
@@ -464,18 +486,36 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return Topic;
             }
 
+            private string ResolvePrewarmDeskewedTopic()
+            {
+                if (_source == null || !_source.EnableMotionCompensatedPointCloud2)
+                    return null;
+
+                if (_source.MotionCompensationOutputPolicy == PointCloudMotionCompensationOutputPolicy.RawOnly)
+                    return null;
+
+                if (_source.MotionCompensationOutputPolicy == PointCloudMotionCompensationOutputPolicy.ReplaceOutput)
+                    return Topic;
+
+                return NormalizeTopic(_source.MotionCompensatedPointCloud2Topic);
+            }
+
             private void LogReady(string topic)
             {
                 if (_readyLoggedTopics.Contains(topic))
                     return;
 
                 _readyLoggedTopics.Add(topic);
-                Debug.Log(
-                    "[Foxglove][R2FU] PointCloud2 Native DDS ready: topic="
-                    + topic
-                    + " tf="
-                    + DescribeTfAnchor()
-                    + ".");
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    _source,
+                    "[Foxglove][R2FU] PointCloud2 Native DDS ready: topic={0} tf={1}.",
+                    new object[]
+                    {
+                        topic,
+                        DescribeTfAnchor()
+                    });
             }
 
             private string DescribeTfAnchor()
@@ -493,6 +533,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
 
                 return TfAnchorTopic + " " + parentFrame + "->" + childFrame;
+            }
+
+            private void PrewarmTfAnchorPublisher()
+            {
+                if (!_source.PublishPointCloud2NativeTfAnchor || _node == null || _tfAnchorPublisher != null)
+                    return;
+
+                var parentFrame = _source.PointCloud2NativeTfParentFrame;
+                var childFrame = _source.PointCloud2NativeTfChildFrame;
+                if (string.IsNullOrWhiteSpace(parentFrame)
+                    || string.IsNullOrWhiteSpace(childFrame)
+                    || string.Equals(parentFrame, childFrame, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                try
+                {
+                    _tfAnchorPublisher = _node.CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic);
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("Unable to create ROS2 PointCloud2 TF anchor publisher for " + childFrame + ": " + ex.Message);
+                }
             }
 
             private void PublishTfAnchor(PointCloud2NativeFrame frame)
