@@ -340,6 +340,9 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendPropertyName(sb, "supportsRos2");
                 AppendBool(sb, entry.SupportsRos2);
                 sb.Append(',');
+                AppendPropertyName(sb, "supportsMsgPack");
+                AppendBool(sb, entry.SupportsMsgPack);
+                sb.Append(',');
                 AppendPropertyName(sb, "isTemplate");
                 AppendBool(sb, entry.IsTemplate);
                 sb.Append(',');

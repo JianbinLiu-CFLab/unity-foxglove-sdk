@@ -31,6 +31,11 @@ namespace Unity.FoxgloveSDK.Components
         private const string CdrEncoding = "cdr";
 
         /// <summary>
+        /// Foxglove message encoding label for MessagePack payloads.
+        /// </summary>
+        private const string MsgPackEncoding = "msgpack";
+
+        /// <summary>
         /// Foxglove schema encoding label for ROS 2 .msg schemas.
         /// </summary>
         private const string Ros2MsgSchemaEncoding = "ros2msg";
@@ -49,6 +54,7 @@ namespace Unity.FoxgloveSDK.Components
         private static readonly ProfilerMarker PublishJsonMarker = new ProfilerMarker("FoxgloveManager.PublishJson");
         private static readonly ProfilerMarker PublishProtoMarker = new ProfilerMarker("FoxgloveManager.PublishProto");
         private static readonly ProfilerMarker PublishRos2Marker = new ProfilerMarker("FoxgloveManager.PublishRos2");
+        private static readonly ProfilerMarker PublishMsgPackMarker = new ProfilerMarker("FoxgloveManager.PublishMsgPack");
 #endif
 
         /// <summary>
@@ -166,6 +172,33 @@ namespace Unity.FoxgloveSDK.Components
             if (!TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out channelId, "prepare ROS2 publish"))
                 return false;
 
+            return !requireDemand || _runtime.HasChannelDemand(channelId);
+        }
+
+        /// <summary>
+        /// Register or reuse a schemaless MessagePack channel before a publisher prepares payload data.
+        /// </summary>
+        /// <param name="topic">Topic to advertise and potentially publish to.</param>
+        /// <param name="channelId">Resolved channel identifier when preparation succeeds.</param>
+        /// <param name="requireDemand">When true, return false unless a subscriber or MCAP recorder needs data.</param>
+        /// <returns>True when payload preparation should continue.</returns>
+        public bool TryPrepareMsgPackPublish(
+            string topic,
+            out uint channelId,
+            bool requireDemand = true)
+        {
+            channelId = 0;
+
+            if (SuppressLivePublishersForReplay)
+                return false;
+
+            if (!IsRunning)
+                return false;
+
+            if (!TryValidatePublishTopic(topic, "prepare MsgPack publish"))
+                return false;
+
+            channelId = GetOrRegisterChannel(topic, MsgPackEncoding);
             return !requireDemand || _runtime.HasChannelDemand(channelId);
         }
 
@@ -406,6 +439,50 @@ namespace Unity.FoxgloveSDK.Components
             finally
             {
                 PublishProtoMarker.End();
+            }
+#endif
+        }
+
+        /// <summary>
+        /// Publishes a pre-serialized MessagePack payload on a schemaless raw channel.
+        /// </summary>
+        /// <param name="topic">Topic to publish to.</param>
+        /// <param name="payload">Serialized MessagePack payload.</param>
+        /// <param name="logTimeNs">Nanosecond log timestamp.</param>
+        public void PublishMsgPack(string topic, byte[] payload, ulong logTimeNs)
+        {
+#if UNITY_2020_3_OR_NEWER
+            PublishMsgPackMarker.Begin();
+            try
+            {
+#endif
+            if (SuppressLivePublishersForReplay)
+            {
+                return;
+            }
+
+            if (!IsRunning)
+            {
+                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                {
+                    Debug.LogWarning("[Foxglove] PublishMsgPack called but server is not running.");
+                    _warnedNotRunning = true;
+                }
+
+                return;
+            }
+
+            if (!TryValidatePublishTopic(topic, "publish MsgPack"))
+                return;
+
+            var channelId = GetOrRegisterChannel(topic, MsgPackEncoding);
+            _runtime.Publish(channelId, payload ?? System.Array.Empty<byte>(), logTimeNs);
+            RecordPublishCadence(topic, MsgPackEncoding);
+#if UNITY_2020_3_OR_NEWER
+            }
+            finally
+            {
+                PublishMsgPackMarker.End();
             }
 #endif
         }

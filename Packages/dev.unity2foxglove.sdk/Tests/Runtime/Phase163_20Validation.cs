@@ -104,6 +104,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(guard.Contains("assembly reload is continuing before Play Mode fully exited", StringComparison.Ordinal)
                   && guard.Contains("EditorApplication.isPlayingOrWillChangePlaymode", StringComparison.Ordinal),
                 "163-20E-1: R2FU play-mode guard reports asynchronous reload residual risk");
+            Check(guard.Contains("EditorApplication.LockReloadAssemblies()", StringComparison.Ordinal)
+                  && guard.Contains("RequestNativeRuntimeShutdownBeforeReload", StringComparison.Ordinal)
+                  && guard.Contains("HasR2fuNativeOutputDemand()", StringComparison.Ordinal)
+                  && guard.Contains("ROS2UnityComponent", StringComparison.Ordinal)
+                  && guard.Contains("ShutdownShared", StringComparison.Ordinal),
+                "163-20E-2: R2FU play-mode guard locks editor reloads and requests native shutdown before unsafe reload");
         }
 
         private static void Ros2ValidationHelperReportsMissingGitClearly()

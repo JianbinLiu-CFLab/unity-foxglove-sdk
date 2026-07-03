@@ -406,7 +406,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             CheckThrows<ArgumentException>(() => new Unity2FoxgloveSdkTypedPublishersSection(
                     2,
-                    new[] { new Unity2FoxgloveSdkTypedPublisherEntry("Publisher", "typed", "family", "/topic", "foxglove.Log", "", true, true, false, false, string.Empty) }),
+                    new[] { new Unity2FoxgloveSdkTypedPublisherEntry("Publisher", "typed", "family", "/topic", "foxglove.Log", "", true, true, false, false, false, string.Empty) }),
                 "134-17-H2: SDK typed publishers section validates entryCount consistency");
 
             var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestBuilder.cs");

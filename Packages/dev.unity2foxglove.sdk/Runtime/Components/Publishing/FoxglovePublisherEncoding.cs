@@ -14,7 +14,8 @@ namespace Unity.FoxgloveSDK.Components
     {
         Json = 0,
         Protobuf = 1,
-        Ros2 = 2
+        Ros2 = 2,
+        MsgPack = 3
     }
 
     /// <summary>
@@ -25,7 +26,8 @@ namespace Unity.FoxgloveSDK.Components
         UseManager = 0,
         Json = 1,
         Protobuf = 2,
-        Ros2 = 3
+        Ros2 = 3,
+        MsgPack = 4
     }
 
     /// <summary>
@@ -36,7 +38,8 @@ namespace Unity.FoxgloveSDK.Components
         Json = 0,
         Protobuf = 1,
         Unsupported = 2,
-        Ros2 = 3
+        Ros2 = 3,
+        MsgPack = 4
     }
 
     /// <summary>
@@ -81,7 +84,14 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEncodingOverride publisherOverride,
             bool supportsJson,
             bool supportsProtobuf)
-            => Resolve(managerDefault, allowPublisherOverride, publisherOverride, supportsJson, supportsProtobuf, supportsRos2: false);
+            => Resolve(
+                managerDefault,
+                allowPublisherOverride,
+                publisherOverride,
+                supportsJson,
+                supportsProtobuf,
+                supportsRos2: false,
+                supportsMsgPack: false);
 
         /// <summary>
         /// Resolves the effective wire encoding from manager defaults, publisher
@@ -94,12 +104,33 @@ namespace Unity.FoxgloveSDK.Components
             bool supportsJson,
             bool supportsProtobuf,
             bool supportsRos2)
+            => Resolve(
+                managerDefault,
+                allowPublisherOverride,
+                publisherOverride,
+                supportsJson,
+                supportsProtobuf,
+                supportsRos2,
+                supportsMsgPack: false);
+
+        /// <summary>
+        /// Resolves the effective wire encoding from manager defaults, publisher
+        /// overrides, and the publisher's supported serialization formats.
+        /// </summary>
+        public static PublisherEncodingResolution Resolve(
+            GlobalEncoding managerDefault,
+            bool allowPublisherOverride,
+            PublisherEncodingOverride publisherOverride,
+            bool supportsJson,
+            bool supportsProtobuf,
+            bool supportsRos2,
+            bool supportsMsgPack)
         {
             var requested = ResolveRequested(managerDefault, allowPublisherOverride, publisherOverride);
-            if (Supports(requested, supportsJson, supportsProtobuf, supportsRos2))
+            if (Supports(requested, supportsJson, supportsProtobuf, supportsRos2, supportsMsgPack))
                 return new PublisherEncodingResolution(requested, requested, fellBack: false);
 
-            var fallback = FirstSupported(supportsJson, supportsProtobuf, supportsRos2);
+            var fallback = FirstSupported(supportsJson, supportsProtobuf, supportsRos2, supportsMsgPack);
 
             return new PublisherEncodingResolution(requested, fallback, fellBack: true);
         }
@@ -117,6 +148,8 @@ namespace Unity.FoxgloveSDK.Components
                     return "Protobuf";
                 case PublisherEffectiveEncoding.Ros2:
                     return "ROS2";
+                case PublisherEffectiveEncoding.MsgPack:
+                    return "MsgPack";
                 default:
                     return "unsupported";
             }
@@ -135,6 +168,8 @@ namespace Unity.FoxgloveSDK.Components
                     return "protobuf";
                 case PublisherEffectiveEncoding.Ros2:
                     return "cdr";
+                case PublisherEffectiveEncoding.MsgPack:
+                    return "msgpack";
                 default:
                     return "unsupported";
             }
@@ -153,6 +188,8 @@ namespace Unity.FoxgloveSDK.Components
                     return "protobuf";
                 case PublisherEffectiveEncoding.Ros2:
                     return "ros2msg";
+                case PublisherEffectiveEncoding.MsgPack:
+                    return "";
                 default:
                     return "unsupported";
             }
@@ -171,6 +208,8 @@ namespace Unity.FoxgloveSDK.Components
                     return PublisherEffectiveEncoding.Protobuf;
                 if (publisherOverride == PublisherEncodingOverride.Ros2)
                     return PublisherEffectiveEncoding.Ros2;
+                if (publisherOverride == PublisherEncodingOverride.MsgPack)
+                    return PublisherEffectiveEncoding.MsgPack;
             }
 
             switch (managerDefault)
@@ -179,6 +218,8 @@ namespace Unity.FoxgloveSDK.Components
                     return PublisherEffectiveEncoding.Protobuf;
                 case GlobalEncoding.Ros2:
                     return PublisherEffectiveEncoding.Ros2;
+                case GlobalEncoding.MsgPack:
+                    return PublisherEffectiveEncoding.MsgPack;
                 case GlobalEncoding.Json:
                 default:
                     return PublisherEffectiveEncoding.Json;
@@ -189,7 +230,8 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEffectiveEncoding requested,
             bool supportsJson,
             bool supportsProtobuf,
-            bool supportsRos2)
+            bool supportsRos2,
+            bool supportsMsgPack)
         {
             switch (requested)
             {
@@ -199,6 +241,8 @@ namespace Unity.FoxgloveSDK.Components
                     return supportsProtobuf;
                 case PublisherEffectiveEncoding.Ros2:
                     return supportsRos2;
+                case PublisherEffectiveEncoding.MsgPack:
+                    return supportsMsgPack;
                 default:
                     return false;
             }
@@ -207,9 +251,11 @@ namespace Unity.FoxgloveSDK.Components
         private static PublisherEffectiveEncoding FirstSupported(
             bool supportsJson,
             bool supportsProtobuf,
-            bool supportsRos2)
+            bool supportsRos2,
+            bool supportsMsgPack)
         {
             if (supportsProtobuf) return PublisherEffectiveEncoding.Protobuf;
+            if (supportsMsgPack) return PublisherEffectiveEncoding.MsgPack;
             if (supportsJson) return PublisherEffectiveEncoding.Json;
             if (supportsRos2) return PublisherEffectiveEncoding.Ros2;
             return PublisherEffectiveEncoding.Unsupported;

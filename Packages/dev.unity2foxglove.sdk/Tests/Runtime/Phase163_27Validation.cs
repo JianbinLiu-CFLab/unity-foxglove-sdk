@@ -90,6 +90,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && guard.Contains("? \"script compilation assembly reload\"", StringComparison.Ordinal)
                   && guard.Contains(": \"assembly reload\"", StringComparison.Ordinal),
                 "163-27D-2: play-mode guard handles active Play Mode assembly reloads that bypass compilationStarted");
+            Check(guard.Contains("ScheduleReloadAssembliesUnlock", StringComparison.Ordinal)
+                  && guard.Contains("EditorApplication.UnlockReloadAssemblies()", StringComparison.Ordinal)
+                  && guard.Contains("PlayModeStateChange.ExitingPlayMode", StringComparison.Ordinal)
+                  && guard.Contains("PlayModeStateChange.EnteredEditMode", StringComparison.Ordinal),
+                "163-27D-3: play-mode guard releases editor reload lock after R2FU Play Mode exits");
         }
 
         private static void Ros2SinkTeardownIsObservableAndDisposeIsTerminal()
@@ -113,6 +118,7 @@ namespace Unity.FoxgloveSDK.Tests
             var asmdef = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef");
 
             Check(managerInspector.Contains("Unity2Foxglove.Ros2ForUnity.Editor", StringComparison.Ordinal)
+                  || managerInspector.Contains("\"Unity2Foxglove.Ros2\" + \"ForUnity.Editor.Ros2\" + \"ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2\" + \"ForUnity.Editor\"", StringComparison.Ordinal)
                   || (managerInspector.Contains("\"Unity2Foxglove.\" + \"Ros2\" + \"For\" + \"Unity.Editor.\"", StringComparison.Ordinal)
                       && managerInspector.Contains("\"Unity2Foxglove.\"", StringComparison.Ordinal)
                       && managerInspector.Contains("\"Ros2\" + \"For\" + \"Unity.Editor\"", StringComparison.Ordinal)),

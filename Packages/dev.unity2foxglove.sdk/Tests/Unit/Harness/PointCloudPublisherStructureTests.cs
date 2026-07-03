@@ -61,6 +61,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("switch (_outputMode)", TestSources.Slice(publisher, "protected override string Ros2SchemaName", "protected override bool SupportsJsonEncoding"), StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void DracoCompletedQueueKeepsLatestResultOnly()
+        {
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
+
+            Assert.Contains("MaxCompletedDracoEncodeResults = 1", publisher, StringComparison.Ordinal);
+            Assert.Contains("latest completed Draco frame only", publisher, StringComparison.Ordinal);
+        }
+
         private static string Text(string relativePath)
             => File.ReadAllText(PathOf(relativePath));
 

@@ -169,6 +169,7 @@ namespace Unity.FoxgloveSDK.Editor
                 supportsJson,
                 supportsProtobuf,
                 supportsRos2,
+                supportsMsgPack: false,
                 isTemplate: false,
                 productNote);
         }
@@ -191,6 +192,7 @@ namespace Unity.FoxgloveSDK.Editor
                 supportsJson,
                 supportsProtobuf,
                 supportsRos2,
+                supportsMsgPack: false,
                 isTemplate: true,
                 productNote);
         }
