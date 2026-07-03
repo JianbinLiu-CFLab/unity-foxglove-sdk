@@ -427,6 +427,14 @@ namespace Unity.FoxgloveSDK.Tests
             var bridge = ReadRepoText(AdapterPackage + "/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
             Check(bridge.Contains("CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal),
                 "162-F2: native PointCloud2 bridge publishes with sensor-data QoS");
+            Check(bridge.Contains("ZenohBackpressurePublishSlowThresholdMs", StringComparison.Ordinal)
+                  && bridge.Contains("ZenohBackpressureCooldownSeconds", StringComparison.Ordinal)
+                  && bridge.Contains("IsZenohRmwActive()", StringComparison.Ordinal)
+                  && bridge.Contains("Environment.GetEnvironmentVariable(\"RMW_IMPLEMENTATION\")", StringComparison.Ordinal)
+                  && bridge.Contains("ShouldSkipZenohBackpressureFrame", StringComparison.Ordinal)
+                  && bridge.Contains("UpdateZenohBackpressure(publishMs)", StringComparison.Ordinal)
+                  && bridge.Contains("zenohBackpressureSkip", StringComparison.Ordinal),
+                "162-F2b: Zenoh PointCloud2 native publish applies a short backpressure cooldown after slow RMW publishes");
 
             var rviz = ReadRepoText("Scripts/smoke/ros2/launch_phase138u_lidar_deskew_rviz2.py");
             Check(rviz.Contains("Reliability Policy: Best Effort", StringComparison.Ordinal)
