@@ -27,6 +27,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _frameStallStageTimingDiagnosticsEnabled;
 
         private readonly PublishCadenceDiagnostics _publishCadenceDiagnostics = new();
+        private const double FrameStallEditorAssetRefreshCooldownSeconds = 1.0d;
+        private static double s_lastEditorAssetRefreshTime = double.NegativeInfinity;
         private double _nextPublishCadenceDiagnosticsSummaryTime;
         private double _lastFrameStallDiagnosticsTime;
         private long _lastFrameStallGcBytes;
@@ -248,13 +250,23 @@ namespace Unity.FoxgloveSDK.Components
             double stageManagerUpdateMs)
         {
 #if UNITY_EDITOR
+            var editorNow = UnityEditor.EditorApplication.timeSinceStartup;
+            var editorCompiling = UnityEditor.EditorApplication.isCompiling;
+            var editorUpdating = UnityEditor.EditorApplication.isUpdating;
+            if (editorCompiling || editorUpdating)
+                NoteFrameStallEditorAssetRefreshForDiagnostics(editorNow);
+            var editorAssetRefreshAgeMs = GetFrameStallEditorAssetRefreshAgeMs(editorNow);
+            var editorAssetRefreshRecent = editorAssetRefreshAgeMs >= 0d
+                                           && editorAssetRefreshAgeMs <= FrameStallEditorAssetRefreshCooldownSeconds * 1000d;
             var editorState = string.Format(
                 CultureInfo.InvariantCulture,
-                "compiling={0} updating={1}",
-                UnityEditor.EditorApplication.isCompiling,
-                UnityEditor.EditorApplication.isUpdating);
+                "compiling={0} updating={1} editorAssetRefreshRecent={2} editorAssetRefreshAgeMs={3:F2}",
+                editorCompiling,
+                editorUpdating,
+                editorAssetRefreshRecent,
+                editorAssetRefreshAgeMs);
 #else
-            const string editorState = "compiling=n/a updating=n/a";
+            const string editorState = "compiling=n/a updating=n/a editorAssetRefreshRecent=n/a editorAssetRefreshAgeMs=n/a";
 #endif
             var message = string.Format(
                 CultureInfo.InvariantCulture,
@@ -365,6 +377,26 @@ namespace Unity.FoxgloveSDK.Components
             _frameStallStageReplayCursorEndpointRefreshMs = 0d;
             _frameStallStageManagerUpdateMs = 0d;
         }
+
+#if UNITY_EDITOR
+        internal static void NoteFrameStallEditorAssetRefreshForDiagnostics()
+        {
+            NoteFrameStallEditorAssetRefreshForDiagnostics(UnityEditor.EditorApplication.timeSinceStartup);
+        }
+
+        private static void NoteFrameStallEditorAssetRefreshForDiagnostics(double editorTime)
+        {
+            s_lastEditorAssetRefreshTime = editorTime;
+        }
+
+        private static double GetFrameStallEditorAssetRefreshAgeMs(double editorNow)
+        {
+            if (double.IsNegativeInfinity(s_lastEditorAssetRefreshTime))
+                return -1d;
+
+            return Math.Max(0d, editorNow - s_lastEditorAssetRefreshTime) * 1000d;
+        }
+#endif
 
         private static void LogPublishCadenceSummary(string summary)
         {
@@ -516,4 +548,18 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
     }
+
+#if UNITY_EDITOR
+    internal sealed class FrameStallEditorAssetRefreshProbe : UnityEditor.AssetPostprocessor
+    {
+        private static void OnPostprocessAllAssets(
+            string[] importedAssets,
+            string[] deletedAssets,
+            string[] movedAssets,
+            string[] movedFromAssetPaths)
+        {
+            FoxgloveManager.NoteFrameStallEditorAssetRefreshForDiagnostics();
+        }
+    }
+#endif
 }

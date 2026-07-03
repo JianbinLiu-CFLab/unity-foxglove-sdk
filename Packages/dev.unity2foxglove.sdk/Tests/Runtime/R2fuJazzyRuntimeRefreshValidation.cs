@@ -309,6 +309,10 @@ namespace Unity.FoxgloveSDK.Tests
                       && source.Contains("Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(gameObject.scene)", StringComparison.Ordinal)
                       && lifecycleSource.Contains("IsBridgeSceneUnsafe", StringComparison.Ordinal),
                     labelPrefix + "-owner-backup-scene: " + bridge + " blocks ROS2 prewarm when the bridge object lives in Unity backup scenes");
+                CheckLifecycle(source.Contains("Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(gameObject.scene)", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("CanInitializeNativeRuntimeForBridge", StringComparison.Ordinal)
+                      && lifecycleSource.Contains("RefreshSceneState();", StringComparison.Ordinal),
+                    labelPrefix + "-cold-init-refresh-gate: " + bridge + " refreshes backup-scene state immediately before native ROS2 initialization");
                 CheckLifecycle(source.Contains("RuntimeInitializeLoadType.SubsystemRegistration", StringComparison.Ordinal)
                       && source.Contains("RuntimeInitializeLoadType.AfterSceneLoad", StringComparison.Ordinal)
                       && source.Contains("Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge", StringComparison.Ordinal),

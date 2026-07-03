@@ -40,10 +40,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal static bool IsStablePlayModeScene => _isStablePlayModeScene;
 
         internal static bool CanBootstrapBridge
-            => _isStablePlayModeScene
-               && !_applicationQuitting
-               && !IsHardEditorShutdownWindow
-               && IsActiveSceneCacheCurrent;
+        {
+            get
+            {
+                RefreshSceneState();
+                return _isStablePlayModeScene
+                       && !_applicationQuitting
+                       && !IsHardEditorShutdownWindow
+                       && IsActiveSceneCacheCurrent;
+            }
+        }
+
+        internal static bool CanInitializeNativeRuntimeForBridge(Scene ownerScene)
+        {
+            RefreshSceneState();
+            return !_nativeReloadWindow
+                   && _isStablePlayModeScene
+                   && IsActiveSceneCacheCurrent
+                   && !IsBridgeSceneUnsafe(ownerScene);
+        }
 
         internal static bool IsShuttingDownForBridge(Scene ownerScene)
             => _nativeReloadWindow

@@ -42,6 +42,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifySharedLifecycleGateShape();
             VerifyBridgeHotPathsUseCheapLifecycleReads();
+            VerifyPointCloud2PublishersPrewarmOutsideFrameCallback();
+            VerifyReadyLogsAvoidEditorStackTraceExtraction();
             VerifyCameraBindingHotPathsRemainSceneFree();
             VerifyPhase161LifecycleValidationRecognizesSharedGate();
             VerifyRegistryAndProjectWiring();
@@ -74,6 +76,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "165-A5: lifecycle gate preserves backup-scene detection coverage");
             Check(source.Contains("IsShuttingDownForBridge", StringComparison.Ordinal)
                   && source.Contains("IsBridgeSceneUnsafe", StringComparison.Ordinal)
+                  && source.Contains("CanInitializeNativeRuntimeForBridge", StringComparison.Ordinal)
                   && source.Contains("IsStablePlayModeScene", StringComparison.Ordinal),
                 "165-A6: lifecycle gate exposes cheap bridge-facing lifecycle state");
             Check(!source.Contains("Time.frameCount", StringComparison.Ordinal),
@@ -100,6 +103,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("IsActiveSceneCacheCurrent", StringComparison.Ordinal)
                   && source.Contains("!IsActiveSceneCacheCurrent || IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
                 "165-A12: lifecycle gate fail-closes bridge bootstrap when active scene changes before event refresh");
+            var nativeInitGate = RequiredMethod(source, "internal static bool CanInitializeNativeRuntimeForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
+            Check(nativeInitGate.Contains("RefreshSceneState();", StringComparison.Ordinal)
+                  && nativeInitGate.Contains("!_nativeReloadWindow", StringComparison.Ordinal)
+                  && nativeInitGate.Contains("_isStablePlayModeScene", StringComparison.Ordinal)
+                  && nativeInitGate.Contains("!IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
+                "165-A13: lifecycle gate refreshes scene state before cold native runtime initialization");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()
@@ -124,6 +133,12 @@ namespace Unity.FoxgloveSDK.Tests
 
                 Check(source.Contains("Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge", StringComparison.Ordinal),
                     "165-B1: " + bridge + " delegates shutdown checks to the shared lifecycle gate");
+                Check(ensureBody.Contains("Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(gameObject.scene)", StringComparison.Ordinal)
+                      && ensureBody.IndexOf("CanInitializeNativeRuntimeForBridge", StringComparison.Ordinal)
+                         < ensureBody.IndexOf("GetComponent<ROS2UnityComponent>()", StringComparison.Ordinal)
+                      && ensureBody.IndexOf("CanInitializeNativeRuntimeForBridge", StringComparison.Ordinal)
+                         < ensureBody.IndexOf("_ros2Unity.Ok()", StringComparison.Ordinal),
+                    "165-B1b: " + bridge + " refreshes lifecycle state before first-initializing R2FU native runtime");
                 Check(!source.Contains("Ros2ForUnityNativeBridgeSceneGate", StringComparison.Ordinal)
                       && !source.Contains("InitializeEditorPlayModeGate", StringComparison.Ordinal)
                       && !source.Contains("IsEditorPlayModeTransition()", StringComparison.Ordinal),
@@ -132,6 +147,49 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(!updateBody.Contains("FindObjectsByType", StringComparison.Ordinal)
                       && updateBody.IndexOf("Time.unscaledTime", StringComparison.Ordinal) < updateBody.IndexOf("RefreshBindings();", StringComparison.Ordinal),
                     "165-B4: " + bridge + " object scans remain behind the scan interval gate");
+            }
+        }
+
+        private static void VerifyPointCloud2PublishersPrewarmOutsideFrameCallback()
+        {
+            var source = ReadRepoText(NativeDir + "/Ros2ForUnityPointCloud2NativeBridge.cs");
+            var refreshBody = RequiredMethod(source, "private void RefreshBindings()", "Ros2ForUnityPointCloud2NativeBridge.cs");
+            var callbackBody = RequiredMethod(source, "private void OnPointCloud2NativeFrameReady", "Ros2ForUnityPointCloud2NativeBridge.cs");
+            var prewarmBody = RequiredMethod(source, "public void PrewarmPublishers", "Ros2ForUnityPointCloud2NativeBridge.cs");
+            var deskewPrewarmBody = RequiredMethod(source, "private string ResolvePrewarmDeskewedTopic", "Ros2ForUnityPointCloud2NativeBridge.cs");
+
+            Check(refreshBody.Contains("PrewarmPublishers(_ros2Unity)", StringComparison.Ordinal),
+                "165-PC1: PointCloud2 bridge prewarms DDS publishers during scan refresh");
+            Check(prewarmBody.Contains("TryEnsurePublisher(ros2Unity, Topic", StringComparison.Ordinal)
+                  && prewarmBody.Contains("ResolvePrewarmDeskewedTopic()", StringComparison.Ordinal)
+                  && prewarmBody.Contains("TryEnsurePublisher(ros2Unity, deskewedTopic", StringComparison.Ordinal),
+                "165-PC2: PointCloud2 bridge prewarms both raw and deskewed DDS publishers");
+            Check(prewarmBody.Contains("PrewarmTfAnchorPublisher()", StringComparison.Ordinal),
+                "165-PC2b: PointCloud2 bridge prewarms the optional TF anchor publisher outside frame callbacks");
+            Check(deskewPrewarmBody.Contains("PointCloudMotionCompensationOutputPolicy.RawOnly", StringComparison.Ordinal)
+                  && deskewPrewarmBody.Contains("PointCloudMotionCompensationOutputPolicy.ReplaceOutput", StringComparison.Ordinal)
+                  && deskewPrewarmBody.Contains("MotionCompensatedPointCloud2Topic", StringComparison.Ordinal),
+                "165-PC3: PointCloud2 bridge prewarm respects motion-compensation output policy");
+            Check(callbackBody.Contains("TryEnsurePublisher(ros2Unity, frameTopic", StringComparison.Ordinal),
+                "165-PC4: PointCloud2 frame callback keeps lazy publisher creation as a configuration-change fallback");
+        }
+
+        private static void VerifyReadyLogsAvoidEditorStackTraceExtraction()
+        {
+            foreach (var bridge in new[]
+                     {
+                         "Ros2ForUnityTransformNativeBridge.cs",
+                         "Ros2ForUnityPointCloud2NativeBridge.cs",
+                         "Ros2ForUnityImuNativeBridge.cs",
+                     })
+            {
+                var source = ReadRepoText(NativeDir + "/" + bridge);
+                var readyBody = bridge.Contains("PointCloud2", StringComparison.Ordinal)
+                    ? RequiredMethod(source, "private void LogReady", bridge)
+                    : RequiredMethod(source, "private void LogReadyOnce", bridge);
+
+                Check(readyBody.Contains("LogOption.NoStacktrace", StringComparison.Ordinal),
+                    "165-PC5: " + bridge + " ready logs avoid Editor stack trace extraction");
             }
         }
 

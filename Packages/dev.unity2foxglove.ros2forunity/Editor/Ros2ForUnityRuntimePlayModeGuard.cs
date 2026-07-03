@@ -5,9 +5,11 @@
 // Purpose: Prevent Play Mode after switching native R2FU runtime packages in the same Editor process.
 
 #if UNITY_EDITOR
+using System;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
+using Process = System.Diagnostics.Process;
 
 namespace Unity2Foxglove.Ros2ForUnity.Editor
 {
@@ -36,6 +38,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
             if (string.IsNullOrWhiteSpace(runtimePackage) && string.IsNullOrWhiteSpace(communicationMode))
             {
+                if (TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic))
+                {
+                    Debug.LogError(zenohRouterDiagnostic);
+                    if (!Application.isBatchMode)
+                    {
+                        EditorUtility.DisplayDialog(
+                            "ROS2 For Unity Zenoh router required",
+                            zenohRouterDiagnostic,
+                            "OK");
+                    }
+
+                    EditorApplication.isPlaying = false;
+                    return;
+                }
+
                 Ros2ForUnityRuntimeSelection.BindActiveRuntimeForPlayMode(status);
                 return;
             }
@@ -56,6 +73,89 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
 
             EditorApplication.isPlaying = false;
+        }
+
+        private static bool TryGetMissingZenohRouterDiagnostic(
+            Ros2ForUnityRuntimeSelectionStatus status,
+            out string diagnostic)
+        {
+            diagnostic = string.Empty;
+            if (status == null || status.SelectedRuntime == null || !status.SelectedRuntime.SupportsZenoh)
+                return false;
+
+            var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(status.SelectedRuntime);
+            if (!string.Equals(
+                    communicationMode,
+                    Ros2ForUnityRuntimeSelection.ZenohCommunicationMode,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (IsZenohRouterProcessRunning())
+                return false;
+
+            diagnostic =
+                "Unity2Foxglove ROS2 For Unity is configured for Zenoh (rmw_zenoh_cpp), but no local Zenoh router process was detected. "
+                + "Start rmw_zenohd before entering Play Mode, or switch the ROS2 For Unity Communication Mode back to FastDDS. "
+                + "The Phase162 smoke helper only keeps its auto-started router alive while that helper is running; RViz left open after the helper exits no longer has a router.";
+            return true;
+        }
+
+        private static bool IsZenohRouterProcessRunning()
+        {
+            Process[] processes;
+            try
+            {
+                processes = Process.GetProcesses();
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            foreach (var process in processes)
+            {
+                using (process)
+                {
+                    if (IsZenohRouterProcess(process))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsZenohRouterProcess(Process process)
+        {
+            try
+            {
+                if (LooksLikeZenohRouterProcess(process.ProcessName))
+                    return true;
+            }
+            catch (Exception)
+            {
+                // Process metadata can disappear while Unity is enumerating processes.
+            }
+
+            try
+            {
+                if (LooksLikeZenohRouterProcess(process.MainModule?.FileName))
+                    return true;
+            }
+            catch (Exception)
+            {
+                // Access to other-user/system process modules can be denied.
+            }
+
+            return false;
+        }
+
+        private static bool LooksLikeZenohRouterProcess(string value)
+        {
+            return !string.IsNullOrWhiteSpace(value)
+                   && (value.IndexOf("rmw_zenohd", StringComparison.OrdinalIgnoreCase) >= 0
+                       || value.IndexOf("zenohd", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         private static void OnCompilationStarted(object context)

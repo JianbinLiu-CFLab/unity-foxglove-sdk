@@ -68,8 +68,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("? GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\")", StringComparison.Ordinal)
                   && source.Contains(": GetROSVersion();", StringComparison.Ordinal)
                   && source.Contains("CheckROSSupport(currentRos2Version)", StringComparison.Ordinal)
-                  && source.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal),
-                "134-22-D5: standalone runtime support checks use packaged metadata while sourced ROS distro stays integrity-only");
+                  && source.Contains("WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version)", StringComparison.Ordinal)
+                  && source.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && !source.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "134-22-D5: standalone runtime support checks use packaged metadata and ignores externally sourced ROS_DISTRO");
         }
 
         private static void VerifySensorInitialPublishingContract()

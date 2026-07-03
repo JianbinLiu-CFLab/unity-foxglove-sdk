@@ -356,6 +356,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("--echo-only", StringComparison.Ordinal)
                   && helper.Contains("--no-rviz", StringComparison.Ordinal),
                 "162-E4: bare Phase162 runs Zenoh RViz2 PointCloud2 acceptance while echo is explicitly opt-in");
+            Check(helper.Contains("run_phase138u_with_rviz_capture", StringComparison.Ordinal)
+                  && helper.Contains("captured_rviz_processes", StringComparison.Ordinal)
+                  && helper.Contains("wait_for_rviz_shutdown_before_router_cleanup", StringComparison.Ordinal)
+                  && helper.Contains("--release-router-on-exit", StringComparison.Ordinal),
+                "162-E4b: Zenoh smoke helper keeps its auto-started router alive while launched RViz2 remains open");
         }
 
         private static void Phase162ReadmesDocumentZenohPrerequisites()
@@ -422,6 +427,14 @@ namespace Unity.FoxgloveSDK.Tests
             var bridge = ReadRepoText(AdapterPackage + "/Runtime/Native/Ros2ForUnityPointCloud2NativeBridge.cs");
             Check(bridge.Contains("CreateSensorPublisher<sensor_msgs.msg.PointCloud2>(topic)", StringComparison.Ordinal),
                 "162-F2: native PointCloud2 bridge publishes with sensor-data QoS");
+            Check(bridge.Contains("ZenohBackpressurePublishSlowThresholdMs", StringComparison.Ordinal)
+                  && bridge.Contains("ZenohBackpressureCooldownSeconds", StringComparison.Ordinal)
+                  && bridge.Contains("IsZenohRmwActive()", StringComparison.Ordinal)
+                  && bridge.Contains("Environment.GetEnvironmentVariable(\"RMW_IMPLEMENTATION\")", StringComparison.Ordinal)
+                  && bridge.Contains("ShouldSkipZenohBackpressureFrame", StringComparison.Ordinal)
+                  && bridge.Contains("UpdateZenohBackpressure(publishMs)", StringComparison.Ordinal)
+                  && bridge.Contains("zenohBackpressureSkip", StringComparison.Ordinal),
+                "162-F2b: Zenoh PointCloud2 native publish applies a short backpressure cooldown after slow RMW publishes");
 
             var rviz = ReadRepoText("Scripts/smoke/ros2/launch_phase138u_lidar_deskew_rviz2.py");
             Check(rviz.Contains("Reliability Policy: Best Effort", StringComparison.Ordinal)

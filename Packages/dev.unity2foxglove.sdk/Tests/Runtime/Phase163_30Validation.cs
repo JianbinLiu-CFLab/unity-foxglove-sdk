@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             HumbleRuntimeCapturesSourcedDistroBeforeStandalonePatch();
+            HumbleRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             HumbleExecutorDoesNotRestartDeadRuntimeAfterSharedShutdown();
             HumbleSyncWritesSemverLockVersion();
             Ros2WindowsEnvDoesNotInferUnknownPathsAsJazzy();
@@ -42,8 +43,22 @@ namespace Unity.FoxgloveSDK.Tests
             Check(constructor.Contains("string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();", StringComparison.Ordinal)
                   && constructor.IndexOf("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
                      < constructor.IndexOf("SetStandaloneRosDistro(packagedRos2Version)", StringComparison.Ordinal)
-                  && constructor.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal),
-                "163-30A-2: Humble standalone startup captures external ROS_DISTRO before overwriting it");
+                  && constructor.Contains("WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);", StringComparison.Ordinal)
+                  && constructor.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal)
+                  && !source.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-30A-2: Humble standalone startup warns then ignores external ROS_DISTRO before integrity checks");
+        }
+
+        private static void HumbleRuntimeLifecycleLogsAvoidEditorStackTraceExtraction()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
+            var constructor = ExtractMethod(source, "ROS2ForUnity");
+            var shutdown = ExtractMethod(source, "CompleteShutdownShared");
+
+            Check(source.Contains("private static void LogRuntimeInfoWithoutStackTrace", StringComparison.Ordinal)
+                  && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
+                  && shutdown.Contains("LogRuntimeInfoWithoutStackTrace(\"Shutting down Ros2 For Unity\")", StringComparison.Ordinal),
+                "163-30A-3: Humble runtime lifecycle logs avoid Editor stack trace extraction");
         }
 
         private static void HumbleExecutorDoesNotRestartDeadRuntimeAfterSharedShutdown()
@@ -108,8 +123,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(patch.Contains("old_check_signature", StringComparison.Ordinal)
                   && patch.Contains("private void CheckIntegrity(string ros2SourcedCodename)", StringComparison.Ordinal)
                   && patch.Contains("sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced()", StringComparison.Ordinal)
-                  && patch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal),
-                "163-30F: Humble runtime builder regenerates the standalone ROS_DISTRO capture patch");
+                  && patch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && patch.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && !patch.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-30F: Humble runtime builder regenerates standalone ROS_DISTRO override isolation");
         }
 
         private static void PhaseWiringIsPresent()

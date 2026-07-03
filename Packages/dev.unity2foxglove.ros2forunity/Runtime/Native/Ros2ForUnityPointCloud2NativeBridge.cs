@@ -25,6 +25,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const float ScanIntervalSeconds = 0.5f;
         private const int MaxNodeCreateAttempts = 4;
         private const int WarningIntervalFrames = 240;
+        private const double ZenohBackpressurePublishSlowThresholdMs = 40D;
+        private const float ZenohBackpressureCooldownSeconds = 0.15f;
 
         private static Ros2ForUnityPointCloud2NativeBridge _instance;
 
@@ -140,7 +142,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_bindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
+                    {
+                        existing.PrewarmPublishers(_ros2Unity);
                         continue;
+                    }
 
                     existing.Dispose();
                     _bindings.Remove(instanceId);
@@ -148,6 +153,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var binding = new Binding(this, publisher, topic);
                 binding.Subscribe();
+                binding.PrewarmPublishers(_ros2Unity);
                 _bindings.Add(instanceId, binding);
             }
 
@@ -184,7 +190,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private bool EnsureRos2UnityReady()
         {
-            if (IsShuttingDown)
+            if (!Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(gameObject.scene))
                 return false;
 
             if (_ros2Unity == null)
@@ -289,8 +295,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly Dictionary<string, IPublisher<sensor_msgs.msg.PointCloud2>> _publishers =
                 new Dictionary<string, IPublisher<sensor_msgs.msg.PointCloud2>>(StringComparer.Ordinal);
             private readonly HashSet<string> _readyLoggedTopics = new HashSet<string>(StringComparer.Ordinal);
+            private readonly bool _usesZenohRmw;
             private ROS2Node _node;
             private IPublisher<tf2_msgs.msg.TFMessage> _tfAnchorPublisher;
+            private float _zenohBackpressureSuppressUntil;
             private bool _subscribed;
             private bool _warnedPublishFailure;
             private int _publishFailureCount;
@@ -303,6 +311,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _owner = owner;
                 _source = source;
                 Topic = topic;
+                _usesZenohRmw = IsZenohRmwActive();
             }
 
             public string Topic { get; }
@@ -319,6 +328,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public bool IsStillEligible()
                 => IsEligible(_source)
                    && NormalizeTopic(_source.PointCloud2NativeTopic) == Topic;
+
+            public void PrewarmPublishers(ROS2UnityComponent ros2Unity)
+            {
+                if (ros2Unity == null || _source == null || _owner.IsShuttingDown)
+                    return;
+
+                if (!TryEnsurePublisher(ros2Unity, Topic, out _))
+                    return;
+
+                var deskewedTopic = ResolvePrewarmDeskewedTopic();
+                if (!string.IsNullOrWhiteSpace(deskewedTopic)
+                    && !string.Equals(deskewedTopic, Topic, StringComparison.Ordinal))
+                {
+                    TryEnsurePublisher(ros2Unity, deskewedTopic, out _);
+                }
+
+                PrewarmTfAnchorPublisher();
+            }
 
             public void Dispose()
             {
@@ -340,6 +367,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
 
                 var frameTopic = ResolveFrameTopic(frame);
+                if (ShouldSkipZenohBackpressureFrame())
+                {
+                    if (timingEnabled)
+                    {
+                        LogPointCloud2NativePublishTiming(
+                            frameTopic,
+                            frame,
+                            0D,
+                            0D,
+                            0D,
+                            0D,
+                            ElapsedPointCloud2NativeMilliseconds(totalStart),
+                            "zenohBackpressureSkip");
+                    }
+
+                    return;
+                }
+
                 var ensurePublisherStart = BeginPointCloud2NativeTiming(timingEnabled);
                 if (!TryEnsurePublisher(ros2Unity, frameTopic, out var publisher))
                 {
@@ -378,6 +423,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     publishStart = BeginPointCloud2NativeTiming(timingEnabled);
                     publisher.Publish(message);
                     publishMs = ElapsedPointCloud2NativeMilliseconds(publishStart);
+                    UpdateZenohBackpressure(publishMs);
                     _warnedPublishFailure = false;
                     if (timingEnabled)
                     {
@@ -414,6 +460,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                     RecordPublishFailure("ROS2 PointCloud2 publish failed for " + frameTopic + ": " + ex.Message);
                 }
+            }
+
+            private bool ShouldSkipZenohBackpressureFrame()
+            {
+                return _usesZenohRmw
+                       && Time.unscaledTime < _zenohBackpressureSuppressUntil;
+            }
+
+            private void UpdateZenohBackpressure(double publishMs)
+            {
+                if (!_usesZenohRmw || publishMs < ZenohBackpressurePublishSlowThresholdMs)
+                    return;
+
+                _zenohBackpressureSuppressUntil = Time.unscaledTime + ZenohBackpressureCooldownSeconds;
+            }
+
+            private static bool IsZenohRmwActive()
+            {
+                return string.Equals(
+                    Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION"),
+                    "rmw_zenoh_cpp",
+                    StringComparison.OrdinalIgnoreCase);
             }
 
             private bool TryEnsurePublisher(
@@ -464,18 +532,36 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return Topic;
             }
 
+            private string ResolvePrewarmDeskewedTopic()
+            {
+                if (_source == null || !_source.EnableMotionCompensatedPointCloud2)
+                    return null;
+
+                if (_source.MotionCompensationOutputPolicy == PointCloudMotionCompensationOutputPolicy.RawOnly)
+                    return null;
+
+                if (_source.MotionCompensationOutputPolicy == PointCloudMotionCompensationOutputPolicy.ReplaceOutput)
+                    return Topic;
+
+                return NormalizeTopic(_source.MotionCompensatedPointCloud2Topic);
+            }
+
             private void LogReady(string topic)
             {
                 if (_readyLoggedTopics.Contains(topic))
                     return;
 
                 _readyLoggedTopics.Add(topic);
-                Debug.Log(
-                    "[Foxglove][R2FU] PointCloud2 Native DDS ready: topic="
-                    + topic
-                    + " tf="
-                    + DescribeTfAnchor()
-                    + ".");
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    _source,
+                    "[Foxglove][R2FU] PointCloud2 Native DDS ready: topic={0} tf={1}.",
+                    new object[]
+                    {
+                        topic,
+                        DescribeTfAnchor()
+                    });
             }
 
             private string DescribeTfAnchor()
@@ -493,6 +579,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
 
                 return TfAnchorTopic + " " + parentFrame + "->" + childFrame;
+            }
+
+            private void PrewarmTfAnchorPublisher()
+            {
+                if (!_source.PublishPointCloud2NativeTfAnchor || _node == null || _tfAnchorPublisher != null)
+                    return;
+
+                var parentFrame = _source.PointCloud2NativeTfParentFrame;
+                var childFrame = _source.PointCloud2NativeTfChildFrame;
+                if (string.IsNullOrWhiteSpace(parentFrame)
+                    || string.IsNullOrWhiteSpace(childFrame)
+                    || string.Equals(parentFrame, childFrame, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                try
+                {
+                    _tfAnchorPublisher = _node.CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic);
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("Unable to create ROS2 PointCloud2 TF anchor publisher for " + childFrame + ": " + ex.Message);
+                }
             }
 
             private void PublishTfAnchor(PointCloud2NativeFrame frame)

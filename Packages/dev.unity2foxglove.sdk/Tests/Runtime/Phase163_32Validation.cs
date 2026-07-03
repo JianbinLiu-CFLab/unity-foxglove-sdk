@@ -23,7 +23,9 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectorScopesCommunicationModePerRuntime();
             RuntimeSelectorSurfacesMissingZenohPayload();
             LyricalRuntimeCapturesSourcedDistroBeforeStandalonePatch();
+            LyricalRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             LyricalRuntimeDoesNotRestartAfterSharedShutdown();
+            LyricalZenohPlayModeRequiresRunningRouter();
             LyricalBuilderAndValidatorRegenerateRuntimePatches();
             LyricalValidationUsesRepoRootDiscovery();
             PhaseWiringIsPresent();
@@ -71,7 +73,7 @@ namespace Unity.FoxgloveSDK.Tests
             var selector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
             var descriptorCtor = ExtractCSharpMethod(selector, "Ros2ForUnityRuntimeDescriptor");
-            var diagnostic = ExtractCSharpMethod(selector, "GetZenohPayloadDiagnostic");
+            var diagnostic = ExtractCSharpMethod(selector, "ComputeZenohPayloadDiagnostic");
 
             Check(selector.Contains("public string ZenohPayloadDiagnostic", StringComparison.Ordinal)
                   && descriptorCtor.Contains("ZenohPayloadDiagnostic = zenohPayloadDiagnostic", StringComparison.Ordinal)
@@ -98,8 +100,22 @@ namespace Unity.FoxgloveSDK.Tests
             Check(constructor.Contains("string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();", StringComparison.Ordinal)
                   && constructor.IndexOf("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
                      < constructor.IndexOf("SetStandaloneRosDistro(packagedRos2Version);", StringComparison.Ordinal)
-                  && constructor.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal),
-                "163-32D-2: Lyrical standalone startup snapshots external ROS_DISTRO before patching native env");
+                  && constructor.Contains("WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);", StringComparison.Ordinal)
+                  && constructor.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);", StringComparison.Ordinal)
+                  && !runtime.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-32D-2: Lyrical standalone startup warns then ignores external ROS_DISTRO before integrity checks");
+        }
+
+        private static void LyricalRuntimeLifecycleLogsAvoidEditorStackTraceExtraction()
+        {
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
+            var constructor = ExtractCSharpMethod(runtime, "ROS2ForUnity");
+            var shutdown = ExtractCSharpMethod(runtime, "CompleteShutdownShared");
+
+            Check(runtime.Contains("private static void LogRuntimeInfoWithoutStackTrace", StringComparison.Ordinal)
+                  && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
+                  && shutdown.Contains("LogRuntimeInfoWithoutStackTrace(\"Shutting down Ros2 For Unity\")", StringComparison.Ordinal),
+                "163-32D-3: Lyrical runtime lifecycle logs avoid Editor stack trace extraction");
         }
 
         private static void LyricalRuntimeDoesNotRestartAfterSharedShutdown()
@@ -125,6 +141,22 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-32E-2: Lyrical component does not lazy-construct or start an executor after shared shutdown begins");
         }
 
+        private static void LyricalZenohPlayModeRequiresRunningRouter()
+        {
+            var guard = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
+            var onPlayMode = ExtractCSharpMethod(guard, "OnPlayModeStateChanged");
+            var requireRouter = ExtractCSharpMethod(guard, "TryGetMissingZenohRouterDiagnostic");
+            var processProbe = ExtractCSharpMethod(guard, "IsZenohRouterProcessRunning");
+
+            Check(onPlayMode.Contains("TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic)", StringComparison.Ordinal)
+                  && onPlayMode.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && requireRouter.Contains("Ros2ForUnityRuntimeSelection.ZenohCommunicationMode", StringComparison.Ordinal)
+                  && requireRouter.Contains("IsZenohRouterProcessRunning()", StringComparison.Ordinal)
+                  && processProbe.Contains("Process.GetProcesses()", StringComparison.Ordinal)
+                  && guard.Contains("rmw_zenohd", StringComparison.Ordinal),
+                "163-32F: Lyrical Zenoh Play Mode fails closed when no local Zenoh router is running");
+        }
+
         private static void LyricalBuilderAndValidatorRegenerateRuntimePatches()
         {
             var builder = ReadRepoText("Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py");
@@ -136,17 +168,20 @@ namespace Unity.FoxgloveSDK.Tests
             Check(patch.Contains("old_check_signature", StringComparison.Ordinal)
                   && patch.Contains("private void CheckIntegrity(string ros2SourcedCodename)", StringComparison.Ordinal)
                   && patch.Contains("sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced()", StringComparison.Ordinal)
-                  && patch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal),
-                "163-32F-1: Lyrical builder regenerates standalone integrity ordering");
+                  && patch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && patch.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && !patch.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
+                "163-32F-1: Lyrical builder regenerates standalone ROS_DISTRO override isolation");
             Check(packagePath.Contains("re.search(", StringComparison.Ordinal)
                   && packagePath.Contains("UnityEditor\\.PackageManager\\.PackageInfo", StringComparison.Ordinal)
                   && !packagePath.Contains("text.index(\"#if UNITY_EDITOR\")", StringComparison.Ordinal),
                 "163-32F-2: Lyrical validator checks PackageManager lookup guard around the lookup itself");
             Check(sourcePatch.Contains("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
-                  && sourcePatch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
+                  && sourcePatch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
+                  && !sourcePatch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
                   && sourcePatch.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && sourcePatch.Contains("MarkRuntimeShutdown()", StringComparison.Ordinal),
-                "163-32F-3: Lyrical validator requires standalone integrity and no-reinit shutdown patches");
+                "163-32F-3: Lyrical validator requires standalone env isolation and no-reinit shutdown patches");
         }
 
         private static void LyricalValidationUsesRepoRootDiscovery()
@@ -189,6 +224,7 @@ namespace Unity.FoxgloveSDK.Tests
                          "private void ",
                          "internal void ",
                          "internal ",
+                         "private static bool ",
                          "private static string ",
                          "private static void ",
                          "public static string ",
