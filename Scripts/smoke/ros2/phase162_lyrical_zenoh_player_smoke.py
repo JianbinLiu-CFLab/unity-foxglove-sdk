@@ -70,6 +70,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Do not auto-start rmw_zenohd when using rmw_zenoh_cpp.",
     )
+    parser.add_argument(
+        "--release-router-on-exit",
+        action="store_true",
+        help="Stop an auto-started Zenoh router when this helper exits even if the helper-launched RViz2 process is still open.",
+    )
     parser.add_argument("--router-ready-marker", default=DEFAULT_ROUTER_READY_MARKER)
     parser.add_argument("--unity-player", type=pathlib.Path, default=None)
     parser.add_argument("--player-log", type=pathlib.Path, default=None)
@@ -278,6 +283,62 @@ def build_rviz_acceptance_args(args: argparse.Namespace) -> list[str]:
     return rviz_args
 
 
+def run_phase138u_with_rviz_capture(
+    rviz_args: list[str],
+    captured_rviz_processes: list[subprocess.Popen],
+) -> int:
+    """Run Phase138U while capturing RViz2 processes it launches."""
+
+    original_launch_rviz = phase138u.ros2env.launch_rviz
+
+    def launch_rviz_and_capture(*args, **kwargs):
+        process = original_launch_rviz(*args, **kwargs)
+        captured_rviz_processes.append(process)
+        return process
+
+    phase138u.ros2env.launch_rviz = launch_rviz_and_capture
+    try:
+        return phase138u.main(rviz_args)
+    finally:
+        phase138u.ros2env.launch_rviz = original_launch_rviz
+
+
+def wait_for_rviz_shutdown_before_router_cleanup(
+    args: argparse.Namespace,
+    router: subprocess.Popen | None,
+    captured_rviz_processes: list[subprocess.Popen],
+    summary: dict[str, object],
+) -> None:
+    """Keep an owned Zenoh router alive until helper-launched RViz2 exits."""
+
+    if router is None or router.poll() is not None:
+        return
+    if args.echo_only or not args.launch_rviz or args.release_router_on_exit:
+        return
+
+    running_rviz = [process for process in captured_rviz_processes if process.poll() is None]
+    if not running_rviz:
+        return
+
+    pids = [process.pid for process in running_rviz]
+    summary["zenohRouterHeldForRvizPids"] = pids
+    print(
+        "Zenoh router is staying alive for RViz2 pid(s) "
+        + ", ".join(str(pid) for pid in pids)
+        + ". Close RViz2 to let this helper stop the router, or press Ctrl+C to stop the router now.",
+        flush=True,
+    )
+
+    try:
+        while any(process.poll() is None for process in running_rviz):
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        summary["zenohRouterRvizWaitInterrupted"] = True
+        print("Stopping the Zenoh router after Ctrl+C; RViz2 may remain open without a router.", file=sys.stderr)
+    else:
+        summary["zenohRouterHeldUntilRvizExit"] = True
+
+
 def write_summary(args: argparse.Namespace, summary: dict[str, object]) -> None:
     """Write the JSON summary and print the operator-facing result."""
 
@@ -303,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
     player_log = args.player_log or args.echo_output.with_name("unity-player.log")
     router = None
     player = None
+    captured_rviz_processes: list[subprocess.Popen] = []
     summary: dict[str, object] = {
         "runId": run_id,
         "rosDistro": "lyrical",
@@ -316,6 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         "zenohRouterLog": str(router_log),
         "playerLog": str(player_log),
         "mode": "echo-only" if args.echo_only else "rviz2-pointcloud2",
+        "releaseRouterOnExit": bool(args.release_router_on_exit),
         "exitCodes": {},
     }
 
@@ -367,7 +430,7 @@ def main(argv: list[str] | None = None) -> int:
             rviz_args = build_rviz_acceptance_args(args)
             summary["rvizAcceptanceArgs"] = rviz_args
             try:
-                rviz_code = phase138u.main(rviz_args)
+                rviz_code = run_phase138u_with_rviz_capture(rviz_args, captured_rviz_processes)
             except phase138u.InconclusiveError as exc:
                 summary["exitCodes"]["phase138uRviz2Acceptance"] = 2
                 summary["verdict"] = "PHASE162_LYRICAL_ZENOH_RVIZ2_POINTCLOUD2_INCONCLUSIVE"
@@ -388,6 +451,7 @@ def main(argv: list[str] | None = None) -> int:
         summary["error"] = str(exc)
         return_code = 1
     finally:
+        wait_for_rviz_shutdown_before_router_cleanup(args, router, captured_rviz_processes, summary)
         for label, process in (("unityPlayer", player), ("zenohRouter", router)):
             if process is None:
                 continue

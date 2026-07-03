@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
             LyricalRuntimeCapturesSourcedDistroBeforeStandalonePatch();
             LyricalRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             LyricalRuntimeDoesNotRestartAfterSharedShutdown();
+            LyricalZenohPlayModeRequiresRunningRouter();
             LyricalBuilderAndValidatorRegenerateRuntimePatches();
             LyricalValidationUsesRepoRootDiscovery();
             PhaseWiringIsPresent();
@@ -140,6 +141,22 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-32E-2: Lyrical component does not lazy-construct or start an executor after shared shutdown begins");
         }
 
+        private static void LyricalZenohPlayModeRequiresRunningRouter()
+        {
+            var guard = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
+            var onPlayMode = ExtractCSharpMethod(guard, "OnPlayModeStateChanged");
+            var requireRouter = ExtractCSharpMethod(guard, "TryGetMissingZenohRouterDiagnostic");
+            var processProbe = ExtractCSharpMethod(guard, "IsZenohRouterProcessRunning");
+
+            Check(onPlayMode.Contains("TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic)", StringComparison.Ordinal)
+                  && onPlayMode.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && requireRouter.Contains("Ros2ForUnityRuntimeSelection.ZenohCommunicationMode", StringComparison.Ordinal)
+                  && requireRouter.Contains("IsZenohRouterProcessRunning()", StringComparison.Ordinal)
+                  && processProbe.Contains("Process.GetProcesses()", StringComparison.Ordinal)
+                  && guard.Contains("rmw_zenohd", StringComparison.Ordinal),
+                "163-32F: Lyrical Zenoh Play Mode fails closed when no local Zenoh router is running");
+        }
+
         private static void LyricalBuilderAndValidatorRegenerateRuntimePatches()
         {
             var builder = ReadRepoText("Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py");
@@ -207,6 +224,7 @@ namespace Unity.FoxgloveSDK.Tests
                          "private void ",
                          "internal void ",
                          "internal ",
+                         "private static bool ",
                          "private static string ",
                          "private static void ",
                          "public static string ",
