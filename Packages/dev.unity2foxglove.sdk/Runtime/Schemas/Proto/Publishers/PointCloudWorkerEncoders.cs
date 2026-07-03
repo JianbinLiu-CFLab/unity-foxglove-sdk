@@ -131,6 +131,7 @@ namespace Unity.FoxgloveSDK.Components
                         request.LogPerformanceDiagnostics,
                         out var rawPackTimings,
                         useAcquisitionFrameCoordinates: true,
+                        preserveSourcePointCount: true,
                         preferPooledBufferRetention: true);
                     rawPackMs = DiagnosticElapsedMs(rawPackStart);
                     encodeDiagnostics.RawCountValidMs = rawPackTimings.CountValidMs;
@@ -214,7 +215,9 @@ namespace Unity.FoxgloveSDK.Components
                                     compensatedPointCount,
                                     request.EmitAbsoluteTimeNs,
                                     request.LogPerformanceDiagnostics,
-                                    out var deskewPackTimings);
+                                    out var deskewPackTimings,
+                                    preserveSourcePointCount: true,
+                                    preferPooledBufferRetention: true);
                                 encodeDiagnostics.DeskewCountValidMs = deskewPackTimings.CountValidMs;
                                 encodeDiagnostics.DeskewBufferRentMs = deskewPackTimings.BufferRentMs;
                                 encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;
@@ -300,7 +303,8 @@ namespace Unity.FoxgloveSDK.Components
                 request.LogPerformanceDiagnostics,
                 out var deskewPackTimings,
                 zeroTimeOffset: true,
-                preserveSourcePointCount: true);
+                preserveSourcePointCount: true,
+                preferPooledBufferRetention: true);
             encodeDiagnostics.DeskewCountValidMs = deskewPackTimings.CountValidMs;
             encodeDiagnostics.DeskewBufferRentMs = deskewPackTimings.BufferRentMs;
             encodeDiagnostics.DeskewWriteLoopMs = deskewPackTimings.WriteLoopMs;

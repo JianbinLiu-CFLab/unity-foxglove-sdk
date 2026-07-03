@@ -58,6 +58,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "138U-1F: point cloud publisher stores default-off deskew flag");
             Check(publisher.Contains("_deskewedPointCloud2NativeTopic", StringComparison.Ordinal),
                 "138U-1G: point cloud publisher stores deskewed topic");
+            Check(publisher.Contains("_deskewedPointCloud2NativeMaxPublishRateHz = 2f", StringComparison.Ordinal)
+                  && publisher.Contains("ShouldQueueDeskewedPointCloud2Frame", StringComparison.Ordinal),
+                "138U-1Ga: point cloud publisher rate-gates deskewed visualization before worker request construction");
             Check(publisher.Contains("PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame", StringComparison.Ordinal),
                 "138U-1H: publisher routes VirtualLidar deskew through scan-reference coordinates");
             Check(publisher.Contains("FixedUpdate()", StringComparison.Ordinal)

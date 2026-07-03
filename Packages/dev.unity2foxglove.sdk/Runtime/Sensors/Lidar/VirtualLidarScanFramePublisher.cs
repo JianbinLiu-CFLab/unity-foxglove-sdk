@@ -27,7 +27,8 @@ namespace Unity.FoxgloveSDK.Components
             PointCloudFrame activeScanFrame,
             int activeScanValidPoints,
             ref VirtualLidarPointData[] snapshot,
-            ref int snapshotCount)
+            ref int snapshotCount,
+            ref LidarScanBoundaryTimings timings)
         {
             using (PublishMarker.Auto())
             {
@@ -45,7 +46,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (pointCloudPublisher == null)
                     return true;
 
-                if (!TryPublishNativePointCloud2Scan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount)
+                if (!TryPublishNativePointCloud2Scan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount, ref timings)
                     && !TryPublishNativeDracoScan(pointCloudPublisher, activeScanFrame, ref snapshot, ref snapshotCount))
                 {
                     pointCloudPublisher.SetFrame(activeScanFrame);
@@ -83,7 +84,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxglovePointCloudPublisher pointCloudPublisher,
             PointCloudFrame activeScanFrame,
             ref VirtualLidarPointData[] snapshot,
-            ref int snapshotCount)
+            ref int snapshotCount,
+            ref LidarScanBoundaryTimings timings)
         {
             if (snapshot == null || snapshotCount <= 0 || !pointCloudPublisher.CanQueueVirtualLidarPointCloud2NativeFrame)
                 return false;
@@ -93,7 +95,8 @@ namespace Unity.FoxgloveSDK.Components
                 snapshotCount,
                 activeScanFrame.UnixNs,
                 activeScanFrame.FrameId,
-                activeScanFrame.EmitAbsoluteTimeNs))
+                activeScanFrame.EmitAbsoluteTimeNs,
+                ref timings))
             {
                 return false;
             }

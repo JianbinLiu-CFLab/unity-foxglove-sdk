@@ -257,7 +257,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !pointCloudDiagnostics.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && !encoders.Contains("using System.Diagnostics;", StringComparison.Ordinal)
                   && diagnostics.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
-                  && !publisher.Contains("Stopwatch", StringComparison.Ordinal)
+                  && publisher.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
                   && encoders.Contains("using Stopwatch = System.Diagnostics.Stopwatch;", StringComparison.Ordinal)
                   && publisher.Contains("PointCloudEncodePipeline<DracoEncodeRequest, DracoEncodeResult> _dracoEncodePipeline", StringComparison.Ordinal)
                   && pointCloudPipeline.Contains("BackgroundEncodePipeline<TRequest, TResult>", StringComparison.Ordinal)

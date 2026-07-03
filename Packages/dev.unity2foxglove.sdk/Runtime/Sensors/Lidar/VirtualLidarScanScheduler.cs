@@ -206,7 +206,7 @@ namespace Unity.FoxgloveSDK.Components
             ref VirtualLidarPointData[] activeScanPointSnapshot,
             ref int activeScanPointSnapshotCount,
             ref int activeScanValidPoints,
-            Action onScanBoundary)
+            LidarScanBoundaryHandler onScanBoundary)
         {
             if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
                 return;
@@ -228,6 +228,10 @@ namespace Unity.FoxgloveSDK.Components
                     0d,
                     0d,
                     0d,
+                    0d,
+                    0d,
+                    0d,
+                    0d,
                     useNativeSnapshot,
                     _pendingScanCrossingCount,
                     fixedDeltaTime);
@@ -243,6 +247,10 @@ namespace Unity.FoxgloveSDK.Components
             var appendStart = DiagnosticStart(logPerformanceDiagnostics);
             var copyMs = 0d;
             var boundaryPublishMs = 0d;
+            var publishActiveScanMs = 0d;
+            var motionRequestMs = 0d;
+            var enqueueMs = 0d;
+            var startNewScanMs = 0d;
             var validPoints = 0;
             var ci = 0;
             var segmentStart = 0;
@@ -263,8 +271,13 @@ namespace Unity.FoxgloveSDK.Components
                         ref validPoints);
                     copyMs += DiagnosticElapsedMs(copyStart);
                     var boundaryPublishStart = DiagnosticStart(logPerformanceDiagnostics);
-                    onScanBoundary?.Invoke();
+                    var boundaryTimings = new LidarScanBoundaryTimings(logPerformanceDiagnostics);
+                    onScanBoundary?.Invoke(ref boundaryTimings);
                     boundaryPublishMs += DiagnosticElapsedMs(boundaryPublishStart);
+                    publishActiveScanMs += boundaryTimings.PublishActiveScanMs;
+                    motionRequestMs += boundaryTimings.MotionRequestMs;
+                    enqueueMs += boundaryTimings.EnqueueMs;
+                    startNewScanMs += boundaryTimings.StartNewScanMs;
                     _pendingScanState = PendingScanState.Published;
                     segmentStart = k;
                     ci++;
@@ -286,8 +299,13 @@ namespace Unity.FoxgloveSDK.Components
             while (ci < _pendingScanCrossingCount && _pendingBatchCount == _pendingScanCrossings[ci])
             {
                 var boundaryPublishStart = DiagnosticStart(logPerformanceDiagnostics);
-                onScanBoundary?.Invoke();
+                var boundaryTimings = new LidarScanBoundaryTimings(logPerformanceDiagnostics);
+                onScanBoundary?.Invoke(ref boundaryTimings);
                 boundaryPublishMs += DiagnosticElapsedMs(boundaryPublishStart);
+                publishActiveScanMs += boundaryTimings.PublishActiveScanMs;
+                motionRequestMs += boundaryTimings.MotionRequestMs;
+                enqueueMs += boundaryTimings.EnqueueMs;
+                startNewScanMs += boundaryTimings.StartNewScanMs;
                 _pendingScanState = PendingScanState.Published;
                 ci++;
             }
@@ -303,6 +321,10 @@ namespace Unity.FoxgloveSDK.Components
                 appendMs,
                 copyMs,
                 boundaryPublishMs,
+                publishActiveScanMs,
+                motionRequestMs,
+                enqueueMs,
+                startNewScanMs,
                 useNativeSnapshot,
                 _pendingScanCrossingCount,
                 fixedDeltaTime);
@@ -440,6 +462,10 @@ namespace Unity.FoxgloveSDK.Components
             double appendMs,
             double copyMs,
             double boundaryPublishMs,
+            double publishActiveScanMs,
+            double motionRequestMs,
+            double enqueueMs,
+            double startNewScanMs,
             bool nativeSnapshot,
             int crossings,
             float fixedDeltaTimeSeconds)
@@ -451,7 +477,7 @@ namespace Unity.FoxgloveSDK.Components
                 LogType.Log,
                 LogOption.NoStacktrace,
                 _logContext,
-                "[LidarDiag] batch timing: scanId={0} rays={1} valid={2} completeMs={3:F2} buildMs={4:F2} appendMs={5:F2} copyMs={6:F2} boundaryPublishMs={7:F2} fixedDeltaMs={8:F2} nativeSnapshot={9} crossings={10}",
+                "[LidarDiag] batch timing: scanId={0} rays={1} valid={2} completeMs={3:F2} buildMs={4:F2} appendMs={5:F2} copyMs={6:F2} boundaryPublishMs={7:F2} publishActiveScanMs={8:F2} motionRequestMs={9:F2} enqueueMs={10:F2} startNewScanMs={11:F2} fixedDeltaMs={12:F2} nativeSnapshot={13} crossings={14}",
                 scanId,
                 rayCount,
                 validPointCount,
@@ -460,6 +486,10 @@ namespace Unity.FoxgloveSDK.Components
                 appendMs,
                 copyMs,
                 boundaryPublishMs,
+                publishActiveScanMs,
+                motionRequestMs,
+                enqueueMs,
+                startNewScanMs,
                 fixedDeltaTimeSeconds * 1000f,
                 nativeSnapshot,
                 crossings);

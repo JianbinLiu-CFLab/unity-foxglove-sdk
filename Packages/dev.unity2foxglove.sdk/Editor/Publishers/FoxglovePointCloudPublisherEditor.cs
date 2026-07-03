@@ -42,6 +42,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _enableMotionCompensation;
         private SerializedProperty _motionCompensationOutputPolicy;
         private SerializedProperty _deskewedPointCloud2NativeTopic;
+        private SerializedProperty _deskewedPointCloud2NativeMaxPublishRateHz;
         private SerializedProperty _motionCompensationReferenceTime;
         private SerializedProperty _motionCompensationSource;
         private SerializedProperty _samplingMode;
@@ -75,6 +76,7 @@ namespace Unity.FoxgloveSDK.Editor
             _enableMotionCompensation = serializedObject.FindProperty("_enableMotionCompensation");
             _motionCompensationOutputPolicy = serializedObject.FindProperty("_motionCompensationOutputPolicy");
             _deskewedPointCloud2NativeTopic = serializedObject.FindProperty("_deskewedPointCloud2NativeTopic");
+            _deskewedPointCloud2NativeMaxPublishRateHz = serializedObject.FindProperty("_deskewedPointCloud2NativeMaxPublishRateHz");
             _motionCompensationReferenceTime = serializedObject.FindProperty("_motionCompensationReferenceTime");
             _motionCompensationSource = serializedObject.FindProperty("_motionCompensationSource");
             _samplingMode = serializedObject.FindProperty("_samplingMode");
@@ -211,6 +213,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 DrawProperty(_motionCompensationOutputPolicy, "Output Policy");
                 DrawProperty(_deskewedPointCloud2NativeTopic, "Deskewed Topic");
+                DrawProperty(_deskewedPointCloud2NativeMaxPublishRateHz, "Deskewed Max Rate Hz");
                 DrawProperty(_motionCompensationReferenceTime, "Reference Time");
                 DrawProperty(_motionCompensationSource, "Motion Source");
             }

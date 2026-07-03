@@ -103,9 +103,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
             var fixedUpdate = TestSources.Slice(source, "private void FixedUpdate()", "private int BudgetColumnsPerTick()");
 
-            Assert.Contains("private Action _onScanBoundary", source, StringComparison.Ordinal);
-            Assert.Contains("private Action OnScanBoundaryAction", source, StringComparison.Ordinal);
-            Assert.Contains("private void OnScanBoundary()", source, StringComparison.Ordinal);
+            Assert.Contains("private LidarScanBoundaryHandler _onScanBoundary", source, StringComparison.Ordinal);
+            Assert.Contains("private LidarScanBoundaryHandler OnScanBoundaryAction", source, StringComparison.Ordinal);
+            Assert.Contains("private void OnScanBoundary(ref LidarScanBoundaryTimings timings)", source, StringComparison.Ordinal);
             Assert.Contains("OnScanBoundaryAction", fixedUpdate, StringComparison.Ordinal);
             Assert.DoesNotContain("() =>", fixedUpdate, StringComparison.Ordinal);
             Assert.DoesNotContain("new Action", fixedUpdate, StringComparison.Ordinal);

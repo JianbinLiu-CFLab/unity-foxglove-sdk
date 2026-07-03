@@ -26,7 +26,8 @@ namespace Unity.FoxgloveSDK.Components
             int pointCount,
             ulong unixNs,
             string frameId,
-            bool emitAbsoluteTimeNs)
+            bool emitAbsoluteTimeNs,
+            ref LidarScanBoundaryTimings boundaryTimings)
         {
             if (!CanQueueVirtualLidarPointCloud2NativeFrame)
                 return false;
@@ -44,11 +45,18 @@ namespace Unity.FoxgloveSDK.Components
             var publishWebSocket = ShouldPreparePublishPayload();
             var publishBridge = ShouldPrepareRos2BridgePayload();
             var publishNativeFrame = ShouldPreparePointCloud2NativeFrame();
+            var motionRequestStart = boundaryTimings.Start();
             var motionSettings = ResolveMotionCompensationSettings();
             var publishRaw = motionSettings.PreserveRawOutput;
-            var motionCompensation = TryCreateMotionCompensationRequest(
-                motionSettings,
-                publishNativeFrame);
+            var queueDeskewedOutput = motionSettings.EmitDeskewedOutput
+                                      && publishNativeFrame
+                                      && ShouldQueueDeskewedPointCloud2Frame(unixNs);
+            var motionCompensation = queueDeskewedOutput
+                ? TryCreateMotionCompensationRequest(
+                    motionSettings,
+                    publishNativeFrame)
+                : null;
+            boundaryTimings.MotionRequestMs += boundaryTimings.ElapsedMs(motionRequestStart);
 
             if (!publishRaw && motionCompensation == null)
             {
@@ -62,6 +70,7 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
+            var enqueueStart = boundaryTimings.Start();
             QueueVirtualLidarPointCloud2Native(
                 points,
                 pointCount,
@@ -74,6 +83,7 @@ namespace Unity.FoxgloveSDK.Components
                 EffectiveEncoding,
                 publishRaw ? PointCloud2NativeTopic : null,
                 motionCompensation);
+            boundaryTimings.EnqueueMs += boundaryTimings.ElapsedMs(enqueueStart);
             return true;
         }
 
