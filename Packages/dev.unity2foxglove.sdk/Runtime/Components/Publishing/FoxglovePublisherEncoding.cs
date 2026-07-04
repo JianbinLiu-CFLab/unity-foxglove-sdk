@@ -255,6 +255,8 @@ namespace Unity.FoxgloveSDK.Components
             bool supportsMsgPack)
         {
             if (supportsProtobuf) return PublisherEffectiveEncoding.Protobuf;
+            // Fallback order intentionally keeps MsgPack before JSON for publishers
+            // that opt into compact custom-client raw channels.
             if (supportsMsgPack) return PublisherEffectiveEncoding.MsgPack;
             if (supportsJson) return PublisherEffectiveEncoding.Json;
             if (supportsRos2) return PublisherEffectiveEncoding.Ros2;

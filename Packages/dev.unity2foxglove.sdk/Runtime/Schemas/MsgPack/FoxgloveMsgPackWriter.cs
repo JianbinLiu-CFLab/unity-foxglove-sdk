@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Schemas.MsgPack
@@ -127,15 +128,13 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
         public void WriteFloat(float value)
         {
             WriteByte(0xca);
-            var bytes = BitConverter.GetBytes(value);
-            WriteBigEndianBytes(bytes);
+            WriteBigEndianUInt32(FloatToUInt32Bits(value));
         }
 
         public void WriteDouble(double value)
         {
             WriteByte(0xcb);
-            var bytes = BitConverter.GetBytes(value);
-            WriteBigEndianBytes(bytes);
+            WriteBigEndianUInt64(DoubleToUInt64Bits(value));
         }
 
         public void WriteString(string value)
@@ -249,13 +248,6 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
                 throw new ArgumentOutOfRangeException(paramName);
         }
 
-        private void WriteBigEndianBytes(byte[] bytes)
-        {
-            if (BitConverter.IsLittleEndian)
-                Array.Reverse(bytes);
-            _stream.Write(bytes, 0, bytes.Length);
-        }
-
         private void WriteBigEndianInt16(short value)
         {
             WriteBigEndianUInt16(unchecked((ushort)value));
@@ -300,6 +292,32 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
         private void WriteByte(byte value)
         {
             _stream.WriteByte(value);
+        }
+
+        private static uint FloatToUInt32Bits(float value)
+        {
+            var bits = new FloatBits { Value = value };
+            return bits.UInt32;
+        }
+
+        private static ulong DoubleToUInt64Bits(double value)
+        {
+            var bits = new DoubleBits { Value = value };
+            return bits.UInt64;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct FloatBits
+        {
+            [FieldOffset(0)] public float Value;
+            [FieldOffset(0)] public uint UInt32;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        private struct DoubleBits
+        {
+            [FieldOffset(0)] public double Value;
+            [FieldOffset(0)] public ulong UInt64;
         }
     }
 }

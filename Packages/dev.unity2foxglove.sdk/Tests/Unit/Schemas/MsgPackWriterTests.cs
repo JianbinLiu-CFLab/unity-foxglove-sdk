@@ -58,6 +58,41 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void WriterEmitsFloatPayloadsWithoutPerValueHeapAllocations()
+        {
+            var writer = new FoxgloveMsgPackWriter(64);
+
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            writer.WriteFloat(1.5f);
+            writer.WriteDouble(1.5);
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(0, allocated);
+            Assert.Equal(
+                new byte[]
+                {
+                    0xca, 0x3f, 0xc0, 0x00, 0x00,
+                    0xcb, 0x3f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                },
+                writer.ToArray());
+        }
+
+        [Fact]
+        public void WriterUsesThirtyTwoBitHeadersAtLargeStringAndBinaryBoundaries()
+        {
+            var writer = new FoxgloveMsgPackWriter(65_550);
+
+            writer.WriteString(new string('a', 65_536));
+            var stringBytes = writer.ToArray();
+            Assert.Equal(new byte[] { 0xdb, 0x00, 0x01, 0x00, 0x00 }, stringBytes[..5]);
+
+            writer.Clear();
+            writer.WriteBinary(new byte[65_536]);
+            var binaryBytes = writer.ToArray();
+            Assert.Equal(new byte[] { 0xc6, 0x00, 0x01, 0x00, 0x00 }, binaryBytes[..5]);
+        }
+
+        [Fact]
         public void WriterRejectsNegativeContainerLengths()
         {
             var writer = new FoxgloveMsgPackWriter();
