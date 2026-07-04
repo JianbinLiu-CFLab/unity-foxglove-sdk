@@ -17,6 +17,8 @@ namespace Unity.FoxgloveSDK.Editor
         private static readonly string[] PublisherOverrideLabels = { "Use Manager", "JSON", "Protobuf", "ROS2", "MsgPack" };
         private static readonly string[] BridgeOverrideLabels = { "Use Manager", "Disabled", "Enabled" };
         private static readonly string[] BridgeQosPresetLabels = { "Reliable Default", "Sensor Data", "Transient Local", "Custom" };
+        private const string MsgPackConsumerNotice =
+            "MsgPack is a schemaless raw channel for custom clients. Foxglove Desktop does not currently parse or render live MsgPack panels.";
 
         public static void DrawGlobalEncoding(SerializedProperty property, string label)
         {
@@ -25,6 +27,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             var current = ClampIndex(property.enumValueIndex, GlobalEncodingLabels.Length);
             property.enumValueIndex = EditorGUILayout.Popup(label, current, GlobalEncodingLabels);
+            DrawMsgPackConsumerNotice((GlobalEncoding)property.enumValueIndex);
         }
 
         public static void DrawPublisherOverride(SerializedProperty property, string label)
@@ -34,6 +37,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             var current = ClampIndex(property.enumValueIndex, PublisherOverrideLabels.Length);
             property.enumValueIndex = EditorGUILayout.Popup(label, current, PublisherOverrideLabels);
+            DrawMsgPackConsumerNotice((PublisherEncodingOverride)property.enumValueIndex);
         }
 
         public static void DrawEffectiveEncoding(PublisherEffectiveEncoding encoding, string label)
@@ -69,6 +73,18 @@ namespace Unity.FoxgloveSDK.Editor
             if (index < 0) return 0;
             if (index >= count) return count - 1;
             return index;
+        }
+
+        private static void DrawMsgPackConsumerNotice(GlobalEncoding encoding)
+        {
+            if (encoding == GlobalEncoding.MsgPack)
+                EditorGUILayout.HelpBox(MsgPackConsumerNotice, MessageType.Info);
+        }
+
+        private static void DrawMsgPackConsumerNotice(PublisherEncodingOverride encoding)
+        {
+            if (encoding == PublisherEncodingOverride.MsgPack)
+                EditorGUILayout.HelpBox(MsgPackConsumerNotice, MessageType.Info);
         }
     }
 }

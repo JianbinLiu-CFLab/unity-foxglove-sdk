@@ -170,6 +170,7 @@ namespace Unity.FoxgloveSDK.Tests
             var managerChannels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var publisherGeneric = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisher.cs");
+            var publisherEncoding = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherEncoding.cs");
             var msgPackChannel = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/MsgPack/FoxgloveMsgPackChannel.cs");
             var editorLabels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/PublisherEncodingEditorLabels.cs");
 
@@ -201,8 +202,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisherGeneric.Contains("PublishMsgPack(payload, unixNs, resolution)", StringComparison.Ordinal),
                 "168-14: generic publishers branch for MsgPack and do not silently publish JSON");
 
-            Check(editorLabels.Contains("\"MsgPack\"", StringComparison.Ordinal),
-                "168-15: Inspector encoding labels expose MsgPack");
+            Check(editorLabels.Contains("\"MsgPack\"", StringComparison.Ordinal)
+                  && editorLabels.Contains("schemaless raw channel for custom clients", StringComparison.Ordinal)
+                  && editorLabels.Contains("Foxglove Desktop does not currently parse or render live MsgPack panels", StringComparison.Ordinal),
+                "168-15: Inspector encoding labels expose MsgPack with custom-client expectations");
+
+            Check(publisherEncoding.Contains("Fallback order intentionally keeps MsgPack before JSON", StringComparison.Ordinal),
+                "168-15B: encoding fallback order documents the MsgPack before JSON choice");
 
             var manifestModel = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestModel.cs");
             var manifestWriter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestJsonWriter.cs");
