@@ -377,23 +377,25 @@ namespace Unity.FoxgloveSDK.Tests
             var smokeScene = ReadRepoText(SmokeSceneRelativePath);
 
             Check(publisher.Contains("_nativeDracoMaxPublishRateHz", StringComparison.Ordinal)
+                  && publisher.Contains("DefaultNativeDracoMaxPublishRateHz = 6f", StringComparison.Ordinal)
+                  && publisher.Contains("_nativeDracoMaxPublishRateHz = DefaultNativeDracoMaxPublishRateHz", StringComparison.Ordinal)
                   && publisher.Contains("_lastNativeDracoPublishUnixNs", StringComparison.Ordinal)
                   && publisher.Contains("rateHz <= 0f", StringComparison.Ordinal)
                   && publisher.Contains("ShouldQueueVirtualLidarDracoFrame(unixNs)", StringComparison.Ordinal)
-                  && publisher.Contains("_diagnostics.RecordDrop(_logPerformanceDiagnostics)", StringComparison.Ordinal),
-                "138I-29: VirtualLidar native Draco path has an optional source-side publish cap and records dropped frames");
-            Check(Regex.IsMatch(editor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
-                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
-                  && Regex.IsMatch(importedEditor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
-                  && Regex.IsMatch(importedBootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*0f\)")
-                  && smokeScene.Contains("_nativeDracoMaxPublishRateHz: 0", StringComparison.Ordinal)
+                  && publisher.Contains("_diagnostics.RecordDracoRateSkip(_logPerformanceDiagnostics)", StringComparison.Ordinal),
+                "138I-29: VirtualLidar native Draco path has a default source-side visualization cap and records rate skips separately from drops");
+            Check(Regex.IsMatch(editor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*6f\)")
+                  && Regex.IsMatch(bootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*6f\)")
+                  && Regex.IsMatch(importedEditor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*6f\)")
+                  && Regex.IsMatch(importedBootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*6f\)")
+                  && smokeScene.Contains("_nativeDracoMaxPublishRateHz: 6", StringComparison.Ordinal)
                   && smokeScene.Contains("_suppressTransformFallbackAfterSourceFrames: 1", StringComparison.Ordinal)
                   && !editor.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
                   && !bootstrap.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
                   && !importedEditor.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
                   && !importedBootstrap.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal)
                   && !smokeScene.Contains("_nativeDracoPublishRateHz", StringComparison.Ordinal),
-                "138I-30: maze demo and imported Unity project leave native Draco source cadence uncapped so the LiDAR raycast budget controls the actual rate");
+                "138I-30: maze demo and imported Unity project cap native Draco visualization cadence by default");
             Check(publisher.Contains("_suppressTransformFallbackAfterSourceFrames", StringComparison.Ordinal)
                   && publisher.Contains("MarkSourceDrivenPointCloud", StringComparison.Ordinal)
                   && publisher.Contains("ShouldSuppressTransformFallback()", StringComparison.Ordinal)

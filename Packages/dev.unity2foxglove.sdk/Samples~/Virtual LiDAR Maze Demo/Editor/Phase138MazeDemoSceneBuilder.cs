@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
             SetField(publisher, "_maxPoints", DefaultLidarPointCount);
             SetField(publisher, "_maxPackedBytes", 0);
             SetField(publisher, "_publishRateHz", 10f);
-            SetField(publisher, "_nativeDracoMaxPublishRateHz", 0f);
+            SetField(publisher, "_nativeDracoMaxPublishRateHz", 6f);
             SetField(publisher, "_samplingMode", Unity.FoxgloveSDK.Util.PointCloudSamplingMode.UniformStride);
             // Default demo path stays WebSocket/Protobuf-friendly. Switch this
             // publisher to PointCloud2 Native manually when validating ROS2/SLAM.

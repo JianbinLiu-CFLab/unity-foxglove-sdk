@@ -19014,7 +19014,7 @@ MonoBehaviour:
   _deskewedPointCloud2NativeTopic: /unity/point_cloud2_deskewed
   _motionCompensationReferenceTime: 0
   _motionCompensationSource: 0
-  _nativeDracoMaxPublishRateHz: 0
+  _nativeDracoMaxPublishRateHz: 6
   _suppressTransformFallbackAfterSourceFrames: 1
 --- !u!114 &1586363027
 MonoBehaviour:

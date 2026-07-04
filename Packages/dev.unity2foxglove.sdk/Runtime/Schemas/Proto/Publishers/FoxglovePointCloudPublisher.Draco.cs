@@ -76,17 +76,17 @@ namespace Unity.FoxgloveSDK.Components
             var intervalNs = ResolveNativeDracoPublishIntervalNs(rateHz);
             var timestampNs = unixNs == 0UL ? FoxgloveTimeUtil.NowUnixTimeNs() : unixNs;
 
-            if (_lastNativeDracoPublishUnixNs != 0UL
-                && timestampNs >= _lastNativeDracoPublishUnixNs
-                && timestampNs - _lastNativeDracoPublishUnixNs < intervalNs)
+            // A backward clock jump, usually from replay seek or sensor clock reset,
+            // intentionally resets the native Draco rate baseline and lets one frame through.
+            if (!PointCloudPublishRateGate.ShouldPublish(
+                    ref _lastNativeDracoPublishUnixNs,
+                    timestampNs,
+                    intervalNs))
             {
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
+                _diagnostics.RecordDracoRateSkip(_logPerformanceDiagnostics);
                 return false;
             }
 
-            // A backward clock jump, usually from replay seek or sensor clock reset,
-            // intentionally resets the native Draco rate baseline and lets one frame through.
-            _lastNativeDracoPublishUnixNs = timestampNs;
             return true;
         }
 

@@ -32,6 +32,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+### Changed
+
+- Foxglove Draco point-cloud visualization now caps source-driven VirtualLidar
+  native snapshots at 6 Hz by default to keep the live WebSocket view
+  responsive; set `Native LiDAR Max Rate Hz` to `0` to publish every completed
+  source scan.
+
 ## 1.9.4 - 2026-05-27
 
 ### Added

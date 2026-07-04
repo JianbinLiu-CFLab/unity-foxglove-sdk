@@ -255,6 +255,7 @@ dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.T
 - Real-time data streaming (transform, scene entities, camera images)
 - Typed sensor publishers for `foxglove.PointCloud`, `foxglove.LaserScan`, and `foxglove.CameraCalibration` in JSON, Protobuf, or ROS2 mode
 - ROS2 output for transform, scene cube, JPEG camera, camera calibration, laser scan, raw point cloud, and Draco-compressed point cloud publishers using official Foxglove `ros2msg` schemas with CDR payloads
+- Draco-compressed Foxglove point-cloud visualization caps source-driven Virtual LiDAR native snapshots at 6 Hz by default; set `Native LiDAR Max Rate Hz` to `0` to publish every completed scan when visualization cadence matters more than editor responsiveness.
 - Optional ROS2 Bridge mirror output, disabled by default, for the validated publisher set through a localhost sidecar bridge, with bridge-only topic namespace/override and QoS presets
 - Managed WebSocket backpressure with per-client bounded queues and drop-oldest live data behavior for slow clients
 - MCAP recording with LZ4/Zstd compression and topic-schema guard
