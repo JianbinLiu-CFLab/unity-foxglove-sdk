@@ -125,4 +125,23 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention);
         }
     }
+
+    internal static class PointCloudPublishRateGate
+    {
+        internal static bool ShouldPublish(ref ulong lastPublishUnixNs, ulong timestampNs, ulong intervalNs)
+        {
+            if (intervalNs == 0UL)
+                throw new ArgumentOutOfRangeException(nameof(intervalNs));
+
+            if (lastPublishUnixNs != 0UL
+                && timestampNs >= lastPublishUnixNs
+                && timestampNs - lastPublishUnixNs < intervalNs)
+            {
+                return false;
+            }
+
+            lastPublishUnixNs = timestampNs;
+            return true;
+        }
+    }
 }

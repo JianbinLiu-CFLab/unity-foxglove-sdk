@@ -5,6 +5,7 @@
 // Purpose: Phase 140E point-cloud hot-path allocation checks.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
@@ -100,10 +101,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.Contains("private int _deskewRateSkips;", diagnostics, StringComparison.Ordinal);
             Assert.Contains("public void RecordDeskewRateSkip(bool enabled", diagnostics, StringComparison.Ordinal);
-            Assert.Contains("deskewRateSkip={8}", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("deskewRateSkip={9}", diagnostics, StringComparison.Ordinal);
             Assert.Contains("_deskewRateSkips = 0;", diagnostics, StringComparison.Ordinal);
             Assert.Contains("_diagnostics.RecordDeskewRateSkip(_logPerformanceDiagnostics);", motionPublisher, StringComparison.Ordinal);
             Assert.DoesNotContain("_diagnostics.RecordDrop(_logPerformanceDiagnostics);\n                return false;", motionPublisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NativeDracoRateGateUsesSeparateDiagnosticCounter()
+        {
+            var diagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudPublishDiagnostics.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var dracoPublisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("private int _dracoRateSkips;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("public void RecordDracoRateSkip(bool enabled", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("dracoRateSkip={8}", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_dracoRateSkips = 0;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_diagnostics.RecordDracoRateSkip(_logPerformanceDiagnostics);", dracoPublisher, StringComparison.Ordinal);
+            Assert.DoesNotContain("_diagnostics.RecordDrop(_logPerformanceDiagnostics);\n                return false;", dracoPublisher, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NativeDracoRateGateThrottlesTenHzInputAndResetsOnBackwardClockJump()
+        {
+            const ulong tenHzStepNs = 100_000_000UL;
+            const ulong sixHzIntervalNs = 166_666_667UL;
+            const ulong startNs = 1_700_000_000_000_000_000UL;
+            var lastPublishNs = 0UL;
+            var acceptedInputIndexes = new List<int>();
+
+            for (var i = 0; i <= 10; i++)
+            {
+                var timestampNs = startNs + (ulong)i * tenHzStepNs;
+                if (PointCloudPublishRateGate.ShouldPublish(ref lastPublishNs, timestampNs, sixHzIntervalNs))
+                    acceptedInputIndexes.Add(i);
+            }
+
+            Assert.Equal(new[] { 0, 2, 4, 6, 8, 10 }, acceptedInputIndexes);
+
+            var jumpedBackwardNs = startNs + tenHzStepNs / 2UL;
+            Assert.True(PointCloudPublishRateGate.ShouldPublish(ref lastPublishNs, jumpedBackwardNs, sixHzIntervalNs));
+            Assert.Equal(jumpedBackwardNs, lastPublishNs);
+            Assert.False(PointCloudPublishRateGate.ShouldPublish(ref lastPublishNs, jumpedBackwardNs + tenHzStepNs, sixHzIntervalNs));
+            Assert.True(PointCloudPublishRateGate.ShouldPublish(ref lastPublishNs, jumpedBackwardNs + 2UL * tenHzStepNs, sixHzIntervalNs));
         }
 
         [Fact]

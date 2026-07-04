@@ -382,8 +382,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && publisher.Contains("_lastNativeDracoPublishUnixNs", StringComparison.Ordinal)
                   && publisher.Contains("rateHz <= 0f", StringComparison.Ordinal)
                   && publisher.Contains("ShouldQueueVirtualLidarDracoFrame(unixNs)", StringComparison.Ordinal)
-                  && publisher.Contains("_diagnostics.RecordDrop(_logPerformanceDiagnostics)", StringComparison.Ordinal),
-                "138I-29: VirtualLidar native Draco path has a default source-side visualization cap and records dropped frames");
+                  && publisher.Contains("_diagnostics.RecordDracoRateSkip(_logPerformanceDiagnostics)", StringComparison.Ordinal),
+                "138I-29: VirtualLidar native Draco path has a default source-side visualization cap and records rate skips separately from drops");
             Check(Regex.IsMatch(editor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*6f\)")
                   && Regex.IsMatch(bootstrap, @"SetPrivateField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*6f\)")
                   && Regex.IsMatch(importedEditor, @"SetField\(publisher,\s*""_nativeDracoMaxPublishRateHz"",\s*6f\)")

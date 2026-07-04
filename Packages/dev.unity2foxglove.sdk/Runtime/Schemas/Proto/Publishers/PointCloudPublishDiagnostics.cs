@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _frames;
         private long _preparedPoints;
         private int _drops;
+        private int _dracoRateSkips;
         private int _deskewRateSkips;
         private double _cloneMsTotal;
         private double _cloneMsMax;
@@ -61,6 +62,14 @@ namespace Unity.FoxgloveSDK.Components
             _deskewRateSkips += Math.Max(1, count);
         }
 
+        public void RecordDracoRateSkip(bool enabled, int count = 1)
+        {
+            if (!enabled)
+                return;
+
+            _dracoRateSkips += Math.Max(1, count);
+        }
+
         public void RecordEncodeResult(bool enabled, DracoEncodeResult result)
         {
             if (!enabled || result == null)
@@ -93,7 +102,7 @@ namespace Unity.FoxgloveSDK.Components
             var frameDivisor = Math.Max(1, _frames);
             var encodeDivisor = Math.Max(1, _encodeResults);
             log(
-                "[PointCloudDiag] prepared={0} points={1} avgPoints={2:F0} cloneMs avg={3:F2} max={4:F2} encodeMs avg={5:F2} max={6:F2} drop={7} deskewRateSkip={8}",
+                "[PointCloudDiag] prepared={0} points={1} avgPoints={2:F0} cloneMs avg={3:F2} max={4:F2} encodeMs avg={5:F2} max={6:F2} drop={7} dracoRateSkip={8} deskewRateSkip={9}",
                 new object[]
                 {
                     _frames,
@@ -104,6 +113,7 @@ namespace Unity.FoxgloveSDK.Components
                     _encodeMsTotal / encodeDivisor,
                     _encodeMsMax,
                     _drops,
+                    _dracoRateSkips,
                     _deskewRateSkips
                 });
 
@@ -115,6 +125,7 @@ namespace Unity.FoxgloveSDK.Components
             _frames = 0;
             _preparedPoints = 0;
             _drops = 0;
+            _dracoRateSkips = 0;
             _deskewRateSkips = 0;
             _cloneMsTotal = 0d;
             _cloneMsMax = 0d;
