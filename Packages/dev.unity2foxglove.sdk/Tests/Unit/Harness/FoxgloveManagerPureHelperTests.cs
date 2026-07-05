@@ -37,5 +37,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [InlineData(1024, 1024)]
         public void ManagerConfigValidatorClampsPositiveIntegerSettings(int value, int expected)
             => Assert.Equal(expected, ManagerConfigValidator.ClampAtLeastOne(value));
+
+        [Fact]
+        public void StatusTextBuilderFormatsReplayFallbackWithDefaults()
+        {
+            var message = StatusTextBuilder.CreateReplayFallbackWarning(" ", "");
+
+            Assert.Contains("Replay was requested but did not enable", message);
+            Assert.Contains("Replay file: <empty>.", message);
+            Assert.Contains("Cause: No replay failure details were reported.", message);
+        }
+
+        [Fact]
+        public void StatusTextBuilderFormatsReplayFallbackWithPathAndCause()
+        {
+            var message = StatusTextBuilder.CreateReplayFallbackWarning("C:/recordings/run.mcap", "bad schema");
+
+            Assert.Contains("Replay file: C:/recordings/run.mcap.", message);
+            Assert.EndsWith("Cause: bad schema", message);
+        }
+
+        [Fact]
+        public void StatusTextBuilderFormatsConnectionAndBridgeMessages()
+        {
+            Assert.Equal(
+                "[Foxglove] Server started on ws://127.0.0.1:8765",
+                StatusTextBuilder.CreateServerStartedMessage("ws://127.0.0.1:8765"));
+            Assert.Equal(
+                "[Foxglove] ROS2 Bridge disabled: connection refused",
+                StatusTextBuilder.CreateRos2BridgeDisabledWarning("connection refused"));
+        }
     }
 }

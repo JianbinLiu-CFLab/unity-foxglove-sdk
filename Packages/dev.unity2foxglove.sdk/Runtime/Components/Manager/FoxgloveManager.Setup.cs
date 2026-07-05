@@ -275,11 +275,7 @@ namespace Unity.FoxgloveSDK.Components
                 failure = "No replay failure details were reported.";
             }
 
-            return "[Foxglove] Replay was requested but did not enable; restoring live publishers. "
-                   + "Replay file: "
-                   + (string.IsNullOrWhiteSpace(resolvedReplayPath) ? "<empty>" : resolvedReplayPath)
-                   + ". Cause: "
-                   + failure;
+            return StatusTextBuilder.CreateReplayFallbackWarning(resolvedReplayPath, failure);
         }
 
         /// <summary>

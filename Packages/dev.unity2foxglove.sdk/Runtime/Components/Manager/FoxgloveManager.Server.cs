@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Components
                 _runtime.Session.OnClientMessage += _clientMessageForwarder;
             }
 
-            Debug.Log($"[Foxglove] Server started on {BuildConnectionUrl(redactToken: true)}");
+            Debug.Log(StatusTextBuilder.CreateServerStartedMessage(BuildConnectionUrl(redactToken: true)));
         }
 
         private void CleanupStartupAfterFailure()

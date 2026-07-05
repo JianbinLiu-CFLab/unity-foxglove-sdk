@@ -552,7 +552,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _ros2BridgeRuntime = null;
                 _connectionState.Ros2BridgeSetupError = ex.Message;
-                Debug.LogWarning("[Foxglove] ROS2 Bridge disabled: " + ex.Message);
+                Debug.LogWarning(StatusTextBuilder.CreateRos2BridgeDisabledWarning(ex.Message));
             }
         }
 
