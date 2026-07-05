@@ -57,6 +57,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _maxPixelsPerFrame;
         private SerializedProperty _logCameraDiagnostics;
         private SerializedProperty _cameraDiagnosticsIntervalSeconds;
+        private SerializedProperty _cameraSlowStageThresholdMs;
         private SerializedProperty _sensorUnitProfile;
         private SerializedProperty _useSharedSensorClock;
         private SerializedProperty _publishStandardRos2CompressedImage;
@@ -101,6 +102,7 @@ namespace Unity.FoxgloveSDK.Editor
             _maxPixelsPerFrame = serializedObject.FindProperty("_maxPixelsPerFrame");
             _logCameraDiagnostics = serializedObject.FindProperty("_logCameraDiagnostics");
             _cameraDiagnosticsIntervalSeconds = serializedObject.FindProperty("_cameraDiagnosticsIntervalSeconds");
+            _cameraSlowStageThresholdMs = serializedObject.FindProperty("_cameraSlowStageThresholdMs");
             _sensorUnitProfile = serializedObject.FindProperty("_sensorUnitProfile");
             _useSharedSensorClock = serializedObject.FindProperty("_useSharedSensorClock");
             _publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
@@ -216,7 +218,8 @@ namespace Unity.FoxgloveSDK.Editor
                     _maxEncodedBytes,
                     _logBackpressureSkips,
                     _logCameraDiagnostics,
-                    _cameraDiagnosticsIntervalSeconds);
+                    _cameraDiagnosticsIntervalSeconds,
+                    _cameraSlowStageThresholdMs);
             }
 
             DrawPublishRateSection();
@@ -259,7 +262,8 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty maxEncodedBytes,
             SerializedProperty logBackpressureSkips,
             SerializedProperty logCameraDiagnostics,
-            SerializedProperty cameraDiagnosticsIntervalSeconds)
+            SerializedProperty cameraDiagnosticsIntervalSeconds,
+            SerializedProperty cameraSlowStageThresholdMs)
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("JPEG", EditorStyles.boldLabel);
@@ -299,6 +303,7 @@ namespace Unity.FoxgloveSDK.Editor
                     using (new EditorGUI.DisabledScope(!logCameraDiagnostics.boolValue))
                     {
                         EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, Label("Diagnostics Interval"));
+                        EditorGUILayout.PropertyField(cameraSlowStageThresholdMs, Label("Slow Stage Threshold Ms"));
                     }
                 }
             }

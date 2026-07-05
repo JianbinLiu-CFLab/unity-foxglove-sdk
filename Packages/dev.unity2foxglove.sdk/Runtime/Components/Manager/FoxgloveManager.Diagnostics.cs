@@ -184,6 +184,7 @@ namespace Unity.FoxgloveSDK.Components
             if (deltaMs + 1e-9d < thresholdMs)
                 return;
 
+            var cameraSnapshot = CameraPublishDiagnostics.LastSnapshotOrDefault;
             LogFrameStallDiagnostics(
                 frameCount,
                 deltaMs,
@@ -214,7 +215,9 @@ namespace Unity.FoxgloveSDK.Components
                 _frameStallStageLiveOutputModeWatchersMs,
                 _frameStallStageRemoteMcapRefreshMs,
                 _frameStallStageReplayCursorEndpointRefreshMs,
-                _frameStallStageManagerUpdateMs);
+                _frameStallStageManagerUpdateMs,
+                cameraSnapshot,
+                now);
         }
 
         private static void LogFrameStallDiagnostics(
@@ -247,7 +250,9 @@ namespace Unity.FoxgloveSDK.Components
             double stageLiveOutputModeWatchersMs,
             double stageRemoteMcapRefreshMs,
             double stageReplayCursorEndpointRefreshMs,
-            double stageManagerUpdateMs)
+            double stageManagerUpdateMs,
+            CameraTimingSnapshot cameraSnapshot,
+            double nowRealtimeSeconds)
         {
 #if UNITY_EDITOR
             var editorNow = UnityEditor.EditorApplication.timeSinceStartup;
@@ -270,7 +275,7 @@ namespace Unity.FoxgloveSDK.Components
 #endif
             var message = string.Format(
                 CultureInfo.InvariantCulture,
-                "[Foxglove] Frame stall diagnostics: frame={0} realDeltaMs={1:F2} thresholdMs={2:F2} deltaTimeMs={3:F2} unscaledDeltaTimeMs={4:F2} fixedDeltaMs={5:F2} timeScale={6:F2} focused={7} playing={8} {9} gcBytesDelta={10} gcCountDelta={11}/{12}/{13} monoUsedBytes={14} monoUsedBytesDelta={15} totalAllocatedBytes={16} totalAllocatedBytesDelta={17} transportSupported={18} transportClients={19} transportDroppedDelta={20} transportDroppedTotal={21} transportQueuedFrames={22} transportQueuedBytes={23} stageTiming={24} stageRuntimeTickMs={25:F2} stageClientLifecycleDrainMs={26:F2} stageClientMessageDrainMs={27:F2} stagePublishCadenceMs={28:F2} stageLiveOutputWatchersMs={29:F2} stageRemoteMcapMs={30:F2} stageReplayCursorMs={31:F2} stageManagerUpdateMs={32:F2}",
+                "[Foxglove] Frame stall diagnostics: frame={0} realDeltaMs={1:F2} thresholdMs={2:F2} deltaTimeMs={3:F2} unscaledDeltaTimeMs={4:F2} fixedDeltaMs={5:F2} timeScale={6:F2} focused={7} playing={8} {9} gcBytesDelta={10} gcCountDelta={11}/{12}/{13} monoUsedBytes={14} monoUsedBytesDelta={15} totalAllocatedBytes={16} totalAllocatedBytesDelta={17} transportSupported={18} transportClients={19} transportDroppedDelta={20} transportDroppedTotal={21} transportQueuedFrames={22} transportQueuedBytes={23} stageTiming={24} stageRuntimeTickMs={25:F2} stageClientLifecycleDrainMs={26:F2} stageClientMessageDrainMs={27:F2} stagePublishCadenceMs={28:F2} stageLiveOutputWatchersMs={29:F2} stageRemoteMcapMs={30:F2} stageReplayCursorMs={31:F2} stageManagerUpdateMs={32:F2} cameraSnapshotAgeMs={33:F2} cameraRenderMs={34:F2} cameraReadbackLatencyMs={35:F2} cameraReadbackCopyMs={36:F2} cameraCompletedJpegDrainMs={37:F2} cameraJpegMs={38:F2} cameraSerializeMs={39:F2} cameraJpegBytes={40} cameraPendingReadbacksBefore={41} cameraPendingReadbacksAfter={42} cameraEncodeQueue={43} cameraCompletedQueue={44}",
                 frameCount,
                 deltaMs,
                 thresholdMs,
@@ -303,7 +308,19 @@ namespace Unity.FoxgloveSDK.Components
                 stageLiveOutputModeWatchersMs,
                 stageRemoteMcapRefreshMs,
                 stageReplayCursorEndpointRefreshMs,
-                stageManagerUpdateMs);
+                stageManagerUpdateMs,
+                cameraSnapshot.AgeMs(nowRealtimeSeconds),
+                cameraSnapshot.RenderMs,
+                cameraSnapshot.ReadbackLatencyMs,
+                cameraSnapshot.ReadbackCopyMs,
+                cameraSnapshot.CompletedJpegDrainMs,
+                cameraSnapshot.JpegEncodeMs,
+                cameraSnapshot.SerializeMs,
+                cameraSnapshot.JpegBytes,
+                cameraSnapshot.PendingReadbacksBefore,
+                cameraSnapshot.PendingReadbacksAfter,
+                cameraSnapshot.EncodeQueueDepth,
+                cameraSnapshot.CompletedQueueDepth);
             LogDiagnosticsWithoutStackTrace(message);
         }
 

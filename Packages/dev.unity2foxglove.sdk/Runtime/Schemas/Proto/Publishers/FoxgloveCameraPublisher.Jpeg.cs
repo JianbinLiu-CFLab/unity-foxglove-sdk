@@ -80,7 +80,22 @@ namespace Unity.FoxgloveSDK.Components
                 ResolveFrameId(),
                 _publishStandardRos2CompressedImage,
                 _maxEncodedBytes,
-                onReadbackCopy: (latency, _) => _diagnostics.RecordReadbackCopy(latency, ElapsedMs(copyStart)),
+                onReadbackCopy: (latency, _) =>
+                {
+                    var copyMs = ElapsedMs(copyStart);
+                    _diagnostics.RecordReadbackCopy(
+                        latency,
+                        copyMs,
+                        Time.realtimeSinceStartupAsDouble,
+                        _pendingRequests,
+                        _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
+                        _jpegPublishPipeline?.CompletedQueueDepth ?? 0);
+                    EmitCameraSlowStageIfNeeded(
+                        "readbackCopy",
+                        copyMs,
+                        _pendingRequests,
+                        _pendingRequests);
+                },
                 onEncodeQueueDrop: () => _diagnostics.RecordEncodeQueueDrop());
         }
 
@@ -97,7 +112,19 @@ namespace Unity.FoxgloveSDK.Components
                 out var droppedCompleted,
                 out var elapsedMs);
             if (elapsedMs > 0)
-                _diagnostics.RecordPublishDrainMs(elapsedMs);
+            {
+                _diagnostics.RecordCompletedJpegDrain(
+                    elapsedMs,
+                    Time.realtimeSinceStartupAsDouble,
+                    _pendingRequests,
+                    _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
+                    _jpegPublishPipeline?.CompletedQueueDepth ?? 0);
+                EmitCameraSlowStageIfNeeded(
+                    "completedJpegDrain",
+                    elapsedMs,
+                    _pendingRequests,
+                    _pendingRequests);
+            }
             if (droppedCompleted > 0)
                 _diagnostics.RecordCompletedJpegDrops(droppedCompleted);
 

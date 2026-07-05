@@ -56,6 +56,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _logCameraDiagnostics;
         [Tooltip("Minimum seconds between CameraDiag log lines.")]
         [SerializeField, Min(0.1f)] private float _cameraDiagnosticsIntervalSeconds = 2f;
+        [Tooltip("Camera stage duration in milliseconds before a CameraSlow diagnostic is emitted.")]
+        [SerializeField, Min(1f)] private float _cameraSlowStageThresholdMs = 50f;
 
         [Header("FFmpeg Video")]
         [SerializeField] private string _ffmpegPath = "";
@@ -231,9 +233,15 @@ namespace Unity.FoxgloveSDK.Components
             var renderUnixNs = CurrentLogTimeNs;
             if (_useSharedSensorClock)
                 renderUnixNs = ResolveCameraCaptureUnixNs();
+            var pendingBeforeSchedule = _pendingRequests;
             var renderStart = Stopwatch.GetTimestamp();
             _captureResources.CaptureCamera.Render();
-            _diagnostics.RecordRenderMs(ElapsedMs(renderStart));
+            var renderMs = ElapsedMs(renderStart);
+            _diagnostics.RecordRenderMs(
+                renderMs,
+                Time.realtimeSinceStartupAsDouble,
+                _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
+                _jpegPublishPipeline?.CompletedQueueDepth ?? 0);
             // Snapshot the concrete render target size with the readback request. Inspector
             // width/height can change while this callback is in flight.
             var captureRenderTexture = _captureResources.CaptureRenderTexture;
@@ -243,6 +251,17 @@ namespace Unity.FoxgloveSDK.Components
             RememberReadbackStart(renderUnixNs, Stopwatch.GetTimestamp());
             _pendingRequests++;
             AsyncGPUReadback.Request(captureRenderTexture, 0, TextureFormat.RGB24, req => OnReadbackComplete(req, generation, renderUnixNs, captureWidth, captureHeight));
+            _diagnostics.RecordReadbackScheduled(
+                pendingBeforeSchedule,
+                _pendingRequests,
+                Time.realtimeSinceStartupAsDouble,
+                _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
+                _jpegPublishPipeline?.CompletedQueueDepth ?? 0);
+            EmitCameraSlowStageIfNeeded(
+                "render",
+                renderMs,
+                pendingBeforeSchedule,
+                _pendingRequests);
         }
 
         /// <summary>

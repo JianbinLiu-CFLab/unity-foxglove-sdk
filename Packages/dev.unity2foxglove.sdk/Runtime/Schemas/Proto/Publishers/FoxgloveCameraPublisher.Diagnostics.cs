@@ -35,6 +35,32 @@ namespace Unity.FoxgloveSDK.Components
                 Debug.Log(message);
         }
 
+        private void EmitCameraSlowStageIfNeeded(
+            string stage,
+            double elapsedMs,
+            int pendingReadbacksBefore,
+            int pendingReadbacksAfter)
+        {
+            if (!_diagnostics.TryBuildCameraSlowStageMessage(
+                    _logCameraDiagnostics,
+                    _cameraSlowStageThresholdMs,
+                    stage,
+                    elapsedMs,
+                    pendingReadbacksBefore,
+                    pendingReadbacksAfter,
+                    _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
+                    _jpegPublishPipeline?.CompletedQueueDepth ?? 0,
+                    out var message))
+                return;
+
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                this,
+                "{0}",
+                message);
+        }
+
 
         /// <summary>
         /// Optional transport-drop cooldown for legacy behavior; the 138J path relies on
