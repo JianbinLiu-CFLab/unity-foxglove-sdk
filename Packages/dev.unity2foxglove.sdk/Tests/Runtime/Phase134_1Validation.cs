@@ -159,11 +159,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && normalizedManager.Contains("[Range(1, 65535)]\n        [SerializeField] private int _rootCaDistributorPort", StringComparison.Ordinal),
                 "134-1G-1: public server and Root CA ports have Inspector range guards");
             Check(manager.Contains("private void OnValidate()", StringComparison.Ordinal)
-                  && manager.Contains("_port = Mathf.Clamp(_port, 1, 65535);", StringComparison.Ordinal)
-                  && manager.Contains("_rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);", StringComparison.Ordinal),
-                "134-1G-2: manager clamps port fields during Unity validation");
-            Check(server.Contains("IsValidTcpPort(_port)", StringComparison.Ordinal)
-                  && server.Contains("IsValidTcpPort(_rootCaDistributorPort)", StringComparison.Ordinal),
+                  && manager.Contains("_port = ManagerConfigValidator.ClampTcpPort(_port);", StringComparison.Ordinal)
+                  && manager.Contains("_rootCaDistributorPort = ManagerConfigValidator.ClampTcpPort(_rootCaDistributorPort);", StringComparison.Ordinal),
+                "134-1G-2: manager clamps port fields during Unity validation through a pure helper");
+            Check(server.Contains("ManagerConfigValidator.IsValidTcpPort(_port)", StringComparison.Ordinal)
+                  && server.Contains("ManagerConfigValidator.IsValidTcpPort(_rootCaDistributorPort)", StringComparison.Ordinal),
                 "134-1G-3: runtime startup rejects invalid TCP ports before starting transports");
             Check(manager.Contains("[Range(1, MaxRecordingChunkSizeKB)]", StringComparison.Ordinal)
                   && setup.Contains("Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB)", StringComparison.Ordinal),

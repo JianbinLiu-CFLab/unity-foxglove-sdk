@@ -174,13 +174,13 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
-            if (!IsValidTcpPort(_port))
+            if (!ManagerConfigValidator.IsValidTcpPort(_port))
             {
                 Debug.LogError($"[Foxglove] Server port must be between 1 and 65535. Current value: {_port}");
                 return false;
             }
 
-            if (_rootCaDistributorEnabled && !IsValidTcpPort(_rootCaDistributorPort))
+            if (_rootCaDistributorEnabled && !ManagerConfigValidator.IsValidTcpPort(_rootCaDistributorPort))
             {
                 Debug.LogError($"[Foxglove] Root CA distributor port must be between 1 and 65535. Current value: {_rootCaDistributorPort}");
                 return false;
@@ -204,9 +204,6 @@ namespace Unity.FoxgloveSDK.Components
 
             return true;
         }
-
-        private static bool IsValidTcpPort(int port)
-            => port >= 1 && port <= 65535;
 
         /// <summary>
         /// Builds the browser connection URL for the current manager settings.

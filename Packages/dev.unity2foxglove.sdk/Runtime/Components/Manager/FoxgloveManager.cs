@@ -408,21 +408,21 @@ namespace Unity.FoxgloveSDK.Components
         {
             InvalidateRos2BridgeNamespaceCache();
             InvalidateResolvedReplayFilePathCache();
-            _port = Mathf.Clamp(_port, 1, 65535);
-            _rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);
+            _port = ManagerConfigValidator.ClampTcpPort(_port);
+            _rootCaDistributorPort = ManagerConfigValidator.ClampTcpPort(_rootCaDistributorPort);
             _recordingChunkSizeKB = Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB);
-            _ros2BridgePort = Mathf.Clamp(_ros2BridgePort, 1, 65535);
-            _remoteMcapFileServerPort = Mathf.Clamp(_remoteMcapFileServerPort, 1, 65535);
-            _replayCursorBridgePort = Mathf.Clamp(_replayCursorBridgePort, 1, 65535);
+            _ros2BridgePort = ManagerConfigValidator.ClampTcpPort(_ros2BridgePort);
+            _remoteMcapFileServerPort = ManagerConfigValidator.ClampTcpPort(_remoteMcapFileServerPort);
+            _replayCursorBridgePort = ManagerConfigValidator.ClampTcpPort(_replayCursorBridgePort);
             if (_enableRemoteMcapFileServer)
             {
                 _replayAutoPlay = false;
             }
 
-            _ros2BridgeCustomDepth = Mathf.Max(1, _ros2BridgeCustomDepth);
-            _ros2BridgeQueueCapacity = Mathf.Max(1, _ros2BridgeQueueCapacity);
-            _ros2BridgeReconnectIntervalMs = Mathf.Max(1, _ros2BridgeReconnectIntervalMs);
-            _ros2BridgeSendTimeoutMs = Mathf.Max(1, _ros2BridgeSendTimeoutMs);
+            _ros2BridgeCustomDepth = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeCustomDepth);
+            _ros2BridgeQueueCapacity = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeQueueCapacity);
+            _ros2BridgeReconnectIntervalMs = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeReconnectIntervalMs);
+            _ros2BridgeSendTimeoutMs = ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeSendTimeoutMs);
             if (!_foxgloveOutputEnabled)
             {
                 if (_transportMode != FoxgloveTransportMode.None)
@@ -542,10 +542,10 @@ namespace Unity.FoxgloveSDK.Components
                 _ros2BridgeRuntime?.Dispose();
                 _ros2BridgeRuntime = new Ros2BridgeRuntime(
                     string.IsNullOrWhiteSpace(_ros2BridgeHost) ? "127.0.0.1" : _ros2BridgeHost,
-                    Mathf.Clamp(_ros2BridgePort, 1, 65535),
-                    Mathf.Max(1, _ros2BridgeQueueCapacity),
-                    Mathf.Max(1, _ros2BridgeReconnectIntervalMs),
-                    Mathf.Max(1, _ros2BridgeSendTimeoutMs));
+                    ManagerConfigValidator.ClampTcpPort(_ros2BridgePort),
+                    ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeQueueCapacity),
+                    ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeReconnectIntervalMs),
+                    ManagerConfigValidator.ClampAtLeastOne(_ros2BridgeSendTimeoutMs));
                 _connectionState.Ros2BridgeSetupError = string.Empty;
             }
             catch (System.Exception ex)
