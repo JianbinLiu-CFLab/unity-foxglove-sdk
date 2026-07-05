@@ -158,22 +158,23 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPlayerFallbackGenerationPath()
         {
             var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var serviceValidator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunServiceValidator.cs");
             var reconciler = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGeneratedSourceReconciler.cs");
 
-            Check(generator.Contains("ScanFoxServiceMethods", StringComparison.Ordinal)
+            Check(serviceValidator.Contains("ScanFoxServiceMethods", StringComparison.Ordinal)
                   && generator.Contains("FoxServiceSourceEmitter.GeneratedSourceName", StringComparison.Ordinal),
                 "141B-35: build-time generator scans [FoxService] methods for Player fallback source");
             Check(generator.Contains("EmitServiceSourceFile", StringComparison.Ordinal)
                   && generator.Contains("#if !UNITY_EDITOR", StringComparison.Ordinal),
                 "141B-36: build-time service fallback is guarded for Player builds");
-            Check(generator.Contains("FOXSERVICE005", StringComparison.Ordinal)
-                  && generator.Contains("duplicate service name", StringComparison.Ordinal),
+            Check(serviceValidator.Contains("FOXSERVICE005", StringComparison.Ordinal)
+                  && serviceValidator.Contains("duplicate service name", StringComparison.Ordinal),
                 "141B-37: build-time service fallback rejects duplicate service names");
-            Check(generator.Contains("Replace('+', '.')", StringComparison.Ordinal),
+            Check(serviceValidator.Contains("Replace('+', '.')", StringComparison.Ordinal),
                 "141B-37a: build-time service fallback uses dot notation for nested DTO schema names");
-            Check(generator.Contains("skipping duplicate generated service wrappers", StringComparison.Ordinal)
-                  && generator.Contains("duplicateNames", StringComparison.Ordinal)
-                  && !generator.Contains("ownersByServiceName", StringComparison.Ordinal),
+            Check(serviceValidator.Contains("skipping duplicate generated service wrappers", StringComparison.Ordinal)
+                  && serviceValidator.Contains("duplicateNames", StringComparison.Ordinal)
+                  && !serviceValidator.Contains("ownersByServiceName", StringComparison.Ordinal),
                 "141B-37b: build-time service fallback skips duplicate services without aborting all generation");
             Check(reconciler.Contains("GeneratedServiceSourcePattern", StringComparison.Ordinal)
                   && reconciler.Contains("*_FoxService.g.cs", StringComparison.Ordinal),

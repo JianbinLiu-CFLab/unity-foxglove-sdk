@@ -239,10 +239,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "112-F5: generated manifest artifacts and Unity meta files are ignored");
 
             var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var memberData = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunMemberData.cs");
             Check(generator.Contains("FoxrunManifestWriter.WriteManifestFiles", StringComparison.Ordinal)
                   && generator.Contains("CollectManifestMembers", StringComparison.Ordinal)
                   && generator.Contains("GenerateManifestFilesOnly", StringComparison.Ordinal)
-                  && generator.Contains("ToManifestMember", StringComparison.Ordinal),
+                  && memberData.Contains("ToManifestMember", StringComparison.Ordinal),
                 "112-F6: build-time FoxRun generator writes manifest from resolved member scan");
 
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs");

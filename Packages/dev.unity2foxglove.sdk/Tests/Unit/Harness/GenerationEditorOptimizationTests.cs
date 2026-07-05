@@ -160,8 +160,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void EditorGeneratorPreservesLoadedAssemblyDiscovery()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var scanner = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
             var collectTypes = TestSources.Slice(source, "public static List<(string AsmName, string Ns, string ClassName)> CollectFoxRunTypes()", "        /// <summary>\r\n        /// Generate an IL2CPP link.xml snippet");
-            var scanMembers = TestSources.Slice(source, "private static FoxRunScanResult ScanFoxRunMembers", "        /// <summary>\r\n        /// Checks whether a type was declared");
+            var scanMembers = TestSources.Slice(scanner, "private static FoxRunScanResult ScanFoxRunMembers", "        /// <summary>\r\n        /// Checks whether a type was declared");
             var validate = TestSources.Slice(source, "private static void ValidateGenerationModel", "private static string GetManifestOutputDirectory");
             var emitSourceFile = TestSources.Slice(source, "public static string EmitSourceFile(MemberData[] members)", "public static string EmitSourceFile(FoxRunGenerationType type)");
 
@@ -171,6 +172,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("TypeCache.GetTypesDerivedFrom<MonoBehaviour>()", source, StringComparison.Ordinal);
             Assert.Contains("AppDomain.CurrentDomain.GetAssemblies()", collectTypes, StringComparison.Ordinal);
             Assert.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", collectTypes, StringComparison.Ordinal);
+            Assert.Contains("ReflectionTypeLoadException", scanner, StringComparison.Ordinal);
             Assert.Contains("AppDomain.CurrentDomain.GetAssemblies()", scanMembers, StringComparison.Ordinal);
             Assert.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", scanMembers, StringComparison.Ordinal);
             Assert.DoesNotContain("members.Select(member => member.ToManifestMember())", scanMembers, StringComparison.Ordinal);

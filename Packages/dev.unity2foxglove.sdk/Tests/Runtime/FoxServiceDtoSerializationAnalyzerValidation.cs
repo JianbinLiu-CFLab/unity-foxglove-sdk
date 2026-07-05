@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var releases = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
             var generatorProject = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj");
-            var playerGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var playerValidator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunServiceValidator.cs");
 
             Check(project.Contains("FoxServiceDtoSerializationAnalyzerValidation.cs", StringComparison.Ordinal),
                 "141C-14: runtime test project includes FoxService DTO validation");
@@ -173,10 +173,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "141D-12: analyzer release metadata lists DTO depth-limit diagnostic");
             Check(generatorProject.Contains("FoxServiceDtoValidation", StringComparison.Ordinal),
                 "141C-17: source generator project includes shared DTO validation helpers");
-            Check(playerGenerator.Contains("ValidateServiceDtoType", StringComparison.Ordinal)
-                  && playerGenerator.Contains("FoxServiceDtoReflectionValidator.Validate", StringComparison.Ordinal),
+            Check(playerValidator.Contains("ValidateServiceDtoType", StringComparison.Ordinal)
+                  && playerValidator.Contains("FoxServiceDtoReflectionValidator.Validate", StringComparison.Ordinal),
                 "141C-18: Player fallback validates service DTOs before source emission");
-            Check(playerGenerator.Contains("FoxServiceDtoReflectionValidator", StringComparison.Ordinal),
+            Check(playerValidator.Contains("FoxServiceDtoReflectionValidator", StringComparison.Ordinal),
                 "141D-13: Player fallback uses structured reflection DTO validator");
             var generatorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
             var reflectionValidator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxServiceDtoReflectionValidator.cs");

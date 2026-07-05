@@ -53,12 +53,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void FoxRunGenerationSourcesKeepParityGuards()
         {
             var codegen = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var memberData = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunMemberData.cs");
+            var scanner = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
             var generator = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
             var build = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs");
             var hook = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs");
             var methodComment = TestSources.Slice(codegen, "/// Refresh canonical FoxRun manifest artifacts", "public static FoxRunCanonicalManifest GenerateManifestFilesOnly()");
 
-            Assert.Contains("typeof(IList<>)", codegen, StringComparison.Ordinal);
+            Assert.Contains("typeof(IList<>)", memberData, StringComparison.Ordinal);
             Assert.Contains("case '\\t':", generator, StringComparison.Ordinal);
             Assert.Contains("case '\\b':", generator, StringComparison.Ordinal);
             Assert.Contains("ToString(\"x4\", CultureInfo.InvariantCulture)", generator, StringComparison.Ordinal);
@@ -72,9 +74,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("generation descriptor", methodComment, StringComparison.Ordinal);
             Assert.Contains("artifact set", hook, StringComparison.Ordinal);
             Assert.Contains("next Play attempt", hook, StringComparison.Ordinal);
-            Assert.Contains("ReflectionTypeLoadException ex", codegen, StringComparison.Ordinal);
-            Assert.Contains("Debug.LogWarning", codegen, StringComparison.Ordinal);
-            Assert.Contains("LoaderExceptions", codegen, StringComparison.Ordinal);
+            Assert.Contains("ReflectionTypeLoadException ex", scanner, StringComparison.Ordinal);
+            Assert.Contains("Debug.LogWarning", scanner, StringComparison.Ordinal);
+            Assert.Contains("LoaderExceptions", scanner, StringComparison.Ordinal);
             Assert.DoesNotContain("const string OutputDir", codegen, StringComparison.Ordinal);
             Assert.Contains("diagnostic.MemberName", generator, StringComparison.Ordinal);
             Assert.Contains("TryGetValue", generator, StringComparison.Ordinal);
