@@ -67,5 +67,25 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "[Foxglove] ROS2 Bridge disabled: connection refused",
                 StatusTextBuilder.CreateRos2BridgeDisabledWarning("connection refused"));
         }
+
+        [Theory]
+        [InlineData(null, false)]
+        [InlineData("", false)]
+        [InlineData("   ", false)]
+        [InlineData("/camera/image", true)]
+        [InlineData("camera/image", true)]
+        public void TopicNameNormalizerPreservesManagerPublishTopicValidity(string topic, bool expected)
+            => Assert.Equal(expected, TopicNameNormalizer.IsValidPublishTopic(topic));
+
+        [Theory]
+        [InlineData(null, "")]
+        [InlineData("", "")]
+        [InlineData("   ", "")]
+        [InlineData("camera/image", "/camera/image")]
+        [InlineData("/camera/image", "/camera/image")]
+        [InlineData(" //camera//image/ ", "/camera/image")]
+        [InlineData("/", "")]
+        public void TopicNameNormalizerNormalizesRosStyleTopics(string topic, string expected)
+            => Assert.Equal(expected, TopicNameNormalizer.NormalizeRosStyleTopic(topic));
     }
 }

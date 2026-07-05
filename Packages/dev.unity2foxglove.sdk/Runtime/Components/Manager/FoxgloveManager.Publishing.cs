@@ -542,7 +542,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private static bool IsValidPublishTopic(string topic)
-            => !string.IsNullOrWhiteSpace(topic);
+            => TopicNameNormalizer.IsValidPublishTopic(topic);
 
         private bool TryValidatePublishTopic(string topic, string operation)
         {
