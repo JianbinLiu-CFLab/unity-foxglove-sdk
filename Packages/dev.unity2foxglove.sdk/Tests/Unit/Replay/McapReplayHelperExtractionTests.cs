@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
+using System.Reflection;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
 
@@ -80,6 +81,43 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             Assert.Equal(0, queue.Count);
         }
 
+        [Fact]
+        public void PendingQueueSortsAgainAfterSortedQueueReceivesMoreMessages()
+        {
+            var queue = new McapReplayPendingQueue();
+            queue.Add(Message(10, channelId: 1));
+            queue.Add(Message(30, channelId: 3));
+            queue.Sort(CompareMessages);
+
+            queue.Add(Message(20, channelId: 2));
+            queue.Sort(CompareMessages);
+
+            Assert.Equal(10UL, queue.Pop().LogTime);
+            Assert.Equal(20UL, queue.Pop().LogTime);
+            Assert.Equal(30UL, queue.Pop().LogTime);
+            Assert.Equal(0, queue.Count);
+        }
+
+        [Fact]
+        public void PendingQueueCompactsAfterLargeHeadAdvanceWithoutLosingOrder()
+        {
+            var queue = new McapReplayPendingQueue();
+            for (ushort i = 0; i < 80; i++)
+                queue.Add(Message(i, channelId: (ushort)(i + 1)));
+
+            for (var i = 0; i < 39; i++)
+                Assert.Equal((ulong)i, queue.Pop().LogTime);
+
+            Assert.Equal(41, queue.Count);
+            Assert.True(ReadHeadIndex(queue) > 0);
+
+            Assert.Equal(39UL, queue.Pop().LogTime);
+
+            Assert.Equal(40, queue.Count);
+            Assert.Equal(0, ReadHeadIndex(queue));
+            Assert.Equal(40UL, queue.Pop().LogTime);
+        }
+
         private static McapMessage Message(ulong logTime, ushort channelId = 1)
             => new McapMessage
             {
@@ -99,6 +137,15 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             cmp = a.Sequence.CompareTo(b.Sequence);
             if (cmp != 0) return cmp;
             return a.PublishTime.CompareTo(b.PublishTime);
+        }
+
+        private static int ReadHeadIndex(McapReplayPendingQueue queue)
+        {
+            var field = typeof(McapReplayPendingQueue).GetField(
+                "_headIndex",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            return (int)field.GetValue(queue);
         }
     }
 }

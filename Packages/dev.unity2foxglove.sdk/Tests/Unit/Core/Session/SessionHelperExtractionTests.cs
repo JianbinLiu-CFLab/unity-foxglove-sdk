@@ -30,12 +30,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
             var broadcaster = new SessionTimeBroadcaster();
             var startTicks = TimeSpan.TicksPerSecond * 100L;
 
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks, 0f));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, 0f));
+
+            broadcaster.Reset();
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks, -1f));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, -1f));
+
+            broadcaster.Reset();
             Assert.True(broadcaster.TryReserveBroadcast(startTicks, float.NaN));
             Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, float.NaN));
 
             broadcaster.Reset();
             Assert.True(broadcaster.TryReserveBroadcast(startTicks, float.PositiveInfinity));
             Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, float.PositiveInfinity));
+        }
+
+        [Fact]
+        public void TimeBroadcasterResetLetsNextBroadcastThroughImmediately()
+        {
+            var broadcaster = new SessionTimeBroadcaster();
+            var startTicks = TimeSpan.TicksPerSecond * 100L;
+
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks, 10f));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + 1, 10f));
+
+            broadcaster.Reset();
+
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks + 1, 10f));
         }
 
         [Fact]
