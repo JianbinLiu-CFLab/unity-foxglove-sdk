@@ -9,8 +9,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
-using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -35,10 +33,6 @@ namespace Unity.FoxgloveSDK.IO
         /// Default maximum decompressed size for a single MCAP chunk, set to 64 MiB.
         /// </summary>
         public const ulong DefaultChunkUncompressedSizeLimit = 64UL * 1024 * 1024;
-        private const int MessageFixedHeaderLength =
-            sizeof(ushort) + sizeof(uint) + sizeof(ulong) + sizeof(ulong);
-        private const int U16U64PairSize = sizeof(ushort) + sizeof(ulong);
-
         public McapReader(Stream stream)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
@@ -115,85 +109,12 @@ namespace Unity.FoxgloveSDK.IO
             _stream.Seek(ToSeekOffset(footer.SummaryStart, "summary_start"), SeekOrigin.Begin);
             var summaryBytes = new byte[(int)summaryLen];
             ReadExact(summaryBytes, 0, summaryBytes.Length);
-            var schemas = new List<McapSchema>();
-            var channels = new List<McapChannel>();
-            McapStatistics stats = null;
-            var chunkIndexes = new List<McapChunkIndex>();
-            var metadataIndexes = new List<McapMetadataIndex>();
-            var attachmentIndexes = new List<McapAttachmentIndex>();
-
-            var summaryOffset = 0;
-            while (summaryOffset < summaryBytes.Length)
-            {
-                var recordStart = footer.SummaryStart + (ulong)summaryOffset;
-                var op = summaryBytes[summaryOffset++];
-                if (op == 0x00)
-                    throw new InvalidDataException("MCAP opcode 0x00 is invalid in summary.");
-                var contentLength = McapBinaryReader.ReadU64LE(summaryBytes, ref summaryOffset);
-                if (contentLength > recordSizeLimit)
-                    throw new InvalidDataException($"Record content length {contentLength} exceeds limit {recordSizeLimit}");
-                if (contentLength > int.MaxValue)
-                    throw new InvalidDataException($"Record content length {contentLength} exceeds int.MaxValue");
-                var recordLength = (int)contentLength;
-                if (recordLength > summaryBytes.Length - summaryOffset)
-                    throw new InvalidDataException($"MCAP summary record at offset {recordStart} extends past the footer.");
-                switch (op)
-                {
-                    case McapWriter.OpcodeSchema:
-                        schemas.Add(McapRecordDecoder.DecodeSchema(summaryBytes, summaryOffset, recordLength));
-                        break;
-                    case McapWriter.OpcodeChannel:
-                        channels.Add(McapRecordDecoder.DecodeChannel(summaryBytes, summaryOffset, recordLength));
-                        break;
-                    case McapWriter.OpcodeChunkIndex:
-                        chunkIndexes.Add(McapRecordDecoder.DecodeChunkIndex(summaryBytes, summaryOffset, recordLength));
-                        break;
-                    case McapWriter.OpcodeStatistics:
-                        stats = McapRecordDecoder.DecodeStatistics(summaryBytes, summaryOffset, recordLength);
-                        break;
-                    case McapWriter.OpcodeMetadataIndex:
-                        metadataIndexes.Add(McapRecordDecoder.DecodeMetadataIndex(summaryBytes, summaryOffset, recordLength));
-                        break;
-                    case McapWriter.OpcodeAttachment:
-                        // Attachment body records should not appear in summary,
-                        // but skipping keeps older/malformed files from shifting
-                        // the stream cursor incorrectly.
-                        break;
-                    case McapWriter.OpcodeAttachmentIndex:
-                        attachmentIndexes.Add(McapRecordDecoder.DecodeAttachmentIndex(summaryBytes, summaryOffset, recordLength));
-                        break;
-                    case McapWriter.OpcodeSummaryOffset:
-                        break;
-                    default:
-                        break; // unknown, skip
-                }
-
-                summaryOffset += recordLength;
-            }
-
-            // Validate summary CRC when non-zero (backward compatible with older files).
-            if (footer.SummaryCrc != 0)
-            {
-                var footerPrefix = McapWriter.BuildFooterCrcPrefix(footer.SummaryStart, footer.SummaryOffsetStart);
-
-                var crc = Crc32Helper.Initialize();
-                crc = Crc32Helper.Update(crc, summaryBytes);
-                crc = Crc32Helper.Update(crc, footerPrefix);
-                var recomputed = Crc32Helper.Finalize(crc);
-                if (recomputed != footer.SummaryCrc)
-                    throw new InvalidDataException("MCAP summary CRC mismatch");
-            }
-
-            return new McapFileSummary
-            {
-                Schemas = schemas,
-                Channels = channels,
-                Statistics = stats,
-                ChunkIndexes = chunkIndexes,
-                MetadataIndexes = metadataIndexes,
-                AttachmentIndexes = attachmentIndexes,
-                DataSectionEndOffset = footer.SummaryStart
-            };
+            return McapSummaryBuilder.FromSummarySection(
+                summaryBytes,
+                footer.SummaryStart,
+                footer.SummaryOffsetStart,
+                footer.SummaryCrc,
+                recordSizeLimit);
         }
 
         internal McapTrailerInfo ReadTrailerInfo(
@@ -348,16 +269,15 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (opcode == McapWriter.OpcodeChunk)
                 {
-                    var records = McapRecordDecoder.DecodeChunkRecordsContent(
+                    var records = McapChunkReader.DecodeChunkRecordsContent(
                         content,
                         0,
                         contentLength,
                         out var crcValid,
                         chunkUncompressedSizeLimit);
-                    if (!crcValid && validateCrcs)
-                        throw new InvalidDataException("MCAP chunk CRC mismatch.");
+                    McapChunkReader.EnsureCrcValid(crcValid, validateCrcs);
 
-                    foreach (var message in EnumerateChunkMessages(records))
+                    foreach (var message in McapChunkReader.EnumerateMessages(records))
                         visitor(message);
                     continue;
                 }
@@ -440,16 +360,15 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (opcode == McapWriter.OpcodeChunk && includeChunkRecords)
                 {
-                    var records = McapRecordDecoder.DecodeChunkRecordsContent(
+                    var records = McapChunkReader.DecodeChunkRecordsContent(
                         content,
                         0,
                         contentLength,
                         out var crcValid,
                         chunkUncompressedSizeLimit);
-                    if (!crcValid && validateCrcs)
-                        throw new InvalidDataException("MCAP chunk CRC mismatch.");
+                    McapChunkReader.EnsureCrcValid(crcValid, validateCrcs);
 
-                    foreach (var privateRecord in EnumerateChunkPrivateRecords(records, recordStart))
+                    foreach (var privateRecord in McapChunkReader.EnumeratePrivateRecords(records, recordStart))
                         yield return privateRecord;
                     continue;
                 }
@@ -480,13 +399,7 @@ namespace Unity.FoxgloveSDK.IO
             var summaryBytes = new byte[(int)summaryLen];
             ReadExact(summaryBytes, 0, (int)summaryLen);
 
-            var footerPrefix = McapWriter.BuildFooterCrcPrefix(summaryStart, summaryOffsetStart);
-            var crc = Crc32Helper.Initialize();
-            crc = Crc32Helper.Update(crc, summaryBytes);
-            crc = Crc32Helper.Update(crc, footerPrefix);
-            var recomputed = Crc32Helper.Finalize(crc);
-            if (recomputed != summaryCrc)
-                throw new InvalidDataException("MCAP summary CRC mismatch");
+            McapSummaryBuilder.ValidateSummaryCrc(summaryBytes, summaryStart, summaryOffsetStart, summaryCrc);
         }
 
         /// <summary>
@@ -530,14 +443,16 @@ namespace Unity.FoxgloveSDK.IO
             var recordStart = _stream.Position;
             var (opcode, content, contentLength) = ReadOneRecordSegment();
             var recordEnd = _stream.Position;
-            var actualChunkLength = (ulong)(recordEnd - recordStart);
-            if (chunkLength != 0 && actualChunkLength != chunkLength)
-                throw new InvalidDataException(
-                    $"Chunk record at offset {chunkStartOffset} has length {actualChunkLength}, expected {chunkLength}.");
-            if (opcode != McapWriter.OpcodeChunk)
-                throw new InvalidDataException($"Expected Chunk (0x06) at offset {chunkStartOffset}, got 0x{opcode:X2}");
-
-            return McapRecordDecoder.DecodeChunkRecordsContent(content, 0, contentLength, out crcValid, uncompressedSizeLimit);
+            return McapChunkReader.ReadChunkRecords(
+                opcode,
+                content,
+                contentLength,
+                chunkStartOffset,
+                chunkLength,
+                recordStart,
+                recordEnd,
+                out crcValid,
+                uncompressedSizeLimit);
         }
 
         /// <summary>
@@ -554,10 +469,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public List<McapMessage> ReadChunkMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
         {
-            var messages = new List<McapMessage>();
-            foreach (var message in EnumerateChunkMessages(uncompressedRecords, filterChannelId))
-                messages.Add(message);
-            return messages;
+            return McapChunkReader.ReadMessages(uncompressedRecords, filterChannelId);
         }
 
         /// <summary>
@@ -565,70 +477,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public IEnumerable<McapMessage> EnumerateChunkMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
         {
-            var off = 0;
-            while (off < uncompressedRecords.Length)
-            {
-                if (uncompressedRecords.Length - off < McapWriter.RecordHeaderLength)
-                    throw new InvalidDataException("Chunk inner record is truncated.");
-
-                var opcode = uncompressedRecords[off++];
-                if (opcode == 0x00)
-                    throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
-
-                var len = McapBinaryReader.ReadU64LE(uncompressedRecords, ref off);
-                if (len > int.MaxValue)
-                    throw new InvalidDataException("Chunk inner record length exceeds int.MaxValue.");
-                var recordLength = (int)len;
-                if (recordLength < 0 || recordLength > uncompressedRecords.Length - off)
-                    throw new InvalidDataException("Chunk inner record content is truncated.");
-
-                if (opcode == 0x05)
-                {
-                    var msg = McapRecordDecoder.DecodeMessage(uncompressedRecords, off, recordLength);
-                    if (!filterChannelId.HasValue || msg.ChannelId == filterChannelId.Value)
-                        yield return msg;
-                }
-                off += recordLength;
-            }
-        }
-
-        private static IEnumerable<McapPrivateRecord> EnumerateChunkPrivateRecords(
-            byte[] uncompressedRecords,
-            ulong chunkStartOffset)
-        {
-            var off = 0;
-            while (off < uncompressedRecords.Length)
-            {
-                if (uncompressedRecords.Length - off < McapWriter.RecordHeaderLength)
-                    throw new InvalidDataException("Chunk inner record is truncated.");
-
-                var opcode = uncompressedRecords[off++];
-                if (opcode == 0x00)
-                    throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
-
-                var len = McapBinaryReader.ReadU64LE(uncompressedRecords, ref off);
-                if (len > int.MaxValue)
-                    throw new InvalidDataException("Chunk inner record length exceeds int.MaxValue.");
-                var recordLength = (int)len;
-                if (recordLength < 0 || recordLength > uncompressedRecords.Length - off)
-                    throw new InvalidDataException("Chunk inner record content is truncated.");
-
-                if (McapWriter.IsPrivateOpcode(opcode))
-                {
-                    var data = new byte[recordLength];
-                    if (recordLength > 0)
-                        Buffer.BlockCopy(uncompressedRecords, off, data, 0, recordLength);
-                    yield return new McapPrivateRecord
-                    {
-                        Opcode = opcode,
-                        Data = data,
-                        Offset = chunkStartOffset,
-                        InChunk = true
-                    };
-                }
-
-                off += recordLength;
-            }
+            return McapChunkReader.EnumerateMessages(uncompressedRecords, filterChannelId);
         }
 
         private McapFileSummary ScanDataSection(
@@ -640,25 +489,11 @@ namespace Unity.FoxgloveSDK.IO
             bool validateCrcs,
             ulong chunkUncompressedSizeLimit)
         {
-            if (collectMessages)
-            {
-                sequentialLimits = sequentialLimits ?? McapSequentialReadLimits.Default;
-                sequentialLimits.Validate();
-            }
-
-            var summary = new McapFileSummary
-            {
-                DataSectionEndOffset = dataSectionEndOffset
-            };
-            var messageCount = 0UL;
-            var retainedPayloadBytes = 0L;
-            var attachmentCount = 0U;
-            var metadataCount = 0U;
-            var chunkCount = 0U;
-            var messageStart = ulong.MaxValue;
-            var messageEnd = 0UL;
-            var channelMessageCounts = new Dictionary<ushort, ulong>();
-
+            var builder = new McapSummaryBuilder(
+                dataSectionEndOffset,
+                collectInventory,
+                collectMessages,
+                sequentialLimits);
             _stream.Seek(McapWriter.MagicLength, SeekOrigin.Begin);
             var isFirstRecord = true;
             while ((ulong)_stream.Position < dataSectionEndOffset)
@@ -678,119 +513,18 @@ namespace Unity.FoxgloveSDK.IO
                     continue;
                 }
 
-                switch (opcode)
-                {
-                    case McapWriter.OpcodeHeader:
-                        throw new InvalidDataException("MCAP Header record appeared after the first data-section record.");
-                    case McapWriter.OpcodeSchema:
-                        if (collectInventory)
-                            McapRecordDecoder.AddSchema(summary.Schemas, McapRecordDecoder.DecodeSchema(content, 0, contentLength));
-                        break;
-                    case McapWriter.OpcodeChannel:
-                        if (collectInventory)
-                            McapRecordDecoder.AddChannel(summary.Channels, McapRecordDecoder.DecodeChannel(content, 0, contentLength));
-                        break;
-                    case McapWriter.OpcodeMessage:
-                        if (collectMessages)
-                        {
-                            McapRecordDecoder.AddSequentialMessage(
-                                summary,
-                                McapRecordDecoder.DecodeMessage(content, 0, contentLength),
-                                sequentialLimits,
-                                ref retainedPayloadBytes,
-                                ref messageCount,
-                                ref messageStart,
-                                ref messageEnd,
-                                channelMessageCounts);
-                        }
-                        else
-                        {
-                            McapRecordDecoder.AddMessageStats(
-                                McapRecordDecoder.DecodeMessageHeader(content, 0, contentLength),
-                                ref messageCount,
-                                ref messageStart,
-                                ref messageEnd,
-                                channelMessageCounts);
-                        }
-                        break;
-                    case McapWriter.OpcodeChunk:
-                        chunkCount++;
-                        var records = McapRecordDecoder.DecodeChunkRecordsContent(
-                            content,
-                            0,
-                            contentLength,
-                            out var crcValid,
-                            chunkUncompressedSizeLimit);
-                        if (!crcValid && validateCrcs)
-                            throw new InvalidDataException("MCAP chunk CRC mismatch.");
-                        McapRecordDecoder.ScanChunkRecords(
-                            records,
-                            summary,
-                            collectInventory,
-                            collectMessages,
-                            sequentialLimits,
-                            ref retainedPayloadBytes,
-                            ref messageCount,
-                            ref messageStart,
-                            ref messageEnd,
-                            channelMessageCounts);
-                        break;
-                    case McapWriter.OpcodeAttachment:
-                        attachmentCount++;
-                        if (collectInventory)
-                        {
-                            var attachment = McapRecordDecoder.DecodeAttachment(content, 0, contentLength);
-                            summary.AttachmentIndexes.Add(new McapAttachmentIndex
-                            {
-                                Offset = recordStart,
-                                Length = recordEnd - recordStart,
-                                LogTime = attachment.LogTime,
-                                CreateTime = attachment.CreateTime,
-                                DataSize = (ulong)(attachment.Data?.Length ?? 0),
-                                Name = attachment.Name,
-                                MediaType = attachment.MediaType
-                            });
-                        }
-                        break;
-                    case McapWriter.OpcodeMetadata:
-                        metadataCount++;
-                        if (collectInventory)
-                        {
-                            var metadata = McapRecordDecoder.DecodeMetadata(content, 0, contentLength);
-                            summary.MetadataIndexes.Add(new McapMetadataIndex
-                            {
-                                Offset = recordStart,
-                                Length = recordEnd - recordStart,
-                                Name = metadata.Name
-                            });
-                        }
-                        break;
-                    case McapWriter.OpcodeDataEnd:
-                        McapRecordDecoder.DecodeDataEnd(content, 0, contentLength);
-                        goto Done;
-                    default:
-                        break;
-                }
+                if (!builder.ApplyRecord(
+                        opcode,
+                        content,
+                        contentLength,
+                        recordStart,
+                        recordEnd,
+                        validateCrcs,
+                        chunkUncompressedSizeLimit))
+                    break;
             }
 
-        Done:
-            if (messageCount > 0 || collectInventory)
-            {
-                summary.Statistics = new McapStatistics
-                {
-                    MessageCount = messageCount,
-                    SchemaCount = (ushort)summary.Schemas.Count,
-                    ChannelCount = (uint)summary.Channels.Count,
-                    AttachmentCount = attachmentCount,
-                    MetadataCount = metadataCount,
-                    ChunkCount = chunkCount,
-                    MessageStartTime = messageCount > 0 ? messageStart : 0,
-                    MessageEndTime = messageCount > 0 ? messageEnd : 0,
-                    ChannelMessageCounts = channelMessageCounts
-                };
-            }
-
-            return summary;
+            return builder.Build();
         }
 
         // Internal

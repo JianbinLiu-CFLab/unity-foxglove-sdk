@@ -103,13 +103,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ReflectionBuildErrorsAreActionable()
         {
-            var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var scanner = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
 
-            Check(generator.Contains("CreateInboundTargetNotWritableException", StringComparison.Ordinal)
-                  && generator.Contains("FOXRUN028 Error: ", StringComparison.Ordinal),
+            Check(scanner.Contains("CreateInboundTargetNotWritableException", StringComparison.Ordinal)
+                  && scanner.Contains("FOXRUN028 Error: ", StringComparison.Ordinal),
                 "163-23E-1: reflection build path formats readonly inbound failures as FOXRUN028 errors");
-            Check(generator.Contains("FoxRun inbound \" + memberKind", StringComparison.Ordinal)
-                  && generator.Contains("cannot receive SubscribeOnly or PublishAndSubscribe messages", StringComparison.Ordinal),
+            Check(scanner.Contains("FoxRun inbound \" + memberKind", StringComparison.Ordinal)
+                  && scanner.Contains("cannot receive SubscribeOnly or PublishAndSubscribe messages", StringComparison.Ordinal),
                 "163-23E-2: FOXRUN028 reflection failure message includes member kind and unsupported shape");
         }
 

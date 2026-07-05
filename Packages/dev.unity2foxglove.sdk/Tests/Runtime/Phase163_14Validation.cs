@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Ros2SchemaValidationIsNonThrowingForPublishPaths()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
-            var fields = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
 
             Check(manager.Contains("TryGetOrRegisterRos2MsgSchemaChannel", StringComparison.Ordinal)
                   && manager.Contains("TryValidateRos2SchemaName", StringComparison.Ordinal)
@@ -64,7 +64,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-14B-2: ROS2 prepare returns false instead of throwing for bad schemas");
             Check(MethodContains(manager, "public void PublishRos2(string topic", "TryGetOrRegisterRos2MsgSchemaChannel(topic, schemaName, out var channelId"),
                 "163-14B-3: direct ROS2 publish returns after warning instead of throwing for bad schemas");
-            Check(fields.Contains("_lastInvalidRos2SchemaWarningKey", StringComparison.Ordinal),
+            Check(warningState.Contains("LastInvalidRos2SchemaWarningKey", StringComparison.Ordinal)
+                  && manager.Contains("_warningDebounceState.LastInvalidRos2SchemaWarningKey", StringComparison.Ordinal),
                 "163-14B-4: invalid ROS2 schema warnings are deduplicated independently");
         }
 

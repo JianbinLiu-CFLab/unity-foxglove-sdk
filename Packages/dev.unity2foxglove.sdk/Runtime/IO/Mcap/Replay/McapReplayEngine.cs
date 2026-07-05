@@ -35,18 +35,9 @@ namespace Unity.FoxgloveSDK.IO
         /// Parsed summary of the loaded MCAP file.
         /// </summary>
         private McapFileSummary _summary;
-        /// <summary>
-        /// Messages read ahead of their emission time, waiting to be flushed.
-        /// </summary>
-        private readonly List<McapMessage> _pending = new();
+        private readonly McapReplayPendingQueue _pending = new();
         private readonly List<McapMessage> _defaultTickBuffer = new();
         private readonly Dictionary<ushort, McapMessage> _snapshotLatestByChannel = new();
-        /// <summary>
-        /// Logical front of <see cref="_pending"/>. Avoids O(n) RemoveAt(0)
-        /// shifts while replay ticks drain due messages.
-        /// </summary>
-        private int _pendingHeadIndex;
-        private bool _pendingIsSorted = true;
         private readonly IFoxgloveLogger _logger;
 
         // Per-chunk state
@@ -539,8 +530,6 @@ namespace Unity.FoxgloveSDK.IO
 
             var clampedTimeNs = ClampReplayTime(timeNs);
             _pending.Clear();
-            _pendingHeadIndex = 0;
-            _pendingIsSorted = true;
             _lastEmitTime = clampedTimeNs;
             _currentTimeNs = clampedTimeNs;
 
@@ -591,8 +580,6 @@ namespace Unity.FoxgloveSDK.IO
             _reader = null;
             _summary = null;
             _pending.Clear();
-            _pendingHeadIndex = 0;
-            _pendingIsSorted = true;
             _currentChunkIdx = -1;
             _currentUncompressed = null;
             _readOffset = 0;
@@ -622,31 +609,21 @@ namespace Unity.FoxgloveSDK.IO
             return true;
         }
 
-        private int PendingCount => _pending.Count - _pendingHeadIndex;
+        private int PendingCount => _pending.Count;
 
-        private McapMessage PeekPending() => _pending[_pendingHeadIndex];
+        private McapMessage PeekPending() => _pending.Peek();
 
         /// <summary>
         /// Dequeues the oldest pending message.
         /// </summary>
         private McapMessage PopPending()
-        {
-            var m = _pending[_pendingHeadIndex++];
-            CompactPendingIfUseful();
-            return m;
-        }
+            => _pending.Pop();
 
         private void DropPending()
-        {
-            _pendingHeadIndex++;
-            CompactPendingIfUseful();
-        }
+            => _pending.Drop();
 
         private void AddPending(McapMessage message)
-        {
-            _pending.Add(message);
-            _pendingIsSorted = false;
-        }
+            => _pending.Add(message);
 
         private static void AddHistoryMessage(List<McapMessage> result, McapMessage message, int maxMessages, ref int historyHeadIndex)
         {
@@ -696,38 +673,7 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         private void SortPending()
-        {
-            if (PendingCount <= 0)
-            {
-                if (_pending.Count > 0)
-                    CompactPending();
-                _pendingIsSorted = true;
-                return;
-            }
-
-            CompactPending();
-            if (!_pendingIsSorted && _pending.Count > 1)
-                _pending.Sort(CompareMessages);
-            _pendingIsSorted = true;
-        }
-
-        private void CompactPendingIfUseful()
-        {
-            if (_pendingHeadIndex > 32 && _pendingHeadIndex * 2 >= _pending.Count)
-                CompactPending();
-        }
-
-        private void CompactPending()
-        {
-            if (_pendingHeadIndex <= 0)
-                return;
-
-            if (_pendingHeadIndex >= _pending.Count)
-                _pending.Clear();
-            else
-                _pending.RemoveRange(0, _pendingHeadIndex);
-            _pendingHeadIndex = 0;
-        }
+            => _pending.Sort(CompareMessages);
 
         private bool ShouldUseChunkRecords(string scope, bool crcValid)
         {
@@ -808,24 +754,7 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         internal static int CountTickResultPrefixPreservingLogTimeGroup(IReadOnlyList<McapMessage> result, int maxMessagesPerTick)
-        {
-            if (result == null) throw new ArgumentNullException(nameof(result));
-            if (result.Count == 0)
-                return 0;
-            if (maxMessagesPerTick == 0)
-                return result.Count;
-            if (maxMessagesPerTick < 0)
-                maxMessagesPerTick = 1;
-
-            if (result.Count <= maxMessagesPerTick)
-                return result.Count;
-
-            var takeCount = maxMessagesPerTick;
-            var cutoffLogTime = result[takeCount - 1].LogTime;
-            while (takeCount < result.Count && result[takeCount].LogTime == cutoffLogTime)
-                takeCount++;
-            return takeCount;
-        }
+            => McapReplayTickThrottler.CountPrefixPreservingLogTimeGroup(result, maxMessagesPerTick);
 
         private static int CompareMessages(McapMessage a, McapMessage b)
         {

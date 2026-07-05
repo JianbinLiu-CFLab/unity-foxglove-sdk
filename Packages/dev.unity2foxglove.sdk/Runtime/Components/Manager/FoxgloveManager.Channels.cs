@@ -11,8 +11,6 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
-        private ulong _channelSessionGeneration;
-
         /// <summary>
         /// Create or reuse a JSON channel for the current running Foxglove session.
         /// </summary>
@@ -23,7 +21,7 @@ namespace Unity.FoxgloveSDK.Components
             var channelId = string.IsNullOrEmpty(schemaName)
                 ? GetOrRegisterChannel(topic, JsonEncoding)
                 : GetOrRegisterSchemaChannel(topic, schemaName, JsonEncoding);
-            return new FoxgloveJsonChannel(this, _channelSessionGeneration, channelId, topic, schemaName ?? string.Empty);
+            return new FoxgloveJsonChannel(this, _connectionState.ChannelSessionGeneration, channelId, topic, schemaName ?? string.Empty);
         }
 
         /// <summary>
@@ -40,7 +38,7 @@ namespace Unity.FoxgloveSDK.Components
             var channelId = string.IsNullOrEmpty(normalizedSchemaName)
                 ? GetOrRegisterChannel(topic, encoding)
                 : GetOrRegisterSchemaChannel(topic, normalizedSchemaName, encoding);
-            return new FoxgloveRawChannel(this, _channelSessionGeneration, channelId, topic, encoding, normalizedSchemaName);
+            return new FoxgloveRawChannel(this, _connectionState.ChannelSessionGeneration, channelId, topic, encoding, normalizedSchemaName);
         }
 
         /// <summary>
@@ -51,10 +49,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             EnsureChannelFactoryCanRegister();
             var channelId = GetOrRegisterChannel(topic, MsgPackEncoding);
-            return new FoxgloveMsgPackChannel(this, _channelSessionGeneration, channelId, topic);
+            return new FoxgloveMsgPackChannel(this, _connectionState.ChannelSessionGeneration, channelId, topic);
         }
 
-        internal ulong CurrentChannelSessionGeneration => _channelSessionGeneration;
+        internal ulong CurrentChannelSessionGeneration => _connectionState.ChannelSessionGeneration;
 
         internal void PublishJsonChannel(ulong generation, uint channelId, string topic, object message, ulong timestampNs)
         {
@@ -107,10 +105,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] Channel Log called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return false;
@@ -121,7 +119,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ValidateChannelSessionGeneration(ulong generation)
         {
-            if (generation != _channelSessionGeneration)
+            if (generation != _connectionState.ChannelSessionGeneration)
             {
                 throw new InvalidOperationException(
                     "Foxglove channel belongs to an old session. Re-create the channel after restarting the server.");
@@ -130,12 +128,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void AdvanceChannelSessionGeneration()
         {
-            unchecked
-            {
-                _channelSessionGeneration++;
-                if (_channelSessionGeneration == 0)
-                    _channelSessionGeneration = 1;
-            }
+            _connectionState.AdvanceChannelSessionGeneration();
         }
     }
 }

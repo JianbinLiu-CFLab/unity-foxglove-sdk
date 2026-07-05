@@ -111,11 +111,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void SetupReplaySurfacesNonSchemaFailure()
         {
             var setup = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
+            var statusText = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/StatusTextBuilder.cs");
             var setupReplay = ExtractMethod(setup, "private bool SetupReplay()");
 
             Check(setup.Contains("CreateReplayFallbackWarning", StringComparison.Ordinal)
                   && setup.Contains("ReplayStartFailureMessage", StringComparison.Ordinal)
-                  && setup.Contains("restoring live publishers", StringComparison.Ordinal),
+                  && setup.Contains("StatusTextBuilder.CreateReplayFallbackWarning", StringComparison.Ordinal)
+                  && statusText.Contains("restoring live publishers", StringComparison.Ordinal)
+                  && statusText.Contains("Replay file:", StringComparison.Ordinal)
+                  && statusText.Contains("Cause:", StringComparison.Ordinal),
                 "140J-3A: SetupReplay builds a user-facing non-schema replay fallback warning");
             Check(ContainsAfter(setupReplay, "Debug.LogWarning(CreateReplayFallbackWarning", "RestoreLivePublishers();"),
                 "140J-3B: SetupReplay logs the non-schema replay failure before restoring live publishers");
@@ -146,7 +150,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ValidationRegistryExposesPhase140J()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase140j\", \"Phase 140J\", Phase140JValidation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase140j\", \"Phase 140J: replay enable-failure diagnostics and cursor gate validation\", Phase140JValidation.Validate", StringComparison.Ordinal),
                 "140J-5A: validation registry exposes --phase140j");
         }
 

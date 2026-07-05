@@ -37,15 +37,18 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Diagnostics.cs");
+            var state = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/StatisticsRuntimeState.cs");
             var editorDiagnostics = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
             Check(!manager.Contains("private sealed class PublishCadenceDiagnostics", StringComparison.Ordinal)
-                  && diagnostics.Contains("private sealed class PublishCadenceDiagnostics", StringComparison.Ordinal),
-                "140H-1A: publish cadence implementation lives in Manager diagnostics partial");
+                  && !diagnostics.Contains("private sealed class PublishCadenceDiagnostics", StringComparison.Ordinal)
+                  && state.Contains("internal sealed class PublishCadenceDiagnostics", StringComparison.Ordinal)
+                  && state.Contains("internal readonly PublishCadenceDiagnostics PublishCadenceDiagnostics = new();", StringComparison.Ordinal),
+                "140H-1A: publish cadence implementation lives in Manager diagnostics state");
             Check(diagnostics.Contains("_publishCadenceDiagnosticsEnabled", StringComparison.Ordinal)
                   && diagnostics.Contains("PublishCadenceDiagnosticsEnabled", StringComparison.Ordinal),
                 "140H-1B: manager exposes opt-in publish cadence diagnostics");
-            Check(diagnostics.Contains("topic={0} encoding={1} messages={2}", StringComparison.Ordinal)
-                  && diagnostics.Contains("maxPerFrame={7} burstFrames={8}", StringComparison.Ordinal),
+            Check(state.Contains("topic={0} encoding={1} messages={2}", StringComparison.Ordinal)
+                  && state.Contains("maxPerFrame={7} burstFrames={8}", StringComparison.Ordinal),
                 "140H-1C: manager aggregates per-topic diagnostic summaries");
             Check(manager.Contains("FlushPublishCadenceDiagnosticsIfNeeded();", StringComparison.Ordinal)
                   && diagnostics.Contains("LogPublishCadenceSummary(summary)", StringComparison.Ordinal),
@@ -125,7 +128,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ValidationRegistryExposesPhase140H()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase140h\", \"Phase 140H\", Phase140HValidation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase140h\", \"Phase 140H: publish cadence diagnostics and fixed-time scheduler boundary validation\", Phase140HValidation.Validate", StringComparison.Ordinal),
                 "140H-6A: validation registry exposes --phase140h");
         }
 

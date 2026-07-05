@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBuildFallbackReflectionCaches()
         {
-            var generator = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
+            var generator = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunServiceValidator.cs");
             var byRefLike = SourceMethod(generator, "private static bool IsByRefLike(Type type)");
 
             Check(generator.Contains("private static readonly PropertyInfo IsByRefLikeProperty", StringComparison.Ordinal)

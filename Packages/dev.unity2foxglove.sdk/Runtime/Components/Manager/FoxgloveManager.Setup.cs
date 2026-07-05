@@ -13,8 +13,6 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
-        private SchemaEvidenceSidecarResult _pendingRecordingSidecar;
-
         /// <summary>
         /// Converts seconds to milliseconds for playback-control windows.
         /// </summary>
@@ -140,18 +138,19 @@ namespace Unity.FoxgloveSDK.Components
                 var evidenceRoot = string.IsNullOrWhiteSpace(_schemaEvidenceRoot)
                     ? Path.Combine(ProjectRoot, "Assets", "Generated")
                     : ResolveProjectPath(_schemaEvidenceRoot);
-                _pendingRecordingSidecar = SchemaEvidenceSidecarWriter.StageSidecar(
+                var pendingSidecar = SchemaEvidenceSidecarWriter.StageSidecar(
                     path,
                     evidenceRoot,
                     identityMode,
                     requireComplete: identityMode == SchemaIdentityMode.Strict);
+                _recordingState.PendingSidecar = pendingSidecar;
 
-                foreach (var warning in _pendingRecordingSidecar.Warnings)
+                foreach (var warning in pendingSidecar.Warnings)
                 {
                     Debug.LogWarning("[Foxglove] Schema evidence: " + warning);
                 }
 
-                if (!_pendingRecordingSidecar.Success)
+                if (!pendingSidecar.Success)
                 {
                     CleanupPendingRecordingSidecar();
                     Debug.LogError("[Foxglove] Recording startup aborted because complete schema evidence is required in Strict mode.");
@@ -182,11 +181,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool PublishPendingRecordingSidecar()
         {
-            if (_pendingRecordingSidecar == null)
+            if (!_recordingState.HasPendingSidecar)
                 return true;
 
-            var sidecar = _pendingRecordingSidecar;
-            _pendingRecordingSidecar = null;
+            var sidecar = _recordingState.TakePendingSidecar();
             if (SchemaEvidenceSidecarWriter.PublishStagedSidecar(sidecar, out var publishWarning))
                 return true;
 
@@ -198,13 +196,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private void CleanupPendingRecordingSidecar()
         {
-            if (_pendingRecordingSidecar == null)
+            if (!_recordingState.HasPendingSidecar)
             {
                 return;
             }
 
-            SchemaEvidenceSidecarWriter.CleanupStagedSidecar(_pendingRecordingSidecar);
-            _pendingRecordingSidecar = null;
+            SchemaEvidenceSidecarWriter.CleanupStagedSidecar(_recordingState.PendingSidecar);
+            _recordingState.Clear();
         }
 
         /// <summary>
@@ -223,7 +221,7 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
-            if (_disableLivePublishers && !_livePublishersDisabled)
+            if (_disableLivePublishers && !_replayState.LivePublishersDisabled)
             {
                 DisableLivePublishers();
             }
@@ -277,11 +275,7 @@ namespace Unity.FoxgloveSDK.Components
                 failure = "No replay failure details were reported.";
             }
 
-            return "[Foxglove] Replay was requested but did not enable; restoring live publishers. "
-                   + "Replay file: "
-                   + (string.IsNullOrWhiteSpace(resolvedReplayPath) ? "<empty>" : resolvedReplayPath)
-                   + ". Cause: "
-                   + failure;
+            return StatusTextBuilder.CreateReplayFallbackWarning(resolvedReplayPath, failure);
         }
 
         /// <summary>
@@ -309,7 +303,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void DisableLivePublishers()
         {
-            if (_livePublishersDisabled)
+            if (_replayState.LivePublishersDisabled)
             {
                 return;
             }
@@ -327,7 +321,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
-            _livePublishersDisabled = true;
+            _replayState.LivePublishersDisabled = true;
             Debug.Log($"[Foxglove] Disabled {_disabledPublishers.Count} live publisher(s)");
         }
 
@@ -359,7 +353,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void RestoreLivePublishers()
         {
-            if (!_livePublishersDisabled)
+            if (!_replayState.LivePublishersDisabled)
             {
                 return;
             }
@@ -373,7 +367,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _disabledPublishers.Clear();
-            _livePublishersDisabled = false;
+            _replayState.LivePublishersDisabled = false;
             Debug.Log("[Foxglove] Restored live publishers");
         }
     }

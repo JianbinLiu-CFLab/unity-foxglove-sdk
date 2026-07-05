@@ -121,10 +121,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyClientEventQueueOverflowWarning()
         {
             var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            var debouncer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebouncer.cs");
 
             Check(clientEvents.Contains("WarnClientEventQueueOverflow", StringComparison.Ordinal)
                   && clientEvents.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
-                  && clientEvents.Contains("Interlocked.CompareExchange", StringComparison.Ordinal),
+                  && clientEvents.Contains("WarningDebouncer.TryUpdateCooldown", StringComparison.Ordinal)
+                  && debouncer.Contains("Interlocked.CompareExchange", StringComparison.Ordinal),
                 "134-1C-1: overflow warning is throttled across transport threads");
             Check(clientEvents.Contains("droppedEvents=", StringComparison.Ordinal)
                   && clientEvents.Contains("droppedPayloadBytes=", StringComparison.Ordinal)
@@ -159,11 +161,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && normalizedManager.Contains("[Range(1, 65535)]\n        [SerializeField] private int _rootCaDistributorPort", StringComparison.Ordinal),
                 "134-1G-1: public server and Root CA ports have Inspector range guards");
             Check(manager.Contains("private void OnValidate()", StringComparison.Ordinal)
-                  && manager.Contains("_port = Mathf.Clamp(_port, 1, 65535);", StringComparison.Ordinal)
-                  && manager.Contains("_rootCaDistributorPort = Mathf.Clamp(_rootCaDistributorPort, 1, 65535);", StringComparison.Ordinal),
-                "134-1G-2: manager clamps port fields during Unity validation");
-            Check(server.Contains("IsValidTcpPort(_port)", StringComparison.Ordinal)
-                  && server.Contains("IsValidTcpPort(_rootCaDistributorPort)", StringComparison.Ordinal),
+                  && manager.Contains("_port = ManagerConfigValidator.ClampTcpPort(_port);", StringComparison.Ordinal)
+                  && manager.Contains("_rootCaDistributorPort = ManagerConfigValidator.ClampTcpPort(_rootCaDistributorPort);", StringComparison.Ordinal),
+                "134-1G-2: manager clamps port fields during Unity validation through a pure helper");
+            Check(server.Contains("ManagerConfigValidator.IsValidTcpPort(_port)", StringComparison.Ordinal)
+                  && server.Contains("ManagerConfigValidator.IsValidTcpPort(_rootCaDistributorPort)", StringComparison.Ordinal),
                 "134-1G-3: runtime startup rejects invalid TCP ports before starting transports");
             Check(manager.Contains("[Range(1, MaxRecordingChunkSizeKB)]", StringComparison.Ordinal)
                   && setup.Contains("Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB)", StringComparison.Ordinal),
@@ -172,18 +174,19 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeWarningThrottling()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
 
-            Check(manager.Contains("_lastRos2BridgePublishWarningKey", StringComparison.Ordinal)
-                  && manager.Contains("_lastRos2BridgePublishWarningTicks", StringComparison.Ordinal)
-                  && manager.Contains("_ros2BridgePublishWarningGate", StringComparison.Ordinal),
+            Check(warningState.Contains("LastRos2BridgePublishWarningKey", StringComparison.Ordinal)
+                  && warningState.Contains("LastRos2BridgePublishWarningTicks", StringComparison.Ordinal)
+                  && warningState.Contains("Ros2BridgePublishWarningGate", StringComparison.Ordinal),
                 "134-1H-1: manager tracks ROS2 bridge warning throttle state behind a single gate");
             Check(publishing.Contains("WarnRos2BridgePublishSkipped(reason)", StringComparison.Ordinal)
                   && publishing.Contains("WarnRos2BridgePublishSkipped(enqueueReason)", StringComparison.Ordinal)
                   && publishing.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
-                  && publishing.Contains("lock (_ros2BridgePublishWarningGate)", StringComparison.Ordinal)
-                  && !publishing.Contains("Interlocked.Read(ref _lastRos2BridgePublishWarningTicks)", StringComparison.Ordinal),
+                  && publishing.Contains("lock (_warningDebounceState.Ros2BridgePublishWarningGate)", StringComparison.Ordinal)
+                  && publishing.Contains("WarningDebouncer.ShouldEmitKeyedCooldown", StringComparison.Ordinal)
+                  && !publishing.Contains("Interlocked.Read(ref _warningDebounceState.LastRos2BridgePublishWarningTicks)", StringComparison.Ordinal),
                 "134-1H-2: ROS2 bridge publish failures use an atomic bounded warning path");
         }
 

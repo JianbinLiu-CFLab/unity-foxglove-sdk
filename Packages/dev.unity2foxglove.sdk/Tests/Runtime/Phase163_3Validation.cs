@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
             var graph = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionGraphHandler.cs");
             var playback = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
             var services = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Services.cs");
+            var timeBroadcaster = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionTimeBroadcaster.cs");
             var status = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Protocol/Messages/StatusMessages.cs");
             var assets = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Assets/FoxgloveAssetRegistry.cs");
             var phase54 = Read(root, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase54Validation.cs");
@@ -54,7 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && clientPublish.Contains("public void RouteBinary(uint clientId, uint chId, byte[] payload)", StringComparison.Ordinal)
                   && !clientPublish.Contains("TryDecodeClientMessageData(data", StringComparison.Ordinal),
                 "163-3G: client publish binary frames are decoded once at the session dispatch boundary");
-            Check(assets.Contains("Path.GetFullPath(Path.Combine(root.LocalRoot, relative))", StringComparison.Ordinal)
+            Check(assets.Contains("Path.GetFullPath(Path.Combine(bestRoot.LocalRoot, relative))", StringComparison.Ordinal)
                   && assets.Contains("Path traversal denied", StringComparison.Ordinal)
                   && assets.Contains("!resolved.StartsWith(rootPrefix", StringComparison.Ordinal),
                 "163-3H: asset fetch root-containment is enforced by the registry");
@@ -66,9 +67,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && status.Contains("empty IDs are intentionally omitted", StringComparison.Ordinal)
                   && status.Contains("ShouldSerializeId() => Id != null && Id.Length > 0", StringComparison.Ordinal),
                 "163-3J: status id serialization has one explicit empty-id rule");
-            Check(session.Contains("Interlocked.Exchange(ref _lastTimeBroadcastTicks, 0)", StringComparison.Ordinal),
+            Check(session.Contains("_timeBroadcaster.Reset()", StringComparison.Ordinal)
+                  && timeBroadcaster.Contains("Interlocked.Exchange(ref _lastBroadcastTicks, 0)", StringComparison.Ordinal),
                 "163-3K: ClearSession resets time broadcast throttle");
-            Check(registry.Contains("Ci(\"--phase163-3\", \"Phase 163-3\", Phase163_3Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-3\", \"Phase 163-3: phase163-3 review regression checks for session protocol and client routing\", Phase163_3Validation.Validate", StringComparison.Ordinal),
                 "163-3L: PhaseValidationRegistry wires --phase163-3");
 
             Console.WriteLine("Phase 163-3: 12 checks passed.");

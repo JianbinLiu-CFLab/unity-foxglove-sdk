@@ -75,9 +75,9 @@ namespace Unity.FoxgloveSDK.Components
                 return id;
             }
 
-            id = (uint)_nextChannelId;
+            id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
-            _nextChannelId++;
+            _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
         }
@@ -105,9 +105,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
                 throw new System.InvalidOperationException($"Unknown ROS2 schema '{schemaName}'.");
 
-            id = (uint)_nextChannelId;
+            id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterRos2MsgSchemaChannel(id, topic, schemaName);
-            _nextChannelId++;
+            _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
         }
@@ -210,7 +210,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_ros2BridgeRuntime != null)
                 return _ros2BridgeRuntime.GetStatsSnapshot();
 
-            if (!string.IsNullOrEmpty(_ros2BridgeSetupError))
+            if (!string.IsNullOrEmpty(_connectionState.Ros2BridgeSetupError))
             {
                 return new Ros2BridgeStatsSnapshot(
                     enabled: false,
@@ -220,7 +220,7 @@ namespace Unity.FoxgloveSDK.Components
                     sentFrames: 0,
                     droppedFrames: 0,
                     failedFrames: 0,
-                    lastError: _ros2BridgeSetupError,
+                    lastError: _connectionState.Ros2BridgeSetupError,
                     lastConnectedUnixMs: 0,
                     lastDisconnectedUnixMs: 0);
             }
@@ -277,9 +277,9 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_ros2BridgeRuntime == null)
             {
-                reason = string.IsNullOrEmpty(_ros2BridgeSetupError)
+                reason = string.IsNullOrEmpty(_connectionState.Ros2BridgeSetupError)
                     ? "ROS2 Bridge runtime is unavailable."
-                    : _ros2BridgeSetupError;
+                    : _connectionState.Ros2BridgeSetupError;
                 return false;
             }
 
@@ -324,10 +324,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishJson called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -372,10 +372,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishFoxRunJsonBytes called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -419,10 +419,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishProto called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -463,10 +463,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishMsgPack called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -518,10 +518,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishRos2 called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -542,7 +542,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private static bool IsValidPublishTopic(string topic)
-            => !string.IsNullOrWhiteSpace(topic);
+            => TopicNameNormalizer.IsValidPublishTopic(topic);
 
         private bool TryValidatePublishTopic(string topic, string operation)
         {
@@ -550,9 +550,9 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
 
             var key = "invalid-topic:" + operation;
-            if (_lastInvalidPublishTopicWarningKey != key)
+            if (_warningDebounceState.LastInvalidPublishTopicWarningKey != key)
             {
-                _lastInvalidPublishTopicWarningKey = key;
+                _warningDebounceState.LastInvalidPublishTopicWarningKey = key;
                 Debug.LogWarning($"[Foxglove] Cannot {operation}: publisher topic is empty.");
             }
 
@@ -596,10 +596,10 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnInvalidRos2Schema(string operation, string reason)
         {
             var key = operation + ":" + reason;
-            if (_lastInvalidRos2SchemaWarningKey == key)
+            if (_warningDebounceState.LastInvalidRos2SchemaWarningKey == key)
                 return;
 
-            _lastInvalidRos2SchemaWarningKey = key;
+            _warningDebounceState.LastInvalidRos2SchemaWarningKey = key;
             Debug.LogWarning($"[Foxglove] Cannot {operation}: {reason}");
         }
 
@@ -637,7 +637,7 @@ namespace Unity.FoxgloveSDK.Components
                 schemaName,
                 CdrEncoding,
                 logTimeNs,
-                ++_ros2BridgeSequence,
+                _connectionState.NextRos2BridgeSequence(),
                 payload,
                 qos);
 
@@ -650,16 +650,20 @@ namespace Unity.FoxgloveSDK.Components
             reason = string.IsNullOrWhiteSpace(reason) ? "unknown reason" : reason;
             var nowTicks = System.DateTime.UtcNow.Ticks;
             var key = "ros2-bridge:" + reason;
-            lock (_ros2BridgePublishWarningGate)
+            lock (_warningDebounceState.Ros2BridgePublishWarningGate)
             {
-                if (_lastRos2BridgePublishWarningKey == key
-                    && nowTicks - _lastRos2BridgePublishWarningTicks < ClientEventOverflowWarningIntervalTicks)
+                if (!WarningDebouncer.ShouldEmitKeyedCooldown(
+                        key,
+                        _warningDebounceState.LastRos2BridgePublishWarningKey,
+                        _warningDebounceState.LastRos2BridgePublishWarningTicks,
+                        nowTicks,
+                        ClientEventOverflowWarningIntervalTicks))
                 {
                     return;
                 }
 
-                _lastRos2BridgePublishWarningKey = key;
-                _lastRos2BridgePublishWarningTicks = nowTicks;
+                _warningDebounceState.LastRos2BridgePublishWarningKey = key;
+                _warningDebounceState.LastRos2BridgePublishWarningTicks = nowTicks;
             }
             Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + reason);
         }
@@ -681,7 +685,7 @@ namespace Unity.FoxgloveSDK.Components
                 return id;
             }
 
-            id = (uint)_nextChannelId;
+            id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterChannel(new Protocol.AdvertiseChannel
             {
                 Id = id,
@@ -690,7 +694,7 @@ namespace Unity.FoxgloveSDK.Components
                 SchemaName = EmptySchemaName,
                 Schema = EmptySchemaPayload
             });
-            _nextChannelId++;
+            _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
         }

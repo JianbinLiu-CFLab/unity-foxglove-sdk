@@ -86,11 +86,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManagerRejectsInvalidTopicsBeforeRegistration()
         {
             var source = ReadRepoText(ManagerPublishingPath);
-            var manager = ReadRepoText(ManagerPath);
-            Check(manager.Contains("_lastInvalidPublishTopicWarningKey", StringComparison.Ordinal),
+            var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
+            var normalizer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/TopicNameNormalizer.cs");
+            Check(warningState.Contains("LastInvalidPublishTopicWarningKey", StringComparison.Ordinal)
+                  && source.Contains("_warningDebounceState.LastInvalidPublishTopicWarningKey", StringComparison.Ordinal),
                 "134-4C-1: manager tracks repeated invalid topic warnings");
             Check(source.Contains("private static bool IsValidPublishTopic(string topic)", StringComparison.Ordinal)
-                  && source.Contains("!string.IsNullOrWhiteSpace(topic)", StringComparison.Ordinal),
+                  && source.Contains("TopicNameNormalizer.IsValidPublishTopic(topic)", StringComparison.Ordinal)
+                  && normalizer.Contains("!string.IsNullOrWhiteSpace(topic)", StringComparison.Ordinal),
                 "134-4C-2: manager has a whitespace-aware topic predicate");
             Check(source.Contains("if (!TryValidatePublishTopic(topic, \"prepare schema publish\"))", StringComparison.Ordinal)
                   && (source.Contains("if (!TryValidatePublishTopic(topic, \"prepare ROS2 publish\"))", StringComparison.Ordinal)

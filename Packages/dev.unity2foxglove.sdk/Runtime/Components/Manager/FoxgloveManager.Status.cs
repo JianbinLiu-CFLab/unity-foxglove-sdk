@@ -89,13 +89,13 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="message">Warning text to emit.</param>
         private void WarnStatusNotRunning(string message)
         {
-            if (_warnedNotRunning)
+            if (_warningDebounceState.WarnedNotRunning)
             {
                 return;
             }
 
             Debug.LogWarning(message);
-            _warnedNotRunning = true;
+            _warningDebounceState.WarnedNotRunning = true;
         }
     }
 }

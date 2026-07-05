@@ -17,7 +17,6 @@ namespace Unity.FoxgloveSDK.Components
         private const long MaxQueuedClientEventPayloadBytes = 16L * 1024L * 1024L;
         private const long ClientEventOverflowWarningIntervalTicks = 5L * 1000L * 1000L * 10L;
 
-        private long _lastClientEventOverflowWarningTicks;
         private readonly BoundedEventQueue<ClientEvent> _clientLifecycleEvents =
             new(MaxQueuedClientLifecycleEvents, 0, MeasureClientEventPayloadBytes);
         private readonly BoundedEventQueue<ClientEvent> _clientMessageEvents =
@@ -61,16 +60,10 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnClientEventQueueOverflow(ClientEvent evt, BoundedEventQueueOverflow overflow)
         {
             var nowTicks = System.DateTime.UtcNow.Ticks;
-            var previousTicks = System.Threading.Interlocked.Read(ref _lastClientEventOverflowWarningTicks);
-            if (nowTicks - previousTicks < ClientEventOverflowWarningIntervalTicks)
-            {
-                return;
-            }
-
-            if (System.Threading.Interlocked.CompareExchange(
-                    ref _lastClientEventOverflowWarningTicks,
+            if (!WarningDebouncer.TryUpdateCooldown(
+                    ref _warningDebounceState.LastClientEventOverflowWarningTicks,
                     nowTicks,
-                    previousTicks) != previousTicks)
+                    ClientEventOverflowWarningIntervalTicks))
             {
                 return;
             }

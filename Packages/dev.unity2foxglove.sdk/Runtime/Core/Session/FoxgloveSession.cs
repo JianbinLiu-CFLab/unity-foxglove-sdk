@@ -57,8 +57,6 @@ namespace Unity.FoxgloveSDK.Core
             new ThreadLocal<JsonSerializer>(JsonSerializer.CreateDefault);
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
-        private ISinkChannelFilter _liveWebSocketChannelFilter;
-        private ISinkChannelFilter _mcapRecordingChannelFilter;
 
         /// <summary>Whether protobuf encoding support is enabled for channel registration.</summary>
         private bool _protobufEnabled;
@@ -77,6 +75,8 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SessionPlaybackHandler _playback;
         private readonly SessionClientPublishHandler _clientPublish;
         private readonly SessionAssetHandler _assets;
+        private readonly SessionTimeBroadcaster _timeBroadcaster = new();
+        private readonly SessionChannelFilter _channelFilter = new();
         private readonly HashSet<uint> _subscriptionBudgetWarnedClients = new();
         private readonly object _subscriptionBudgetWarnedClientsLock = new();
         /// <summary>Maximum queued playback control requests awaiting the runtime owner tick.</summary>
@@ -85,7 +85,6 @@ namespace Unity.FoxgloveSDK.Core
         public event Action<uint, uint, string, byte[]> OnClientMessage;
 
         private McapRecorder _recorder;
-        private long _lastTimeBroadcastTicks;
 
         /// <summary>Server name sent in serverInfo.</summary>
         public string Name { get; }
@@ -113,30 +112,11 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Set an optional per-sink channel filter. Null allows all channels for the sink.</summary>
         internal void SetSinkChannelFilter(FoxgloveSinkKind sink, ISinkChannelFilter filter)
-        {
-            switch (sink)
-            {
-                case FoxgloveSinkKind.LiveWebSocket:
-                    Volatile.Write(ref _liveWebSocketChannelFilter, filter);
-                    break;
-                case FoxgloveSinkKind.McapRecording:
-                    Volatile.Write(ref _mcapRecordingChannelFilter, filter);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(sink), sink, "Unknown Foxglove sink kind.");
-            }
-        }
+            => _channelFilter.SetSinkChannelFilter(sink, filter);
 
         /// <summary>Return the configured per-sink channel filter, or null when the sink allows all channels.</summary>
         internal ISinkChannelFilter GetSinkChannelFilter(FoxgloveSinkKind sink)
-        {
-            return sink switch
-            {
-                FoxgloveSinkKind.LiveWebSocket => Volatile.Read(ref _liveWebSocketChannelFilter),
-                FoxgloveSinkKind.McapRecording => Volatile.Read(ref _mcapRecordingChannelFilter),
-                _ => throw new ArgumentOutOfRangeException(nameof(sink), sink, "Unknown Foxglove sink kind.")
-            };
-        }
+            => _channelFilter.GetSinkChannelFilter(sink);
 
         /// <summary>
         /// Return whether a registered channel has live subscriber or MCAP recording demand.
@@ -207,7 +187,7 @@ namespace Unity.FoxgloveSDK.Core
             _graph.Clear();
             _playback.Clear();
             _clientPublish.Clear();
-            Interlocked.Exchange(ref _lastTimeBroadcastTicks, 0);
+            _timeBroadcaster.Reset();
             lock (_subscriptionBudgetWarnedClientsLock)
                 _subscriptionBudgetWarnedClients.Clear();
         }
@@ -606,15 +586,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void BroadcastTime(float rateHz = 10f)
         {
-            var now = DateTime.UtcNow.Ticks;
-            var effectiveRate = rateHz > 0f && !float.IsNaN(rateHz) && !float.IsInfinity(rateHz)
-                ? rateHz
-                : 10f;
-            var interval = Math.Max(1L, (long)(TimeSpan.TicksPerSecond / (double)effectiveRate));
-            var last = Interlocked.Read(ref _lastTimeBroadcastTicks);
-            if (now - last < interval)
-                return;
-            if (Interlocked.CompareExchange(ref _lastTimeBroadcastTicks, now, last) != last)
+            if (!_timeBroadcaster.TryReserveBroadcast(DateTime.UtcNow.Ticks, rateHz))
                 return;
 
             var frame = BinaryEncoding.EncodeTime(_clock.NowNs);
@@ -796,47 +768,13 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         private IReadOnlyCollection<AdvertiseChannel> FilterLiveChannels(IReadOnlyCollection<AdvertiseChannel> channels)
-        {
-            if (channels == null || channels.Count == 0)
-                return channels ?? Array.Empty<AdvertiseChannel>();
-
-            var filter = Volatile.Read(ref _liveWebSocketChannelFilter);
-            if (filter == null)
-                return channels;
-
-            var filtered = new List<AdvertiseChannel>();
-            foreach (var channel in channels)
-            {
-                if (channel != null && filter.AllowChannel(CreateFilterContext(FoxgloveSinkKind.LiveWebSocket, channel)))
-                    filtered.Add(channel);
-            }
-
-            return filtered;
-        }
+            => _channelFilter.FilterLiveChannels(channels);
 
         private bool AllowLiveWebSocket(AdvertiseChannel channel)
-            => AllowChannel(FoxgloveSinkKind.LiveWebSocket, channel);
+            => _channelFilter.AllowLiveWebSocket(channel);
 
         private bool AllowMcapRecording(AdvertiseChannel channel)
-            => AllowChannel(FoxgloveSinkKind.McapRecording, channel);
-
-        private bool AllowChannel(FoxgloveSinkKind sink, AdvertiseChannel channel)
-        {
-            if (channel == null)
-                return false;
-
-            var filter = GetSinkChannelFilter(sink);
-            return filter == null || filter.AllowChannel(CreateFilterContext(sink, channel));
-        }
-
-        private static SinkChannelFilterContext CreateFilterContext(FoxgloveSinkKind sink, AdvertiseChannel channel)
-            => new SinkChannelFilterContext(
-                sink,
-                channel.Id,
-                channel.Topic,
-                channel.Encoding,
-                channel.SchemaName,
-                channel.SchemaEncoding);
+            => _channelFilter.AllowMcapRecording(channel);
 
         /// <summary>
         /// On client disconnect: clean up subscriptions, parameter subs,

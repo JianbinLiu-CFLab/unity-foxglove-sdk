@@ -456,12 +456,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMcapReplayAvoidsPendingHeadRemovalAndDeadSeekGuard()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var pendingQueue = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayPendingQueue.cs");
             var tick = ExtractMethodBody(source, "public List<McapMessage> Tick(ulong nowNs, List<McapMessage> result)");
             var popPending = ExtractMethodBody(source, "private McapMessage PopPending");
             var seek = ExtractMethodBody(source, "public void Seek");
-            Check(source.Contains("_pendingHeadIndex"),
+            Check(source.Contains("private readonly McapReplayPendingQueue _pending = new()", StringComparison.Ordinal)
+                  && pendingQueue.Contains("private int _headIndex", StringComparison.Ordinal),
                 "51C-2c: McapReplayEngine tracks a pending head index for O(1) front dequeue");
-            Check(!tick.Contains("_pending.RemoveAt(0)") && !popPending.Contains("RemoveAt(0)"),
+            Check(!tick.Contains("_pending.RemoveAt(0)")
+                  && !popPending.Contains("RemoveAt(0)")
+                  && !pendingQueue.Contains("RemoveAt(0)", StringComparison.Ordinal),
                 "51C-2d: replay pending dequeue path avoids List.RemoveAt(0)");
             Check(!seek.Contains("_currentChunkIdx < -1"),
                 "51C-2e: replay seek no longer carries an unreachable chunk-index guard");

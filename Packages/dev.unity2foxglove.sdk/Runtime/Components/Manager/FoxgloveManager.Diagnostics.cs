@@ -5,9 +5,7 @@
 // Purpose: Optional publish-cadence diagnostics for FoxgloveManager.
 
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
 using UnityEngine;
 using UnityEngine.Profiling;
 
@@ -26,28 +24,8 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("When enabled, frame-stall diagnostics include FoxgloveManager Update sub-stage timings.")]
         [SerializeField] private bool _frameStallStageTimingDiagnosticsEnabled;
 
-        private readonly PublishCadenceDiagnostics _publishCadenceDiagnostics = new();
         private const double FrameStallEditorAssetRefreshCooldownSeconds = 1.0d;
         private static double s_lastEditorAssetRefreshTime = double.NegativeInfinity;
-        private double _nextPublishCadenceDiagnosticsSummaryTime;
-        private double _lastFrameStallDiagnosticsTime;
-        private long _lastFrameStallGcBytes;
-        private long _lastFrameStallMonoUsedBytes;
-        private long _lastFrameStallTotalAllocatedBytes;
-        private long _lastFrameStallTransportDroppedDataFrames;
-        private int _lastFrameStallGcCount0;
-        private int _lastFrameStallGcCount1;
-        private int _lastFrameStallGcCount2;
-        private double _frameStallStageRuntimeTickMs;
-        private double _frameStallStageClientLifecycleDrainMs;
-        private double _frameStallStageClientMessageDrainMs;
-        private double _frameStallStagePublishCadenceDiagnosticsMs;
-        private double _frameStallStageLiveOutputModeWatchersMs;
-        private double _frameStallStageRemoteMcapRefreshMs;
-        private double _frameStallStageReplayCursorEndpointRefreshMs;
-        private double _frameStallStageManagerUpdateMs;
-        private bool _publishCadenceDiagnosticsWasEnabled;
-        private bool _frameStallDiagnosticsWasEnabled;
 
         /// <summary>Whether per-topic publish cadence diagnostics are currently enabled.</summary>
         public bool PublishCadenceDiagnosticsEnabled
@@ -60,8 +38,8 @@ namespace Unity.FoxgloveSDK.Components
 
                 _publishCadenceDiagnosticsEnabled = value;
                 if (!value)
-                    _publishCadenceDiagnostics.Clear();
-                _nextPublishCadenceDiagnosticsSummaryTime = 0d;
+                    _statisticsState.PublishCadenceDiagnostics.Clear();
+                _statisticsState.NextPublishCadenceDiagnosticsSummaryTime = 0d;
             }
         }
 
@@ -70,7 +48,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!_publishCadenceDiagnosticsEnabled)
                 return;
 
-            _publishCadenceDiagnostics.Record(
+            _statisticsState.PublishCadenceDiagnostics.Record(
                 topic,
                 encoding,
                 Time.unscaledTimeAsDouble,
@@ -81,31 +59,31 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!_publishCadenceDiagnosticsEnabled)
             {
-                if (_publishCadenceDiagnosticsWasEnabled)
+                if (_statisticsState.PublishCadenceDiagnosticsWasEnabled)
                 {
-                    _publishCadenceDiagnostics.Clear();
-                    _nextPublishCadenceDiagnosticsSummaryTime = 0d;
-                    _publishCadenceDiagnosticsWasEnabled = false;
+                    _statisticsState.PublishCadenceDiagnostics.Clear();
+                    _statisticsState.NextPublishCadenceDiagnosticsSummaryTime = 0d;
+                    _statisticsState.PublishCadenceDiagnosticsWasEnabled = false;
                 }
 
                 return;
             }
 
-            _publishCadenceDiagnosticsWasEnabled = true;
+            _statisticsState.PublishCadenceDiagnosticsWasEnabled = true;
 
             var now = Time.unscaledTimeAsDouble;
             var interval = Mathf.Max(0.5f, _publishCadenceDiagnosticsSummaryIntervalSeconds);
-            if (_nextPublishCadenceDiagnosticsSummaryTime <= 0d)
+            if (_statisticsState.NextPublishCadenceDiagnosticsSummaryTime <= 0d)
             {
-                _nextPublishCadenceDiagnosticsSummaryTime = now + interval;
+                _statisticsState.NextPublishCadenceDiagnosticsSummaryTime = now + interval;
                 return;
             }
 
-            if (now + 1e-9d < _nextPublishCadenceDiagnosticsSummaryTime)
+            if (now + 1e-9d < _statisticsState.NextPublishCadenceDiagnosticsSummaryTime)
                 return;
 
-            var summary = _publishCadenceDiagnostics.BuildAndResetSummary();
-            _nextPublishCadenceDiagnosticsSummaryTime = now + interval;
+            var summary = _statisticsState.PublishCadenceDiagnostics.BuildAndResetSummary();
+            _statisticsState.NextPublishCadenceDiagnosticsSummaryTime = now + interval;
             if (!string.IsNullOrEmpty(summary))
                 LogPublishCadenceSummary(summary);
         }
@@ -114,18 +92,10 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!_frameStallDiagnosticsEnabled)
             {
-                if (_frameStallDiagnosticsWasEnabled)
+                if (_statisticsState.FrameStallDiagnosticsWasEnabled)
                 {
-                    _lastFrameStallDiagnosticsTime = 0d;
-                    _lastFrameStallGcBytes = 0L;
-                    _lastFrameStallMonoUsedBytes = 0L;
-                    _lastFrameStallTotalAllocatedBytes = 0L;
-                    _lastFrameStallTransportDroppedDataFrames = 0L;
-                    _lastFrameStallGcCount0 = 0;
-                    _lastFrameStallGcCount1 = 0;
-                    _lastFrameStallGcCount2 = 0;
-                    ResetFrameStallStageTimingValues();
-                    _frameStallDiagnosticsWasEnabled = false;
+                    _statisticsState.ResetFrameStallDiagnostics();
+                    _statisticsState.FrameStallDiagnosticsWasEnabled = false;
                 }
 
                 return;
@@ -149,36 +119,36 @@ namespace Unity.FoxgloveSDK.Components
             var transportDroppedTotal = transportSupported ? transportStats.TotalDroppedDataFrames : 0L;
             var transportQueuedFrames = transportSupported ? transportStats.TotalQueuedFrames : 0L;
             var transportQueuedBytes = transportSupported ? transportStats.TotalQueuedBytes : 0L;
-            if (!_frameStallDiagnosticsWasEnabled || _lastFrameStallDiagnosticsTime <= 0d)
+            if (!_statisticsState.FrameStallDiagnosticsWasEnabled || _statisticsState.LastFrameStallDiagnosticsTime <= 0d)
             {
-                _lastFrameStallDiagnosticsTime = now;
-                _lastFrameStallGcBytes = gcBytes;
-                _lastFrameStallMonoUsedBytes = monoUsedBytes;
-                _lastFrameStallTotalAllocatedBytes = totalAllocatedBytes;
-                _lastFrameStallTransportDroppedDataFrames = transportDroppedTotal;
-                _lastFrameStallGcCount0 = gcCount0;
-                _lastFrameStallGcCount1 = gcCount1;
-                _lastFrameStallGcCount2 = gcCount2;
-                _frameStallDiagnosticsWasEnabled = true;
+                _statisticsState.LastFrameStallDiagnosticsTime = now;
+                _statisticsState.LastFrameStallGcBytes = gcBytes;
+                _statisticsState.LastFrameStallMonoUsedBytes = monoUsedBytes;
+                _statisticsState.LastFrameStallTotalAllocatedBytes = totalAllocatedBytes;
+                _statisticsState.LastFrameStallTransportDroppedDataFrames = transportDroppedTotal;
+                _statisticsState.LastFrameStallGcCount0 = gcCount0;
+                _statisticsState.LastFrameStallGcCount1 = gcCount1;
+                _statisticsState.LastFrameStallGcCount2 = gcCount2;
+                _statisticsState.FrameStallDiagnosticsWasEnabled = true;
                 return;
             }
 
-            var deltaMs = (now - _lastFrameStallDiagnosticsTime) * 1000d;
-            var gcBytesDelta = gcBytes - _lastFrameStallGcBytes;
-            var monoUsedBytesDelta = monoUsedBytes - _lastFrameStallMonoUsedBytes;
-            var totalAllocatedBytesDelta = totalAllocatedBytes - _lastFrameStallTotalAllocatedBytes;
-            var transportDroppedDelta = transportDroppedTotal - _lastFrameStallTransportDroppedDataFrames;
-            var gcCount0Delta = gcCount0 - _lastFrameStallGcCount0;
-            var gcCount1Delta = gcCount1 - _lastFrameStallGcCount1;
-            var gcCount2Delta = gcCount2 - _lastFrameStallGcCount2;
-            _lastFrameStallDiagnosticsTime = now;
-            _lastFrameStallGcBytes = gcBytes;
-            _lastFrameStallMonoUsedBytes = monoUsedBytes;
-            _lastFrameStallTotalAllocatedBytes = totalAllocatedBytes;
-            _lastFrameStallTransportDroppedDataFrames = transportDroppedTotal;
-            _lastFrameStallGcCount0 = gcCount0;
-            _lastFrameStallGcCount1 = gcCount1;
-            _lastFrameStallGcCount2 = gcCount2;
+            var deltaMs = (now - _statisticsState.LastFrameStallDiagnosticsTime) * 1000d;
+            var gcBytesDelta = gcBytes - _statisticsState.LastFrameStallGcBytes;
+            var monoUsedBytesDelta = monoUsedBytes - _statisticsState.LastFrameStallMonoUsedBytes;
+            var totalAllocatedBytesDelta = totalAllocatedBytes - _statisticsState.LastFrameStallTotalAllocatedBytes;
+            var transportDroppedDelta = transportDroppedTotal - _statisticsState.LastFrameStallTransportDroppedDataFrames;
+            var gcCount0Delta = gcCount0 - _statisticsState.LastFrameStallGcCount0;
+            var gcCount1Delta = gcCount1 - _statisticsState.LastFrameStallGcCount1;
+            var gcCount2Delta = gcCount2 - _statisticsState.LastFrameStallGcCount2;
+            _statisticsState.LastFrameStallDiagnosticsTime = now;
+            _statisticsState.LastFrameStallGcBytes = gcBytes;
+            _statisticsState.LastFrameStallMonoUsedBytes = monoUsedBytes;
+            _statisticsState.LastFrameStallTotalAllocatedBytes = totalAllocatedBytes;
+            _statisticsState.LastFrameStallTransportDroppedDataFrames = transportDroppedTotal;
+            _statisticsState.LastFrameStallGcCount0 = gcCount0;
+            _statisticsState.LastFrameStallGcCount1 = gcCount1;
+            _statisticsState.LastFrameStallGcCount2 = gcCount2;
 
             var thresholdMs = Mathf.Max(10f, _frameStallDiagnosticsThresholdMs);
             if (deltaMs + 1e-9d < thresholdMs)
@@ -208,14 +178,14 @@ namespace Unity.FoxgloveSDK.Components
                 transportQueuedFrames,
                 transportQueuedBytes,
                 _frameStallStageTimingDiagnosticsEnabled,
-                _frameStallStageRuntimeTickMs,
-                _frameStallStageClientLifecycleDrainMs,
-                _frameStallStageClientMessageDrainMs,
-                _frameStallStagePublishCadenceDiagnosticsMs,
-                _frameStallStageLiveOutputModeWatchersMs,
-                _frameStallStageRemoteMcapRefreshMs,
-                _frameStallStageReplayCursorEndpointRefreshMs,
-                _frameStallStageManagerUpdateMs,
+                _statisticsState.FrameStallStageRuntimeTickMs,
+                _statisticsState.FrameStallStageClientLifecycleDrainMs,
+                _statisticsState.FrameStallStageClientMessageDrainMs,
+                _statisticsState.FrameStallStagePublishCadenceDiagnosticsMs,
+                _statisticsState.FrameStallStageLiveOutputModeWatchersMs,
+                _statisticsState.FrameStallStageRemoteMcapRefreshMs,
+                _statisticsState.FrameStallStageReplayCursorEndpointRefreshMs,
+                _statisticsState.FrameStallStageManagerUpdateMs,
                 cameraSnapshot,
                 now);
         }
@@ -355,44 +325,37 @@ namespace Unity.FoxgloveSDK.Components
             var now = Time.realtimeSinceStartupAsDouble;
             var elapsedMs = (now - frameStallStageStart) * 1000d;
             frameStallStageStart = now;
-            _frameStallStageManagerUpdateMs += elapsedMs;
+            _statisticsState.FrameStallStageManagerUpdateMs += elapsedMs;
 
             switch (stage)
             {
                 case FrameStallStage.RuntimeTick:
-                    _frameStallStageRuntimeTickMs = elapsedMs;
+                    _statisticsState.FrameStallStageRuntimeTickMs = elapsedMs;
                     break;
                 case FrameStallStage.ClientLifecycleDrain:
-                    _frameStallStageClientLifecycleDrainMs = elapsedMs;
+                    _statisticsState.FrameStallStageClientLifecycleDrainMs = elapsedMs;
                     break;
                 case FrameStallStage.ClientMessageDrain:
-                    _frameStallStageClientMessageDrainMs = elapsedMs;
+                    _statisticsState.FrameStallStageClientMessageDrainMs = elapsedMs;
                     break;
                 case FrameStallStage.PublishCadenceDiagnostics:
-                    _frameStallStagePublishCadenceDiagnosticsMs = elapsedMs;
+                    _statisticsState.FrameStallStagePublishCadenceDiagnosticsMs = elapsedMs;
                     break;
                 case FrameStallStage.LiveOutputModeWatchers:
-                    _frameStallStageLiveOutputModeWatchersMs = elapsedMs;
+                    _statisticsState.FrameStallStageLiveOutputModeWatchersMs = elapsedMs;
                     break;
                 case FrameStallStage.RemoteMcapRefresh:
-                    _frameStallStageRemoteMcapRefreshMs = elapsedMs;
+                    _statisticsState.FrameStallStageRemoteMcapRefreshMs = elapsedMs;
                     break;
                 case FrameStallStage.ReplayCursorEndpointRefresh:
-                    _frameStallStageReplayCursorEndpointRefreshMs = elapsedMs;
+                    _statisticsState.FrameStallStageReplayCursorEndpointRefreshMs = elapsedMs;
                     break;
             }
         }
 
         private void ResetFrameStallStageTimingValues()
         {
-            _frameStallStageRuntimeTickMs = 0d;
-            _frameStallStageClientLifecycleDrainMs = 0d;
-            _frameStallStageClientMessageDrainMs = 0d;
-            _frameStallStagePublishCadenceDiagnosticsMs = 0d;
-            _frameStallStageLiveOutputModeWatchersMs = 0d;
-            _frameStallStageRemoteMcapRefreshMs = 0d;
-            _frameStallStageReplayCursorEndpointRefreshMs = 0d;
-            _frameStallStageManagerUpdateMs = 0d;
+            _statisticsState.ResetFrameStallStageTimingValues();
         }
 
 #if UNITY_EDITOR
@@ -439,131 +402,6 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private sealed class PublishCadenceDiagnostics
-        {
-            private readonly Dictionary<string, TopicStats> _topics = new();
-
-            public void Record(string topic, string encoding, double nowSec, int frameCount)
-            {
-                var normalizedTopic = string.IsNullOrWhiteSpace(topic) ? "(empty)" : topic.Trim();
-                var normalizedEncoding = string.IsNullOrWhiteSpace(encoding) ? "(empty)" : encoding.Trim();
-                var key = normalizedTopic + "|" + normalizedEncoding;
-                if (!_topics.TryGetValue(key, out var stats))
-                {
-                    stats = new TopicStats(normalizedTopic, normalizedEncoding);
-                    _topics.Add(key, stats);
-                }
-
-                stats.Record(nowSec, frameCount);
-            }
-
-            public void Clear()
-            {
-                _topics.Clear();
-            }
-
-            public string BuildAndResetSummary()
-            {
-                if (_topics.Count == 0)
-                    return string.Empty;
-
-                var builder = new StringBuilder();
-                builder.Append("[Foxglove] Publish cadence diagnostics:");
-                foreach (var stats in _topics.Values)
-                {
-                    builder.AppendLine();
-                    builder.Append("  ");
-                    builder.Append(stats.BuildSummary());
-                }
-
-                _topics.Clear();
-                return builder.ToString();
-            }
-
-            private sealed class TopicStats
-            {
-                private readonly string _topic;
-                private readonly string _encoding;
-                private long _messageCount;
-                private long _intervalCount;
-                private double _lastPublishSec = double.NaN;
-                private double _minIntervalSec = double.PositiveInfinity;
-                private double _maxIntervalSec;
-                private double _sumIntervalSec;
-                private double _sumSquaredIntervalSec;
-                private int _lastFrame = int.MinValue;
-                private int _currentFrameCount;
-                private int _maxPerFrame;
-                private long _burstFrames;
-
-                public TopicStats(string topic, string encoding)
-                {
-                    _topic = topic;
-                    _encoding = encoding;
-                }
-
-                public void Record(double nowSec, int frame)
-                {
-                    _messageCount++;
-
-                    if (!double.IsNaN(_lastPublishSec))
-                    {
-                        var interval = Math.Max(0d, nowSec - _lastPublishSec);
-                        _intervalCount++;
-                        _minIntervalSec = Math.Min(_minIntervalSec, interval);
-                        _maxIntervalSec = Math.Max(_maxIntervalSec, interval);
-                        _sumIntervalSec += interval;
-                        _sumSquaredIntervalSec += interval * interval;
-                    }
-
-                    _lastPublishSec = nowSec;
-
-                    if (frame == _lastFrame)
-                    {
-                        _currentFrameCount++;
-                    }
-                    else
-                    {
-                        if (_currentFrameCount > 1)
-                            _burstFrames++;
-                        _lastFrame = frame;
-                        _currentFrameCount = 1;
-                    }
-
-                    _maxPerFrame = Math.Max(_maxPerFrame, _currentFrameCount);
-                }
-
-                public string BuildSummary()
-                {
-                    if (_currentFrameCount > 1)
-                        _burstFrames++;
-
-                    var minMs = _intervalCount > 0 ? _minIntervalSec * 1000d : 0d;
-                    var maxMs = _intervalCount > 0 ? _maxIntervalSec * 1000d : 0d;
-                    var meanMs = _intervalCount > 0 ? (_sumIntervalSec / _intervalCount) * 1000d : 0d;
-                    var variance = 0d;
-                    if (_intervalCount > 0)
-                    {
-                        var mean = _sumIntervalSec / _intervalCount;
-                        variance = Math.Max(0d, (_sumSquaredIntervalSec / _intervalCount) - mean * mean);
-                    }
-
-                    var stdMs = Math.Sqrt(variance) * 1000d;
-                    return string.Format(
-                        CultureInfo.InvariantCulture,
-                        "topic={0} encoding={1} messages={2} intervalMs[min={3:F2}, mean={4:F2}, max={5:F2}, std={6:F2}] maxPerFrame={7} burstFrames={8}",
-                        _topic,
-                        _encoding,
-                        _messageCount,
-                        minMs,
-                        meanMs,
-                        maxMs,
-                        stdMs,
-                        _maxPerFrame,
-                        _burstFrames);
-                }
-            }
-        }
     }
 
 #if UNITY_EDITOR

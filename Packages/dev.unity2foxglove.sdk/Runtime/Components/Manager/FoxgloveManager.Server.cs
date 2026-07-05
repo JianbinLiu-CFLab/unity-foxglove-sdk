@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.OnReplayMessage += _replayForwarder;
             _runtime.OnReplayMessageContext += _replayContextForwarder;
             _runtime.OnReplayBatchCompleted += _replayBatchForwarder;
-            _warnedNotRunning = false;
+            _warningDebounceState.ResetNotRunning();
             AdvanceChannelSessionGeneration();
 
             var transport = _runtime.Session?.Transport;
@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Components
                 _runtime.Session.OnClientMessage += _clientMessageForwarder;
             }
 
-            Debug.Log($"[Foxglove] Server started on {BuildConnectionUrl(redactToken: true)}");
+            Debug.Log(StatusTextBuilder.CreateServerStartedMessage(BuildConnectionUrl(redactToken: true)));
         }
 
         private void CleanupStartupAfterFailure()
@@ -174,13 +174,13 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
-            if (!IsValidTcpPort(_port))
+            if (!ManagerConfigValidator.IsValidTcpPort(_port))
             {
                 Debug.LogError($"[Foxglove] Server port must be between 1 and 65535. Current value: {_port}");
                 return false;
             }
 
-            if (_rootCaDistributorEnabled && !IsValidTcpPort(_rootCaDistributorPort))
+            if (_rootCaDistributorEnabled && !ManagerConfigValidator.IsValidTcpPort(_rootCaDistributorPort))
             {
                 Debug.LogError($"[Foxglove] Root CA distributor port must be between 1 and 65535. Current value: {_rootCaDistributorPort}");
                 return false;
@@ -204,9 +204,6 @@ namespace Unity.FoxgloveSDK.Components
 
             return true;
         }
-
-        private static bool IsValidTcpPort(int port)
-            => port >= 1 && port <= 65535;
 
         /// <summary>
         /// Builds the browser connection URL for the current manager settings.
@@ -284,7 +281,7 @@ namespace Unity.FoxgloveSDK.Components
             StopCertificateDistributor();
             _channelCache.Clear();
             ClearClientEvents();
-            _nextChannelId = FirstAutoChannelId;
+            _connectionState.ResetChannelIds(FirstAutoChannelId);
             if (restoreLivePublishers)
             {
                 RestoreLivePublishers();
@@ -356,15 +353,15 @@ namespace Unity.FoxgloveSDK.Components
 
         private string ResolveReplayFilePathCached()
         {
-            if (string.Equals(_cachedReplayFilePathInput, _replayFilePath, System.StringComparison.Ordinal)
-                && _cachedResolvedReplayFilePath != null)
+            if (string.Equals(_replayState.CachedReplayFilePathInput, _replayFilePath, System.StringComparison.Ordinal)
+                && _replayState.CachedResolvedReplayFilePath != null)
             {
-                return _cachedResolvedReplayFilePath;
+                return _replayState.CachedResolvedReplayFilePath;
             }
 
-            _cachedReplayFilePathInput = _replayFilePath;
-            _cachedResolvedReplayFilePath = ResolveProjectPath(_replayFilePath);
-            return _cachedResolvedReplayFilePath;
+            _replayState.CachedReplayFilePathInput = _replayFilePath;
+            _replayState.CachedResolvedReplayFilePath = ResolveProjectPath(_replayFilePath);
+            return _replayState.CachedResolvedReplayFilePath;
         }
 
         private RemoteMcapHttpOptions BuildRemoteMcapFileServerOptions(string resolvedPath)
