@@ -84,10 +84,11 @@ namespace Unity.FoxgloveSDK.Tests
             var diagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Diagnostics.cs");
             var method = SourceMethod(diagnostics, "private void RecordFrameStallDiagnosticsIfNeeded()");
 
-            Check(method.Contains("if (_frameStallDiagnosticsWasEnabled)", StringComparison.Ordinal)
-                  && method.Contains("_lastFrameStallDiagnosticsTime = 0d;", StringComparison.Ordinal)
-                  && method.IndexOf("if (_frameStallDiagnosticsWasEnabled)", StringComparison.Ordinal)
-                     < method.IndexOf("_lastFrameStallDiagnosticsTime = 0d;", StringComparison.Ordinal),
+            Check(method.Contains("if (_statisticsState.FrameStallDiagnosticsWasEnabled)", StringComparison.Ordinal)
+                  && method.Contains("_statisticsState.ResetFrameStallDiagnostics();", StringComparison.Ordinal)
+                  && method.Contains("_statisticsState.FrameStallDiagnosticsWasEnabled = false;", StringComparison.Ordinal)
+                  && method.IndexOf("if (_statisticsState.FrameStallDiagnosticsWasEnabled)", StringComparison.Ordinal)
+                     < method.IndexOf("_statisticsState.ResetFrameStallDiagnostics();", StringComparison.Ordinal),
                 "164-2C: disabled frame-stall diagnostics reset state once on transition");
         }
 

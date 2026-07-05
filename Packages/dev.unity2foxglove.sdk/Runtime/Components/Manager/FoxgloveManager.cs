@@ -170,6 +170,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
         private readonly RecordingRuntimeState _recordingState = new RecordingRuntimeState();
         private readonly ReplayRuntimeState _replayState = new ReplayRuntimeState();
+        private readonly StatisticsRuntimeState _statisticsState = new StatisticsRuntimeState();
         private readonly WarningDebounceState _warningDebounceState = new WarningDebounceState();
         private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 

@@ -173,5 +173,92 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Null(state.CachedResolvedReplayFilePath);
             Assert.True(state.LivePublishersDisabled);
         }
+
+        [Fact]
+        public void StatisticsRuntimeStateOwnsDiagnosticsStateWithoutMovingSerializedFields()
+        {
+            var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var diagnostics = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Diagnostics.cs");
+            var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/StatisticsRuntimeState.cs");
+            var stateMeta = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/StatisticsRuntimeState.cs.meta");
+
+            Assert.Contains("[SerializeField] private bool _publishCadenceDiagnosticsEnabled;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField, Min(0.5f)] private float _publishCadenceDiagnosticsSummaryIntervalSeconds", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField] private bool _frameStallDiagnosticsEnabled;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField, Min(10f)] private float _frameStallDiagnosticsThresholdMs", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField] private bool _frameStallStageTimingDiagnosticsEnabled;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("private readonly StatisticsRuntimeState _statisticsState = new StatisticsRuntimeState();", manager, StringComparison.Ordinal);
+
+            Assert.DoesNotContain("private readonly PublishCadenceDiagnostics _publishCadenceDiagnostics = new();", diagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("private double _nextPublishCadenceDiagnosticsSummaryTime", diagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("private double _lastFrameStallDiagnosticsTime", diagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("private double _frameStallStageRuntimeTickMs", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_statisticsState.PublishCadenceDiagnostics", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_statisticsState.NextPublishCadenceDiagnosticsSummaryTime", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_statisticsState.LastFrameStallDiagnosticsTime", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_statisticsState.FrameStallStageRuntimeTickMs", diagnostics, StringComparison.Ordinal);
+
+            Assert.Contains("internal sealed class StatisticsRuntimeState", state, StringComparison.Ordinal);
+            Assert.Contains("internal readonly PublishCadenceDiagnostics PublishCadenceDiagnostics = new();", state, StringComparison.Ordinal);
+            Assert.Contains("internal sealed class PublishCadenceDiagnostics", state, StringComparison.Ordinal);
+            Assert.Contains("internal double NextPublishCadenceDiagnosticsSummaryTime;", state, StringComparison.Ordinal);
+            Assert.Contains("internal double LastFrameStallDiagnosticsTime;", state, StringComparison.Ordinal);
+            Assert.Contains("internal bool PublishCadenceDiagnosticsWasEnabled;", state, StringComparison.Ordinal);
+            Assert.Contains("internal bool FrameStallDiagnosticsWasEnabled;", state, StringComparison.Ordinal);
+            Assert.Contains("internal void ResetFrameStallDiagnostics()", state, StringComparison.Ordinal);
+            Assert.Contains("internal void ResetFrameStallStageTimingValues()", state, StringComparison.Ordinal);
+            Assert.DoesNotContain("[SerializeField]", state, StringComparison.Ordinal);
+            Assert.Contains("MonoImporter:", stateMeta, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void StatisticsRuntimeStateCanResetFrameStallDiagnostics()
+        {
+            var state = new StatisticsRuntimeState
+            {
+                NextPublishCadenceDiagnosticsSummaryTime = 1d,
+                LastFrameStallDiagnosticsTime = 2d,
+                LastFrameStallGcBytes = 3,
+                LastFrameStallMonoUsedBytes = 4,
+                LastFrameStallTotalAllocatedBytes = 5,
+                LastFrameStallTransportDroppedDataFrames = 6,
+                LastFrameStallGcCount0 = 7,
+                LastFrameStallGcCount1 = 8,
+                LastFrameStallGcCount2 = 9,
+                FrameStallStageRuntimeTickMs = 10d,
+                FrameStallStageClientLifecycleDrainMs = 11d,
+                FrameStallStageClientMessageDrainMs = 12d,
+                FrameStallStagePublishCadenceDiagnosticsMs = 13d,
+                FrameStallStageLiveOutputModeWatchersMs = 14d,
+                FrameStallStageRemoteMcapRefreshMs = 15d,
+                FrameStallStageReplayCursorEndpointRefreshMs = 16d,
+                FrameStallStageManagerUpdateMs = 17d,
+                PublishCadenceDiagnosticsWasEnabled = true,
+                FrameStallDiagnosticsWasEnabled = true
+            };
+
+            state.ResetFrameStallDiagnostics();
+
+            Assert.Equal(1d, state.NextPublishCadenceDiagnosticsSummaryTime);
+            Assert.Equal(0d, state.LastFrameStallDiagnosticsTime);
+            Assert.Equal(0, state.LastFrameStallGcBytes);
+            Assert.Equal(0, state.LastFrameStallMonoUsedBytes);
+            Assert.Equal(0, state.LastFrameStallTotalAllocatedBytes);
+            Assert.Equal(0, state.LastFrameStallTransportDroppedDataFrames);
+            Assert.Equal(0, state.LastFrameStallGcCount0);
+            Assert.Equal(0, state.LastFrameStallGcCount1);
+            Assert.Equal(0, state.LastFrameStallGcCount2);
+            Assert.Equal(0d, state.FrameStallStageRuntimeTickMs);
+            Assert.Equal(0d, state.FrameStallStageClientLifecycleDrainMs);
+            Assert.Equal(0d, state.FrameStallStageClientMessageDrainMs);
+            Assert.Equal(0d, state.FrameStallStagePublishCadenceDiagnosticsMs);
+            Assert.Equal(0d, state.FrameStallStageLiveOutputModeWatchersMs);
+            Assert.Equal(0d, state.FrameStallStageRemoteMcapRefreshMs);
+            Assert.Equal(0d, state.FrameStallStageReplayCursorEndpointRefreshMs);
+            Assert.Equal(0d, state.FrameStallStageManagerUpdateMs);
+            Assert.True(state.PublishCadenceDiagnosticsWasEnabled);
+            Assert.True(state.FrameStallDiagnosticsWasEnabled);
+            Assert.NotNull(state.PublishCadenceDiagnostics);
+        }
     }
 }
