@@ -8,7 +8,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Runtime.ExceptionServices;
 using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Core;
@@ -96,8 +95,6 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Disabled trace hook used only for manual before/after replay pose investigations.</summary>
         private const bool ReplayPoseTraceEnabled = false;
         private const int MaxReplayJsonPayloadBytes = 4 * 1024 * 1024;
-        private static readonly object ReflectionCacheGate = new();
-        private static readonly Dictionary<string, ProtobufParserBinding> ProtobufParserCache = new();
 
         /// <summary>
         /// Resolves the FoxgloveManager and loads manual FrameMapping and
@@ -360,49 +357,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private static object ParseProtobuf(string typeName, byte[] payload)
-        {
-            var binding = ResolveProtobufParser(typeName);
-
-            try
-            {
-                return binding.ParseFrom.Invoke(binding.Parser, new object[] { payload });
-            }
-            catch (TargetInvocationException ex) when (ex.InnerException != null)
-            {
-                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-                throw;
-            }
-        }
-
-        private static ProtobufParserBinding ResolveProtobufParser(string typeName)
-        {
-            lock (ReflectionCacheGate)
-            {
-                if (ProtobufParserCache.TryGetValue(typeName, out var binding))
-                    return binding;
-
-                var type = Type.GetType(typeName + ", Unity.FoxgloveSDK.Proto");
-                if (type == null)
-                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' is not available.");
-
-                var parser = ReplayPropertyCache.Resolve(type, "Parser", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-                if (parser == null)
-                    throw new InvalidOperationException($"Optional protobuf type '{typeName}' does not expose a Parser.");
-
-                var parseFrom = parser.GetType().GetMethod(
-                    "ParseFrom",
-                    BindingFlags.Public | BindingFlags.Instance,
-                    null,
-                    new[] { typeof(byte[]) },
-                    null);
-                if (parseFrom == null)
-                    throw new InvalidOperationException($"Optional protobuf parser for '{typeName}' does not support ParseFrom(byte[]).");
-
-                binding = new ProtobufParserBinding(parser, parseFrom);
-                ProtobufParserCache[typeName] = binding;
-                return binding;
-            }
-        }
+            => ReplayProtobufParser.Parse(typeName, payload);
 
         // ── Frame transforms ──
 
@@ -888,18 +843,6 @@ namespace Unity.FoxgloveSDK.Components
 
         private static string FormatReplayException(Exception ex)
             => ex.ToString();
-
-        private sealed class ProtobufParserBinding
-        {
-            public ProtobufParserBinding(object parser, MethodInfo parseFrom)
-            {
-                Parser = parser;
-                ParseFrom = parseFrom;
-            }
-
-            public object Parser { get; }
-            public MethodInfo ParseFrom { get; }
-        }
 
     }
 }
