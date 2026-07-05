@@ -160,14 +160,9 @@ namespace Unity.FoxgloveSDK.Components
         private UnityReplayCursorEndpoint _replayCursorEndpoint;
         private bool _replayCursorEndpointLoggedFirstCursor;
         private bool _replayCursorEndpointLoggedUnavailable;
-        private string _ros2BridgeSetupError = "";
-        private ulong _ros2BridgeSequence;
-        private bool _lastFoxgloveOutputEnabled;
-        private bool _lastRos2BridgeEnabled;
-        private bool _outputModeWatchInitialized;
         private FoxgloveCertificateDistributor _certificateDistributor;
-        private int _nextChannelId = FirstAutoChannelId;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
+        private readonly ConnectionRuntimeState _connectionState = new ConnectionRuntimeState(FirstAutoChannelId);
         private readonly RecordingRuntimeState _recordingState = new RecordingRuntimeState();
         private readonly ReplayRuntimeState _replayState = new ReplayRuntimeState();
         private readonly StatisticsRuntimeState _statisticsState = new StatisticsRuntimeState();
@@ -494,7 +489,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _ros2BridgeRuntime?.Stop();
             StopServer(restoreLivePublishers: true);
-            _outputModeWatchInitialized = false;
+            _connectionState.OutputModeWatchInitialized = false;
             FoxgloveProfiler.ResetGlobal(this);
         }
 
@@ -551,12 +546,12 @@ namespace Unity.FoxgloveSDK.Components
                     Mathf.Max(1, _ros2BridgeQueueCapacity),
                     Mathf.Max(1, _ros2BridgeReconnectIntervalMs),
                     Mathf.Max(1, _ros2BridgeSendTimeoutMs));
-                _ros2BridgeSetupError = "";
+                _connectionState.Ros2BridgeSetupError = string.Empty;
             }
             catch (System.Exception ex)
             {
                 _ros2BridgeRuntime = null;
-                _ros2BridgeSetupError = ex.Message;
+                _connectionState.Ros2BridgeSetupError = ex.Message;
                 Debug.LogWarning("[Foxglove] ROS2 Bridge disabled: " + ex.Message);
             }
         }
@@ -577,9 +572,9 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void InitializeOutputModeWatchers()
         {
-            _lastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
-            _lastRos2BridgeEnabled = _ros2BridgeEnabled;
-            _outputModeWatchInitialized = true;
+            _connectionState.LastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
+            _connectionState.LastRos2BridgeEnabled = _ros2BridgeEnabled;
+            _connectionState.OutputModeWatchInitialized = true;
             InvalidateRos2BridgeNamespaceCache();
         }
 
@@ -588,13 +583,13 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void ApplyLiveOutputModeWatchers()
         {
-            if (!_outputModeWatchInitialized)
+            if (!_connectionState.OutputModeWatchInitialized)
             {
                 InitializeOutputModeWatchers();
                 return;
             }
 
-            if (_lastFoxgloveOutputEnabled != _foxgloveOutputEnabled)
+            if (_connectionState.LastFoxgloveOutputEnabled != _foxgloveOutputEnabled)
             {
                 if (_foxgloveOutputEnabled)
                 {
@@ -606,7 +601,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
-            if (_lastRos2BridgeEnabled != _ros2BridgeEnabled)
+            if (_connectionState.LastRos2BridgeEnabled != _ros2BridgeEnabled)
             {
                 if (_ros2BridgeEnabled)
                 {
@@ -618,8 +613,8 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
-            _lastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
-            _lastRos2BridgeEnabled = _ros2BridgeEnabled;
+            _connectionState.LastFoxgloveOutputEnabled = _foxgloveOutputEnabled;
+            _connectionState.LastRos2BridgeEnabled = _ros2BridgeEnabled;
         }
 
     }

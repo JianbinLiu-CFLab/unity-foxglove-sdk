@@ -260,5 +260,72 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(state.FrameStallDiagnosticsWasEnabled);
             Assert.NotNull(state.PublishCadenceDiagnostics);
         }
+
+        [Fact]
+        public void ConnectionRuntimeStateOwnsConnectionCountersWithoutMovingSerializedFields()
+        {
+            var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var channels = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
+            var publishing = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ConnectionRuntimeState.cs");
+            var stateMeta = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ConnectionRuntimeState.cs.meta");
+
+            Assert.Contains("[SerializeField] private FoxgloveTransportMode _transportMode", manager, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField] private bool _foxgloveOutputEnabled", manager, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField] private bool _ros2BridgeEnabled", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private string _ros2BridgeSetupError", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private ulong _ros2BridgeSequence", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private bool _lastFoxgloveOutputEnabled", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private bool _lastRos2BridgeEnabled", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private bool _outputModeWatchInitialized", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private int _nextChannelId", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private ulong _channelSessionGeneration", channels, StringComparison.Ordinal);
+            Assert.Contains("private readonly ConnectionRuntimeState _connectionState = new ConnectionRuntimeState(FirstAutoChannelId);", manager, StringComparison.Ordinal);
+
+            Assert.Contains("_connectionState.ChannelSessionGeneration", channels, StringComparison.Ordinal);
+            Assert.Contains("_connectionState.AdvanceChannelSessionGeneration();", channels, StringComparison.Ordinal);
+            Assert.Contains("_connectionState.NextChannelId", publishing, StringComparison.Ordinal);
+            Assert.Contains("_connectionState.NextRos2BridgeSequence()", publishing, StringComparison.Ordinal);
+            Assert.Contains("_connectionState.ResetChannelIds(FirstAutoChannelId);", server, StringComparison.Ordinal);
+            Assert.Contains("_connectionState.OutputModeWatchInitialized", manager, StringComparison.Ordinal);
+
+            Assert.Contains("internal sealed class ConnectionRuntimeState", state, StringComparison.Ordinal);
+            Assert.Contains("internal ConnectionRuntimeState(int firstAutoChannelId)", state, StringComparison.Ordinal);
+            Assert.Contains("internal string Ros2BridgeSetupError = string.Empty;", state, StringComparison.Ordinal);
+            Assert.Contains("internal ulong Ros2BridgeSequence;", state, StringComparison.Ordinal);
+            Assert.Contains("internal int NextChannelId;", state, StringComparison.Ordinal);
+            Assert.Contains("internal ulong ChannelSessionGeneration;", state, StringComparison.Ordinal);
+            Assert.Contains("internal void ResetChannelIds(int firstAutoChannelId)", state, StringComparison.Ordinal);
+            Assert.Contains("internal ulong NextRos2BridgeSequence()", state, StringComparison.Ordinal);
+            Assert.DoesNotContain("[SerializeField]", state, StringComparison.Ordinal);
+            Assert.Contains("MonoImporter:", stateMeta, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ConnectionRuntimeStateCanAdvanceAndResetChannelIds()
+        {
+            var state = new ConnectionRuntimeState(7);
+
+            Assert.Equal(7, state.NextChannelId);
+            Assert.Equal(0UL, state.ChannelSessionGeneration);
+
+            state.NextChannelId = 12;
+            state.ChannelSessionGeneration = ulong.MaxValue;
+            state.AdvanceChannelSessionGeneration();
+
+            Assert.Equal(1UL, state.ChannelSessionGeneration);
+
+            state.Ros2BridgeSetupError = "bridge failed";
+            Assert.Equal(1UL, state.NextRos2BridgeSequence());
+            Assert.Equal(2UL, state.NextRos2BridgeSequence());
+
+            state.ResetChannelIds(7);
+
+            Assert.Equal(7, state.NextChannelId);
+            Assert.Equal(1UL, state.ChannelSessionGeneration);
+            Assert.Equal("bridge failed", state.Ros2BridgeSetupError);
+            Assert.Equal(2UL, state.Ros2BridgeSequence);
+        }
     }
 }

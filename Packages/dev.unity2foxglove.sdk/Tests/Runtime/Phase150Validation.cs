@@ -63,21 +63,25 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var state = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ConnectionRuntimeState.cs");
 
             Check(manager.Contains("public FoxgloveJsonChannel CreateJsonChannel", StringComparison.Ordinal)
                   && manager.Contains("public FoxgloveRawChannel CreateRawChannel", StringComparison.Ordinal),
                 "150-4: manager exposes JSON and raw channel factories without depending on the proto assembly");
 
-            Check(manager.Contains("_channelSessionGeneration", StringComparison.Ordinal)
+            Check(state.Contains("internal ulong ChannelSessionGeneration;", StringComparison.Ordinal)
+                  && manager.Contains("_connectionState.ChannelSessionGeneration", StringComparison.Ordinal)
                   && manager.Contains("CurrentChannelSessionGeneration", StringComparison.Ordinal)
                   && manager.Contains("ValidateChannelSessionGeneration", StringComparison.Ordinal)
+                  && manager.Contains("_connectionState.AdvanceChannelSessionGeneration();", StringComparison.Ordinal)
                   && manager.Contains("ulong generation, uint channelId", StringComparison.Ordinal)
                   && manager.Contains("InvalidOperationException", StringComparison.Ordinal),
                 "150-5: manager publish helpers validate captured channel session generation");
 
             Check(server.Contains("AdvanceChannelSessionGeneration", StringComparison.Ordinal)
                   && server.Contains("_channelCache.Clear()", StringComparison.Ordinal)
-                  && server.Contains("_nextChannelId = FirstAutoChannelId", StringComparison.Ordinal),
+                  && state.Contains("internal void ResetChannelIds(int firstAutoChannelId)", StringComparison.Ordinal)
+                  && server.Contains("_connectionState.ResetChannelIds(FirstAutoChannelId)", StringComparison.Ordinal),
                 "150-6: StopServer invalidates channel generation before channel ids are recycled");
         }
 

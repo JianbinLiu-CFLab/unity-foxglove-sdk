@@ -284,7 +284,7 @@ namespace Unity.FoxgloveSDK.Components
             StopCertificateDistributor();
             _channelCache.Clear();
             ClearClientEvents();
-            _nextChannelId = FirstAutoChannelId;
+            _connectionState.ResetChannelIds(FirstAutoChannelId);
             if (restoreLivePublishers)
             {
                 RestoreLivePublishers();

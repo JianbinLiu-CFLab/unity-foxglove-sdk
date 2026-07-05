@@ -75,9 +75,9 @@ namespace Unity.FoxgloveSDK.Components
                 return id;
             }
 
-            id = (uint)_nextChannelId;
+            id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterSchemaChannel(id, topic, schemaName, encoding);
-            _nextChannelId++;
+            _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
         }
@@ -105,9 +105,9 @@ namespace Unity.FoxgloveSDK.Components
             if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
                 throw new System.InvalidOperationException($"Unknown ROS2 schema '{schemaName}'.");
 
-            id = (uint)_nextChannelId;
+            id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterRos2MsgSchemaChannel(id, topic, schemaName);
-            _nextChannelId++;
+            _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
         }
@@ -210,7 +210,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_ros2BridgeRuntime != null)
                 return _ros2BridgeRuntime.GetStatsSnapshot();
 
-            if (!string.IsNullOrEmpty(_ros2BridgeSetupError))
+            if (!string.IsNullOrEmpty(_connectionState.Ros2BridgeSetupError))
             {
                 return new Ros2BridgeStatsSnapshot(
                     enabled: false,
@@ -220,7 +220,7 @@ namespace Unity.FoxgloveSDK.Components
                     sentFrames: 0,
                     droppedFrames: 0,
                     failedFrames: 0,
-                    lastError: _ros2BridgeSetupError,
+                    lastError: _connectionState.Ros2BridgeSetupError,
                     lastConnectedUnixMs: 0,
                     lastDisconnectedUnixMs: 0);
             }
@@ -277,9 +277,9 @@ namespace Unity.FoxgloveSDK.Components
 
             if (_ros2BridgeRuntime == null)
             {
-                reason = string.IsNullOrEmpty(_ros2BridgeSetupError)
+                reason = string.IsNullOrEmpty(_connectionState.Ros2BridgeSetupError)
                     ? "ROS2 Bridge runtime is unavailable."
-                    : _ros2BridgeSetupError;
+                    : _connectionState.Ros2BridgeSetupError;
                 return false;
             }
 
@@ -637,7 +637,7 @@ namespace Unity.FoxgloveSDK.Components
                 schemaName,
                 CdrEncoding,
                 logTimeNs,
-                ++_ros2BridgeSequence,
+                _connectionState.NextRos2BridgeSequence(),
                 payload,
                 qos);
 
@@ -681,7 +681,7 @@ namespace Unity.FoxgloveSDK.Components
                 return id;
             }
 
-            id = (uint)_nextChannelId;
+            id = (uint)_connectionState.NextChannelId;
             _runtime.RegisterChannel(new Protocol.AdvertiseChannel
             {
                 Id = id,
@@ -690,7 +690,7 @@ namespace Unity.FoxgloveSDK.Components
                 SchemaName = EmptySchemaName,
                 Schema = EmptySchemaPayload
             });
-            _nextChannelId++;
+            _connectionState.NextChannelId++;
             _channelCache[key] = id;
             return id;
         }
