@@ -64,10 +64,11 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
+            var summaryBuilder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapSummaryBuilder.cs");
             Check(reader.Contains("DefaultRecordSizeLimit", StringComparison.Ordinal)
                   && reader.Contains("MCAP opcode 0x00 is invalid", StringComparison.Ordinal),
                 "117-A2: public MCAP reader enforces record-size and invalid-opcode guards");
-            Check(reader.Contains("break; // unknown, skip", StringComparison.Ordinal)
+            Check(summaryBuilder.Contains("break; // unknown, skip", StringComparison.Ordinal)
                   && writer.Contains("WriteRecord", StringComparison.Ordinal),
                 "117-A3: public MCAP implementation can skip unknown records and construct coverage fixtures");
         }

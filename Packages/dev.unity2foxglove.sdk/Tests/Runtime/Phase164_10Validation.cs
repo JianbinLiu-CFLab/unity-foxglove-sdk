@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySummaryReaderUsesSingleSummaryBuffer()
         {
             var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
+            var summaryBuilder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapSummaryBuilder.cs");
             var readSummary = SourceMethod(reader, "public McapFileSummary ReadSummary");
 
             Check(readSummary.Contains("var magic = _buf", StringComparison.Ordinal)
@@ -33,12 +34,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-10A-1: McapReader reuses the instance 8-byte buffer for magic probes");
             Check(readSummary.Contains("var summaryBytes = new byte[(int)summaryLen]", StringComparison.Ordinal)
                   && readSummary.Contains("ReadExact(summaryBytes, 0, summaryBytes.Length)", StringComparison.Ordinal)
-                  && readSummary.Contains("var summaryOffset = 0", StringComparison.Ordinal)
-                  && readSummary.Contains("McapBinaryReader.ReadU64LE(summaryBytes, ref summaryOffset)", StringComparison.Ordinal)
+                  && readSummary.Contains("McapSummaryBuilder.FromSummarySection", StringComparison.Ordinal)
+                  && summaryBuilder.Contains("var summaryOffset = 0", StringComparison.Ordinal)
+                  && summaryBuilder.Contains("McapBinaryReader.ReadU64LE(summaryBytes, ref summaryOffset)", StringComparison.Ordinal)
                   && !readSummary.Contains("while ((ulong)_stream.Position < summaryEnd)", StringComparison.Ordinal)
                   && !readSummary.Contains("ReadOneRecord(recordSizeLimit)", StringComparison.Ordinal),
                 "164-10A-2: ReadSummary reads the summary section once and parses it from memory");
-            Check(readSummary.Contains("crc = Crc32Helper.Update(crc, summaryBytes)", StringComparison.Ordinal)
+            Check(summaryBuilder.Contains("crc = Crc32Helper.Update(crc, summaryBytes)", StringComparison.Ordinal)
                   && CountOccurrences(readSummary, "new byte[(int)summaryLen]") == 1,
                 "164-10A-3: summary CRC reuses the parsed summary buffer instead of reading it again");
         }

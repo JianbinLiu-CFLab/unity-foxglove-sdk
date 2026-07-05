@@ -101,14 +101,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
             var recorder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
-            var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
+            var chunkReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapChunkReader.cs");
             Check(writer.Contains("private bool _disposed") && writer.Contains("if (_disposed)"),
                 "86D-1: McapWriter Dispose is idempotent");
             Check(recorder.Contains("private bool _closed, _recordingFailed, _disposed")
                   && recorder.Contains("if (_disposed) return;"),
                 "86D-2: McapRecorder Dispose is idempotent");
-            Check(reader.Contains("len > int.MaxValue") && reader.Contains("recordLength"),
-                "86D-3: McapReader guards oversized chunk record lengths before int casts");
+            Check(chunkReader.Contains("len > int.MaxValue") && chunkReader.Contains("recordLength"),
+                "86D-3: Mcap chunk reader guards oversized chunk record lengths before int casts");
             Check(recorder.Contains("FlushChunkBeforeLargeWriteIfNeeded")
                   && Ordered(recorder, "FlushChunkBeforeLargeWriteIfNeeded(recordLength)", "var off = (ulong)_chunkBuf.Position"),
                 "86D-4: McapRecorder preflushes current chunk before large next message");
