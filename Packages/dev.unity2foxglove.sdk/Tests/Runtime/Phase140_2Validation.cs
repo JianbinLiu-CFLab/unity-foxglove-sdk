@@ -62,13 +62,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyBroadcastTimeUsesInterlockedThrottle()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
-            var method = ExtractMethodBody(source, "public void BroadcastTime(float rateHz = 10f)");
+            var session = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionTimeBroadcaster.cs");
+            var method = ExtractMethodBody(source, "internal bool TryReserveBroadcast(long nowTicks, float rateHz)");
 
-            Check(method.Contains("Interlocked.Read(ref _lastTimeBroadcastTicks)", StringComparison.Ordinal)
-                  && method.Contains("Interlocked.CompareExchange(ref _lastTimeBroadcastTicks", StringComparison.Ordinal),
+            Check(session.Contains("_timeBroadcaster.TryReserveBroadcast(DateTime.UtcNow.Ticks, rateHz)", StringComparison.Ordinal)
+                  && method.Contains("Interlocked.Read(ref _lastBroadcastTicks)", StringComparison.Ordinal)
+                  && method.Contains("Interlocked.CompareExchange(ref _lastBroadcastTicks", StringComparison.Ordinal),
                 "140-2B-1: BroadcastTime protects its throttle timestamp with interlocked operations");
-            Check(!method.Contains("_lastTimeBroadcastTicks = now;", StringComparison.Ordinal),
+            Check(!method.Contains("_lastBroadcastTicks = nowTicks;", StringComparison.Ordinal),
                 "140-2B-2: BroadcastTime no longer writes the throttle timestamp as a plain long field");
         }
 

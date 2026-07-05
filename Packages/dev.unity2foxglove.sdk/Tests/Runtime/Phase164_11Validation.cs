@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyReplayEngineHotPathCaches()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
+            var pendingQueue = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayPendingQueue.cs");
             var tick = PhaseValidationSourceHelpers.SourceMethod(source, "public List<McapMessage> Tick(ulong nowNs)");
             var sortPending = PhaseValidationSourceHelpers.SourceMethod(source, "private void SortPending");
             var addPending = PhaseValidationSourceHelpers.SourceMethod(source, "private void AddPending");
@@ -32,13 +33,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && tick.Contains("return Tick(nowNs, _defaultTickBuffer)", StringComparison.Ordinal)
                   && !tick.Contains("new List<McapMessage>()", StringComparison.Ordinal),
                 "164-11A-1: public replay Tick overload reuses an engine-owned result buffer");
-            Check(source.Contains("private bool _pendingIsSorted = true", StringComparison.Ordinal)
-                  && addPending.Contains("_pendingIsSorted = false", StringComparison.Ordinal)
-                  && sortPending.Contains("if (!_pendingIsSorted && _pending.Count > 1)", StringComparison.Ordinal)
-                  && sortPending.Contains("_pendingIsSorted = true", StringComparison.Ordinal),
+            Check(source.Contains("private readonly McapReplayPendingQueue _pending = new()", StringComparison.Ordinal)
+                  && addPending.Contains("=> _pending.Add(message)", StringComparison.Ordinal)
+                  && sortPending.Contains("=> _pending.Sort(CompareMessages)", StringComparison.Ordinal)
+                  && pendingQueue.Contains("private bool _isSorted = true", StringComparison.Ordinal)
+                  && pendingQueue.Contains("_isSorted = false", StringComparison.Ordinal)
+                  && pendingQueue.Contains("if (!_isSorted && _messages.Count > 1)", StringComparison.Ordinal)
+                  && pendingQueue.Contains("_isSorted = true", StringComparison.Ordinal),
                 "164-11A-2: pending replay messages use a dirty sorted flag to avoid redundant sorting");
-            Check(seek.Contains("_pendingIsSorted = true", StringComparison.Ordinal)
-                  && CountOccurrences(source, "_pendingIsSorted = true") >= 3,
+            Check(seek.Contains("_pending.Clear()", StringComparison.Ordinal)
+                  && CountOccurrences(pendingQueue, "_isSorted = true") >= 3,
                 "164-11A-3: pending sorted state resets with seek and loaded-state cleanup");
         }
 
@@ -46,24 +50,25 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapDataSourcePrototype.cs");
             var getManifest = PhaseValidationSourceHelpers.SourceMethod(source, "private RemoteMcapManifest GetCachedManifest()");
-            var getManifestForStamp = PhaseValidationSourceHelpers.SourceMethod(source, "private RemoteMcapManifest GetCachedManifest(FileStamp loadStamp)");
+            var getManifestCore = PhaseValidationSourceHelpers.SourceMethod(source, "private RemoteMcapManifest GetCachedManifestCore");
             var getBytes = PhaseValidationSourceHelpers.SourceMethod(source, "private byte[] GetCachedManifestBytes");
 
             Check(source.Contains("private struct FileStamp", StringComparison.Ordinal)
                   && source.Contains("private FileStamp ReadFileStamp()", StringComparison.Ordinal)
                   && source.Contains("private bool MatchesCachedStamp(FileStamp stamp)", StringComparison.Ordinal),
                 "164-11B-1: remote manifest cache uses a request-local file stamp");
-            Check(getManifest.Contains("return GetCachedManifest(ReadFileStamp())", StringComparison.Ordinal)
-                  && getManifestForStamp.Contains("if (!loadStamp.Exists)", StringComparison.Ordinal)
-                  && getManifestForStamp.Contains("MatchesCachedStamp(loadStamp)", StringComparison.Ordinal),
+            Check(getManifest.Contains("return CloneManifest(GetCachedManifestCore(ReadFileStamp(), out _))", StringComparison.Ordinal)
+                  && getManifestCore.Contains("if (!loadStamp.Exists)", StringComparison.Ordinal)
+                  && getManifestCore.Contains("MatchesCachedStamp(loadStamp)", StringComparison.Ordinal)
+                  && getManifestCore.Contains("storeStamp = ReadFileStamp()", StringComparison.Ordinal),
                 "164-11B-2: manifest path passes the file stamp through cache checks");
             Check(getBytes.Contains("var stamp = ReadFileStamp()", StringComparison.Ordinal)
-                  && getBytes.Contains("var manifest = GetCachedManifest(stamp)", StringComparison.Ordinal)
+                  && getBytes.Contains("var manifest = GetCachedManifestCore(stamp, out var storeStamp)", StringComparison.Ordinal)
                   && !getBytes.Contains("new FileInfo(_mcapPath)", StringComparison.Ordinal),
                 "164-11B-3: manifest byte path avoids creating an extra FileInfo before manifest loading");
-            Check(getManifestForStamp.Contains("_cachedManifest = manifest", StringComparison.Ordinal)
-                  && getManifestForStamp.Contains("return CloneManifest(_cachedManifest)", StringComparison.Ordinal)
-                  && !getManifestForStamp.Contains("_cachedManifest = CloneManifest(manifest)", StringComparison.Ordinal),
+            Check(getManifestCore.Contains("_cachedManifest = manifest", StringComparison.Ordinal)
+                  && getManifest.Contains("CloneManifest(GetCachedManifestCore", StringComparison.Ordinal)
+                  && !getManifestCore.Contains("_cachedManifest = CloneManifest(manifest)", StringComparison.Ordinal),
                 "164-11B-4: manifest miss stores the owned manifest and returns one external clone");
         }
 
@@ -98,7 +103,7 @@ namespace Unity.FoxgloveSDK.Tests
             var handle = PhaseValidationSourceHelpers.SourceMethod(source, "private void Handle");
 
             Check(source.Contains("private static readonly byte[] AcceptedCursorResponseBytes", StringComparison.Ordinal)
-                  && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes)", StringComparison.Ordinal),
+                  && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes, cors)", StringComparison.Ordinal),
                 "164-11D-1: cursor endpoint keeps cached accepted response bytes");
             Check(readBody.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
                   && readBody.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)

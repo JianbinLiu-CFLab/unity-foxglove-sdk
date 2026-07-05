@@ -206,13 +206,10 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static int GetPendingCount(McapReplayEngine engine)
         {
-            var pending = (List<McapMessage>)typeof(McapReplayEngine)
+            var pending = (McapReplayPendingQueue)typeof(McapReplayEngine)
                 .GetField("_pending", BindingFlags.Instance | BindingFlags.NonPublic)
                 .GetValue(engine);
-            var head = (int)typeof(McapReplayEngine)
-                .GetField("_pendingHeadIndex", BindingFlags.Instance | BindingFlags.NonPublic)
-                .GetValue(engine);
-            return pending.Count - head;
+            return pending.Count;
         }
 
         private static byte[] BuildChunkMcap(params ChunkSpec[] chunks)

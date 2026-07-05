@@ -22,8 +22,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeSessionAllocationOptimizations()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
+            var channelFilter = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionChannelFilter.cs");
             var publishJson = SourceMethod(source, "PublishJson(uint channelId, object message, ulong logTimeNs)");
-            var filterLive = SourceMethod(source, "FilterLiveChannels(IReadOnlyCollection<AdvertiseChannel> channels)");
+            var filterLive = SourceMethod(channelFilter, "FilterLiveChannels(IReadOnlyCollection<AdvertiseChannel> channels)");
 
             Check(source.Contains("ThreadLocal<JsonSerializer> JsonSerializerCache", StringComparison.Ordinal)
                   && source.Contains("new ThreadLocal<JsonSerializer>(JsonSerializer.CreateDefault)", StringComparison.Ordinal),
@@ -31,7 +32,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publishJson.Contains("JsonSerializerCache.Value.Serialize(jsonWriter, message)", StringComparison.Ordinal)
                   && !publishJson.Contains("JsonSerializer.CreateDefault().Serialize", StringComparison.Ordinal),
                 "164-45A-2: PublishJson avoids allocating a JsonSerializer for every message");
-            Check(filterLive.Contains("var filter = Volatile.Read(ref _liveWebSocketChannelFilter)", StringComparison.Ordinal)
+            Check(source.Contains("=> _channelFilter.FilterLiveChannels(channels)", StringComparison.Ordinal)
+                  && filterLive.Contains("var filter = Volatile.Read(ref _liveWebSocketChannelFilter)", StringComparison.Ordinal)
                   && filterLive.Contains("if (filter == null)")
                   && filterLive.Contains("return channels;", StringComparison.Ordinal)
                   && filterLive.Contains("filter.AllowChannel(CreateFilterContext(FoxgloveSinkKind.LiveWebSocket, channel))", StringComparison.Ordinal),
