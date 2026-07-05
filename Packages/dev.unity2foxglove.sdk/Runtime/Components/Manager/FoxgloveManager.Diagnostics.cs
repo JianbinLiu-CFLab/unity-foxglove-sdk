@@ -184,7 +184,7 @@ namespace Unity.FoxgloveSDK.Components
             if (deltaMs + 1e-9d < thresholdMs)
                 return;
 
-            var cameraSnapshot = CameraPublishDiagnostics.LastSnapshotOrDefault;
+            var cameraSnapshot = CameraTimingDiagnostics.LastSnapshotOrDefault;
             LogFrameStallDiagnostics(
                 frameCount,
                 deltaMs,

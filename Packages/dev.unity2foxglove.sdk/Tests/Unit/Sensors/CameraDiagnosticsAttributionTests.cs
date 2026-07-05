@@ -43,11 +43,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 .Replace("\r\n", "\n", StringComparison.Ordinal);
             var cameraDiagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs")
                 .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var sharedSnapshotPath = PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/CameraTimingDiagnostics.cs");
 
-            Assert.Contains("readonly struct CameraTimingSnapshot", cameraDiagnostics, StringComparison.Ordinal);
-            Assert.Contains("public static CameraTimingSnapshot LastSnapshotOrDefault", cameraDiagnostics, StringComparison.Ordinal);
-            Assert.Contains("CameraTimingSnapshot.NoFrame", cameraDiagnostics, StringComparison.Ordinal);
-            Assert.Contains("CameraPublishDiagnostics.LastSnapshotOrDefault", managerDiagnostics, StringComparison.Ordinal);
+            Assert.True(
+                File.Exists(sharedSnapshotPath),
+                "Camera timing snapshots must live in the core runtime assembly so FoxgloveManager does not depend on Unity.FoxgloveSDK.Proto.");
+            var sharedSnapshot = File.ReadAllText(sharedSnapshotPath).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("readonly struct CameraTimingSnapshot", sharedSnapshot, StringComparison.Ordinal);
+            Assert.Contains("internal static class CameraTimingDiagnostics", sharedSnapshot, StringComparison.Ordinal);
+            Assert.Contains("CameraTimingSnapshot.NoFrame", sharedSnapshot, StringComparison.Ordinal);
+            Assert.Contains("CameraTimingDiagnostics.LastSnapshotOrDefault", managerDiagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("CameraPublishDiagnostics", managerDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("CameraTimingDiagnostics.Publish", cameraDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("CameraTimingDiagnostics.Reset", cameraDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraSnapshotAgeMs=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraRenderMs=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraPendingReadbacksBefore=", managerDiagnostics, StringComparison.Ordinal);
@@ -72,7 +81,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         private static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+            => File.ReadAllText(PathOf(relativePath));
+
+        private static string PathOf(string relativePath)
+            => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
         private static string RepoRoot
         {

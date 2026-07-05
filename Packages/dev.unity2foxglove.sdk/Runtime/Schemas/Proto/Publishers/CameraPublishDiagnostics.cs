@@ -9,78 +9,11 @@ using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
-    internal readonly struct CameraTimingSnapshot
-    {
-        public static readonly CameraTimingSnapshot NoFrame = new CameraTimingSnapshot(
-            hasFrame: false,
-            recordedRealtimeSeconds: -1d,
-            renderMs: -1d,
-            readbackLatencyMs: -1d,
-            readbackCopyMs: -1d,
-            jpegEncodeMs: -1d,
-            serializeMs: -1d,
-            completedJpegDrainMs: -1d,
-            jpegBytes: -1,
-            pendingReadbacksBefore: -1,
-            pendingReadbacksAfter: -1,
-            encodeQueueDepth: -1,
-            completedQueueDepth: -1);
-
-        public CameraTimingSnapshot(
-            bool hasFrame,
-            double recordedRealtimeSeconds,
-            double renderMs,
-            double readbackLatencyMs,
-            double readbackCopyMs,
-            double jpegEncodeMs,
-            double serializeMs,
-            double completedJpegDrainMs,
-            int jpegBytes,
-            int pendingReadbacksBefore,
-            int pendingReadbacksAfter,
-            int encodeQueueDepth,
-            int completedQueueDepth)
-        {
-            HasFrame = hasFrame;
-            RecordedRealtimeSeconds = recordedRealtimeSeconds;
-            RenderMs = renderMs;
-            ReadbackLatencyMs = readbackLatencyMs;
-            ReadbackCopyMs = readbackCopyMs;
-            JpegEncodeMs = jpegEncodeMs;
-            SerializeMs = serializeMs;
-            CompletedJpegDrainMs = completedJpegDrainMs;
-            JpegBytes = jpegBytes;
-            PendingReadbacksBefore = pendingReadbacksBefore;
-            PendingReadbacksAfter = pendingReadbacksAfter;
-            EncodeQueueDepth = encodeQueueDepth;
-            CompletedQueueDepth = completedQueueDepth;
-        }
-
-        public bool HasFrame { get; }
-        public double RecordedRealtimeSeconds { get; }
-        public double RenderMs { get; }
-        public double ReadbackLatencyMs { get; }
-        public double ReadbackCopyMs { get; }
-        public double JpegEncodeMs { get; }
-        public double SerializeMs { get; }
-        public double CompletedJpegDrainMs { get; }
-        public int JpegBytes { get; }
-        public int PendingReadbacksBefore { get; }
-        public int PendingReadbacksAfter { get; }
-        public int EncodeQueueDepth { get; }
-        public int CompletedQueueDepth { get; }
-
-        public double AgeMs(double nowRealtimeSeconds)
-            => HasFrame ? Math.Max(0d, nowRealtimeSeconds - RecordedRealtimeSeconds) * 1000d : -1d;
-    }
-
     /// <summary>
     /// Aggregates camera JPEG and video publish diagnostics outside the camera publisher.
     /// </summary>
     internal sealed class CameraPublishDiagnostics
     {
-        private static CameraTimingSnapshot s_lastSnapshot = CameraTimingSnapshot.NoFrame;
-
         private double _nextCameraDiagLogSec;
         private double _lastRenderMs;
         private double _lastReadbackLatencyMs;
@@ -114,9 +47,6 @@ namespace Unity.FoxgloveSDK.Components
         private int _videoSidecarRestartCount;
         private string _lastVideoDiagnostic = "";
         private bool _warnedVideoDimensionMismatch;
-
-        public static CameraTimingSnapshot LastSnapshotOrDefault
-            => s_lastSnapshot;
 
         public void RecordRenderMs(double elapsedMs, double nowSeconds, int encodeQueueDepth, int completedQueueDepth)
         {
@@ -417,12 +347,12 @@ namespace Unity.FoxgloveSDK.Components
                 pendingReadbacksAfter: _lastPendingReadbacksAfterSchedule,
                 encodeQueueDepth: _lastEncodeQueueDepth,
                 completedQueueDepth: _lastCompletedQueueDepth);
-            s_lastSnapshot = snapshot;
+            CameraTimingDiagnostics.Publish(snapshot);
         }
 
         private static void PublishNoFrameSnapshot()
         {
-            s_lastSnapshot = CameraTimingSnapshot.NoFrame;
+            CameraTimingDiagnostics.Reset();
         }
 
         private void ResetVideoCounters()
