@@ -32,7 +32,64 @@ namespace Unity.FoxgloveSDK.Components
                 _jpegPublishPipeline?.CompletedQueueDepth ?? 0,
                 out var message);
             if (message != null)
-                Debug.Log(message);
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    this,
+                    "{0}",
+                    message);
+        }
+
+        private void EmitCameraSlowStageIfNeeded(
+            string stage,
+            double elapsedMs,
+            int pendingReadbacksBefore,
+            int pendingReadbacksAfter)
+        {
+            if (!_diagnostics.TryBuildCameraSlowStageMessage(
+                    _logCameraDiagnostics,
+                    _cameraSlowStageThresholdMs,
+                    stage,
+                    elapsedMs,
+                    pendingReadbacksBefore,
+                    pendingReadbacksAfter,
+                    _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
+                    _jpegPublishPipeline?.CompletedQueueDepth ?? 0,
+                    out var message))
+                return;
+
+            Debug.LogFormat(
+                LogType.Log,
+                LogOption.NoStacktrace,
+                this,
+                "{0}",
+                message);
+        }
+
+        private bool AllowCameraCaptureBySourceRate(ulong unixNs)
+        {
+            var rateHz = _maxCaptureRateHz;
+            if (rateHz <= 0f || float.IsNaN(rateHz) || float.IsInfinity(rateHz))
+                return true;
+
+            var intervalNs = ResolveMaxCaptureIntervalNs(rateHz);
+            var timestampNs = unixNs == 0UL ? FoxgloveTimeUtil.NowUnixTimeNs() : unixNs;
+            if (CameraCaptureRateGate.ShouldCapture(ref _lastSourceCaptureUnixNs, timestampNs, intervalNs))
+                return true;
+
+            _diagnostics.RecordRateSkip();
+            return false;
+        }
+
+        private ulong ResolveMaxCaptureIntervalNs(float rateHz)
+        {
+            if (!rateHz.Equals(_cachedMaxCaptureRateHz))
+            {
+                _cachedMaxCaptureRateHz = rateHz;
+                _cachedMaxCaptureIntervalNs = CameraCaptureRateGate.ResolveIntervalNs(rateHz);
+            }
+
+            return _cachedMaxCaptureIntervalNs;
         }
 
 

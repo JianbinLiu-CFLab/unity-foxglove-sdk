@@ -30,7 +30,11 @@ namespace Unity.FoxgloveSDK.Util
         /// <summary>
         /// Pixel budget for this frame exceeded <see cref="CameraFrameBudgetInput.MaxPixelsPerFrame" />.
         /// </summary>
-        PixelBudgetExceeded
+        PixelBudgetExceeded,
+        /// <summary>
+        /// A previous slow camera pipeline stage put capture scheduling into a short cooldown.
+        /// </summary>
+        PipelineCooldown
     }
 
     /// <summary>
@@ -47,6 +51,8 @@ namespace Unity.FoxgloveSDK.Util
         public int Width;
         public int Height;
         public int MaxPixelsPerFrame;
+        public bool RequireIdlePipeline;
+        public bool PipelineCooldownActive;
     }
 
     /// <summary>
@@ -72,16 +78,22 @@ namespace Unity.FoxgloveSDK.Util
         /// <returns>Whether capture is allowed and skip classification when it is not.</returns>
         public static CameraFrameBudgetResult Evaluate(CameraFrameBudgetInput input)
         {
+            if (input.PipelineCooldownActive)
+                return Skip(CameraFrameBudgetSkipReason.PipelineCooldown);
+
             var maxReadbacks = input.MaxPendingReadbacks > 0 ? input.MaxPendingReadbacks : 1;
-            if (input.PendingReadbacks >= maxReadbacks)
+            if (input.PendingReadbacks >= maxReadbacks
+                || (input.RequireIdlePipeline && input.PendingReadbacks > 0))
                 return Skip(CameraFrameBudgetSkipReason.ReadbackQueueFull);
 
             var maxEncodeQueue = input.MaxEncodeQueueDepth > 0 ? input.MaxEncodeQueueDepth : 1;
-            if (input.EncodeQueueDepth >= maxEncodeQueue)
+            if (input.EncodeQueueDepth >= maxEncodeQueue
+                || (input.RequireIdlePipeline && input.EncodeQueueDepth > 0))
                 return Skip(CameraFrameBudgetSkipReason.EncodeQueueFull);
 
             var maxCompletedQueue = input.MaxCompletedQueueDepth > 0 ? input.MaxCompletedQueueDepth : 1;
-            if (input.CompletedQueueDepth >= maxCompletedQueue)
+            if (input.CompletedQueueDepth >= maxCompletedQueue
+                || (input.RequireIdlePipeline && input.CompletedQueueDepth > 0))
                 return Skip(CameraFrameBudgetSkipReason.CompletedQueueFull);
 
             if (input.MaxPixelsPerFrame > 0)
@@ -109,6 +121,46 @@ namespace Unity.FoxgloveSDK.Util
                 AllowCapture = false,
                 SkipReason = reason
             };
+        }
+    }
+
+    /// <summary>
+    /// Pure, deterministic gate that requires a few healthy main-loop frames before
+    /// scheduling another camera capture after a slow frame.
+    /// </summary>
+    public static class CameraFrameHealthGatePolicy
+    {
+        /// <summary>
+        /// Decides whether the camera may capture on the current frame.
+        /// </summary>
+        /// <param name="stableFramesRemaining">Mutable count of healthy frames still required before capture resumes.</param>
+        /// <param name="frameDeltaMs">Current frame delta in milliseconds.</param>
+        /// <param name="maxHealthyFrameDeltaMs">Maximum frame delta considered healthy; 0 disables the gate.</param>
+        /// <param name="stableFramesRequired">Healthy frames required after a slow frame; 0 disables the gate.</param>
+        /// <returns>Whether capture can proceed.</returns>
+        public static bool ShouldCapture(
+            ref int stableFramesRemaining,
+            double frameDeltaMs,
+            double maxHealthyFrameDeltaMs,
+            int stableFramesRequired)
+        {
+            if (maxHealthyFrameDeltaMs <= 0d || stableFramesRequired <= 0)
+            {
+                stableFramesRemaining = 0;
+                return true;
+            }
+
+            if (frameDeltaMs > maxHealthyFrameDeltaMs)
+            {
+                stableFramesRemaining = stableFramesRequired;
+                return false;
+            }
+
+            if (stableFramesRemaining <= 0)
+                return true;
+
+            stableFramesRemaining--;
+            return false;
         }
     }
 }

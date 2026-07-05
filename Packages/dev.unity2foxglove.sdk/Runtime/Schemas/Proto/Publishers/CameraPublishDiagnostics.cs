@@ -4,6 +4,7 @@
 // Module: Runtime/Schemas/Proto/Publishers
 
 using System;
+using System.Globalization;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
@@ -21,10 +22,17 @@ namespace Unity.FoxgloveSDK.Components
         private double _lastSerializeMs;
         private double _lastPublishDrainMs;
         private int _lastJpegBytes;
+        private int _lastPendingReadbacksBeforeSchedule = -1;
+        private int _lastPendingReadbacksAfterSchedule = -1;
+        private int _lastEncodeQueueDepth = -1;
+        private int _lastCompletedQueueDepth = -1;
         private int _readbackBudgetSkipCount;
         private int _encodeBudgetSkipCount;
         private int _completedBudgetSkipCount;
         private int _pixelBudgetSkipCount;
+        private int _rateSkipCount;
+        private int _pipelineCooldownSkipCount;
+        private int _mainLoopCooldownSkipCount;
         private int _noDemandJpegDropCount;
         private int _droppedEncodeQueueCount;
         private int _droppedCompletedJpegCount;
@@ -43,13 +51,40 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastVideoDiagnostic = "";
         private bool _warnedVideoDimensionMismatch;
 
-        public void RecordRenderMs(double elapsedMs)
-            => _lastRenderMs = elapsedMs;
+        public void RecordRenderMs(double elapsedMs, double nowSeconds, int encodeQueueDepth, int completedQueueDepth)
+        {
+            _lastRenderMs = elapsedMs;
+            RecordQueueDepths(encodeQueueDepth, completedQueueDepth);
+            PublishLastSnapshot(nowSeconds);
+        }
 
-        public void RecordReadbackCopy(double latencyMs, double copyMs)
+        public void RecordReadbackScheduled(
+            int pendingReadbacksBefore,
+            int pendingReadbacksAfter,
+            double nowSeconds,
+            int encodeQueueDepth,
+            int completedQueueDepth)
+        {
+            _lastPendingReadbacksBeforeSchedule = pendingReadbacksBefore;
+            _lastPendingReadbacksAfterSchedule = pendingReadbacksAfter;
+            RecordQueueDepths(encodeQueueDepth, completedQueueDepth);
+            PublishLastSnapshot(nowSeconds);
+        }
+
+        public void RecordReadbackCopy(
+            double latencyMs,
+            double copyMs,
+            double nowSeconds,
+            int pendingReadbacks,
+            int encodeQueueDepth,
+            int completedQueueDepth)
         {
             _lastReadbackLatencyMs = latencyMs;
             _lastReadbackCopyMs = copyMs;
+            _lastPendingReadbacksBeforeSchedule = pendingReadbacks;
+            _lastPendingReadbacksAfterSchedule = pendingReadbacks;
+            RecordQueueDepths(encodeQueueDepth, completedQueueDepth);
+            PublishLastSnapshot(nowSeconds);
         }
 
         public void RecordCameraBudgetSkip(CameraFrameBudgetSkipReason reason)
@@ -68,8 +103,20 @@ namespace Unity.FoxgloveSDK.Components
                 case CameraFrameBudgetSkipReason.PixelBudgetExceeded:
                     _pixelBudgetSkipCount++;
                     break;
+                case CameraFrameBudgetSkipReason.PipelineCooldown:
+                    RecordPipelineCooldownSkip();
+                    break;
             }
         }
+
+        public void RecordRateSkip()
+            => _rateSkipCount++;
+
+        public void RecordPipelineCooldownSkip()
+            => _pipelineCooldownSkipCount++;
+
+        public void RecordMainLoopCooldownSkip()
+            => _mainLoopCooldownSkipCount++;
 
         public void RecordNoDemandJpegDrop()
             => _noDemandJpegDropCount++;
@@ -85,6 +132,20 @@ namespace Unity.FoxgloveSDK.Components
 
         public void RecordPublishDrainMs(double elapsedMs)
             => _lastPublishDrainMs = elapsedMs;
+
+        public void RecordCompletedJpegDrain(
+            double elapsedMs,
+            double nowSeconds,
+            int pendingReadbacks,
+            int encodeQueueDepth,
+            int completedQueueDepth)
+        {
+            _lastPublishDrainMs = elapsedMs;
+            _lastPendingReadbacksBeforeSchedule = pendingReadbacks;
+            _lastPendingReadbacksAfterSchedule = pendingReadbacks;
+            RecordQueueDepths(encodeQueueDepth, completedQueueDepth);
+            PublishLastSnapshot(nowSeconds);
+        }
 
         public void RecordLateJpegDrop()
             => _droppedLateJpegCount++;
@@ -121,9 +182,51 @@ namespace Unity.FoxgloveSDK.Components
                 $"renderMs={_lastRenderMs:F2} readbackLatencyMs={_lastReadbackLatencyMs:F2} readbackCopyMs={_lastReadbackCopyMs:F2} " +
                 $"jpegMs={_lastJpegEncodeMs:F2} serializeMs={_lastSerializeMs:F2} publishDrainMs={_lastPublishDrainMs:F2} " +
                 $"bytes={_lastJpegBytes} pendingReadbacks={pendingReadbacks} encodeQueue={encodeQueueDepth} completedQueue={completedQueueDepth} " +
-                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount}) " +
+                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount},rateSkip={_rateSkipCount},cooldownSkip={_pipelineCooldownSkipCount},mainLoopSkip={_mainLoopCooldownSkipCount}) " +
                 $"drops(noDemand={_noDemandJpegDropCount},encodeQueue={_droppedEncodeQueueCount},completedQueue={_droppedCompletedJpegCount},encodedBudget={_droppedEncodedBudgetCount},late={_droppedLateJpegCount}).";
             ResetCameraCounters();
+        }
+
+        public bool TryBuildCameraSlowStageMessage(
+            bool enabled,
+            double thresholdMs,
+            string stageName,
+            double elapsedMs,
+            int pendingReadbacksBefore,
+            int pendingReadbacksAfter,
+            int encodeQueueDepth,
+            int completedQueueDepth,
+            out string message)
+        {
+            message = null;
+            if (!enabled)
+                return false;
+
+            var boundedThresholdMs = Math.Max(1d, thresholdMs);
+            if (elapsedMs + 1e-9d < boundedThresholdMs)
+                return false;
+
+            message = string.Format(
+                CultureInfo.InvariantCulture,
+                "[Foxglove][CameraSlow] stage={0} elapsedMs={1:F2} thresholdMs={2:F2} " +
+                "renderMs={3:F2} readbackLatencyMs={4:F2} readbackCopyMs={5:F2} completedJpegDrainMs={6:F2} " +
+                "jpegMs={7:F2} serializeMs={8:F2} bytes={9} pendingReadbacksBefore={10} pendingReadbacksAfter={11} " +
+                "encodeQueue={12} completedQueue={13}.",
+                string.IsNullOrWhiteSpace(stageName) ? "unknown" : stageName,
+                elapsedMs,
+                boundedThresholdMs,
+                _lastRenderMs,
+                _lastReadbackLatencyMs,
+                _lastReadbackCopyMs,
+                _lastPublishDrainMs,
+                _lastJpegEncodeMs,
+                _lastSerializeMs,
+                _lastJpegBytes,
+                pendingReadbacksBefore,
+                pendingReadbacksAfter,
+                encodeQueueDepth,
+                completedQueueDepth);
+            return true;
         }
 
         public void ResetCameraState()
@@ -136,6 +239,11 @@ namespace Unity.FoxgloveSDK.Components
             _lastSerializeMs = 0;
             _lastPublishDrainMs = 0;
             _lastJpegBytes = 0;
+            _lastPendingReadbacksBeforeSchedule = -1;
+            _lastPendingReadbacksAfterSchedule = -1;
+            _lastEncodeQueueDepth = -1;
+            _lastCompletedQueueDepth = -1;
+            PublishNoFrameSnapshot();
             ResetCameraCounters();
         }
 
@@ -225,11 +333,44 @@ namespace Unity.FoxgloveSDK.Components
             _encodeBudgetSkipCount = 0;
             _completedBudgetSkipCount = 0;
             _pixelBudgetSkipCount = 0;
+            _rateSkipCount = 0;
+            _pipelineCooldownSkipCount = 0;
+            _mainLoopCooldownSkipCount = 0;
             _noDemandJpegDropCount = 0;
             _droppedEncodeQueueCount = 0;
             _droppedCompletedJpegCount = 0;
             _droppedEncodedBudgetCount = 0;
             _droppedLateJpegCount = 0;
+        }
+
+        private void RecordQueueDepths(int encodeQueueDepth, int completedQueueDepth)
+        {
+            _lastEncodeQueueDepth = encodeQueueDepth;
+            _lastCompletedQueueDepth = completedQueueDepth;
+        }
+
+        private void PublishLastSnapshot(double nowSeconds)
+        {
+            var snapshot = new CameraTimingSnapshot(
+                hasFrame: true,
+                recordedRealtimeSeconds: nowSeconds,
+                renderMs: _lastRenderMs,
+                readbackLatencyMs: _lastReadbackLatencyMs,
+                readbackCopyMs: _lastReadbackCopyMs,
+                jpegEncodeMs: _lastJpegEncodeMs,
+                serializeMs: _lastSerializeMs,
+                completedJpegDrainMs: _lastPublishDrainMs,
+                jpegBytes: _lastJpegBytes,
+                pendingReadbacksBefore: _lastPendingReadbacksBeforeSchedule,
+                pendingReadbacksAfter: _lastPendingReadbacksAfterSchedule,
+                encodeQueueDepth: _lastEncodeQueueDepth,
+                completedQueueDepth: _lastCompletedQueueDepth);
+            CameraTimingDiagnostics.Publish(snapshot);
+        }
+
+        private static void PublishNoFrameSnapshot()
+        {
+            CameraTimingDiagnostics.Reset();
         }
 
         private void ResetVideoCounters()

@@ -124,7 +124,9 @@ namespace Unity.FoxgloveSDK.Components
             int maxCompletedQueue,
             int width,
             int height,
-            int maxPixelsPerFrame)
+            int maxPixelsPerFrame,
+            bool requireIdlePipeline = false,
+            bool pipelineCooldownActive = false)
         {
             EnsureQueues(maxEncodeQueue, maxCompletedQueue);
 
@@ -138,7 +140,9 @@ namespace Unity.FoxgloveSDK.Components
                 MaxCompletedQueueDepth = useAsyncJpeg ? Math.Max(1, maxCompletedQueue) : int.MaxValue,
                 Width = Math.Max(1, width),
                 Height = Math.Max(1, height),
-                MaxPixelsPerFrame = Math.Max(0, maxPixelsPerFrame)
+                MaxPixelsPerFrame = Math.Max(0, maxPixelsPerFrame),
+                RequireIdlePipeline = requireIdlePipeline,
+                PipelineCooldownActive = pipelineCooldownActive
             });
 
             if (result.AllowCapture)

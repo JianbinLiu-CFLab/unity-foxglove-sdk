@@ -50,13 +50,20 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _height;
         private SerializedProperty _jpegQuality;
         private SerializedProperty _maxPendingReadbacks;
+        private SerializedProperty _maxCaptureRateHz;
         private SerializedProperty _useAsyncJpeg;
         private SerializedProperty _maxJpegEncodeQueue;
         private SerializedProperty _maxCompletedJpegQueue;
         private SerializedProperty _maxCompletedJpegPublishesPerFrame;
         private SerializedProperty _maxPixelsPerFrame;
+        private SerializedProperty _requireIdleJpegPipeline;
+        private SerializedProperty _pipelineCooldownThresholdMs;
+        private SerializedProperty _pipelineCooldownMs;
+        private SerializedProperty _mainLoopCaptureCooldownThresholdMs;
+        private SerializedProperty _mainLoopStableFramesBeforeCapture;
         private SerializedProperty _logCameraDiagnostics;
         private SerializedProperty _cameraDiagnosticsIntervalSeconds;
+        private SerializedProperty _cameraSlowStageThresholdMs;
         private SerializedProperty _sensorUnitProfile;
         private SerializedProperty _useSharedSensorClock;
         private SerializedProperty _publishStandardRos2CompressedImage;
@@ -94,13 +101,20 @@ namespace Unity.FoxgloveSDK.Editor
             _height = serializedObject.FindProperty("_height");
             _jpegQuality = serializedObject.FindProperty("_jpegQuality");
             _maxPendingReadbacks = serializedObject.FindProperty("_maxPendingReadbacks");
+            _maxCaptureRateHz = serializedObject.FindProperty("_maxCaptureRateHz");
             _useAsyncJpeg = serializedObject.FindProperty("_useAsyncJpeg");
             _maxJpegEncodeQueue = serializedObject.FindProperty("_maxJpegEncodeQueue");
             _maxCompletedJpegQueue = serializedObject.FindProperty("_maxCompletedJpegQueue");
             _maxCompletedJpegPublishesPerFrame = serializedObject.FindProperty("_maxCompletedJpegPublishesPerFrame");
             _maxPixelsPerFrame = serializedObject.FindProperty("_maxPixelsPerFrame");
+            _requireIdleJpegPipeline = serializedObject.FindProperty("_requireIdleJpegPipeline");
+            _pipelineCooldownThresholdMs = serializedObject.FindProperty("_pipelineCooldownThresholdMs");
+            _pipelineCooldownMs = serializedObject.FindProperty("_pipelineCooldownMs");
+            _mainLoopCaptureCooldownThresholdMs = serializedObject.FindProperty("_mainLoopCaptureCooldownThresholdMs");
+            _mainLoopStableFramesBeforeCapture = serializedObject.FindProperty("_mainLoopStableFramesBeforeCapture");
             _logCameraDiagnostics = serializedObject.FindProperty("_logCameraDiagnostics");
             _cameraDiagnosticsIntervalSeconds = serializedObject.FindProperty("_cameraDiagnosticsIntervalSeconds");
+            _cameraSlowStageThresholdMs = serializedObject.FindProperty("_cameraSlowStageThresholdMs");
             _sensorUnitProfile = serializedObject.FindProperty("_sensorUnitProfile");
             _useSharedSensorClock = serializedObject.FindProperty("_useSharedSensorClock");
             _publishStandardRos2CompressedImage = serializedObject.FindProperty("_publishStandardRos2CompressedImage");
@@ -155,6 +169,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_frameId, Label("Frame Id"));
             EditorGUILayout.PropertyField(_width);
             EditorGUILayout.PropertyField(_height);
+            EditorGUILayout.PropertyField(_maxCaptureRateHz, Label("Max Capture Rate Hz"));
 
             if (IsRos2CameraUiRelevant(
                 _manager,
@@ -211,12 +226,18 @@ namespace Unity.FoxgloveSDK.Editor
                     _maxCompletedJpegQueue,
                     _maxCompletedJpegPublishesPerFrame,
                     _maxPixelsPerFrame,
+                    _requireIdleJpegPipeline,
+                    _pipelineCooldownThresholdMs,
+                    _pipelineCooldownMs,
+                    _mainLoopCaptureCooldownThresholdMs,
+                    _mainLoopStableFramesBeforeCapture,
                     _enableBackpressure,
                     _backpressureCooldown,
                     _maxEncodedBytes,
                     _logBackpressureSkips,
                     _logCameraDiagnostics,
-                    _cameraDiagnosticsIntervalSeconds);
+                    _cameraDiagnosticsIntervalSeconds,
+                    _cameraSlowStageThresholdMs);
             }
 
             DrawPublishRateSection();
@@ -254,12 +275,18 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty maxCompletedJpegQueue,
             SerializedProperty maxCompletedJpegPublishesPerFrame,
             SerializedProperty maxPixelsPerFrame,
+            SerializedProperty requireIdleJpegPipeline,
+            SerializedProperty pipelineCooldownThresholdMs,
+            SerializedProperty pipelineCooldownMs,
+            SerializedProperty mainLoopCaptureCooldownThresholdMs,
+            SerializedProperty mainLoopStableFramesBeforeCapture,
             SerializedProperty enableBackpressure,
             SerializedProperty backpressureCooldown,
             SerializedProperty maxEncodedBytes,
             SerializedProperty logBackpressureSkips,
             SerializedProperty logCameraDiagnostics,
-            SerializedProperty cameraDiagnosticsIntervalSeconds)
+            SerializedProperty cameraDiagnosticsIntervalSeconds,
+            SerializedProperty cameraSlowStageThresholdMs)
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("JPEG", EditorStyles.boldLabel);
@@ -280,6 +307,11 @@ namespace Unity.FoxgloveSDK.Editor
                     }
 
                     EditorGUILayout.PropertyField(maxPixelsPerFrame, Label("Max Pixels / Frame"));
+                    EditorGUILayout.PropertyField(requireIdleJpegPipeline, Label("Require Idle JPEG Pipeline"));
+                    EditorGUILayout.PropertyField(pipelineCooldownThresholdMs, Label("Pipeline Cooldown Threshold Ms"));
+                    EditorGUILayout.PropertyField(pipelineCooldownMs, Label("Pipeline Cooldown Ms"));
+                    EditorGUILayout.PropertyField(mainLoopCaptureCooldownThresholdMs, Label("Main Loop Cooldown Threshold Ms"));
+                    EditorGUILayout.PropertyField(mainLoopStableFramesBeforeCapture, Label("Main Loop Stable Frames"));
                     EditorGUILayout.PropertyField(enableBackpressure, Label("Enable Backpressure Adaptation"));
                     using (new EditorGUI.DisabledScope(!enableBackpressure.boolValue))
                     {
@@ -299,6 +331,7 @@ namespace Unity.FoxgloveSDK.Editor
                     using (new EditorGUI.DisabledScope(!logCameraDiagnostics.boolValue))
                     {
                         EditorGUILayout.PropertyField(cameraDiagnosticsIntervalSeconds, Label("Diagnostics Interval"));
+                        EditorGUILayout.PropertyField(cameraSlowStageThresholdMs, Label("Slow Stage Threshold Ms"));
                     }
                 }
             }
