@@ -28,6 +28,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxService/FoxgloveLocalServiceCall.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Builder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Debouncer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Normalizer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Validator.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*State.cs" />

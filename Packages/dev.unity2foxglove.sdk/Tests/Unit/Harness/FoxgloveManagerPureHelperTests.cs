@@ -87,5 +87,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [InlineData("/", "")]
         public void TopicNameNormalizerNormalizesRosStyleTopics(string topic, string expected)
             => Assert.Equal(expected, TopicNameNormalizer.NormalizeRosStyleTopic(topic));
+
+        [Fact]
+        public void WarningDebouncerUpdatesAtomicCooldownOncePerWindow()
+        {
+            long lastTicks = 0;
+
+            Assert.True(WarningDebouncer.TryUpdateCooldown(ref lastTicks, nowTicks: 100, intervalTicks: 50));
+            Assert.Equal(100, lastTicks);
+            Assert.False(WarningDebouncer.TryUpdateCooldown(ref lastTicks, nowTicks: 120, intervalTicks: 50));
+            Assert.Equal(100, lastTicks);
+            Assert.True(WarningDebouncer.TryUpdateCooldown(ref lastTicks, nowTicks: 151, intervalTicks: 50));
+            Assert.Equal(151, lastTicks);
+        }
+
+        [Theory]
+        [InlineData("a", "a", 100, 120, 50, false)]
+        [InlineData("a", "a", 100, 151, 50, true)]
+        [InlineData("b", "a", 100, 120, 50, true)]
+        public void WarningDebouncerAllowsNewKeysOrExpiredWindows(
+            string key,
+            string lastKey,
+            long lastTicks,
+            long nowTicks,
+            long intervalTicks,
+            bool expected)
+        {
+            Assert.Equal(
+                expected,
+                WarningDebouncer.ShouldEmitKeyedCooldown(key, lastKey, lastTicks, nowTicks, intervalTicks));
+        }
     }
 }

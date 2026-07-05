@@ -652,8 +652,12 @@ namespace Unity.FoxgloveSDK.Components
             var key = "ros2-bridge:" + reason;
             lock (_warningDebounceState.Ros2BridgePublishWarningGate)
             {
-                if (_warningDebounceState.LastRos2BridgePublishWarningKey == key
-                    && nowTicks - _warningDebounceState.LastRos2BridgePublishWarningTicks < ClientEventOverflowWarningIntervalTicks)
+                if (!WarningDebouncer.ShouldEmitKeyedCooldown(
+                        key,
+                        _warningDebounceState.LastRos2BridgePublishWarningKey,
+                        _warningDebounceState.LastRos2BridgePublishWarningTicks,
+                        nowTicks,
+                        ClientEventOverflowWarningIntervalTicks))
                 {
                     return;
                 }

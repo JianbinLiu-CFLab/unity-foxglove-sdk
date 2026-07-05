@@ -60,16 +60,10 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnClientEventQueueOverflow(ClientEvent evt, BoundedEventQueueOverflow overflow)
         {
             var nowTicks = System.DateTime.UtcNow.Ticks;
-            var previousTicks = System.Threading.Interlocked.Read(ref _warningDebounceState.LastClientEventOverflowWarningTicks);
-            if (nowTicks - previousTicks < ClientEventOverflowWarningIntervalTicks)
-            {
-                return;
-            }
-
-            if (System.Threading.Interlocked.CompareExchange(
+            if (!WarningDebouncer.TryUpdateCooldown(
                     ref _warningDebounceState.LastClientEventOverflowWarningTicks,
                     nowTicks,
-                    previousTicks) != previousTicks)
+                    ClientEventOverflowWarningIntervalTicks))
             {
                 return;
             }

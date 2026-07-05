@@ -121,10 +121,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyClientEventQueueOverflowWarning()
         {
             var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
+            var debouncer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebouncer.cs");
 
             Check(clientEvents.Contains("WarnClientEventQueueOverflow", StringComparison.Ordinal)
                   && clientEvents.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
-                  && clientEvents.Contains("Interlocked.CompareExchange", StringComparison.Ordinal),
+                  && clientEvents.Contains("WarningDebouncer.TryUpdateCooldown", StringComparison.Ordinal)
+                  && debouncer.Contains("Interlocked.CompareExchange", StringComparison.Ordinal),
                 "134-1C-1: overflow warning is throttled across transport threads");
             Check(clientEvents.Contains("droppedEvents=", StringComparison.Ordinal)
                   && clientEvents.Contains("droppedPayloadBytes=", StringComparison.Ordinal)
@@ -183,6 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && publishing.Contains("WarnRos2BridgePublishSkipped(enqueueReason)", StringComparison.Ordinal)
                   && publishing.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
                   && publishing.Contains("lock (_warningDebounceState.Ros2BridgePublishWarningGate)", StringComparison.Ordinal)
+                  && publishing.Contains("WarningDebouncer.ShouldEmitKeyedCooldown", StringComparison.Ordinal)
                   && !publishing.Contains("Interlocked.Read(ref _warningDebounceState.LastRos2BridgePublishWarningTicks)", StringComparison.Ordinal),
                 "134-1H-2: ROS2 bridge publish failures use an atomic bounded warning path");
         }
