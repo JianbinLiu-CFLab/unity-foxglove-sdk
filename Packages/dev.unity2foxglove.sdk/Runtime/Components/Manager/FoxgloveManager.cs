@@ -178,6 +178,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly object _ros2BridgePublishWarningGate = new();
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
 
+        private readonly RecordingRuntimeState _recordingState = new RecordingRuntimeState();
         private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 
         /// <summary>Current nanosecond timestamp for publish calls.</summary>

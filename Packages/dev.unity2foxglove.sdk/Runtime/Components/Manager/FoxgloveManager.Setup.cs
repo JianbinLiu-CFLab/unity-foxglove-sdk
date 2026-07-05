@@ -13,8 +13,6 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
-        private SchemaEvidenceSidecarResult _pendingRecordingSidecar;
-
         /// <summary>
         /// Converts seconds to milliseconds for playback-control windows.
         /// </summary>
@@ -140,18 +138,19 @@ namespace Unity.FoxgloveSDK.Components
                 var evidenceRoot = string.IsNullOrWhiteSpace(_schemaEvidenceRoot)
                     ? Path.Combine(ProjectRoot, "Assets", "Generated")
                     : ResolveProjectPath(_schemaEvidenceRoot);
-                _pendingRecordingSidecar = SchemaEvidenceSidecarWriter.StageSidecar(
+                var pendingSidecar = SchemaEvidenceSidecarWriter.StageSidecar(
                     path,
                     evidenceRoot,
                     identityMode,
                     requireComplete: identityMode == SchemaIdentityMode.Strict);
+                _recordingState.PendingSidecar = pendingSidecar;
 
-                foreach (var warning in _pendingRecordingSidecar.Warnings)
+                foreach (var warning in pendingSidecar.Warnings)
                 {
                     Debug.LogWarning("[Foxglove] Schema evidence: " + warning);
                 }
 
-                if (!_pendingRecordingSidecar.Success)
+                if (!pendingSidecar.Success)
                 {
                     CleanupPendingRecordingSidecar();
                     Debug.LogError("[Foxglove] Recording startup aborted because complete schema evidence is required in Strict mode.");
@@ -182,11 +181,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool PublishPendingRecordingSidecar()
         {
-            if (_pendingRecordingSidecar == null)
+            if (!_recordingState.HasPendingSidecar)
                 return true;
 
-            var sidecar = _pendingRecordingSidecar;
-            _pendingRecordingSidecar = null;
+            var sidecar = _recordingState.TakePendingSidecar();
             if (SchemaEvidenceSidecarWriter.PublishStagedSidecar(sidecar, out var publishWarning))
                 return true;
 
@@ -198,13 +196,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private void CleanupPendingRecordingSidecar()
         {
-            if (_pendingRecordingSidecar == null)
+            if (!_recordingState.HasPendingSidecar)
             {
                 return;
             }
 
-            SchemaEvidenceSidecarWriter.CleanupStagedSidecar(_pendingRecordingSidecar);
-            _pendingRecordingSidecar = null;
+            SchemaEvidenceSidecarWriter.CleanupStagedSidecar(_recordingState.PendingSidecar);
+            _recordingState.Clear();
         }
 
         /// <summary>
