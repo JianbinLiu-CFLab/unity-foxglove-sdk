@@ -85,6 +85,7 @@ namespace Unity.FoxgloveSDK.Core
         public event Action<uint, uint, string, byte[]> OnClientMessage;
 
         private McapRecorder _recorder;
+        private IFoxgloveMirrorSink _mirrorSink;
 
         /// <summary>Server name sent in serverInfo.</summary>
         public string Name { get; }
@@ -110,6 +111,17 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Attach an MCAP recorder for session recording.</summary>
         internal void SetRecorder(McapRecorder r) => Volatile.Write(ref _recorder, r);
 
+        /// <summary>Attach an optional mirror sink and seed it with current server-side channels.</summary>
+        internal void SetMirrorSink(IFoxgloveMirrorSink sink, bool replayExistingChannels = true)
+        {
+            Volatile.Write(ref _mirrorSink, sink);
+            if (sink == null || !replayExistingChannels)
+                return;
+
+            foreach (var channel in _channels.GetAll())
+                TryRegisterMirrorChannel(sink, channel);
+        }
+
         /// <summary>Set an optional per-sink channel filter. Null allows all channels for the sink.</summary>
         internal void SetSinkChannelFilter(FoxgloveSinkKind sink, ISinkChannelFilter filter)
             => _channelFilter.SetSinkChannelFilter(sink, filter);
@@ -130,7 +142,10 @@ namespace Unity.FoxgloveSDK.Core
             if (_subscriptions.HasSubscribersForChannel(channelId) && AllowLiveWebSocket(channel))
                 return true;
 
-            return Volatile.Read(ref _recorder) != null && AllowMcapRecording(channel);
+            if (Volatile.Read(ref _recorder) != null && AllowMcapRecording(channel))
+                return true;
+
+            return HasMirrorDemand(channel);
         }
 
         public FoxgloveSession(string name,
@@ -270,6 +285,10 @@ namespace Unity.FoxgloveSDK.Core
                     channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
             }
 
+            var mirrorSink = Volatile.Read(ref _mirrorSink);
+            if (mirrorSink != null)
+                TryRegisterMirrorChannel(mirrorSink, channel);
+
             if (AllowLiveWebSocket(channel))
             {
                 _graph.SetUnityPublishedTopic(channel.Topic);
@@ -289,6 +308,9 @@ namespace Unity.FoxgloveSDK.Core
             if (ch != null && liveAllowed)
                 _graph.RemoveUnityPublishedTopic(ch.Topic);
             if (!_channels.Remove(channelId)) return;
+            var mirrorSink = Volatile.Read(ref _mirrorSink);
+            if (mirrorSink != null)
+                TryUnregisterMirrorChannel(mirrorSink, channelId);
             foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channelId))
             {
                 if (ch != null && liveAllowed)
@@ -426,6 +448,9 @@ namespace Unity.FoxgloveSDK.Core
             var recorder = Volatile.Read(ref _recorder);
             if (recorder != null && AllowMcapRecording(channel))
                 recorder.WriteMessage(channelId, logTimeNs, payload);
+            var mirrorSink = Volatile.Read(ref _mirrorSink);
+            if (mirrorSink != null)
+                TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
             if (!AllowLiveWebSocket(channel))
                 return;
             lock (_subscriberScratchLock)
@@ -775,6 +800,59 @@ namespace Unity.FoxgloveSDK.Core
 
         private bool AllowMcapRecording(AdvertiseChannel channel)
             => _channelFilter.AllowMcapRecording(channel);
+
+        private bool HasMirrorDemand(AdvertiseChannel channel)
+        {
+            var sink = Volatile.Read(ref _mirrorSink);
+            if (sink == null)
+                return false;
+
+            try
+            {
+                return sink.HasChannelDemand(channel);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Mirror sink demand check failed for channel {channel.Id}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private void TryRegisterMirrorChannel(IFoxgloveMirrorSink sink, AdvertiseChannel channel)
+        {
+            try
+            {
+                sink.RegisterChannel(channel);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Mirror sink channel registration failed for channel {channel.Id}: {ex.Message}");
+            }
+        }
+
+        private void TryUnregisterMirrorChannel(IFoxgloveMirrorSink sink, uint channelId)
+        {
+            try
+            {
+                sink.UnregisterChannel(channelId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Mirror sink channel removal failed for channel {channelId}: {ex.Message}");
+            }
+        }
+
+        private void TryMirrorPublish(IFoxgloveMirrorSink sink, AdvertiseChannel channel, ulong logTimeNs, byte[] payload)
+        {
+            try
+            {
+                sink.Publish(channel, logTimeNs, payload);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Mirror sink publish failed for channel {channel.Id}: {ex.Message}");
+            }
+        }
 
         /// <summary>
         /// On client disconnect: clean up subscriptions, parameter subs,

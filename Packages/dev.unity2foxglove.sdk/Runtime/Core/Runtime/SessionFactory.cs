@@ -28,12 +28,14 @@ namespace Unity.FoxgloveSDK.Core
             bool protobufSchemasRegistered, bool ros2MsgSchemasRegistered,
             IRuntimeContext runtimeContext,
             ISinkChannelFilter liveWebSocketChannelFilter = null,
-            ISinkChannelFilter mcapRecordingChannelFilter = null)
+            ISinkChannelFilter mcapRecordingChannelFilter = null,
+            IFoxgloveMirrorSink mirrorSink = null)
         {
             var session = new FoxgloveSession(name, transport, playbackClock, schemaRegistry, logger, parameters, services);
             session.SetRuntimeContext(runtimeContext);
             session.SetSinkChannelFilter(FoxgloveSinkKind.LiveWebSocket, liveWebSocketChannelFilter);
             session.SetSinkChannelFilter(FoxgloveSinkKind.McapRecording, mcapRecordingChannelFilter);
+            session.SetMirrorSink(mirrorSink, replayExistingChannels: false);
             if (protobufSchemasRegistered)
                 session.EnableProtobuf();
             if (enableCdrClientPublish && ros2MsgSchemasRegistered)

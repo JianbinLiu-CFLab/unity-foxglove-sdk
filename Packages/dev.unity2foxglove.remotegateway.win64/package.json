@@ -1,0 +1,22 @@
+{
+  "name": "dev.unity2foxglove.remotegateway.win64",
+  "version": "0.1.0-preview.1",
+  "displayName": "Unity2Foxglove Remote Gateway - Win64",
+  "license": "Apache-2.0",
+  "unity": "6000.0",
+  "description": "Optional Windows x64 Remote Access Gateway package for Unity2Foxglove Foxglove Cloud visualization.",
+  "keywords": [
+    "unity2foxglove",
+    "foxglove",
+    "remote-access",
+    "gateway",
+    "webrtc",
+    "win64"
+  ],
+  "dependencies": {
+    "dev.unity2foxglove.sdk": "1.9.4"
+  },
+  "author": {
+    "name": "Unity2Foxglove"
+  }
+}

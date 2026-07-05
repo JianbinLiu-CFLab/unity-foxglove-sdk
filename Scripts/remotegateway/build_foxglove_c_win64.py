@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""Build the Phase171 foxglove_c remote-access DLL for Windows x64.
+
+The script keeps native build outputs outside Packages by default. Use
+--copy-to-package only after reviewing the produced manifest and DLL.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+CRATE = ROOT / "third-party" / "foxglove-sdk" / "c"
+STAGING_RELATIVE = "build/remotegateway/foxglove-c-win64"
+STAGING = ROOT / STAGING_RELATIVE
+PACKAGE_PLUGIN_RELATIVE = (
+    "Packages/dev.unity2foxglove.remotegateway.win64/Runtime/Plugins/Windows/x86_64"
+)
+PACKAGE_PLUGIN_DIR = (
+    ROOT / PACKAGE_PLUGIN_RELATIVE
+)
+APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib", "foxglove.pdb")
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse CLI options for the native gateway build."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--target-dir",
+        default=os.environ.get("UNITY2FOXGLOVE_REMOTE_GATEWAY_TARGET_DIR", r"C:\u2fg171target"),
+        help="Short Cargo target directory. Keep this short to avoid MSVC include path failures.",
+    )
+    parser.add_argument(
+        "--libclang-path",
+        default=os.environ.get("LIBCLANG_PATH"),
+        help="Directory containing libclang.dll. Defaults to the repo-local LLVM extraction if present.",
+    )
+    parser.add_argument(
+        "--copy-to-package",
+        action="store_true",
+        help="Copy approved artifacts and the generated manifest into the optional package plugin folder.",
+    )
+    return parser.parse_args()
+
+
+def find_repo_local_libclang() -> str | None:
+    """Return the repo-local libclang directory when the extraction exists."""
+    candidate = ROOT / "build" / "remotegateway" / "tools" / "llvm-22.1.8-extract" / "bin"
+    if (candidate / "libclang.dll").exists():
+        return str(candidate)
+    return None
+
+
+def run(command: list[str], *, cwd: Path, env: dict[str, str]) -> None:
+    """Run one subprocess command with visible command logging."""
+    print("+", " ".join(command), flush=True)
+    subprocess.run(command, cwd=str(cwd), env=env, check=True)
+
+
+def sha256(path: Path) -> str:
+    """Compute an uppercase SHA-256 digest for a file."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest().upper()
+
+
+def build_environment(args: argparse.Namespace) -> dict[str, str]:
+    """Build the Cargo/MSVC environment used for a static CRT gateway DLL."""
+    env = os.environ.copy()
+    libclang_path = args.libclang_path or find_repo_local_libclang()
+    if libclang_path:
+        env["LIBCLANG_PATH"] = libclang_path
+        env["PATH"] = libclang_path + os.pathsep + env.get("PATH", "")
+
+    cargo_home = Path.home() / ".cargo" / "bin"
+    env["PATH"] = str(cargo_home) + os.pathsep + env.get("PATH", "")
+    env["CARGO_TARGET_DIR"] = str(Path(args.target_dir))
+    env["AWS_LC_SYS_PREBUILT_NASM"] = "1"
+    env["RUSTFLAGS"] = "-C target-feature=+crt-static"
+    env["CXXFLAGS_x86_64_pc_windows_msvc"] = "/MT"
+    env["CFLAGS_x86_64_pc_windows_msvc"] = "/MT"
+    return env
+
+
+def write_manifest(target_dir: Path, env: dict[str, str]) -> Path:
+    """Write reviewed native artifact metadata into the staging directory."""
+    dll = target_dir / "release" / "foxglove.dll"
+    if not dll.exists():
+        raise FileNotFoundError(dll)
+
+    manifest = {
+        "artifact": "foxglove.dll",
+        "platform": "windows-x64",
+        "source": "third-party/foxglove-sdk/c",
+        "features": "remote-access",
+        "rustflags": env["RUSTFLAGS"],
+        "cflags": env["CFLAGS_x86_64_pc_windows_msvc"],
+        "environment": {
+            "AWS_LC_SYS_PREBUILT_NASM": env["AWS_LC_SYS_PREBUILT_NASM"],
+            "CARGO_TARGET_DIR": env["CARGO_TARGET_DIR"],
+        },
+        "sha256": sha256(dll),
+        "sizeBytes": dll.stat().st_size,
+    }
+
+    STAGING.mkdir(parents=True, exist_ok=True)
+    manifest_path = STAGING / "foxglove-gateway-native-artifact.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest_path
+
+
+def copy_approved_artifacts(target_dir: Path, manifest_path: Path) -> None:
+    """Copy only the approved DLL-side artifacts into the optional package."""
+    PACKAGE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
+    for name in APPROVED_ARTIFACTS:
+        source = target_dir / "release" / name
+        if source.exists():
+            shutil.copy2(source, PACKAGE_PLUGIN_DIR / name)
+    shutil.copy2(manifest_path, PACKAGE_PLUGIN_DIR / manifest_path.name)
+
+
+def main() -> int:
+    """Build the native gateway artifact and optionally copy it into the package."""
+    args = parse_args()
+    target_dir = Path(args.target_dir)
+    env = build_environment(args)
+
+    run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
+    manifest_path = write_manifest(target_dir, env)
+    print(f"Wrote {manifest_path.relative_to(ROOT)}")
+
+    if args.copy_to_package:
+        copy_approved_artifacts(target_dir, manifest_path)
+        print(f"Copied approved artifacts to {PACKAGE_PLUGIN_DIR.relative_to(ROOT)}")
+    else:
+        print("Package copy skipped; pass --copy-to-package after reviewing artifacts.")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
