@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using Unity.FoxgloveSDK.Util;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Sensors
@@ -78,6 +79,58 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 editor.IndexOf("Log Camera Diagnostics", StringComparison.Ordinal)
                 < editor.IndexOf("Slow Stage Threshold Ms", StringComparison.Ordinal),
                 "The slow-stage threshold should live under the existing camera diagnostics toggle.");
+        }
+
+        [Fact]
+        public void CameraSourceCaptureGateDefaultsToBoundedVisualizationRate()
+        {
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var publisherDiagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Diagnostics.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var cameraDiagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var editor = Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var gatePath = PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/CameraCaptureRateGate.cs");
+
+            Assert.True(
+                File.Exists(gatePath),
+                "Camera capture needs a shared pre-render rate gate so heavy render/readback work is skipped before Camera.Render().");
+            Assert.Contains("private const float DefaultMaxCaptureRateHz = 6f;", publisher, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField, Min(0f)] private float _maxCaptureRateHz = DefaultMaxCaptureRateHz;", publisher, StringComparison.Ordinal);
+            Assert.Contains("AllowCameraCaptureBySourceRate", publisherDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("CameraCaptureRateGate.ShouldCapture", publisherDiagnostics, StringComparison.Ordinal);
+            var rateGateIndex = publisher.IndexOf("AllowCameraCaptureBySourceRate(renderUnixNs)", StringComparison.Ordinal);
+            var renderIndex = publisher.IndexOf("_captureResources.CaptureCamera.Render();", StringComparison.Ordinal);
+            Assert.True(rateGateIndex >= 0, "Camera publisher should call the source rate gate with the resolved capture timestamp.");
+            Assert.True(
+                rateGateIndex < renderIndex,
+                "The source rate gate must run before Camera.Render so skipped frames do not touch the GPU/readback path.");
+            Assert.Contains("RecordRateSkip", cameraDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("rateSkip=", cameraDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("private SerializedProperty _maxCaptureRateHz;", editor, StringComparison.Ordinal);
+            Assert.Contains("Max Capture Rate Hz", editor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraCaptureRateGateThrottlesAndResetsOnBackwardClockJump()
+        {
+            const ulong startNs = 1_700_000_000_000_000_000UL;
+            ulong lastCaptureNs = 0UL;
+            var sixHzIntervalNs = CameraCaptureRateGate.ResolveIntervalNs(6f);
+            var tenHzStepNs = 100_000_000UL;
+
+            var captured = 0;
+            for (var i = 0UL; i <= 10UL; i++)
+            {
+                if (CameraCaptureRateGate.ShouldCapture(ref lastCaptureNs, startNs + i * tenHzStepNs, sixHzIntervalNs))
+                    captured++;
+            }
+
+            Assert.Equal(6, captured);
+            Assert.True(CameraCaptureRateGate.ShouldCapture(ref lastCaptureNs, startNs + tenHzStepNs / 2UL, sixHzIntervalNs));
+            Assert.False(CameraCaptureRateGate.ShouldCapture(ref lastCaptureNs, startNs + tenHzStepNs + tenHzStepNs / 2UL, sixHzIntervalNs));
         }
 
         private static string Text(string relativePath)

@@ -26,6 +26,8 @@ namespace Unity.FoxgloveSDK.Components
     [RequireComponent(typeof(Camera))]
     public partial class FoxgloveCameraPublisher : FoxglovePublisherBase
     {
+        private const float DefaultMaxCaptureRateHz = 6f;
+
         [Header("Camera Output")]
         [SerializeField] private CameraOutputMode _outputMode = CameraOutputMode.Jpeg;
 
@@ -40,6 +42,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private int _jpegQuality = 70;
         /// <summary>Max number of concurrent AsyncGPUReadback requests.</summary>
         [SerializeField, Min(1)] private int _maxPendingReadbacks = 1;
+        [Tooltip("Maximum source capture/render rate for heavy camera visualization. Use 0 to capture every eligible publisher tick.")]
+        [SerializeField, Min(0f)] private float _maxCaptureRateHz = DefaultMaxCaptureRateHz;
 
         [Header("Async JPEG")]
         [Tooltip("Encode JPEG camera frames on a background worker using Unity-free buffers.")]
@@ -164,6 +168,9 @@ namespace Unity.FoxgloveSDK.Components
         // Async JPEG state
         private CameraJpegPublishPipeline _jpegPublishPipeline;
         private ulong _lastPublishedCaptureUnixNs;
+        private ulong _lastSourceCaptureUnixNs;
+        private float _cachedMaxCaptureRateHz = float.NaN;
+        private ulong _cachedMaxCaptureIntervalNs;
 
         /// <summary>Defaults the topic to the current mode default if not set.</summary>
         private void Awake()
@@ -187,6 +194,7 @@ namespace Unity.FoxgloveSDK.Components
             _destroyed = false;
             _cleanupWhenReadbacksDrain = false;
             Interlocked.Increment(ref _captureGeneration);
+            _lastSourceCaptureUnixNs = 0UL;
             ResetBackpressureState();
             ResetJpegPipelineState();
             ResetVideoDiagnosticState();
@@ -229,10 +237,16 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            EnsureCaptureResources();
             var renderUnixNs = CurrentLogTimeNs;
             if (_useSharedSensorClock)
                 renderUnixNs = ResolveCameraCaptureUnixNs();
+            if (!AllowCameraCaptureBySourceRate(renderUnixNs))
+            {
+                EmitCameraDiagnosticsIfNeeded();
+                return;
+            }
+
+            EnsureCaptureResources();
             var pendingBeforeSchedule = _pendingRequests;
             var renderStart = Stopwatch.GetTimestamp();
             _captureResources.CaptureCamera.Render();

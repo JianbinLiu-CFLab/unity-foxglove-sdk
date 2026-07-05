@@ -50,6 +50,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _height;
         private SerializedProperty _jpegQuality;
         private SerializedProperty _maxPendingReadbacks;
+        private SerializedProperty _maxCaptureRateHz;
         private SerializedProperty _useAsyncJpeg;
         private SerializedProperty _maxJpegEncodeQueue;
         private SerializedProperty _maxCompletedJpegQueue;
@@ -95,6 +96,7 @@ namespace Unity.FoxgloveSDK.Editor
             _height = serializedObject.FindProperty("_height");
             _jpegQuality = serializedObject.FindProperty("_jpegQuality");
             _maxPendingReadbacks = serializedObject.FindProperty("_maxPendingReadbacks");
+            _maxCaptureRateHz = serializedObject.FindProperty("_maxCaptureRateHz");
             _useAsyncJpeg = serializedObject.FindProperty("_useAsyncJpeg");
             _maxJpegEncodeQueue = serializedObject.FindProperty("_maxJpegEncodeQueue");
             _maxCompletedJpegQueue = serializedObject.FindProperty("_maxCompletedJpegQueue");
@@ -157,6 +159,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_frameId, Label("Frame Id"));
             EditorGUILayout.PropertyField(_width);
             EditorGUILayout.PropertyField(_height);
+            EditorGUILayout.PropertyField(_maxCaptureRateHz, Label("Max Capture Rate Hz"));
 
             if (IsRos2CameraUiRelevant(
                 _manager,
