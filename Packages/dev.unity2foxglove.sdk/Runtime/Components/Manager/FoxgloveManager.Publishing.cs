@@ -324,10 +324,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishJson called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -372,10 +372,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishFoxRunJsonBytes called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -419,10 +419,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishProto called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -463,10 +463,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishMsgPack called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -518,10 +518,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] PublishRos2 called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return;
@@ -550,9 +550,9 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
 
             var key = "invalid-topic:" + operation;
-            if (_lastInvalidPublishTopicWarningKey != key)
+            if (_warningDebounceState.LastInvalidPublishTopicWarningKey != key)
             {
-                _lastInvalidPublishTopicWarningKey = key;
+                _warningDebounceState.LastInvalidPublishTopicWarningKey = key;
                 Debug.LogWarning($"[Foxglove] Cannot {operation}: publisher topic is empty.");
             }
 
@@ -596,10 +596,10 @@ namespace Unity.FoxgloveSDK.Components
         private void WarnInvalidRos2Schema(string operation, string reason)
         {
             var key = operation + ":" + reason;
-            if (_lastInvalidRos2SchemaWarningKey == key)
+            if (_warningDebounceState.LastInvalidRos2SchemaWarningKey == key)
                 return;
 
-            _lastInvalidRos2SchemaWarningKey = key;
+            _warningDebounceState.LastInvalidRos2SchemaWarningKey = key;
             Debug.LogWarning($"[Foxglove] Cannot {operation}: {reason}");
         }
 
@@ -650,16 +650,16 @@ namespace Unity.FoxgloveSDK.Components
             reason = string.IsNullOrWhiteSpace(reason) ? "unknown reason" : reason;
             var nowTicks = System.DateTime.UtcNow.Ticks;
             var key = "ros2-bridge:" + reason;
-            lock (_ros2BridgePublishWarningGate)
+            lock (_warningDebounceState.Ros2BridgePublishWarningGate)
             {
-                if (_lastRos2BridgePublishWarningKey == key
-                    && nowTicks - _lastRos2BridgePublishWarningTicks < ClientEventOverflowWarningIntervalTicks)
+                if (_warningDebounceState.LastRos2BridgePublishWarningKey == key
+                    && nowTicks - _warningDebounceState.LastRos2BridgePublishWarningTicks < ClientEventOverflowWarningIntervalTicks)
                 {
                     return;
                 }
 
-                _lastRos2BridgePublishWarningKey = key;
-                _lastRos2BridgePublishWarningTicks = nowTicks;
+                _warningDebounceState.LastRos2BridgePublishWarningKey = key;
+                _warningDebounceState.LastRos2BridgePublishWarningTicks = nowTicks;
             }
             Debug.LogWarning("[Foxglove] ROS2 Bridge publish skipped: " + reason);
         }

@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Components
             _runtime.OnReplayMessage += _replayForwarder;
             _runtime.OnReplayMessageContext += _replayContextForwarder;
             _runtime.OnReplayBatchCompleted += _replayBatchForwarder;
-            _warnedNotRunning = false;
+            _warningDebounceState.ResetNotRunning();
             AdvanceChannelSessionGeneration();
 
             var transport = _runtime.Session?.Transport;

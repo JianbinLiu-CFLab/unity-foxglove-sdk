@@ -27,7 +27,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/IFoxTopic*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxService/FoxgloveLocalServiceCall.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*RuntimeState.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*State.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Profiling/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />

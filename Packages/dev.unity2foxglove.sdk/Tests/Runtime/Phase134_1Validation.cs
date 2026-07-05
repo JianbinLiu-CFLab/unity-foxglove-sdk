@@ -172,18 +172,18 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRos2BridgeWarningThrottling()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
             var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
 
-            Check(manager.Contains("_lastRos2BridgePublishWarningKey", StringComparison.Ordinal)
-                  && manager.Contains("_lastRos2BridgePublishWarningTicks", StringComparison.Ordinal)
-                  && manager.Contains("_ros2BridgePublishWarningGate", StringComparison.Ordinal),
+            Check(warningState.Contains("LastRos2BridgePublishWarningKey", StringComparison.Ordinal)
+                  && warningState.Contains("LastRos2BridgePublishWarningTicks", StringComparison.Ordinal)
+                  && warningState.Contains("Ros2BridgePublishWarningGate", StringComparison.Ordinal),
                 "134-1H-1: manager tracks ROS2 bridge warning throttle state behind a single gate");
             Check(publishing.Contains("WarnRos2BridgePublishSkipped(reason)", StringComparison.Ordinal)
                   && publishing.Contains("WarnRos2BridgePublishSkipped(enqueueReason)", StringComparison.Ordinal)
                   && publishing.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
-                  && publishing.Contains("lock (_ros2BridgePublishWarningGate)", StringComparison.Ordinal)
-                  && !publishing.Contains("Interlocked.Read(ref _lastRos2BridgePublishWarningTicks)", StringComparison.Ordinal),
+                  && publishing.Contains("lock (_warningDebounceState.Ros2BridgePublishWarningGate)", StringComparison.Ordinal)
+                  && !publishing.Contains("Interlocked.Read(ref _warningDebounceState.LastRos2BridgePublishWarningTicks)", StringComparison.Ordinal),
                 "134-1H-2: ROS2 bridge publish failures use an atomic bounded warning path");
         }
 

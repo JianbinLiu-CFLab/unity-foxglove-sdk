@@ -230,7 +230,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "67F-8: manager delegates status calls to runtime");
             Check(source.Contains("PublishStatus called but server is not running")
                     && source.Contains("RemoveStatus called but server is not running")
-                    && source.Contains("_warnedNotRunning"),
+                    && source.Contains("_warningDebounceState.WarnedNotRunning"),
                 "67F-9: manager uses existing not-running warning-once pattern");
         }
 

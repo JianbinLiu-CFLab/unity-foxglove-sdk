@@ -107,10 +107,10 @@ namespace Unity.FoxgloveSDK.Components
 
             if (!IsRunning)
             {
-                if (_foxgloveOutputEnabled && !_warnedNotRunning)
+                if (_foxgloveOutputEnabled && !_warningDebounceState.WarnedNotRunning)
                 {
                     Debug.LogWarning("[Foxglove] Channel Log called but server is not running.");
-                    _warnedNotRunning = true;
+                    _warningDebounceState.WarnedNotRunning = true;
                 }
 
                 return false;

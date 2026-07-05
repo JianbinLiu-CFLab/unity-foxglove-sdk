@@ -170,15 +170,10 @@ namespace Unity.FoxgloveSDK.Components
         private bool _outputModeWatchInitialized;
         private FoxgloveCertificateDistributor _certificateDistributor;
         private int _nextChannelId = FirstAutoChannelId;
-        private bool _warnedNotRunning;
-        private string _lastInvalidPublishTopicWarningKey;
-        private string _lastInvalidRos2SchemaWarningKey;
-        private string _lastRos2BridgePublishWarningKey;
-        private long _lastRos2BridgePublishWarningTicks;
-        private readonly object _ros2BridgePublishWarningGate = new();
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
 
         private readonly RecordingRuntimeState _recordingState = new RecordingRuntimeState();
+        private readonly WarningDebounceState _warningDebounceState = new WarningDebounceState();
         private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 
         /// <summary>Current nanosecond timestamp for publish calls.</summary>

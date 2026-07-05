@@ -86,8 +86,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManagerRejectsInvalidTopicsBeforeRegistration()
         {
             var source = ReadRepoText(ManagerPublishingPath);
-            var manager = ReadRepoText(ManagerPath);
-            Check(manager.Contains("_lastInvalidPublishTopicWarningKey", StringComparison.Ordinal),
+            var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
+            Check(warningState.Contains("LastInvalidPublishTopicWarningKey", StringComparison.Ordinal)
+                  && source.Contains("_warningDebounceState.LastInvalidPublishTopicWarningKey", StringComparison.Ordinal),
                 "134-4C-1: manager tracks repeated invalid topic warnings");
             Check(source.Contains("private static bool IsValidPublishTopic(string topic)", StringComparison.Ordinal)
                   && source.Contains("!string.IsNullOrWhiteSpace(topic)", StringComparison.Ordinal),
