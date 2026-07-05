@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("RecordReadbackScheduled", cameraDiagnostics, StringComparison.Ordinal);
             Assert.Contains("RecordCompletedJpegDrain", cameraDiagnostics, StringComparison.Ordinal);
             Assert.Contains("[Foxglove][CameraSlow]", cameraDiagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("Debug.Log(message)", publisherDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("LogOption.NoStacktrace", publisherDiagnostics, StringComparison.Ordinal);
             Assert.True(
                 cameraDiagnostics.IndexOf("if (!enabled)", StringComparison.Ordinal)
                 < cameraDiagnostics.IndexOf("[Foxglove][CameraSlow]", StringComparison.Ordinal),
@@ -131,6 +133,137 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(6, captured);
             Assert.True(CameraCaptureRateGate.ShouldCapture(ref lastCaptureNs, startNs + tenHzStepNs / 2UL, sixHzIntervalNs));
             Assert.False(CameraCaptureRateGate.ShouldCapture(ref lastCaptureNs, startNs + tenHzStepNs + tenHzStepNs / 2UL, sixHzIntervalNs));
+        }
+
+        [Fact]
+        public void CameraPipelineHealthGateRequiresIdlePipelineBeforeRender()
+        {
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var jpeg = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var diagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var editor = Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("[SerializeField] private bool _requireIdleJpegPipeline = true;", publisher, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField, Min(0f)] private float _pipelineCooldownThresholdMs = 50f;", publisher, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField, Min(0f)] private float _pipelineCooldownMs = 1000f;", publisher, StringComparison.Ordinal);
+            Assert.Contains("AllowJpegCaptureByPipelineHealth", jpeg, StringComparison.Ordinal);
+            Assert.Contains("requireIdlePipeline: _requireIdleJpegPipeline", jpeg, StringComparison.Ordinal);
+            Assert.Contains("pipelineCooldownActive: PipelineCooldownActive()", jpeg, StringComparison.Ordinal);
+            Assert.Contains("RecordPipelineCooldownIfNeeded(renderMs)", publisher, StringComparison.Ordinal);
+            Assert.Contains("RecordPipelineCooldownIfNeeded(readbackLatencyMs)", publisher, StringComparison.Ordinal);
+            Assert.Contains("RecordPipelineCooldownIfNeeded(result.EncodeMs)", jpeg, StringComparison.Ordinal);
+            var healthGateIndex = publisher.IndexOf("AllowJpegCaptureByPipelineHealth()", StringComparison.Ordinal);
+            var renderIndex = publisher.IndexOf("_captureResources.CaptureCamera.Render();", StringComparison.Ordinal);
+            Assert.True(healthGateIndex >= 0, "Camera publisher should check pipeline health before scheduling capture.");
+            Assert.True(
+                healthGateIndex < renderIndex,
+                "The pipeline health gate must run before Camera.Render so busy pipelines do not touch the GPU/readback path.");
+            Assert.Contains("RecordPipelineCooldownSkip", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("cooldownSkip=", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Require Idle JPEG Pipeline", editor, StringComparison.Ordinal);
+            Assert.Contains("Pipeline Cooldown Threshold Ms", editor, StringComparison.Ordinal);
+            Assert.Contains("Pipeline Cooldown Ms", editor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraFrameBudgetPolicyBlocksBusyOrCoolingPipeline()
+        {
+            var idle = new CameraFrameBudgetInput
+            {
+                RequireIdlePipeline = true,
+                PendingReadbacks = 0,
+                MaxPendingReadbacks = 1,
+                EncodeQueueDepth = 0,
+                MaxEncodeQueueDepth = 2,
+                CompletedQueueDepth = 0,
+                MaxCompletedQueueDepth = 2,
+                Width = 640,
+                Height = 480
+            };
+
+            Assert.True(CameraFrameBudgetPolicy.Evaluate(idle).AllowCapture);
+
+            var pending = idle;
+            pending.PendingReadbacks = 1;
+            var pendingResult = CameraFrameBudgetPolicy.Evaluate(pending);
+            Assert.False(pendingResult.AllowCapture);
+            Assert.Equal(CameraFrameBudgetSkipReason.ReadbackQueueFull, pendingResult.SkipReason);
+
+            var encodeBusy = idle;
+            encodeBusy.EncodeQueueDepth = 1;
+            var encodeResult = CameraFrameBudgetPolicy.Evaluate(encodeBusy);
+            Assert.False(encodeResult.AllowCapture);
+            Assert.Equal(CameraFrameBudgetSkipReason.EncodeQueueFull, encodeResult.SkipReason);
+
+            var completedBusy = idle;
+            completedBusy.CompletedQueueDepth = 1;
+            var completedResult = CameraFrameBudgetPolicy.Evaluate(completedBusy);
+            Assert.False(completedResult.AllowCapture);
+            Assert.Equal(CameraFrameBudgetSkipReason.CompletedQueueFull, completedResult.SkipReason);
+
+            var cooling = idle;
+            cooling.PipelineCooldownActive = true;
+            var coolingResult = CameraFrameBudgetPolicy.Evaluate(cooling);
+            Assert.False(coolingResult.AllowCapture);
+            Assert.Equal(CameraFrameBudgetSkipReason.PipelineCooldown, coolingResult.SkipReason);
+        }
+
+        [Fact]
+        public void CameraMainLoopHealthGateRequiresStableFramesBeforeRender()
+        {
+            var publisher = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var jpeg = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Jpeg.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var diagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+            var editor = Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            var stableFramesRemaining = 0;
+            Assert.False(CameraFrameHealthGatePolicy.ShouldCapture(
+                ref stableFramesRemaining,
+                frameDeltaMs: 333.33,
+                maxHealthyFrameDeltaMs: 100d,
+                stableFramesRequired: 2));
+            Assert.Equal(2, stableFramesRemaining);
+            Assert.False(CameraFrameHealthGatePolicy.ShouldCapture(
+                ref stableFramesRemaining,
+                frameDeltaMs: 16.67,
+                maxHealthyFrameDeltaMs: 100d,
+                stableFramesRequired: 2));
+            Assert.Equal(1, stableFramesRemaining);
+            Assert.False(CameraFrameHealthGatePolicy.ShouldCapture(
+                ref stableFramesRemaining,
+                frameDeltaMs: 16.67,
+                maxHealthyFrameDeltaMs: 100d,
+                stableFramesRequired: 2));
+            Assert.Equal(0, stableFramesRemaining);
+            Assert.True(CameraFrameHealthGatePolicy.ShouldCapture(
+                ref stableFramesRemaining,
+                frameDeltaMs: 16.67,
+                maxHealthyFrameDeltaMs: 100d,
+                stableFramesRequired: 2));
+
+            Assert.Contains("[SerializeField, Min(0f)] private float _mainLoopCaptureCooldownThresholdMs = 100f;", publisher, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField, Min(0)] private int _mainLoopStableFramesBeforeCapture = 2;", publisher, StringComparison.Ordinal);
+            Assert.Contains("AllowJpegCaptureByMainLoopHealth", jpeg, StringComparison.Ordinal);
+            Assert.Contains("Time.unscaledDeltaTime", jpeg, StringComparison.Ordinal);
+            Assert.Contains("CameraFrameHealthGatePolicy.ShouldCapture", jpeg, StringComparison.Ordinal);
+            var mainLoopHealthIndex = publisher.IndexOf("AllowJpegCaptureByMainLoopHealth()", StringComparison.Ordinal);
+            var renderIndex = publisher.IndexOf("_captureResources.CaptureCamera.Render();", StringComparison.Ordinal);
+            Assert.True(mainLoopHealthIndex >= 0, "Camera publisher should check frame health before scheduling capture.");
+            Assert.True(
+                mainLoopHealthIndex < renderIndex,
+                "The main-loop health gate must run before Camera.Render so cooldown cannot expire inside a blocked frame.");
+            Assert.Contains("RecordMainLoopCooldownSkip", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("mainLoopSkip=", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Main Loop Cooldown Threshold Ms", editor, StringComparison.Ordinal);
+            Assert.Contains("Main Loop Stable Frames", editor, StringComparison.Ordinal);
         }
 
         private static string Text(string relativePath)

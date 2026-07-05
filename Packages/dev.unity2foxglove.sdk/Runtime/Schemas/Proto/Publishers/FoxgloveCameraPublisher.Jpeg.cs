@@ -48,6 +48,46 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
+        /// Keeps the live JPEG path latest-only under load by refusing to schedule a
+        /// replacement capture while previous readback, encode, or publish work is still visible.
+        /// </summary>
+        private bool AllowJpegCaptureByPipelineHealth()
+        {
+            EnsureJpegPublishPipeline();
+            return _jpegPublishPipeline.AllowCaptureByFrameBudget(
+                _useAsyncJpeg,
+                _pendingRequests,
+                Math.Max(1, _maxPendingReadbacks),
+                _jpegPublishPipeline.EncodeQueueDepth,
+                _maxJpegEncodeQueue,
+                _jpegPublishPipeline.CompletedQueueDepth,
+                _maxCompletedJpegQueue,
+                _width,
+                _height,
+                _maxPixelsPerFrame,
+                requireIdlePipeline: _requireIdleJpegPipeline,
+                pipelineCooldownActive: PipelineCooldownActive());
+        }
+
+        /// <summary>
+        /// Prevents wall-clock cooldowns from expiring inside already-stalled frames.
+        /// Capture resumes only after the main loop has produced several healthy frames.
+        /// </summary>
+        private bool AllowJpegCaptureByMainLoopHealth()
+        {
+            var frameDeltaMs = Time.unscaledDeltaTime * 1000d;
+            var allowCapture = CameraFrameHealthGatePolicy.ShouldCapture(
+                ref _mainLoopStableFramesRemaining,
+                frameDeltaMs,
+                Math.Max(0d, _mainLoopCaptureCooldownThresholdMs),
+                Math.Max(0, _mainLoopStableFramesBeforeCapture));
+            if (!allowCapture)
+                _diagnostics.RecordMainLoopCooldownSkip();
+
+            return allowCapture;
+        }
+
+        /// <summary>
         /// Copies readback bytes on the main thread into an owned buffer before handing
         /// work to the JPEG worker; the worker never touches Unity objects.
         /// </summary>
@@ -148,6 +188,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _diagnostics.RecordJpegEncodeResult(result.EncodeMs, result.SerializeMs, result.JpegBytes);
+            RecordPipelineCooldownIfNeeded(result.EncodeMs);
 
             if (result.DroppedByEncodedBudget)
             {
@@ -312,6 +353,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             EnsureJpegPublishPipeline().ResetState();
             _lastPublishedCaptureUnixNs = 0;
+            _pipelineCooldownUntilSeconds = 0;
+            _mainLoopStableFramesRemaining = 0;
             _diagnostics.ResetCameraState();
         }
 
@@ -329,6 +372,30 @@ namespace Unity.FoxgloveSDK.Components
         {
             EnsureJpegPublishPipeline();
             return _jpegPublishPipeline.TakeReadbackLatencyMs(unixNs);
+        }
+
+        private bool PipelineCooldownActive()
+        {
+            if (_pipelineCooldownUntilSeconds <= 0)
+                return false;
+
+            if (Time.realtimeSinceStartupAsDouble < _pipelineCooldownUntilSeconds)
+                return true;
+
+            _pipelineCooldownUntilSeconds = 0;
+            return false;
+        }
+
+        private void RecordPipelineCooldownIfNeeded(double elapsedMs)
+        {
+            var thresholdMs = Math.Max(0d, _pipelineCooldownThresholdMs);
+            var cooldownMs = Math.Max(0d, _pipelineCooldownMs);
+            if (thresholdMs <= 0d || cooldownMs <= 0d || elapsedMs < thresholdMs)
+                return;
+
+            var adaptiveCooldownMs = Math.Max(cooldownMs, elapsedMs * 4d);
+            var cooldownUntil = Time.realtimeSinceStartupAsDouble + adaptiveCooldownMs / 1000d;
+            _pipelineCooldownUntilSeconds = Math.Max(_pipelineCooldownUntilSeconds, cooldownUntil);
         }
 
         private void LogJpegWorkerFailure(string reason)

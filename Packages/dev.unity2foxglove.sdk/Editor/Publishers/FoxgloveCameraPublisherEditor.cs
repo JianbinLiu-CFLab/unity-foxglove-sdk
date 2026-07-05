@@ -56,6 +56,11 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _maxCompletedJpegQueue;
         private SerializedProperty _maxCompletedJpegPublishesPerFrame;
         private SerializedProperty _maxPixelsPerFrame;
+        private SerializedProperty _requireIdleJpegPipeline;
+        private SerializedProperty _pipelineCooldownThresholdMs;
+        private SerializedProperty _pipelineCooldownMs;
+        private SerializedProperty _mainLoopCaptureCooldownThresholdMs;
+        private SerializedProperty _mainLoopStableFramesBeforeCapture;
         private SerializedProperty _logCameraDiagnostics;
         private SerializedProperty _cameraDiagnosticsIntervalSeconds;
         private SerializedProperty _cameraSlowStageThresholdMs;
@@ -102,6 +107,11 @@ namespace Unity.FoxgloveSDK.Editor
             _maxCompletedJpegQueue = serializedObject.FindProperty("_maxCompletedJpegQueue");
             _maxCompletedJpegPublishesPerFrame = serializedObject.FindProperty("_maxCompletedJpegPublishesPerFrame");
             _maxPixelsPerFrame = serializedObject.FindProperty("_maxPixelsPerFrame");
+            _requireIdleJpegPipeline = serializedObject.FindProperty("_requireIdleJpegPipeline");
+            _pipelineCooldownThresholdMs = serializedObject.FindProperty("_pipelineCooldownThresholdMs");
+            _pipelineCooldownMs = serializedObject.FindProperty("_pipelineCooldownMs");
+            _mainLoopCaptureCooldownThresholdMs = serializedObject.FindProperty("_mainLoopCaptureCooldownThresholdMs");
+            _mainLoopStableFramesBeforeCapture = serializedObject.FindProperty("_mainLoopStableFramesBeforeCapture");
             _logCameraDiagnostics = serializedObject.FindProperty("_logCameraDiagnostics");
             _cameraDiagnosticsIntervalSeconds = serializedObject.FindProperty("_cameraDiagnosticsIntervalSeconds");
             _cameraSlowStageThresholdMs = serializedObject.FindProperty("_cameraSlowStageThresholdMs");
@@ -216,6 +226,11 @@ namespace Unity.FoxgloveSDK.Editor
                     _maxCompletedJpegQueue,
                     _maxCompletedJpegPublishesPerFrame,
                     _maxPixelsPerFrame,
+                    _requireIdleJpegPipeline,
+                    _pipelineCooldownThresholdMs,
+                    _pipelineCooldownMs,
+                    _mainLoopCaptureCooldownThresholdMs,
+                    _mainLoopStableFramesBeforeCapture,
                     _enableBackpressure,
                     _backpressureCooldown,
                     _maxEncodedBytes,
@@ -260,6 +275,11 @@ namespace Unity.FoxgloveSDK.Editor
             SerializedProperty maxCompletedJpegQueue,
             SerializedProperty maxCompletedJpegPublishesPerFrame,
             SerializedProperty maxPixelsPerFrame,
+            SerializedProperty requireIdleJpegPipeline,
+            SerializedProperty pipelineCooldownThresholdMs,
+            SerializedProperty pipelineCooldownMs,
+            SerializedProperty mainLoopCaptureCooldownThresholdMs,
+            SerializedProperty mainLoopStableFramesBeforeCapture,
             SerializedProperty enableBackpressure,
             SerializedProperty backpressureCooldown,
             SerializedProperty maxEncodedBytes,
@@ -287,6 +307,11 @@ namespace Unity.FoxgloveSDK.Editor
                     }
 
                     EditorGUILayout.PropertyField(maxPixelsPerFrame, Label("Max Pixels / Frame"));
+                    EditorGUILayout.PropertyField(requireIdleJpegPipeline, Label("Require Idle JPEG Pipeline"));
+                    EditorGUILayout.PropertyField(pipelineCooldownThresholdMs, Label("Pipeline Cooldown Threshold Ms"));
+                    EditorGUILayout.PropertyField(pipelineCooldownMs, Label("Pipeline Cooldown Ms"));
+                    EditorGUILayout.PropertyField(mainLoopCaptureCooldownThresholdMs, Label("Main Loop Cooldown Threshold Ms"));
+                    EditorGUILayout.PropertyField(mainLoopStableFramesBeforeCapture, Label("Main Loop Stable Frames"));
                     EditorGUILayout.PropertyField(enableBackpressure, Label("Enable Backpressure Adaptation"));
                     using (new EditorGUI.DisabledScope(!enableBackpressure.boolValue))
                     {

@@ -56,6 +56,16 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _maxCompletedJpegPublishesPerFrame = 1;
         [Tooltip("Maximum pixels in a single JPEG capture; 0 means unlimited.")]
         [SerializeField, Min(0)] private int _maxPixelsPerFrame;
+        [Tooltip("When enabled, JPEG capture only schedules a new frame when readback, encode, and completed-publish queues are idle.")]
+        [SerializeField] private bool _requireIdleJpegPipeline = true;
+        [Tooltip("Camera pipeline stage duration in milliseconds that triggers capture cooldown; 0 disables the cooldown trigger.")]
+        [SerializeField, Min(0f)] private float _pipelineCooldownThresholdMs = 50f;
+        [Tooltip("Base milliseconds to wait before scheduling another JPEG capture after a slow camera pipeline stage; 0 disables cooldown waiting.")]
+        [SerializeField, Min(0f)] private float _pipelineCooldownMs = 1000f;
+        [Tooltip("Frame delta in milliseconds above which JPEG capture waits for several healthy main-loop frames; 0 disables this gate.")]
+        [SerializeField, Min(0f)] private float _mainLoopCaptureCooldownThresholdMs = 100f;
+        [Tooltip("Number of healthy main-loop frames required before JPEG capture resumes after a slow frame; 0 disables this gate.")]
+        [SerializeField, Min(0)] private int _mainLoopStableFramesBeforeCapture = 2;
         [Tooltip("Log CameraDiag timing and queue counters for the JPEG path.")]
         [SerializeField] private bool _logCameraDiagnostics;
         [Tooltip("Minimum seconds between CameraDiag log lines.")]
@@ -169,6 +179,8 @@ namespace Unity.FoxgloveSDK.Components
         private CameraJpegPublishPipeline _jpegPublishPipeline;
         private ulong _lastPublishedCaptureUnixNs;
         private ulong _lastSourceCaptureUnixNs;
+        private double _pipelineCooldownUntilSeconds;
+        private int _mainLoopStableFramesRemaining;
         private float _cachedMaxCaptureRateHz = float.NaN;
         private ulong _cachedMaxCaptureIntervalNs;
 
@@ -231,7 +243,17 @@ namespace Unity.FoxgloveSDK.Components
 
             var requestVideoOutput = profile.IsVideo && (publishWebSocket || publishBridge);
             if (requestVideoOutput && !EnsureVideoSidecarStarted(profile)) return;
+            if (!profile.IsVideo && !AllowJpegCaptureByMainLoopHealth())
+            {
+                EmitCameraDiagnosticsIfNeeded();
+                return;
+            }
             if (!profile.IsVideo && !AllowJpegCaptureByFrameBudget())
+            {
+                EmitCameraDiagnosticsIfNeeded();
+                return;
+            }
+            if (!profile.IsVideo && !AllowJpegCaptureByPipelineHealth())
             {
                 EmitCameraDiagnosticsIfNeeded();
                 return;
@@ -251,6 +273,7 @@ namespace Unity.FoxgloveSDK.Components
             var renderStart = Stopwatch.GetTimestamp();
             _captureResources.CaptureCamera.Render();
             var renderMs = ElapsedMs(renderStart);
+            RecordPipelineCooldownIfNeeded(renderMs);
             _diagnostics.RecordRenderMs(
                 renderMs,
                 Time.realtimeSinceStartupAsDouble,
@@ -285,6 +308,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
+            RecordPipelineCooldownIfNeeded(readbackLatencyMs);
             try
             {
                 // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.

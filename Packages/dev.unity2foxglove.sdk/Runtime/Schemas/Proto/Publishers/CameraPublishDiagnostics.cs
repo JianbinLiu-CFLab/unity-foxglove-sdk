@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.Components
         private int _completedBudgetSkipCount;
         private int _pixelBudgetSkipCount;
         private int _rateSkipCount;
+        private int _pipelineCooldownSkipCount;
+        private int _mainLoopCooldownSkipCount;
         private int _noDemandJpegDropCount;
         private int _droppedEncodeQueueCount;
         private int _droppedCompletedJpegCount;
@@ -101,11 +103,20 @@ namespace Unity.FoxgloveSDK.Components
                 case CameraFrameBudgetSkipReason.PixelBudgetExceeded:
                     _pixelBudgetSkipCount++;
                     break;
+                case CameraFrameBudgetSkipReason.PipelineCooldown:
+                    RecordPipelineCooldownSkip();
+                    break;
             }
         }
 
         public void RecordRateSkip()
             => _rateSkipCount++;
+
+        public void RecordPipelineCooldownSkip()
+            => _pipelineCooldownSkipCount++;
+
+        public void RecordMainLoopCooldownSkip()
+            => _mainLoopCooldownSkipCount++;
 
         public void RecordNoDemandJpegDrop()
             => _noDemandJpegDropCount++;
@@ -171,7 +182,7 @@ namespace Unity.FoxgloveSDK.Components
                 $"renderMs={_lastRenderMs:F2} readbackLatencyMs={_lastReadbackLatencyMs:F2} readbackCopyMs={_lastReadbackCopyMs:F2} " +
                 $"jpegMs={_lastJpegEncodeMs:F2} serializeMs={_lastSerializeMs:F2} publishDrainMs={_lastPublishDrainMs:F2} " +
                 $"bytes={_lastJpegBytes} pendingReadbacks={pendingReadbacks} encodeQueue={encodeQueueDepth} completedQueue={completedQueueDepth} " +
-                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount},rateSkip={_rateSkipCount}) " +
+                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount},rateSkip={_rateSkipCount},cooldownSkip={_pipelineCooldownSkipCount},mainLoopSkip={_mainLoopCooldownSkipCount}) " +
                 $"drops(noDemand={_noDemandJpegDropCount},encodeQueue={_droppedEncodeQueueCount},completedQueue={_droppedCompletedJpegCount},encodedBudget={_droppedEncodedBudgetCount},late={_droppedLateJpegCount}).";
             ResetCameraCounters();
         }
@@ -323,6 +334,8 @@ namespace Unity.FoxgloveSDK.Components
             _completedBudgetSkipCount = 0;
             _pixelBudgetSkipCount = 0;
             _rateSkipCount = 0;
+            _pipelineCooldownSkipCount = 0;
+            _mainLoopCooldownSkipCount = 0;
             _noDemandJpegDropCount = 0;
             _droppedEncodeQueueCount = 0;
             _droppedCompletedJpegCount = 0;

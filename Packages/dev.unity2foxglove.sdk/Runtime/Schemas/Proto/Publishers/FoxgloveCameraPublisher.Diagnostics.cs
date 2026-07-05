@@ -32,7 +32,12 @@ namespace Unity.FoxgloveSDK.Components
                 _jpegPublishPipeline?.CompletedQueueDepth ?? 0,
                 out var message);
             if (message != null)
-                Debug.Log(message);
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    this,
+                    "{0}",
+                    message);
         }
 
         private void EmitCameraSlowStageIfNeeded(
