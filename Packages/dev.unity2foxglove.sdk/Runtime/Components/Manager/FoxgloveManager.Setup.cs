@@ -221,7 +221,7 @@ namespace Unity.FoxgloveSDK.Components
                 return true;
             }
 
-            if (_disableLivePublishers && !_livePublishersDisabled)
+            if (_disableLivePublishers && !_replayState.LivePublishersDisabled)
             {
                 DisableLivePublishers();
             }
@@ -307,7 +307,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void DisableLivePublishers()
         {
-            if (_livePublishersDisabled)
+            if (_replayState.LivePublishersDisabled)
             {
                 return;
             }
@@ -325,7 +325,7 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
-            _livePublishersDisabled = true;
+            _replayState.LivePublishersDisabled = true;
             Debug.Log($"[Foxglove] Disabled {_disabledPublishers.Count} live publisher(s)");
         }
 
@@ -357,7 +357,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void RestoreLivePublishers()
         {
-            if (!_livePublishersDisabled)
+            if (!_replayState.LivePublishersDisabled)
             {
                 return;
             }
@@ -371,7 +371,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _disabledPublishers.Clear();
-            _livePublishersDisabled = false;
+            _replayState.LivePublishersDisabled = false;
             Debug.Log("[Foxglove] Restored live publishers");
         }
     }

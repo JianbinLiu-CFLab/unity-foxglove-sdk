@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(diagnostics.Contains("temporarily", StringComparison.Ordinal)
                   && diagnostics.Contains("Unity's global Log stack-trace mode", StringComparison.Ordinal),
                 "163-2I: stack-trace suppression documents its global Unity logging window");
-            Check(registry.Contains("Ci(\"--phase163-2\", \"Phase 163-2\", Phase163_2Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-2\", \"Phase 163-2: phase163-2 review regression checks for FoxgloveManager lifecycle contracts\", Phase163_2Validation.Validate", StringComparison.Ordinal),
                 "163-2J: PhaseValidationRegistry wires --phase163-2");
 
             Console.WriteLine("Phase 163-2: 10 checks passed.");

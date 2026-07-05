@@ -356,15 +356,15 @@ namespace Unity.FoxgloveSDK.Components
 
         private string ResolveReplayFilePathCached()
         {
-            if (string.Equals(_cachedReplayFilePathInput, _replayFilePath, System.StringComparison.Ordinal)
-                && _cachedResolvedReplayFilePath != null)
+            if (string.Equals(_replayState.CachedReplayFilePathInput, _replayFilePath, System.StringComparison.Ordinal)
+                && _replayState.CachedResolvedReplayFilePath != null)
             {
-                return _cachedResolvedReplayFilePath;
+                return _replayState.CachedResolvedReplayFilePath;
             }
 
-            _cachedReplayFilePathInput = _replayFilePath;
-            _cachedResolvedReplayFilePath = ResolveProjectPath(_replayFilePath);
-            return _cachedResolvedReplayFilePath;
+            _replayState.CachedReplayFilePathInput = _replayFilePath;
+            _replayState.CachedResolvedReplayFilePath = ResolveProjectPath(_replayFilePath);
+            return _replayState.CachedResolvedReplayFilePath;
         }
 
         private RemoteMcapHttpOptions BuildRemoteMcapFileServerOptions(string resolvedPath)

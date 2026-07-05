@@ -146,7 +146,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ValidationRegistryExposesPhase140J()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase140j\", \"Phase 140J\", Phase140JValidation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase140j\", \"Phase 140J: replay enable-failure diagnostics and cursor gate validation\", Phase140JValidation.Validate", StringComparison.Ordinal),
                 "140J-5A: validation registry exposes --phase140j");
         }
 

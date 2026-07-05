@@ -122,11 +122,8 @@ namespace Unity.FoxgloveSDK.Components
         [Header("MCAP Replay")]
         [SerializeField] private bool _enableReplay;
         [SerializeField] private string _replayFilePath = "";
-        private string _cachedReplayFilePathInput;
-        private string _cachedResolvedReplayFilePath;
         [SerializeField] private bool _replayAutoPlay;
         [SerializeField] private bool _disableLivePublishers;
-        private bool _livePublishersDisabled;
         [Tooltip("Serve the selected replay MCAP as a loopback URL so Foxglove Desktop owns the replay timeline.")]
         [SerializeField] private bool _enableRemoteMcapFileServer;
         [SerializeField] private string _remoteMcapFileServerHost = "127.0.0.1";
@@ -171,8 +168,8 @@ namespace Unity.FoxgloveSDK.Components
         private FoxgloveCertificateDistributor _certificateDistributor;
         private int _nextChannelId = FirstAutoChannelId;
         private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();
-
         private readonly RecordingRuntimeState _recordingState = new RecordingRuntimeState();
+        private readonly ReplayRuntimeState _replayState = new ReplayRuntimeState();
         private readonly WarningDebounceState _warningDebounceState = new WarningDebounceState();
         private readonly FoxgloveSharedSensorClock _sharedSensorClock = new FoxgloveSharedSensorClock();
 
@@ -539,8 +536,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void InvalidateResolvedReplayFilePathCache()
         {
-            _cachedReplayFilePathInput = null;
-            _cachedResolvedReplayFilePath = null;
+            _replayState.InvalidateResolvedReplayFilePathCache();
         }
 
         private void CreateRos2BridgeRuntime()

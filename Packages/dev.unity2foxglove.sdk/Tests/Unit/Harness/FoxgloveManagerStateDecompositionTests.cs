@@ -123,5 +123,55 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(24, state.LastClientEventOverflowWarningTicks);
             Assert.NotNull(state.Ros2BridgePublishWarningGate);
         }
+
+        [Fact]
+        public void ReplayRuntimeStateOwnsReplayCachesWithoutMovingSerializedFields()
+        {
+            var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var setup = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
+            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ReplayRuntimeState.cs");
+            var stateMeta = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ReplayRuntimeState.cs.meta");
+
+            Assert.Contains("[SerializeField] private bool _enableReplay;", manager, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField] private string _replayFilePath", manager, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField] private bool _replayAutoPlay;", manager, StringComparison.Ordinal);
+            Assert.Contains("[SerializeField] private bool _disableLivePublishers;", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private string _cachedReplayFilePathInput", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private string _cachedResolvedReplayFilePath", manager, StringComparison.Ordinal);
+            Assert.DoesNotContain("private bool _livePublishersDisabled", manager, StringComparison.Ordinal);
+            Assert.Contains("private readonly System.Collections.Generic.List<MonoBehaviour> _disabledPublishers = new();", manager, StringComparison.Ordinal);
+            Assert.Contains("private readonly ReplayRuntimeState _replayState = new ReplayRuntimeState();", manager, StringComparison.Ordinal);
+
+            Assert.Contains("_replayState.LivePublishersDisabled", setup, StringComparison.Ordinal);
+            Assert.Contains("_disabledPublishers", setup, StringComparison.Ordinal);
+            Assert.Contains("_replayState.CachedReplayFilePathInput", server, StringComparison.Ordinal);
+            Assert.Contains("_replayState.CachedResolvedReplayFilePath", server, StringComparison.Ordinal);
+
+            Assert.Contains("internal sealed class ReplayRuntimeState", state, StringComparison.Ordinal);
+            Assert.Contains("internal string CachedReplayFilePathInput;", state, StringComparison.Ordinal);
+            Assert.Contains("internal string CachedResolvedReplayFilePath;", state, StringComparison.Ordinal);
+            Assert.Contains("internal bool LivePublishersDisabled;", state, StringComparison.Ordinal);
+            Assert.Contains("internal void InvalidateResolvedReplayFilePathCache()", state, StringComparison.Ordinal);
+            Assert.DoesNotContain("[SerializeField]", state, StringComparison.Ordinal);
+            Assert.Contains("MonoImporter:", stateMeta, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ReplayRuntimeStateCanInvalidateResolvedReplayPathCache()
+        {
+            var state = new ReplayRuntimeState
+            {
+                CachedReplayFilePathInput = "input.mcap",
+                CachedResolvedReplayFilePath = "C:/project/input.mcap",
+                LivePublishersDisabled = true
+            };
+
+            state.InvalidateResolvedReplayFilePathCache();
+
+            Assert.Null(state.CachedReplayFilePathInput);
+            Assert.Null(state.CachedResolvedReplayFilePath);
+            Assert.True(state.LivePublishersDisabled);
+        }
     }
 }
