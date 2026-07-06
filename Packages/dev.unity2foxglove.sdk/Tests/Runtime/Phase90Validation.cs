@@ -214,6 +214,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(SourceTreeContains(componentsRoot, "PublisherEffectiveEncoding.Ros2")
                   && SourceTreeAvoids(componentsRoot, "PublisherEffectiveEncoding.Cdr"),
                 "90G-4: publisher output mode uses product ROS2 labeling instead of CDR internals");
+            Check(catalog.Contains("deterministic startup cost", StringComparison.Ordinal)
+                  && catalog.Contains("Duplicate ROS2 schema name in Foxglove catalog", StringComparison.Ordinal)
+                  && catalog.Contains("Ros2StandardMsgSchemaCatalog.TryGet(schemaName, out entry)", StringComparison.Ordinal),
+                "90G-5: ROS2 msg catalog documents eager decode cost and fail-fast duplicate diagnostics");
         }
 
         private static void Check(bool condition, string name)

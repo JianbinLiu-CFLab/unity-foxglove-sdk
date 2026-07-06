@@ -6,7 +6,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -28,6 +27,7 @@ namespace Foxglove.Schemas.Video
         private readonly ConcurrentQueue<QueuedVideoFrame> _inputFrames = new ConcurrentQueue<QueuedVideoFrame>();
         private readonly ConcurrentQueue<ulong> _encodedFrameTimestamps = new ConcurrentQueue<ulong>();
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
+        private readonly object _startStopLock = new object();
         private readonly object _inputLock = new object();
         private readonly object _outputLock = new object();
         private Process _process;
@@ -44,6 +44,7 @@ namespace Foxglove.Schemas.Video
         private long _accessUnitsReceived;
         private long _skippedAccessUnits;
         private long _droppedInputFrames;
+        private long _droppedOutputFrames;
         private string _lastDiagnosticLine;
         private string _lastError;
 
@@ -51,17 +52,9 @@ namespace Foxglove.Schemas.Video
         {
             get
             {
-                var process = _process;
-                if (process == null)
-                    return false;
-
-                try
+                lock (_startStopLock)
                 {
-                    return !process.HasExited;
-                }
-                catch
-                {
-                    return false;
+                    return IsRunningNoLock();
                 }
             }
         }
@@ -70,6 +63,7 @@ namespace Foxglove.Schemas.Video
         public long AccessUnitsReceived => Interlocked.Read(ref _accessUnitsReceived);
         public long SkippedAccessUnits => Interlocked.Read(ref _skippedAccessUnits);
         public long DroppedInputFrames => Interlocked.Read(ref _droppedInputFrames);
+        public long DroppedOutputFrames => Interlocked.Read(ref _droppedOutputFrames);
         public int OutputQueueDepth => Volatile.Read(ref _outputCount);
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
         public string LastDiagnosticLine
@@ -85,58 +79,61 @@ namespace Foxglove.Schemas.Video
 
         public bool Start(OpenH264EncoderOptions options)
         {
-            if (IsRunning)
-                return true;
-
-            Stop(clearOutputQueue: true);
-
-            _options = options ?? new OpenH264EncoderOptions();
-            LastError = null;
-            LastDiagnosticLine = null;
-
-            if (!_options.Validate(out var error))
+            lock (_startStopLock)
             {
-                LastError = error;
-                return false;
-            }
+                if (IsRunningNoLock())
+                    return true;
 
-            _maxInputQueue = Math.Max(1, _options.MaxInputQueue);
-            _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
+                StopNoLock(clearOutputQueue: true);
 
-            try
-            {
-                _process = new Process
+                _options = options ?? new OpenH264EncoderOptions();
+                LastError = null;
+                LastDiagnosticLine = null;
+
+                if (!_options.Validate(out var error))
                 {
-                    StartInfo = _options.CreateStartInfo(),
-                    EnableRaisingEvents = true
-                };
-
-                if (!_process.Start())
-                {
-                    LastError = "OpenH264 helper process failed to start.";
-                    Stop();
+                    LastError = error;
                     return false;
                 }
 
-                _stop = new CancellationTokenSource();
-                var process = _process;
-                var token = _stop.Token;
-                _stdinTask = Task.Run(() => RunStdinWriter(process, token));
-                _stdoutTask = Task.Run(() => RunStdoutReader(process, token));
-                _stderrTask = Task.Run(() => RunStderrReader(process, token));
-                return true;
-            }
-            catch (Win32Exception ex)
-            {
-                LastError = "OpenH264 helper executable could not be started: " + ex.Message;
-                Stop();
-                return false;
-            }
-            catch (Exception ex)
-            {
-                LastError = ex.Message;
-                Stop();
-                return false;
+                _maxInputQueue = Math.Max(1, _options.MaxInputQueue);
+                _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
+
+                try
+                {
+                    _process = new Process
+                    {
+                        StartInfo = _options.CreateStartInfo(),
+                        EnableRaisingEvents = true
+                    };
+
+                    if (!_process.Start())
+                    {
+                        LastError = "OpenH264 helper process failed to start.";
+                        StopNoLock(clearOutputQueue: true);
+                        return false;
+                    }
+
+                    _stop = new CancellationTokenSource();
+                    var process = _process;
+                    var token = _stop.Token;
+                    _stdinTask = Task.Run(() => RunStdinWriter(process, token));
+                    _stdoutTask = Task.Run(() => RunStdoutReader(process, token));
+                    _stderrTask = Task.Run(() => RunStderrReader(process, token));
+                    return true;
+                }
+                catch (Win32Exception ex)
+                {
+                    LastError = "OpenH264 helper executable could not be started: " + ex.Message;
+                    StopNoLock(clearOutputQueue: true);
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    LastError = ex.Message;
+                    StopNoLock(clearOutputQueue: true);
+                    return false;
+                }
             }
         }
 
@@ -210,6 +207,14 @@ namespace Foxglove.Schemas.Video
         }
 
         private void Stop(bool clearOutputQueue)
+        {
+            lock (_startStopLock)
+            {
+                StopNoLock(clearOutputQueue);
+            }
+        }
+
+        private void StopNoLock(bool clearOutputQueue)
         {
             var stop = _stop;
             if (stop != null && !stop.IsCancellationRequested)
@@ -417,6 +422,8 @@ namespace Foxglove.Schemas.Video
             {
                 if (_outputCount >= _maxOutputQueue)
                 {
+                    _encodedFrameTimestamps.TryDequeue(out _);
+                    Interlocked.Increment(ref _droppedOutputFrames);
                     LastDiagnosticLine = "OpenH264 output queue full; capture admission is holding new frames.";
                     return;
                 }
@@ -508,6 +515,22 @@ namespace Foxglove.Schemas.Video
 
         private static bool IsProcessRunning(Process process)
         {
+            if (process == null)
+                return false;
+
+            try
+            {
+                return !process.HasExited;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private bool IsRunningNoLock()
+        {
+            var process = _process;
             if (process == null)
                 return false;
 

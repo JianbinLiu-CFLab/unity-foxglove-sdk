@@ -8,6 +8,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Text;
 
 namespace Foxglove.Schemas.Video
 {
@@ -111,7 +112,40 @@ namespace Foxglove.Schemas.Video
             if (string.IsNullOrEmpty(value))
                 return "\"\"";
 
-            return "\"" + value.Replace("\"", "\\\"") + "\"";
+            var builder = new StringBuilder(value.Length + 2);
+            builder.Append('"');
+            var backslashes = 0;
+
+            foreach (var c in value)
+            {
+                if (c == '\\')
+                {
+                    backslashes++;
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    builder.Append('\\', (backslashes * 2) + 1);
+                    builder.Append('"');
+                    backslashes = 0;
+                    continue;
+                }
+
+                if (backslashes > 0)
+                {
+                    builder.Append('\\', backslashes);
+                    backslashes = 0;
+                }
+
+                builder.Append(c);
+            }
+
+            if (backslashes > 0)
+                builder.Append('\\', backslashes * 2);
+
+            builder.Append('"');
+            return builder.ToString();
         }
     }
 }

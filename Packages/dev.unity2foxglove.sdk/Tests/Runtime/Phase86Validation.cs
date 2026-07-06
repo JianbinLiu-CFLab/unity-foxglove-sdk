@@ -40,18 +40,27 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/OpenH264EncoderSidecar.cs");
             Check(source.Contains("private long _framesSubmitted")
                   && source.Contains("private long _accessUnitsReceived")
-                  && source.Contains("private long _droppedInputFrames"),
+                  && source.Contains("private long _droppedInputFrames")
+                  && source.Contains("private long _droppedOutputFrames"),
                 "86A-1: OpenH264 diagnostic counters use long backing fields");
             Check(source.Contains("Interlocked.Read(ref _framesSubmitted)")
                   && source.Contains("Interlocked.Increment(ref _framesSubmitted)")
                   && source.Contains("Interlocked.Increment(ref _accessUnitsReceived)")
-                  && source.Contains("Interlocked.Increment(ref _droppedInputFrames)"),
+                  && source.Contains("Interlocked.Increment(ref _droppedInputFrames)")
+                  && source.Contains("Interlocked.Increment(ref _droppedOutputFrames)"),
                 "86A-2: OpenH264 diagnostic counters use Interlocked");
             Check(source.Contains("length == 0")
                   && source.Contains("AcceptHelperSkippedAccessUnit")
                   && source.Contains("length < 0")
                   && source.Contains("MaxAccessUnitBytes"),
                 "86A-3: OpenH264 helper treats zero as a skip sentinel and rejects negative/oversized lengths");
+            Check(source.Contains("_encodedFrameTimestamps.TryDequeue(out _);")
+                  && source.Contains("OpenH264 output queue full"),
+                "86A-4: OpenH264 output queue pressure consumes the dropped access-unit timestamp");
+            Check(source.Contains("private readonly object _startStopLock")
+                  && source.Contains("lock (_startStopLock)")
+                  && source.Contains("StopNoLock(clearOutputQueue"),
+                "86A-5: OpenH264 start and stop share one lifecycle lock");
         }
 
         private static void VerifySidecarLifecycle()
@@ -70,7 +79,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySidecarLifecycleFile(string relativePath, string checkName)
         {
             var source = ReadRepoText(relativePath);
-            var stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void Stop(");
+            var stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void StopNoLock(");
+            if (string.IsNullOrEmpty(stopMethod))
+                stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void Stop(");
             if (string.IsNullOrEmpty(stopMethod))
                 throw new InvalidOperationException("[FAIL] missing source method: private void Stop(");
             Check(source.Contains("var process = _process;")
