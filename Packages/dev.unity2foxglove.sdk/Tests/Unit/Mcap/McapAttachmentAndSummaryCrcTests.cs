@@ -131,6 +131,23 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void AttachmentCrcReadsHighBitWithoutManualShift()
+        {
+            using var content = new MemoryStream();
+            WriteU64LE(content, 100);
+            WriteU64LE(content, 200);
+            WriteString(content, "x.bin");
+            WriteString(content, "application/octet-stream");
+            WriteU64LE(content, 0);
+            WriteU32LE(content, 0x80000000);
+
+            var attachment = McapRecordDecoder.DecodeAttachment(content.ToArray());
+
+            Assert.Equal(0x80000000u, attachment.Crc);
+            Assert.False(attachment.CrcValid);
+        }
+
+        [Fact]
         public void AttachmentTruncatedContentRejected()
         {
             byte[] allBytes;
@@ -433,6 +450,33 @@ namespace Unity.FoxgloveSDK.UnitTests
             bytes[offset + 5] = (byte)(value >> 40);
             bytes[offset + 6] = (byte)(value >> 48);
             bytes[offset + 7] = (byte)(value >> 56);
+        }
+
+        private static void WriteString(Stream stream, string value)
+        {
+            var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+            WriteU32LE(stream, (uint)bytes.Length);
+            stream.Write(bytes, 0, bytes.Length);
+        }
+
+        private static void WriteU32LE(Stream stream, uint value)
+        {
+            stream.WriteByte((byte)value);
+            stream.WriteByte((byte)(value >> 8));
+            stream.WriteByte((byte)(value >> 16));
+            stream.WriteByte((byte)(value >> 24));
+        }
+
+        private static void WriteU64LE(Stream stream, ulong value)
+        {
+            stream.WriteByte((byte)value);
+            stream.WriteByte((byte)(value >> 8));
+            stream.WriteByte((byte)(value >> 16));
+            stream.WriteByte((byte)(value >> 24));
+            stream.WriteByte((byte)(value >> 32));
+            stream.WriteByte((byte)(value >> 40));
+            stream.WriteByte((byte)(value >> 48));
+            stream.WriteByte((byte)(value >> 56));
         }
     }
 }

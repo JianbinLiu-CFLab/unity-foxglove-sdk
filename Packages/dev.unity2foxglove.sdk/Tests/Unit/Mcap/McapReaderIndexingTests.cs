@@ -93,6 +93,25 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void ChunkIndexRejectsTrailingBytes()
+        {
+            var content = new MemoryStream();
+            WriteU64LE(content, 1);
+            WriteU64LE(content, 2);
+            WriteU64LE(content, 3);
+            WriteU64LE(content, 4);
+            WriteU32LE(content, 0);
+            WriteU64LE(content, 0);
+            WriteString(content, "");
+            WriteU64LE(content, 0);
+            WriteU64LE(content, 0);
+            content.WriteByte(0xFF);
+
+            Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeChunkIndex(content.ToArray())),
+                "173-021A: chunk index trailing bytes are rejected");
+        }
+
+        [Fact]
         public void MessageIndexVectorLengthMustBeMultipleOfPairSize()
         {
             var content = new MemoryStream();
@@ -119,6 +138,25 @@ namespace Unity.FoxgloveSDK.UnitTests
             WriteU32LE(content, 11);
             Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeStatistics(content.ToArray())),
                 "134-9C-3: malformed statistics channel-count vector length is rejected");
+        }
+
+        [Fact]
+        public void StatisticsRejectsTrailingBytes()
+        {
+            var content = new MemoryStream();
+            WriteU64LE(content, 1);
+            WriteU16LE(content, 1);
+            WriteU32LE(content, 1);
+            WriteU32LE(content, 0);
+            WriteU32LE(content, 0);
+            WriteU32LE(content, 0);
+            WriteU64LE(content, 1);
+            WriteU64LE(content, 2);
+            WriteU32LE(content, 0);
+            content.WriteByte(0xFF);
+
+            Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeStatistics(content.ToArray())),
+                "173-021B: statistics trailing bytes are rejected");
         }
 
         [Fact]
