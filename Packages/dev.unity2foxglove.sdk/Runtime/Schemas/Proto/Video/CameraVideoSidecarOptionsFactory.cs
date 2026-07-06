@@ -23,7 +23,7 @@ namespace Foxglove.Schemas.Video
             int maxOutputQueue)
             => new FfmpegH264EncoderOptions
             {
-                FfmpegPath = string.IsNullOrWhiteSpace(ffmpegPath) ? "ffmpeg" : ffmpegPath,
+                FfmpegPath = ffmpegPath ?? "",
                 Width = width,
                 Height = height,
                 FrameRate = frameRate,
@@ -44,7 +44,7 @@ namespace Foxglove.Schemas.Video
             int maxOutputQueue)
             => new FfmpegH265EncoderOptions
             {
-                FfmpegPath = string.IsNullOrWhiteSpace(ffmpegPath) ? "ffmpeg" : ffmpegPath,
+                FfmpegPath = ffmpegPath ?? "",
                 Width = width,
                 Height = height,
                 FrameRate = frameRate,

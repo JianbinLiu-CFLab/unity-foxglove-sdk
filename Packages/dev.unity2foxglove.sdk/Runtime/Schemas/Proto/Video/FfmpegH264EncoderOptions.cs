@@ -29,7 +29,7 @@ namespace Foxglove.Schemas.Video
             "placebo"
         };
 
-        public string FfmpegPath = "ffmpeg";
+        public string FfmpegPath = "";
         public int Width = 640;
         public int Height = 480;
         public int FrameRate = 30;
@@ -43,28 +43,55 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Returns the expected RGB24 byte count for one raw input frame.</summary>
         public int FrameByteCount
-            => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Positive(Width, 640), Positive(Height, 480));
+            => CameraVideoFrameGeometry.GetRgb24FrameByteCountOrZero(Width, Height);
 
         public bool Validate(out string error)
         {
             if (!ValidatePreset(Preset, out error))
                 return false;
 
-            return CameraVideoFrameGeometry.ValidateRgb24Dimensions(
-                Positive(Width, 640),
-                Positive(Height, 480),
-                "FFmpeg H.264 RGB24",
-                out error);
+            if (!CameraVideoFrameGeometry.ValidateRgb24Dimensions(Width, Height, "FFmpeg H.264 RGB24", out error))
+                return false;
+
+            if (FrameRate <= 0)
+            {
+                error = "FFmpeg H.264 frame rate must be positive.";
+                return false;
+            }
+
+            if (BitrateKbps <= 0)
+            {
+                error = "FFmpeg H.264 bitrate must be positive.";
+                return false;
+            }
+
+            if (KeyframeInterval <= 0)
+            {
+                error = "FFmpeg H.264 keyframe interval must be positive.";
+                return false;
+            }
+
+            if (MaxInputQueue <= 0 || MaxOutputQueue <= 0)
+            {
+                error = "FFmpeg H.264 queue sizes must be positive.";
+                return false;
+            }
+
+            error = "";
+            return true;
         }
 
         /// <summary>Builds the FFmpeg process start info without invoking a shell.</summary>
         public ProcessStartInfo CreateStartInfo()
         {
-            var width = Positive(Width, 640);
-            var height = Positive(Height, 480);
-            var fps = Positive(FrameRate, 30);
-            var bitrate = Positive(BitrateKbps, 4000);
-            var keyframeInterval = Positive(KeyframeInterval, fps);
+            if (!Validate(out var error))
+                throw new ArgumentException(error, nameof(FfmpegH264EncoderOptions));
+
+            var width = Width;
+            var height = Height;
+            var fps = FrameRate;
+            var bitrate = BitrateKbps;
+            var keyframeInterval = KeyframeInterval;
             var ffmpeg = FfmpegExecutableResolver.ResolveExecutablePath(FfmpegPath);
             var preset = string.IsNullOrWhiteSpace(Preset) ? "ultrafast" : Preset.Trim();
 
@@ -101,9 +128,6 @@ namespace Foxglove.Schemas.Video
                 CreateNoWindow = true
             };
         }
-
-        private static int Positive(int value, int fallback)
-            => value > 0 ? value : fallback;
 
         private static string QuoteArg(string value)
         {
