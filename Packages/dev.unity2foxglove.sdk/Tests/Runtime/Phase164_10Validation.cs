@@ -27,9 +27,10 @@ namespace Unity.FoxgloveSDK.Tests
             var reader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapReader.cs");
             var summaryBuilder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapSummaryBuilder.cs");
             var readSummary = SourceMethod(reader, "public McapFileSummary ReadSummary");
+            var readTrailerInfo = SourceMethod(reader, "internal McapTrailerInfo ReadTrailerInfo");
 
-            Check(readSummary.Contains("var magic = _buf", StringComparison.Ordinal)
-                  && readSummary.Contains("var trailingMagic = _buf", StringComparison.Ordinal)
+            Check(readSummary.Contains("ReadExact(_buf, 0, _buf.Length)", StringComparison.Ordinal)
+                  && readSummary.Contains("_buf is reused; leading magic was already validated above", StringComparison.Ordinal)
                   && !readSummary.Contains("new byte[8]", StringComparison.Ordinal),
                 "164-10A-1: McapReader reuses the instance 8-byte buffer for magic probes");
             Check(readSummary.Contains("var summaryBytes = new byte[(int)summaryLen]", StringComparison.Ordinal)
@@ -43,6 +44,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(summaryBuilder.Contains("crc = Crc32Helper.Update(crc, summaryBytes)", StringComparison.Ordinal)
                   && CountOccurrences(readSummary, "new byte[(int)summaryLen]") == 1,
                 "164-10A-3: summary CRC reuses the parsed summary buffer instead of reading it again");
+            Check(readTrailerInfo.Contains("var summaryBytes = ReadSummaryBytes(footer.SummaryStart, footerOffset)", StringComparison.Ordinal)
+                  && readTrailerInfo.Contains("ValidateSummaryCrc(\n                summaryBytes", StringComparison.Ordinal)
+                  && CountOccurrences(reader, "new byte[(int)summaryLen]") == 2,
+                "164-10A-4: ReadTrailerInfo reads summary bytes once for CRC validation");
         }
 
         private static void VerifyMcapReaderInternalRecordBufferReuse()
@@ -56,6 +61,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && segmentedReadOne.Contains("EnsureRecordContentBuffer(contentLengthInt)", StringComparison.Ordinal)
                   && !segmentedReadOne.Contains("new byte[contentLength]", StringComparison.Ordinal),
                 "164-10B-1: internal MCAP record scans reuse a grow-only content buffer");
+            Check(reader.Contains("is invalidated by the next call to this method", StringComparison.Ordinal)
+                  && reader.Contains("callers that need to retain", StringComparison.Ordinal),
+                "164-10B-1b: internal reusable record buffer contract is documented");
             Check(publicReadOne.Contains("ReadOneRecordSegment(sizeLimit)", StringComparison.Ordinal)
                   && publicReadOne.Contains("CloneBytes(content, contentLength)", StringComparison.Ordinal),
                 "164-10B-2: public ReadOneRecord keeps ownership-safe byte[] semantics");
