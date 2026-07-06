@@ -53,6 +53,15 @@ public class ROS2UnityComponent : MonoBehaviour
     private readonly object mutex = new object();
     private double spinTimeout = 0.0001;
 
+    private void Awake()
+    {
+        ROS2ForUnity.PrewarmUnityPaths();
+    }
+
+    /// <summary>
+    /// Checks ROS2 availability. The first call must happen on Unity's main thread,
+    /// or after Awake has prewarmed Unity API backed package paths.
+    /// </summary>
     public bool Ok()
     {
         lock (mutex)
@@ -103,7 +112,6 @@ public class ROS2UnityComponent : MonoBehaviour
                 return;
 
             ros2forUnity = new ROS2ForUnity();
-            runtimeShutdownRequested = false;
             nodes = new List<ROS2Node>();
             ros2csNodes = new List<INode>();
             executableActions = new List<Action>();

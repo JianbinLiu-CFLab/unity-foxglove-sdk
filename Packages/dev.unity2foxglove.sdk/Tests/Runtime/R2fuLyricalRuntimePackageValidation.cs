@@ -89,7 +89,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             var packageJson = ReadRepoText(RuntimePackage + "/package.json");
             Check(packageJson.Contains("dev.unity2foxglove.ros2forunity.runtime.lyrical.win64", StringComparison.Ordinal)
-                  && packageJson.Contains("Lyrical Win64", StringComparison.Ordinal),
+                  && packageJson.Contains("Lyrical Win64", StringComparison.Ordinal)
+                  && packageJson.Contains("\"dependencies\": {}", StringComparison.Ordinal),
                 "146B-A5: package metadata names the Lyrical Win64 runtime package");
 
             var manifest = ReadRepoText(RuntimePackage + "/RuntimeSupport/runtime-manifest.json");
@@ -415,6 +416,19 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtimeSource.IndexOf("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
                      < runtimeSource.IndexOf("Ros2cs.Shutdown()", StringComparison.Ordinal),
                 "162-E6: Lyrical runtime stops ROS2 executor threads before unloading Zenoh/RMW through Ros2cs.Shutdown");
+            var constructor = ExtractMethod(runtimeSource, "internal ROS2ForUnity()");
+            var windowsBlockStart = constructor.IndexOf("if (GetOS() == Platform.Windows)", StringComparison.Ordinal);
+            var windowsBlockEnd = constructor.IndexOf("} else {", windowsBlockStart, StringComparison.Ordinal);
+            var windowsBlock = windowsBlockStart >= 0 && windowsBlockEnd > windowsBlockStart
+                ? constructor.Substring(windowsBlockStart, windowsBlockEnd - windowsBlockStart)
+                : string.Empty;
+            Check(runtimeSource.Contains("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN", StringComparison.Ordinal)
+                  && runtimeSource.Contains("PlatformNotSupportedException(\"Windows CRT environment updates require a Windows Unity build target.\")", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRosDistro(currentRos2Version)", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandalonePrefixPath();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRmwImplementation();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRcutilsConsoleMode();", StringComparison.Ordinal),
+                "162-E6b: Lyrical Windows environment setup is symbol-guarded and not repeated after standalone setup");
             Check(componentSource.Contains("private static readonly HashSet<ROS2UnityComponent> instances", StringComparison.Ordinal)
                   && componentSource.Contains("instances.Add(this)", StringComparison.Ordinal)
                   && componentSource.Contains("instances.Remove(this)", StringComparison.Ordinal)
@@ -426,6 +440,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && componentSource.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
                   && componentSource.Contains("ros2forUnity == null", StringComparison.Ordinal),
                 "162-E8: Lyrical ROS2UnityComponent does not reinitialize after shared runtime shutdown starts");
+            Check(componentSource.Contains("private void Awake()", StringComparison.Ordinal)
+                  && componentSource.Contains("ROS2ForUnity.PrewarmUnityPaths();", StringComparison.Ordinal)
+                  && !componentSource.Contains("            runtimeShutdownRequested = false;", StringComparison.Ordinal),
+                "162-E8b: Lyrical ROS2UnityComponent prewarms Unity path Lazy values and has no dead shutdown reset");
             Check(runtimeSource.Contains("if (!isInitialized || shutdownInProgress)", StringComparison.Ordinal),
                 "162-E9: Lyrical runtime reports not-ready while native shutdown is in progress");
         }
@@ -530,6 +548,9 @@ namespace Unity.FoxgloveSDK.Tests
                 values[index] = matches[index].Groups[1].Value;
             return values;
         }
+
+        private static string ExtractMethod(string source, string methodName)
+            => PhaseValidationSourceHelpers.SourceMethod(source, methodName);
 
         private static void Check(bool condition, string message)
         {

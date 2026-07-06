@@ -358,7 +358,7 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     for key, value in expected.items():
         add(results, f"package {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
-    add(results, "package has no dependencies", "dependencies" not in data, f"dependencies={data.get('dependencies')!r}")
+    add(results, "package declares no external dependencies", data.get("dependencies") == {}, f"dependencies={data.get('dependencies')!r}")
     keywords = data.get("keywords", [])
     add(
         results,
@@ -867,12 +867,38 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
     add(
         results,
+        "ROS2ForUnity Windows CRT environment import is Windows-symbol guarded",
+        "#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN" in runtime
+        and "PlatformNotSupportedException(\"Windows CRT environment updates require a Windows Unity build target.\")" in runtime,
+        "ROS2ForUnity.cs",
+    )
+    constructor = runtime[runtime.find("internal ROS2ForUnity()") :]
+    windows_block = constructor[constructor.find("if (GetOS() == Platform.Windows)") : constructor.find("} else {")]
+    add(
+        results,
+        "ROS2ForUnity standalone environment setup is not repeated in the Windows PATH block",
+        "SetStandaloneRosDistro(currentRos2Version)" not in windows_block
+        and "SetStandalonePrefixPath();" not in windows_block
+        and "SetStandaloneRmwImplementation();" not in windows_block
+        and "SetStandaloneRcutilsConsoleMode();" not in windows_block,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
         "ROS2UnityComponent prevents restart during shared ROS shutdown",
         "runtimeShutdownRequested" in component
         and "MarkRuntimeShutdown()" in component
         and "component.MarkRuntimeShutdown();" in component
         and "throw new ObjectDisposedException(nameof(ROS2UnityComponent))" in component
         and "ros2forUnity == null" in component,
+        "ROS2UnityComponent.cs",
+    )
+    add(
+        results,
+        "ROS2UnityComponent prewarms Unity path Lazy values on the main thread",
+        "private void Awake()" in component
+        and "ROS2ForUnity.PrewarmUnityPaths();" in component
+        and "            runtimeShutdownRequested = false;" not in component,
         "ROS2UnityComponent.cs",
     )
 

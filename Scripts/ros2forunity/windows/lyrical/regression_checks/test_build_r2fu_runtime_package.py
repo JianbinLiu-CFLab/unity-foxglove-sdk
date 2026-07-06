@@ -153,6 +153,63 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         self.assertIn("supportedRmwImplementations", patched)
         self.assertNotIn("return rmwImpl == \"rmw_fastrtps_cpp\";", patched)
 
+    def test_package_json_declares_empty_dependencies_for_self_contained_runtime(self) -> None:
+        """Generated package metadata should explicitly document that the runtime package is self-contained."""
+        package = self.builder.package_json()
+
+        self.assertEqual({}, package.get("dependencies"))
+
+    def test_standalone_isolation_keeps_windows_env_setup_single_pass(self) -> None:
+        """Standalone env ownership should not be repeated in the Windows PATH block."""
+        source = (
+            ROOT
+            / "Packages"
+            / self.builder.PACKAGE_NAME
+            / "Runtime"
+            / "Ros2ForUnity"
+            / "Scripts"
+            / "ROS2ForUnity.cs"
+        ).read_text(encoding="utf-8")
+
+        patched = self.builder.patch_standalone_environment_isolation(source)
+        constructor = patched[patched.find("internal ROS2ForUnity()") :]
+        windows_start = constructor.find("if (GetOS() == Platform.Windows)")
+        windows_end = constructor.find("} else {", windows_start)
+        windows_block = constructor[windows_start:windows_end]
+
+        self.assertIn("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN", patched)
+        self.assertIn("PrewarmUnityPaths", patched)
+        self.assertNotIn("SetStandaloneRosDistro(currentRos2Version)", windows_block)
+        self.assertNotIn("SetStandalonePrefixPath();", windows_block)
+        self.assertNotIn("SetStandaloneRmwImplementation();", windows_block)
+        self.assertNotIn("SetStandaloneRcutilsConsoleMode();", windows_block)
+
+    def test_component_patch_prewarms_paths_and_removes_dead_shutdown_reset(self) -> None:
+        """ROS2UnityComponent patch should prewarm Unity API paths and remove the dead reset."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            component = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2UnityComponent.cs"
+            component.parent.mkdir(parents=True)
+            component.write_text(
+                "class ROS2UnityComponent\n"
+                "{\n"
+                "    private readonly object mutex = new object();\n"
+                "    private double spinTimeout = 0.0001;\n\n"
+                "    void LazyConstruct()\n"
+                "    {\n"
+                "            runtimeShutdownRequested = false;\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+
+            self.builder.patch_component_main_thread_prewarm(package)
+
+            patched = component.read_text(encoding="utf-8")
+            self.assertIn("private void Awake()", patched)
+            self.assertIn("ROS2ForUnity.PrewarmUnityPaths();", patched)
+            self.assertNotIn("runtimeShutdownRequested = false;", patched)
+
     def test_standalone_isolation_rejects_partial_startup_patch(self) -> None:
         """Do not accept a source that declares metadata without standalone setup calls."""
         source = (

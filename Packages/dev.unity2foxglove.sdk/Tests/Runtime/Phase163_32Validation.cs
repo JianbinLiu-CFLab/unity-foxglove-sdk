@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectorScopesCommunicationModePerRuntime();
             RuntimeSelectorSurfacesMissingZenohPayload();
             LyricalRuntimeCapturesSourcedDistroBeforeStandalonePatch();
+            LyricalRuntimeAvoidsDuplicateWindowsStandaloneSetup();
             LyricalRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             LyricalRuntimeDoesNotRestartAfterSharedShutdown();
             LyricalZenohPlayModeRequiresRunningRouter();
@@ -119,6 +120,25 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-32D-3: Lyrical runtime lifecycle logs avoid Editor stack trace extraction");
         }
 
+        private static void LyricalRuntimeAvoidsDuplicateWindowsStandaloneSetup()
+        {
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
+            var constructor = ExtractCSharpMethod(runtime, "ROS2ForUnity");
+            var windowsBlockStart = constructor.IndexOf("if (GetOS() == Platform.Windows)", StringComparison.Ordinal);
+            var windowsBlockEnd = constructor.IndexOf("} else {", windowsBlockStart, StringComparison.Ordinal);
+            var windowsBlock = windowsBlockStart >= 0 && windowsBlockEnd > windowsBlockStart
+                ? constructor.Substring(windowsBlockStart, windowsBlockEnd - windowsBlockStart)
+                : string.Empty;
+
+            Check(runtime.Contains("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN", StringComparison.Ordinal)
+                  && runtime.Contains("PlatformNotSupportedException(\"Windows CRT environment updates require a Windows Unity build target.\")", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRosDistro(currentRos2Version)", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandalonePrefixPath();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRmwImplementation();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRcutilsConsoleMode();", StringComparison.Ordinal),
+                "163-32D-4: Lyrical Windows PATH setup does not repeat standalone environment ownership and guards CRT import");
+        }
+
         private static void LyricalRuntimeDoesNotRestartAfterSharedShutdown()
         {
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
@@ -138,7 +158,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && lazyConstruct.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
                   && startExecutor.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && startExecutor.Contains("ros2forUnity == null", StringComparison.Ordinal)
-                  && markRuntimeShutdown.Contains("ros2forUnity = null;", StringComparison.Ordinal),
+                  && markRuntimeShutdown.Contains("ros2forUnity = null;", StringComparison.Ordinal)
+                  && component.Contains("private void Awake()", StringComparison.Ordinal)
+                  && component.Contains("ROS2ForUnity.PrewarmUnityPaths();", StringComparison.Ordinal)
+                  && !component.Contains("            runtimeShutdownRequested = false;", StringComparison.Ordinal),
                 "163-32E-2: Lyrical component does not lazy-construct or start an executor after shared shutdown begins");
         }
 

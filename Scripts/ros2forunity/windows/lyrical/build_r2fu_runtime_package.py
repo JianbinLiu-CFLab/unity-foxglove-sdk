@@ -585,6 +585,7 @@ def package_json() -> dict[str, object]:
             "lyrical",
             "win64",
         ],
+        "dependencies": {},
         "author": {"name": "Unity2Foxglove"},
     }
 
@@ -953,6 +954,56 @@ def patch_standalone_environment_isolation(text: str) -> str:
 '''
     text = text.replace(old_owned_rmw, new_rmw)
 
+    text = text.replace(
+        '''    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    private static extern int _wputenv_s(string name, string value);
+''',
+        '''#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    private static extern int _wputenv_s(string name, string value);
+#endif
+''',
+        1,
+    )
+    text = text.replace(
+        '''        if (GetOS() == Platform.Windows)
+        {
+            int result = _wputenv_s(name, value);
+            if (result != 0)
+            {
+                throw new InvalidOperationException(
+                    "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
+            }
+        }
+''',
+        '''        if (GetOS() == Platform.Windows)
+        {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            int result = _wputenv_s(name, value);
+            if (result != 0)
+            {
+                throw new InvalidOperationException(
+                    "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
+            }
+#else
+            throw new PlatformNotSupportedException("Windows CRT environment updates require a Windows Unity build target.");
+#endif
+        }
+''',
+        1,
+    )
+    if "internal static void PrewarmUnityPaths()" not in text:
+        text = text.replace(
+            "\n    public static string GetRos2ForUnityPath()\n",
+            "\n    internal static void PrewarmUnityPaths()\n"
+            "    {\n"
+            "        _ = GetRos2ForUnityPath();\n"
+            "        _ = GetPluginPath();\n"
+            "    }\n\n"
+            "    public static string GetRos2ForUnityPath()\n",
+            1,
+        )
+
     old_distro = '''        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("ROS_DISTRO")))
         {
             SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
@@ -1034,8 +1085,43 @@ def patch_standalone_environment_isolation(text: str) -> str:
         "                if (standaloneBuild)\n",
         1,
     )
+    text = text.replace(
+        '''                if (standaloneBuild)
+                {
+                    SetStandaloneRosDistro(currentRos2Version);
+                    SetStandalonePrefixPath();
+                    SetStandaloneRmwImplementation();
+                    SetStandaloneRcutilsConsoleMode();
+                }
+''',
+        "",
+        1,
+    )
 
     return text
+
+
+def patch_component_main_thread_prewarm(package: Path) -> None:
+    """Patch ROS2UnityComponent so Unity API backed Lazy paths are warmed on the main thread."""
+    component = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2UnityComponent.cs"
+    text = component.read_text(encoding="utf-8")
+    if "ROS2ForUnity.PrewarmUnityPaths();" not in text:
+        text = text.replace(
+            "    private readonly object mutex = new object();\n    private double spinTimeout = 0.0001;\n\n",
+            "    private readonly object mutex = new object();\n"
+            "    private double spinTimeout = 0.0001;\n\n"
+            "    private void Awake()\n"
+            "    {\n"
+            "        ROS2ForUnity.PrewarmUnityPaths();\n"
+            "    }\n\n"
+            "    /// <summary>\n"
+            "    /// Checks ROS2 availability. The first call must happen on Unity's main thread,\n"
+            "    /// or after Awake has prewarmed Unity API backed package paths.\n"
+            "    /// </summary>\n",
+            1,
+        )
+    text = text.replace("            runtimeShutdownRequested = false;\n", "", 1)
+    component.write_text(text, encoding="utf-8", newline="\n")
 
 
 def patch_ros_time_source_contract(package: Path) -> None:
@@ -1136,6 +1222,7 @@ def build_package(paths: BuildPaths) -> None:
         prune_non_contract_examples(paths.package)
         apply_local_patch_overlays(paths.package, overlays)
         patch_ros2_for_unity(paths.package)
+        patch_component_main_thread_prewarm(paths.package)
         patch_ros_time_source_contract(paths.package)
         write_package_files(paths, inventory, artifact)
         apply_meta_overlays(paths.package, meta_overlays)

@@ -84,6 +84,28 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertIn("rmw_fastrtps_cpp", source)
         self.assertIn("rmw_zenoh_cpp", source)
 
+    def test_package_metadata_requires_explicit_empty_dependencies(self) -> None:
+        """Runtime package metadata should declare that it has no external package dependencies."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            (package / "package.json").write_text(
+                '{"name":"dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",'
+                '"version":"0.1.0-preview.1",'
+                '"displayName":"Unity2Foxglove ROS2 For Unity Runtime - Lyrical Win64",'
+                '"license":"Apache-2.0",'
+                '"unity":"6000.0",'
+                '"description":"Optional Lyrical Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration.",'
+                '"keywords":["ros2","ros2-for-unity","lyrical","win64"]}',
+                encoding="utf-8",
+            )
+            self.validator.PACKAGE = package
+            results = []
+
+            self.validator.check_package_metadata(results)
+
+        by_name = {result.name: result for result in results}
+        self.assertFalse(by_name["package declares no external dependencies"].ok)
+
     def test_generator_alignment_reports_missing_generator_as_failed_check(self) -> None:
         """Missing generator source should produce a structured failed result."""
         with tempfile.TemporaryDirectory() as temp:
