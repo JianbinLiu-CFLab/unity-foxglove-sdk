@@ -693,7 +693,7 @@ This patch is limited to locating runtime files from a Unity package. It does no
 
 WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies. Zenoh config files are mirrored under `Plugins/Windows/x86_64/share` for native runtime closure and `StreamingAssets/Ros2ForUnity/share` for Unity player access; package validation requires the mirrored files to stay byte-identical.
 
-The bundled Zenoh router config is a development profile. It listens on `tcp/[::]:7447`, has no authentication or ACLs, and keeps high pending/session limits for large ROS2 graph startup bursts. Use it only on trusted lab networks. For CI, shared office networks, or production-like deployments, copy the router config to a localhost-only or ACL-protected profile with lower connection limits.
+The bundled Zenoh router config is a development profile. It listens on `tcp/[::]:7447`, exits if port `7447` is already bound, has no authentication or ACLs, enables read-only Zenoh adminspace for topology inspection, and keeps high pending/session limits for large ROS2 graph startup bursts. Use it only on trusted lab networks. For CI, shared office networks, or production-like deployments, copy the router config to a localhost-only or ACL-protected profile with lower connection limits and disabled adminspace.
 
 ## Support Boundary
 
@@ -1251,6 +1251,32 @@ def patch_zenoh_router_config_notes(package: Path) -> None:
         write_text(path, text)
 
 
+def update_zenoh_config_inventory_hashes(package: Path) -> None:
+    """Refresh inventory hashes for package-patched Zenoh config mirrors."""
+    inventory_path = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
+    if not inventory_path.exists():
+        return
+
+    data = json.loads(inventory_path.read_text(encoding="utf-8"))
+    changed = False
+    for item in data.get("files", []):
+        relative = str(item.get("path", ""))
+        if "DEFAULT_RMW_ZENOH" not in relative:
+            continue
+
+        source_relative = "Ros2ForUnity/" + relative if relative.startswith("StreamingAssets/") else relative
+        source_path = package / "Runtime" / source_relative
+        if not source_path.exists():
+            continue
+
+        item["sha256"] = sha256_file(source_path)
+        item["size"] = source_path.stat().st_size
+        changed = True
+
+    if changed:
+        write_json(inventory_path, data)
+
+
 def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifact: RuntimeArtifact) -> None:
     """Write package metadata, docs, notices, and support manifests."""
     write_json(paths.package / "package.json", package_json())
@@ -1259,6 +1285,7 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifac
     write_text(paths.package / "THIRD_PARTY_NOTICES.md", notices_text(inventory, artifact))
     write_json(paths.package / "RuntimeSupport" / "runtime-manifest.json", runtime_manifest(artifact))
     shutil.copyfile(paths.inventory, paths.package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json")
+    update_zenoh_config_inventory_hashes(paths.package)
     write_json(
         paths.package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef",
         runtime_asmdef(),

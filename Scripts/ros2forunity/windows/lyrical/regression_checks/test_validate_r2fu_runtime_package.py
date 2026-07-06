@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
 import shutil
 import sys
 import tempfile
@@ -275,6 +277,69 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         failed_names = {result.name for result in results if not result.ok}
         self.assertTrue(any("open-listen profile is documented" in name for name in failed_names))
         self.assertTrue(any("high connection limits are documented" in name for name in failed_names))
+
+    def test_inventory_rejects_stale_zenoh_config_hash(self) -> None:
+        """Runtime inventory should hash-check patched Zenoh configs even in fast mode."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            runtime_root = package / "Runtime" / "Ros2ForUnity"
+            config = (
+                runtime_root
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            inventory = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
+            config.parent.mkdir(parents=True)
+            inventory.parent.mkdir(parents=True)
+            config.write_text("router config\n", encoding="utf-8")
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "runtimeId": "r2fu-lyrical-win64",
+                        "artifactName": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
+                        "rosDistro": "lyrical",
+                        "rmw": "rmw_fastrtps_cpp",
+                        "defaultRmwImplementation": "rmw_fastrtps_cpp",
+                        "platform": "win64",
+                        "buildType": "standalone",
+                        "supportedRmwImplementations": ["rmw_fastrtps_cpp", "rmw_zenoh_cpp"],
+                        "sha256": self.validator.EXPECTED_ARTIFACT_SHA256,
+                        "artifactSize": 1,
+                        "fileCount": 1,
+                        "redistributionStatus": "candidate_not_published",
+                        "categoryCounts": {"native_libraries": 700},
+                        "knownCriticalFiles": [],
+                        "files": [
+                            {
+                                "path": "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+                                "sha256": "0" * 64,
+                                "size": config.stat().st_size,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            manifest = {"artifactSha256": self.validator.EXPECTED_ARTIFACT_SHA256, "artifactSize": 1, "inventoryFileCount": 1}
+
+            self.validator.PACKAGE = package
+            self.validator.RUNTIME_ROOT = runtime_root
+            self.validator.INVENTORY = inventory
+            self.validator.MANIFEST = package / "manifest.json"
+            self.validator.MANIFEST.write_text(json.dumps(manifest), encoding="utf-8")
+            actual_hash = hashlib.sha256(config.read_bytes()).hexdigest()
+            results = []
+
+            self.validator.check_inventory(results, release_gate=False, skip_dll_hash=True)
+
+        by_name = {result.name: result for result in results}
+        self.assertFalse(by_name["runtime inventory Zenoh config hashes match disk"].ok)
+        self.assertNotEqual("0" * 64, actual_hash)
 
     def test_expected_artifact_hash_is_full_sha256(self) -> None:
         """Pinned artifact hash is not accidentally truncated."""

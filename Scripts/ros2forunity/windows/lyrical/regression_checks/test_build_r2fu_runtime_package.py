@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -260,6 +262,48 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             self.assertIn("localhost-only or ACL-protected deployment profile", patched)
             self.assertIn("high development default is unsuitable", patched)
             self.assertEqual(patched, mirror.read_text(encoding="utf-8"))
+
+    def test_zenoh_config_inventory_hashes_are_refreshed_after_patches(self) -> None:
+        """Generated inventory hashes should describe the package-patched config files."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            config = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            inventory = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
+            config.parent.mkdir(parents=True)
+            inventory.parent.mkdir(parents=True)
+            config.write_text("patched router config\n", encoding="utf-8")
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+                                "sha256": "0" * 64,
+                                "size": 1,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.builder.update_zenoh_config_inventory_hashes(package)
+
+            data = json.loads(inventory.read_text(encoding="utf-8"))
+            entry = data["files"][0]
+            self.assertEqual(hashlib.sha256(config.read_bytes()).hexdigest(), entry["sha256"])
+            self.assertEqual(config.stat().st_size, entry["size"])
 
     def test_standalone_isolation_rejects_partial_startup_patch(self) -> None:
         """Do not accept a source that declares metadata without standalone setup calls."""

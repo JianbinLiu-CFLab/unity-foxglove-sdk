@@ -45,8 +45,7 @@ namespace Unity.FoxgloveSDK.Components
 
         protected virtual void Update()
         {
-            if (_manager == null) return;
-            if (!_publishOnEnable) return;
+            if (!EnsureManagerAvailable()) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
             if (!ShouldPublishNow()) return;
             if (!TryPreparePublishPayload(out var resolution)) return;

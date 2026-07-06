@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -300,6 +301,19 @@ namespace Unity.FoxgloveSDK.Tests
                       && adminspace.Contains("read: false", StringComparison.Ordinal),
                     "162-B2: Lyrical Zenoh session config is Unity-safe by default: " + relative);
             }
+
+            VerifyInventoriedZenohConfigHash(
+                "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+                "162-B3a");
+            VerifyInventoriedZenohConfigHash(
+                "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+                "162-B3b");
+            VerifyInventoriedZenohConfigHash(
+                "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+                "162-B3c");
+            VerifyInventoriedZenohConfigHash(
+                "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+                "162-B3d");
         }
 
         private static void Phase162SelectorScopesCommunicationModeToZenohCapability()
@@ -533,6 +547,35 @@ namespace Unity.FoxgloveSDK.Tests
             var text = File.ReadAllText(path);
             FileTextCache[path] = text;
             return text;
+        }
+
+        private static void VerifyInventoriedZenohConfigHash(string inventoryRelativePath, string checkPrefix)
+        {
+            var inventory = ReadRepoText(RuntimePackage + "/RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json");
+            var expected = ExtractInventorySha256(inventory, inventoryRelativePath);
+            var diskRelative = inventoryRelativePath.StartsWith("StreamingAssets/", StringComparison.Ordinal)
+                ? "Runtime/Ros2ForUnity/" + inventoryRelativePath
+                : "Runtime/" + inventoryRelativePath;
+            var actual = Sha256Hex(RepoPath(RuntimePackage + "/" + diskRelative));
+            Check(string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase),
+                checkPrefix + ": inventoried Zenoh config hash matches disk for " + inventoryRelativePath);
+        }
+
+        private static string ExtractInventorySha256(string inventory, string inventoryRelativePath)
+        {
+            var pattern = "\\{[^{}]*\"path\"\\s*:\\s*\"" + Regex.Escape(inventoryRelativePath)
+                + "\"[^{}]*\"sha256\"\\s*:\\s*\"([0-9a-fA-F]{64})\"";
+            var match = Regex.Match(inventory, pattern, RegexOptions.Singleline);
+            if (!match.Success)
+                throw new Exception("[FAIL] inventory entry missing for " + inventoryRelativePath);
+            return match.Groups[1].Value;
+        }
+
+        private static string Sha256Hex(string path)
+        {
+            using var sha = SHA256.Create();
+            using var stream = File.OpenRead(path);
+            return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
         }
 
         private static string RepoPath(string relativePath)

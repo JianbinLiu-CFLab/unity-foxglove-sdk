@@ -575,6 +575,8 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
     malformed: list[str] = []
     missing: list[str] = []
     mismatched: list[str] = []
+    config_mismatched: list[str] = []
+    checked_zenoh_configs = 0
     checked_dlls = 0
     should_hash_dlls = release_gate or not skip_dll_hash
     if isinstance(files, list):
@@ -583,6 +585,22 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
                 malformed.append(repr(item))
                 continue
             path_text = str(item.get("path", ""))
+            if "DEFAULT_RMW_ZENOH" in path_text and path_text.endswith(".json5"):
+                expected_hash = str(item.get("sha256", "")).lower()
+                parts = PurePosixPath(path_text).parts
+                package_path = (
+                    RUNTIME_ROOT.joinpath(*parts)
+                    if parts and parts[0] == "StreamingAssets"
+                    else RUNTIME_ROOT.joinpath(*parts[1:])
+                    if len(parts) >= 2 and parts[0] == "Ros2ForUnity"
+                    else None
+                )
+                checked_zenoh_configs += 1
+                if package_path is None or not package_path.is_file():
+                    config_mismatched.append(path_text + " (missing)")
+                elif expected_hash and file_sha256(package_path) != expected_hash:
+                    config_mismatched.append(path_text)
+
             if not path_text.lower().endswith(".dll"):
                 continue
             checked_dlls += 1
@@ -613,6 +631,12 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
             if not should_hash_dlls
             else f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}"
         ),
+    )
+    add(
+        results,
+        "runtime inventory Zenoh config hashes match disk",
+        checked_zenoh_configs >= 4 and not config_mismatched,
+        f"checked_zenoh_configs={checked_zenoh_configs} mismatched={config_mismatched[:8]!r}",
     )
 
 
@@ -1057,7 +1081,9 @@ def check_public_docs(results: list[CheckResult]) -> None:
         results,
         "README documents Zenoh router development security boundary",
         "listens on `tcp/[::]:7447`" in readme
+        and "exits if port `7447` is already bound" in readme
         and "no authentication or ACLs" in readme
+        and "read-only Zenoh adminspace" in readme
         and "trusted lab networks" in readme,
         "README.md",
     )
