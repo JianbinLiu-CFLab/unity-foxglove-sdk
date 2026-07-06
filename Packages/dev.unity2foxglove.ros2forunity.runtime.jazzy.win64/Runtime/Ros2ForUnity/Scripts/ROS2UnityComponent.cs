@@ -31,6 +31,7 @@ namespace ROS2
 /// anyway with more than one since the underlying library can handle multiple init and shutdown calls,
 /// and does node name uniqueness check independently.
 /// </summary>
+[DefaultExecutionOrder(-100)]
 [DisallowMultipleComponent]
 public class ROS2UnityComponent : MonoBehaviour
 {
@@ -42,6 +43,10 @@ public class ROS2UnityComponent : MonoBehaviour
     private List<INode> ros2csNodes; // For performance in spinning
     private List<Action> executableActions;
     private HashSet<Action> executableActionSet;
+    private readonly List<Action> actionsSnapshot = new List<Action>();
+    private readonly List<INode> nodesSnapshot = new List<INode>();
+    private int collectionVersion = 0;
+    private int snapshotVersion = -1;
     private bool initialized = false;
     private volatile bool executorStarted = false;
     private volatile bool quitting = false;
@@ -162,6 +167,7 @@ public class ROS2UnityComponent : MonoBehaviour
             ROS2Node node = new ROS2Node(name);
             nodes.Add(node);
             ros2csNodes.Add(node.node);
+            collectionVersion++;
             return node;
         }
     }
@@ -190,6 +196,10 @@ public class ROS2UnityComponent : MonoBehaviour
             {
                 ros2csNodes.Remove(node.node);
                 removed = nodes.Remove(node);
+                if (removed)
+                {
+                    collectionVersion++;
+                }
             }
         }
 
@@ -214,6 +224,7 @@ public class ROS2UnityComponent : MonoBehaviour
             if (executableActionSet.Add(executable))
             {
                 executableActions.Add(executable);
+                collectionVersion++;
             }
         }
     }
@@ -228,7 +239,10 @@ public class ROS2UnityComponent : MonoBehaviour
                 {
                     executableActionSet.Remove(executable);
                 }
-                executableActions.Remove(executable);
+                if (executableActions.Remove(executable))
+                {
+                    collectionVersion++;
+                }
             }
         }
     }
@@ -240,45 +254,86 @@ public class ROS2UnityComponent : MonoBehaviour
     {
         while (!quitting)
         {
+            bool hasSnapshot;
+
             lock (mutex)
             {
-                if (!quitting && !disposed && ros2forUnity != null && nodes != null && executableActions != null && ros2csNodes != null && ros2forUnity.Ok())
-                {
-                    cachedOk = true;
-                    foreach (Action action in executableActions)
-                    {
-                        try
-                        {
-                            action();
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogException(e);
-                        }
-                    }
+                hasSnapshot = !quitting
+                    && !disposed
+                    && ros2forUnity != null
+                    && nodes != null
+                    && executableActions != null
+                    && ros2csNodes != null
+                    && ros2forUnity.Ok();
 
-                    if (ros2csNodes.Count > 0)
-                    {
-                        try
-                        {
-                            Ros2cs.SpinOnce(ros2csNodes, spinTimeout);
-                        }
-                        catch (Exception e)
-                        {
-                            if (!quitting)
-                            {
-                                Debug.LogException(e);
-                            }
-                        }
-                    }
-                }
-                else
+                cachedOk = hasSnapshot;
+                if (hasSnapshot && snapshotVersion != collectionVersion)
                 {
-                    cachedOk = false;
+                    actionsSnapshot.Clear();
+                    actionsSnapshot.AddRange(executableActions);
+                    nodesSnapshot.Clear();
+                    nodesSnapshot.AddRange(ros2csNodes);
+                    snapshotVersion = collectionVersion;
                 }
+            }
+
+            if (hasSnapshot)
+            {
+                RunExecutorSnapshot();
             }
             Thread.Sleep(interval);
         }
+    }
+
+    private void RunExecutorSnapshot()
+    {
+        List<Exception> exceptions = null;
+        foreach (Action action in actionsSnapshot)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception e)
+            {
+                AddException(ref exceptions, e);
+            }
+        }
+
+        if (nodesSnapshot.Count > 0)
+        {
+            try
+            {
+                Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+            }
+            catch (Exception e)
+            {
+                if (!quitting)
+                {
+                    AddException(ref exceptions, e);
+                }
+            }
+        }
+
+        if (exceptions == null)
+        {
+            return;
+        }
+
+        foreach (Exception exception in exceptions)
+        {
+            Debug.LogException(exception);
+        }
+    }
+
+    private static void AddException(ref List<Exception> exceptions, Exception exception)
+    {
+        if (exceptions == null)
+        {
+            exceptions = new List<Exception>();
+        }
+
+        exceptions.Add(exception);
     }
 
     void FixedUpdate()
@@ -360,6 +415,7 @@ public class ROS2UnityComponent : MonoBehaviour
                 nodesToDispose = new List<ROS2Node>(nodes);
                 nodes.Clear();
                 ros2csNodes.Clear();
+                collectionVersion++;
             }
         }
 
@@ -439,6 +495,10 @@ public class ROS2UnityComponent : MonoBehaviour
             executableActionSet = null;
             nodes = null;
             ros2csNodes = null;
+            actionsSnapshot.Clear();
+            nodesSnapshot.Clear();
+            collectionVersion++;
+            snapshotVersion = -1;
 
             lock (instancesMutex)
             {
@@ -475,6 +535,7 @@ public class ROS2UnityComponent : MonoBehaviour
             {
                 nodes.Clear();
                 ros2csNodes.Clear();
+                collectionVersion++;
             }
         }
         finally
@@ -490,6 +551,11 @@ public class ROS2UnityComponent : MonoBehaviour
 
     void OnDestroy()
     {
+        if (disposed)
+        {
+            return;
+        }
+
         Shutdown();
     }
 }
