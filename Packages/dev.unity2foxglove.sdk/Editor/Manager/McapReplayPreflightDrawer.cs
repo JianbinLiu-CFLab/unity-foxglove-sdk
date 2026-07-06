@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.IO;
@@ -33,6 +34,7 @@ namespace Unity.FoxgloveSDK.Editor
         private MessageType _identityMessageType = MessageType.Info;
         private Task<McapReplayAnalysisResult> _analyzeReplayTask;
         private Task<LatestRecordingResult> _findLatestRecordingTask;
+        private CancellationTokenSource _pendingWorkCts;
         private SerializedObject _pendingLatestSerializedObject;
         private UnityEngine.Object _pendingLatestTargetObject;
         private SerializedProperty _pendingLatestReplayPath;
@@ -134,7 +136,8 @@ namespace Unity.FoxgloveSDK.Editor
 
             AnalyzeReplayIdentity(path, refreshCurrentEvidence);
             SetMcapPreflightMessage("Analyzing replay file: " + MakeRelative(path), MessageType.Info);
-            _analyzeReplayTask = Task.Run(() => AnalyzeReplayMcapWorker(path));
+            var token = StartNewPendingWork();
+            _analyzeReplayTask = Task.Run(() => AnalyzeReplayMcapWorker(path, token), token);
             EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
             EditorApplication.update += CompleteAnalyzeReplayMcapIfReady;
         }
@@ -143,11 +146,34 @@ namespace Unity.FoxgloveSDK.Editor
         {
             EditorApplication.update -= CompleteAnalyzeReplayMcapIfReady;
             EditorApplication.update -= CompleteFindLatestRecordingIfReady;
+            if (_pendingWorkCts != null)
+            {
+                _pendingWorkCts.Cancel();
+                _pendingWorkCts.Dispose();
+                _pendingWorkCts = null;
+            }
+
             _analyzeReplayTask = null;
             _findLatestRecordingTask = null;
             _pendingLatestSerializedObject = null;
             _pendingLatestTargetObject = null;
             _pendingLatestReplayPath = null;
+        }
+
+        private CancellationToken StartNewPendingWork()
+        {
+            CancelPendingWork();
+            _pendingWorkCts = new CancellationTokenSource();
+            return _pendingWorkCts.Token;
+        }
+
+        private void DisposePendingWorkToken()
+        {
+            if (_pendingWorkCts == null)
+                return;
+
+            _pendingWorkCts.Dispose();
+            _pendingWorkCts = null;
         }
 
         private void CompleteAnalyzeReplayMcapIfReady()
@@ -164,12 +190,19 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 result = task.GetAwaiter().GetResult();
             }
+            catch (OperationCanceledException)
+            {
+                DisposePendingWorkToken();
+                return;
+            }
             catch (Exception ex)
             {
+                DisposePendingWorkToken();
                 SetMcapPreflightMessage($"MCAP preflight failed: {ex.Message}", MessageType.Error);
                 return;
             }
 
+            DisposePendingWorkToken();
             if (!result.Success)
             {
                 SetMcapPreflightMessage($"MCAP preflight failed: {result.ErrorMessage}", MessageType.Error);
@@ -193,11 +226,13 @@ namespace Unity.FoxgloveSDK.Editor
                 result.Topics.Count);
         }
 
-        private static McapReplayAnalysisResult AnalyzeReplayMcapWorker(string path)
+        private static McapReplayAnalysisResult AnalyzeReplayMcapWorker(string path, CancellationToken cancellationToken)
         {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 using var indexed = McapIndexedReader.OpenRead(path);
+                cancellationToken.ThrowIfCancellationRequested();
                 var statistics = indexed.Summary.Statistics;
                 return new McapReplayAnalysisResult(
                     path,
@@ -210,6 +245,10 @@ namespace Unity.FoxgloveSDK.Editor
                     indexed.MetadataIndexes.Count,
                     indexed.AttachmentIndexes.Count,
                     BuildTopicList(indexed.Channels));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -370,12 +409,13 @@ namespace Unity.FoxgloveSDK.Editor
             UnityEngine.Object targetObject,
             SerializedProperty replayPath)
         {
+            SetIdentityMessage("Searching latest readable recording...", MessageType.Info);
+            var recordingsDir = Path.Combine(GetDefaultDir(), "Recordings");
+            var token = StartNewPendingWork();
             _pendingLatestSerializedObject = serializedObject;
             _pendingLatestTargetObject = targetObject;
             _pendingLatestReplayPath = replayPath?.Copy();
-            SetIdentityMessage("Searching latest readable recording...", MessageType.Info);
-            var recordingsDir = Path.Combine(GetDefaultDir(), "Recordings");
-            _findLatestRecordingTask = Task.Run(() => FindLatestReadableRecordingWorker(recordingsDir));
+            _findLatestRecordingTask = Task.Run(() => FindLatestReadableRecordingWorker(recordingsDir, token), token);
             EditorApplication.update -= CompleteFindLatestRecordingIfReady;
             EditorApplication.update += CompleteFindLatestRecordingIfReady;
         }
@@ -394,12 +434,19 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 result = task.GetAwaiter().GetResult();
             }
+            catch (OperationCanceledException)
+            {
+                DisposePendingWorkToken();
+                return;
+            }
             catch (Exception ex)
             {
+                DisposePendingWorkToken();
                 SetIdentityMessage("Latest recording search failed: " + ex.Message, MessageType.Error);
                 return;
             }
 
+            DisposePendingWorkToken();
             if (!result.Success)
             {
                 SetIdentityMessage(result.ErrorMessage, MessageType.Warning);
@@ -423,35 +470,44 @@ namespace Unity.FoxgloveSDK.Editor
             StartAnalyzeReplayMcap(latestRecording);
         }
 
-        private static LatestRecordingResult FindLatestReadableRecordingWorker(string recordingsDir)
+        private static LatestRecordingResult FindLatestReadableRecordingWorker(string recordingsDir, CancellationToken cancellationToken)
         {
             if (!Directory.Exists(recordingsDir))
             {
                 return LatestRecordingResult.Failed($"Recordings directory was not found: {recordingsDir}");
             }
 
-            var candidates = Directory.GetFiles(recordingsDir, "*.mcap", SearchOption.AllDirectories);
+            cancellationToken.ThrowIfCancellationRequested();
+            var paths = Directory.GetFiles(recordingsDir, "*.mcap", SearchOption.AllDirectories);
+            var candidates = new LatestRecordingCandidate[paths.Length];
+            for (var i = 0; i < paths.Length; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                candidates[i] = LatestRecordingCandidate.FromPath(paths[i]);
+            }
+
             Array.Sort(candidates, (left, right) =>
-                File.GetLastWriteTimeUtc(right).CompareTo(File.GetLastWriteTimeUtc(left)));
+                right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc));
 
             var lastError = string.Empty;
             foreach (var candidate in candidates)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var info = new FileInfo(candidate);
+                    var info = new FileInfo(candidate.Path);
                     if (info.Length <= 0)
                         continue;
 
-                    using (McapIndexedReader.OpenRead(candidate))
+                    using (McapIndexedReader.OpenRead(candidate.Path))
                     {
                     }
 
-                    return LatestRecordingResult.Found(candidate);
+                    return LatestRecordingResult.Found(candidate.Path);
                 }
                 catch (InvalidDataException)
                 {
-                    lastError = "Skipping unreadable MCAP '" + candidate + "'.";
+                    lastError = "Skipping unreadable MCAP '" + candidate.Path + "'.";
                 }
                 catch (Exception ex) when (
                     ex is IOException
@@ -460,7 +516,7 @@ namespace Unity.FoxgloveSDK.Editor
                     || ex is NotSupportedException
                     || ex is PathTooLongException)
                 {
-                    lastError = "Skipping unreadable MCAP '" + candidate + "': " + ex.Message;
+                    lastError = "Skipping unreadable MCAP '" + candidate.Path + "': " + ex.Message;
                 }
             }
 
@@ -610,6 +666,33 @@ namespace Unity.FoxgloveSDK.Editor
 
             public static LatestRecordingResult Failed(string errorMessage)
                 => new LatestRecordingResult(false, string.Empty, errorMessage);
+        }
+
+        private sealed class LatestRecordingCandidate
+        {
+            private LatestRecordingCandidate(string path, DateTime lastWriteTimeUtc)
+            {
+                Path = path;
+                LastWriteTimeUtc = lastWriteTimeUtc;
+            }
+
+            public string Path { get; }
+            public DateTime LastWriteTimeUtc { get; }
+
+            public static LatestRecordingCandidate FromPath(string path)
+            {
+                DateTime timestamp;
+                try
+                {
+                    timestamp = File.GetLastWriteTimeUtc(path);
+                }
+                catch
+                {
+                    timestamp = DateTime.MinValue;
+                }
+
+                return new LatestRecordingCandidate(path, timestamp);
+            }
         }
     }
 }

@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "69C-1: Inspector has latest readable recording helper");
             Check(source.Contains("Path.Combine(GetDefaultDir(), \"Recordings\")"),
                 "69C-2: latest recording helper uses the Unity project Recordings directory");
-            Check(source.Contains("using (McapIndexedReader.OpenRead(candidate))"),
+            Check(source.Contains("using (McapIndexedReader.OpenRead(candidate.Path))"),
                 "69C-3: latest recording helper verifies MCAP summary readability");
             Check(source.Contains("catch (InvalidDataException)"),
                 "69C-4: latest recording helper skips malformed MCAP files");

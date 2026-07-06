@@ -217,23 +217,27 @@ namespace Unity.FoxgloveSDK.Core
             _running = false;
             var listener = _listener;
             _listener = null;
-            _queue = null;
-            _stateProvider = null;
             if (listener == null)
             {
+                _queue = null;
+                _stateProvider = null;
                 return;
             }
 
             try
             {
                 listener.Stop();
+                listener.Close();
             }
             catch
             {
-                // Stop is best-effort during Unity lifecycle teardown.
+                // Stop/Close is best-effort during Unity lifecycle teardown.
             }
-
-            listener.Close();
+            finally
+            {
+                _queue = null;
+                _stateProvider = null;
+            }
         }
 
         private void ListenLoop()
@@ -390,7 +394,7 @@ namespace Unity.FoxgloveSDK.Core
 
             if (!TryGetOriginBounds(origin, out var start, out var length))
             {
-                return true;
+                return false;
             }
 
             foreach (var allowedOrigin in _options.AllowedCorsOrigins)
@@ -440,9 +444,6 @@ namespace Unity.FoxgloveSDK.Core
             body ??= string.Empty;
             TryWrite(context, statusCode, Encoding.UTF8.GetBytes(body), cors);
         }
-
-        private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes)
-            => TryWrite(context, statusCode, bytes, ResolveCors(context.Request));
 
         private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes, CorsDecision cors)
         {

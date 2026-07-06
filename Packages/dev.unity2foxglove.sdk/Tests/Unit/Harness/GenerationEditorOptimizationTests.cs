@@ -363,7 +363,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void RosSupportAndExecutorSpinAvoidUnsafeSnapshots()
+        public void RosSupportAndExecutorSpinUsesReusableSnapshots()
         {
             var ros2 = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
             var checkSupport = TestSources.Slice(ros2, "private void CheckROSSupport(string ros2Codename)", "    private void CheckRmwImplementation()");
@@ -375,9 +375,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("new List<string>()", checkSupport, StringComparison.Ordinal);
             Assert.Contains("SupportedRosVersionsString", checkSupport, StringComparison.Ordinal);
             Assert.Contains("Array.IndexOf(SupportedRosVersions, ros2Codename)", checkSupport, StringComparison.Ordinal);
-            Assert.Contains("Ros2cs.SpinOnce(ros2csNodes", component, StringComparison.Ordinal);
+            Assert.Contains("nodesSnapshot.AddRange(ros2csNodes)", component, StringComparison.Ordinal);
+            Assert.Contains("Ros2cs.SpinOnce(nodesSnapshot", component, StringComparison.Ordinal);
             Assert.Contains("Ros2cs.SpinOnce(ros2csNodes", core, StringComparison.Ordinal);
-            Assert.DoesNotContain("nodesSnapshot", component, StringComparison.Ordinal);
             Assert.DoesNotContain("nodesSnapshot", core, StringComparison.Ordinal);
         }
 

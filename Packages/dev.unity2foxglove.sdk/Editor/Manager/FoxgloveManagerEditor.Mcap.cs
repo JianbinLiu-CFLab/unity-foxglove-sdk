@@ -83,6 +83,7 @@ namespace Unity.FoxgloveSDK.Editor
             var remoteFileServerEnabled = GetBool("_enableRemoteMcapFileServer");
             if (remoteFileServerEnabled && replayAutoPlay.boolValue)
             {
+                Undo.RegisterCompleteObjectUndo(target, "Disable Replay Auto Play");
                 replayAutoPlay.boolValue = false;
             }
 
@@ -181,14 +182,14 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUILayout.PropertyField(source, new GUIContent("Identity Mode Source"));
-            if (source.enumValueIndex == (int)SchemaIdentityModeSource.Override)
+            if (EnumPropertyIs(source, nameof(SchemaIdentityModeSource.Override), (int)SchemaIdentityModeSource.Override))
             {
-                EditorGUILayout.PropertyField(overrideMode, new GUIContent("Identity Mode", IdentityModeTooltip((SchemaIdentityMode)overrideMode.enumValueIndex)));
+                EditorGUILayout.PropertyField(overrideMode, new GUIContent("Identity Mode", IdentityModeTooltip(SchemaIdentityModeFromProperty(overrideMode))));
             }
             else
             {
                 using (new EditorGUI.DisabledScope(true))
-                    EditorGUILayout.PropertyField(projectMode, new GUIContent("Identity Mode", IdentityModeTooltip((SchemaIdentityMode)projectMode.enumValueIndex)));
+                    EditorGUILayout.PropertyField(projectMode, new GUIContent("Identity Mode", IdentityModeTooltip(SchemaIdentityModeFromProperty(projectMode))));
             }
 
             using (new EditorGUILayout.HorizontalScope())
@@ -207,7 +208,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (GUILayout.Button("Apply Project Defaults"))
                 {
-                    source.enumValueIndex = (int)SchemaIdentityModeSource.ProjectSettings;
+                    SetEnumProperty(source, nameof(SchemaIdentityModeSource.ProjectSettings), (int)SchemaIdentityModeSource.ProjectSettings);
                     Unity2FoxgloveSchemaEvidenceSettings.SyncSerializedManager(serializedObject);
                 }
 

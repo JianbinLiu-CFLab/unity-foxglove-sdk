@@ -12,6 +12,10 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public static class FoxRunGenerationModelValidator
     {
+        private const string ConditionMissingDiagnosticId = "FOXRUN015";
+        private const string ConditionNotBoolDiagnosticId = "FOXRUN016";
+        private const string MixedConditionDiagnosticId = "FOXRUN017";
+
         private static readonly string[] UnityNativeContainerPrefixes =
         {
             "NativeArray<",
@@ -106,10 +110,10 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN014", target, member.MemberName, "FoxRun member kind must be 'field' or 'property'."));
 
             if (IsInvalidConditionName(member.When))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN015", target, member.MemberName, "FoxRun When condition member name is invalid or missing."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(ConditionMissingDiagnosticId, target, member.MemberName, "FoxRun When condition member name is invalid or missing."));
 
             if (IsInvalidConditionName(member.Unless))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN015", target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(ConditionMissingDiagnosticId, target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
 
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
             {
@@ -229,7 +233,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     var first = members[0];
                     diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                        "FOXRUN017",
+                        MixedConditionDiagnosticId,
                         first.DeclaringType + "." + first.MemberName,
                         first.MemberName,
                         "Topic '" + group.Key + "' has mixed When or Unless values."));

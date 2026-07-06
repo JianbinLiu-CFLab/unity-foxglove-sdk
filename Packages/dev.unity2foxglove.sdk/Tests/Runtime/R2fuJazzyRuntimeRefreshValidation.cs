@@ -32,6 +32,8 @@ namespace Unity.FoxgloveSDK.Tests
             "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3";
 
         private static int _passed;
+        private static bool _runningFullValidation;
+        private static readonly List<string> Failures = new List<string>();
         private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<string, string> NativeBridgeLifecycleSourceCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -40,17 +42,29 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 161: R2FU Jazzy Win64 Runtime Refresh ===");
             _passed = 0;
+            _runningFullValidation = true;
+            Failures.Clear();
+            FileTextCache.Clear();
+            NativeBridgeLifecycleSourceCache.Clear();
 
-            RuntimePackageShapeIsPresent();
-            RuntimePackageContainsJazzyDependencyFloor();
-            RuntimePackageRecordsInventoryDelta();
-            AdapterAdoptionManifestRecordsRefreshedJazzyRuntime();
-            JazzyScriptsArePinnedToHandoffArtifact();
-            UnityProjectResolvesOnlyJazzyRuntime();
-            ValidationRegistryWiresPhase161();
-            _passed += ValidateNativeBridgeLifecycleGuards("161-G");
+            try
+            {
+                RuntimePackageShapeIsPresent();
+                RuntimePackageContainsJazzyDependencyFloor();
+                RuntimePackageRecordsInventoryDelta();
+                AdapterAdoptionManifestRecordsRefreshedJazzyRuntime();
+                JazzyScriptsArePinnedToHandoffArtifact();
+                UnityProjectResolvesOnlyJazzyRuntime();
+                ValidationRegistryWiresPhase161();
+                _passed += ValidateNativeBridgeLifecycleGuards("161-G");
 
-            Console.WriteLine($"Phase 161: {_passed} checks passed.");
+                ThrowIfFailures();
+                Console.WriteLine($"Phase 161: {_passed} checks passed.");
+            }
+            finally
+            {
+                _runningFullValidation = false;
+            }
         }
 
         private static void RuntimePackageShapeIsPresent()
@@ -277,6 +291,7 @@ namespace Unity.FoxgloveSDK.Tests
         public static int ValidateNativeBridgeLifecycleGuards(string labelPrefix)
         {
             var passed = 0;
+            NativeBridgeLifecycleSourceCache.Clear();
 
             foreach (var bridge in new[]
             {
@@ -343,12 +358,20 @@ namespace Unity.FoxgloveSDK.Tests
                     labelPrefix + "-no-callback-lazy-init: " + bridge + " data callbacks never first-initialize ROS2");
             }
 
+            if (!_runningFullValidation)
+                ThrowIfFailures();
+
             return passed;
 
             void CheckLifecycle(bool condition, string message)
             {
                 if (!condition)
-                    throw new Exception("[FAIL] " + message);
+                {
+                    Failures.Add(message);
+                    Console.WriteLine("[FAIL] " + message);
+                    return;
+                }
+
                 passed++;
                 Console.WriteLine("[PASS] " + message);
             }
@@ -407,9 +430,58 @@ namespace Unity.FoxgloveSDK.Tests
             var bodyEnd = -1;
             for (var i = bodyStart; i < source.Length; i++)
             {
-                if (source[i] == '{')
+                var current = source[i];
+                if (current == '/' && i + 1 < source.Length && source[i + 1] == '/')
+                {
+                    i = SkipLineComment(source, i + 2);
+                    continue;
+                }
+
+                if (current == '/' && i + 1 < source.Length && source[i + 1] == '*')
+                {
+                    i = SkipBlockComment(source, i + 2);
+                    continue;
+                }
+
+                if (current == '\'')
+                {
+                    i = SkipCharLiteral(source, i + 1);
+                    continue;
+                }
+
+                if (current == '"')
+                {
+                    i = SkipRegularString(source, i + 1);
+                    continue;
+                }
+
+                if ((current == '@' || current == '$') && i + 1 < source.Length)
+                {
+                    var next = source[i + 1];
+                    if (current == '@' && next == '"')
+                    {
+                        i = SkipVerbatimString(source, i + 2);
+                        continue;
+                    }
+
+                    if (current == '$' && next == '"')
+                    {
+                        i = SkipRegularString(source, i + 2);
+                        continue;
+                    }
+
+                    if (i + 2 < source.Length
+                        && ((current == '$' && next == '@') || (current == '@' && next == '$'))
+                        && source[i + 2] == '"')
+                    {
+                        i = SkipVerbatimString(source, i + 3);
+                        continue;
+                    }
+                }
+
+                if (current == '{')
                     depth++;
-                else if (source[i] == '}')
+                else if (current == '}')
                 {
                     depth--;
                     if (depth == 0)
@@ -424,6 +496,95 @@ namespace Unity.FoxgloveSDK.Tests
                 return string.Empty;
 
             return source.Substring(bodyStart, bodyEnd - bodyStart + 1);
+        }
+
+        private static int SkipLineComment(string source, int start)
+        {
+            for (var i = start; i < source.Length; i++)
+            {
+                if (source[i] == '\n')
+                    return i;
+            }
+
+            return source.Length - 1;
+        }
+
+        private static int SkipBlockComment(string source, int start)
+        {
+            for (var i = start; i + 1 < source.Length; i++)
+            {
+                if (source[i] == '*' && source[i + 1] == '/')
+                    return i + 1;
+            }
+
+            return source.Length - 1;
+        }
+
+        private static int SkipCharLiteral(string source, int start)
+        {
+            var escaped = false;
+            for (var i = start; i < source.Length; i++)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (source[i] == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (source[i] == '\'')
+                    return i;
+            }
+
+            return source.Length - 1;
+        }
+
+        private static int SkipRegularString(string source, int start)
+        {
+            var escaped = false;
+            for (var i = start; i < source.Length; i++)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (source[i] == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (source[i] == '"')
+                    return i;
+            }
+
+            return source.Length - 1;
+        }
+
+        private static int SkipVerbatimString(string source, int start)
+        {
+            for (var i = start; i < source.Length; i++)
+            {
+                if (source[i] != '"')
+                    continue;
+
+                if (i + 1 < source.Length && source[i + 1] == '"')
+                {
+                    i++;
+                    continue;
+                }
+
+                return i;
+            }
+
+            return source.Length - 1;
         }
 
         private static bool NativeDllExists(string fileName)
@@ -476,9 +637,24 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Check(bool condition, string message)
         {
             if (!condition)
-                throw new Exception("[FAIL] " + message);
+            {
+                Failures.Add(message);
+                Console.WriteLine("[FAIL] " + message);
+                return;
+            }
+
             _passed++;
             Console.WriteLine("[PASS] " + message);
+        }
+
+        private static void ThrowIfFailures()
+        {
+            if (Failures.Count == 0)
+                return;
+
+            throw new Exception(
+                "[FAIL] Phase 161 validation failed " + Failures.Count + " check(s): "
+                + string.Join("; ", Failures));
         }
     }
 }

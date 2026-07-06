@@ -119,6 +119,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ReplayCursorEndpointRestrictsCorsAndEscapesJson()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
+            var stop = ExtractMethodBody(source, "public void Stop()");
+            var isCorsOriginAllowed = ExtractMethodBody(source, "private bool IsCorsOriginAllowed(string origin)");
 
             Check(source.Contains("IsCorsOriginAllowed", StringComparison.Ordinal)
                   && !source.Contains("Access-Control-Allow-Origin\"] = \"*\"", StringComparison.Ordinal),
@@ -132,6 +134,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("JsonEscape", StringComparison.Ordinal)
                   && !source.Contains("private static string Escape(string value)\r\n            => (value ?? string.Empty).Replace", StringComparison.Ordinal),
                 "140-3D-4: replay cursor endpoint error JSON uses full JSON string escaping");
+            Check(isCorsOriginAllowed.Contains("if (!TryGetOriginBounds(origin, out var start, out var length))", StringComparison.Ordinal)
+                  && Ordered(isCorsOriginAllowed, "if (!TryGetOriginBounds(origin, out var start, out var length))", "return false;")
+                  && Ordered(isCorsOriginAllowed, "return false;", "foreach (var allowedOrigin"),
+                "140-3D-5: replay cursor endpoint rejects malformed non-empty Origin headers");
+            Check(Ordered(stop, "listener.Stop();", "listener.Close();")
+                  && Ordered(stop, "listener.Close();", "finally")
+                  && stop.Substring(stop.IndexOf("finally", StringComparison.Ordinal))
+                      .Contains("_queue = null;", StringComparison.Ordinal),
+                "140-3D-6: replay cursor endpoint closes listener before clearing in-flight delegates");
         }
 
         private static void ExternalCursorEnabledCheckIsSynchronized()

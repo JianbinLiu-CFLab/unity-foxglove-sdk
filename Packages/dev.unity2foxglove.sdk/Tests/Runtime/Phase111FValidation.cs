@@ -168,9 +168,9 @@ namespace Unity.FoxgloveSDK.Tests
                       || component.Contains("threadToJoin.Join(TimeSpan.FromSeconds(2))", StringComparison.Ordinal))
                   && component.Contains("node.Dispose()", StringComparison.Ordinal),
                 "111F-E4: ROS2UnityComponent stops, joins, and disposes nodes deterministically");
-            Check(component.Contains("Ros2cs.SpinOnce(ros2csNodes", StringComparison.Ordinal)
-                  && !component.Contains("nodesSnapshot", StringComparison.Ordinal),
-                "111F-E4b: ROS2UnityComponent keeps node spin serialized with graph mutation");
+            Check(component.Contains("nodesSnapshot.AddRange(ros2csNodes)", StringComparison.Ordinal)
+                  && component.Contains("Ros2cs.SpinOnce(nodesSnapshot", StringComparison.Ordinal),
+                "111F-E4b: ROS2UnityComponent spins a reusable node snapshot outside graph mutation");
             Check(component.Contains("private HashSet<Action> executableActionSet", StringComparison.Ordinal)
                   && component.Contains("executableActionSet.Add(executable)", StringComparison.Ordinal)
                   && component.Contains("executableActionSet.Remove(executable)", StringComparison.Ordinal),

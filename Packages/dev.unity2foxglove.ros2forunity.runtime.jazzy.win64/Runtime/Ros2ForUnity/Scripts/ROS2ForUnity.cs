@@ -33,7 +33,7 @@ namespace ROS2
 internal class ROS2ForUnity
 {
     private static readonly object lifecycleGate = new object();
-    private static bool isInitialized = false;
+    private static volatile bool isInitialized = false;
     private static int ownerCount = 0;
     private const string ros2ForUnityAssetFolderName = "Ros2ForUnity";
     private const string unity2FoxgloveRuntimePackageName = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
