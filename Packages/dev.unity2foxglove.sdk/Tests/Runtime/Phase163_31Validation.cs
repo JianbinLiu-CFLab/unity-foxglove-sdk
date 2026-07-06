@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectionUsesPlatformSensitiveEmbeddedPackageComparison();
             JazzyRuntimeCapturesSourcedDistroBeforeStandalonePatch();
             JazzyRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
+            JazzyRuntimeExitAndFinalizerGuardsAreFailClosed();
             JazzyRuntimeStopsComponentExecutorsBeforeSharedShutdown();
             JazzyComponentDoesNotRestartDeadRuntimeAfterSharedShutdown();
             JazzyBuilderRegeneratesStandaloneIntegrityPatch();
@@ -85,6 +86,33 @@ namespace Unity.FoxgloveSDK.Tests
                   && constructor.Contains("LogRuntimeInfoWithoutStackTrace(\"ROS2 version: \"", StringComparison.Ordinal)
                   && destroy.Contains("LogRuntimeInfoWithoutStackTrace(\"Shutting down Ros2 For Unity\")", StringComparison.Ordinal),
                 "163-31C-3: Jazzy runtime lifecycle logs avoid Editor stack trace extraction");
+        }
+
+        private static void JazzyRuntimeExitAndFinalizerGuardsAreFailClosed()
+        {
+            var source = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
+            var component = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
+            var core = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs");
+            var checkSupport = ExtractMethod(source, "CheckROSSupport");
+            var validateRmw = ExtractMethod(source, "ValidateRmwImplementation");
+            var suppressFinalizer = ExtractMethod(source, "SuppressRos2csFinalizer");
+
+            Check(checkSupport.Contains("Application.Quit(ROS_NOT_SOURCED_ERROR_CODE);", StringComparison.Ordinal)
+                  && checkSupport.Contains("throw new System.InvalidOperationException(errMessage);", StringComparison.Ordinal)
+                  && checkSupport.Contains("Application.Quit(ROS_BAD_VERSION_CODE);", StringComparison.Ordinal)
+                  && checkSupport.Contains("throw new System.NotSupportedException(errMessage);", StringComparison.Ordinal),
+                "173-024F: Jazzy standalone ROS support failures stop the constructor after Application.Quit");
+            Check(validateRmw.Contains("const int ROS_BAD_RMW_CODE = 36;", StringComparison.Ordinal)
+                  && validateRmw.Contains("throw new InvalidOperationException(errMessage);", StringComparison.Ordinal),
+                "173-024G: Jazzy bad RMW failure has a distinct exit code and fail-closed throw");
+            Check(suppressFinalizer.Contains("Debug.LogError", StringComparison.Ordinal)
+                  && !suppressFinalizer.Contains("Debug.LogWarning", StringComparison.Ordinal),
+                "173-024H: Jazzy Ros2cs finalizer suppression failures are errors");
+            Check(source.Contains("public static void PrewarmUnityMainThreadPaths()", StringComparison.Ordinal)
+                  && component.Contains("void Awake()", StringComparison.Ordinal)
+                  && component.Contains("ROS2ForUnity.PrewarmUnityMainThreadPaths();", StringComparison.Ordinal)
+                  && core.Contains("ROS2ForUnity.PrewarmUnityMainThreadPaths();", StringComparison.Ordinal),
+                "173-024I: Jazzy Unity path Lazy values are prewarmed from component/core startup");
         }
 
         private static void JazzyRuntimeStopsComponentExecutorsBeforeSharedShutdown()

@@ -181,6 +181,12 @@ internal class ROS2ForUnity
         return pluginPath.Value;
     }
 
+    public static void PrewarmUnityMainThreadPaths()
+    {
+        _ = ros2ForUnityPath.Value;
+        _ = pluginPath.Value;
+    }
+
     private static string ComputePluginPath()
     {
         char separator = Path.DirectorySeparatorChar;
@@ -423,6 +429,7 @@ internal class ROS2ForUnity
 #else
             const int ROS_NOT_SOURCED_ERROR_CODE = 33;
             Application.Quit(ROS_NOT_SOURCED_ERROR_CODE);
+            throw new System.InvalidOperationException(errMessage);
 #endif
         }
 
@@ -437,6 +444,7 @@ internal class ROS2ForUnity
 #else
             const int ROS_BAD_VERSION_CODE = 34;
             Application.Quit(ROS_BAD_VERSION_CODE);
+            throw new System.NotSupportedException(errMessage);
 #endif
         } else if (ros2Codename.Equals("rolling") ) {
             Debug.LogWarning("You are using ROS2 rolling version. Bleeding edge version might not work correctly.");
@@ -499,8 +507,9 @@ internal class ROS2ForUnity
         EditorApplication.isPlaying = false;
         throw new InvalidOperationException(errMessage);
 #else
-        const int ROS_BAD_RMW_CODE = 35;
+        const int ROS_BAD_RMW_CODE = 36;
         Application.Quit(ROS_BAD_RMW_CODE);
+        throw new InvalidOperationException(errMessage);
 #endif
     }
 
@@ -516,7 +525,7 @@ internal class ROS2ForUnity
                 : null;
             if (destructor == null)
             {
-                Debug.LogWarning("Unable to suppress Ros2cs finalizer before shutdown: private destructor field is missing or null.");
+                Debug.LogError("Unable to suppress Ros2cs finalizer before shutdown: private destructor field is missing or null.");
                 return;
             }
 
@@ -524,7 +533,7 @@ internal class ROS2ForUnity
         }
         catch (Exception exception)
         {
-            Debug.LogWarning("Unable to suppress Ros2cs finalizer before shutdown: " + exception.Message);
+            Debug.LogError("Unable to suppress Ros2cs finalizer before shutdown: " + exception.Message);
         }
     }
 

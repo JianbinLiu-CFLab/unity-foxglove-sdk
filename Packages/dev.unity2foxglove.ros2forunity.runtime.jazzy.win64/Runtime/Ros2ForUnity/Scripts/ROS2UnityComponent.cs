@@ -145,6 +145,11 @@ public class ROS2UnityComponent : MonoBehaviour
         }
     }
 
+    void Awake()
+    {
+        ROS2ForUnity.PrewarmUnityMainThreadPaths();
+    }
+
     void Start()
     {
         LazyConstruct();

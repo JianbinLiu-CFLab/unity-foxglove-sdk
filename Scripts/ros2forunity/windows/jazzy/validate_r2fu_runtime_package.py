@@ -627,6 +627,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "nodesSnapshot.AddRange(ros2csNodes)",
         "Ros2cs.SpinOnce(nodesSnapshot, spinTimeout)",
         "runtimeShutdownRequested",
+        "ROS2ForUnity.PrewarmUnityMainThreadPaths();",
         "throw new ObjectDisposedException(nameof(ROS2UnityComponent))",
         "StopAllExecutorsForRosShutdown()",
         "MarkRuntimeShutdown()",
@@ -653,6 +654,7 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "QuarantineNodesAfterExecutorTimeout",
         "ReferenceEquals(executorThread, threadToJoin)",
         "Ros2cs.SpinOnce(ros2csNodes, spinTimeout)",
+        "ROS2ForUnity.PrewarmUnityMainThreadPaths();",
     ):
         add(results, f"ROS2UnityCore lifecycle token: {token}", token in core, token)
     add(
@@ -699,6 +701,10 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         and "SetStandaloneRosDistro" in runtime
         and "WarnIfStandaloneRosDistroOverride" in runtime
         and "private static void FailIntegrity" in runtime
+        and "public static void PrewarmUnityMainThreadPaths()" in runtime
+        and "const int ROS_BAD_RMW_CODE = 36;" in runtime
+        and "Unable to suppress Ros2cs finalizer before shutdown" in runtime
+        and "Debug.LogError(\"Unable to suppress Ros2cs finalizer before shutdown" in runtime
         and "CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)" in runtime
         and "ROS2 version in standalone process environment does not match this runtime package" not in runtime
         and "ROS2UnityComponent.StopAllExecutorsForRosShutdown()" in runtime

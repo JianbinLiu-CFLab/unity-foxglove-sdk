@@ -66,6 +66,7 @@ namespace ROS2
 
         public ROS2UnityCore()
         {
+            ROS2ForUnity.PrewarmUnityMainThreadPaths();
             Thread threadToStart;
             lock (mutex)
             {

@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.Core
         /// parameter names, excluding the originating client so it does not
         /// receive its own change echo.
         /// </summary>
-        private IEnumerable<uint> GetParamSubscribersForChanged(List<string> names, uint? excludeClient)
+        private List<uint> GetParamSubscribersForChanged(List<string> names, uint? excludeClient)
         {
             var matchingClients = new List<uint>();
             lock (_paramSubScratchLock)
@@ -115,6 +115,8 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void BroadcastParameterValues(IEnumerable<string> parameterNames)
         {
+            string broadcastJson;
+            List<uint> subscribedClientIds;
             lock (_parameterBroadcastScratchLock)
             {
                 _parameterBroadcastSeen.Clear();
@@ -137,9 +139,8 @@ namespace Unity.FoxgloveSDK.Core
                     if (parameters.Count == 0)
                         return;
 
-                    var broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
-                    foreach (var cid in GetParamSubscribersForChanged(_parameterBroadcastNames, null))
-                        _transport.SendText(cid, broadcastJson);
+                    broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
+                    subscribedClientIds = GetParamSubscribersForChanged(_parameterBroadcastNames, null);
                 }
                 finally
                 {
@@ -147,6 +148,9 @@ namespace Unity.FoxgloveSDK.Core
                     _parameterBroadcastNames.Clear();
                 }
             }
+
+            foreach (var cid in subscribedClientIds)
+                _transport.SendText(cid, broadcastJson);
         }
 
         /// <summary>
