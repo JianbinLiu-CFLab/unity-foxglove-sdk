@@ -65,6 +65,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && CheckOrdered(installer, "DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);", "OpenH264OfficialBinaryManifest.CompressedAssetSha256")
                   && CheckOrdered(installer, "TryDecompressBZip2(compressedPath, tempDll", "OpenH264OfficialBinaryManifest.DllSha256"),
                 "163-26B-2: installer verifies archive before final move and DLL after decompression");
+            Check(installer.Contains("DownloadBodyTimeoutMs", StringComparison.Ordinal)
+                  && installer.Contains("CancellationTokenSource(DownloadBodyTimeoutMs)", StringComparison.Ordinal)
+                  && installer.Contains("CopyToAsync(destinationStream, 81920, cts.Token)", StringComparison.Ordinal),
+                "163-26B-4: installer bounds response-body copy after receiving OpenH264 headers");
+            Check(installer.Contains("CombineDecompressErrors", StringComparison.Ordinal)
+                  && installer.Contains("bzip2 failed: ", StringComparison.Ordinal)
+                  && installer.Contains("Python bz2 failed: ", StringComparison.Ordinal),
+                "163-26B-5: installer preserves both decompressor failure diagnostics");
             Check(verifier.Contains("expectedSha256", StringComparison.Ordinal)
                   && verifier.Contains("IsSha256Hex", StringComparison.Ordinal)
                   && verifier.Contains("StringComparison.OrdinalIgnoreCase", StringComparison.Ordinal),
@@ -147,8 +155,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void DiagnosticsInspectorUsesTypedStatsOnly()
         {
             var diagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
+            var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
 
-            Check(diagnostics.Contains("manager.GetTransportStatsSnapshot()", StringComparison.Ordinal)
+            Check(diagnostics.Contains("GetTransportStatsForRepaint()", StringComparison.Ordinal)
+                  && editor.Contains("manager.GetTransportStatsSnapshot()", StringComparison.Ordinal)
                   && diagnostics.Contains("EditorGUILayout.LongField(\"Queued Bytes\"", StringComparison.Ordinal)
                   && diagnostics.Contains("EditorGUILayout.LabelField(", StringComparison.Ordinal)
                   && !diagnostics.Contains("string.Format", StringComparison.Ordinal),

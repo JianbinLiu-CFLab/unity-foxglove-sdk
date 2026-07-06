@@ -122,9 +122,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool OutputQueueBlockUsesPlainCounter(string source)
         {
             var method = Slice(source, "private void EnqueueAccessUnit", "private int RemainingMilliseconds");
-            return (method.Contains("while (_outputCount >= capacity", StringComparison.Ordinal)
-                    || method.Contains("while (_outputCount >= _maxOutputQueue", StringComparison.Ordinal))
-                   && method.Contains("_outputCount--", StringComparison.Ordinal)
+            var dropsOldOutput = method.Contains("while (_outputCount >= capacity", StringComparison.Ordinal)
+                                 || method.Contains("while (_outputCount >= _maxOutputQueue", StringComparison.Ordinal);
+            var rejectsNewOutput = method.Contains("if (_outputCount >= _maxOutputQueue)", StringComparison.Ordinal);
+            return (dropsOldOutput || rejectsNewOutput)
+                   && (rejectsNewOutput || method.Contains("_outputCount--", StringComparison.Ordinal))
                    && method.Contains("_outputCount++", StringComparison.Ordinal)
                    && !method.Contains("Interlocked.Decrement(ref _outputCount)", StringComparison.Ordinal)
                    && !method.Contains("Interlocked.Increment(ref _outputCount)", StringComparison.Ordinal)
