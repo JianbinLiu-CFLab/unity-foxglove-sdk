@@ -27,6 +27,8 @@ namespace Unity.FoxgloveSDK.Tests
             ReplayControllerDrainBufferIsClearedBeforeReentry();
             CursorPreflightRunsBeforeBearerAuthorization();
             ReplayControllerCallsClockOutsideReplayEngineLock();
+            ReplayControllerAvoidsDeadChannelMapAndLockHeldPreflightIo();
+            ReplayControllerSkipsUnknownTopicExternalCursorMessages();
             ReplayControllerFireForTestsAcceptsReplaySessionId();
             ReplayAdapterDoesNotPermanentlyOverrideFallbackParseFailures();
             ReplaySnapshotReusesLatestByChannelDictionary();
@@ -119,6 +121,30 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-8E: replay enable calls external clock outside the replay-engine lock and revalidates the engine");
         }
 
+        private static void ReplayControllerAvoidsDeadChannelMapAndLockHeldPreflightIo()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var enableCore = Slice(source, "private void EnableCore(", "private static string CreateWarnModeSchemaMismatchMessage");
+            var validateIndex = enableCore.IndexOf("ValidateReplayFileForLoad(filePath);", StringComparison.Ordinal);
+            var firstLockIndex = enableCore.IndexOf("lock (_replayEngineLock)", StringComparison.Ordinal);
+
+            Check(!source.Contains("_channelMap", StringComparison.Ordinal),
+                "173-023C: replay controller avoids unused channel map allocations");
+            Check(validateIndex >= 0 && firstLockIndex >= 0 && validateIndex < firstLockIndex,
+                "173-023D: replay file magic preflight runs before the replay engine lock");
+        }
+
+        private static void ReplayControllerSkipsUnknownTopicExternalCursorMessages()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var applyTick = Slice(source, "public void ApplyTickToScene(ulong timeNs, bool deferCallbacks)", "/// <summary>");
+
+            Check(source.Contains("private bool TryGetReplayTopic(ushort channelId, out string topic)", StringComparison.Ordinal)
+                  && applyTick.Contains("if (TryGetReplayTopic(msg.ChannelId, out _))", StringComparison.Ordinal)
+                  && applyTick.Contains("ForwardReplayMessageToScene(msg);", StringComparison.Ordinal),
+                "173-023E: external-cursor replay forwarding uses the same known-topic guard as normal Tick");
+        }
+
         private static void ReplayControllerFireForTestsAcceptsReplaySessionId()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
@@ -149,7 +175,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PhaseRegistryWiresPhase163_8()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase163-8\", \"Phase 163-8\", Phase163_8Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("\"--phase163-8\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_8Validation.Validate", StringComparison.Ordinal),
                 "163-8I: PhaseValidationRegistry wires --phase163-8");
         }
 

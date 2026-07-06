@@ -221,7 +221,7 @@ def check_package_metadata(results: list[CheckResult]) -> None:
         "displayName": "Unity2Foxglove ROS2 For Unity Runtime - Jazzy Win64",
         "license": "Apache-2.0",
         "unity": "6000.0",
-        "description": "Optional Jazzy Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration.",
+        "description": "Optional prototype Jazzy Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration; fresh-project acceptance and legal attribution review are required before production redistribution.",
     }
     for key, value in expected.items():
         add(results, f"package {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")

@@ -676,7 +676,7 @@ def package_json() -> dict[str, object]:
         "displayName": "Unity2Foxglove ROS2 For Unity Runtime - Jazzy Win64",
         "license": "Apache-2.0",
         "unity": "6000.0",
-        "description": "Optional Jazzy Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration.",
+        "description": "Optional prototype Jazzy Windows x64 runtime package for Unity2Foxglove ROS2 For Unity integration; fresh-project acceptance and legal attribution review are required before production redistribution.",
         "keywords": [
             "unity2foxglove",
             "ros2",
