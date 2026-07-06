@@ -23,8 +23,10 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             SetHandle(nativeHandle);
         }
 
-        internal FoxgloveConnectionStatus ConnectionStatus
-            => IsInvalid ? FoxgloveConnectionStatus.Shutdown : RemoteGatewayNativeMethods.GatewayConnectionStatus(handle);
+        internal RemoteGatewayNativeMethods.FoxgloveConnectionStatus ConnectionStatus
+            => IsInvalid
+                ? RemoteGatewayNativeMethods.FoxgloveConnectionStatus.Shutdown
+                : RemoteGatewayNativeMethods.GatewayConnectionStatus(handle);
 
         internal ulong SinkId
             => IsInvalid ? 0UL : RemoteGatewayNativeMethods.GatewaySinkId(handle);
@@ -36,7 +38,8 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
             var result = RemoteGatewayNativeMethods.GatewayStop(handle);
             handle = IntPtr.Zero;
-            return result == FoxgloveError.Ok || result == FoxgloveError.SinkClosed;
+            return result == RemoteGatewayNativeMethods.FoxgloveError.Ok
+                   || result == RemoteGatewayNativeMethods.FoxgloveError.SinkClosed;
         }
     }
 }

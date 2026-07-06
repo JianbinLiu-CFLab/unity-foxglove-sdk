@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             if (callbacks == null)
                 return;
 
-            callbacks.Enqueue(RemoteGatewayEvent.ConnectionStatus(status));
+            callbacks.Enqueue(RemoteGatewayEvent.ConnectionStatusChanged(status));
         }
 
         [MonoPInvokeCallback(typeof(RemoteGatewayNativeMethods.ChannelCallback))]

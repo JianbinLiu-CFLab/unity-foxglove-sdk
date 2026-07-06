@@ -6,6 +6,9 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Architecture
@@ -47,6 +50,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void RuntimeSourcesCompileWithMinimalUnitySurface()
+        {
+            var runtimeSources = Directory.GetFiles(PathOf(RuntimeRoot), "*.cs", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Select(path => CSharpSyntaxTree.ParseText(
+                    File.ReadAllText(path),
+                    RemoteGatewayParseOptions,
+                    path: path));
+
+            var compilation = CSharpCompilation.Create(
+                "RemoteGatewayRuntimeProbe",
+                runtimeSources.Concat(new[] { CSharpSyntaxTree.ParseText(UnityCompileStub, RemoteGatewayParseOptions) }),
+                BasicReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            var errors = compilation.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .Select(diagnostic => diagnostic.ToString())
+                .ToArray();
+
+            Assert.True(errors.Length == 0, string.Join(Environment.NewLine, errors));
+        }
+
+        [Fact]
         public void GatewayHandleOwnsNativeStopExactlyOnce()
         {
             var source = Text(RuntimeRoot + "/Native/RemoteGatewayHandle.cs");
@@ -55,6 +82,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("protected override bool ReleaseHandle()", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayNativeMethods.GatewayStop(handle)", source, StringComparison.Ordinal);
             Assert.Contains("Interlocked.Exchange", source, StringComparison.Ordinal);
+            Assert.Contains("RemoteGatewayNativeMethods.FoxgloveConnectionStatus", source, StringComparison.Ordinal);
+            Assert.Contains("RemoteGatewayNativeMethods.FoxgloveError", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("internal FoxgloveConnectionStatus ConnectionStatus", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("== FoxgloveError.", source, StringComparison.Ordinal);
             Assert.DoesNotContain("~RemoteGatewayHandle", source, StringComparison.Ordinal);
         }
 
@@ -82,6 +113,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("TryEnqueue", source, StringComparison.Ordinal);
             Assert.Contains("DropOldest", source, StringComparison.Ordinal);
             Assert.Contains("DroppedCount", source, StringComparison.Ordinal);
+            Assert.Contains("internal static RemoteGatewayEvent ConnectionStatusChanged", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("internal static RemoteGatewayEvent ConnectionStatus(", source, StringComparison.Ordinal);
             Assert.DoesNotContain(".Wait(", source, StringComparison.Ordinal);
             Assert.DoesNotContain(".Result", source, StringComparison.Ordinal);
         }
@@ -197,6 +230,130 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot.Value, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        private static MetadataReference[] BasicReferences()
+        {
+            var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
+                .Split(Path.PathSeparator)
+                .Select(path => MetadataReference.CreateFromFile(path));
+
+            return trusted
+                .GroupBy(reference => reference.Display, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+        }
+
+        private static readonly CSharpParseOptions RemoteGatewayParseOptions =
+            CSharpParseOptions.Default
+                .WithLanguageVersion(LanguageVersion.CSharp9)
+                .WithPreprocessorSymbols("UNITY_EDITOR");
+
+        private const string UnityCompileStub = @"
+using System;
+
+namespace AOT
+{
+    [AttributeUsage(AttributeTargets.Method)]
+    public sealed class MonoPInvokeCallbackAttribute : Attribute
+    {
+        public MonoPInvokeCallbackAttribute(Type callbackType) {}
+    }
+}
+
+namespace UnityEngine
+{
+    public class Object
+    {
+        public static T FindObjectOfType<T>() where T : Object => null;
+    }
+
+    public class Component : Object
+    {
+        public T GetComponent<T>() where T : class => null;
+    }
+
+    public class MonoBehaviour : Component {}
+    public sealed class DisallowMultipleComponentAttribute : Attribute {}
+    public sealed class HeaderAttribute : Attribute { public HeaderAttribute(string header) {} }
+    public sealed class TooltipAttribute : Attribute { public TooltipAttribute(string tooltip) {} }
+    public sealed class SerializeField : Attribute {}
+    public sealed class MinAttribute : Attribute { public MinAttribute(float min) {} }
+
+    public static class Debug
+    {
+        public static void Log(string message) {}
+        public static void LogWarning(string message) {}
+    }
+
+    public static class Application
+    {
+        public static bool isPlaying => true;
+        public static event Action quitting { add {} remove {} }
+    }
+
+    public enum RuntimeInitializeLoadType
+    {
+        SubsystemRegistration
+    }
+
+    public sealed class RuntimeInitializeOnLoadMethodAttribute : Attribute
+    {
+        public RuntimeInitializeOnLoadMethodAttribute(RuntimeInitializeLoadType loadType) {}
+    }
+}
+
+namespace UnityEditor
+{
+    public static class EditorUserSettings
+    {
+        public static string GetConfigValue(string key) => null;
+    }
+
+    public static class EditorApplication
+    {
+        public static bool isCompiling => false;
+        public static bool isUpdating => false;
+    }
+
+    public static class AssemblyReloadEvents
+    {
+        public static event Action beforeAssemblyReload { add {} remove {} }
+    }
+}
+
+namespace Unity.FoxgloveSDK.Protocol
+{
+    public sealed class AdvertiseChannel
+    {
+        public uint Id { get; set; }
+        public string Topic { get; set; }
+        public string Encoding { get; set; }
+        public string SchemaName { get; set; }
+        public string SchemaEncoding { get; set; }
+        public string Schema { get; set; }
+    }
+}
+
+namespace Unity.FoxgloveSDK.Core
+{
+    public interface IFoxgloveMirrorSink
+    {
+        bool HasChannelDemand(Unity.FoxgloveSDK.Protocol.AdvertiseChannel channel);
+        void RegisterChannel(Unity.FoxgloveSDK.Protocol.AdvertiseChannel channel);
+        void UnregisterChannel(uint channelId);
+        void Publish(Unity.FoxgloveSDK.Protocol.AdvertiseChannel channel, ulong logTimeNs, byte[] payload);
+    }
+}
+
+namespace Unity.FoxgloveSDK.Components
+{
+    public sealed class FoxgloveManager : UnityEngine.MonoBehaviour
+    {
+        public bool IsRunning => true;
+        public void SetMirrorSink(Unity.FoxgloveSDK.Core.IFoxgloveMirrorSink sink) {}
+    }
+}
+";
 
         private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRoot);
 

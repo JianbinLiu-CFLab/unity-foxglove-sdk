@@ -113,6 +113,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText(PackageRoot + "/Runtime/RemoteGatewayChannelRegistry.cs");
             var native = ReadRepoText(PackageRoot + "/Runtime/Native/RemoteGatewayNativeMethods.cs");
             var handle = ReadRepoText(PackageRoot + "/Runtime/Native/RemoteGatewayHandle.cs");
+            var eventQueue = ReadRepoText(PackageRoot + "/Runtime/RemoteGatewayEventQueue.cs");
+            var callbacks = ReadRepoText(PackageRoot + "/Runtime/Native/RemoteGatewayCallbacks.cs");
 
             Check(mirror.Contains("IFoxgloveMirrorSink", StringComparison.Ordinal)
                   && mirror.Contains("RemoteGatewayChannelRegistry", StringComparison.Ordinal)
@@ -131,7 +133,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && native.Contains("EntryPoint = \"foxglove_gateway_stop\"", StringComparison.Ordinal)
                   && native.Contains("EntryPoint = \"foxglove_channel_log\"", StringComparison.Ordinal)
                   && handle.Contains("SafeHandleZeroOrMinusOneIsInvalid", StringComparison.Ordinal)
-                  && handle.Contains("RemoteGatewayNativeMethods.GatewayStop(handle)", StringComparison.Ordinal),
+                  && handle.Contains("RemoteGatewayNativeMethods.GatewayStop(handle)", StringComparison.Ordinal)
+                  && handle.Contains("RemoteGatewayNativeMethods.FoxgloveConnectionStatus", StringComparison.Ordinal)
+                  && handle.Contains("RemoteGatewayNativeMethods.FoxgloveError", StringComparison.Ordinal)
+                  && !handle.Contains("internal FoxgloveConnectionStatus ConnectionStatus", StringComparison.Ordinal)
+                  && eventQueue.Contains("internal static RemoteGatewayEvent ConnectionStatusChanged", StringComparison.Ordinal)
+                  && !eventQueue.Contains("internal static RemoteGatewayEvent ConnectionStatus(", StringComparison.Ordinal)
+                  && callbacks.Contains("RemoteGatewayEvent.ConnectionStatusChanged", StringComparison.Ordinal),
                 "171-13: native binding covers gateway lifecycle and channel log ABI");
         }
 

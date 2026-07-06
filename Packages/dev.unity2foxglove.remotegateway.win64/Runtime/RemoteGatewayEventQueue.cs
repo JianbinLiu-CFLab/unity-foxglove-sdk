@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             PayloadLength = payloadLength;
         }
 
-        internal static RemoteGatewayEvent ConnectionStatus(RemoteGatewayNativeMethods.FoxgloveConnectionStatus status)
+        internal static RemoteGatewayEvent ConnectionStatusChanged(RemoteGatewayNativeMethods.FoxgloveConnectionStatus status)
             => new RemoteGatewayEvent(RemoteGatewayEventKind.ConnectionStatusChanged, status, 0U, UIntPtr.Zero);
 
         internal static RemoteGatewayEvent ClientEvent(RemoteGatewayEventKind kind, uint clientId)
