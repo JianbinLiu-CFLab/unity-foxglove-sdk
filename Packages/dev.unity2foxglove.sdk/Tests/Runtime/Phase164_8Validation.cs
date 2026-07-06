@@ -45,11 +45,11 @@ namespace Unity.FoxgloveSDK.Tests
             var endpoint = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/UnityReplayCursorEndpoint.cs");
             var readBody = SourceMethod(endpoint, "private string ReadBody");
             var handle = SourceMethod(endpoint, "private void Handle");
-            var tryWriteBytes = SourceMethod(endpoint, "private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes)");
+            var tryWriteBytes = SourceMethod(endpoint, "private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes, CorsDecision cors)");
 
             Check(endpoint.Contains("AcceptedCursorResponseBytes", StringComparison.Ordinal)
                   && handle.Contains("result.Success && string.Equals(result.Message, \"Cursor accepted.\"", StringComparison.Ordinal)
-                  && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes)", StringComparison.Ordinal),
+                  && handle.Contains("TryWrite(context, 202, AcceptedCursorResponseBytes, cors)", StringComparison.Ordinal),
                 "164-8B-1: common accepted cursor responses use pre-encoded bytes");
             Check(readBody.Contains("ArrayPool<byte>.Shared.Rent(_options.MaxBodyBytes + 1)", StringComparison.Ordinal)
                   && readBody.Contains("ArrayPool<byte>.Shared.Return(buffer)", StringComparison.Ordinal)
@@ -59,8 +59,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && !readBody.Contains("memory.ToArray()", StringComparison.Ordinal),
                 "164-8B-2: cursor request bodies rent a per-request buffer without MemoryStream.ToArray");
             Check(tryWriteBytes.Contains("bytes ??= Array.Empty<byte>()", StringComparison.Ordinal)
-                  && tryWriteBytes.Contains("context.Response.OutputStream.Write(bytes, 0, bytes.Length)", StringComparison.Ordinal),
-                "164-8B-3: cursor response writer can send pre-encoded bytes directly");
+                  && tryWriteBytes.Contains("context.Response.OutputStream.Write(bytes, 0, bytes.Length)", StringComparison.Ordinal)
+                  && !endpoint.Contains("private void TryWrite(HttpListenerContext context, int statusCode, byte[] bytes)\r\n", StringComparison.Ordinal),
+                "164-8B-3: cursor response writer sends pre-encoded bytes through the explicit CORS path");
         }
 
         private static void VerifyUnsafeTimeFrameBufferReuseIsNotIntroduced()

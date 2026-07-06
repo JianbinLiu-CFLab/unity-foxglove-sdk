@@ -66,6 +66,12 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertIn("var writer = new Ros2CdrWriter(528);", generated)
         self.assertIn("writer.WriteByteArray(message.Data.Span);", generated)
         self.assertIn("writer.WriteFloat64(value.W);", generated)
+        for method in ("WriteProtoPoint", "WriteProtoVector3", "WriteProtoQuaternion", "WriteProtoPose"):
+            start = generated.index(f"private static void {method}")
+            end = generated.find("\n        private static", start + 1)
+            body = generated[start:] if end < 0 else generated[start:end]
+            self.assertIn("if (writer == null)", body)
+            self.assertIn("throw new ArgumentNullException(nameof(writer));", body)
         self.assertNotIn("value?.W ?? 1.0", generated)
 
     def test_cdr_generator_supports_future_geometry_sequences(self) -> None:
@@ -145,6 +151,55 @@ class SchemaToolingTests(unittest.TestCase):
             module.reader_for_field(field)
         with self.assertRaisesRegex(RuntimeError, "positive length"):
             module.sample_lines_for_field(field, "Synthetic", 0)
+
+    def test_cdr_generator_rejects_unsupported_fixed_array_base_types(self) -> None:
+        """Fixed arrays must fail closed until each base type has explicit CDR support."""
+        module = load_module("cdr_generator_fixed_array_type_guard", "Scripts/schema/generate_ros2_cdr_serializers.py")
+
+        field = module.Field(
+            ros_type="int32[4]",
+            name="indices",
+            base_type="int32",
+            array_kind="fixed",
+            fixed_length=4,
+            property_name="Indices",
+            property_type="pbc::RepeatedField<int>",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "Unsupported fixed array base type"):
+            module.writer_for_field(field)
+        with self.assertRaisesRegex(RuntimeError, "Unsupported fixed array base type"):
+            module.reader_for_field(field)
+
+    def test_cdr_generator_reports_unsupported_repeated_fields(self) -> None:
+        """Unsupported repeated field diagnostics should not imply support."""
+        module = load_module("cdr_generator_repeated_error_text", "Scripts/schema/generate_ros2_cdr_serializers.py")
+
+        with self.assertRaisesRegex(RuntimeError, "unsupported repeated bool field type"):
+            module.validate_property(
+                "Synthetic",
+                "flags",
+                "bool[]",
+                "bool",
+                "sequence",
+                "pbc::RepeatedField<bool>")
+
+    def test_cdr_generator_try_deserialize_documents_and_catches_malformed_payloads(self) -> None:
+        """TryDeserialize should have no-throw semantics for malformed payloads."""
+        module = load_module("cdr_generator_try_deserialize_guard", "Scripts/schema/generate_ros2_cdr_serializers.py")
+
+        schema = module.Schema(
+            name="CompressedImage",
+            schema_name="foxglove_msgs/msg/CompressedImage",
+            source_file="CompressedImage.msg",
+            fields=(),
+        )
+        generated = module.generate_deserializer_registry([schema])
+
+        self.assertIn("malformed CDR payloads", generated)
+        self.assertIn("if (payload == null)", generated)
+        self.assertIn("catch (Exception)", generated)
+        self.assertIn("message = null;", generated)
 
     def test_schema_catalog_warns_when_source_commit_lookup_fails(self) -> None:
         """Source commit lookup should not silently swallow git failures."""

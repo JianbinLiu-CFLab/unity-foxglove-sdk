@@ -234,7 +234,7 @@ def validate_property(schema_name: str, field_name: str, ros_type: str, base_typ
         elif base_type.startswith("foxglove_msgs/") and inner != f"global::Foxglove.{family}":
             fail(f"pbc::RepeatedField<global::Foxglove.{family}>")
         elif base_type in {"bool", "string", "builtin_interfaces/Time", "builtin_interfaces/Duration"}:
-            fail("supported repeated field type")
+            fail(f"unsupported repeated {base_type} field type")
         return
 
     expected_scalar = dict(SCALAR_TYPE_MAP)
@@ -364,6 +364,8 @@ def writer_for_field(field: Field) -> list[str]:
     if field.array_kind == "fixed":
         if not field.fixed_length or field.fixed_length <= 0:
             raise RuntimeError(f"Fixed array field must declare a positive length: {field}")
+        if field.base_type != "float64":
+            raise RuntimeError(f"Unsupported fixed array base type '{field.base_type}': {field}")
         return [f"writer.WriteFloat64Fixed({access}, {field.fixed_length}, {csharp_string(field.name)});"]
     if field.base_type == "float64":
         return [f"writer.WriteFloat64Sequence({access});"]
@@ -496,6 +498,8 @@ def reader_for_field(field: Field) -> list[str]:
     if field.array_kind == "fixed":
         if not field.fixed_length or field.fixed_length <= 0:
             raise RuntimeError(f"Fixed array field must declare a positive length: {field}")
+        if field.base_type != "float64":
+            raise RuntimeError(f"Unsupported fixed array base type '{field.base_type}': {field}")
         return [f"{access}.Add(reader.ReadFloat64Fixed({field.fixed_length}));"]
     if field.base_type == "float64":
         return [f"{access}.Add(reader.ReadFloat64Sequence());"]
@@ -556,6 +560,8 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "",
         "        private static void WriteProtoVector3(Ros2CdrWriter writer, global::Foxglove.Vector3 value)",
         "        {",
+        "            if (writer == null)",
+        "                throw new ArgumentNullException(nameof(writer));",
         "            if (value == null)",
         "                throw new ArgumentNullException(nameof(value));",
         "",
@@ -566,6 +572,8 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "",
         "        private static void WriteProtoQuaternion(Ros2CdrWriter writer, global::Foxglove.Quaternion value)",
         "        {",
+        "            if (writer == null)",
+        "                throw new ArgumentNullException(nameof(writer));",
         "            if (value == null)",
         "                throw new ArgumentNullException(nameof(value));",
         "",
@@ -577,6 +585,8 @@ def generate_serializers(schemas: list[Schema]) -> str:
         "",
         "        private static void WriteProtoPose(Ros2CdrWriter writer, global::Foxglove.Pose value)",
         "        {",
+        "            if (writer == null)",
+        "                throw new ArgumentNullException(nameof(writer));",
         "            if (value == null)",
         "                throw new ArgumentNullException(nameof(value));",
         "",
@@ -1076,13 +1086,27 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             return BySchemaName.TryGetValue(schemaName, out entry);
         }}
 
+        /// <summary>
+        /// Try to deserialize a payload. Returns false for unknown schemas, null payloads,
+        /// or malformed CDR payloads.
+        /// </summary>
         public static bool TryDeserialize(string schemaName, byte[] payload, out IMessage message)
         {{
             message = null;
             if (!TryGetBySchemaName(schemaName, out var entry))
                 return false;
-            message = entry.Deserialize(payload);
-            return true;
+            if (payload == null)
+                return false;
+            try
+            {{
+                message = entry.Deserialize(payload);
+                return true;
+            }}
+            catch (Exception)
+            {{
+                message = null;
+                return false;
+            }}
         }}
 
         public static IMessage Deserialize(string schemaName, byte[] payload)

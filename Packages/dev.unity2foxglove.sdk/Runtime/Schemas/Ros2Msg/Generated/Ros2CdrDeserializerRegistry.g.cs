@@ -312,13 +312,27 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             return BySchemaName.TryGetValue(schemaName, out entry);
         }
 
+        /// <summary>
+        /// Try to deserialize a payload. Returns false for unknown schemas, null payloads,
+        /// or malformed CDR payloads.
+        /// </summary>
         public static bool TryDeserialize(string schemaName, byte[] payload, out IMessage message)
         {
             message = null;
             if (!TryGetBySchemaName(schemaName, out var entry))
                 return false;
-            message = entry.Deserialize(payload);
-            return true;
+            if (payload == null)
+                return false;
+            try
+            {
+                message = entry.Deserialize(payload);
+                return true;
+            }
+            catch (Exception)
+            {
+                message = null;
+                return false;
+            }
         }
 
         public static IMessage Deserialize(string schemaName, byte[] payload)
