@@ -13,6 +13,12 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
+    [CollectionDefinition("FoxRunSchemaRegistry")]
+    public sealed class FoxRunSchemaRegistryCollectionDefinition
+    {
+    }
+
+    [Collection("FoxRunSchemaRegistry")]
     public sealed class FoxRunAggregationEmitterTests
     {
         [Fact]
@@ -461,6 +467,10 @@ namespace Demo
                 Assert.Contains("\"position\":{\"type\":\"object\"", entry.Content, StringComparison.Ordinal);
                 Assert.Contains("\"x\":{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}", entry.Content, StringComparison.Ordinal);
                 Assert.Contains("\"required\":[\"speed\",\"enabled\",\"position\"]", entry.Content, StringComparison.Ordinal);
+
+                FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas(registry);
+                Assert.True(registry.TryGetSchema("Demo.VehicleTelemetry", "jsonschema", out var cachedEntry));
+                Assert.Equal(entry.Content, cachedEntry.Content);
             }
             finally
             {
@@ -541,7 +551,12 @@ namespace Demo
         private static void AssertGeneratorDiagnostic(string source, string diagnosticId)
         {
             var result = RunGenerator(source);
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == diagnosticId);
+            var errors = result.Diagnostics
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.Contains(errors, diagnostic => diagnostic.Id == diagnosticId);
+            Assert.All(errors, diagnostic => Assert.Equal(diagnosticId, diagnostic.Id));
         }
     }
 }

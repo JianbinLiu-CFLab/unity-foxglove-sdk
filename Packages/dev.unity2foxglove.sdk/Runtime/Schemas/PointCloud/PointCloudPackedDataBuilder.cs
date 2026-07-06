@@ -297,6 +297,17 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             }
         }
 
+        internal static void ClearCachedBuffers()
+        {
+            lock (Gate)
+            {
+                BuffersBySize.Clear();
+                PreferredSizes.Clear();
+                PreferredSizeOrder.Clear();
+                RetainedBytes = 0L;
+            }
+        }
+
         public static byte[] Rent(int length, out bool reused)
         {
             reused = false;

@@ -56,12 +56,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
 
-            Check(source.Contains("private readonly int[] _scanCrossings = new int[4];", StringComparison.Ordinal)
+            Check(source.Contains("private int[] _scanCrossings = new int[4];", StringComparison.Ordinal)
+                  && source.Contains("EnsureScanCrossingCapacity(_scanCrossingCount + 1);", StringComparison.Ordinal)
                   && source.Contains("private int _scanCrossingCount;", StringComparison.Ordinal),
-                "164-35C-1: LiDAR scheduler already uses a bounded crossing array");
+                "164-35C-1: LiDAR scheduler uses grow-only crossing array storage");
             Check(!source.Contains("List<int> _scanCrossings", StringComparison.Ordinal)
-                  && !source.Contains("_scanCrossings.Add(", StringComparison.Ordinal),
-                "164-35C-2: LiDAR scheduler does not use List add/clear on the crossing hot path");
+                  && !source.Contains("_scanCrossings.Add(", StringComparison.Ordinal)
+                  && !source.Contains("crossed more revolutions than the fixed crossing buffer supports", StringComparison.Ordinal),
+                "164-35C-2: LiDAR scheduler does not use List add/clear or fixed crossing-cap throws on the hot path");
         }
 
         private static void VerifyPointCloudSmokeKeepsFreshFramesForPendingSlotSafety()

@@ -70,6 +70,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _remoteMcapFileServerHostProperty;
         private SerializedProperty _remoteMcapFileServerPortProperty;
         private SerializedProperty _remoteMcapFileServerSourceIdProperty;
+        private SerializedProperty _remoteMcapFileServerTokenProperty;
         private SerializedProperty _recordingDirectoryProperty;
         private SerializedProperty _replayFilePathProperty;
         private SerializedProperty _replayAutoPlayProperty;
@@ -152,6 +153,7 @@ namespace Unity.FoxgloveSDK.Editor
             _remoteMcapFileServerHostProperty = serializedObject.FindProperty("_remoteMcapFileServerHost");
             _remoteMcapFileServerPortProperty = serializedObject.FindProperty("_remoteMcapFileServerPort");
             _remoteMcapFileServerSourceIdProperty = serializedObject.FindProperty("_remoteMcapFileServerSourceId");
+            _remoteMcapFileServerTokenProperty = serializedObject.FindProperty("_remoteMcapFileServerToken");
             _recordingDirectoryProperty = serializedObject.FindProperty("_recordingDirectory");
             _replayFilePathProperty = serializedObject.FindProperty("_replayFilePath");
             _replayAutoPlayProperty = serializedObject.FindProperty("_replayAutoPlay");
@@ -602,6 +604,7 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_remoteMcapFileServerHost": return _remoteMcapFileServerHostProperty;
                 case "_remoteMcapFileServerPort": return _remoteMcapFileServerPortProperty;
                 case "_remoteMcapFileServerSourceId": return _remoteMcapFileServerSourceIdProperty;
+                case "_remoteMcapFileServerToken": return _remoteMcapFileServerTokenProperty;
                 case "_recordingDirectory": return _recordingDirectoryProperty;
                 case "_replayFilePath": return _replayFilePathProperty;
                 case "_replayAutoPlay": return _replayAutoPlayProperty;

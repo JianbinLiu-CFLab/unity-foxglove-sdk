@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _remoteMcapFileServerKnownPort;
         private string _remoteMcapFileServerKnownPath;
         private string _remoteMcapFileServerKnownSourceId;
+        private string _remoteMcapFileServerKnownToken;
         private bool _warnedRemoteMcapFileServerWithoutToken;
 
         /// <summary>
@@ -236,6 +237,7 @@ namespace Unity.FoxgloveSDK.Components
                 StopRemoteMcapFileServer();
                 StopReplayCursorEndpoint();
                 StopCertificateDistributor();
+                DetachRuntimeForwarders(_runtime?.Session);
                 if (_runtime?.Session == null)
                 {
                     return;
@@ -251,27 +253,7 @@ namespace Unity.FoxgloveSDK.Components
                 transport.OnClientDisconnected -= EnqueueDisconnect;
             }
 
-            if (_runtime.Session != null && _clientMessageForwarder != null)
-            {
-                _runtime.Session.OnClientMessage -= _clientMessageForwarder;
-                _clientMessageForwarder = null;
-            }
-
-            if (_replayForwarder != null)
-            {
-                _runtime.OnReplayMessage -= _replayForwarder;
-                _replayForwarder = null;
-            }
-            if (_replayContextForwarder != null)
-            {
-                _runtime.OnReplayMessageContext -= _replayContextForwarder;
-                _replayContextForwarder = null;
-            }
-            if (_replayBatchForwarder != null)
-            {
-                _runtime.OnReplayBatchCompleted -= _replayBatchForwarder;
-                _replayBatchForwarder = null;
-            }
+            DetachRuntimeForwarders(_runtime?.Session);
 
             AdvanceChannelSessionGeneration();
             _runtime.Stop();
@@ -343,7 +325,8 @@ namespace Unity.FoxgloveSDK.Components
                 && string.Equals(_remoteMcapFileServerKnownHost, _remoteMcapFileServerHost, System.StringComparison.Ordinal)
                 && _remoteMcapFileServerKnownPort == _remoteMcapFileServerPort
                 && string.Equals(_remoteMcapFileServerKnownPath, path, System.StringComparison.Ordinal)
-                && string.Equals(_remoteMcapFileServerKnownSourceId, _remoteMcapFileServerSourceId, System.StringComparison.Ordinal))
+                && string.Equals(_remoteMcapFileServerKnownSourceId, _remoteMcapFileServerSourceId, System.StringComparison.Ordinal)
+                && string.Equals(_remoteMcapFileServerKnownToken, _remoteMcapFileServerToken, System.StringComparison.Ordinal))
             {
                 return;
             }
@@ -372,6 +355,7 @@ namespace Unity.FoxgloveSDK.Components
                 Port = _remoteMcapFileServerPort,
                 McapPath = resolvedPath,
                 SourceId = string.IsNullOrWhiteSpace(_remoteMcapFileServerSourceId) ? "local-mcap" : _remoteMcapFileServerSourceId.Trim(),
+                RequiredBearerToken = string.IsNullOrWhiteSpace(_remoteMcapFileServerToken) ? string.Empty : _remoteMcapFileServerToken.Trim(),
                 ManifestName = Path.GetFileName(resolvedPath)
             };
         }
@@ -404,6 +388,7 @@ namespace Unity.FoxgloveSDK.Components
             _remoteMcapFileServerKnownPort = _remoteMcapFileServerPort;
             _remoteMcapFileServerKnownPath = resolvedPath;
             _remoteMcapFileServerKnownSourceId = _remoteMcapFileServerSourceId;
+            _remoteMcapFileServerKnownToken = _remoteMcapFileServerToken;
         }
 
         private void ClearRemoteMcapFileServerConfig()
@@ -414,6 +399,28 @@ namespace Unity.FoxgloveSDK.Components
             _remoteMcapFileServerKnownPort = 0;
             _remoteMcapFileServerKnownPath = null;
             _remoteMcapFileServerKnownSourceId = null;
+            _remoteMcapFileServerKnownToken = null;
+        }
+
+        private void DetachRuntimeForwarders(FoxgloveSession session)
+        {
+            if (session != null && _clientMessageForwarder != null)
+                session.OnClientMessage -= _clientMessageForwarder;
+            _clientMessageForwarder = null;
+
+            if (_runtime != null)
+            {
+                if (_replayForwarder != null)
+                    _runtime.OnReplayMessage -= _replayForwarder;
+                if (_replayContextForwarder != null)
+                    _runtime.OnReplayMessageContext -= _replayContextForwarder;
+                if (_replayBatchForwarder != null)
+                    _runtime.OnReplayBatchCompleted -= _replayBatchForwarder;
+            }
+
+            _replayForwarder = null;
+            _replayContextForwarder = null;
+            _replayBatchForwarder = null;
         }
 
         private void StopRemoteMcapFileServer()

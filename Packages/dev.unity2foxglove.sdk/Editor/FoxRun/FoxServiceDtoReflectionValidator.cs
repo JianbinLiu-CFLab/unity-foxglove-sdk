@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
 
             var fullName = FullTypeName(type);
-            var stackKey = FullTypeName(type);
+            var stackKey = fullName;
             if (validatedTypes.Contains(stackKey))
                 return;
 

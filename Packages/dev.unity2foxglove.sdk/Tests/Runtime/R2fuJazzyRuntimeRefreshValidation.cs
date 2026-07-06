@@ -51,6 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 RuntimePackageShapeIsPresent();
                 RuntimePackageContainsJazzyDependencyFloor();
+                RuntimePackageRecordsPluginImportAndManifestHealth();
                 RuntimePackageRecordsInventoryDelta();
                 AdapterAdoptionManifestRecordsRefreshedJazzyRuntime();
                 JazzyScriptsArePinnedToHandoffArtifact();
@@ -160,6 +161,40 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!NativeDllExists("rmw_zenoh_cpp.dll"),
                 "161-B-zenoh: Jazzy runtime remains FastRTPS-only");
+        }
+
+        private static void RuntimePackageRecordsPluginImportAndManifestHealth()
+        {
+            foreach (var dll in new[]
+            {
+                "ros2cs_native.dll",
+                "libcrypto-3-x64.dll",
+                "libssl-3-x64.dll",
+            })
+            {
+                var meta = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/" + dll + ".meta");
+                Check(meta.Contains("PluginImporter:", StringComparison.Ordinal)
+                      && meta.Contains("CPU: x86_64", StringComparison.Ordinal)
+                      && meta.Contains("OS: Windows", StringComparison.Ordinal)
+                      && meta.Contains("Standalone: Windows", StringComparison.Ordinal),
+                    "161-B-plugin-meta: " + dll + ".meta imports as Windows x86_64 native plugin");
+            }
+
+            foreach (var metadataPath in new[]
+            {
+                RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/metadata_ros2cs.xml",
+                RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/metadata_ros2cs.xml",
+            })
+            {
+                var metadata = ReadRepoText(metadataPath);
+                Check(metadata.Contains("runtime_file_count=\"991\"", StringComparison.Ordinal),
+                    "161-B-manifest-count: " + metadataPath + " records the current plugin file count");
+                Check(metadata.Contains("<file>Windows/x86_64/rosidl_dynamic_typesupport_fastrtps.dll</file>", StringComparison.Ordinal),
+                    "161-B-manifest-dynamic-typesupport: " + metadataPath + " includes FastRTPS dynamic type support");
+                Check(metadata.Contains("sha256=\"124c5f40a6cf0e642f9d92784dd66314fd548b4fdf93c543bf478e71e1209f9d\">Windows/x86_64/libcrypto-3-x64.dll", StringComparison.Ordinal)
+                      && metadata.Contains("sha256=\"4158ad85699d9c5428b62778883b16b6c21b3b7da11fe60a0cc24ea37687a9fd\">Windows/x86_64/libssl-3-x64.dll", StringComparison.Ordinal),
+                    "161-B-manifest-openssl-hashes: " + metadataPath + " records OpenSSL DLL SHA-256 hashes");
+            }
         }
 
         private static void RuntimePackageRecordsInventoryDelta()

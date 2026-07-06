@@ -25,11 +25,11 @@ namespace Unity.FoxgloveSDK.Components
     {
         private readonly LidarScanDiagnostics _scanDiagnostics = new LidarScanDiagnostics();
         private readonly UnityEngine.Object _logContext;
-        private readonly int[] _scanCrossings = new int[4];
+        private int[] _scanCrossings = new int[4];
         private int _scanCrossingCount;
 
         private static readonly ProfilerMarker ScheduleScanMarker = new ProfilerMarker("VirtualLidar.ScheduleScan");
-        private static readonly ProfilerMarker BuildPointsMarker = new ProfilerMarker("VirtualLidar.BuildPoints");
+        private static readonly ProfilerMarker BuildPointsScheduleMarker = new ProfilerMarker("VirtualLidar.BuildPoints.Schedule");
 
         // Async scan batches advance through this small state machine so FixedUpdate
         // schedules raycast/build work without waiting on it in the same tick.
@@ -143,9 +143,7 @@ namespace Unity.FoxgloveSDK.Components
                     scanColumnCursor++;
                     if (scanColumnCursor >= scanBuffers.ScanColumnCount)
                     {
-                        if (_scanCrossingCount >= _scanCrossings.Length)
-                            throw new InvalidOperationException("LiDAR scan batch crossed more revolutions than the fixed crossing buffer supports.");
-
+                        EnsureScanCrossingCapacity(_scanCrossingCount + 1);
                         _scanCrossings[_scanCrossingCount++] = batchCount;
                         scanColumnCursor = 0;
                     }
@@ -161,7 +159,8 @@ namespace Unity.FoxgloveSDK.Components
                     // this is bounded by the maximum revolution crossings in one scheduled batch.
                     _pendingScanCrossings = new int[Math.Max(1, requiredCrossingCount)];
                 }
-                _pendingScanCrossingCount = Math.Min(requiredCrossingCount, _pendingScanCrossings.Length);
+                System.Diagnostics.Debug.Assert(_pendingScanCrossings.Length >= requiredCrossingCount);
+                _pendingScanCrossingCount = requiredCrossingCount;
                 for (var i = 0; i < _pendingScanCrossingCount; i++)
                     _pendingScanCrossings[i] = _scanCrossings[i];
 
@@ -188,7 +187,7 @@ namespace Unity.FoxgloveSDK.Components
                     SyntheticReflectivity = syntheticReflectivity,
                     Points = scanBuffers.PointData
                 };
-                using (BuildPointsMarker.Auto())
+                using (BuildPointsScheduleMarker.Auto())
                     _pendingScanHandle = buildJob.Schedule(batchCount, 64, raycastHandle);
                 _pendingScanState = PendingScanState.Scheduled;
             }
@@ -211,125 +210,130 @@ namespace Unity.FoxgloveSDK.Components
             if (_pendingScanState != PendingScanState.Scheduled || _pendingBatchCount <= 0)
                 return;
 
-            var completeStart = DiagnosticStart(logPerformanceDiagnostics);
+            var completeStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
             _pendingScanHandle.Complete();
-            var completeMs = DiagnosticElapsedMs(completeStart);
+            var completeMs = _scanDiagnostics.ElapsedMs(completeStart);
             _pendingScanState = PendingScanState.Consumed;
 
-            if (_pendingProfileHash != scanBuffers.ComputeProfileHash())
+            try
             {
-                LogLidarBatchTiming(
-                    logPerformanceDiagnostics,
-                    _pendingScanId,
-                    _pendingBatchCount,
-                    0,
-                    completeMs,
-                    0d,
-                    0d,
-                    0d,
-                    0d,
-                    0d,
-                    0d,
-                    0d,
-                    0d,
-                    useNativeSnapshot,
-                    _pendingScanCrossingCount,
-                    fixedDeltaTime);
-                RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: false, profileInvalidation: true, fixedDeltaTime);
-                ClearPendingScan();
-                return;
-            }
-
-            // BuildPointsJob is now chained behind RaycastCommand; any remaining wait is
-            // included in completeMs, and there is no separate main-thread build phase here.
-            var buildMs = 0d;
-
-            var appendStart = DiagnosticStart(logPerformanceDiagnostics);
-            var copyMs = 0d;
-            var boundaryPublishMs = 0d;
-            var publishActiveScanMs = 0d;
-            var motionRequestMs = 0d;
-            var enqueueMs = 0d;
-            var startNewScanMs = 0d;
-            var validPoints = 0;
-            var ci = 0;
-            var segmentStart = 0;
-            for (var k = 0; k < _pendingBatchCount; k++)
-            {
-                while (ci < _pendingScanCrossingCount && k == _pendingScanCrossings[ci])
+                if (_pendingProfileHash != scanBuffers.ComputeProfileHash())
                 {
-                    var copyStart = DiagnosticStart(logPerformanceDiagnostics);
-                    AppendOrCopyPendingPointDataSegment(
-                        scanBuffers,
-                        segmentStart,
-                        k - segmentStart,
+                    LogLidarBatchTiming(
+                        logPerformanceDiagnostics,
+                        _pendingScanId,
+                        _pendingBatchCount,
+                        0,
+                        completeMs,
+                        0d,
+                        0d,
+                        0d,
+                        0d,
+                        0d,
+                        0d,
+                        0d,
+                        0d,
                         useNativeSnapshot,
-                        ref activeScanFrame,
-                        ref activeScanPointSnapshot,
-                        ref activeScanPointSnapshotCount,
-                        ref activeScanValidPoints,
-                        ref validPoints);
-                    copyMs += DiagnosticElapsedMs(copyStart);
-                    var boundaryPublishStart = DiagnosticStart(logPerformanceDiagnostics);
+                        _pendingScanCrossingCount,
+                        fixedDeltaTime);
+                    RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, 0, completeMs, 0d, 0d, asyncOverrun: false, profileInvalidation: true, fixedDeltaTime);
+                    return;
+                }
+
+                // BuildPointsJob is now chained behind RaycastCommand; any remaining wait is
+                // included in completeMs, and there is no separate main-thread build phase here.
+                var buildMs = 0d;
+
+                var appendStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
+                var copyMs = 0d;
+                var boundaryPublishMs = 0d;
+                var publishActiveScanMs = 0d;
+                var motionRequestMs = 0d;
+                var enqueueMs = 0d;
+                var startNewScanMs = 0d;
+                var validPoints = 0;
+                var ci = 0;
+                var segmentStart = 0;
+                for (var k = 0; k < _pendingBatchCount; k++)
+                {
+                    while (ci < _pendingScanCrossingCount && k == _pendingScanCrossings[ci])
+                    {
+                        var copyStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
+                        AppendOrCopyPendingPointDataSegment(
+                            scanBuffers,
+                            segmentStart,
+                            k - segmentStart,
+                            useNativeSnapshot,
+                            ref activeScanFrame,
+                            ref activeScanPointSnapshot,
+                            ref activeScanPointSnapshotCount,
+                            ref activeScanValidPoints,
+                            ref validPoints);
+                        copyMs += _scanDiagnostics.ElapsedMs(copyStart);
+                        var boundaryPublishStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
+                        var boundaryTimings = new LidarScanBoundaryTimings(logPerformanceDiagnostics);
+                        onScanBoundary?.Invoke(ref boundaryTimings);
+                        boundaryPublishMs += _scanDiagnostics.ElapsedMs(boundaryPublishStart);
+                        publishActiveScanMs += boundaryTimings.PublishActiveScanMs;
+                        motionRequestMs += boundaryTimings.MotionRequestMs;
+                        enqueueMs += boundaryTimings.EnqueueMs;
+                        startNewScanMs += boundaryTimings.StartNewScanMs;
+                        _pendingScanState = PendingScanState.Published;
+                        segmentStart = k;
+                        ci++;
+                    }
+                }
+
+                var finalCopyStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
+                AppendOrCopyPendingPointDataSegment(
+                    scanBuffers,
+                    segmentStart,
+                    _pendingBatchCount - segmentStart,
+                    useNativeSnapshot,
+                    ref activeScanFrame,
+                    ref activeScanPointSnapshot,
+                    ref activeScanPointSnapshotCount,
+                    ref activeScanValidPoints,
+                    ref validPoints);
+                copyMs += _scanDiagnostics.ElapsedMs(finalCopyStart);
+                while (ci < _pendingScanCrossingCount && _pendingBatchCount == _pendingScanCrossings[ci])
+                {
+                    var boundaryPublishStart = _scanDiagnostics.Start(logPerformanceDiagnostics);
                     var boundaryTimings = new LidarScanBoundaryTimings(logPerformanceDiagnostics);
                     onScanBoundary?.Invoke(ref boundaryTimings);
-                    boundaryPublishMs += DiagnosticElapsedMs(boundaryPublishStart);
+                    boundaryPublishMs += _scanDiagnostics.ElapsedMs(boundaryPublishStart);
                     publishActiveScanMs += boundaryTimings.PublishActiveScanMs;
                     motionRequestMs += boundaryTimings.MotionRequestMs;
                     enqueueMs += boundaryTimings.EnqueueMs;
                     startNewScanMs += boundaryTimings.StartNewScanMs;
                     _pendingScanState = PendingScanState.Published;
-                    segmentStart = k;
                     ci++;
                 }
-            }
 
-            var finalCopyStart = DiagnosticStart(logPerformanceDiagnostics);
-            AppendOrCopyPendingPointDataSegment(
-                scanBuffers,
-                segmentStart,
-                _pendingBatchCount - segmentStart,
-                useNativeSnapshot,
-                ref activeScanFrame,
-                ref activeScanPointSnapshot,
-                ref activeScanPointSnapshotCount,
-                ref activeScanValidPoints,
-                ref validPoints);
-            copyMs += DiagnosticElapsedMs(finalCopyStart);
-            while (ci < _pendingScanCrossingCount && _pendingBatchCount == _pendingScanCrossings[ci])
+                var appendMs = _scanDiagnostics.ElapsedMs(appendStart);
+                LogLidarBatchTiming(
+                    logPerformanceDiagnostics,
+                    _pendingScanId,
+                    _pendingBatchCount,
+                    validPoints,
+                    completeMs,
+                    buildMs,
+                    appendMs,
+                    copyMs,
+                    boundaryPublishMs,
+                    publishActiveScanMs,
+                    motionRequestMs,
+                    enqueueMs,
+                    startNewScanMs,
+                    useNativeSnapshot,
+                    _pendingScanCrossingCount,
+                    fixedDeltaTime);
+                RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, validPoints, completeMs, buildMs, appendMs, asyncOverrun: false, profileInvalidation: false, fixedDeltaTime);
+            }
+            finally
             {
-                var boundaryPublishStart = DiagnosticStart(logPerformanceDiagnostics);
-                var boundaryTimings = new LidarScanBoundaryTimings(logPerformanceDiagnostics);
-                onScanBoundary?.Invoke(ref boundaryTimings);
-                boundaryPublishMs += DiagnosticElapsedMs(boundaryPublishStart);
-                publishActiveScanMs += boundaryTimings.PublishActiveScanMs;
-                motionRequestMs += boundaryTimings.MotionRequestMs;
-                enqueueMs += boundaryTimings.EnqueueMs;
-                startNewScanMs += boundaryTimings.StartNewScanMs;
-                _pendingScanState = PendingScanState.Published;
-                ci++;
+                ClearPendingScan();
             }
-
-            var appendMs = DiagnosticElapsedMs(appendStart);
-            LogLidarBatchTiming(
-                logPerformanceDiagnostics,
-                _pendingScanId,
-                _pendingBatchCount,
-                validPoints,
-                completeMs,
-                buildMs,
-                appendMs,
-                copyMs,
-                boundaryPublishMs,
-                publishActiveScanMs,
-                motionRequestMs,
-                enqueueMs,
-                startNewScanMs,
-                useNativeSnapshot,
-                _pendingScanCrossingCount,
-                fixedDeltaTime);
-            RecordLidarDiagnostics(logPerformanceDiagnostics, _pendingBatchCount, validPoints, completeMs, buildMs, appendMs, asyncOverrun: false, profileInvalidation: false, fixedDeltaTime);
-            ClearPendingScan();
         }
 
         /// <summary>Shutdown/reset path: complete outstanding jobs before native buffers can be reused.</summary>
@@ -350,6 +354,17 @@ namespace Unity.FoxgloveSDK.Components
             _pendingScanCrossingCount = 0;
             _pendingProfileHash = 0;
             _pendingScanId = 0;
+        }
+
+        private void EnsureScanCrossingCapacity(int requiredCrossingCount)
+        {
+            if (_scanCrossings.Length >= requiredCrossingCount)
+                return;
+
+            var nextLength = Math.Max(4, _scanCrossings.Length);
+            while (nextLength < requiredCrossingCount)
+                nextLength *= 2;
+            Array.Resize(ref _scanCrossings, nextLength);
         }
 
         private void AppendOrCopyPendingPointDataSegment(
@@ -445,12 +460,6 @@ namespace Unity.FoxgloveSDK.Components
                 validPoints++;
             }
         }
-
-        private static long DiagnosticStart(bool logPerformanceDiagnostics)
-            => logPerformanceDiagnostics ? System.Diagnostics.Stopwatch.GetTimestamp() : 0L;
-
-        private static double DiagnosticElapsedMs(long startTicks)
-            => startTicks == 0L ? 0d : (System.Diagnostics.Stopwatch.GetTimestamp() - startTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
 
         private void LogLidarBatchTiming(
             bool logPerformanceDiagnostics,
