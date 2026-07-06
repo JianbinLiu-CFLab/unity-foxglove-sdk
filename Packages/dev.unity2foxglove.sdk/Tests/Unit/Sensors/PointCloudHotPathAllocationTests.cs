@@ -149,6 +149,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void NativeDracoRateGateRejectsZeroInterval()
+        {
+            var lastPublishNs = 0UL;
+
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => PointCloudPublishRateGate.ShouldPublish(ref lastPublishNs, 1UL, 0UL));
+        }
+
+        [Fact]
         public void PointCloud2PooledDeskewBuffersArePreferredOverOneShotRawSizes()
         {
             var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
@@ -244,62 +253,78 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void PointCloud2PreferredPooledBuffersCanEvictNoisyExactSizes()
         {
-            const int preferredLength = 983040;
-            for (var i = 0; i < 80; i++)
-                PointCloudPackedByteBufferPool.Return(new byte[900000 + i]);
+            PointCloudPackedByteBufferPool.ClearForTests();
+            try
+            {
+                const int preferredLength = 983040;
+                for (var i = 0; i < 80; i++)
+                    PointCloudPackedByteBufferPool.Return(new byte[900000 + i]);
 
-            PointCloudPackedByteBufferPool.Return(new byte[preferredLength], preferRetention: true);
+                PointCloudPackedByteBufferPool.Return(new byte[preferredLength], preferRetention: true);
 
-            var rented = PointCloudPackedByteBufferPool.Rent(preferredLength, out var reused);
+                var rented = PointCloudPackedByteBufferPool.Rent(preferredLength, out var reused);
 
-            Assert.True(reused);
-            Assert.Equal(preferredLength, rented.Length);
+                Assert.True(reused);
+                Assert.Equal(preferredLength, rented.Length);
+            }
+            finally
+            {
+                PointCloudPackedByteBufferPool.ClearForTests();
+            }
         }
 
         [Fact]
         public void PointCloud2StableSourceWidthPoolConvergesAcrossVariableValidCounts()
         {
-            const int pointCount = 4096;
-            const int expectedBytes = pointCount * 30;
-            var points = new VirtualLidarPointData[pointCount];
-
-            PopulateLidarPoints(points, validModulo: 2);
-            var warmup = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
-                points,
-                pointCount,
-                emitAbsoluteTimeNs: true,
-                collectTimings: true,
-                out _,
-                useAcquisitionFrameCoordinates: true,
-                preserveSourcePointCount: true,
-                preferPooledBufferRetention: true);
-            PointCloudPackedByteBufferPool.Return(warmup.Data, preferRetention: true);
-
-            var reusedCount = 0;
-            const int measuredRuns = 20;
-            for (var run = 0; run < measuredRuns; run++)
+            PointCloudPackedByteBufferPool.ClearForTests();
+            try
             {
-                PopulateLidarPoints(points, validModulo: 2 + run % 5);
-                var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                const int pointCount = 4096;
+                const int expectedBytes = pointCount * 30;
+                var points = new VirtualLidarPointData[pointCount];
+
+                PopulateLidarPoints(points, validModulo: 2);
+                var warmup = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
                     points,
                     pointCount,
                     emitAbsoluteTimeNs: true,
                     collectTimings: true,
-                    out var timings,
+                    out _,
                     useAcquisitionFrameCoordinates: true,
                     preserveSourcePointCount: true,
                     preferPooledBufferRetention: true);
+                PointCloudPackedByteBufferPool.Return(warmup.Data, preferRetention: true);
 
-                Assert.Equal(expectedBytes, timings.BufferLength);
-                Assert.Equal(pointCount, packed.PointCount);
-                Assert.InRange(packed.ValidPointCount, 1, pointCount - 1);
-                if (timings.BufferReused)
-                    reusedCount++;
+                var reusedCount = 0;
+                const int measuredRuns = 20;
+                for (var run = 0; run < measuredRuns; run++)
+                {
+                    PopulateLidarPoints(points, validModulo: 2 + run % 5);
+                    var packed = PointCloud2PackedDataBuilder.BuildVirtualLidarFullStridePooled(
+                        points,
+                        pointCount,
+                        emitAbsoluteTimeNs: true,
+                        collectTimings: true,
+                        out var timings,
+                        useAcquisitionFrameCoordinates: true,
+                        preserveSourcePointCount: true,
+                        preferPooledBufferRetention: true);
 
-                PointCloudPackedByteBufferPool.Return(packed.Data, preferRetention: true);
+                    Assert.Equal(expectedBytes, timings.BufferLength);
+                    Assert.Equal(pointCount, packed.PointCount);
+                    Assert.InRange(packed.ValidPointCount, 1, pointCount - 1);
+                    if (timings.BufferReused)
+                        reusedCount++;
+
+                    PointCloudPackedByteBufferPool.Return(packed.Data, preferRetention: true);
+                }
+
+                Assert.True(reusedCount >= 19, $"Expected stable-width raw buffers to reuse after warmup; reused {reusedCount}/{measuredRuns}.");
             }
-
-            Assert.True(reusedCount >= 19, $"Expected stable-width raw buffers to reuse after warmup; reused {reusedCount}/{measuredRuns}.");
+            finally
+            {
+                PointCloudPackedByteBufferPool.ClearForTests();
+            }
         }
 
         [Fact]
@@ -347,12 +372,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void PointCloudEncodeWorkerStaysWarmAcrossIdleScanBoundaries()
         {
-            var backgroundPipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs");
+            var backgroundPipeline = Text("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundEncodePipeline.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
 
             Assert.Contains("AutoResetEvent _workerSignal", backgroundPipeline, StringComparison.Ordinal);
             Assert.Contains("_workerSignal.Set();", backgroundPipeline, StringComparison.Ordinal);
             Assert.Contains("_workerSignal.WaitOne();", backgroundPipeline, StringComparison.Ordinal);
-            Assert.DoesNotContain("if (request == null)\r\n                        {\r\n                            _worker.MarkStoppedIfCurrentLocked(workerGeneration);\r\n                            return;\r\n                        }", backgroundPipeline, StringComparison.Ordinal);
+            Assert.DoesNotContain("if (request == null)\n                        {\n                            _worker.MarkStoppedIfCurrentLocked(workerGeneration);\n                            return;\n                        }", backgroundPipeline, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -537,22 +563,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         private static string Text(string relativePath)
             => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
 
-        private static string RepoRoot
+        private static readonly string RepoRoot = FindRepoRoot();
+
+        private static string FindRepoRoot()
         {
-            get
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
             {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
-                        return dir.FullName;
+                if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
+                    || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    return dir.FullName;
 
-                    dir = dir.Parent;
-                }
-
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                dir = dir.Parent;
             }
+
+            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
         }
     }
 }
