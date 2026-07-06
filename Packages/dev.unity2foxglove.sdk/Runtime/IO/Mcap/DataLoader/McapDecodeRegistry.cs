@@ -26,6 +26,9 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<IMcapMessageDecoderFactory> _factories;
         private readonly Dictionary<ushort, IMcapMessageDecoder> _decoderCache = new Dictionary<ushort, IMcapMessageDecoder>();
 
+        /// <summary>
+        /// Gets optional decoder load diagnostics after forcing built-in factory initialization.
+        /// </summary>
         internal static IReadOnlyList<string> OptionalFactoryDiagnostics
         {
             get
@@ -58,6 +61,10 @@ namespace Unity.FoxgloveSDK.IO
             _factories = BuildFactories(_options);
         }
 
+        /// <summary>
+        /// Decodes a message and returns whether a supported, non-failed payload was produced.
+        /// This registry instance is not thread-safe; use one instance per reader thread or synchronize externally.
+        /// </summary>
         public bool TryDecode(McapDataLoaderMessage raw, out McapDecodedMessage decoded)
         {
             decoded = Decode(raw);
@@ -66,6 +73,10 @@ namespace Unity.FoxgloveSDK.IO
                    decoded.Payload.Kind != McapDecodedPayloadKind.Failed;
         }
 
+        /// <summary>
+        /// Decodes a message with this registry's channel decoder cache.
+        /// This registry instance is not thread-safe; use one instance per reader thread or synchronize externally.
+        /// </summary>
         public McapDecodedMessage Decode(McapDataLoaderMessage raw)
         {
             raw = raw ?? new McapDataLoaderMessage();

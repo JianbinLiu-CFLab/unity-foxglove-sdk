@@ -134,9 +134,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.DoesNotContain("process.WaitForExit();", check, StringComparison.Ordinal);
             Assert.DoesNotContain("WaitForStreamDrain(stdoutTask, stderrTask, -1)", check, StringComparison.Ordinal);
+            Assert.Contains("StartFfmpegCheck(", cameraEditor, StringComparison.Ordinal);
+            Assert.Contains("Task.Run(() => FfmpegExecutableCheck.Check", cameraEditor, StringComparison.Ordinal);
+            Assert.Contains("EditorApplication.update += CompleteFfmpegCheckIfReady", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("StartOpenH264Check(", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("Task.Run(() => OpenH264ExecutableCheck.Check", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("EditorApplication.update += CompleteOpenH264CheckIfReady", cameraEditor, StringComparison.Ordinal);
+            Assert.Contains("var windowStillAlive = this != null;", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("EditorApplication.delayCall += () =>", cameraEditor, StringComparison.Ordinal);
             Assert.Contains("ScheduleBrowsePath(", cameraEditor, StringComparison.Ordinal);
             Assert.DoesNotContain("BrowseOpenH264Path(property, dialogTitle, extension);", cameraEditor, StringComparison.Ordinal);
