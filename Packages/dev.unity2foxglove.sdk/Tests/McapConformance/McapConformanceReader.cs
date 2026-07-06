@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             McapStreamingReadResult streamingResult;
             using (var stream = new MemoryStream(data, writable: false))
             using (var nonSeekable = new NonSeekableReadStream(stream))
-            using (var streaming = new McapStreamingReader(nonSeekable, leaveOpen: false, McapSequentialReadLimits.UnlimitedForTests))
+            using (var streaming = new McapStreamingReader(nonSeekable, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests))
             {
                 streamingResult = streaming.Read(new McapReadOptions
                 {
@@ -48,8 +48,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             actual.AddRange(result.Metadata.Select(ToRecord));
             actual.AddRange(result.Attachments.Select(ToRecord));
 
-            var expectedHasStatistics = scannerRecords.Any(record => record.Type == "Statistics");
-            if (expectedHasStatistics && result.Summary.Statistics != null)
+            if (result.Summary.Statistics != null)
                 actual.Add(ToRecord(result.Summary.Statistics));
 
             var expected = NormalizeCoreRecords(scannerRecords);
@@ -147,8 +146,6 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
         private sealed class Scanner
         {
             private readonly byte[] _data;
-            private int _offset;
-
             public Scanner(byte[] data)
             {
                 _data = data ?? throw new ArgumentNullException(nameof(data));
@@ -159,12 +156,12 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 ValidateMagic(0, "leading");
                 ValidateMagic(_data.Length - McapWriter.MagicLength, "trailing");
 
-                _offset = McapWriter.MagicLength;
+                var offset = McapWriter.MagicLength;
                 var records = new List<SerializableMcapRecord>();
                 var end = _data.Length - McapWriter.MagicLength;
-                while (_offset < end)
+                while (offset < end)
                 {
-                    var record = ReadRecord(_data, ref _offset, end);
+                    var record = ReadRecord(_data, ref offset, end);
                     AddRecord(records, record.Opcode, record.Content);
                 }
 
@@ -396,6 +393,9 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
 
         private static SerializableMcapRecord ToDataEndRecord(byte[] content)
         {
+            if (content.Length < 4)
+                throw new InvalidDataException("MCAP DataEnd record is truncated.");
+
             var off = 0;
             var crc = McapBinaryReader.ReadU32LE(content, ref off);
             if (off != content.Length)
@@ -408,6 +408,9 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
 
         private static SummaryOffsetRecord DecodeSummaryOffset(byte[] content)
         {
+            if (content.Length < 17)
+                throw new InvalidDataException("MCAP SummaryOffset record is truncated.");
+
             var off = 0;
             var groupOpcode = content[off++];
             var groupStart = McapBinaryReader.ReadU64LE(content, ref off);
