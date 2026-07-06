@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.Components
             _sidecar = new FfmpegH264EncoderSidecar();
             var options = new FfmpegH264EncoderOptions
             {
-                FfmpegPath = string.IsNullOrWhiteSpace(_ffmpegPath) ? "ffmpeg" : _ffmpegPath,
+                FfmpegPath = _ffmpegPath ?? "",
                 Width = Math.Max(1, _width),
                 Height = Math.Max(1, _height),
                 FrameRate = Math.Max(1, _targetFps),

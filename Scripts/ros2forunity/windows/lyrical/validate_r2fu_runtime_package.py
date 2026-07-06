@@ -27,6 +27,12 @@ EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from lyrical_artifact_config import ARTIFACT_NAME, EXPECTED_ARTIFACT_SHA256
+
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
 PACKAGE = ROOT / "Packages" / PACKAGE_NAME
 ADAPTER_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
@@ -36,8 +42,6 @@ PLUGIN_ROOT = RUNTIME_ROOT / "Plugins" / "Windows" / "x86_64"
 MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
 
-ARTIFACT_NAME = "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip"
-EXPECTED_ARTIFACT_SHA256 = "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608"
 DEFAULT_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
 ZENOH_RMW_IMPLEMENTATION = "rmw_zenoh_cpp"
 SUPPORTED_RMW_IMPLEMENTATIONS = (DEFAULT_RMW_IMPLEMENTATION, ZENOH_RMW_IMPLEMENTATION)
@@ -944,7 +948,7 @@ def check_public_docs(results: list[CheckResult]) -> None:
     add(
         results,
         "README documents one-runtime policy",
-        "Install only one" in readme and "runtime.*" in readme,
+        "Install only one" in readme and "dev.unity2foxglove.ros2forunity.runtime.*" in readme,
         "README.md",
     )
     add(

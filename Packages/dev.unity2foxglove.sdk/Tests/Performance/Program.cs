@@ -21,7 +21,11 @@ namespace Unity.FoxgloveSDK.Performance
             {
                 var asmDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                 // Walk up from build/performance/dotnet/<framework>/ to repo root
-                return Path.GetFullPath(Path.Combine(asmDir, "..", "..", "..", "..", ".."));
+                var candidate = Path.GetFullPath(Path.Combine(asmDir, "..", "..", "..", "..", ".."));
+                var sentinel = Path.Combine(candidate, "Packages", "dev.unity2foxglove.sdk", "package.json");
+                if (!File.Exists(sentinel))
+                    throw new InvalidOperationException($"RepoRoot resolution failed: {candidate}");
+                return candidate;
             }
         }
 

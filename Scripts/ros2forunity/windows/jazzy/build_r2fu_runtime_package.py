@@ -265,6 +265,7 @@ class BuildPaths:
     artifact: Path
     inventory: Path
     package: Path
+    ros2_bin: Path
 
 
 @dataclass(frozen=True)
@@ -283,8 +284,9 @@ def parse_args(argv: list[str]) -> BuildPaths:
     parser.add_argument("--zip", type=Path, default=DEFAULT_ARTIFACT, help="Runtime zip artifact to package.")
     parser.add_argument("--inventory", type=Path, default=DEFAULT_INVENTORY, help="Runtime inventory JSON.")
     parser.add_argument("--package", type=Path, default=DEFAULT_PACKAGE, help="Runtime package output directory.")
+    parser.add_argument("--ros2-bin", type=Path, default=DEFAULT_ROS2_BIN, help="ROS 2 bin directory for supplemental DLLs.")
     args = parser.parse_args(argv)
-    return BuildPaths(args.zip.resolve(), args.inventory.resolve(), args.package.resolve())
+    return BuildPaths(args.zip.resolve(), args.inventory.resolve(), args.package.resolve(), args.ros2_bin.resolve())
 
 
 def rel(path: Path) -> str:
@@ -323,7 +325,7 @@ def require_inputs(paths: BuildPaths) -> tuple[dict[str, object], RuntimeArtifac
         raise ValueError(f"Unexpected inventory runtimeId: {inventory.get('runtimeId')!r}")
     if inventory.get("sha256") != artifact_hash:
         raise ValueError("Inventory sha256 does not match the runtime artifact.")
-    if inventory.get("artifactSize") not in (None, artifact_size) and inventory.get("artifactSize") != artifact_size:
+    if inventory.get("artifactSize") not in (None, artifact_size):
         raise ValueError(f"Inventory artifactSize does not match the runtime artifact: {inventory.get('artifactSize')!r}")
     inventory_file_count = int(inventory.get("fileCount") or 0)
     if inventory_file_count <= 0:
@@ -527,10 +529,36 @@ def apply_meta_overlays(package: Path, overlays: dict[str, bytes]) -> None:
         asset_relative = relative.removesuffix(".meta")
         if not path_exists(package / asset_relative):
             continue
+        data = normalize_meta_overlay(relative, data)
         target = package / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         with open(windows_long_path(target), "wb") as stream:
             stream.write(data)
+
+
+def normalize_meta_overlay(relative: str, data: bytes) -> bytes:
+    """Preserve legacy GUIDs while upgrading generated DLL metas to PluginImporter."""
+    if not relative.lower().endswith(".dll.meta") or b"PluginImporter:" in data:
+        return data
+
+    guid = extract_unity_meta_guid(data.decode("utf-8", errors="replace"))
+    if not guid:
+        return data
+
+    asset_relative = relative.removesuffix(".meta")
+    text = generated_meta_text(Path(asset_relative), asset_relative, is_dir=False, guid=guid)
+    return text.encode("utf-8")
+
+
+def extract_unity_meta_guid(text: str) -> str:
+    """Extract a Unity meta GUID from a small generated metadata file."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("guid:"):
+            value = stripped.split(":", 1)[1].strip()
+            if len(value) == 32 and all(c in "0123456789abcdefABCDEF" for c in value):
+                return value.lower()
+    return ""
 
 
 def deterministic_guid(relative_path: str) -> str:
@@ -545,12 +573,14 @@ def meta_importer_for(path: Path) -> str:
         return "PackageManifestImporter"
     if path.suffix == ".asmdef":
         return "AssemblyDefinitionImporter"
+    if path.suffix.lower() == ".dll":
+        return "PluginImporter"
     return "TextScriptImporter"
 
 
-def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
+def generated_meta_text(path: Path, relative_path: str, is_dir: bool, guid: str | None = None) -> str:
     """Return deterministic Unity .meta text for a generated path."""
-    guid = deterministic_guid(relative_path)
+    guid = guid or deterministic_guid(relative_path)
     if is_dir:
         return (
             "fileFormatVersion: 2\n"
@@ -564,6 +594,44 @@ def generated_meta_text(path: Path, relative_path: str, is_dir: bool) -> str:
         )
 
     importer = meta_importer_for(path)
+    if importer == "PluginImporter":
+        return (
+            "fileFormatVersion: 2\n"
+            f"guid: {guid}\n"
+            "PluginImporter:\n"
+            "  externalObjects: {}\n"
+            "  serializedVersion: 2\n"
+            "  iconMap: {}\n"
+            "  executionOrder: {}\n"
+            "  defineConstraints: []\n"
+            "  isPreloaded: 0\n"
+            "  isOverridable: 0\n"
+            "  isExplicitlyReferenced: 0\n"
+            "  validateReferences: 1\n"
+            "  platformData:\n"
+            "  - first:\n"
+            "      Any:\n"
+            "    second:\n"
+            "      enabled: 0\n"
+            "      settings: {}\n"
+            "  - first:\n"
+            "      Editor: Editor\n"
+            "    second:\n"
+            "      enabled: 1\n"
+            "      settings:\n"
+            "        CPU: x86_64\n"
+            "        OS: Windows\n"
+            "  - first:\n"
+            "      Standalone: Windows\n"
+            "    second:\n"
+            "      enabled: 1\n"
+            "      settings:\n"
+            "        CPU: x86_64\n"
+            "  userData:\n"
+            "  assetBundleName:\n"
+            "  assetBundleVariant:\n"
+        )
+
     return (
         "fileFormatVersion: 2\n"
         f"guid: {guid}\n"
@@ -800,11 +868,11 @@ def extract_runtime(paths: BuildPaths) -> None:
                 shutil.copyfileobj(source, destination)
 
 
-def copy_supplemental_runtime_dlls(package: Path) -> None:
+def copy_supplemental_runtime_dlls(package: Path, ros2_bin: Path) -> None:
     """Copy Jazzy FastRTPS dependencies missing from the pinned R2FU artifact."""
     plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
     for name in PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
-        source = DEFAULT_ROS2_BIN / name
+        source = ros2_bin / name
         if not source.exists():
             raise FileNotFoundError(
                 f"Missing supplemental Jazzy runtime DLL {source}; "
@@ -924,6 +992,8 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
         "        SetProcessEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));",
         1,
     )
+    if "Environment.SetEnvironmentVariable(GetEnvPathVariableName()," in text:
+        raise ValueError("Could not patch ROS2ForUnity standalone environment bootstrap call site.")
 
     if "SetStandalonePrefixPath" not in text:
         text = text.replace(
@@ -1210,7 +1280,7 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifac
     )
 
 
-def build_package(paths: BuildPaths) -> None:
+def build_package(paths: BuildPaths) -> RuntimeArtifact:
     """Build the runtime package from the runtime artifact."""
     inventory, artifact = require_inputs(paths)
     snapshot = snapshot_package_dir(paths.package)
@@ -1219,7 +1289,7 @@ def build_package(paths: BuildPaths) -> None:
     try:
         reset_package_dir(paths.package)
         extract_runtime(paths)
-        copy_supplemental_runtime_dlls(paths.package)
+        copy_supplemental_runtime_dlls(paths.package, paths.ros2_bin)
         prune_non_contract_examples(paths.package)
         patch_ros2_for_unity(paths.package)
         apply_local_patch_overlays(paths.package, overlays)
@@ -1227,6 +1297,7 @@ def build_package(paths: BuildPaths) -> None:
         write_package_files(paths, inventory, artifact)
         apply_meta_overlays(paths.package, meta_overlays)
         write_generated_metas(paths.package)
+        return artifact
     except Exception:
         restore_package_dir(paths.package, snapshot)
         raise
@@ -1238,13 +1309,12 @@ def main(argv: list[str]) -> int:
     """Run package generation from command-line arguments."""
     paths = parse_args(argv)
     try:
-        build_package(paths)
+        artifact = build_package(paths)
     except Exception as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return EXIT_FAILURE
     print(f"[PASS] built {rel(paths.package)}")
-    artifact_hash = sha256_file(paths.artifact)
-    print(f"[PASS] artifact={paths.artifact.name} sha256={artifact_hash}")
+    print(f"[PASS] artifact={artifact.name} sha256={artifact.sha256}")
     return EXIT_SUCCESS
 
 

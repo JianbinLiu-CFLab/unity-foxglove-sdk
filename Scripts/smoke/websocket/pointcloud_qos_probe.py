@@ -14,9 +14,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import binascii
 import json
 import ssl
 import struct
+import sys
 import time
 from dataclasses import dataclass
 from statistics import mean
@@ -134,6 +136,7 @@ def build_ssl_context(url: str, insecure: bool) -> ssl.SSLContext | None:
     if not insecure:
         return ssl.create_default_context()
 
+    print("WARNING: TLS certificate validation disabled (--insecure)", file=sys.stderr)
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
@@ -220,7 +223,6 @@ async def measure_pointcloud(
         if not isinstance(frame, bytes):
             continue
 
-        total_binary_frames += 1
         if len(frame) < MIN_MESSAGE_DATA_FRAME_BYTES:
             continue
 
@@ -231,6 +233,7 @@ async def measure_pointcloud(
         if opcode != MESSAGE_DATA_OPCODE:
             continue
 
+        total_binary_frames += 1
         sub_id = struct.unpack_from("<I", frame, SUBSCRIPTION_ID_START)[0]
         if sub_id != subscription_id:
             continue
@@ -301,8 +304,8 @@ def decode_json_pointcloud_payload(payload: bytes) -> PointCloudPayloadInfo | No
         return None
 
     try:
-        data = base64.b64decode(encoded_data, validate=False)
-    except (ValueError, TypeError):
+        data = base64.b64decode(encoded_data, validate=True)
+    except (binascii.Error, ValueError, TypeError):
         return None
 
     return PointCloudPayloadInfo(

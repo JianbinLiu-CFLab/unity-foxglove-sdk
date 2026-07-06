@@ -34,7 +34,11 @@ namespace Unity.FoxgloveSDK.Performance
             get
             {
                 var asmDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                return Path.GetFullPath(Path.Combine(asmDir, "..", "..", "..", "..", ".."));
+                var candidate = Path.GetFullPath(Path.Combine(asmDir, "..", "..", "..", "..", ".."));
+                var sentinel = Path.Combine(candidate, "Packages", "dev.unity2foxglove.sdk", "package.json");
+                if (!File.Exists(sentinel))
+                    throw new InvalidOperationException($"RepoRoot resolution failed: {candidate}");
+                return candidate;
             }
         }
         private const int QuickWarmup = 500;
@@ -134,7 +138,17 @@ namespace Unity.FoxgloveSDK.Performance
                 && passResult.passed
                 && string.Equals(passResult.thresholdNotes, "thresholds passed", StringComparison.Ordinal);
 
-            return failPathOk && passPathOk;
+            var disabledBase = new PerformanceThresholdConfig
+            {
+                enabled = false,
+                modes = new Dictionary<string, PerformanceThresholdConfig>
+                {
+                    ["full"] = new PerformanceThresholdConfig { enabled = true }
+                }
+            };
+            var globalDisableWins = !ResolveThresholdConfigForMode(disabledBase, "full").enabled;
+
+            return failPathOk && passPathOk && globalDisableWins;
         }
 
         public static PerformanceThresholdConfig ResolveThresholdConfigForMode(
@@ -161,6 +175,8 @@ namespace Unity.FoxgloveSDK.Performance
                     }
                 }
 
+                // The base enabled flag is the global kill switch; a mode can disable thresholds
+                // for itself, but it cannot re-enable thresholds disabled at the top level.
                 resolved.enabled = modeConfig.enabled && config.enabled;
                 resolved.transportScope = string.IsNullOrWhiteSpace(modeConfig.transportScope)
                     ? resolved.transportScope
@@ -232,6 +248,7 @@ namespace Unity.FoxgloveSDK.Performance
             var activeThresholds = ResolveThresholdConfigForMode(thresholds ?? CreateDefaultThresholds(mode), mode);
 
             results.Add(RunPublishJsonFanout(warmup, topics, clients, messages, activeThresholds));
+            results.Add(RunPublishJsonFanoutPrebuiltPayload(warmup, topics, clients, messages, activeThresholds));
             results.Add(RunPublishProtoFanout(warmup, topics, clients, messages, activeThresholds));
             results.Add(RunMcapRecord(warmup, topics, messages, "", "McapRecordNone", activeThresholds));
             results.Add(RunMcapRecord(warmup, topics, messages, "lz4", "McapRecordLz4", activeThresholds));
@@ -496,19 +513,22 @@ namespace Unity.FoxgloveSDK.Performance
 
         private static DataLoaderFixture CreateDataLoaderSparseFixture()
         {
-            var path = Path.Combine(DataLoaderFixtureDirectory(), "phase118_dataloader_sparse.mcap");
-            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
-            using (var recorder = new McapRecorder(fs))
+            var path = Path.Combine(DataLoaderFixtureDirectory(), "phase118_dataloader_sparse_v1.mcap");
+            if (!File.Exists(path) || new FileInfo(path).Length == 0)
             {
-                recorder.AddChannel(1, "/perf/dataloader/sparse/a", "json",
-                    "test.PerfDataLoaderSparseA", "jsonschema", "{\"type\":\"object\"}");
-                recorder.AddChannel(2, "/perf/dataloader/sparse/empty", "json",
-                    "test.PerfDataLoaderSparseEmpty", "jsonschema", "{\"type\":\"object\"}");
-                recorder.AddChannel(3, "/perf/dataloader/sparse/c", "json",
-                    "test.PerfDataLoaderSparseC", "jsonschema", "{\"type\":\"object\"}");
-                recorder.WriteMessage(1, 10, MakeJsonPayload(0, 0));
-                recorder.WriteMessage(3, 90, MakeJsonPayload(2, 0));
-                recorder.Close();
+                using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
+                using (var recorder = new McapRecorder(fs))
+                {
+                    recorder.AddChannel(1, "/perf/dataloader/sparse/a", "json",
+                        "test.PerfDataLoaderSparseA", "jsonschema", "{\"type\":\"object\"}");
+                    recorder.AddChannel(2, "/perf/dataloader/sparse/empty", "json",
+                        "test.PerfDataLoaderSparseEmpty", "jsonschema", "{\"type\":\"object\"}");
+                    recorder.AddChannel(3, "/perf/dataloader/sparse/c", "json",
+                        "test.PerfDataLoaderSparseC", "jsonschema", "{\"type\":\"object\"}");
+                    recorder.WriteMessage(1, 10, MakeJsonPayload(0, 0));
+                    recorder.WriteMessage(3, 90, MakeJsonPayload(2, 0));
+                    recorder.Close();
+                }
             }
 
             return new DataLoaderFixture
@@ -872,6 +892,62 @@ namespace Unity.FoxgloveSDK.Performance
             }, thresholds);
         }
 
+        private static PerformanceScenarioResult RunPublishJsonFanoutPrebuiltPayload(
+            int warmup,
+            int topics,
+            int clients,
+            int messages,
+            PerformanceThresholdConfig thresholds)
+        {
+            var registry = new DefaultSchemaRegistry();
+            FoxgloveSchemaDefinitions.RegisterCoreSchemas(registry);
+            registry.Register(new SchemaEntry { Name = "test.PerfJson", Encoding = "jsonschema", Content = "{\"type\":\"object\"}" });
+            var transport = new FakePerformanceTransport();
+            var session = new FoxgloveSession("perf-json-prebuilt", transport, schemaRegistry: registry);
+            var channelIds = new List<uint>();
+            var payloads = new byte[topics][];
+
+            for (int t = 0; t < topics; t++)
+            {
+                uint chId = (uint)(t + 1);
+                session.RegisterSchemaChannel(chId, $"/perf/json/prebuilt/{t}", "test.PerfJson", "json");
+                channelIds.Add(chId);
+                payloads[t] = MakeJsonPayload(t, 0);
+            }
+
+            for (int c = 0; c < clients; c++)
+            {
+                uint clientId = (uint)(c + 1);
+                transport.SimulateConnect(clientId);
+                for (int t = 0; t < topics; t++)
+                    transport.SimulateSubscribe(clientId, (uint)(c * topics + t + 1), channelIds[t]);
+            }
+
+            transport.ResetCounters();
+
+            Action warmupFn = () =>
+            {
+                for (int i = 0; i < warmup; i++)
+                {
+                    for (int t = 0; t < channelIds.Count; t++)
+                        session.Publish(channelIds[t], payloads[t]);
+                }
+            };
+
+            var totalMessages = messages * topics;
+            var result = TimedScenario("PublishJsonFanoutPrebuiltPayload", warmup * topics, totalMessages, warmupFn, count =>
+            {
+                int outer = count / topics;
+                for (int i = 0; i < outer; i++)
+                {
+                    for (int t = 0; t < channelIds.Count; t++)
+                        session.Publish(channelIds[t], payloads[t]);
+                }
+            }, thresholds);
+            result.notes = "prebuiltPayload=true; excludes JSON serialization allocation";
+            return result;
+        }
+
         private static PerformanceScenarioResult RunPublishProtoFanout(
             int warmup,
             int topics,
@@ -1026,7 +1102,7 @@ namespace Unity.FoxgloveSDK.Performance
             }, count =>
             {
                 int outer = count / topics;
-                var ms = new MemoryStream();
+                using var ms = new MemoryStream();
                 using var recorder = new McapRecorder(ms, null, McapRecorder.DefaultChunkSizeBytes, "");
                 for (int t = 0; t < topics; t++)
                     recorder.AddChannel((uint)(t + 1), $"/perf/prebuilt/{t}", "json", "test.PerfPb", "jsonschema", "{\"type\":\"object\"}");
@@ -1058,22 +1134,26 @@ namespace Unity.FoxgloveSDK.Performance
             bool isFull,
             PerformanceThresholdConfig thresholds)
         {
-            // Build a fixture MCAP first
             var fixtureDir = Path.Combine(RepoRoot, "build", "performance", "fixtures");
             Directory.CreateDirectory(fixtureDir);
-            var fixturePath = Path.Combine(fixtureDir, "phase35_replay_fixture.mcap");
+            var fixturePath = Path.Combine(
+                fixtureDir,
+                $"phase35_replay_fixture_v1_{(isFull ? "full" : "quick")}_{topics}_{messages}.mcap");
 
-            using (var fs = new FileStream(fixturePath, FileMode.Create, FileAccess.Write))
-            using (var recorder = new McapRecorder(fs))
+            if (!File.Exists(fixturePath) || new FileInfo(fixturePath).Length == 0)
             {
-                for (int t = 0; t < topics; t++)
-                    recorder.AddChannel((uint)(t + 1), $"/perf/replay/{t}", "json", "test.PerfReplay", "jsonschema", "{\"type\":\"object\"}");
-                for (int i = 0; i < messages; i++)
+                using (var fs = new FileStream(fixturePath, FileMode.Create, FileAccess.Write))
+                using (var recorder = new McapRecorder(fs))
                 {
                     for (int t = 0; t < topics; t++)
-                        recorder.WriteMessage((uint)(t + 1), (ulong)i * 1000, MakeJsonPayload(t, i));
+                        recorder.AddChannel((uint)(t + 1), $"/perf/replay/{t}", "json", "test.PerfReplay", "jsonschema", "{\"type\":\"object\"}");
+                    for (int i = 0; i < messages; i++)
+                    {
+                        for (int t = 0; t < topics; t++)
+                            recorder.WriteMessage((uint)(t + 1), (ulong)i * 1000, MakeJsonPayload(t, i));
+                    }
+                    recorder.Close();
                 }
-                recorder.Close();
             }
 
             int warmupCount = warmup;
@@ -1248,7 +1328,9 @@ namespace Unity.FoxgloveSDK.Performance
 
         private static PerformanceScenarioResult RunTransportQueueMicro(PerformanceThresholdConfig thresholds)
         {
-            bool accepted, shouldDisc, dataDropped;
+            bool accepted, staysConnected, dataDropped;
+            var sw = Stopwatch.StartNew();
+            const int queueOperationCount = 15;
 
             // Data overflow drops oldest
             var q = new WsSendQueue(maxFrames: 4, maxQueuedBytes: 1024 * 1024);
@@ -1262,7 +1344,7 @@ namespace Unity.FoxgloveSDK.Performance
             var q2 = new WsSendQueue(maxFrames: 3, maxQueuedBytes: 1024 * 1024);
             q2.Enqueue(D(1)); q2.Enqueue(D(1)); q2.Enqueue(D(1));
             er = q2.Enqueue(C(1));
-            shouldDisc = !er.ShouldDisconnect;
+            staysConnected = !er.ShouldDisconnect;
             q2.TryDequeue(out var first);
             bool controlFirst = first.Priority == FramePriority.Control;
 
@@ -1280,13 +1362,16 @@ namespace Unity.FoxgloveSDK.Performance
             q4.TryDequeue(out _);
             bool drained = !q4.TryDequeue(out _);
 
-            bool passed = accepted && dataDropped && shouldDisc && controlFirst && ctrlDisc && completed && drained;
+            bool passed = accepted && dataDropped && staysConnected && controlFirst && ctrlDisc && completed && drained;
+            sw.Stop();
 
             var result = new PerformanceScenarioResult
             {
                 name = "TransportQueueMicro",
                 warmupMessageCount = 0,
-                messageCount = 0,
+                messageCount = queueOperationCount,
+                elapsedMs = sw.ElapsedMilliseconds,
+                messagesPerSecond = sw.Elapsed.TotalSeconds > 0 ? queueOperationCount / sw.Elapsed.TotalSeconds : queueOperationCount,
                 passed = passed,
                 notes = passed ? "Queue enqueue/drop/control/complete paths exercised" : "Queue scenario failed"
             };

@@ -7,10 +7,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import importlib.util
 import json
 import os
 import ssl
+import struct
 import subprocess
 import sys
 import tempfile
@@ -125,6 +128,20 @@ class AdvertisesMalformedAndValidChannel:
 
     async def recv(self):
         """Return the next scripted frame."""
+        if self._frames:
+            return self._frames.pop(0)
+        await asyncio.sleep(60)
+
+
+class BinaryFrameFeed:
+    """Minimal async websocket stand-in that emits a fixed frame sequence."""
+
+    def __init__(self, frames: list[bytes]):
+        """Initialize the scripted binary frames."""
+        self._frames = list(frames)
+
+    async def recv(self):
+        """Return the next scripted binary frame."""
         if self._frames:
             return self._frames.pop(0)
         await asyncio.sleep(60)
@@ -254,6 +271,54 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertIsNotNone(context)
         self.assertFalse(context.check_hostname)
         self.assertEqual(ssl.CERT_NONE, context.verify_mode)
+
+    def test_pointcloud_probe_warns_when_insecure_tls_is_enabled(self) -> None:
+        """The pointcloud probe should make disabled certificate validation visible."""
+        module = load_smoke_module("pointcloud_qos_tls_under_test", "websocket/pointcloud_qos_probe.py")
+        stderr = io.StringIO()
+
+        with contextlib.redirect_stderr(stderr):
+            context = module.build_ssl_context("wss://127.0.0.1:8765", True)
+
+        self.assertIsNotNone(context)
+        self.assertFalse(context.check_hostname)
+        self.assertEqual(ssl.CERT_NONE, context.verify_mode)
+        self.assertIn("--insecure", stderr.getvalue())
+
+    def test_pointcloud_probe_rejects_non_strict_json_base64(self) -> None:
+        """Whitespace-tolerant base64 decoding should not hide malformed payloads."""
+        module = load_smoke_module("pointcloud_qos_base64_under_test", "websocket/pointcloud_qos_probe.py")
+        payload = json.dumps({"point_stride": 1, "data": "AA AA"}).encode("utf-8")
+
+        self.assertIsNone(module.decode_json_pointcloud_payload(payload))
+
+    def test_pointcloud_probe_counts_message_data_frames_not_time_frames(self) -> None:
+        """Foxglove Time frames should not inflate point-cloud message counts."""
+        module = load_smoke_module("pointcloud_qos_frames_under_test", "websocket/pointcloud_qos_probe.py")
+        subscription_id = 123
+        time_frame = bytes([module.TIME_OPCODE]) + (b"\x00" * 12)
+        point_payload = json.dumps({"point_stride": 1, "data": "AA=="}).encode("utf-8")
+        message_frame = (
+            bytes([module.MESSAGE_DATA_OPCODE])
+            + struct.pack("<I", subscription_id)
+            + struct.pack("<Q", 100)
+            + point_payload
+        )
+        channel = module.ChannelInfo(1, "/unity/point_cloud", "json", "foxglove.PointCloud")
+
+        result = asyncio.run(
+            module.measure_pointcloud(
+                BinaryFrameFeed([time_frame, message_frame]),
+                channel,
+                subscription_id,
+                duration_seconds=0.01,
+                settle_seconds=0,
+                idle_timeout_seconds=0.001,
+            )
+        )
+
+        self.assertEqual(1, result.total_binary_frames)
+        self.assertEqual(1, result.message_count)
 
     def test_phase139_e2e_skips_malformed_advertised_channels(self) -> None:
         """Malformed advertise channels should not crash the smoke helper."""

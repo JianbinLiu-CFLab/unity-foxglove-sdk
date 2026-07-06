@@ -116,6 +116,12 @@ def add(results: list[CheckResult], name: str, ok: bool, detail: str = "") -> No
     results.append(CheckResult(name, ok, detail))
 
 
+def clear_caches() -> None:
+    """Clear per-run file caches so repeated in-process validation sees fresh files."""
+    JSON_CACHE.clear()
+    TEXT_CACHE.clear()
+
+
 def iter_files(root: Path) -> Iterable[Path]:
     """Yield regular files below a root, returning an empty iterable when absent."""
     if not root.exists():
@@ -554,13 +560,14 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
         and "UnsatisfiedLinkError" in runtime_notices,
         rel(RUNTIME_NOTICES),
     )
-    general_public_docs = readme + "\n" + notices + "\n" + sample_readme + "\n" + runtime_notices
+    general_public_docs = "\n".join(boundary_texts)
     forbidden_public_tokens = ("Phase 137B", "Phase106B", "Phase110", "phase110", "Phase 108")
     hits = [token for token in forbidden_public_tokens if token in general_public_docs]
     hits.extend(match.group(0) for match in FORBIDDEN_PUBLIC_PHASE_PATTERN.finditer(general_public_docs))
     manifest_text = read_text_cached(MANIFEST)
     hits.extend(token for token in forbidden_public_tokens if token in manifest_text)
     hits.extend(match.group(0) for match in FORBIDDEN_PUBLIC_PHASE_PATTERN.finditer(manifest_text))
+    hits = list(dict.fromkeys(hits))
     add(results, "public R2FU docs avoid internal phase names", not hits, ", ".join(hits) if hits else "no phase tokens")
 
 
@@ -636,11 +643,13 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         component_text[:MAX_REPORTED_OFFENDERS * 80],
     )
     files = data.get("files", [])
+    file_count = data.get("fileCount")
     add(
         results,
         "runtime inventory file entries",
         isinstance(files, list)
-        and len(files) == data.get("fileCount")
+        and isinstance(file_count, int)
+        and len(files) == file_count
         and all(isinstance(item, dict) and "path" in item and "sha256" in item for item in files[:20]),
         f"files={len(files) if isinstance(files, list) else type(files).__name__}",
     )
@@ -673,7 +682,7 @@ def check_no_runtime_artifacts(results: list[CheckResult]) -> None:
         editor_asmdefs_are_editor_only = editor_asmdefs_are_editor_only and bool(
             asmdef_data
             and asmdef_data.get("includePlatforms") == ["Editor"]
-            and asmdef_data.get("autoReferenced") is True
+            and asmdef_data.get("autoReferenced", True) is not False
         )
     installer = editor / "Ros2ForUnityRuntimeDefineInstaller.cs"
     selection = editor / "Ros2ForUnityRuntimeSelection.cs"
@@ -1138,6 +1147,7 @@ def print_results(results: list[CheckResult]) -> None:
 
 def main() -> int:
     """Run optional package validation and return a process exit code."""
+    clear_caches()
     results: list[CheckResult] = []
     check_package_metadata(results)
     check_required_files(results)

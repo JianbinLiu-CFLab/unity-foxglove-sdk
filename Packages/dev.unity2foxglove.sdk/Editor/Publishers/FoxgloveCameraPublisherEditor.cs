@@ -30,7 +30,7 @@ namespace Unity.FoxgloveSDK.Editor
         private bool _showAdvancedJpeg;
         private bool _showDiagnostics;
 
-        private static readonly string[] CameraOutputModeLabels = BuildCameraOutputModeLabels();
+        private static string[] CameraOutputModeLabels = BuildCameraOutputModeLabels();
         private static readonly Dictionary<string, GUIContent> GuiContentCache =
             new Dictionary<string, GUIContent>(StringComparer.Ordinal);
 
@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Editor
             new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
         private OpenH264ExecutableCheckResult _openH264Check =
             new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
+        private Task<FfmpegExecutableCheckResult> _ffmpegCheckTask;
         private Task<OpenH264ExecutableCheckResult> _openH264CheckTask;
         private SerializedProperty _script;
         private SerializedProperty _manager;
@@ -88,6 +89,20 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _backpressureCooldown;
         private SerializedProperty _maxEncodedBytes;
         private SerializedProperty _logBackpressureSkips;
+
+        [InitializeOnLoadMethod]
+        private static void RegisterStaticCacheReset()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload -= ResetStaticEditorCaches;
+            AssemblyReloadEvents.beforeAssemblyReload += ResetStaticEditorCaches;
+            ResetStaticEditorCaches();
+        }
+
+        private static void ResetStaticEditorCaches()
+        {
+            CameraOutputModeLabels = BuildCameraOutputModeLabels();
+            GuiContentCache.Clear();
+        }
 
         private void OnEnable()
         {
@@ -144,6 +159,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         public override void OnInspectorGUI()
         {
+            CompleteFfmpegCheckIfReady();
             CompleteOpenH264CheckIfReady();
             serializedObject.Update();
 
@@ -160,7 +176,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var newMode = GetMode(_outputMode);
                 ApplyTopicForModeChange(_topic, oldMode, newMode);
-                _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
+                ResetFfmpegCheck();
                 _openH264Check = new OpenH264ExecutableCheckResult(OpenH264ExecutableStatus.NotChecked, "", "", "", "");
             }
 
@@ -255,7 +271,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void OnDisable()
         {
+            EditorApplication.update -= CompleteFfmpegCheckIfReady;
             EditorApplication.update -= CompleteOpenH264CheckIfReady;
+            _ffmpegCheckTask = null;
             _openH264CheckTask = null;
         }
 
@@ -430,8 +448,11 @@ namespace Unity.FoxgloveSDK.Editor
             var revealPath = GetRevealFfmpegPath(ffmpegPath.stringValue);
             using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button("Check FFmpeg"))
-                    checkRequested = true;
+                using (new EditorGUI.DisabledScope(_ffmpegCheckTask != null))
+                {
+                    if (GUILayout.Button(_ffmpegCheckTask == null ? "Check FFmpeg" : "Checking..."))
+                        checkRequested = true;
+                }
 
                 using (new EditorGUI.DisabledScope(!CanRevealFfmpegFolder(revealPath)))
                 {
@@ -441,7 +462,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             if (checkRequested)
-                _ffmpegCheck = FfmpegExecutableCheck.Check(ffmpegPath.stringValue, 2000);
+                StartFfmpegCheck(ffmpegPath.stringValue);
 
             if (revealRequested)
                 RevealFfmpegFolder(revealPath);
@@ -697,7 +718,7 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.HelpBox(
                     "Camera output mode is outside the supported enum range. Update the SDK Inspector labels before editing this value.",
                     MessageType.Error);
-                EditorGUILayout.Popup("Camera Output Mode", 0, CameraOutputModeLabels);
+                EditorGUILayout.LabelField("Camera Output Mode", "Unsupported value: " + currentIndex);
                 return;
             }
 
@@ -737,7 +758,7 @@ namespace Unity.FoxgloveSDK.Editor
                 if (EditorGUI.EndChangeCheck())
                 {
                     ffmpegPath.stringValue = nextPath;
-                    _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
+                    ResetFfmpegCheck();
                 }
 
                 if (GUILayout.Button("...", GUILayout.Width(30)))
@@ -746,7 +767,7 @@ namespace Unity.FoxgloveSDK.Editor
                         ffmpegPath,
                         "Select FFmpeg Executable",
                         Application.platform == RuntimePlatform.WindowsEditor ? "exe" : "",
-                        () => _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", ""));
+                        ResetFfmpegCheck);
                 }
             }
 
@@ -962,6 +983,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawFfmpegStatus(string configuredPath)
         {
+            if (_ffmpegCheckTask != null)
+            {
+                EditorGUILayout.HelpBox("Checking FFmpeg executable...", MessageType.Info);
+                return;
+            }
+
             switch (_ffmpegCheck.Status)
             {
                 case FfmpegExecutableStatus.Found:
@@ -992,6 +1019,48 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool DrawFfmpegHelpAction()
             => GUILayout.Button("FFmpeg Help...");
+
+        private void ResetFfmpegCheck()
+        {
+            EditorApplication.update -= CompleteFfmpegCheckIfReady;
+            _ffmpegCheckTask = null;
+            _ffmpegCheck = new FfmpegExecutableCheckResult(FfmpegExecutableStatus.NotChecked, "", "", "");
+        }
+
+        private void StartFfmpegCheck(string ffmpegPath)
+        {
+            ResetFfmpegCheck();
+            _ffmpegCheckTask = Task.Run(() => FfmpegExecutableCheck.Check(ffmpegPath, 2000));
+            EditorApplication.update -= CompleteFfmpegCheckIfReady;
+            EditorApplication.update += CompleteFfmpegCheckIfReady;
+            Repaint();
+        }
+
+        private void CompleteFfmpegCheckIfReady()
+        {
+            if (_ffmpegCheckTask == null || !_ffmpegCheckTask.IsCompleted)
+                return;
+
+            EditorApplication.update -= CompleteFfmpegCheckIfReady;
+            var task = _ffmpegCheckTask;
+            _ffmpegCheckTask = null;
+
+            try
+            {
+                _ffmpegCheck = task.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _ffmpegCheck = new FfmpegExecutableCheckResult(
+                    FfmpegExecutableStatus.Invalid,
+                    "",
+                    "",
+                    ex.Message);
+            }
+
+            if (this != null)
+                Repaint();
+        }
 
         private void DrawOpenH264Status(string helperPath, string dllPath)
         {
@@ -1200,6 +1269,7 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorApplication.update -= PollInstallTask;
                 var task = _installTask;
                 _installTask = null;
+                var windowStillAlive = this != null;
 
                 OpenH264InstallResult result;
                 try
@@ -1208,6 +1278,9 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 catch (Exception ex)
                 {
+                    if (!windowStillAlive)
+                        return;
+
                     _statusMessage = ex.Message;
                     _statusType = MessageType.Error;
                     Repaint();
@@ -1218,11 +1291,17 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     OpenH264InstallLocation.SavePreferredInstallRoot(_installRootInFlight);
                     _onInstalled?.Invoke(result.HelperPath, result.DllPath);
+                    if (!windowStillAlive)
+                        return;
+
                     _statusMessage = "Installed OpenH264 runtime:\nHelper: " + result.HelperPath + "\nDLL: " + result.DllPath;
                     _statusType = MessageType.Info;
                     Close();
                     return;
                 }
+
+                if (!windowStillAlive)
+                    return;
 
                 _statusMessage = result.ErrorMessage;
                 _statusType = MessageType.Error;
