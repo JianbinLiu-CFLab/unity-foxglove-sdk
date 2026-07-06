@@ -48,9 +48,12 @@ namespace Unity.FoxgloveSDK.IO
             if ((int)compSize > end - off)
                 throw new InvalidDataException("Chunk compressed data is truncated");
 
-            var maxOutputBytes = uncompressedSizeLimit > int.MaxValue
-                ? int.MaxValue
-                : (int)uncompressedSizeLimit;
+            // McapCompression uses 0 as its explicit "unbounded output" sentinel.
+            var maxOutputBytes = uncompressedSizeLimit == 0
+                ? 0
+                : uncompressedSizeLimit > int.MaxValue
+                    ? int.MaxValue
+                    : (int)uncompressedSizeLimit;
             var uncompressed = McapCompression.Decompress(
                 compression,
                 new ArraySegment<byte>(content, off, (int)compSize),
@@ -456,6 +459,7 @@ namespace Unity.FoxgloveSDK.IO
             ci.Compression = ReadString(content, ref off, end, "chunk index compression");
             ci.CompressedSize = ReadU64LE(content, ref off, end, "chunk index compressed_size");
             ci.UncompressedSize = ReadU64LE(content, ref off, end, "chunk index uncompressed_size");
+            RequireExactSegmentEnd(off, end, "chunk index");
             return ci;
         }
 
@@ -489,6 +493,7 @@ namespace Unity.FoxgloveSDK.IO
                 var count = ReadU64LE(content, ref off, end, "statistics channel message count");
                 s.ChannelMessageCounts[cid] = count;
             }
+            RequireExactSegmentEnd(off, end, "statistics");
             return s;
         }
 
@@ -552,7 +557,7 @@ namespace Unity.FoxgloveSDK.IO
             if (dataSize > 0)
                 Buffer.BlockCopy(content, off, data, 0, (int)dataSize);
             off += (int)dataSize;
-            var storedCrc = (uint)(content[off] | (content[off + 1] << 8) | (content[off + 2] << 16) | (content[off + 3] << 24));
+            var storedCrc = ReadU32LE(content, ref off, end, "attachment CRC");
             var crcValid = true;
             if (storedCrc != 0)
             {

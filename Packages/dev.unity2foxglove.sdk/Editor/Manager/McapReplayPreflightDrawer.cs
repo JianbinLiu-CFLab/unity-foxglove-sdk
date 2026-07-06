@@ -231,12 +231,13 @@ namespace Unity.FoxgloveSDK.Editor
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var sizeBytes = new FileInfo(path).Length;
                 using var indexed = McapIndexedReader.OpenRead(path);
                 cancellationToken.ThrowIfCancellationRequested();
                 var statistics = indexed.Summary.Statistics;
                 return new McapReplayAnalysisResult(
                     path,
-                    new FileInfo(path).Length,
+                    sizeBytes,
                     indexed.Channels.Count,
                     indexed.Summary.ChunkIndexes.Count,
                     statistics == null ? "unavailable" : statistics.MessageCount.ToString("N0"),

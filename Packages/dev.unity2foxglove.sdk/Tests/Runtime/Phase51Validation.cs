@@ -523,12 +523,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
-            var method = ExtractMethodBody(source, "List<ChannelWriteState> AllChannelWriteStates");
+            var method = ExtractMethodBody(source, "List<ChannelWriteState> FillAndGetScratchChannelWriteStates");
             Check(method.Contains("if (_seenChannelIds.Add(m.McapId))")
                   && method.Contains("_allChannelWriteStates.Add(m)")
+                  && method.Contains("Monitor.IsEntered(_lock)")
                   && !method.Contains("new HashSet<ushort>")
                   && !Regex.IsMatch(method, @"foreach\s*\(var\s+m\s+in\s+_chMap\.Values\)\s*_seenChannelIds\.Add\(m\.McapId\)"),
-                "51C-3b: McapRecorder tracks channel ids during the first AllChannelWriteStates pass");
+                "51C-3b: McapRecorder tracks channel ids during the scratch channel-state pass");
         }
 
         private static void VerifyConnectionGraphSnapshotAvoidsLinqInsideLock()

@@ -83,6 +83,80 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.builder.patch_ros2_for_unity(package)
 
+    def test_require_inputs_rejects_mismatched_artifact_size(self) -> None:
+        """Reject inventory files whose optional artifact size disagrees."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            artifact = root / self.builder.ARTIFACT_NAME
+            artifact.write_bytes(b"abc")
+            inventory = root / "inventory.json"
+            inventory.write_text(
+                '{"runtimeId": "r2fu-humble-win64", "sha256": "'
+                + self.builder.sha256_file(artifact)
+                + '", "artifactSize": 99, "fileCount": 1}',
+                encoding="utf-8",
+            )
+            paths = self.builder.BuildPaths(artifact, inventory, root / "package")
+
+            with mock.patch.object(self.builder, "UPSTREAM_LICENSE", root / "LICENSE.AL2"):
+                self.builder.UPSTREAM_LICENSE.write_text("license", encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    self.builder.require_inputs(paths)
+
+    def test_collect_local_patch_overlays_rejects_invalid_utf8(self) -> None:
+        """Overlay capture should fail loudly on corrupt UTF-8."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            script = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2UnityComponent.cs"
+            script.parent.mkdir(parents=True)
+            script.write_bytes(b"\xff")
+
+            with self.assertRaises(UnicodeDecodeError):
+                self.builder.collect_local_patch_overlays(package)
+
+    def test_existing_package_path_patch_still_applies_rmw_guard(self) -> None:
+        """The early package-path patch branch must not skip RMW validation."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n"
+                "Unity2Foxglove package path support\n"
+                "    private static ConsoleCancelEventHandler consoleCancelHandler;\n"
+                "    private static void ValidateRmwImplementation(string rmwImpl)\n"
+                "    {\n"
+                "        return;\n"
+                "    }\n\n"
+                "    private static bool IsSupportedRmwImplementation(string rmwImpl)\n"
+                "    {\n"
+                "        return rmwImpl == \"rmw_fastrtps_cpp\";\n"
+                "    }\n\n"
+                "    private void Init()\n"
+                "    {\n"
+                "            string rmwImpl = Ros2cs.GetRMWImplementation();\n"
+                "    }\n\n"
+                "    private void RegisterCtrlCHandler()\n"
+                "    {\n"
+                "    }\n"
+                "standalone runtime must not inherit a sourced ROS2 workspace\n"
+                "standalone runtime owns its RMW selection\n"
+                "selectedRmwImplementation\n"
+                "standalone runtime owns ROS_DISTRO\n"
+                "WarnIfStandaloneRosDistroOverride\n"
+                "sourcedRosDistroBeforeStandalonePatch\n"
+                "CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.builder, "patch_ros2cs_logger_callback_api", side_effect=lambda text: text):
+                with mock.patch.object(self.builder, "patch_standalone_environment_isolation", side_effect=lambda text: text):
+                    self.builder.patch_ros2_for_unity(package)
+
+            patched = source.read_text(encoding="utf-8")
+            self.assertIn("ValidateRmwImplementation(rmwImpl);", patched)
+            self.assertIn("expectedRmwImplementation", patched)
+
     def test_build_package_restores_existing_package_when_generation_fails(self) -> None:
         """A failed regeneration should not leave the package directory destroyed."""
         with tempfile.TemporaryDirectory() as temp:
@@ -103,7 +177,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
                 with mock.patch.object(self.builder, "require_inputs", return_value=({}, artifact)):
                     with mock.patch.object(self.builder, "extract_runtime", side_effect=RuntimeError("boom")):
                         with self.assertRaises(RuntimeError):
-                            self.builder.build_package(paths)
+                            _ = self.builder.build_package(paths)
 
             self.assertTrue(sentinel.exists())
             self.assertEqual("keep", sentinel.read_text(encoding="utf-8"))
@@ -127,10 +201,34 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with mock.patch.object(self.builder, "ROOT", root):
                 with mock.patch.object(self.builder, "require_inputs", return_value=({}, artifact)):
                     with self.assertRaises(ValueError):
-                        self.builder.build_package(paths)
+                        _ = self.builder.build_package(paths)
 
-            self.assertTrue(sentinel.exists())
-            self.assertEqual("keep", sentinel.read_text(encoding="utf-8"))
+    def test_build_package_returns_artifact_identity(self) -> None:
+        """main can print the already-computed hash without hashing the zip again."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "Packages" / self.builder.PACKAGE_NAME
+            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+            artifact = self.builder.RuntimeArtifact(
+                name=self.builder.ARTIFACT_NAME,
+                sha256="1" * 64,
+                size=1,
+                inventory_file_count=1,
+            )
+
+            with mock.patch.object(self.builder, "ROOT", root):
+                with mock.patch.object(self.builder, "require_inputs", return_value=({}, artifact)):
+                    with mock.patch.object(self.builder, "extract_runtime", return_value=None):
+                        with mock.patch.object(self.builder, "prune_non_contract_examples", return_value=None):
+                            with mock.patch.object(self.builder, "patch_ros2_for_unity", return_value=None):
+                                with mock.patch.object(self.builder, "apply_local_patch_overlays", return_value=None):
+                                    with mock.patch.object(self.builder, "patch_ros_time_source_contract", return_value=None):
+                                        with mock.patch.object(self.builder, "write_package_files", return_value=None):
+                                            with mock.patch.object(self.builder, "apply_meta_overlays", return_value=None):
+                                                with mock.patch.object(self.builder, "write_generated_metas", return_value=None):
+                                                    returned = self.builder.build_package(paths)
+
+            self.assertIs(artifact, returned)
 
 
 if __name__ == "__main__":

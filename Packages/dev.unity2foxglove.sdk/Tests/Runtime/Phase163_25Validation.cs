@@ -46,6 +46,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerDisable.Contains("_mcapReplayPreflight.Dispose();", StringComparison.Ordinal)
                   && managerDisable.Contains("_ros2BridgeHealthDrawer.Dispose();", StringComparison.Ordinal),
                 "163-25A-3: manager editor disables MCAP preflight drawer with other sub-drawers from its single lifecycle owner");
+            Check(drawer.Contains("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
+                  && drawer.IndexOf("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
+                  < drawer.IndexOf("using var indexed = McapIndexedReader.OpenRead(path);", StringComparison.Ordinal),
+                "173-023A: MCAP preflight captures file size before opening the indexed reader");
+            Check(drawer.Contains("LatestRecordingCandidate.FromPath(paths[i])", StringComparison.Ordinal)
+                  && drawer.Contains("right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc)", StringComparison.Ordinal),
+                "173-023B: latest recording search sorts by precomputed write timestamps");
         }
 
         private static void CameraInfoInspectorHandlesOptionalFields()

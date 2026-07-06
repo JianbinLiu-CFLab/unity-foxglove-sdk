@@ -50,6 +50,7 @@ namespace Unity.FoxgloveSDK.Tests
             FrameDecodeUsesStackBuffers();
             LiveDataBroadcastAvoidsClientArraySnapshot();
             BackendSnapshotsOriginsAndAggregatesStatsInOnePass();
+            ManagedWebSocketSnapshotsDocumentRacesAndReuseFragmentBuffers();
 
             Console.WriteLine($"Phase 140-6: {_passed} checks passed.");
         }
@@ -154,9 +155,10 @@ namespace Unity.FoxgloveSDK.Tests
             var controlBroadcast = ExtractMethodBody(source, "public void BroadcastBinary");
 
             Check(!dataBroadcast.Contains("_clients.ToArray()", StringComparison.Ordinal)
+                  && !controlBroadcast.Contains("_clients.ToArray()", StringComparison.Ordinal)
                   && dataBroadcast.Contains("foreach", StringComparison.Ordinal)
-                  && controlBroadcast.Contains("_clients.ToArray()", StringComparison.Ordinal),
-                "140-6G-2: live-data broadcast avoids snapshots while control broadcast preserves them");
+                  && controlBroadcast.Contains("foreach", StringComparison.Ordinal),
+                "140-6G-2: live-data and control broadcasts avoid client array snapshots");
         }
 
         private static void BackendSnapshotsOriginsAndAggregatesStatsInOnePass()
@@ -165,9 +167,26 @@ namespace Unity.FoxgloveSDK.Tests
             var stats = ExtractMethodBody(source, "public TransportStatsSnapshot GetStatsSnapshot");
 
             Check(source.Contains("return _allowedOrigins.ToArray();", StringComparison.Ordinal)
-                  && stats.Contains("totalDropped += cs.DroppedDataFrames;", StringComparison.Ordinal)
+                  && stats.Contains("activeDropped += cs.DroppedDataFrames;", StringComparison.Ordinal)
                   && !stats.Contains("foreach (var cs in clientList)", StringComparison.Ordinal),
                 "140-6G-3: backend uses compact origin snapshots and one-pass stats aggregation");
+        }
+
+        private static void ManagedWebSocketSnapshotsDocumentRacesAndReuseFragmentBuffers()
+        {
+            var source = ReadRepoText(ManagedWsBackendPath);
+            var stats = ExtractMethodBody(source, "public TransportStatsSnapshot GetStatsSnapshot");
+            var receive = ExtractMethodBody(source, "private void ReceiveLoop");
+
+            Check(source.Contains("public bool IsRunning => Volatile.Read(ref _listener) != null;", StringComparison.Ordinal),
+                "173-025F: ManagedWsBackend IsRunning uses a volatile listener read");
+            Check(source.Contains("Drop totals are best-effort under concurrent disconnects", StringComparison.Ordinal)
+                  && stats.Contains("Interlocked.Read(ref _totalDroppedDataFrames) + activeDropped", StringComparison.Ordinal),
+                "173-025G: ManagedWsBackend documents best-effort dropped-frame snapshots");
+            Check(receive.Contains("var fragmentedPayload = new MemoryStream();", StringComparison.Ordinal)
+                  && receive.Contains("fragmentedPayload.SetLength(0);", StringComparison.Ordinal)
+                  && receive.Contains("var hasFragmentedPayload = false;", StringComparison.Ordinal),
+                "173-025H: ReceiveLoop reuses one fragmented message stream");
         }
 
         private static string ExtractMethodBody(string source, string signaturePrefix)

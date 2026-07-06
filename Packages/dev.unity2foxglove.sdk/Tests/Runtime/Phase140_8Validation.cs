@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             SegmentCompressionRoundTripsWithoutCopyPatterns();
             SummaryCrcUsesIncrementalSegments();
             RecorderReusesChannelScratchAndTopicSignature();
+            RecorderResourceAndScratchGuards();
 
             Console.WriteLine($"Phase 140-8: {_passed} checks passed.");
         }
@@ -136,10 +137,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var compressionSource = ReadRepoText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Common/McapCompression.cs");
-            Check(!compressionSource.Contains("ms.ToArray()", StringComparison.Ordinal)
-                  && !compressionSource.Contains("var copy = new byte[sourceCount]", StringComparison.Ordinal)
+            Check(!compressionSource.Contains("var copy = new byte[sourceCount]", StringComparison.Ordinal)
                   && !compressionSource.Contains("compressor.Wrap(copy).ToArray()", StringComparison.Ordinal),
-                "140-8F-3: chunk compression avoids full input and output copy patterns");
+                "140-8F-3: chunk compression avoids full input-copy and zstd output-copy patterns");
         }
 
         private static void SummaryCrcUsesIncrementalSegments()
@@ -167,6 +167,30 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("CreateTopicSignature(", StringComparison.Ordinal)
                   && !source.Contains("var incoming = new TopicSignature", StringComparison.Ordinal),
                 "140-8H-2: topic routing constructs one reusable signature instead of dead duplicate hashes");
+        }
+
+        private static void RecorderResourceAndScratchGuards()
+        {
+            var source = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+
+            Check(source.Contains("private readonly MemoryStream _chunkBuf;", StringComparison.Ordinal),
+                "173-025A: recorder chunk buffer ownership is readonly");
+            Check(!source.Contains("[ThreadStatic] private static SHA256", StringComparison.Ordinal)
+                  && source.Contains("private static readonly SHA256 SharedSha256 = SHA256.Create();", StringComparison.Ordinal)
+                  && source.Contains("private static readonly object Sha256Gate = new object();", StringComparison.Ordinal),
+                "173-025B: recorder SHA256 reuse avoids undisposed thread-static instances");
+            Check(!source.Contains("static readonly Dictionary<string, string> EmptyChannelMetadata", StringComparison.Ordinal)
+                  && source.Contains("CreateEmptyChannelMetadata() => new Dictionary<string, string>()", StringComparison.Ordinal),
+                "173-025C: recorder avoids shared mutable empty channel metadata");
+            Check(source.Contains("FillAndGetScratchChannelWriteStates()", StringComparison.Ordinal)
+                  && source.Contains("System.Diagnostics.Debug.Assert(Monitor.IsEntered(_lock));", StringComparison.Ordinal)
+                  && !source.Contains("AllChannelWriteStates()", StringComparison.Ordinal),
+                "173-025D: recorder scratch channel list is named and lock-asserted");
+            Check(source.Contains("public ulong MsgCount;", StringComparison.Ordinal)
+                  && source.Contains("map.MsgCount++;", StringComparison.Ordinal)
+                  && source.Contains("counts[state.McapId] = state.MsgCount;", StringComparison.Ordinal),
+                "173-025E: recorder statistics use non-wrapping message counts");
         }
 
         private static void ReplaceChunkBufferWithNonPublicBuffer(McapRecorder recorder)

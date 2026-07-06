@@ -51,15 +51,15 @@ namespace Unity.FoxgloveSDK.Editor
                 throw new ArgumentNullException(nameof(manifest));
 
             var source = GenerateSource(manifest);
+            var verification = VerifyGeneratedInfo(manifest, source);
+            if (!verification.IsValid)
+                throw new InvalidOperationException("Generated FoxRun schema info failed verification: " + string.Join("; ", verification.Errors));
+
             Directory.CreateDirectory(outputDirectory);
 
             var sourcePath = Path.Combine(outputDirectory, SchemaInfoFileName);
             var sourceChanged = WriteIfChanged(sourcePath, source);
             var metaChanged = EnsureMetaFile(Path.Combine(outputDirectory, SchemaInfoMetaFileName));
-
-            var verification = VerifyGeneratedInfo(manifest, source);
-            if (!verification.IsValid)
-                throw new InvalidOperationException("Generated FoxRun schema info failed verification: " + string.Join("; ", verification.Errors));
             return new FoxRunSchemaInfoWriteResult(verification, sourceChanged, metaChanged);
         }
 
@@ -356,9 +356,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DelayBeforeRetry(int attempt)
         {
-            // Build/Play-Mode hooks run on Unity's main thread; keep the retry
-            // bounded and tiny so transient antivirus/file-indexer locks can clear
-            // without hiding a real write failure.
+            // Build/Play-Mode hooks run on Unity's main thread. With two
+            // generated files, the worst case is four 50 ms sleeps (200 ms).
             if (attempt + 1 < ReplaceAttempts)
                 Thread.Sleep(ReplaceRetryDelayMilliseconds);
         }
@@ -414,7 +413,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static string FloatLiteral(float value)
         {
             if (float.IsNaN(value) || float.IsInfinity(value))
-                return "0f";
+                throw new ArgumentOutOfRangeException(nameof(value), value, "FoxRun policy float values must be finite.");
             // Match canonical manifest formatting so generated source is stable across runtimes.
             return value.ToString("G9", CultureInfo.InvariantCulture) + "f";
         }

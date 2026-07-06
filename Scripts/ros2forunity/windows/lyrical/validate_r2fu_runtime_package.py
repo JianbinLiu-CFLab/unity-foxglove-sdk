@@ -33,6 +33,9 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from lyrical_artifact_config import ARTIFACT_NAME, EXPECTED_ARTIFACT_SHA256
 
+if len(EXPECTED_ARTIFACT_SHA256) != 64:
+    raise ValueError("EXPECTED_ARTIFACT_SHA256 must be a 64-character SHA-256 hex digest.")
+
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
 PACKAGE = ROOT / "Packages" / PACKAGE_NAME
 ADAPTER_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
@@ -196,6 +199,12 @@ def iter_files(root: Path) -> Iterable[Path]:
     return (path for path in root.rglob("*") if path.is_file())
 
 
+def guarded_unity_editor_using(text: str) -> bool:
+    """Return whether using UnityEditor appears only inside its UNITY_EDITOR guard."""
+    pattern = r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif"
+    return re.search(pattern, text) is not None and "using UnityEditor;" not in re.sub(pattern, "", text)
+
+
 def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
     """Load JSON and record whether parsing succeeded."""
     try:
@@ -273,8 +282,8 @@ def read_pe_imports(path: Path) -> list[str]:
     sections: list[tuple[int, int, int, int]] = []
     for index in range(section_count):
         header_offset = section_offset + index * 40
-        virtual_size, virtual_address, raw_size, raw_pointer = struct.unpack_from("<IIII", data, header_offset + 8)
-        sections.append((virtual_address, virtual_size, raw_pointer, raw_size))
+        virtual_size, virtual_address, size_of_raw_data, pointer_to_raw_data = struct.unpack_from("<IIII", data, header_offset + 8)
+        sections.append((virtual_address, virtual_size, pointer_to_raw_data, size_of_raw_data))
 
     import_offset = rva_to_file_offset(sections, import_directory_rva)
     if import_offset is None:
@@ -687,8 +696,7 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     add(
         results,
         "UnityEditor using guarded",
-        re.search(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", text) is not None
-        and re.sub(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", "", text).find("using UnityEditor;") < 0,
+        guarded_unity_editor_using(text),
         "ROS2ForUnity.cs",
     )
     add(
@@ -948,7 +956,7 @@ def check_public_docs(results: list[CheckResult]) -> None:
     add(
         results,
         "README documents one-runtime policy",
-        "Install only one" in readme and "dev.unity2foxglove.ros2forunity.runtime.*" in readme,
+        "Install only one" in readme and re.search(r"dev\.unity2foxglove\.ros2forunity\.runtime\.\S+", readme) is not None,
         "README.md",
     )
     add(
@@ -982,18 +990,24 @@ def check_package_boundaries(results: list[CheckResult]) -> None:
     add(results, "core SDK does not depend on runtime package", PACKAGE_NAME not in sdk_deps, sdk_deps)
     add(results, "adapter does not hard-depend on runtime package", PACKAGE_NAME not in adapter_deps, adapter_deps)
 
+    core_runtime = CORE_PACKAGE / "Runtime"
+    add(results, "core Runtime folder exists", core_runtime.is_dir(), rel(core_runtime))
     add(
         results,
         "core SDK runtime remains ROS2 For Unity free",
-        not core_runtime_has_forbidden_tokens(),
+        core_runtime.is_dir() and not core_runtime_has_forbidden_tokens(),
         "core runtime scan",
     )
 
 
 def core_runtime_has_forbidden_tokens() -> bool:
     """Return True when the core SDK Runtime contains R2FU-only tokens."""
+    core_runtime = CORE_PACKAGE / "Runtime"
+    if not core_runtime.is_dir():
+        raise FileNotFoundError(f"Missing core Runtime folder: {core_runtime}")
+
     tokens = ("ROS2UnityComponent", "ros2forunity.runtime")
-    for path in iter_files(CORE_PACKAGE / "Runtime"):
+    for path in iter_files(core_runtime):
         text = path.read_text(encoding="utf-8", errors="ignore")
         if any(token in text for token in tokens):
             return True

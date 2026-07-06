@@ -273,7 +273,7 @@ def require_inputs(paths: BuildPaths) -> tuple[dict[str, object], RuntimeArtifac
         raise ValueError(f"Unexpected inventory runtimeId: {inventory.get('runtimeId')!r}")
     if inventory.get("sha256") != artifact_hash:
         raise ValueError("Inventory sha256 does not match the runtime artifact.")
-    if inventory.get("artifactSize") not in (None, artifact_size) and inventory.get("artifactSize") != artifact_size:
+    if inventory.get("artifactSize") not in (None, artifact_size):
         raise ValueError(f"Inventory artifactSize does not match the runtime artifact: {inventory.get('artifactSize')!r}")
     inventory_file_count = int(inventory.get("fileCount") or 0)
     if inventory_file_count <= 0:
@@ -439,7 +439,7 @@ def collect_local_patch_overlays(package: Path) -> dict[str, str]:
 
     overlays: dict[str, str] = {}
     for path in scripts.rglob("*.cs"):
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8")
         relative = path.relative_to(package).as_posix()
         if relative == "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs":
             continue
@@ -773,6 +773,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = patch_ros2cs_logger_callback_api(text)
     text = patch_standalone_environment_isolation(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
+        text = patch_rmw_guard(text)
         write_text(source, text)
         return
     if "unity2FoxgloveRuntimePackageName" not in text:
@@ -1081,7 +1082,7 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifac
     )
 
 
-def build_package(paths: BuildPaths) -> None:
+def build_package(paths: BuildPaths) -> RuntimeArtifact:
     """Build the runtime package from the runtime artifact."""
     inventory, artifact = require_inputs(paths)
     snapshot = snapshot_package_dir(paths.package)
@@ -1097,6 +1098,7 @@ def build_package(paths: BuildPaths) -> None:
         write_package_files(paths, inventory, artifact)
         apply_meta_overlays(paths.package, meta_overlays)
         write_generated_metas(paths.package)
+        return artifact
     except Exception:
         restore_package_dir(paths.package, snapshot)
         raise
@@ -1108,13 +1110,12 @@ def main(argv: list[str]) -> int:
     """Run package generation from command-line arguments."""
     paths = parse_args(argv)
     try:
-        build_package(paths)
+        artifact = build_package(paths)
     except Exception as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
         return EXIT_FAILURE
     print(f"[PASS] built {rel(paths.package)}")
-    artifact_hash = sha256_file(paths.artifact)
-    print(f"[PASS] artifact={paths.artifact.name} sha256={artifact_hash}")
+    print(f"[PASS] artifact={paths.artifact.name} sha256={artifact.sha256}")
     return EXIT_SUCCESS
 
 

@@ -43,8 +43,6 @@ namespace Unity.FoxgloveSDK.Core
         private readonly SubscriptionRegistry _subscriptions = new();
         private readonly object _subscriberScratchLock = new();
         private readonly List<(uint clientId, uint subscriptionId)> _subscriberScratch = new();
-        private readonly List<AdvertiseChannel> _singleAdvertiseChannels = new(1);
-        private readonly List<uint> _singleUnadvertiseChannelIds = new(1);
         private readonly object _paramSubScratchLock = new();
         private readonly List<uint> _paramSubScratch = new();
         private readonly object _parameterBroadcastScratchLock = new();
@@ -55,6 +53,10 @@ namespace Unity.FoxgloveSDK.Core
         private readonly ISchemaRegistry _schemaRegistry;
         private static readonly ThreadLocal<JsonSerializer> JsonSerializerCache =
             new ThreadLocal<JsonSerializer>(JsonSerializer.CreateDefault);
+        [ThreadStatic]
+        private static List<(uint clientId, uint subscriptionId)> s_publishSubscriberScratch;
+        [ThreadStatic]
+        private static MemoryStream s_jsonPublishStream;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
 
@@ -215,6 +217,8 @@ namespace Unity.FoxgloveSDK.Core
             _transport.OnClientDisconnected -= OnClientDisconnected;
             _transport.OnTextReceived -= OnClientText;
             _transport.OnBinaryReceived -= OnClientBinary;
+            Volatile.Write(ref _recorder, null);
+            Volatile.Write(ref _mirrorSink, null);
             OnClientMessage = null;
         }
 
@@ -325,20 +329,18 @@ namespace Unity.FoxgloveSDK.Core
 
         private string SerializeSingleAdvertise(AdvertiseChannel channel)
         {
-            _singleAdvertiseChannels.Clear();
-            _singleAdvertiseChannels.Add(channel);
-            var json = JsonConvert.SerializeObject(new Advertise { Channels = _singleAdvertiseChannels });
-            _singleAdvertiseChannels.Clear();
-            return json;
+            return JsonConvert.SerializeObject(new Advertise
+            {
+                Channels = new List<AdvertiseChannel>(1) { channel }
+            });
         }
 
         private string SerializeSingleUnadvertise(uint channelId)
         {
-            _singleUnadvertiseChannelIds.Clear();
-            _singleUnadvertiseChannelIds.Add(channelId);
-            var json = JsonConvert.SerializeObject(new Unadvertise { ChannelIds = _singleUnadvertiseChannelIds });
-            _singleUnadvertiseChannelIds.Clear();
-            return json;
+            return JsonConvert.SerializeObject(new Unadvertise
+            {
+                ChannelIds = new List<uint>(1) { channelId }
+            });
         }
 
         /// <summary>
@@ -453,33 +455,49 @@ namespace Unity.FoxgloveSDK.Core
                 TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
             if (!AllowLiveWebSocket(channel))
                 return;
+            var subscribers = CopySubscribersForPublish(channelId);
+            try
+            {
+                foreach (var (clientId, subscriptionId) in subscribers)
+                {
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
+                    {
+                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
+                    }
+                }
+            }
+            finally
+            {
+                subscribers.Clear();
+            }
+        }
+
+        private List<(uint clientId, uint subscriptionId)> CopySubscribersForPublish(uint channelId)
+        {
+            var subscribers = s_publishSubscriberScratch ??= new List<(uint clientId, uint subscriptionId)>();
             lock (_subscriberScratchLock)
             {
                 _subscriptions.CopySubscribersForChannel(channelId, _subscriberScratch);
                 try
                 {
-                    foreach (var (clientId, subscriptionId) in _subscriberScratch)
-                    {
-                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_prioritizedTransport != null)
-                        {
-                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                                _logger.LogWarning(trace);
-                            _prioritizedTransport.SendDataBinary(clientId, frame);
-                        }
-                        else
-                        {
-                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                                _logger.LogWarning(trace);
-                            _transport.SendBinary(clientId, frame);
-                        }
-                    }
+                    subscribers.AddRange(_subscriberScratch);
                 }
                 finally
                 {
                     _subscriberScratch.Clear();
                 }
             }
+
+            return subscribers;
         }
 
         /// <summary>Publish a validated ROS 2 CDR payload using the current clock time.</summary>
@@ -503,32 +521,29 @@ namespace Unity.FoxgloveSDK.Core
             if (channel == null) return;
             payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
-            lock (_subscriberScratchLock)
+            var subscribers = CopySubscribersForPublish(channelId);
+            try
             {
-                _subscriptions.CopySubscribersForChannel(channelId, _subscriberScratch);
-                try
+                foreach (var (clientId, subscriptionId) in subscribers)
                 {
-                    foreach (var (clientId, subscriptionId) in _subscriberScratch)
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
                     {
-                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_prioritizedTransport != null)
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                                _logger.LogWarning(trace);
-                            _prioritizedTransport.SendDataBinary(clientId, frame);
-                        }
-                        else
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                                _logger.LogWarning(trace);
-                            _transport.SendBinary(clientId, frame);
-                        }
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
                     }
                 }
-                finally
-                {
-                    _subscriberScratch.Clear();
-                }
+            }
+            finally
+            {
+                subscribers.Clear();
             }
         }
 
@@ -539,16 +554,16 @@ namespace Unity.FoxgloveSDK.Core
         public void PublishJson(uint channelId, object message, ulong logTimeNs)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
-            using (var stream = new MemoryStream())
+            var stream = s_jsonPublishStream ??= new MemoryStream(1024);
+            stream.SetLength(0);
+            stream.Position = 0;
+            using (var writer = new StreamWriter(stream, new UTF8Encoding(false), 1024, leaveOpen: true))
+            using (var jsonWriter = new JsonTextWriter(writer))
             {
-                using (var writer = new StreamWriter(stream, new UTF8Encoding(false), 1024, leaveOpen: true))
-                using (var jsonWriter = new JsonTextWriter(writer))
-                {
-                    JsonSerializerCache.Value.Serialize(jsonWriter, message);
-                }
-
-                Publish(channelId, stream.ToArray(), logTimeNs);
+                JsonSerializerCache.Value.Serialize(jsonWriter, message);
             }
+
+            Publish(channelId, stream.ToArray(), logTimeNs);
         }
 
         /// <summary>

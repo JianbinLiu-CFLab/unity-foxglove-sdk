@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.IO
                 maxOutputBytes);
         }
 
-        /// <summary>Decompress an MCAP chunk segment while bounding the retained output size.</summary>
+        /// <summary>Decompress an MCAP chunk segment while bounding the retained output size. A max output of 0 means unbounded.</summary>
         public static byte[] Decompress(
             string compression,
             ArraySegment<byte> data,

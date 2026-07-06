@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyOpt4EndInitDeferralNoToArray();
             VerifyOpt2ReplayControllerCachedInvocationList();
             VerifyOpt3ReplayOrchestratorCachedInvocationList();
+            VerifyPhase173_024SessionLockBoundaries();
 
             Console.WriteLine($"Phase 140-3: {_passed} checks passed.");
         }
@@ -377,6 +378,41 @@ namespace Unity.FoxgloveSDK.Tests
             controller.FireContextForTests(NewTestContext("/phase140_3/orchestrated-3"));
             Check(contexts.Count == 0,
                 "OPT-3: orchestrator detach stops forwarding context callbacks");
+        }
+
+        private static void VerifyPhase173_024SessionLockBoundaries()
+        {
+            var session = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
+            var parameters = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Parameters.cs");
+            var publish = ExtractMethodBody(session, "public void Publish(uint channelId, byte[] payload, ulong logTimeNs)");
+            var copy = ExtractMethodBody(session, "private List<(uint clientId, uint subscriptionId)> CopySubscribersForPublish");
+            var replay = ExtractMethodBody(session, "internal void PublishReplay");
+            var dispose = ExtractMethodBody(session, "public void Dispose()");
+            var broadcast = ExtractMethodBody(parameters, "public void BroadcastParameterValues");
+
+            Check(session.Contains("[ThreadStatic]", StringComparison.Ordinal)
+                  && session.Contains("s_publishSubscriberScratch", StringComparison.Ordinal)
+                  && publish.Contains("var subscribers = CopySubscribersForPublish(channelId);", StringComparison.Ordinal)
+                  && replay.Contains("var subscribers = CopySubscribersForPublish(channelId);", StringComparison.Ordinal)
+                  && copy.Contains("lock (_subscriberScratchLock)", StringComparison.Ordinal)
+                  && !copy.Contains("SendBinary", StringComparison.Ordinal)
+                  && !copy.Contains("SendDataBinary", StringComparison.Ordinal),
+                "173-024A: FoxgloveSession only holds subscriber scratch lock while copying subscribers");
+            Check(!session.Contains("_singleAdvertiseChannels", StringComparison.Ordinal)
+                  && !session.Contains("_singleUnadvertiseChannelIds", StringComparison.Ordinal)
+                  && session.Contains("new List<AdvertiseChannel>(1) { channel }", StringComparison.Ordinal)
+                  && session.Contains("new List<uint>(1) { channelId }", StringComparison.Ordinal),
+                "173-024B: single advertise/unadvertise serialization avoids shared mutable lists");
+            Check(dispose.Contains("Volatile.Write(ref _recorder, null)", StringComparison.Ordinal)
+                  && dispose.Contains("Volatile.Write(ref _mirrorSink, null)", StringComparison.Ordinal),
+                "173-024C: disposed sessions release recorder and mirror sink references");
+            Check(broadcast.Contains("subscribedClientIds = GetParamSubscribersForChanged", StringComparison.Ordinal)
+                  && broadcast.IndexOf("foreach (var cid in subscribedClientIds)", StringComparison.Ordinal)
+                  > broadcast.LastIndexOf("finally", StringComparison.Ordinal),
+                "173-024D: parameter broadcasts release scratch locks before transport sends");
+            Check(session.Contains("s_jsonPublishStream", StringComparison.Ordinal)
+                  && session.Contains("stream.SetLength(0);", StringComparison.Ordinal),
+                "173-024E: PublishJson reuses a thread-local payload stream");
         }
 
         private static ReplayMessageContext NewTestContext(string topic, string message = "phase140_3")
