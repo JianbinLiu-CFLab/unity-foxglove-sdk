@@ -208,6 +208,25 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def unity_editor_using_is_guarded(text: str) -> bool:
+    """Return true when every UnityEditor using is inside a UNITY_EDITOR block."""
+    in_unity_editor = False
+    found = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#if") and "UNITY_EDITOR" in stripped:
+            in_unity_editor = True
+            continue
+        if stripped.startswith("#endif"):
+            in_unity_editor = False
+            continue
+        if "using UnityEditor;" in stripped:
+            found = True
+            if not in_unity_editor:
+                return False
+    return found
+
+
 def check_package_metadata(results: list[CheckResult]) -> None:
     """Validate Unity package metadata."""
     add(results, "runtime package folder exists", PACKAGE.is_dir(), rel(PACKAGE))
@@ -432,6 +451,7 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
     malformed: list[str] = []
     missing: list[str] = []
     mismatched: list[str] = []
+    unreadable: list[str] = []
     checked_dlls = 0
     should_hash_dlls = release_gate or not skip_dll_hash
     if isinstance(files, list):
@@ -452,8 +472,14 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
             if not package_path.is_file():
                 missing.append(path_text)
                 continue
-            if should_hash_dlls and expected_hash and file_sha256(package_path) != expected_hash:
-                mismatched.append(path_text)
+            if should_hash_dlls and expected_hash:
+                try:
+                    actual_hash = file_sha256(package_path)
+                except OSError:
+                    unreadable.append(path_text)
+                    continue
+                if actual_hash != expected_hash:
+                    mismatched.append(path_text)
 
     add(
         results,
@@ -463,12 +489,12 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
     )
     add(
         results,
-        "runtime inventory DLL hashes match disk",
-        isinstance(files, list) and checked_dlls >= 900 and (not should_hash_dlls or not mismatched),
+        "runtime inventory DLL hashes match disk" if should_hash_dlls else "runtime inventory DLL hash verification skipped",
+        isinstance(files, list) and checked_dlls >= 900 and (not should_hash_dlls or (not mismatched and not unreadable)),
         (
             "skipped by fast validation; use --release-gate for full DLL hash verification"
             if not should_hash_dlls
-            else f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}"
+            else f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r} unreadable={unreadable[:8]!r}"
         ),
     )
 
@@ -559,8 +585,7 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     add(
         results,
         "UnityEditor using guarded",
-        re.search(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", text) is not None
-        and re.sub(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", "", text).find("using UnityEditor;") < 0,
+        unity_editor_using_is_guarded(text),
         "ROS2ForUnity.cs",
     )
     add(
@@ -666,9 +691,17 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(results, "ROS2UnityCore bounded join", core_join, "ROS2UnityCore.cs")
 
     runtime = read_optional_text(scripts / "ROS2ForUnity.cs")
-    old_lifecycle = all(token in runtime for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"))
-    current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
-    add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
+    old_tokens = ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered")
+    current_tokens = ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered")
+    old_lifecycle = all(token in runtime for token in old_tokens)
+    current_lifecycle = all(token in runtime for token in current_tokens)
+    mixed_partial = old_lifecycle and any(token in runtime for token in current_tokens) and not current_lifecycle
+    add(
+        results,
+        "ROS2ForUnity deterministic lifecycle",
+        (old_lifecycle or current_lifecycle) and not mixed_partial,
+        f"old_lifecycle={old_lifecycle} current_lifecycle={current_lifecycle} mixed_partial={mixed_partial}",
+    )
     add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
     add(
         results,
@@ -814,20 +847,22 @@ def check_public_docs(results: list[CheckResult]) -> None:
     add(
         results,
         "README documents one-runtime policy",
-        "Install only one" in readme and "runtime.*" in readme,
+        "Install only one" in readme and ("ros2forunity.runtime." in readme or "runtime packages" in readme),
         "README.md",
     )
+    manifest_data = load_json(MANIFEST, results, "runtime manifest parses for docs cross-check")
+    artifact_sha = str(manifest_data.get("artifactSha256", "")).strip()
     add(
         results,
         "README documents artifact SHA-256",
-        str(load_json(MANIFEST, results, "runtime manifest parses for docs cross-check").get("artifactSha256", "")) in readme,
+        bool(artifact_sha) and artifact_sha in readme,
         "README.md",
     )
     notices = (PACKAGE / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8", errors="replace") if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists() else ""
     add(
         results,
         "THIRD_PARTY_NOTICES documents artifact SHA-256",
-        str(load_json(MANIFEST, results, "runtime manifest parses for notices cross-check").get("artifactSha256", "")) in notices,
+        bool(artifact_sha) and artifact_sha in notices,
         "THIRD_PARTY_NOTICES.md",
     )
     add(
