@@ -1,6 +1,6 @@
 {
   "name": "dev.unity2foxglove.sdk",
-  "version": "1.9.5",
+  "version": "1.9.6",
   "displayName": "Unity2Foxglove SDK",
   "license": "Apache-2.0",
   "description": "Real-time data streaming from Unity to Foxglove for visualization. Bundled runtime DLLs include MCAP compression dependencies and StbImageWriteSharp for async JPEG camera encoding.",

@@ -6,6 +6,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## Unreleased
+
+### Changed
+
+- No unreleased changes yet.
+
+## 1.9.6 - 2026-07-06
+
+### Added
+
+- Declarative FoxService RPC, schema inspector polish, DTO validation
+  convergence, DTO walker de-duplication, conditional FoxRun publish gates,
+  SDK-style channel wrappers, protobuf channel session guards, aggregate FoxRun
+  message generation, additive sink fanout, optional ROS2/R2FU sink boundaries,
+  and guarded FoxRun subscribe/service surfaces.
+- Per-sink channel filtering, lazy MCAP file-order iterators, MCAP metadata
+  amendments, MCAP private-record support, and MsgPack encoding support.
+- System-info publishing, profiler marker infrastructure, and Unity profiler
+  acceptance probes.
+- Repo-local ROS2 entrypoint hygiene, Humble R2FU Win64 runtime import, Jazzy
+  Win64 runtime refresh, Lyrical runtime selection, and Lyrical Zenoh
+  prerequisite documentation.
+- Optional Remote Gateway package scaffolding mirrors existing Foxglove
+  channels into the official Foxglove gateway C ABI path for outbound cloud
+  visualization experiments. It is default-off, package-isolated, and does not
+  bundle the native gateway DLL.
+- Camera stall attribution diagnostics now report render, readback, encode,
+  completed-queue, and video submit pressure in the runtime camera path.
+- Third-party notices now record Ouster SDK as a design reference for the
+  driver-style high-volume sensor pipeline architecture without claiming a
+  bundled dependency.
+
+### Changed
+
+- Phase163 hardened major runtime surfaces including lifecycle, sessions,
+  transports, registries, MCAP, replay cursor, DataLoader/R2FU, schema tooling,
+  FoxRun, source generator behavior, ROS2 bridge paths, sample validation,
+  package boundaries, and unit/runtime validation signals.
+- Phase164 reduced allocations, copy churn, scanner cost, validation time, and
+  release-check overhead across camera, video sidecar, point clouds, ROS2 CDR,
+  WebSocket transport, MCAP reader/writer/replay, schema tooling, FoxRun
+  generator paths, sample validation, release CI, and runtime validation naming
+  guards.
+- R2FU native bridge, backup-scene/domain-reload, standalone ROS environment,
+  Zenoh router, and native PointCloud2 publish paths were hardened for Editor
+  lifecycle stability.
+- Native PointCloud2 and LiDAR paths now use more driver-style source-side
+  admission, warm buffers, pooled deskew/packed buffers, bounded pipeline
+  stages, and clearer pressure diagnostics.
+- Foxglove Draco point-cloud visualization caps source-driven VirtualLidar
+  native snapshots at 6 Hz by default to keep the live WebSocket view
+  responsive; set `Native LiDAR Max Rate Hz` to `0` to publish every completed
+  source scan.
+- Camera publishing now defaults to the balanced health gate, which can reduce
+  capture cadence under sustained readback, encode, render, or video-output
+  pressure to preserve Editor responsiveness.
+- H.264/video pressure is handled at capture-admission time so already encoded
+  access units are not dropped out of order.
+- Runtime manager, session/replay, MCAP reader, and FoxRun generator internals
+  were decomposed into smaller state containers and pure helpers while keeping
+  public APIs and serialized Inspector fields stable.
+- Package metadata, README version references, changelog, and release notes are
+  synchronized for v1.9.6.
+
+### Verified
+
+- Runtime validation gates, package validators, source-generator freshness
+  checks, schema generated-output checks, repository-boundary checks, and GitHub
+  Actions ran across the merged PRs in the v1.9.6 cycle.
+- Phase172 camera health gate validation passed for camera unit tests,
+  `--phase172`, `--phase138j`, `--phase138k`, and git whitespace checks before
+  merge.
+- Manual Unity/Foxglove A/B acceptance covered JPEG default cadence, JPEG
+  pressure behavior, Off-mode comparison, and H.264 FFmpeg video publishing.
+- Remote Gateway native cloud validation remains plan-gated by Foxglove account
+  access; Inspector/default-off behavior and no-DLL fallback were validated.
+
 ## 1.9.5 - 2026-06-14
 
 ### Added
@@ -29,18 +106,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - The release content was reviewed against git history since v1.9.4 before drafting release notes.
 - `python Scripts/release/run_ci.py`, `python -m pytest Scripts/tests -p no:cacheprovider`, `python -m compileall -q Scripts`, Unity Replay Sync extension tests/build, and git whitespace checks were run before tagging this release.
 - Manual Unity/Foxglove/RViz2 acceptance covered camera JPEG GC allocation, OpenH264 video, point-cloud hot paths, IMU covariance publishing, R2FU Jazzy runtime import, native DDS PointCloud2/TF visualization, and Unity Replay Sync follow behavior.
-
-## Unreleased
-
-### Changed
-
-- Foxglove Draco point-cloud visualization now caps source-driven VirtualLidar
-  native snapshots at 6 Hz by default to keep the live WebSocket view
-  responsive; set `Native LiDAR Max Rate Hz` to `0` to publish every completed
-  source scan.
-- Camera publishing now defaults to the balanced health gate, which can reduce
-  camera capture cadence under sustained readback, encode, render, or video
-  output pressure to preserve Editor responsiveness.
 
 ## 1.9.4 - 2026-05-27
 

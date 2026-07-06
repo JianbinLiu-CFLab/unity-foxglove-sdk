@@ -156,7 +156,7 @@ namespace Unity.FoxgloveSDK.Tests
             var optional = LoadJsonObject(OptionalPackage + "/package.json");
             Check(optional["dependencies"] is JObject optionalDependencies
                   && optionalDependencies.Count == 1
-                  && (string)optionalDependencies["dev.unity2foxglove.sdk"] == "1.9.5",
+                  && (string)optionalDependencies["dev.unity2foxglove.sdk"] == "1.9.6",
                 "108-C1: optional package depends only on the core SDK package");
 
             var core = LoadJsonObject(CorePackageJson);

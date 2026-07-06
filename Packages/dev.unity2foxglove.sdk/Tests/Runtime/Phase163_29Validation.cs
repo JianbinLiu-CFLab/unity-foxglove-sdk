@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void AdapterPackageDeclaresSdkDependency()
         {
             var packageJson = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/package.json");
-            Check(packageJson.Contains("\"dev.unity2foxglove.sdk\": \"1.9.5\"", StringComparison.Ordinal),
+            Check(packageJson.Contains("\"dev.unity2foxglove.sdk\": \"1.9.6\"", StringComparison.Ordinal),
                 "163-29A: R2FU adapter package declares its SDK package dependency");
         }
 
