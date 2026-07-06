@@ -8,7 +8,7 @@
       <branch>main</branch>
    </version>
    <standalone>1</standalone>
-   <plugins root="." runtime_file_count="990">
+   <plugins root="." runtime_file_count="991">
       <file>Windows/x86_64/action_msgs__rosidl_generator_c.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_generator_py.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_typesupport_c.dll</file>
@@ -310,8 +310,8 @@
       <file>Windows/x86_64/geometry_msgs_wrench_stamped__rosidl_typesupport_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench_stamped__rosidl_typesupport_fastrtps_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench_stamped__rosidl_typesupport_introspection_c_native.dll</file>
-      <file>Windows/x86_64/libcrypto-3-x64.dll</file>
-      <file>Windows/x86_64/libssl-3-x64.dll</file>
+      <file sha256="124c5f40a6cf0e642f9d92784dd66314fd548b4fdf93c543bf478e71e1209f9d">Windows/x86_64/libcrypto-3-x64.dll</file>
+      <file sha256="4158ad85699d9c5428b62778883b16b6c21b3b7da11fe60a0cc24ea37687a9fd">Windows/x86_64/libssl-3-x64.dll</file>
       <file>Windows/x86_64/libstatistics_collector.dll</file>
       <file>Windows/x86_64/lifecycle_msgs__rosidl_generator_c.dll</file>
       <file>Windows/x86_64/lifecycle_msgs__rosidl_typesupport_c.dll</file>
@@ -520,6 +520,7 @@
       <file>Windows/x86_64/rosgraph_msgs_type_hash__rosidl_typesupport_fastrtps_c_native.dll</file>
       <file>Windows/x86_64/rosgraph_msgs_type_hash__rosidl_typesupport_introspection_c_native.dll</file>
       <file>Windows/x86_64/rosidl_dynamic_typesupport.dll</file>
+      <file>Windows/x86_64/rosidl_dynamic_typesupport_fastrtps.dll</file>
       <file>Windows/x86_64/rosidl_runtime_c.dll</file>
       <file>Windows/x86_64/rosidl_typesupport_c.dll</file>
       <file>Windows/x86_64/rosidl_typesupport_cpp.dll</file>

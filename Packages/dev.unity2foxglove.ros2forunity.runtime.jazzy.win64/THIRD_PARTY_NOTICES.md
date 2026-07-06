@@ -30,6 +30,13 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 
 The current upstream runtime closure includes ROS2 `test_msgs` managed and native type-support artifacts. They are retained only because they are present in the generated `r2fu-jazzy-win64` inventory; production package trimming must happen in the runtime rebuild pipeline, not by manually deleting individual DLLs from this package.
 
+## Security-Relevant Native DLL Hashes
+
+| File | SHA-256 |
+|---|---|
+| `Runtime/Ros2ForUnity/Plugins/Windows/x86_64/libcrypto-3-x64.dll` | `124c5f40a6cf0e642f9d92784dd66314fd548b4fdf93c543bf478e71e1209f9d` |
+| `Runtime/Ros2ForUnity/Plugins/Windows/x86_64/libssl-3-x64.dll` | `4158ad85699d9c5428b62778883b16b6c21b3b7da11fe60a0cc24ea37687a9fd` |
+
 ## Critical Runtime Closure
 
 The package includes the transitive runtime DLLs required for Unity to load `rcl.dll`, including:

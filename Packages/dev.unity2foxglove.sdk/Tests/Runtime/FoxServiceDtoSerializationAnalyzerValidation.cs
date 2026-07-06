@@ -19,113 +19,116 @@ namespace Unity.FoxgloveSDK.Tests
     public static class FoxServiceDtoSerializationAnalyzerValidation
     {
         private static readonly Lazy<MetadataReference[]> CachedReferences = new Lazy<MetadataReference[]>(CreateReferences);
-        private static int _passCount;
 
         public static void Validate()
         {
             Console.WriteLine("\n--- Phase 141C Tests ---");
-            _passCount = 0;
+            var run = new ValidationRun();
 
-            VerifyValidDtoShapesStillGenerate();
-            VerifyUnsupportedDtoDiagnostics();
-            VerifyWarningDtoDiagnostics();
-            VerifySharedDtoTypeRules();
-            VerifyPhase141DPolicyMatrix();
-            VerifyValidationWiringAndReleaseMetadata();
+            VerifyValidDtoShapesStillGenerate(run);
+            VerifyUnsupportedDtoDiagnostics(run);
+            VerifyWarningDtoDiagnostics(run);
+            VerifySharedDtoTypeRules(run);
+            VerifyPhase141DPolicyMatrix(run);
+            VerifyValidationWiringAndReleaseMetadata(run);
 
-            Console.WriteLine("Phase 141C: " + _passCount + " checks passed.\n");
+            Console.WriteLine("Phase 141C: " + run.PassCount + " checks passed.\n");
         }
 
-        private static void VerifyValidDtoShapesStillGenerate()
+        private static void VerifyValidDtoShapesStillGenerate(ValidationRun run)
         {
             var result = RunGenerator(ValidDtoFixtureSource());
             var diagnostics = result.Diagnostics
                 .Where(diagnostic => diagnostic.Id.StartsWith("FOXSERVICE", StringComparison.Ordinal))
                 .ToArray();
-            Check(diagnostics.Length == 1 && diagnostics[0].Id == "FOXSERVICE006",
+            run.Check(diagnostics.Length == 1 && diagnostics[0].Id == "FOXSERVICE006",
                 "141C-1: valid DTO fixture only reports default schema metadata warning");
 
             var generated = GeneratedFoxServiceSource(result);
-            Check(generated.Contains("new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor(\"/phase141c/valid\"", StringComparison.Ordinal),
+            run.Check(generated.Contains("new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor(\"/phase141c/valid\"", StringComparison.Ordinal),
                 "141C-2: valid DTO service still emits a descriptor");
-            Check(generated.Contains("requestToken.ToObject<global::Phase141C.ValidRequest>()", StringComparison.Ordinal),
+            run.Check(generated.Contains("requestToken.ToObject<global::Phase141C.ValidRequest>()", StringComparison.Ordinal),
                 "141C-3: valid DTO request still emits direct JToken deserialization");
-            Check(generated.Contains("var response = Valid(request);", StringComparison.Ordinal)
+            run.Check(generated.Contains("var response = Valid(request);", StringComparison.Ordinal)
                   && !generated.Contains("MethodInfo.Invoke", StringComparison.Ordinal),
                 "141C-4: valid DTO service still emits direct method invocation");
         }
 
-        private static void VerifyUnsupportedDtoDiagnostics()
+        private static void VerifyUnsupportedDtoDiagnostics(ValidationRun run)
         {
             var diagnostics = RunGenerator(InvalidDtoFixtureSource()).Diagnostics
                 .Where(diagnostic => diagnostic.Id.StartsWith("FOXSERVICE", StringComparison.Ordinal))
                 .ToArray();
 
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.transform", "UnityEngine.Transform"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.transform", "UnityEngine.Transform"),
                 "141C-5: request DTO rejects nested Unity Transform members with path");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE004", "Response.owner", "UnityEngine.MonoBehaviour"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE004", "Response.owner", "UnityEngine.MonoBehaviour"),
                 "141C-6: response DTO rejects nested MonoBehaviour members with path");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.callback", "System.Action"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.callback", "System.Action"),
                 "141C-7: request DTO rejects delegate members with path");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.payload", "object"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.payload", "object"),
                 "141C-8: request DTO rejects object members with path");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.lookup", "Dictionary<int"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.lookup", "Dictionary<int"),
                 "141C-9: request DTO rejects dictionaries with non-string keys");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE008", "Request.next.parent", "RecursiveNode"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE008", "Request.next.parent", "RecursiveNode"),
                 "141C-10: recursive DTO graphs report FOXSERVICE008 with nested path");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.inheritedObject", "UnityEngine.GameObject"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.inheritedObject", "UnityEngine.GameObject"),
                 "141C-10a: request DTO rejects inherited Unity object members with path");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.delayed", "Task<int>"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.delayed", "Task<int>"),
                 "141C-10b: request DTO rejects task-like members with path");
         }
 
-        private static void VerifyWarningDtoDiagnostics()
+        private static void VerifyWarningDtoDiagnostics(ValidationRun run)
         {
             var diagnostics = RunGenerator(WarningDtoFixtureSource()).Diagnostics
                 .Where(diagnostic => diagnostic.Id.StartsWith("FOXSERVICE", StringComparison.Ordinal))
                 .ToArray();
 
-            Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
+            run.Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
                                                 && diagnostic.GetMessage().Contains("Request.readOnly", StringComparison.Ordinal)),
                 "141C-11: get-only request properties produce FOXSERVICE007 warning");
-            Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
+            run.Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
                                                 && diagnostic.GetMessage().Contains("Request.ignored", StringComparison.Ordinal)),
                 "141C-12: ignored DTO members produce FOXSERVICE007 warning");
-            Check(diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error),
+            run.Check(diagnostics.All(diagnostic => diagnostic.Severity != DiagnosticSeverity.Error),
                 "141C-13: warning-only DTO fixture still emits no service-blocking errors");
         }
 
-        private static void VerifySharedDtoTypeRules()
+        private static void VerifySharedDtoTypeRules(ValidationRun run)
         {
-            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task"),
+            run.Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task"),
                 "141C-13a: shared DTO rules reject non-generic Task");
-            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task<System.Int32>"),
+            run.Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task<System.Int32>"),
                 "141C-13b: shared DTO rules reject Roslyn generic Task display names");
-            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task`1[[System.Int32, System.Private.CoreLib]]"),
+            run.Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsTaskLike("System.Threading.Tasks.Task`1[[System.Int32, System.Private.CoreLib]]"),
                 "141C-13c: shared DTO rules reject reflection generic Task display names");
         }
 
-        private static void VerifyPhase141DPolicyMatrix()
+        private static void VerifyPhase141DPolicyMatrix(ValidationRun run)
         {
             var diagnostics = RunGenerator(Phase141DPolicyMatrixFixtureSource()).Diagnostics
                 .Where(diagnostic => diagnostic.Id.StartsWith("FOXSERVICE", StringComparison.Ordinal))
                 .ToArray();
 
-            Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "hashSet", "HashSet"),
+            run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "hashSet", "HashSet"),
                 "141D-1: Roslyn accepts HashSet<T> request DTO members");
-            Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "collection", "ICollection"),
+            run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "collection", "ICollection"),
                 "141D-2: Roslyn accepts ICollection<T> request DTO members");
-            Check(!HasDiagnostic(diagnostics, "FOXSERVICE004", "readOnlyNumbers", "IReadOnlyCollection"),
+            run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE004", "readOnlyNumbers", "IReadOnlyCollection"),
                 "141D-3: Roslyn accepts IReadOnlyCollection<T> response DTO members");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.sequence", "IEnumerable"),
+            run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "queue", "Queue"),
+                "141D-3a: Roslyn accepts Queue<T> request DTO members");
+            run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE003", "stack", "Stack"),
+                "141D-3b: Roslyn accepts Stack<T> request DTO members");
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE003", "Request.sequence", "IEnumerable"),
                 "141D-4: Roslyn rejects interface-only IEnumerable<T> request DTO members");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readOnlyScalar", "string"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readOnlyScalar", "string"),
                 "141D-5: Roslyn warns for get-only scalar DTO properties");
-            Check(!HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.tags", "List"),
+            run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.tags", "List"),
                 "141D-6: Roslyn does not warn for get-only mutable collection DTO properties");
-            Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readonlyValue", "int"),
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readonlyValue", "int"),
                 "141D-7: Roslyn warns for public readonly DTO fields");
-            Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE009"
+            run.Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE009"
                                                 && diagnostic.GetMessage().Contains("Request.next", StringComparison.Ordinal)),
                 "141D-8: Roslyn reports deep non-recursive DTO graphs as FOXSERVICE009 warning");
 
@@ -133,27 +136,27 @@ namespace Unity.FoxgloveSDK.Tests
                 typeof(Phase141DReflectionAcceptedRequest),
                 Unity.FoxgloveSDK.Editor.FoxServiceDtoSide.Request,
                 "/phase141d/reflection-ok");
-            Check(reflectionOk.Count == 0,
+            run.Check(reflectionOk.Count == 0,
                 "141D-9: reflection validator accepts collection DTO matrix shapes");
 
             var reflectionBad = Unity.FoxgloveSDK.Editor.FoxServiceDtoReflectionValidator.Validate(
                 typeof(Phase141DReflectionRejectedRequest),
                 Unity.FoxgloveSDK.Editor.FoxServiceDtoSide.Request,
                 "/phase141d/reflection-bad");
-            Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE003"
+            run.Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE003"
                                                   && diagnostic.Path.Contains("sequence", StringComparison.Ordinal)),
                 "141D-10: reflection validator rejects interface-only IEnumerable<T> request members");
-            Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
+            run.Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
                                                   && diagnostic.Path.Contains("readOnlyScalar", StringComparison.Ordinal)),
                 "141D-11: reflection validator reports structured warning diagnostics");
-            Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract("System.Collections.Generic.List<T>")
+            run.Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract("System.Collections.Generic.List<T>")
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract(typeof(List<>).FullName)
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract("System.Collections.Generic.Dictionary<TKey, TValue>")
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract(typeof(Dictionary<,>).FullName),
                 "141D-11b: DTO type-name helpers accept Roslyn and reflection generic contract names");
         }
 
-        private static void VerifyValidationWiringAndReleaseMetadata()
+        private static void VerifyValidationWiringAndReleaseMetadata(ValidationRun run)
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
@@ -161,26 +164,26 @@ namespace Unity.FoxgloveSDK.Tests
             var generatorProject = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj");
             var playerValidator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunServiceValidator.cs");
 
-            Check(project.Contains("FoxServiceDtoSerializationAnalyzerValidation.cs", StringComparison.Ordinal),
+            run.Check(project.Contains("FoxServiceDtoSerializationAnalyzerValidation.cs", StringComparison.Ordinal),
                 "141C-14: runtime test project includes FoxService DTO validation");
-            Check(registry.Contains("--phase141c", StringComparison.Ordinal)
+            run.Check(registry.Contains("--phase141c", StringComparison.Ordinal)
                   && registry.Contains("FoxServiceDtoSerializationAnalyzerValidation.Validate", StringComparison.Ordinal),
                 "141C-15: validation registry wires --phase141c");
-            Check(releases.Contains("FOXSERVICE007", StringComparison.Ordinal)
+            run.Check(releases.Contains("FOXSERVICE007", StringComparison.Ordinal)
                   && releases.Contains("FOXSERVICE008", StringComparison.Ordinal),
                 "141C-16: analyzer release metadata lists DTO warning and cycle diagnostics");
-            Check(releases.Contains("FOXSERVICE009", StringComparison.Ordinal),
+            run.Check(releases.Contains("FOXSERVICE009", StringComparison.Ordinal),
                 "141D-12: analyzer release metadata lists DTO depth-limit diagnostic");
-            Check(generatorProject.Contains("FoxServiceDtoValidation", StringComparison.Ordinal),
+            run.Check(generatorProject.Contains("FoxServiceDtoValidation", StringComparison.Ordinal),
                 "141C-17: source generator project includes shared DTO validation helpers");
-            Check(playerValidator.Contains("ValidateServiceDtoType", StringComparison.Ordinal)
+            run.Check(playerValidator.Contains("ValidateServiceDtoType", StringComparison.Ordinal)
                   && playerValidator.Contains("FoxServiceDtoReflectionValidator.Validate", StringComparison.Ordinal),
                 "141C-18: Player fallback validates service DTOs before source emission");
-            Check(playerValidator.Contains("FoxServiceDtoReflectionValidator", StringComparison.Ordinal),
+            run.Check(playerValidator.Contains("FoxServiceDtoReflectionValidator", StringComparison.Ordinal),
                 "141D-13: Player fallback uses structured reflection DTO validator");
             var generatorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
             var reflectionValidator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxServiceDtoReflectionValidator.cs");
-            Check(generatorSource.Contains("validatedTypes", StringComparison.Ordinal)
+            run.Check(generatorSource.Contains("validatedTypes", StringComparison.Ordinal)
                   && reflectionValidator.Contains("validatedTypes", StringComparison.Ordinal),
                 "141C-19: DTO walkers memoize already validated type graphs");
         }
@@ -199,7 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static GeneratorDriverRunResult RunGenerator(string source)
         {
             var syntaxTree = CSharpSyntaxTree.ParseText(
-                source,
+                source + UnityScriptingStubSource(),
                 CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp9));
             var compilation = CSharpCompilation.Create(
                 "Phase141CFoxServiceDtoFixture",
@@ -210,7 +213,18 @@ namespace Unity.FoxgloveSDK.Tests
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 new ISourceGenerator[] { new FoxgloveLogSourceGenerator().AsSourceGenerator() },
                 parseOptions: CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp9));
-            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out var generatorDiagnostics);
+            var errors = outputCompilation.GetDiagnostics()
+                .Concat(generatorDiagnostics)
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error
+                                     && !diagnostic.Id.StartsWith("FOXSERVICE", StringComparison.Ordinal))
+                .ToArray();
+            if (errors.Length != 0)
+            {
+                var formatted = string.Join(Environment.NewLine, errors.Select(diagnostic => diagnostic.ToString()));
+                throw new InvalidOperationException("Phase141C fixture compilation or generator errors:" + Environment.NewLine + formatted);
+            }
+
             return driver.GetRunResult();
         }
 
@@ -243,6 +257,14 @@ namespace Unity.FoxgloveSDK.Tests
                 })
                 .ToArray();
         }
+
+        private static string UnityScriptingStubSource()
+            => @"
+namespace UnityEngine.Scripting
+{
+    public sealed class PreserveAttribute : System.Attribute {}
+}
+";
 
         private static string ValidDtoFixtureSource()
             => @"
@@ -533,13 +555,18 @@ namespace Phase141C
 }
 ";
 
-        private static void Check(bool condition, string label)
+        private sealed class ValidationRun
         {
-            if (!condition)
-                throw new InvalidOperationException("[FAIL] " + label);
+            public int PassCount { get; private set; }
 
-            Console.WriteLine("[PASS] " + label);
-            _passCount++;
+            public void Check(bool condition, string label)
+            {
+                if (!condition)
+                    throw new InvalidOperationException("[FAIL] " + label);
+
+                Console.WriteLine("[PASS] " + label);
+                PassCount++;
+            }
         }
 
         private sealed class Phase141DReflectionAcceptedRequest
@@ -561,11 +588,6 @@ namespace Phase141C
             => File.ReadAllText(RepoPath(relativePath));
 
         private static string RepoPath(string relativePath)
-        {
-            var root = Phase16Validation.FindRepoRoot();
-            if (string.IsNullOrEmpty(root))
-                throw new DirectoryNotFoundException("Could not find repository root for Phase141C validation.");
-            return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-        }
+            => PhaseValidationSourceHelpers.RepoPath(relativePath);
     }
 }
