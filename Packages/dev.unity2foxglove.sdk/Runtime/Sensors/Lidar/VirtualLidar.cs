@@ -203,7 +203,7 @@ namespace Unity.FoxgloveSDK.Components
         private LidarScanBoundaryHandler _onScanBoundary;
         private VirtualLidarScanScheduler _scanScheduler;
 
-        private static readonly ProfilerMarker UpdateMarker = new ProfilerMarker("VirtualLidar.Update");
+        private static readonly ProfilerMarker FixedUpdateMarker = new ProfilerMarker("VirtualLidar.FixedUpdate");
 
         // Stream state.
         private bool _hasPrevPose;
@@ -214,7 +214,6 @@ namespace Unity.FoxgloveSDK.Components
         private VirtualLidarPointData[] _activeScanPointSnapshot;
         private int _activeScanPointSnapshotCount;
         private int _activeScanValidPoints;
-        private double _activeScanStartPhysSeconds;
         private float4x4 _activeScanWorldToLocal;
 
         private VirtualLidarScanScheduler ScanScheduler => _scanScheduler ??= new VirtualLidarScanScheduler(this);
@@ -321,7 +320,8 @@ namespace Unity.FoxgloveSDK.Components
         private void OnEnable()
         {
             AllocateScanBuffers();
-            ResetScanState(Time.fixedTimeAsDouble);
+            if (_scanPattern != null)
+                ResetScanState(Time.fixedTimeAsDouble);
         }
 
         private void OnDisable()
@@ -364,7 +364,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void FixedUpdate()
         {
-            using (UpdateMarker.Auto())
+            using (FixedUpdateMarker.Auto())
             {
                 if (_scanPattern == null || !_scanBuffers.IsCreated || _scanBuffers.EffectiveRayCount <= 0)
                     return;
@@ -419,8 +419,9 @@ namespace Unity.FoxgloveSDK.Components
                 // Keep one scheduled batch inside the current revolution. A completed scan has
                 // one reference pose; crossing into the next revolution inside the same build job
                 // would mix two scan frames through one world-to-local matrix.
+                Debug.Assert(_scanColumnCursor >= 0 && _scanColumnCursor < _scanBuffers.ScanColumnCount);
                 var remainingColumns = _scanBuffers.ScanColumnCount - _scanColumnCursor;
-                if (remainingColumns <= 0 || remainingColumns > _scanBuffers.ScanColumnCount)
+                if (remainingColumns <= 0)
                     remainingColumns = _scanBuffers.ScanColumnCount;
 
                 var columnsToEmit = Math.Min((int)Math.Floor(_scanColumnProgress),
@@ -500,7 +501,6 @@ namespace Unity.FoxgloveSDK.Components
             // Note: scan phase (_scanColumnProgress/_scanColumnCursor) is owned by FixedUpdate
             // and ResetScanState; StartNewScan must not clear it or a cross-revolution restart
             // would drop the in-tick remainder.
-            _activeScanStartPhysSeconds = scanStartPhysSeconds;
             _activeScanWorldToLocal = CoordinateConverterFloat3.RigidWorldToLocal(transform.position, transform.rotation);
             _activeScanFrame = new PointCloudFrame
             {

@@ -83,6 +83,127 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.builder.patch_ros2_for_unity(package)
 
+    def test_require_inputs_rejects_mismatched_artifact_size(self) -> None:
+        """Reject inventory files whose optional artifact size disagrees."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            artifact = root / self.builder.ARTIFACT_NAME
+            artifact.write_bytes(b"abc")
+            inventory = root / "inventory.json"
+            inventory.write_text(
+                '{"runtimeId": "r2fu-lyrical-win64", "sha256": "'
+                + self.builder.sha256_file(artifact)
+                + '", "artifactSize": 99, "fileCount": 1}',
+                encoding="utf-8",
+            )
+            license_file = root / "LICENSE.AL2"
+
+            paths = self.builder.BuildPaths(artifact, inventory, root / "package")
+            with mock.patch.object(self.builder, "UPSTREAM_LICENSE", license_file):
+                license_file.write_text("license", encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    self.builder.require_inputs(paths)
+
+    def test_require_inputs_names_missing_upstream_license(self) -> None:
+        """Report the missing upstream package license before generation starts."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            artifact = root / self.builder.ARTIFACT_NAME
+            artifact.write_bytes(b"abc")
+            inventory = root / "inventory.json"
+            inventory.write_text(
+                '{"runtimeId": "r2fu-lyrical-win64", "sha256": "'
+                + self.builder.sha256_file(artifact)
+                + '", "artifactSize": 3, "fileCount": 1}',
+                encoding="utf-8",
+            )
+
+            paths = self.builder.BuildPaths(artifact, inventory, root / "package")
+            with mock.patch.object(self.builder, "UPSTREAM_LICENSE", root / "missing" / "LICENSE.AL2"):
+                with self.assertRaisesRegex(FileNotFoundError, "Missing upstream ROS2 For Unity license"):
+                    self.builder.require_inputs(paths)
+
+    def test_patch_rmw_guard_replaces_multiline_validate_body(self) -> None:
+        """RMW guard replacement handles an upstream multiline validation body."""
+        source = (
+            "    private static ConsoleCancelEventHandler consoleCancelHandler;\n"
+            "    private static void ValidateRmwImplementation(string rmwImpl)\n"
+            "    {\n"
+            "        if (string.IsNullOrEmpty(rmwImpl))\n"
+            "        {\n"
+            "            return;\n"
+            "        }\n"
+            "    }\n\n"
+            "    private static bool IsSupportedRmwImplementation(string rmwImpl)\n"
+            "    {\n"
+            "        return rmwImpl == \"rmw_fastrtps_cpp\";\n"
+            "    }\n\n"
+            "    private void Init()\n"
+            "    {\n"
+            "            string rmwImpl = Ros2cs.GetRMWImplementation();\n"
+            "    }\n\n"
+            "    private void RegisterCtrlCHandler()\n"
+            "    {\n"
+            "    }\n"
+        )
+
+        patched = self.builder.patch_rmw_guard(source)
+
+        self.assertIn("ValidateRmwImplementation(rmwImpl);", patched)
+        self.assertIn("supportedRmwImplementations", patched)
+        self.assertNotIn("return rmwImpl == \"rmw_fastrtps_cpp\";", patched)
+
+    def test_standalone_isolation_rejects_partial_startup_patch(self) -> None:
+        """Do not accept a source that declares metadata without standalone setup calls."""
+        source = (
+            "    public void CheckIntegrity()\n"
+            "    {\n"
+            "        string ros2SourcedCodename = GetROSVersionSourced();\n"
+            "    }\n"
+            "    private void Start()\n"
+            "    {\n"
+            "            // Load metadata\n"
+            "            LoadMetadata();\n"
+            "            string packagedRos2Version = GetMetadataValue(ros2csMetadata, \"/ros2cs/ros2\");\n"
+            "            string standalone = IsStandalone() ? \"standalone\" : \"non-standalone\";\n"
+            "            CheckIntegrity();\n"
+            "                if (IsStandalone())\n"
+            "    }\n"
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing required setup calls"):
+            self.builder.patch_standalone_environment_isolation(source)
+
+    def test_patch_ros_time_source_contract_updates_dotnet_copyright(self) -> None:
+        """Patch DotnetTimeSource copyright alongside bool-returning time contracts."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            time_dir = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Time"
+            time_dir.mkdir(parents=True)
+            (time_dir / "DotnetTimeSource.cs").write_text(
+                "// Modifications Copyright (c) 2026 Jianbin Liu.\n",
+                encoding="utf-8",
+            )
+            for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
+                (time_dir / name).write_text(
+                    "  public bool GetTime(out int seconds, out uint nanoseconds)\n"
+                    "  {\n"
+                    "    // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.\n"
+                    "    seconds = 0;\n"
+                    "    nanoseconds = 0;\n"
+                    "    if (seconds == 0) return false;\n"
+                    "    return true;\n"
+                    "  }\n",
+                    encoding="utf-8",
+                )
+
+            self.builder.patch_ros_time_source_contract(package)
+
+            self.assertIn(
+                "Unity2Foxglove contributors",
+                (time_dir / "DotnetTimeSource.cs").read_text(encoding="utf-8"),
+            )
+
     def test_build_package_restores_existing_package_when_generation_fails(self) -> None:
         """A failed regeneration should not leave the package directory destroyed."""
         with tempfile.TemporaryDirectory() as temp:
