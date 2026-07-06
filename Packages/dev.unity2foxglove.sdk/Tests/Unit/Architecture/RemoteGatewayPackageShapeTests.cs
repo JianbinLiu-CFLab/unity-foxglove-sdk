@@ -78,6 +78,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("cargo build --target-dir Packages", script, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void CloudAcceptanceHelperBuildsNativeAndLaunchesUnityWithInheritedToken()
+        {
+            var script = Text("Scripts/remotegateway/run_cloud_acceptance.py");
+            Assert.Contains("FOXGLOVE_DEVICE_TOKEN", script, StringComparison.Ordinal);
+            Assert.Contains("build_foxglove_c_win64.py", script, StringComparison.Ordinal);
+            Assert.Contains("--copy-to-package", script, StringComparison.Ordinal);
+            Assert.Contains("-projectPath", script, StringComparison.Ordinal);
+            Assert.Contains("Unity.exe", script, StringComparison.Ordinal);
+            Assert.Contains("Remote gateway started. Publishing to Foxglove Cloud.", script, StringComparison.Ordinal);
+            Assert.Contains("ClientPublish", script, StringComparison.Ordinal);
+            Assert.Contains("subprocess.Popen", script, StringComparison.Ordinal);
+            Assert.DoesNotContain("--device-token", script, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("DeviceToken", script, StringComparison.Ordinal);
+        }
+
         private static string Text(string relativePath)
             => File.ReadAllText(PathOf(relativePath));
 
