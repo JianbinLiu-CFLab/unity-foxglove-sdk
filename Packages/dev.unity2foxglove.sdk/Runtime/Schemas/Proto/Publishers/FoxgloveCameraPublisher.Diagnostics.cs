@@ -92,6 +92,34 @@ namespace Unity.FoxgloveSDK.Components
             return _cachedMaxCaptureIntervalNs;
         }
 
+        private bool AllowCameraCaptureByHealthPolicy(CameraVideoOutputProfile profile)
+        {
+            EnsureJpegPublishPipeline();
+            if (profile.IsVideo)
+                EnsureVideoPublishPipeline();
+
+            var result = CameraPipelineHealthPolicy.Evaluate(new CameraPipelineHealthInput
+            {
+                Mode = _cameraHealthMode,
+                PendingReadbacks = _pendingRequests,
+                MaxPendingReadbacks = Math.Max(1, _maxPendingReadbacks),
+                EncodeQueueDepth = profile.IsVideo ? 0 : _jpegPublishPipeline.EncodeQueueDepth,
+                MaxEncodeQueueDepth = profile.IsVideo ? 1 : _maxJpegEncodeQueue,
+                CompletedQueueDepth = profile.IsVideo ? 0 : _jpegPublishPipeline.CompletedQueueDepth,
+                MaxCompletedQueueDepth = profile.IsVideo ? 1 : _maxCompletedJpegQueue,
+                VideoOutputQueueDepth = profile.IsVideo ? _videoPublishPipeline.OutputQueueDepth : 0,
+                MaxVideoOutputQueueDepth = profile.IsVideo ? _videoPublishPipeline.MaxOutputQueue : 1,
+                Width = _width,
+                Height = _height,
+                MaxPixelsPerFrame = _maxPixelsPerFrame,
+                RenderPressureCooldownActive = PipelineCooldownActive()
+            });
+            if (result.AllowCapture)
+                return true;
+
+            _diagnostics.RecordHealthSkip(result.SkipReason);
+            return false;
+        }
 
         /// <summary>
         /// Optional transport-drop cooldown for legacy behavior; the 138J path relies on

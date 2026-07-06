@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Components
     [RequireComponent(typeof(Camera))]
     public partial class FoxgloveCameraPublisher : FoxglovePublisherBase
     {
-        private const float DefaultMaxCaptureRateHz = 6f;
+        private const float DefaultMaxCaptureRateHz = 10f;
 
         [Header("Camera Output")]
         [SerializeField] private CameraOutputMode _outputMode = CameraOutputMode.Jpeg;
@@ -44,6 +44,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _maxPendingReadbacks = 1;
         [Tooltip("Maximum source capture/render rate for heavy camera visualization. Use 0 to capture every eligible publisher tick.")]
         [SerializeField, Min(0f)] private float _maxCaptureRateHz = DefaultMaxCaptureRateHz;
+        [SerializeField] private CameraPipelineHealthMode _cameraHealthMode = CameraPipelineHealthMode.Balanced;
 
         [Header("Async JPEG")]
         [Tooltip("Encode JPEG camera frames on a background worker using Unity-free buffers.")]
@@ -267,6 +268,11 @@ namespace Unity.FoxgloveSDK.Components
                 EmitCameraDiagnosticsIfNeeded();
                 return;
             }
+            if (!AllowCameraCaptureByHealthPolicy(profile))
+            {
+                EmitCameraDiagnosticsIfNeeded();
+                return;
+            }
 
             EnsureCaptureResources();
             var pendingBeforeSchedule = _pendingRequests;
@@ -308,7 +314,6 @@ namespace Unity.FoxgloveSDK.Components
         private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
-            RecordPipelineCooldownIfNeeded(readbackLatencyMs);
             try
             {
                 // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.

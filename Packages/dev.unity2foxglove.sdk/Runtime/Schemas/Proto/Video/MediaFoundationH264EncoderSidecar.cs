@@ -61,6 +61,8 @@ namespace Foxglove.Schemas.Video
         private bool _comInitialized;
 
         public bool IsRunning { get; private set; }
+        public int OutputQueueDepth => Volatile.Read(ref _outputCount);
+        public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
         public string LastDiagnosticLine { get; private set; }
         public string LastError { get; private set; }
 
@@ -603,8 +605,11 @@ namespace Foxglove.Schemas.Video
 
             lock (_outputLock)
             {
-                while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
-                    _outputCount--;
+                if (_outputCount >= _maxOutputQueue)
+                {
+                    LastDiagnosticLine = "Media Foundation H.264 output queue full; capture admission is holding new frames.";
+                    return;
+                }
 
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
                 _outputCount++;
