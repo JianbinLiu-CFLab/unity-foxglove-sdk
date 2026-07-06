@@ -124,6 +124,94 @@ class VersionBump:
             raise ValueError(f"Expected one version property in {self.rel(path)}")
         self.write_if_changed(path, updated, f"set package version {old_version} -> {self.version}")
 
+    def update_adapter_dependency(self) -> None:
+        """Update the optional ROS2 adapter dependency on the core SDK package."""
+        path = self.root / "Packages/dev.unity2foxglove.ros2forunity/package.json"
+        text = self.read(path)
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r'("dev\.unity2foxglove\.sdk"\s*:\s*")(\d+\.\d+\.\d+)(")',
+            rf"\g<1>{self.version}\g<3>",
+            "ROS2 adapter SDK dependency version",
+        )
+        self.write_if_changed(path, text, f"update ROS2 adapter SDK dependency to {self.version}")
+
+    def update_phase16_assertions(self) -> None:
+        """Update release metadata assertions used by the runtime package validator."""
+        path = self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs"
+        text = self.read(path)
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r'(\\\"dev\.unity2foxglove\.sdk\\\": \\\")(\d+\.\d+\.\d+)(\\\")',
+            rf"\g<1>{self.version}\g<3>",
+            "Phase16 ROS2 adapter dependency assertion",
+        )
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r'(version: \\\")(\d+\.\d+\.\d+)(\\\")',
+            rf"\g<1>{self.version}\g<3>",
+            "Phase16 CITATION version assertion",
+        )
+        text = self.sub_exactly_once(
+            path,
+            text,
+            r'(date-released: \\\")(\d{4}-\d{2}-\d{2})(\\\")',
+            rf"\g<1>{self.release_date}\g<3>",
+            "Phase16 CITATION release date assertion",
+        )
+        self.write_if_changed(path, text, f"update Phase16 release assertions to {self.version}")
+
+    def update_core_sdk_dependency_assertions(self) -> None:
+        """Update validation anchors that assert the adapter's SDK dependency."""
+        bracket_assertion_paths = [
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs",
+            self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase108Validation.cs",
+        ]
+        for path in bracket_assertion_paths:
+            text = self.read(path)
+            text = self.sub_exactly_once(
+                path,
+                text,
+                r'(\["dev\.unity2foxglove\.sdk"\]\s*==\s*")(\d+\.\d+\.\d+)(")',
+                rf"\g<1>{self.version}\g<3>",
+                "core SDK dependency assertion",
+            )
+            self.write_if_changed(path, text, f"update core SDK dependency assertion to {self.version}")
+
+        escaped_literal_path = self.root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_29Validation.cs"
+        text = self.read(escaped_literal_path)
+        text = self.sub_exactly_once(
+            escaped_literal_path,
+            text,
+            r'(\\\"dev\.unity2foxglove\.sdk\\\": \\\")(\d+\.\d+\.\d+)(\\\")',
+            rf"\g<1>{self.version}\g<3>",
+            "escaped core SDK dependency literal assertion",
+        )
+        self.write_if_changed(
+            escaped_literal_path,
+            text,
+            f"update escaped core SDK dependency literal to {self.version}",
+        )
+
+        literal_assertion_paths = [
+            self.root / "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+            self.root / "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+            self.root / "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py",
+        ]
+        for path in literal_assertion_paths:
+            text = self.read(path)
+            text = self.sub_exactly_once(
+                path,
+                text,
+                r'("dev\.unity2foxglove\.sdk": ")(\d+\.\d+\.\d+)(")',
+                rf"\g<1>{self.version}\g<3>",
+                "core SDK dependency literal assertion",
+            )
+            self.write_if_changed(path, text, f"update core SDK dependency literal to {self.version}")
+
     # Maximum number of old release-note links kept in README.
     KEEP_RELEASE_NOTES = 2
 
@@ -267,6 +355,9 @@ class VersionBump:
         package_json_text = self.read(package_json)
         old_version = self.package_version(package_json_text, package_json)
         self.replace_version_property(old_version, package_json_text, package_json)
+        self.update_adapter_dependency()
+        self.update_phase16_assertions()
+        self.update_core_sdk_dependency_assertions()
         self.update_readme(old_version)
         self.update_package_readme(old_version)
         self.update_citation()

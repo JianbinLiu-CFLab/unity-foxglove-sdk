@@ -6,7 +6,7 @@
   "description": "Optional ROS2 For Unity adapter package for Unity2Foxglove. Provides facade, source-only adapter sample, docs, and diagnostics while runtime binaries live in separate runtime packages and release artifacts.",
   "unity": "6000.0",
   "dependencies": {
-    "dev.unity2foxglove.sdk": "1.9.5"
+    "dev.unity2foxglove.sdk": "1.9.6"
   },
   "samples": [
     {

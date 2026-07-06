@@ -77,23 +77,111 @@ class VersionBumpTests(unittest.TestCase):
             self.assertIn("- [Release notes archive](docs/releases/)", text)
             self.assertIn("footer", text)
 
-    def test_phase16_assertion_update_replaces_exactly_one_occurrence(self) -> None:
-        """Multiple Phase16 version assertion hits should fail loudly."""
+    def test_replace_version_property_updates_package_json(self) -> None:
+        """The package.json version property should be synchronized."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "Packages/dev.unity2foxglove.sdk/package.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                '{\n'
+                '  "name": "dev.unity2foxglove.sdk",\n'
+                '  "version": "1.2.3"\n'
+                '}\n',
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
+            bump.replace_version_property("1.2.3", path.read_text(encoding="utf-8"), path)
+
+            text = path.read_text(encoding="utf-8")
+            self.assertIn('"version": "9.9.9"', text)
+            self.assertNotIn('"version": "1.2.3"', text)
+
+    def test_update_adapter_dependency_syncs_core_sdk_version(self) -> None:
+        """The optional ROS2 adapter should depend on the released SDK version."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "Packages/dev.unity2foxglove.ros2forunity/package.json"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                '{\n'
+                '  "dependencies": {\n'
+                '    "dev.unity2foxglove.sdk": "1.2.3"\n'
+                '  }\n'
+                '}\n',
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
+            bump.update_adapter_dependency()
+
+            text = path.read_text(encoding="utf-8")
+            self.assertIn('"dev.unity2foxglove.sdk": "9.9.9"', text)
+            self.assertNotIn('"dev.unity2foxglove.sdk": "1.2.3"', text)
+
+    def test_update_phase16_assertions_syncs_release_metadata(self) -> None:
+        """Runtime release metadata assertions should move with each release."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             path = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase16Validation.cs"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
-                '"\\"version\\": \\"1.2.3\\"" and duplicate "\\"version\\": \\"0.0.1\\""\n'
-                "package.json version is 1.2.3\n"
-                "comment package.json version is 0.0.1\n",
+                'Assert(adapterPackageJson.Contains("\\"dev.unity2foxglove.sdk\\": \\"1.2.3\\""));\n'
+                'Assert(citation.Contains("version: \\"1.2.3\\"")\n'
+                '       && citation.Contains("date-released: \\"2026-01-02\\""));\n',
                 encoding="utf-8",
             )
 
             bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
+            bump.update_phase16_assertions()
 
-            with self.assertRaises(ValueError):
-                bump.update_phase16_assertion()
+            text = path.read_text(encoding="utf-8")
+            self.assertIn('\\"dev.unity2foxglove.sdk\\": \\"9.9.9\\"', text)
+            self.assertIn('version: \\"9.9.9\\"', text)
+            self.assertIn('date-released: \\"2026-06-08\\"', text)
+            self.assertNotIn("1.2.3", text)
+            self.assertNotIn("2026-01-02", text)
+
+    def test_update_core_sdk_dependency_assertions_syncs_validators(self) -> None:
+        """Runtime and script validators should assert the released SDK version."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bracket_paths = [
+                root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs",
+                root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase108Validation.cs",
+            ]
+            escaped_literal_path = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_29Validation.cs"
+            literal_paths = [
+                root / "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py",
+                root / "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py",
+                root / "Scripts/ros2forunity/windows/lyrical/validate_ros2forunity_package.py",
+            ]
+            for path in bracket_paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    'dependencies["dev.unity2foxglove.sdk"] == "1.2.3"\n',
+                    encoding="utf-8",
+                )
+            escaped_literal_path.parent.mkdir(parents=True, exist_ok=True)
+            escaped_literal_path.write_text(
+                'Check(packageJson.Contains("\\"dev.unity2foxglove.sdk\\": \\"1.2.3\\""));\n',
+                encoding="utf-8",
+            )
+            for path in literal_paths:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    'dependencies == {"dev.unity2foxglove.sdk": "1.2.3"}\n',
+                    encoding="utf-8",
+                )
+
+            bump = self.bump_module.VersionBump(root, "9.9.9", "2026-06-08", False)
+            bump.update_core_sdk_dependency_assertions()
+
+            for path in [*bracket_paths, escaped_literal_path, *literal_paths]:
+                text = path.read_text(encoding="utf-8")
+                self.assertIn("9.9.9", text)
+                self.assertNotIn("1.2.3", text)
 
     def test_update_changelog_inserts_at_version_heading_not_first_rule(self) -> None:
         """Horizontal rules before version history must not receive new entries."""
@@ -192,12 +280,13 @@ class RunCiTests(unittest.TestCase):
         """Local CI should not depend on a bare python command existing."""
         calls: list[list[str]] = []
 
-        def fake_run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
+        def fake_run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
             """Capture CI subprocess commands without executing them."""
-            calls.append(cmd)
-            return True
+            for _label, cmd in commands:
+                calls.append(cmd)
+            return {label: True for label, _cmd in commands}
 
-        with mock.patch.object(self.run_ci, "run", side_effect=fake_run):
+        with mock.patch.object(self.run_ci, "run_parallel", side_effect=fake_run_parallel):
             with mock.patch.object(sys, "argv", ["run_ci.py", "--only", "packages"]):
                 self.assertEqual(0, self.run_ci.main())
 

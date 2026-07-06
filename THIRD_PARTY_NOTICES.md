@@ -343,6 +343,21 @@ limitations under the License.
 
 ---
 
+## Ouster SDK
+
+- **URL**: https://github.com/ouster-lidar/ouster-sdk
+- **License**: BSD-3-Clause
+- **Usage**: Ouster's public SDK and driver architecture informed the Phase167
+  and later driver-style sensor pipeline design, especially source-side
+  admission, bounded pipeline stages, scan/frame handoff boundaries, and
+  diagnostic pressure reporting for high-volume LiDAR and camera data.
+- **Distribution**: Unity2Foxglove does not bundle, vendor, copy, translate, or
+  link Ouster SDK source code, binaries, schemas, packet formats, or sensor
+  protocol implementations. This notice records design reference and
+  attribution only.
+
+---
+
 ## Newtonsoft.Json
 
 - **URL**: https://github.com/JamesNK/Newtonsoft.Json
