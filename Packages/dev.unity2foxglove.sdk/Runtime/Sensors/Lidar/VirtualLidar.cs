@@ -203,12 +203,13 @@ namespace Unity.FoxgloveSDK.Components
         private LidarScanBoundaryHandler _onScanBoundary;
         private VirtualLidarScanScheduler _scanScheduler;
 
-        private static readonly ProfilerMarker FixedUpdateMarker = new ProfilerMarker("VirtualLidar.FixedUpdate");
+        private static readonly ProfilerMarker FixedUpdateMarker = new ProfilerMarker("VirtualLidar.Update");
 
         // Stream state.
         private bool _hasPrevPose;
         private double _prevFixedTime;
         private double _scanColumnProgress;
+        private double _activeScanStartPhysSeconds;
         private int _scanColumnCursor;
         private PointCloudFrame _activeScanFrame;
         private VirtualLidarPointData[] _activeScanPointSnapshot;
@@ -501,10 +502,11 @@ namespace Unity.FoxgloveSDK.Components
             // Note: scan phase (_scanColumnProgress/_scanColumnCursor) is owned by FixedUpdate
             // and ResetScanState; StartNewScan must not clear it or a cross-revolution restart
             // would drop the in-tick remainder.
+            _activeScanStartPhysSeconds = scanStartPhysSeconds;
             _activeScanWorldToLocal = CoordinateConverterFloat3.RigidWorldToLocal(transform.position, transform.rotation);
             _activeScanFrame = new PointCloudFrame
             {
-                UnixNs = _scanClock.GetScanStartUnixNs(scanStartPhysSeconds),
+                UnixNs = _scanClock.GetScanStartUnixNs(_activeScanStartPhysSeconds),
                 FrameId = _frameId,
                 ValidCount = 0,
                 // SLAM front-ends (FAST-LIO/LIVO2) consume the Ouster-style absolute-ns `t`.
