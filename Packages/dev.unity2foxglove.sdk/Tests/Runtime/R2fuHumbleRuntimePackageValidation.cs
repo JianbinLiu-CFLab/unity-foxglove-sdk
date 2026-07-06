@@ -45,6 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             RuntimePackageShapeIsPresent();
             RuntimePackageContainsHumbleDependencyFloor();
+            RuntimePackageRecordsPluginImportAndManifestHealth();
             HumbleScriptsAreDistroSpecific();
             AdapterManifestRecordsHumbleRuntime();
             SelectorDiscoversHumbleByConvention();
@@ -78,6 +79,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && manifest.Contains("\"supportLevel\": \"Recommended\"", StringComparison.Ordinal)
                   && manifest.Contains("\"artifactSha256\": \"" + ExpectedSha + "\"", StringComparison.Ordinal),
                 "160-A6: runtime manifest records Humble identity, FastRTPS RMW, and pinned artifact hash");
+
+            var pluginMetadata = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/metadata_ros2cs.xml");
+            var nativeMetadata = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/metadata_ros2cs.xml");
+            Check(pluginMetadata.Contains("<ros2>humble</ros2>", StringComparison.Ordinal)
+                  && pluginMetadata.Contains("<desc>v0.6.0-humble-preview.1-51-gb77c088</desc>", StringComparison.Ordinal)
+                  && nativeMetadata.Contains("<ros2>humble</ros2>", StringComparison.Ordinal)
+                  && nativeMetadata.Contains("<desc>v0.6.0-humble-preview.1-51-gb77c088</desc>", StringComparison.Ordinal),
+                "160-A6b: Humble ros2cs metadata distro and description agree");
+            Check(pluginMetadata.Contains("<plugins root=\".\"", StringComparison.Ordinal)
+                  && nativeMetadata.Contains("<plugins root=\".\"", StringComparison.Ordinal)
+                  && !pluginMetadata.Contains("D:\\", StringComparison.Ordinal)
+                  && !nativeMetadata.Contains("D:\\", StringComparison.Ordinal),
+                "160-A6c: Humble ros2cs metadata does not ship build-machine plugin roots");
+            Check(NativeDllExists("dds_security_auth.dll")
+                  && RepoFileExists(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/dds_security_auth.dll.meta"),
+                "160-A6d: Humble DDS security auth plugin has Unity meta coverage");
 
             var runtimeSource = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
             var componentSource = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
@@ -139,6 +156,36 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!NativeDllExists("rmw_zenoh_cpp.dll"),
                 "160-B-zenoh: Humble runtime remains FastRTPS-only");
+        }
+
+        private static void RuntimePackageRecordsPluginImportAndManifestHealth()
+        {
+            var nativePluginRoot = RepoPath(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64");
+            var dllMetas = Directory.GetFiles(nativePluginRoot, "*.dll.meta", SearchOption.TopDirectoryOnly);
+            Check(dllMetas.Length > 900,
+                "160-B-plugin-count: Humble Win64 native DLL metas are present");
+
+            var invalidImporterMetas = dllMetas
+                .Where(path =>
+                {
+                    var meta = File.ReadAllText(path);
+                    return !meta.Contains("PluginImporter:", StringComparison.Ordinal)
+                           || meta.Contains("TextScriptImporter:", StringComparison.Ordinal)
+                           || !meta.Contains("CPU: x86_64", StringComparison.Ordinal)
+                           || !meta.Contains("OS: Windows", StringComparison.Ordinal)
+                           || !meta.Contains("Standalone: Windows", StringComparison.Ordinal);
+                })
+                .Select(Path.GetFileName)
+                .ToArray();
+            Check(invalidImporterMetas.Length == 0,
+                "160-B-plugin-importers: Humble Win64 native DLL metas import as Windows x86_64 plugins");
+
+            var xmlWithAbsoluteWindowsPaths = Directory.GetFiles(RepoPath(RuntimePackage), "*.xml", SearchOption.AllDirectories)
+                .Where(path => File.ReadAllText(path).Contains("D:\\", StringComparison.Ordinal))
+                .Select(path => path.Substring(RepoPath(RuntimePackage).Length + 1))
+                .ToArray();
+            Check(xmlWithAbsoluteWindowsPaths.Length == 0,
+                "160-B-metadata-paths: Humble runtime XML metadata does not expose build-machine Windows paths");
         }
 
         private static void HumbleScriptsAreDistroSpecific()
@@ -278,7 +325,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText(RegistryPath);
             var project = ReadRepoText(ProjectPath);
 
-            Check(registry.Contains("Ci(\"--phase160\", \"Phase 160\", R2fuHumbleRuntimePackageValidation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase160\"", StringComparison.Ordinal)
+                  && registry.Contains("R2fuHumbleRuntimePackageValidation.Validate", StringComparison.Ordinal),
                 "160-H1: validation registry wires --phase160");
             Check(project.Contains("R2fuHumbleRuntimePackageValidation.cs", StringComparison.Ordinal),
                 "160-H2: runtime validation project compiles the 160 validation");

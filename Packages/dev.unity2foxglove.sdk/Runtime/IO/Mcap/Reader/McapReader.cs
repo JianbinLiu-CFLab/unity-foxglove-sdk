@@ -55,20 +55,19 @@ namespace Unity.FoxgloveSDK.IO
             if (_stream.Length < minFileBytes)
                 throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
 
-            // Verify leading magic
-            var magic = _buf;
-            ReadExact(magic, 0, 8);
+            // Verify leading magic.
+            ReadExact(_buf, 0, _buf.Length);
             var expectedMagic = McapWriter.MagicSpan;
             for (var i = 0; i < expectedMagic.Length; i++)
-                if (magic[i] != expectedMagic[i])
+                if (_buf[i] != expectedMagic[i])
                     throw new InvalidDataException("MCAP leading magic mismatch");
 
             // Verify trailing magic before trusting footer offsets.
             _stream.Seek(-8, SeekOrigin.End);
-            var trailingMagic = _buf;
-            ReadExact(trailingMagic, 0, 8);
+            // _buf is reused; leading magic was already validated above.
+            ReadExact(_buf, 0, _buf.Length);
             for (var i = 0; i < expectedMagic.Length; i++)
-                if (trailingMagic[i] != expectedMagic[i])
+                if (_buf[i] != expectedMagic[i])
                     throw new InvalidDataException("MCAP trailing magic mismatch");
 
             // Read Footer before trailing magic.
@@ -130,19 +129,18 @@ namespace Unity.FoxgloveSDK.IO
             if (_stream.Length < minFileBytes)
                 throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
 
-            var magic = _buf;
             _stream.Seek(0, SeekOrigin.Begin);
-            ReadExact(magic, 0, magic.Length);
+            ReadExact(_buf, 0, _buf.Length);
             var expectedMagic = McapWriter.MagicSpan;
             for (var i = 0; i < expectedMagic.Length; i++)
-                if (magic[i] != expectedMagic[i])
+                if (_buf[i] != expectedMagic[i])
                     throw new InvalidDataException("MCAP leading magic mismatch");
 
             _stream.Seek(-McapWriter.MagicLength, SeekOrigin.End);
-            var trailingMagic = _buf;
-            ReadExact(trailingMagic, 0, trailingMagic.Length);
+            // _buf is reused; leading magic was already validated above.
+            ReadExact(_buf, 0, _buf.Length);
             for (var i = 0; i < expectedMagic.Length; i++)
-                if (trailingMagic[i] != expectedMagic[i])
+                if (_buf[i] != expectedMagic[i])
                     throw new InvalidDataException("MCAP trailing magic mismatch");
 
             var footerOffset = (ulong)_stream.Length
@@ -165,11 +163,12 @@ namespace Unity.FoxgloveSDK.IO
                 (footer.SummaryOffsetStart < footer.SummaryStart || footer.SummaryOffsetStart > footerOffset))
                 throw new InvalidDataException("Footer summary_offset_start is outside the summary section bounds");
 
+            var summaryBytes = ReadSummaryBytes(footer.SummaryStart, footerOffset);
             ValidateSummaryCrc(
+                summaryBytes,
                 footer.SummaryStart,
                 footer.SummaryOffsetStart,
                 footer.SummaryCrc,
-                footerOffset,
                 validateCrcs);
 
             var dataEndRecordLength = (ulong)(McapWriter.RecordHeaderLength + McapWriter.Crc32SizeBytes);
@@ -230,7 +229,8 @@ namespace Unity.FoxgloveSDK.IO
                 collectMessages: true,
                 sequentialLimits: sequentialLimits,
                 validateCrcs: validateCrcs,
-                chunkUncompressedSizeLimit: chunkUncompressedSizeLimit).SequentialMessages ?? new List<McapMessage>();
+                chunkUncompressedSizeLimit: chunkUncompressedSizeLimit).SequentialMessages
+                ?? throw new InvalidOperationException("MCAP sequential scan did not collect messages.");
         }
 
         internal void VisitSequentialMessages(
@@ -319,6 +319,9 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>
         /// Enumerates application-defined private records from the data section.
+        /// Enumeration seeks the borrowed stream to the data-section start on first
+        /// MoveNext; callers must not interleave other stream operations while
+        /// iterating.
         /// </summary>
         public IEnumerable<McapPrivateRecord> EnumeratePrivateRecords(
             ulong dataSectionEndOffset,
@@ -381,23 +384,27 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
-        private void ValidateSummaryCrc(
-            ulong summaryStart,
-            ulong summaryOffsetStart,
-            uint summaryCrc,
-            ulong footerOffset,
-            bool validateCrcs)
+        private byte[] ReadSummaryBytes(ulong summaryStart, ulong footerOffset)
         {
-            if (!validateCrcs || summaryCrc == 0)
-                return;
-
             var summaryLen = footerOffset - summaryStart;
             if (summaryLen > int.MaxValue)
                 throw new InvalidDataException("MCAP summary section size exceeds int.MaxValue");
 
             _stream.Seek(ToSeekOffset(summaryStart, "summary_start"), SeekOrigin.Begin);
             var summaryBytes = new byte[(int)summaryLen];
-            ReadExact(summaryBytes, 0, (int)summaryLen);
+            ReadExact(summaryBytes, 0, summaryBytes.Length);
+            return summaryBytes;
+        }
+
+        private static void ValidateSummaryCrc(
+            byte[] summaryBytes,
+            ulong summaryStart,
+            ulong summaryOffsetStart,
+            uint summaryCrc,
+            bool validateCrcs)
+        {
+            if (!validateCrcs || summaryCrc == 0)
+                return;
 
             McapSummaryBuilder.ValidateSummaryCrc(summaryBytes, summaryStart, summaryOffsetStart, summaryCrc);
         }
@@ -411,6 +418,11 @@ namespace Unity.FoxgloveSDK.IO
             return (opcode, CloneBytes(content, contentLength));
         }
 
+        /// <summary>
+        /// Reads one record into the internal reuse buffer. The returned content array
+        /// is invalidated by the next call to this method; callers that need to retain
+        /// data must clone the first <c>contentLength</c> bytes.
+        /// </summary>
         private (byte opcode, byte[] content, int contentLength) ReadOneRecordSegment(ulong sizeLimit = DefaultRecordSizeLimit)
         {
             var opcodeRaw = _stream.ReadByte();

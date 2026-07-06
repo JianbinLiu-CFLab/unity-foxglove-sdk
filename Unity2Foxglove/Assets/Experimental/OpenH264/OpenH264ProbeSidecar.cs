@@ -32,11 +32,12 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     private Task _stdoutTask;
     private Task _stderrTask;
     private OpenH264ProbeSidecarOptions _options;
-    private int _inputCount;
     private int _outputCount;
     private int _framesSubmitted;
     private int _accessUnitsReceived;
     private int _droppedInputFrames;
+    private string _lastStderrLine;
+    private string _lastError;
 
     public bool IsRunning
     {
@@ -60,8 +61,8 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     public int FramesSubmitted => Volatile.Read(ref _framesSubmitted);
     public int AccessUnitsReceived => Volatile.Read(ref _accessUnitsReceived);
     public int DroppedInputFrames => Volatile.Read(ref _droppedInputFrames);
-    public string LastStderrLine { get; private set; }
-    public string LastError { get; private set; }
+    public string LastStderrLine => Volatile.Read(ref _lastStderrLine);
+    public string LastError => Volatile.Read(ref _lastError);
 
     public bool Start(OpenH264ProbeSidecarOptions options)
     {
@@ -71,12 +72,12 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         Stop();
 
         _options = options ?? new OpenH264ProbeSidecarOptions();
-        LastError = null;
-        LastStderrLine = null;
+        SetLastError(null);
+        SetLastStderrLine(null);
 
         if (!_options.Validate(out var error))
         {
-            LastError = error;
+            SetLastError(error);
             return false;
         }
 
@@ -90,7 +91,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
             if (!_process.Start())
             {
-                LastError = "OpenH264 helper process failed to start.";
+                SetLastError("OpenH264 helper process failed to start.");
                 Stop();
                 return false;
             }
@@ -104,13 +105,13 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
         catch (Win32Exception ex)
         {
-            LastError = "OpenH264 helper executable was not found or could not be started: " + ex.Message;
+            SetLastError("OpenH264 helper executable was not found or could not be started: " + ex.Message);
             Stop();
             return false;
         }
         catch (Exception ex)
         {
-            LastError = ex.Message;
+            SetLastError(ex.Message);
             Stop();
             return false;
         }
@@ -124,21 +125,19 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         var expectedBytes = _options != null ? _options.FrameByteCount : 0;
         if (expectedBytes > 0 && i420Frame.Length != expectedBytes)
         {
-            LastError = "I420 frame byte count does not match encoder dimensions.";
+            SetLastError("I420 frame byte count does not match encoder dimensions.");
             return false;
         }
 
         var capacity = Math.Max(1, _options?.MaxInputQueue ?? 2);
-        while (Volatile.Read(ref _inputCount) >= capacity && _inputFrames.TryDequeue(out _))
+        while (_inputFrames.Count >= capacity && _inputFrames.TryDequeue(out _))
         {
-            Interlocked.Decrement(ref _inputCount);
             Interlocked.Increment(ref _droppedInputFrames);
         }
 
         var copy = new byte[i420Frame.Length];
         Buffer.BlockCopy(i420Frame, 0, copy, 0, i420Frame.Length);
         _inputFrames.Enqueue(copy);
-        Interlocked.Increment(ref _inputCount);
         Interlocked.Increment(ref _framesSubmitted);
         return true;
     }
@@ -200,6 +199,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
 
     private static ProcessStartInfo CreateStartInfo(OpenH264ProbeSidecarOptions options)
     {
+        var openH264DllPath = string.IsNullOrWhiteSpace(options.OpenH264DllPath)
+            ? options.OpenH264DllPath
+            : Path.GetFullPath(options.OpenH264DllPath);
         var args = string.Join(" ", new[]
         {
             "--width " + options.Width.ToString(CultureInfo.InvariantCulture),
@@ -207,12 +209,12 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             "--fps " + options.FrameRate.ToString(CultureInfo.InvariantCulture),
             "--bitrate-kbps " + options.BitrateKbps.ToString(CultureInfo.InvariantCulture),
             "--keyint " + options.KeyframeInterval.ToString(CultureInfo.InvariantCulture),
-            "--openh264-dll " + QuoteArgument(options.OpenH264DllPath)
+            "--openh264-dll " + QuoteArgument(openH264DllPath)
         });
 
         return new ProcessStartInfo
         {
-            FileName = options.HelperExecutablePath,
+            FileName = Path.GetFullPath(options.HelperExecutablePath),
             Arguments = args,
             UseShellExecute = false,
             RedirectStandardInput = true,
@@ -274,7 +276,6 @@ public sealed class OpenH264ProbeSidecar : IDisposable
             {
                 if (_inputFrames.TryDequeue(out var frame))
                 {
-                    Interlocked.Decrement(ref _inputCount);
                     await stream.WriteAsync(frame, 0, frame.Length, token).ConfigureAwait(false);
                     await stream.FlushAsync(token).ConfigureAwait(false);
                 }
@@ -289,7 +290,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
         catch (Exception ex)
         {
-            LastError = ex.Message;
+            SetLastError(ex.Message);
         }
     }
 
@@ -307,16 +308,16 @@ public sealed class OpenH264ProbeSidecar : IDisposable
                 var length = readLength.Length;
                 if (length <= 0 || length > MaxAccessUnitBytes)
                 {
-                    LastError = "OpenH264 helper emitted an invalid access-unit length: " + length;
-                    Stop();
+                    SetLastError("OpenH264 helper emitted an invalid access-unit length: " + length);
+                    StopFromWorker();
                     return;
                 }
 
                 var payload = new byte[length];
                 if (!await ReadExact(stream, payload, token).ConfigureAwait(false))
                 {
-                    LastError = "OpenH264 helper stdout ended mid access unit.";
-                    Stop();
+                    SetLastError("OpenH264 helper stdout ended mid access unit.");
+                    StopFromWorker();
                     return;
                 }
 
@@ -328,7 +329,7 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         }
         catch (Exception ex)
         {
-            LastError = ex.Message;
+            SetLastError(ex.Message);
         }
     }
 
@@ -343,14 +344,19 @@ public sealed class OpenH264ProbeSidecar : IDisposable
                 if (line == null)
                     break;
 
-                LastStderrLine = line;
+                SetLastStderrLine(line);
             }
         }
         catch (Exception ex)
         {
             if (!(ex is ObjectDisposedException))
-                LastError = ex.Message;
+                SetLastError(ex.Message);
         }
+    }
+
+    private void StopFromWorker()
+    {
+        Task.Run(() => Stop());
     }
 
     private static void CloseProcessStreams(Process process)
@@ -435,13 +441,9 @@ public sealed class OpenH264ProbeSidecar : IDisposable
         if (tasks == null || tasks.Length == 0)
             return;
 
-        var currentTaskId = Task.CurrentId;
         foreach (var task in tasks)
         {
             if (task == null || task.IsCompleted)
-                continue;
-
-            if (currentTaskId.HasValue && task.Id == currentTaskId.Value)
                 continue;
 
             try
@@ -489,8 +491,17 @@ public sealed class OpenH264ProbeSidecar : IDisposable
     {
         while (_inputFrames.TryDequeue(out _)) { }
         while (_outputAccessUnits.TryDequeue(out _)) { }
-        Interlocked.Exchange(ref _inputCount, 0);
         Interlocked.Exchange(ref _outputCount, 0);
+    }
+
+    private void SetLastError(string value)
+    {
+        Volatile.Write(ref _lastError, value);
+    }
+
+    private void SetLastStderrLine(string value)
+    {
+        Volatile.Write(ref _lastStderrLine, value);
     }
 
     private readonly struct LengthReadResult
@@ -572,6 +583,12 @@ public sealed class OpenH264ProbeSidecarOptions
         if (FrameRate <= 0 || BitrateKbps <= 0 || KeyframeInterval <= 0)
         {
             error = "OpenH264 helper requires positive frame rate, bitrate, and keyframe interval.";
+            return false;
+        }
+
+        if (MaxInputQueue <= 0 || MaxOutputQueue <= 0)
+        {
+            error = "OpenH264 helper queue sizes must be positive.";
             return false;
         }
 

@@ -63,6 +63,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         public const string SourceTreeSha256 = "b9703a7ea74cf053c92e9aa91d2dee90a7edd3e7657e1fd9af9e60e253a53882";
         public const string SourceCommit = "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba";
 
+        // These generated schema strings are decoded once at type initialization so
+        // publisher registration has deterministic startup cost and no first-topic hitch.
         private static readonly FoxgloveRos2MsgSchemaCatalogEntry[] EntriesArray =
         {
             Entry(
@@ -1570,7 +1572,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Read-only list of all generated ROS 2 .msg schemas.</summary>
         public static IReadOnlyList<FoxgloveRos2MsgSchemaCatalogEntry> Entries { get; } = Array.AsReadOnly(EntriesArray);
 
-        /// <summary>Find a catalog entry by ROS 2 interface schema name.</summary>
+        /// <summary>Find a catalog entry by ROS 2 interface schema name, including standard ROS 2 fallback schemas.</summary>
         public static bool TryGet(string schemaName, out FoxgloveRos2MsgSchemaCatalogEntry entry)
         {
             if (schemaName == null)
@@ -1624,7 +1626,13 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             var map = new Dictionary<string, FoxgloveRos2MsgSchemaCatalogEntry>(StringComparer.Ordinal);
             foreach (var entry in EntriesArray)
+            {
+                if (map.ContainsKey(entry.SchemaName))
+                    throw new InvalidOperationException("Duplicate ROS2 schema name in Foxglove catalog: " + entry.SchemaName);
+
                 map.Add(entry.SchemaName, entry);
+            }
+
             return map;
         }
 

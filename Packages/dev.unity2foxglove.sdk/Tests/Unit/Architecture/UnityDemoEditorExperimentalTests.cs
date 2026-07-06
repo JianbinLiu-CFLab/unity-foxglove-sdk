@@ -33,6 +33,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("CleanupWorkers(process, stop, stdinTask, stdoutTask, stderrTask);", stop);
             Assert.Contains("WaitForWorkerTasks", sidecar.Text);
             Assert.Contains("process.WaitForExit(200)", sidecar.Text);
+            Assert.Contains("StopFromWorker", sidecar.Text);
+            Assert.DoesNotContain("Task.CurrentId", sidecar.Text);
             Assert.DoesNotContain("ScheduleWorkerCleanup", sidecar.Text);
         }
 
@@ -96,6 +98,49 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 Assert.DoesNotContain("SerializeField", attributes);
                 Assert.Contains("NonSerialized", attributes);
             }
+        }
+
+        [Fact]
+        public void ProbeSidecarCrossThreadDiagnosticsUseVolatileBackingFields()
+        {
+            var sidecar = Source(SidecarPath).Text;
+
+            Assert.Contains("Volatile.Read(ref _lastStderrLine)", sidecar);
+            Assert.Contains("Volatile.Write(ref _lastStderrLine", sidecar);
+            Assert.Contains("Volatile.Read(ref _lastError)", sidecar);
+            Assert.Contains("Volatile.Write(ref _lastError", sidecar);
+        }
+
+        [Fact]
+        public void ProbeSidecarUsesQueueCountInsteadOfMirrorInputCounter()
+        {
+            var sidecar = Source(SidecarPath).Text;
+
+            Assert.Contains("_inputFrames.Count >= capacity", sidecar);
+            Assert.DoesNotContain("_inputCount", sidecar);
+        }
+
+        [Fact]
+        public void ProbeSidecarCanonicalizesExecutablePathsBeforeLaunch()
+        {
+            var startInfo = Method(Source(SidecarPath), "CreateStartInfo").ToFullString();
+
+            Assert.Contains("Path.GetFullPath(options.HelperExecutablePath)", startInfo);
+            Assert.Contains("Path.GetFullPath(options.OpenH264DllPath)", startInfo);
+        }
+
+        [Fact]
+        public void ProbePublisherResetsPendingReadbacksWhenReenabled()
+        {
+            var publisher = Source(PublisherPath);
+            var onEnable = Method(publisher, "OnEnable").ToFullString();
+            var onReadbackComplete = Method(publisher, "OnReadbackComplete").ToFullString();
+
+            Assert.Contains("_pendingRequests = 0;", onEnable);
+            Assert.Contains("generation != _captureGeneration", onReadbackComplete);
+            Assert.True(
+                onReadbackComplete.IndexOf("generation != _captureGeneration", StringComparison.Ordinal)
+                < onReadbackComplete.IndexOf("CompletePendingReadback();", StringComparison.Ordinal));
         }
 
         [Fact]

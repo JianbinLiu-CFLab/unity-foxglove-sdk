@@ -91,6 +91,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     {
         base.OnEnable();
         _destroyed = false;
+        _pendingRequests = 0;
         _cleanupWhenReadbacksDrain = false;
         _captureGeneration++;
         _warnedUnavailable = false;
@@ -171,9 +172,17 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         int height,
         int i420Bytes)
     {
+        if (generation != _captureGeneration)
+        {
+            if (_destroyed || !isActiveAndEnabled)
+                CompletePendingReadback();
+
+            return;
+        }
+
         CompletePendingReadback();
 
-        if (_destroyed || !isActiveAndEnabled || generation != _captureGeneration)
+        if (_destroyed || !isActiveAndEnabled)
             return;
 
         if (request.hasError)

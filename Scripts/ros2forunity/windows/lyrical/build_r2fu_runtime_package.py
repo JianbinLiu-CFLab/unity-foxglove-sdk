@@ -293,12 +293,14 @@ def require_inputs(paths: BuildPaths) -> tuple[dict[str, object], RuntimeArtifac
 
     if not paths.inventory.exists():
         raise FileNotFoundError(f"Missing runtime inventory: {paths.inventory}")
+    if not UPSTREAM_LICENSE.exists():
+        raise FileNotFoundError(f"Missing upstream ROS2 For Unity license: {UPSTREAM_LICENSE}")
     inventory = json.loads(paths.inventory.read_text(encoding="utf-8"))
     if inventory.get("runtimeId") != RUNTIME_ID:
         raise ValueError(f"Unexpected inventory runtimeId: {inventory.get('runtimeId')!r}")
     if inventory.get("sha256") != artifact_hash:
         raise ValueError("Inventory sha256 does not match the runtime artifact.")
-    if inventory.get("artifactSize") not in (None, artifact_size) and inventory.get("artifactSize") != artifact_size:
+    if inventory.get("artifactSize") not in (None, artifact_size):
         raise ValueError(f"Inventory artifactSize does not match the runtime artifact: {inventory.get('artifactSize')!r}")
     inventory_file_count = int(inventory.get("fileCount") or 0)
     if inventory_file_count <= 0:
@@ -818,10 +820,8 @@ def patch_ros2_for_unity(package: Path) -> None:
     source = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
     text = source.read_text(encoding="utf-8")
     text = patch_ros2cs_logger_callback_api(text)
-    text = patch_standalone_environment_isolation(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
         text = patch_rmw_guard(text)
-        text = patch_standalone_environment_isolation(text)
         write_text(source, text)
         return
     if "unity2FoxgloveRuntimePackageName" not in text:
@@ -1008,6 +1008,8 @@ def patch_standalone_environment_isolation(text: str) -> str:
             startup_marker + "            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n",
             1,
         )
+    if "SetStandalonePrefixPath();" not in text or "SetStandaloneRmwImplementation();" not in text:
+        raise ValueError("Standalone environment isolation patch is missing required setup calls.")
     text = text.replace(
         '            string standalone = IsStandalone() ? "standalone" : "non-standalone";\n',
         '            bool standaloneBuild = IsStandalone();\n'
@@ -1040,7 +1042,15 @@ def patch_ros_time_source_contract(package: Path) -> None:
     """Patch ROS2 time sources for the bool-returning ITimeSource contract."""
     time_dir = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Time"
     dotnet_time = time_dir / "DotnetTimeSource.cs"
-    write_text(dotnet_time, dotnet_time.read_text(encoding="utf-8"))
+    dotnet_text = dotnet_time.read_text(encoding="utf-8")
+    dotnet_text = dotnet_text.replace(
+        "// Modifications Copyright (c) 2026 Jianbin Liu.\n",
+        "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n",
+        1,
+    )
+    if MODIFICATIONS_COPYRIGHT not in dotnet_text:
+        raise ValueError("DotnetTimeSource.cs is missing the local modifications copyright line.")
+    write_text(dotnet_time, dotnet_text)
 
     for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
         source = time_dir / name

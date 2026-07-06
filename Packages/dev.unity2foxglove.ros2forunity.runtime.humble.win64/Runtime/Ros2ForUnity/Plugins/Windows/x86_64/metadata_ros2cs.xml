@@ -3,12 +3,12 @@
    <ros2>humble</ros2>
    <version>
       <sha>b77c088964a604b7ebf426fd97dd72fb8f2f2522</sha>
-      <desc>v0.6.0-jazzy-preview.1-51-gb77c088</desc>
+      <desc>v0.6.0-humble-preview.1-51-gb77c088</desc>
       <date>2026-06-22 21:34:19 +0200</date>
       <branch>feature/humble-windows-standalone-runtime-closure</branch>
    </version>
    <standalone>1</standalone>
-   <plugins root="D:\ros2unity\third-party\ros2-for-unity\install\asset\Ros2ForUnity\Plugins" runtime_file_count="935">
+   <plugins root="." runtime_file_count="935">
       <file>Windows/x86_64/action_msgs__rosidl_generator_c.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_generator_py.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_typesupport_c.dll</file>

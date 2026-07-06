@@ -8,6 +8,7 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
 using UnityEditor.PackageManager;
 using UnityEngine;
 using Process = System.Diagnostics.Process;
@@ -33,6 +34,8 @@ namespace Unity.FoxgloveSDK.Editor
 
     public static class OpenH264OfficialBinaryInstaller
     {
+        private const int DownloadBodyTimeoutMs = 60000;
+
         public static OpenH264InstallResult Install(string installRoot)
             => Install(installRoot, GetPackageRoot());
 
@@ -134,13 +137,14 @@ namespace Unity.FoxgloveSDK.Editor
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Unity2Foxglove-OpenH264-Installer/1.0");
                 try
                 {
-                    using (var response = client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).GetAwaiter().GetResult())
+                    using (var cts = new CancellationTokenSource(DownloadBodyTimeoutMs))
+                    using (var response = client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token).GetAwaiter().GetResult())
                     {
                         response.EnsureSuccessStatusCode();
                         using (var source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
                         using (var destinationStream = File.Create(tempDestination))
                         {
-                            source.CopyTo(destinationStream);
+                            source.CopyToAsync(destinationStream, 81920, cts.Token).GetAwaiter().GetResult();
                         }
                     }
 
@@ -162,12 +166,13 @@ namespace Unity.FoxgloveSDK.Editor
             // The official Cisco asset is .bz2. We intentionally do not bundle
             // SharpZipLib or another MIT BZip2 decompressor here; if that changes,
             // update THIRD_PARTY_NOTICES before shipping.
-            if (TryDecompressWithBZip2Tool(compressedPath, outputPath, out error))
+            if (TryDecompressWithBZip2Tool(compressedPath, outputPath, out var bzip2Error))
                 return true;
 
-            if (TryDecompressWithPythonBZip2(compressedPath, outputPath, out error))
+            if (TryDecompressWithPythonBZip2(compressedPath, outputPath, out var pythonError))
                 return true;
 
+            error = CombineDecompressErrors(bzip2Error, pythonError);
             if (string.IsNullOrEmpty(error))
                 error = "No BZip2 decompressor was found. Install bzip2 or Python, or decompress the DLL manually.";
             return false;
@@ -537,18 +542,6 @@ namespace Unity.FoxgloveSDK.Editor
             return details;
         }
 
-        private static void TryKill(Process process)
-        {
-            try
-            {
-                if (process != null && !process.HasExited)
-                    process.Kill();
-            }
-            catch
-            {
-            }
-        }
-
         private static bool TryDelete(string path, bool warnOnFailure = false)
         {
             try
@@ -567,5 +560,14 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static OpenH264InstallResult Fail(string message)
             => new OpenH264InstallResult(false, "", "", string.IsNullOrWhiteSpace(message) ? "OpenH264 install failed." : message);
+
+        private static string CombineDecompressErrors(string bzip2Error, string pythonError)
+        {
+            if (string.IsNullOrWhiteSpace(bzip2Error))
+                return pythonError ?? "";
+            if (string.IsNullOrWhiteSpace(pythonError))
+                return bzip2Error;
+            return "bzip2 failed: " + bzip2Error + "\nPython bz2 failed: " + pythonError;
+        }
     }
 }

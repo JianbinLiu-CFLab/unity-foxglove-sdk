@@ -51,11 +51,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && skip.Contains("Interlocked.Increment(ref _skippedAccessUnits)", StringComparison.Ordinal)
                   && skip.Contains("OpenH264 helper skipped an access unit", StringComparison.Ordinal),
                 "163-16A-3: OpenH264 skip sentinel drains one pending timestamp and records diagnostics");
-            Check(enqueue.Contains("while (_outputCount >= _maxOutputQueue", StringComparison.Ordinal)
-                  && enqueue.Contains("_outputCount--", StringComparison.Ordinal)
+            Check(enqueue.Contains("if (_outputCount >= _maxOutputQueue", StringComparison.Ordinal)
+                  && enqueue.Contains("_encodedFrameTimestamps.TryDequeue(out _)", StringComparison.Ordinal)
+                  && enqueue.Contains("Interlocked.Increment(ref _droppedOutputFrames)", StringComparison.Ordinal)
                   && enqueue.Contains("_outputCount++", StringComparison.Ordinal)
                   && !enqueue.Contains("Volatile.Read(ref _outputCount)", StringComparison.Ordinal),
-                "163-16A-4: OpenH264 output queue count uses plain arithmetic under its lock");
+                "163-16A-4: OpenH264 output pressure drops at admission and consumes the paired timestamp");
         }
 
         private static void OpenH264ExecutableCheckValidatesRealAccessUnits()
@@ -90,9 +91,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-16C-1: OpenH264 installer verifies downloaded archive before moving it to the final path");
             Check(download.Contains("tempDestination = destination + \".partial\"", StringComparison.Ordinal)
                   && download.Contains("File.Create(tempDestination)", StringComparison.Ordinal)
+                  && download.Contains("CopyToAsync(destinationStream, 81920, cts.Token)", StringComparison.Ordinal)
                   && download.Contains("File.Move(tempDestination, destination)", StringComparison.Ordinal)
                   && download.Contains("TryDelete(tempDestination)", StringComparison.Ordinal),
-                "163-16C-2: OpenH264 downloader avoids leaving partial bytes at the requested destination");
+                "163-16C-2: OpenH264 downloader bounds body copy and avoids leaving partial bytes at the requested destination");
+            Check(source.Contains("CombineDecompressErrors(bzip2Error, pythonError)", StringComparison.Ordinal)
+                  && source.Contains("bzip2 failed: ", StringComparison.Ordinal)
+                  && source.Contains("Python bz2 failed: ", StringComparison.Ordinal),
+                "163-16C-3: OpenH264 decompressor preserves bzip2 and Python fallback diagnostics");
         }
 
         private static void OpenH264HelperSourcesStayByteIdentical()
@@ -124,8 +130,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-16E-3: MediaFoundation timestamp resolution removes both map and order entries");
             Check(evict.Contains("_sampleTimestampOrder.RemoveFirst()", StringComparison.Ordinal)
                   && evict.Contains("_sampleTimestampNodesByTime.Remove(oldestSampleTime)", StringComparison.Ordinal)
+                  && evict.Contains("Interlocked.Increment(ref _evictedTimestampCount)", StringComparison.Ordinal)
                   && clear.Contains("_sampleTimestampNodesByTime.Clear()", StringComparison.Ordinal),
-                "163-16E-4: MediaFoundation timestamp eviction and clear keep all timestamp indexes synchronized");
+                "163-16E-4: MediaFoundation timestamp eviction and clear keep all timestamp indexes synchronized and visible");
+            Check(source.Contains("s_mftOutputDataBufferSize", StringComparison.Ordinal)
+                  && source.Contains("GetCachedOutputStreamInfo()", StringComparison.Ordinal)
+                  && source.Contains("RefreshOutputStreamInfo();", StringComparison.Ordinal),
+                "163-16E-5: MediaFoundation output loop caches stream info and output buffer size");
+            Check(source.Contains("Volatile.Read(ref _isRunning)", StringComparison.Ordinal)
+                  && source.Contains("Volatile.Read(ref _lastDiagnosticLine)", StringComparison.Ordinal)
+                  && source.Contains("Volatile.Read(ref _lastError)", StringComparison.Ordinal),
+                "163-16E-6: MediaFoundation public state uses memory-barrier accessors");
         }
 
         private static void FfmpegTimestampUnderflowIsObservable()

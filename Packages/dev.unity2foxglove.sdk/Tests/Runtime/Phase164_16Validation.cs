@@ -70,7 +70,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && start.Contains("_maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);", StringComparison.Ordinal)
                   && stop.Contains("_maxOutputQueue = 4;", StringComparison.Ordinal),
                 "164-16C-1: Media Foundation sidecar resolves output queue capacity once per session");
-            Check(enqueue.Contains("while (_outputCount >= _maxOutputQueue", StringComparison.Ordinal)
+            Check((enqueue.Contains("while (_outputCount >= _maxOutputQueue", StringComparison.Ordinal)
+                   || enqueue.Contains("if (_outputCount >= _maxOutputQueue)", StringComparison.Ordinal))
                   && !enqueue.Contains("_options?.MaxOutputQueue", StringComparison.Ordinal),
                 "164-16C-2: Media Foundation output enqueue avoids repeated option lookup inside the lock");
         }

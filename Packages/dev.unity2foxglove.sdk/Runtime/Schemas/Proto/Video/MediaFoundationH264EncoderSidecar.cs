@@ -43,6 +43,7 @@ namespace Foxglove.Schemas.Video
         private const int H264BaselineProfile = 66;
         private const int MaxTrackedSampleTimestamps = 256;
         private const int MaxConsecutiveOutputStreamChanges = 3;
+        private static readonly int s_mftOutputDataBufferSize = Marshal.SizeOf(typeof(MftOutputDataBuffer));
 
         private readonly ConcurrentQueue<EncodedVideoAccessUnit> _outputAccessUnits = new ConcurrentQueue<EncodedVideoAccessUnit>();
         private readonly Dictionary<long, ulong> _sampleTimestampNsByTime = new Dictionary<long, ulong>();
@@ -53,18 +54,37 @@ namespace Foxglove.Schemas.Video
         private MediaFoundationH264EncoderOptions _options;
         private IMFTransform _transform;
         private byte[] _nv12Scratch;
+        private MftOutputStreamInfo _outputStreamInfo;
         private long _nextSampleTime;
         private long _sampleDuration;
+        private long _evictedTimestampCount;
         private int _outputCount;
         private int _maxOutputQueue = 4;
         private bool _mfStarted;
         private bool _comInitialized;
+        private bool _hasOutputStreamInfo;
+        private bool _isRunning;
+        private string _lastDiagnosticLine;
+        private string _lastError;
 
-        public bool IsRunning { get; private set; }
+        public bool IsRunning
+        {
+            get => Volatile.Read(ref _isRunning);
+            private set => Volatile.Write(ref _isRunning, value);
+        }
         public int OutputQueueDepth => Volatile.Read(ref _outputCount);
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
-        public string LastDiagnosticLine { get; private set; }
-        public string LastError { get; private set; }
+        public string LastDiagnosticLine
+        {
+            get => Volatile.Read(ref _lastDiagnosticLine);
+            private set => Volatile.Write(ref _lastDiagnosticLine, value);
+        }
+        public string LastError
+        {
+            get => Volatile.Read(ref _lastError);
+            private set => Volatile.Write(ref _lastError, value);
+        }
+        public long EvictedTimestampCount => Interlocked.Read(ref _evictedTimestampCount);
 
         internal static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
@@ -74,6 +94,7 @@ namespace Foxglove.Schemas.Video
             Stop(clearOutputQueue: true);
             _options = options ?? new MediaFoundationH264EncoderOptions();
             _maxOutputQueue = Math.Max(1, _options.MaxOutputQueue);
+            Interlocked.Exchange(ref _evictedTimestampCount, 0);
             LastError = null;
             LastDiagnosticLine = null;
 
@@ -207,9 +228,9 @@ namespace Foxglove.Schemas.Video
 
             _options = null;
             _nv12Scratch = null;
+            _hasOutputStreamInfo = false;
             _nextSampleTime = 0;
             _sampleDuration = 0;
-            _maxOutputQueue = 4;
             ClearSampleTimestampMap();
 
             if (_mfStarted)
@@ -225,7 +246,10 @@ namespace Foxglove.Schemas.Video
             }
 
             if (clearOutputQueue)
+            {
+                _maxOutputQueue = 4;
                 DrainOutputQueue();
+            }
         }
 
         private void DrainOutputQueue()
@@ -284,6 +308,7 @@ namespace Foxglove.Schemas.Video
 
             _sampleDuration = 10_000_000L / Math.Max(1, options.FrameRate);
             _nextSampleTime = 0;
+            RefreshOutputStreamInfo();
             _transform.ProcessMessage(MftMessageNotifyBeginStreaming, IntPtr.Zero);
             _transform.ProcessMessage(MftMessageNotifyStartOfStream, IntPtr.Zero);
         }
@@ -451,8 +476,7 @@ namespace Foxglove.Schemas.Video
             var consecutiveStreamChanges = 0;
             while (true)
             {
-                var hr = _transform.GetOutputStreamInfo(0, out var info);
-                ThrowForHr(hr, "Media Foundation H.264 GetOutputStreamInfo failed.");
+                var info = GetCachedOutputStreamInfo();
 
                 IMFSample sample = null;
                 IMFMediaBuffer buffer = null;
@@ -460,6 +484,7 @@ namespace Foxglove.Schemas.Video
                 var outputPtr = IntPtr.Zero;
                 var samplePtr = IntPtr.Zero;
                 IMFSample outputSample = null;
+                int hr;
                 try
                 {
                     if ((info.dwFlags & MftOutputStreamProvidesSamples) == 0)
@@ -477,7 +502,7 @@ namespace Foxglove.Schemas.Video
                         output.pSample = samplePtr;
                     }
 
-                    outputPtr = Marshal.AllocHGlobal(Marshal.SizeOf(typeof(MftOutputDataBuffer)));
+                    outputPtr = Marshal.AllocHGlobal(s_mftOutputDataBufferSize);
                     Marshal.StructureToPtr(output, outputPtr, false);
                     hr = _transform.ProcessOutput(0, 1, outputPtr, out _);
                     output = Marshal.PtrToStructure<MftOutputDataBuffer>(outputPtr);
@@ -545,6 +570,7 @@ namespace Foxglove.Schemas.Video
                 hr = _transform.SetOutputType(0, outputType, 0);
                 ThrowForHr(hr, "Media Foundation H.264 SetOutputType after stream change failed.");
                 CacheOutputSequenceHeader();
+                RefreshOutputStreamInfo();
             }
             finally
             {
@@ -675,6 +701,22 @@ namespace Foxglove.Schemas.Video
             _sampleTimestampOrder.RemoveFirst();
             _sampleTimestampNodesByTime.Remove(oldestSampleTime);
             _sampleTimestampNsByTime.Remove(oldestSampleTime);
+            if (Interlocked.Increment(ref _evictedTimestampCount) == 1)
+                LastDiagnosticLine = AppendDiagnostic(LastDiagnosticLine, "Media Foundation H.264 evicted old sample timestamps; output timestamps may fall back to zero under sustained backlog.");
+        }
+
+        private MftOutputStreamInfo GetCachedOutputStreamInfo()
+        {
+            if (!_hasOutputStreamInfo)
+                RefreshOutputStreamInfo();
+            return _outputStreamInfo;
+        }
+
+        private void RefreshOutputStreamInfo()
+        {
+            var hr = _transform.GetOutputStreamInfo(0, out _outputStreamInfo);
+            ThrowForHr(hr, "Media Foundation H.264 GetOutputStreamInfo failed.");
+            _hasOutputStreamInfo = true;
         }
 
         private void ClearSampleTimestampMap()
