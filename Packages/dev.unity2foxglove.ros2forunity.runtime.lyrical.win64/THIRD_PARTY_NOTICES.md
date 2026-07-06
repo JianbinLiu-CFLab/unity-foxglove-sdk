@@ -30,6 +30,8 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | RMW Zenoh | `rmw_zenoh_cpp` optional runtime path for Lyrical-only routed communication |
 | Generated message support | Managed message assemblies plus native ROSIDL/type-support DLLs |
 
+The current upstream runtime closure includes ROS2 `test_msgs` managed and native type-support artifacts. They are retained only because they are present in the generated `r2fu-lyrical-win64` inventory; production package trimming must happen in the runtime rebuild pipeline, not by manually deleting individual DLLs from this package.
+
 ## Critical Runtime Closure
 
 The package includes the transitive runtime DLLs required for Unity to load `rcl.dll`, including:
