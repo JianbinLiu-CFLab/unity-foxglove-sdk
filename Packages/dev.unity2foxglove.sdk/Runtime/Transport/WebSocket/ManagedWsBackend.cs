@@ -72,7 +72,7 @@ namespace Unity.FoxgloveSDK.Transport
         }
 
         /// <summary>Whether the TCP listener is actively accepting connections.</summary>
-        public bool IsRunning => _listener != null;
+        public bool IsRunning => Volatile.Read(ref _listener) != null;
 
         /// <summary>Fires when a new WebSocket client completes the handshake.</summary>
         public event Action<uint> OnClientConnected;
@@ -211,7 +211,11 @@ namespace Unity.FoxgloveSDK.Transport
 
         // Transport health
 
-        /// <summary>Produce an immutable snapshot of current transport health.</summary>
+        /// <summary>
+        /// Produce an immutable snapshot of current transport health.
+        /// Drop totals are best-effort under concurrent disconnects: a client
+        /// can move from the active set to the retained aggregate during the snapshot.
+        /// </summary>
         public TransportStatsSnapshot GetStatsSnapshot()
         {
             var clientList = new List<TransportClientStats>();
@@ -572,7 +576,8 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Continuously read frames, dispatch text/binary/close/ping, until the stream ends or is canceled.</summary>
         private void ReceiveLoop(uint clientId, WsConnection conn, CancellationToken ct)
         {
-            MemoryStream fragmentedPayload = null;
+            var fragmentedPayload = new MemoryStream();
+            var hasFragmentedPayload = false;
             byte fragmentedOpcode = 0;
             var fragmentedBytes = 0;
             var fragmentedFrames = 0;
@@ -589,7 +594,7 @@ namespace Unity.FoxgloveSDK.Transport
                     {
                         case WsOpcode.Text:
                         case WsOpcode.Binary:
-                            if (fragmentedPayload != null)
+                            if (hasFragmentedPayload)
                             {
                                 CloseProtocolError(clientId, conn);
                                 return;
@@ -605,7 +610,8 @@ namespace Unity.FoxgloveSDK.Transport
                             }
 
                             fragmentedOpcode = frame.Opcode;
-                            fragmentedPayload = new MemoryStream();
+                            fragmentedPayload.SetLength(0);
+                            hasFragmentedPayload = true;
                             fragmentedFrames = 1;
                             if (!TryAppendFragment(fragmentedPayload, frame.Payload, ref fragmentedBytes))
                             {
@@ -615,7 +621,7 @@ namespace Unity.FoxgloveSDK.Transport
                             break;
 
                         case WsOpcode.Continuation:
-                            if (fragmentedPayload == null)
+                            if (!hasFragmentedPayload)
                             {
                                 CloseProtocolError(clientId, conn);
                                 return;
@@ -637,8 +643,8 @@ namespace Unity.FoxgloveSDK.Transport
                             if (frame.Fin)
                             {
                                 var payload = fragmentedPayload.ToArray();
-                                fragmentedPayload.Dispose();
-                                fragmentedPayload = null;
+                                fragmentedPayload.SetLength(0);
+                                hasFragmentedPayload = false;
                                 fragmentedBytes = 0;
                                 fragmentedFrames = 0;
 
@@ -667,7 +673,7 @@ namespace Unity.FoxgloveSDK.Transport
             }
             finally
             {
-                fragmentedPayload?.Dispose();
+                fragmentedPayload.Dispose();
                 DisconnectClient(clientId, conn);
             }
         }

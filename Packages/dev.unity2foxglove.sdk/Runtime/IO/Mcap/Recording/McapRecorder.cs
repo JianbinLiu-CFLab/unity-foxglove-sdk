@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Util;
 using ZstdSharp;
@@ -44,12 +45,12 @@ namespace Unity.FoxgloveSDK.IO
         private readonly List<MetadataIndexState> _metaIdx = new();
         private readonly List<McapAttachmentIndex> _attachmentIdx = new();
         private uint _attachmentCount;
-        private MemoryStream _chunkBuf;
+        private readonly MemoryStream _chunkBuf;
         private readonly MemoryStream _compressionBuf = new();
         private readonly byte[] _messageRecordHeader = new byte[McapWriter.RecordHeaderLength + 2 + 4 + 8 + 8];
         private readonly object _lock = new object();
-        [ThreadStatic] private static SHA256 _sha256;
-        private static readonly Dictionary<string, string> EmptyChannelMetadata = new();
+        private static readonly object Sha256Gate = new object();
+        private static readonly SHA256 SharedSha256 = SHA256.Create();
         private Compressor _zstdCompressor;
         private byte[] _zstdCompressionBuffer;
         private ushort _nextSid = 1, _nextCid = 1;
@@ -235,6 +236,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (_recordingFailed || _closed) return;
             var seq = map.Seq++;
+            map.MsgCount++;
             var payloadLength = payload?.Length ?? 0;
             if (!_options.UseChunking)
             {
@@ -410,7 +412,7 @@ namespace Unity.FoxgloveSDK.IO
                         SchemaId = channel.SchemaId,
                         Topic = channel.Topic,
                         MessageEncoding = channel.Encoding,
-                        Metadata = channel.Metadata ?? EmptyChannelMetadata
+                        Metadata = channel.Metadata ?? CreateEmptyChannelMetadata()
                     });
                 }
             }
@@ -570,8 +572,9 @@ namespace Unity.FoxgloveSDK.IO
         // Helpers
         // Caller must hold _lock. The returned list is an instance scratch buffer
         // and must not be retained after the locked operation finishes.
-        List<ChannelWriteState> AllChannelWriteStates()
+        private List<ChannelWriteState> FillAndGetScratchChannelWriteStates()
         {
+            System.Diagnostics.Debug.Assert(Monitor.IsEntered(_lock));
             _seenChannelIds.Clear();
             _allChannelWriteStates.Clear();
             foreach (var m in _chMap.Values)
@@ -617,7 +620,7 @@ namespace Unity.FoxgloveSDK.IO
                 var off = (ulong)_w.Position;
                 _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
                 var chunkLen = (ulong)_w.Position - off;
-                var channelStates = AllChannelWriteStates();
+                var channelStates = FillAndGetScratchChannelWriteStates();
                 var mio = _messageIndexOffsetsScratch;
                 mio.Clear();
                 ulong mioTLen = 0;
@@ -649,7 +652,7 @@ namespace Unity.FoxgloveSDK.IO
         private void ResetActiveChunkState(List<ChannelWriteState> channelStates = null)
         {
             _chunkBuf.SetLength(0);
-            foreach (var map in channelStates ?? AllChannelWriteStates())
+            foreach (var map in channelStates ?? FillAndGetScratchChannelWriteStates())
                 map.Pending.Clear();
             _chunkSt = 0;
             _chunkEt = 0;
@@ -672,8 +675,9 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         static string Sha256(string c)
         {
-            var h = _sha256 ??= SHA256.Create();
-            return Convert.ToBase64String(h.ComputeHash(Encoding.UTF8.GetBytes(c)));
+            var bytes = Encoding.UTF8.GetBytes(c);
+            lock (Sha256Gate)
+                return Convert.ToBase64String(SharedSha256.ComputeHash(bytes));
         }
 
         // Schema management
@@ -746,33 +750,37 @@ namespace Unity.FoxgloveSDK.IO
             // We treat empty schemaContent as an empty hash.
             var content = schemaContent ?? "";
             if (content.Length == 0) return "";
-            var sha = _sha256 ??= SHA256.Create();
-            var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(schemaName + "\0" + schemaEncoding + "\0" + content));
+            var input = Encoding.UTF8.GetBytes(schemaName + "\0" + schemaEncoding + "\0" + content);
+            byte[] bytes;
+            lock (Sha256Gate)
+                bytes = SharedSha256.ComputeHash(input);
             return BitConverter.ToString(bytes).Replace("-", "");
         }
 
         private Dictionary<ushort, ulong> BuildChannelMessageCounts()
         {
-            var channelStates = AllChannelWriteStates();
+            var channelStates = FillAndGetScratchChannelWriteStates();
             var counts = new Dictionary<ushort, ulong>(channelStates.Count);
             foreach (var state in channelStates)
-                counts[state.McapId] = state.Seq;
+                counts[state.McapId] = state.MsgCount;
             return counts;
         }
 
         private Dictionary<string, string> CreateChannelMetadata()
         {
             return string.IsNullOrEmpty(CoordinateMode)
-                ? EmptyChannelMetadata
+                ? CreateEmptyChannelMetadata()
                 : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
         }
 
         private static Dictionary<string, string> SnapshotChannelMetadata(Dictionary<string, string> metadata)
         {
             return metadata == null || metadata.Count == 0
-                ? EmptyChannelMetadata
+                ? CreateEmptyChannelMetadata()
                 : new Dictionary<string, string>(metadata);
         }
+
+        private static Dictionary<string, string> CreateEmptyChannelMetadata() => new Dictionary<string, string>();
 
         /// <summary>
         /// Normalize an encoding string to a default of "json" when empty or null.
@@ -840,7 +848,7 @@ namespace Unity.FoxgloveSDK.IO
 
         /// <summary>
         /// Per-channel write accumulator tracking MCAP channel ID, sequence
-        /// number, and pending index entries for the current chunk.
+        /// number, durable message count, and pending index entries for the current chunk.
         /// </summary>
         class ChannelWriteState
         {
@@ -848,8 +856,10 @@ namespace Unity.FoxgloveSDK.IO
             public ushort McapId;
             /// <summary>Topic name.</summary>
             public string Topic;
-            /// <summary>Per-channel message sequence number.</summary>
+            /// <summary>Per-channel MCAP message sequence number. Wrap-around is allowed by MCAP.</summary>
             public uint Seq;
+            /// <summary>Total messages recorded for statistics; kept separate from wrapping Seq.</summary>
+            public ulong MsgCount;
             /// <summary>Pending (log-time, chunk-offset) entries for the chunk message index.</summary>
             public List<(ulong LogTime, ulong Offset)> Pending = new();
         }
