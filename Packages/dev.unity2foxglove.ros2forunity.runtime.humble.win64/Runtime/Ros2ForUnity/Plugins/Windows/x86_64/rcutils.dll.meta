@@ -1,7 +1,34 @@
 fileFormatVersion: 2
 guid: f5d2bb2352e3658c48bf8457b6703607
-TextScriptImporter:
+PluginImporter:
   externalObjects: {}
+  serializedVersion: 2
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 0
+  isExplicitlyReferenced: 0
+  validateReferences: 1
+  platformData:
+  - first:
+      Any:
+    second:
+      enabled: 0
+      settings: {}
+  - first:
+      Editor: Editor
+    second:
+      enabled: 1
+      settings:
+        CPU: x86_64
+        OS: Windows
+  - first:
+      Standalone: Windows
+    second:
+      enabled: 1
+      settings:
+        CPU: x86_64
   userData:
   assetBundleName:
   assetBundleVariant:

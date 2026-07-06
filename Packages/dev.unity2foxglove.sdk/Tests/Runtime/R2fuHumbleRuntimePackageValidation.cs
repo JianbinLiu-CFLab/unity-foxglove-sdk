@@ -45,6 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             RuntimePackageShapeIsPresent();
             RuntimePackageContainsHumbleDependencyFloor();
+            RuntimePackageRecordsPluginImportAndManifestHealth();
             HumbleScriptsAreDistroSpecific();
             AdapterManifestRecordsHumbleRuntime();
             SelectorDiscoversHumbleByConvention();
@@ -155,6 +156,36 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!NativeDllExists("rmw_zenoh_cpp.dll"),
                 "160-B-zenoh: Humble runtime remains FastRTPS-only");
+        }
+
+        private static void RuntimePackageRecordsPluginImportAndManifestHealth()
+        {
+            var nativePluginRoot = RepoPath(RuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64");
+            var dllMetas = Directory.GetFiles(nativePluginRoot, "*.dll.meta", SearchOption.TopDirectoryOnly);
+            Check(dllMetas.Length > 900,
+                "160-B-plugin-count: Humble Win64 native DLL metas are present");
+
+            var invalidImporterMetas = dllMetas
+                .Where(path =>
+                {
+                    var meta = File.ReadAllText(path);
+                    return !meta.Contains("PluginImporter:", StringComparison.Ordinal)
+                           || meta.Contains("TextScriptImporter:", StringComparison.Ordinal)
+                           || !meta.Contains("CPU: x86_64", StringComparison.Ordinal)
+                           || !meta.Contains("OS: Windows", StringComparison.Ordinal)
+                           || !meta.Contains("Standalone: Windows", StringComparison.Ordinal);
+                })
+                .Select(Path.GetFileName)
+                .ToArray();
+            Check(invalidImporterMetas.Length == 0,
+                "160-B-plugin-importers: Humble Win64 native DLL metas import as Windows x86_64 plugins");
+
+            var xmlWithAbsoluteWindowsPaths = Directory.GetFiles(RepoPath(RuntimePackage), "*.xml", SearchOption.AllDirectories)
+                .Where(path => File.ReadAllText(path).Contains("D:\\", StringComparison.Ordinal))
+                .Select(path => path.Substring(RepoPath(RuntimePackage).Length + 1))
+                .ToArray();
+            Check(xmlWithAbsoluteWindowsPaths.Length == 0,
+                "160-B-metadata-paths: Humble runtime XML metadata does not expose build-machine Windows paths");
         }
 
         private static void HumbleScriptsAreDistroSpecific()
