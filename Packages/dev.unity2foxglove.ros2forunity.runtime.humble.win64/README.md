@@ -8,6 +8,8 @@ Install this package when a Unity project needs to run as a ROS2 node through RO
 
 This package is independent from `dev.unity2foxglove.sdk` and can import by itself. It does not provide the high-level Unity2Foxglove facade or samples by itself; those live in `dev.unity2foxglove.ros2forunity`.
 
+The runtime package intentionally does not declare a UPM dependency on `dev.unity2foxglove.ros2forunity`: standalone import is useful for package diagnostics, while adapter-backed workflows should install the adapter package explicitly.
+
 Recommended combinations:
 
 - `dev.unity2foxglove.ros2forunity.runtime.humble.win64` alone: imports runtime files, manifest, notices, and diagnostics.

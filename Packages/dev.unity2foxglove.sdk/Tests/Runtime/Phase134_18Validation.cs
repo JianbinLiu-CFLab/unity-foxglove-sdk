@@ -177,6 +177,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("CopyTempOverDestination(tempPath, path", StringComparison.Ordinal)
                   && source.Contains("Stable Unity GUID", StringComparison.Ordinal),
                 "134-18-G1: schema info writer uses atomic temp replace/copy fallback and documents stable meta GUID");
+            var verifyIndex = source.IndexOf("var verification = VerifyGeneratedInfo(manifest, source);", StringComparison.Ordinal);
+            var writeIndex = source.IndexOf("var sourceChanged = WriteIfChanged(sourcePath, source);", StringComparison.Ordinal);
+            Check(verifyIndex >= 0 && writeIndex >= 0 && verifyIndex < writeIndex,
+                "173-022A: schema info writer verifies generated source before touching files");
+            Check(source.Contains("FoxRun policy float values must be finite.", StringComparison.Ordinal)
+                  && !source.Contains("return \"0f\";", StringComparison.Ordinal),
+                "173-022B: schema info writer rejects non-finite policy floats");
 
             var escapedManifest = new FoxRunCanonicalManifest(
                 1,
@@ -188,6 +195,15 @@ namespace Unity.FoxgloveSDK.Tests
             var verification = FoxRunSchemaInfoWriter.VerifyGeneratedInfo(escapedManifest, generated);
             Check(verification.IsValid,
                 "134-18-G2: schema info verification parses escaped string constants correctly");
+            try
+            {
+                FoxRunSchemaInfoWriter.GenerateSource(BuildManifestWithRate("BadFloat", "/bad_float", float.NaN));
+                throw new InvalidOperationException("173-022C: non-finite FoxRun policy float should throw");
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                Check(true, "173-022C: non-finite FoxRun policy float fails before source emission");
+            }
 
             var directory = CreateTempDirectory();
             try
@@ -228,6 +244,38 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static FoxRunCanonicalManifest BuildManifest(string className, string topic)
+            => BuildManifestWithRate(className, topic, 1f);
+
+        private static FoxRunCanonicalManifest BuildManifestWithRate(string className, string topic, float rateHz)
+        {
+            var field = new FoxRunManifestField(
+                "_value",
+                "_value",
+                "field",
+                "System.Single",
+                true,
+                false);
+            var policy = new FoxRunManifestPolicy("", rateHz, 0f, 0f);
+            var contract = new FoxRunManifestContract(
+                "Validation." + className,
+                topic,
+                "Validation." + className,
+                "json",
+                "contract",
+                "binding",
+                "policy",
+                new[] { field },
+                policy);
+            var type = new FoxRunManifestType("Validation." + className, new[] { contract });
+            return new FoxRunCanonicalManifest(
+                1,
+                "package",
+                new FoxRunManifestGenerator("generator", 1),
+                new FoxRunManifestSections(new FoxRunManifestFoxRunSection("foxhash", new[] { type })),
+                "globalhash");
+        }
+
+        private static FoxRunCanonicalManifest BuildManifestThroughBuilder(string className, string topic, float rateHz)
         {
             return FoxRunManifestBuilder.Build(new[]
             {
@@ -241,7 +289,7 @@ namespace Unity.FoxgloveSDK.Tests
                     false,
                     "",
                     topic,
-                    1f,
+                    rateHz,
                     "",
                     0,
                     0f,
