@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -45,7 +47,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as zip_file:
                 zip_file.writestr("Ros2ForUnity/../escape.txt", "nope")
 
-            paths = self.builder.BuildPaths(archive, root / "inventory.json", package)
+            paths = self.builder.BuildPaths(archive, root / "inventory.json", package, root / "ros2-bin")
 
             with self.assertRaises(ValueError):
                 self.builder.extract_runtime(paths)
@@ -61,7 +63,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as zip_file:
                 zip_file.writestr("Ros2ForUnity/Scripts/ROS2ForUnity.cs", "ok")
 
-            paths = self.builder.BuildPaths(archive, root / "inventory.json", package)
+            paths = self.builder.BuildPaths(archive, root / "inventory.json", package, root / "ros2-bin")
 
             self.builder.extract_runtime(paths)
 
@@ -91,7 +93,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             package.mkdir(parents=True)
             sentinel = package / "sentinel.txt"
             sentinel.write_text("keep", encoding="utf-8")
-            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package, root / "ros2-bin")
             artifact = self.builder.RuntimeArtifact(
                 name=self.builder.ARTIFACT_NAME,
                 sha256="0" * 64,
@@ -116,7 +118,7 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             package.mkdir()
             sentinel = package / "sentinel.txt"
             sentinel.write_text("keep", encoding="utf-8")
-            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package)
+            paths = self.builder.BuildPaths(root / "runtime.zip", root / "inventory.json", package, root / "ros2-bin")
             artifact = self.builder.RuntimeArtifact(
                 name=self.builder.ARTIFACT_NAME,
                 sha256="0" * 64,
@@ -131,6 +133,91 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             self.assertTrue(sentinel.exists())
             self.assertEqual("keep", sentinel.read_text(encoding="utf-8"))
+
+    def test_generated_dll_meta_uses_plugin_importer(self) -> None:
+        """Generated Unity DLL metadata should import native plugins, not text."""
+        relative = "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/rcl.dll"
+
+        text = self.builder.generated_meta_text(Path(relative), relative, is_dir=False, guid="1" * 32)
+
+        self.assertIn("PluginImporter:", text)
+        self.assertIn("Standalone: Windows", text)
+        self.assertIn("CPU: x86_64", text)
+        self.assertNotIn("TextScriptImporter:", text)
+
+    def test_legacy_dll_meta_overlay_preserves_guid_while_upgrading_importer(self) -> None:
+        """Legacy two-line DLL metas should keep GUIDs while gaining PluginImporter."""
+        legacy = b"fileFormatVersion: 2\nguid: abcdefabcdefabcdefabcdefabcdefab\n"
+
+        data = self.builder.normalize_meta_overlay(
+            "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/rcl.dll.meta",
+            legacy,
+        ).decode("utf-8")
+
+        self.assertIn("guid: abcdefabcdefabcdefabcdefabcdefab", data)
+        self.assertIn("PluginImporter:", data)
+        self.assertIn("Standalone: Windows", data)
+
+    def test_copy_supplemental_runtime_dlls_uses_supplied_ros2_bin(self) -> None:
+        """Supplemental DLLs should come from the caller-selected ROS2 bin."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
+            plugin_root.mkdir(parents=True)
+            ros2_bin = root / "custom-ros2-bin"
+            ros2_bin.mkdir()
+            for name in self.builder.PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
+                (ros2_bin / name).write_bytes(b"custom")
+
+            self.builder.copy_supplemental_runtime_dlls(package, ros2_bin)
+
+            for name in self.builder.PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
+                self.assertEqual(b"custom", (plugin_root / name).read_bytes())
+
+    def test_patch_standalone_environment_rejects_unpatched_path_call_site(self) -> None:
+        """Bootstrap patching should fail if the managed PATH write call remains."""
+        text = (
+            "using System.Reflection;\n"
+            "public class ROS2ForUnity\n"
+            "{\n"
+            "    private bool ownsLifecycle;\n"
+            "    private string GetEnvPathVariableValue()\n"
+            "    {\n"
+            "        return Environment.GetEnvironmentVariable(GetEnvPathVariableName());\n"
+            "    }\n"
+            "        Environment.SetEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));\n"
+            "        Environment.SetEnvironmentVariable(GetEnvPathVariableName(), string.Join(envPathSep.ToString(), entries));\n"
+            "}\n"
+        )
+
+        with self.assertRaises(ValueError):
+            self.builder.patch_standalone_environment_bootstrap(text)
+
+    def test_require_inputs_rejects_mismatched_artifact_size(self) -> None:
+        """Inventory artifactSize must match the artifact when it is present."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            artifact = root / self.builder.ARTIFACT_NAME
+            artifact.write_bytes(b"artifact")
+            digest = hashlib.sha256(b"artifact").hexdigest()
+            inventory = root / "inventory.json"
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "runtimeId": self.builder.RUNTIME_ID,
+                        "sha256": digest,
+                        "artifactSize": 999,
+                        "fileCount": 1,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            paths = self.builder.BuildPaths(artifact, inventory, root / "package", root / "ros2-bin")
+
+            with mock.patch.object(self.builder, "EXPECTED_ARTIFACT_SHA256", digest):
+                with self.assertRaises(ValueError):
+                    self.builder.require_inputs(paths)
 
 
 if __name__ == "__main__":

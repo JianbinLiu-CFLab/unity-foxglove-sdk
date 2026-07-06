@@ -506,6 +506,18 @@ def check_runtime_files(results: list[CheckResult]) -> None:
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 900, f"dll_count={len(dlls)}")
+    plugin_meta_failures = []
+    for dll in dlls:
+        meta = dll.with_name(dll.name + ".meta")
+        text = read_optional_text(meta)
+        if "PluginImporter:" not in text:
+            plugin_meta_failures.append(rel(meta))
+    add(
+        results,
+        "Windows x86_64 DLL metas use PluginImporter",
+        len(dlls) >= 900 and not plugin_meta_failures,
+        ", ".join(plugin_meta_failures[:8]),
+    )
     add(results, "no root zip sidecar copied", not any(PACKAGE.glob("*.zip")) and not any(PACKAGE.glob("*.sha256")), rel(PACKAGE))
 
     copied_paths = [path.relative_to(PACKAGE).as_posix() for path in iter_files(PACKAGE)]
@@ -535,6 +547,7 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
         "PackageInfo.FindForAssetPath",
         "resolvedPath",
         "unity2FoxgloveRuntimePackageAssetPath",
+        "SetProcessEnvironmentVariable(GetEnvPathVariableName()",
         'Path.Combine(',
         '"Packages"',
         '"Runtime"',
@@ -560,6 +573,12 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
             re.S,
         )
         is not None,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "standalone PATH update reaches native environment",
+        "Environment.SetEnvironmentVariable(GetEnvPathVariableName()," not in text,
         "ROS2ForUnity.cs",
     )
 
