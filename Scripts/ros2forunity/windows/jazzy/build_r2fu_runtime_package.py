@@ -1209,7 +1209,7 @@ def patch_ros_time_source_contract(package: Path) -> None:
         "  bool GetTime(out int seconds, out uint nanoseconds);\n"
         "}\n",
         "/// <summary>\n"
-        "/// Interface for acquiring ROS-compatible timestamp fields from a concrete time source.\n"
+        "/// Interface for acquiring time as ROS-compatible timestamp fields from a concrete time source.\n"
         "/// </summary>\n"
         "public interface ITimeSource\n"
         "{\n"

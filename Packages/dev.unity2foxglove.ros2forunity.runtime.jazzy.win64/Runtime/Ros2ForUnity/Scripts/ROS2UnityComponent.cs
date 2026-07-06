@@ -259,11 +259,7 @@ public class ROS2UnityComponent : MonoBehaviour
             lock (mutex)
             {
                 hasSnapshot = !quitting
-                    && !disposed
-                    && ros2forUnity != null
-                    && nodes != null
-                    && executableActions != null
-                    && ros2csNodes != null
+                    && !disposed && ros2forUnity != null && nodes != null && executableActions != null && ros2csNodes != null
                     && ros2forUnity.Ok();
 
                 cachedOk = hasSnapshot;

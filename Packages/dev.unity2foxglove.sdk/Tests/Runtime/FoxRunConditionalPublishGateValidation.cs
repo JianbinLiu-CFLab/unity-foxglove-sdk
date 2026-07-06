@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class FoxRunConditionalPublishGateValidation
     {
-        private const string ExpectedCheckedInGeneratorSha256 = "AAFA5C1CA0FC2D806518B18895B60A014532B62921D090FD88515C4035889A69";
+        private const string ExpectedCheckedInGeneratorSha256 = "91A9D3DF9D7FE15CF1E844DA7CA42E9EE9BC6C67F7F138FCED4D2A689B96A6C8";
         private static int _passCount;
 
         public static void Validate()
