@@ -55,6 +55,7 @@ namespace Unity.FoxgloveSDK.Core
         // deliberately does not clear them.
         private ISinkChannelFilter _liveWebSocketChannelFilter;
         private ISinkChannelFilter _mcapRecordingChannelFilter;
+        private IFoxgloveMirrorSink _mirrorSink;
 
         // Runtime-owned definitions survive Stop/Start cycles so
         // parameters and services are re-advertised on restart.
@@ -168,6 +169,16 @@ namespace Unity.FoxgloveSDK.Core
             };
         }
 
+        /// <summary>Attach or detach an optional live-data mirror sink.</summary>
+        public void SetMirrorSink(IFoxgloveMirrorSink sink)
+        {
+            Volatile.Write(ref _mirrorSink, sink);
+            _session?.SetMirrorSink(sink);
+        }
+
+        /// <summary>Return the currently configured mirror sink, or null when disabled.</summary>
+        public IFoxgloveMirrorSink GetMirrorSink() => Volatile.Read(ref _mirrorSink);
+
         /// <summary>Register a named parameter. Can be called before Start; stored for later advertisement.</summary>
         public void RegisterParameter(string name, JToken value, string type, bool writable)
             => _parameters.Register(name, value, type, writable);
@@ -243,7 +254,8 @@ namespace Unity.FoxgloveSDK.Core
                     _protobufSchemasRegistered, _ros2MsgSchemasRegistered,
                     this,
                     Volatile.Read(ref _liveWebSocketChannelFilter),
-                    Volatile.Read(ref _mcapRecordingChannelFilter));
+                    Volatile.Read(ref _mcapRecordingChannelFilter),
+                    Volatile.Read(ref _mirrorSink));
                 session.Start(host, port);
                 _session = session;
                 ClearReplaySuppressionWarnings();

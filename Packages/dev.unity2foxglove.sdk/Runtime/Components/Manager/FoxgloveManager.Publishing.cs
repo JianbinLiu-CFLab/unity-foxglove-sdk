@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Provides FoxgloveManager channel registration and publish helpers.
 
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;
@@ -201,6 +202,22 @@ namespace Unity.FoxgloveSDK.Components
             channelId = GetOrRegisterChannel(topic, MsgPackEncoding);
             return !requireDemand || _runtime.HasChannelDemand(channelId);
         }
+
+        /// <summary>
+        /// Attach or detach an optional mirror sink supplied by an add-on package.
+        /// </summary>
+        public void SetMirrorSink(IFoxgloveMirrorSink sink)
+        {
+            if (sink == null && _runtime == null)
+                return;
+
+            EnsureRuntimeCreated();
+            _runtime.SetMirrorSink(sink);
+        }
+
+        /// <summary>Return the currently attached optional mirror sink, if any.</summary>
+        public IFoxgloveMirrorSink GetMirrorSink()
+            => _runtime?.GetMirrorSink();
 
         /// <summary>
         /// Returns the latest ROS2 Bridge runtime stats for Inspector and diagnostics.
