@@ -27,6 +27,7 @@ UNSUPPORTED_V1 = "ClientPublish, Services, Parameters, Assets, ConnectionGraph"
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line options for the Cloud acceptance helper."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--unity-exe",
@@ -58,6 +59,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    """Build optional native artifacts, launch Unity, and collect run evidence."""
     args = parse_args()
     ensure_token_env()
 
@@ -94,6 +96,7 @@ def main() -> int:
 
 
 def ensure_token_env() -> None:
+    """Require a non-empty inherited Foxglove device token without printing it."""
     token = os.environ.get(TOKEN_ENV, "").strip()
     if not token:
         raise SystemExit(
@@ -105,6 +108,7 @@ def ensure_token_env() -> None:
 
 
 def find_unity_exe(configured: str | None) -> Path:
+    """Resolve Unity.exe from an explicit path, environment, or Unity Hub install."""
     if configured:
         candidate = Path(configured).expanduser().resolve()
         if candidate.exists():
@@ -129,6 +133,7 @@ def find_unity_exe(configured: str | None) -> Path:
 
 
 def create_run_dir() -> Path:
+    """Create a timestamped local evidence directory for this acceptance run."""
     timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir = ROOT / "build" / "remotegateway" / "cloud-acceptance" / timestamp
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -136,6 +141,7 @@ def create_run_dir() -> Path:
 
 
 def build_and_copy_native() -> None:
+    """Build foxglove_c and copy approved native artifacts into the package."""
     print("Building foxglove_c and copying approved native artifacts into the optional package.")
     subprocess.run(
         [sys.executable, str(BUILD_SCRIPT), "--copy-to-package"],
@@ -146,6 +152,7 @@ def build_and_copy_native() -> None:
 
 
 def ensure_native_artifact() -> None:
+    """Verify that the optional package contains the reviewed native artifact."""
     dll = PLUGIN_DIR / "foxglove.dll"
     manifest = PLUGIN_DIR / "foxglove-gateway-native-artifact.json"
     if not dll.exists() or not manifest.exists():
@@ -157,6 +164,7 @@ def ensure_native_artifact() -> None:
 
 
 def editor_log_path() -> Path:
+    """Return the current user's Unity Editor.log path."""
     local_app_data = os.environ.get("LOCALAPPDATA")
     if not local_app_data:
         return Path.home() / "AppData" / "Local" / "Unity" / "Editor" / "Editor.log"
@@ -164,6 +172,7 @@ def editor_log_path() -> Path:
 
 
 def copy_editor_log(run_dir: Path, suffix: str) -> None:
+    """Copy Editor.log into the run directory when Unity has written one."""
     source = editor_log_path()
     if not source.exists():
         return
@@ -171,6 +180,7 @@ def copy_editor_log(run_dir: Path, suffix: str) -> None:
 
 
 def write_checklist(run_dir: Path, unity_exe: Path, project_path: Path) -> Path:
+    """Write the per-run manual validation checklist next to captured logs."""
     path = run_dir / "Phase171CloudAcceptanceChecklist.md"
     body = f"""# Phase171 Remote Gateway Cloud Acceptance
 
@@ -219,6 +229,7 @@ Do not commit `foxglove.dll`, `foxglove.dll.lib`, or `foxglove.pdb`.
 
 
 def print_summary(run_dir: Path, checklist: Path, unity_exe: Path, project_path: Path) -> None:
+    """Print the operator-facing next steps without exposing the token."""
     print()
     print("Phase171 real Foxglove Cloud acceptance is ready.")
     print(f"Unity.exe: {unity_exe}")
@@ -233,6 +244,7 @@ def print_summary(run_dir: Path, checklist: Path, unity_exe: Path, project_path:
 
 
 def quote_for_display(value: str) -> str:
+    """Quote a command-line argument for display-only logging."""
     if " " not in value and "\t" not in value:
         return value
     return '"' + value.replace('"', '\\"') + '"'
