@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -85,6 +86,33 @@ class SyncR2fuArtifactTests(unittest.TestCase):
             self.assertEqual(["rcl.dll", "zenohc.dll"], runtime["criticalRuntimeFiles"])
             self.assertEqual(["rmw_fastrtps_cpp", "rmw_zenoh_cpp"], runtime["supportedRmwImplementations"])
             self.assertEqual("new notices", (compliance / "r2fu-lyrical-win64-runtime-notices.md").read_text(encoding="utf-8"))
+
+    def test_manifest_sha256_comparison_is_case_insensitive(self) -> None:
+        """Artifact manifest sha256 may use uppercase hex without failing verification."""
+        with tempfile.TemporaryDirectory() as temp:
+            artifact = Path(temp) / "artifact.zip"
+            artifact.write_bytes(b"lyrical artifact payload")
+            digest = self.sync.sha256_file(artifact)
+            manifest = Path(temp) / "artifact.manifest.json"
+            manifest.write_text(json.dumps({"sha256": digest.upper()}), encoding="utf-8")
+
+            previous = self.sync.EXPECTED_ARTIFACT_SHA256
+            try:
+                self.sync.EXPECTED_ARTIFACT_SHA256 = digest
+                info = self.sync.assert_artifact_matches_manifest(artifact, manifest)
+            finally:
+                self.sync.EXPECTED_ARTIFACT_SHA256 = previous
+
+            self.assertEqual(digest, info["sha256"])
+
+    def test_logged_subprocess_failure_reports_log_path(self) -> None:
+        """Failed logged subprocesses surface the captured evidence log path."""
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "failure.log"
+            with self.assertRaises(subprocess.CalledProcessError) as raised:
+                self.sync.run([sys.executable, "-c", "raise SystemExit(7)"], log=log)
+
+            self.assertIn(str(log), raised.exception.stderr)
 
 
 if __name__ == "__main__":

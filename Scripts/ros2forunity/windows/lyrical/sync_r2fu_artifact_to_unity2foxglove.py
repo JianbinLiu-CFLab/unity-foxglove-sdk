@@ -21,14 +21,19 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[4]
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from lyrical_artifact_config import ARTIFACT_NAME, EXPECTED_ARTIFACT_SHA256
+
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
-EXPECTED_ARTIFACT_SHA256 = "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608"
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
     / "lyrical"
     / "windows_x86_64"
-    / "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip"
+    / ARTIFACT_NAME
 )
 DEFAULT_EVIDENCE_DIR = Path(os.environ.get("R2FU_EVIDENCE_DIR", str(ROOT / "build" / "r2fu-sync-evidence")))
 DEFAULT_UNITY_EXE = Path(r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe")
@@ -66,7 +71,11 @@ def run(command: list[str], *, cwd: Path = ROOT, log: Path | None = None, env: d
             env=env,
         )
     if completed.returncode != 0:
-        raise subprocess.CalledProcessError(completed.returncode, command)
+        raise subprocess.CalledProcessError(
+            completed.returncode,
+            command,
+            stderr=f"See log: {log}",
+        )
 
 
 def run_text(command: list[str], *, cwd: Path = ROOT) -> str:
@@ -126,7 +135,7 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
 
     data = read_json(manifest)
     expected = data.get("sha256")
-    if expected and expected != digest:
+    if expected and str(expected).lower() != digest.lower():
         raise ValueError(f"Artifact sha256 does not match manifest: {digest} != {expected}")
     return {"path": str(artifact), "sha256": digest, "manifest": str(manifest), "manifestData": data}
 
@@ -153,7 +162,8 @@ def ensure_project_uses_runtime_package(
         write_json(manifest_path, manifest)
         changed = True
 
-    if direct_asset.exists():
+    direct_asset_exists = direct_asset.exists()
+    if direct_asset_exists:
         raise RuntimeError(
             "Direct Unity2Foxglove/Assets/Ros2ForUnity is importable. "
             "Remove or quarantine it before package-mode acceptance."
@@ -170,7 +180,7 @@ def ensure_project_uses_runtime_package(
         "runtimeDependencyRequired": require_runtime_dependency,
         "lockPath": str(lock_path),
         "lockHasRuntimePackage": lock_has_runtime,
-        "directAssetsRos2ForUnityExists": direct_asset.exists(),
+        "directAssetsRos2ForUnityExists": direct_asset_exists,
     }
 
 
@@ -293,7 +303,9 @@ def main(argv: list[str] | None = None) -> int:
         print("[DRY-RUN] lock has runtime package:", project_shape["lockHasRuntimePackage"])
         return 0
 
-    run([sys.executable, str(inspect_script), "--zip", str(artifact), "--out", str(inventory_path)], cwd=project_root)
+    inspect_log = evidence_dir / f"sync-r2fu-runtime-inspect-{timestamp}.log"
+    build_log = evidence_dir / f"sync-r2fu-runtime-build-{timestamp}.log"
+    run([sys.executable, str(inspect_script), "--zip", str(artifact), "--out", str(inventory_path)], cwd=project_root, log=inspect_log)
     run(
         [
             sys.executable,
@@ -306,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
             str(package_path),
         ],
         cwd=project_root,
+        log=build_log,
     )
     adapter_compliance = sync_adapter_compliance(project_root, package_path)
     project_shape = ensure_project_uses_runtime_package(
@@ -345,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
         "projectShape": project_shape,
         "validation": {
             "runtimePackageValidator": "SKIPPED" if args.skip_validate else "PASS",
+            "runtimePackageInspectLog": str(inspect_log),
+            "runtimePackageBuildLog": str(build_log),
             "runtimePackageValidatorLog": None if args.skip_validate else str(validation_log),
             "unityImport": "PASS" if args.run_unity_import else "NOT_RUN",
             "unityImportLog": None if unity_log is None else str(unity_log),

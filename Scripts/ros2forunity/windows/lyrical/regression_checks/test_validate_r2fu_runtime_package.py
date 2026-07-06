@@ -53,7 +53,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
 
             readme.write_text(
                 "runtime.lyrical.win64 adapter combined Unity2Foxglove workflow\n"
-                "Install only one runtime.* package\n",
+                "Install only one dev.unity2foxglove.ros2forunity.runtime.* package\n",
                 encoding="utf-8",
             )
             notices.write_text(artifact_sha, encoding="utf-8")
