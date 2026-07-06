@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void RunTestsCleansTempMcapHelperInFinally()
+        public void RunTestsDoesNotOwnTempMcapHelperCleanup()
         {
             var method = LoadProgramTree()
                 .GetRoot()
@@ -97,10 +97,8 @@ namespace Unity.FoxgloveSDK.UnitTests
                 .OfType<MethodDeclarationSyntax>()
                 .Single(node => node.Identifier.ValueText == "RunTests");
 
-            var tryStatement = method.DescendantNodes().OfType<TryStatementSyntax>().SingleOrDefault();
-            Assert.NotNull(tryStatement);
-            Assert.Contains(
-                tryStatement!.Finally?.Block.DescendantNodes().OfType<InvocationExpressionSyntax>() ?? Enumerable.Empty<InvocationExpressionSyntax>(),
+            Assert.DoesNotContain(
+                method.DescendantNodes().OfType<InvocationExpressionSyntax>(),
                 invocation => invocation.ToString().Contains("TempMcapHelper.Cleanup()", StringComparison.Ordinal));
         }
 
@@ -138,6 +136,41 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.NotEqual(0, result.ExitCode);
             Assert.Contains("--serve", result.StandardError, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task DemoAndDemo3dCannotRunTogether()
+        {
+            var result = await RunHarnessAsync(new[] { "--serve", "--demo", "--demo3d" }, timeoutMilliseconds: 10_000);
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("cannot be used together", result.StandardError, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task ListValidationsIncludesLegacyManualToolFlags()
+        {
+            var result = await RunHarnessAsync(new[] { "--list-validations" }, timeoutMilliseconds: 20_000);
+
+            Assert.Equal(0, result.ExitCode);
+            foreach (var flag in new[]
+            {
+                "--phase97-health",
+                "--phase98-sample-send-all",
+                "--phase98-live",
+                "--phase99-live",
+                "--phase94-bridge-send",
+                "--phase91-ros2-cdr-mcap",
+                "--phase92-ros2-product-mcap",
+                "--phase93-ros2-full-mcap",
+                "--phase93-inspect-mcap",
+                "--phase68-indexed-reader-smoke",
+                "--phase44-all-schemas-mcap",
+                "--phase139b-remote-data-loader-server",
+            })
+            {
+                Assert.Contains(flag, result.StandardOutput, StringComparison.Ordinal);
+            }
         }
 
         [Fact]

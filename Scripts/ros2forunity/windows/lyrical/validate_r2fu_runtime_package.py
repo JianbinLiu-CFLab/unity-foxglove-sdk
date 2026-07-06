@@ -639,6 +639,29 @@ def check_runtime_files(results: list[CheckResult]) -> None:
             f"{rel(plugin_config)} <-> {rel(streaming_assets_config)}",
         )
 
+    for path in [item for item in ZENOH_CONFIG_FILES if item.name == "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"]:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        add(
+            results,
+            f"Zenoh session listen failure is non-fatal: {path.parent.parent.name}/{path.name}",
+            "exit_on_failure: false" in text,
+            rel(path),
+        )
+        add(
+            results,
+            f"Zenoh session RX defragmentation buffer is bounded: {path.parent.parent.name}/{path.name}",
+            "max_message_size: 134217728" in text and "max_message_size: 1073741824" not in text,
+            rel(path),
+        )
+        adminspace_index = text.find("adminspace:")
+        adminspace = text[adminspace_index:] if adminspace_index >= 0 else ""
+        add(
+            results,
+            f"Zenoh session adminspace disabled by default: {path.parent.parent.name}/{path.name}",
+            "enabled: false" in adminspace and "read: false" in adminspace,
+            rel(path),
+        )
+
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 700, f"dll_count={len(dlls)}")
 

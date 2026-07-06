@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyGitLsFiles(repoRoot);
             VerifySourceMethodScanner();
             VerifyProgramLifecycle(repoRoot);
+            VerifyLegacyToolListing(repoRoot);
             VerifyUnitCoverage(repoRoot);
 
             Console.WriteLine("Phase 163-44: runtime harness helper checks passed.");
@@ -85,21 +86,62 @@ namespace Unity.FoxgloveSDK.Tests
             Check(program.Contains("private static int MainCore(string[] args)", StringComparison.Ordinal)
                   && program.Contains("finally\n        {\n            TempMcapHelper.Cleanup();", StringComparison.Ordinal),
                 "163-44C-1: Main cleans TempMcapHelper for every CLI entrypoint");
+            var runTests = PhaseValidationSourceHelpers.SourceMethod(program, "RunTests");
+            Check(!runTests.Contains("TempMcapHelper.Cleanup()", StringComparison.Ordinal),
+                "163-44C-2: RunTests leaves TempMcapHelper cleanup ownership to Main");
             Check(program.Contains("--demo and --demo3d require --serve.", StringComparison.Ordinal),
-                "163-44C-2: demo-only flags report the required --serve parent mode");
+                "163-44C-3: demo-only flags report the required --serve parent mode");
+            Check(program.Contains("--demo and --demo3d cannot be used together.", StringComparison.Ordinal),
+                "163-44C-4: manual demo modes are mutually exclusive to avoid duplicate channel ids");
             Check(program.Contains("Interlocked.Exchange(ref stopping, 1)", StringComparison.Ordinal)
+                  && program.Contains("Interlocked.Increment(ref seq)", StringComparison.Ordinal)
+                  && program.Contains("Interlocked.Increment(ref tfSeq)", StringComparison.Ordinal)
                   && program.Contains("DisposeTimerAndWait(heartbeat)", StringComparison.Ordinal)
                   && program.Contains("timer.Dispose(disposed)", StringComparison.Ordinal),
-                "163-44C-3: manual server drains timer callbacks before runtime disposal");
+                "163-44C-5: manual server drains timer callbacks and uses interlocked timer counters");
+            Check(program.Contains("RunPhase97Health(argList, argSet)", StringComparison.Ordinal)
+                  && program.Contains("argSet.Contains(\"--phase97-live\")", StringComparison.Ordinal),
+                "163-44C-6: Phase97 live flag lookup uses the precomputed argument set");
+            var meta = Read(repoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs.meta");
+            Check(meta.Contains("MonoImporter:", StringComparison.Ordinal)
+                  && meta.Contains("guid: b161da42b5a01a543b309c84c8e2dbca", StringComparison.Ordinal),
+                "163-44C-7: Program.cs Unity meta keeps a valid MonoImporter block and stable GUID");
+        }
+
+        private static void VerifyLegacyToolListing(string repoRoot)
+        {
+            var program = Read(repoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
+            foreach (var flag in new[]
+            {
+                "--phase97-health",
+                "--phase98-sample-send-all",
+                "--phase98-live",
+                "--phase99-live",
+                "--phase94-bridge-send",
+                "--phase91-ros2-cdr-mcap",
+                "--phase92-ros2-product-mcap",
+                "--phase93-ros2-full-mcap",
+                "--phase93-inspect-mcap",
+                "--phase68-indexed-reader-smoke",
+                "--phase44-all-schemas-mcap",
+                "--phase139b-remote-data-loader-server",
+            })
+            {
+                Check(program.Contains($"(\"{flag}\"", StringComparison.Ordinal),
+                    "163-44D-tool: " + flag + " appears in --list-validations legacy tool output");
+            }
         }
 
         private static void VerifyUnitCoverage(string repoRoot)
         {
             var tests = Read(repoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RuntimeHarnessTests.cs");
             Check(tests.Contains("MainCleansTempMcapHelperInFinallyForAllEntrypoints", StringComparison.Ordinal)
+                  && tests.Contains("RunTestsDoesNotOwnTempMcapHelperCleanup", StringComparison.Ordinal)
                   && tests.Contains("RuntimeGitLsFilesDrainsPipesBeforeTimedWait", StringComparison.Ordinal)
-                  && tests.Contains("DemoFlagsRequireServe", StringComparison.Ordinal),
-                "163-44D-1: xUnit runtime harness tests cover the Phase163-44 lifecycle contracts");
+                  && tests.Contains("DemoFlagsRequireServe", StringComparison.Ordinal)
+                  && tests.Contains("DemoAndDemo3dCannotRunTogether", StringComparison.Ordinal)
+                  && tests.Contains("ListValidationsIncludesLegacyManualToolFlags", StringComparison.Ordinal),
+                "163-44E-1: xUnit runtime harness tests cover the Phase163-44 lifecycle contracts");
         }
 
         private static string Read(string repoRoot, string relativePath)

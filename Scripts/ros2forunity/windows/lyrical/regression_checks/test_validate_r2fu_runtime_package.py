@@ -120,6 +120,59 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertFalse(closure[0].ok)
         self.assertIn("rosidl_dynamic_typesupport_fastrtps.dll", closure[0].detail)
 
+    def test_runtime_files_reject_unsafe_zenoh_session_defaults(self) -> None:
+        """Unity-facing Zenoh session configs must not enable hard exit, 1GiB buffers, or adminspace."""
+        unsafe_config = (
+            "listen: { exit_on_failure: true }\n"
+            "rx: { max_message_size: 1073741824 }\n"
+            "adminspace: { enabled: true, permissions: { read: true, write: false } }\n"
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plugin_config = (
+                root
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
+            )
+            streaming_config = (
+                root
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "StreamingAssets"
+                / "Ros2ForUnity"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
+            )
+            plugin_config.parent.mkdir(parents=True)
+            streaming_config.parent.mkdir(parents=True)
+            plugin_config.write_text(unsafe_config, encoding="utf-8")
+            streaming_config.write_text(unsafe_config, encoding="utf-8")
+
+            self.validator.RUNTIME_ROOT = root / "Runtime" / "Ros2ForUnity"
+            self.validator.PLUGIN_ROOT = root / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
+            self.validator.CRITICAL_PLUGIN_DLLS = ()
+            self.validator.RMW_DEPENDENCY_CLOSURE_SEEDS = ()
+            self.validator.LEAKY_UPSTREAM_EXAMPLES = ()
+            self.validator.ZENOH_CONFIG_FILES = (plugin_config, streaming_config)
+            self.validator.ZENOH_CONFIG_MIRRORS = ((plugin_config, streaming_config),)
+            results = []
+
+            self.validator.check_runtime_files(results)
+
+        failed_names = {result.name for result in results if not result.ok}
+        self.assertTrue(any("listen failure is non-fatal" in name for name in failed_names))
+        self.assertTrue(any("defragmentation buffer is bounded" in name for name in failed_names))
+        self.assertTrue(any("adminspace disabled" in name for name in failed_names))
+
     def test_expected_artifact_hash_is_full_sha256(self) -> None:
         """Pinned artifact hash is not accidentally truncated."""
         self.assertEqual(64, len(self.validator.EXPECTED_ARTIFACT_SHA256))

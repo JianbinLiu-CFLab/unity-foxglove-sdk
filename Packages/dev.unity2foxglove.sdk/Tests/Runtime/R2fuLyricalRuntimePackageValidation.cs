@@ -283,6 +283,22 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!RepoFileExists(HumbleRuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/rmw_zenoh_cpp.dll")
                   && !RepoFileExists(JazzyRuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/rmw_zenoh_cpp.dll"),
                 "162-B1: Humble and Jazzy runtime packages remain FastDDS-only");
+
+            foreach (var relative in new[]
+            {
+                "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+                "/Runtime/Ros2ForUnity/StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+            })
+            {
+                var config = ReadRepoText(RuntimePackage + relative);
+                var adminspace = config.Substring(config.IndexOf("adminspace:", StringComparison.Ordinal));
+                Check(config.Contains("exit_on_failure: false", StringComparison.Ordinal)
+                      && config.Contains("max_message_size: 134217728", StringComparison.Ordinal)
+                      && !config.Contains("max_message_size: 1073741824", StringComparison.Ordinal)
+                      && adminspace.Contains("enabled: false", StringComparison.Ordinal)
+                      && adminspace.Contains("read: false", StringComparison.Ordinal),
+                    "162-B2: Lyrical Zenoh session config is Unity-safe by default: " + relative);
+            }
         }
 
         private static void Phase162SelectorScopesCommunicationModeToZenohCapability()
