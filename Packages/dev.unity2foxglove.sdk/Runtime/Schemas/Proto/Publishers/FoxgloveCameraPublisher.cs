@@ -44,6 +44,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _maxPendingReadbacks = 1;
         [Tooltip("Maximum source capture/render rate for heavy camera visualization. Use 0 to capture every eligible publisher tick.")]
         [SerializeField, Min(0f)] private float _maxCaptureRateHz = DefaultMaxCaptureRateHz;
+        [SerializeField] private CameraPipelineHealthMode _cameraHealthMode = CameraPipelineHealthMode.Balanced;
 
         [Header("Async JPEG")]
         [Tooltip("Encode JPEG camera frames on a background worker using Unity-free buffers.")]
@@ -263,6 +264,11 @@ namespace Unity.FoxgloveSDK.Components
             if (_useSharedSensorClock)
                 renderUnixNs = ResolveCameraCaptureUnixNs();
             if (!AllowCameraCaptureBySourceRate(renderUnixNs))
+            {
+                EmitCameraDiagnosticsIfNeeded();
+                return;
+            }
+            if (!AllowCameraCaptureByHealthPolicy(profile))
             {
                 EmitCameraDiagnosticsIfNeeded();
                 return;

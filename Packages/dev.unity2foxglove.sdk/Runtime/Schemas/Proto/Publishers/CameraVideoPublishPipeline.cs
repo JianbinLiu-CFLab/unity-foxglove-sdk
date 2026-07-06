@@ -65,6 +65,8 @@ namespace Unity.FoxgloveSDK.Components
         public int SidecarHeight => _videoSidecarSession.Height;
         public CameraOutputMode Mode => _videoSidecarSession.Mode;
         public bool IsOpenH264Mode => _videoSidecarSession.IsOpenH264Mode;
+        public int OutputQueueDepth => _videoSidecarSession.OutputQueueDepth;
+        public int MaxOutputQueue => _videoSidecarSession.MaxOutputQueue;
 
         public void ResetState()
         {

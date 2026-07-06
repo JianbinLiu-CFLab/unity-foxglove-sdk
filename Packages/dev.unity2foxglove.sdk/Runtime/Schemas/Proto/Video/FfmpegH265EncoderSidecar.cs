@@ -42,7 +42,6 @@ namespace Foxglove.Schemas.Video
         private int _outputCount;
         private long _framesSubmitted;
         private long _accessUnitsProduced;
-        private long _accessUnitsDropped;
         private string _lastStderrLine;
         private string _lastError;
 
@@ -67,7 +66,9 @@ namespace Foxglove.Schemas.Video
 
         public long FramesSubmitted => Interlocked.Read(ref _framesSubmitted);
         public long AccessUnitsProduced => Interlocked.Read(ref _accessUnitsProduced);
-        public long AccessUnitsDropped => Interlocked.Read(ref _accessUnitsDropped);
+        public long AccessUnitsDropped => 0L;
+        public int OutputQueueDepth => Volatile.Read(ref _outputCount);
+        public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
         public string LastStderrLine
         {
             get => Volatile.Read(ref _lastStderrLine);
@@ -437,10 +438,10 @@ namespace Foxglove.Schemas.Video
 
             lock (_outputLock)
             {
-                while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
+                if (_outputCount >= _maxOutputQueue)
                 {
-                    _outputCount--;
-                    Interlocked.Increment(ref _accessUnitsDropped);
+                    LastStderrLine = "FFmpeg H.265 output queue full; capture admission is holding new frames.";
+                    return;
                 }
 
                 // FFmpeg's rawvideo pipe carries no per-frame PTS. With zerolatency

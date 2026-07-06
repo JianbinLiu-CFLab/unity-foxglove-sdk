@@ -14,6 +14,8 @@ namespace Foxglove.Schemas.Video
     public interface ICameraVideoEncoderSidecar : IDisposable
     {
         bool IsRunning { get; }
+        int OutputQueueDepth { get; }
+        int MaxOutputQueue { get; }
         string LastDiagnosticLine { get; }
         string LastError { get; }
         /// <summary>

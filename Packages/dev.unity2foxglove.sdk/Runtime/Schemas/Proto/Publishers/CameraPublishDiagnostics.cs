@@ -33,6 +33,8 @@ namespace Unity.FoxgloveSDK.Components
         private int _rateSkipCount;
         private int _pipelineCooldownSkipCount;
         private int _mainLoopCooldownSkipCount;
+        private int _renderPressureSkipCount;
+        private int _videoOutputSkipCount;
         private int _noDemandJpegDropCount;
         private int _droppedEncodeQueueCount;
         private int _droppedCompletedJpegCount;
@@ -104,6 +106,35 @@ namespace Unity.FoxgloveSDK.Components
                     _pixelBudgetSkipCount++;
                     break;
                 case CameraFrameBudgetSkipReason.PipelineCooldown:
+                    RecordPipelineCooldownSkip();
+                    break;
+            }
+        }
+
+        public void RecordHealthSkip(CameraPipelineHealthSkipReason reason)
+        {
+            switch (reason)
+            {
+                case CameraPipelineHealthSkipReason.CadenceBudget:
+                    _rateSkipCount++;
+                    break;
+                case CameraPipelineHealthSkipReason.ReadbackQueueFull:
+                    _readbackBudgetSkipCount++;
+                    break;
+                case CameraPipelineHealthSkipReason.EncodeQueueFull:
+                    _encodeBudgetSkipCount++;
+                    break;
+                case CameraPipelineHealthSkipReason.CompletedQueueFull:
+                    _completedBudgetSkipCount++;
+                    break;
+                case CameraPipelineHealthSkipReason.VideoOutputQueueFull:
+                    _videoOutputSkipCount++;
+                    break;
+                case CameraPipelineHealthSkipReason.PixelBudgetExceeded:
+                    _pixelBudgetSkipCount++;
+                    break;
+                case CameraPipelineHealthSkipReason.RenderPressureCooldown:
+                    _renderPressureSkipCount++;
                     RecordPipelineCooldownSkip();
                     break;
             }
@@ -182,7 +213,7 @@ namespace Unity.FoxgloveSDK.Components
                 $"renderMs={_lastRenderMs:F2} readbackLatencyMs={_lastReadbackLatencyMs:F2} readbackCopyMs={_lastReadbackCopyMs:F2} " +
                 $"jpegMs={_lastJpegEncodeMs:F2} serializeMs={_lastSerializeMs:F2} publishDrainMs={_lastPublishDrainMs:F2} " +
                 $"bytes={_lastJpegBytes} pendingReadbacks={pendingReadbacks} encodeQueue={encodeQueueDepth} completedQueue={completedQueueDepth} " +
-                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount},rateSkip={_rateSkipCount},cooldownSkip={_pipelineCooldownSkipCount},mainLoopSkip={_mainLoopCooldownSkipCount}) " +
+                $"skips(readback={_readbackBudgetSkipCount},encode={_encodeBudgetSkipCount},completed={_completedBudgetSkipCount},pixels={_pixelBudgetSkipCount},rateSkip={_rateSkipCount},cooldownSkip={_pipelineCooldownSkipCount},mainLoopSkip={_mainLoopCooldownSkipCount},renderPressureSkip={_renderPressureSkipCount},videoOutputSkip={_videoOutputSkipCount}) " +
                 $"drops(noDemand={_noDemandJpegDropCount},encodeQueue={_droppedEncodeQueueCount},completedQueue={_droppedCompletedJpegCount},encodedBudget={_droppedEncodedBudgetCount},late={_droppedLateJpegCount}).";
             ResetCameraCounters();
         }
@@ -336,6 +367,8 @@ namespace Unity.FoxgloveSDK.Components
             _rateSkipCount = 0;
             _pipelineCooldownSkipCount = 0;
             _mainLoopCooldownSkipCount = 0;
+            _renderPressureSkipCount = 0;
+            _videoOutputSkipCount = 0;
             _noDemandJpegDropCount = 0;
             _droppedEncodeQueueCount = 0;
             _droppedCompletedJpegCount = 0;

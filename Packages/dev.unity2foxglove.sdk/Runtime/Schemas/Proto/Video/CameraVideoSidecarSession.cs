@@ -29,6 +29,8 @@ namespace Foxglove.Schemas.Video
         public int Width => _width;
         public int Height => _height;
         public bool IsOpenH264Mode => _mode == CameraOutputMode.H264OpenH264;
+        public int OutputQueueDepth => _sidecar?.OutputQueueDepth ?? 0;
+        public int MaxOutputQueue => _sidecar?.MaxOutputQueue ?? 1;
 
         public bool EnsureStarted(
             CameraVideoOutputProfile profile,

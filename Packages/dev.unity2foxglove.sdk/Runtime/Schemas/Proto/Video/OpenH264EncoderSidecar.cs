@@ -70,6 +70,8 @@ namespace Foxglove.Schemas.Video
         public long AccessUnitsReceived => Interlocked.Read(ref _accessUnitsReceived);
         public long SkippedAccessUnits => Interlocked.Read(ref _skippedAccessUnits);
         public long DroppedInputFrames => Interlocked.Read(ref _droppedInputFrames);
+        public int OutputQueueDepth => Volatile.Read(ref _outputCount);
+        public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
         public string LastDiagnosticLine
         {
             get => Volatile.Read(ref _lastDiagnosticLine);
@@ -413,8 +415,11 @@ namespace Foxglove.Schemas.Video
         {
             lock (_outputLock)
             {
-                while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))
-                    _outputCount--;
+                if (_outputCount >= _maxOutputQueue)
+                {
+                    LastDiagnosticLine = "OpenH264 output queue full; capture admission is holding new frames.";
+                    return;
+                }
 
                 var timestampNs = _encodedFrameTimestamps.TryDequeue(out var capturedNs) ? capturedNs : 0UL;
                 _outputAccessUnits.Enqueue(new EncodedVideoAccessUnit(accessUnit, timestampNs));
