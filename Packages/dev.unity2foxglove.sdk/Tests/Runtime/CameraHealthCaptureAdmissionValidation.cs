@@ -33,12 +33,15 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(policy.Contains("internal enum CameraPipelineHealthMode", StringComparison.Ordinal)
                   && policy.Contains("Balanced", StringComparison.Ordinal)
+                  && policy.Contains("Conservative", StringComparison.Ordinal)
+                  && policy.Contains("Aggressive", StringComparison.Ordinal)
                   && policy.Contains("Off", StringComparison.Ordinal)
                   && policy.Contains("CameraPipelineHealthPolicy", StringComparison.Ordinal)
-                  && policy.Contains("CadenceAllowed", StringComparison.Ordinal)
+                  && !policy.Contains("CadenceAllowed", StringComparison.Ordinal)
+                  && !policy.Contains("CadenceBudget", StringComparison.Ordinal)
                   && !policy.Contains("TotalDroppedDataFrames", StringComparison.Ordinal)
                   && !policy.Contains("CameraBackpressurePolicy", StringComparison.Ordinal),
-                "172-1: pure health policy exists and avoids aggregate transport-drop coupling");
+                "172-1: pure health policy exists, has distinct modes, and avoids cadence/transport-drop coupling");
         }
 
         private static void VerifyPublisherAdmissionBeforeRender()
@@ -64,6 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDiagnosticsAndInspectorSurface()
         {
             var cameraDiagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs");
+            var video = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs");
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
 
             Check(cameraDiagnostics.Contains("RecordHealthSkip", StringComparison.Ordinal)
@@ -75,6 +79,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editor.Contains("private SerializedProperty _cameraHealthMode;", StringComparison.Ordinal)
                   && editor.Contains("Camera Health Mode", StringComparison.Ordinal),
                 "172-5: inspector exposes camera health mode next to camera output controls");
+
+            Check(video.Contains("LogOption.NoStacktrace", StringComparison.Ordinal)
+                  && !video.Contains("Debug.Log(message)", StringComparison.Ordinal),
+                "172-6: video diagnostics avoid stacktrace logging during subjective performance runs");
         }
 
         private static void VerifyVideoQueueContinuityBoundary()
@@ -89,14 +97,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(sidecarFiles.All(path =>
                 !ReadRepoText(path).Contains("while (_outputCount >= _maxOutputQueue && _outputAccessUnits.TryDequeue(out _))", StringComparison.Ordinal)),
-                "172-6: encoded video output queues do not silently drop old completed access units");
+                "172-7: encoded video output queues do not silently drop old completed access units");
 
             var session = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/CameraVideoSidecarSession.cs");
             var pipeline = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraVideoPublishPipeline.cs");
             Check(session.Contains("OutputQueueDepth", StringComparison.Ordinal)
                   && pipeline.Contains("OutputQueueDepth", StringComparison.Ordinal)
                   && pipeline.Contains("MaxOutputQueue", StringComparison.Ordinal),
-                "172-7: video output pressure is observable by the capture admission path");
+                "172-8: video output pressure is observable by the capture admission path");
         }
 
         private static string ReadRepoText(string relativePath)

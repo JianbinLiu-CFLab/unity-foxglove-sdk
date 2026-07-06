@@ -38,6 +38,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   native snapshots at 6 Hz by default to keep the live WebSocket view
   responsive; set `Native LiDAR Max Rate Hz` to `0` to publish every completed
   source scan.
+- Camera publishing now defaults to the balanced health gate, which can reduce
+  camera capture cadence under sustained readback, encode, render, or video
+  output pressure to preserve Editor responsiveness.
 
 ## 1.9.4 - 2026-05-27
 

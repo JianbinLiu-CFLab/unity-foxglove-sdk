@@ -21,7 +21,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var healthy = new CameraPipelineHealthInput
             {
                 Mode = CameraPipelineHealthMode.Balanced,
-                CadenceAllowed = true,
                 PendingReadbacks = 0,
                 MaxPendingReadbacks = 2,
                 EncodeQueueDepth = 0,
@@ -74,7 +73,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var input = new CameraPipelineHealthInput
             {
                 Mode = CameraPipelineHealthMode.Off,
-                CadenceAllowed = true,
                 PendingReadbacks = 0,
                 MaxPendingReadbacks = 1,
                 EncodeQueueDepth = 99,
@@ -91,15 +89,86 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.True(CameraPipelineHealthPolicy.Evaluate(input).AllowCapture);
 
-            input.CadenceAllowed = false;
-            Assert.Equal(
-                CameraPipelineHealthSkipReason.CadenceBudget,
-                CameraPipelineHealthPolicy.Evaluate(input).SkipReason);
-
-            input.CadenceAllowed = true;
             input.PendingReadbacks = 1;
             Assert.Equal(
                 CameraPipelineHealthSkipReason.ReadbackQueueFull,
+                CameraPipelineHealthPolicy.Evaluate(input).SkipReason);
+        }
+
+        [Fact]
+        public void HealthPolicyDoesNotOwnSourceCadenceGate()
+        {
+            var policyText = Text("Packages/dev.unity2foxglove.sdk/Runtime/Utilities/CameraPipelineHealthPolicy.cs");
+            var publisherDiagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Diagnostics.cs");
+
+            Assert.DoesNotContain("CadenceAllowed", policyText, StringComparison.Ordinal);
+            Assert.DoesNotContain("CadenceBudget", policyText, StringComparison.Ordinal);
+            Assert.Contains("AllowCameraCaptureBySourceRate", publisherDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("RecordRateSkip", publisherDiagnostics, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraHealthModesHaveDistinctQueuePressureThresholds()
+        {
+            var input = new CameraPipelineHealthInput
+            {
+                Mode = CameraPipelineHealthMode.Conservative,
+                PendingReadbacks = 0,
+                MaxPendingReadbacks = 2,
+                EncodeQueueDepth = 0,
+                MaxEncodeQueueDepth = 2,
+                CompletedQueueDepth = 0,
+                MaxCompletedQueueDepth = 2,
+                VideoOutputQueueDepth = 1,
+                MaxVideoOutputQueueDepth = 4,
+                Width = 640,
+                Height = 480
+            };
+
+            Assert.Equal(
+                CameraPipelineHealthSkipReason.VideoOutputQueueFull,
+                CameraPipelineHealthPolicy.Evaluate(input).SkipReason);
+
+            input.Mode = CameraPipelineHealthMode.Balanced;
+            Assert.True(CameraPipelineHealthPolicy.Evaluate(input).AllowCapture);
+
+            input.VideoOutputQueueDepth = 2;
+            Assert.Equal(
+                CameraPipelineHealthSkipReason.VideoOutputQueueFull,
+                CameraPipelineHealthPolicy.Evaluate(input).SkipReason);
+
+            input.Mode = CameraPipelineHealthMode.Aggressive;
+            Assert.True(CameraPipelineHealthPolicy.Evaluate(input).AllowCapture);
+
+            input.VideoOutputQueueDepth = 4;
+            Assert.Equal(
+                CameraPipelineHealthSkipReason.VideoOutputQueueFull,
+                CameraPipelineHealthPolicy.Evaluate(input).SkipReason);
+        }
+
+        [Fact]
+        public void BalancedModeAvoidsSingleItemQueuePressureOscillationWhenQueueHasHeadroom()
+        {
+            var input = new CameraPipelineHealthInput
+            {
+                Mode = CameraPipelineHealthMode.Balanced,
+                PendingReadbacks = 0,
+                MaxPendingReadbacks = 2,
+                EncodeQueueDepth = 1,
+                MaxEncodeQueueDepth = 4,
+                CompletedQueueDepth = 0,
+                MaxCompletedQueueDepth = 4,
+                VideoOutputQueueDepth = 0,
+                MaxVideoOutputQueueDepth = 4,
+                Width = 640,
+                Height = 480
+            };
+
+            Assert.True(CameraPipelineHealthPolicy.Evaluate(input).AllowCapture);
+
+            input.EncodeQueueDepth = 2;
+            Assert.Equal(
+                CameraPipelineHealthSkipReason.EncodeQueueFull,
                 CameraPipelineHealthPolicy.Evaluate(input).SkipReason);
         }
 

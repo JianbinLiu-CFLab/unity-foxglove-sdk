@@ -23,7 +23,6 @@ namespace Unity.FoxgloveSDK.Util
     internal enum CameraPipelineHealthSkipReason
     {
         None = 0,
-        CadenceBudget,
         ReadbackQueueFull,
         EncodeQueueFull,
         CompletedQueueFull,
@@ -38,7 +37,6 @@ namespace Unity.FoxgloveSDK.Util
     internal struct CameraPipelineHealthInput
     {
         public CameraPipelineHealthMode Mode;
-        public bool CadenceAllowed;
         public int PendingReadbacks;
         public int MaxPendingReadbacks;
         public int EncodeQueueDepth;
@@ -69,9 +67,6 @@ namespace Unity.FoxgloveSDK.Util
     {
         public static CameraPipelineHealthResult Evaluate(CameraPipelineHealthInput input)
         {
-            if (!input.CadenceAllowed)
-                return Skip(CameraPipelineHealthSkipReason.CadenceBudget);
-
             var maxReadbacks = PositiveOrDefault(input.MaxPendingReadbacks);
             if (input.PendingReadbacks >= maxReadbacks)
                 return Skip(CameraPipelineHealthSkipReason.ReadbackQueueFull);
@@ -111,12 +106,15 @@ namespace Unity.FoxgloveSDK.Util
             if (mode == CameraPipelineHealthMode.Aggressive)
                 return false;
 
-            if (mode == CameraPipelineHealthMode.Balanced)
+            if (mode == CameraPipelineHealthMode.Conservative)
                 return depth > 0;
 
-            return depth > 0;
+            var balancedPressureThreshold = PositiveOrDefault((max + 1) / 2);
+            return depth >= balancedPressureThreshold;
         }
 
+        // Inspector values are clamped by Unity, but tests and stale serialized
+        // scenes can still feed zero or negative limits into this pure policy.
         private static int PositiveOrDefault(int value)
             => value > 0 ? value : 1;
 

@@ -101,7 +101,6 @@ namespace Unity.FoxgloveSDK.Components
             var result = CameraPipelineHealthPolicy.Evaluate(new CameraPipelineHealthInput
             {
                 Mode = _cameraHealthMode,
-                CadenceAllowed = true,
                 PendingReadbacks = _pendingRequests,
                 MaxPendingReadbacks = Math.Max(1, _maxPendingReadbacks),
                 EncodeQueueDepth = profile.IsVideo ? 0 : _jpegPublishPipeline.EncodeQueueDepth,

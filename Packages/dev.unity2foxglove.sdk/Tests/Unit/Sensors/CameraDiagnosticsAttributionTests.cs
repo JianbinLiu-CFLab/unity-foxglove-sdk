@@ -40,6 +40,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void VideoDiagnosticsUseNoStacktraceLogging()
+        {
+            var video = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxgloveCameraPublisher.Video.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("EmitVideoDiagnosticsIfNeeded", video, StringComparison.Ordinal);
+            Assert.Contains("LogVideoIfNeeded", video, StringComparison.Ordinal);
+            Assert.DoesNotContain("Debug.Log(message)", video, StringComparison.Ordinal);
+            Assert.Contains("LogOption.NoStacktrace", video, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void FrameStallDiagnosticsIncludeLastCameraSnapshotWithSentinels()
         {
             var managerDiagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Diagnostics.cs")

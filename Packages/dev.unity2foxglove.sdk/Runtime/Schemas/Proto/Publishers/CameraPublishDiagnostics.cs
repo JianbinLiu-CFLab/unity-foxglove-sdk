@@ -115,9 +115,6 @@ namespace Unity.FoxgloveSDK.Components
         {
             switch (reason)
             {
-                case CameraPipelineHealthSkipReason.CadenceBudget:
-                    _rateSkipCount++;
-                    break;
                 case CameraPipelineHealthSkipReason.ReadbackQueueFull:
                     _readbackBudgetSkipCount++;
                     break;
