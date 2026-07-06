@@ -210,6 +210,57 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             self.assertIn("ROS2ForUnity.PrewarmUnityPaths();", patched)
             self.assertNotIn("runtimeShutdownRequested = false;", patched)
 
+    def test_zenoh_router_patch_documents_development_profile(self) -> None:
+        """Generated router configs should retain trusted-lab security notes."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            config = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            mirror = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "StreamingAssets"
+                / "Ros2ForUnity"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            config.parent.mkdir(parents=True)
+            mirror.parent.mkdir(parents=True)
+            text = (
+                "/// This file attempts to list and document available configuration elements.\n"
+                "/// For a more complete view of the configuration's structure, check out `zenoh/src/config.rs`'s `Config` structure.\n"
+                "/// Note that the values here are correctly typed, but may not be sensible, so copying this file to change only the parts that matter to you is not good practice.\n"
+                "{\n"
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
+                "      accept_pending: 10000,\n"
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
+                "      max_sessions: 10000,\n"
+                "}\n"
+            )
+            config.write_text(text, encoding="utf-8")
+            mirror.write_text(text, encoding="utf-8")
+
+            self.builder.patch_zenoh_router_config_notes(package)
+
+            patched = config.read_text(encoding="utf-8")
+            self.assertIn("without authentication or ACLs", patched)
+            self.assertIn("localhost-only or ACL-protected deployment profile", patched)
+            self.assertIn("high development default is unsuitable", patched)
+            self.assertEqual(patched, mirror.read_text(encoding="utf-8"))
+
     def test_standalone_isolation_rejects_partial_startup_patch(self) -> None:
         """Do not accept a source that declares metadata without standalone setup calls."""
         source = (

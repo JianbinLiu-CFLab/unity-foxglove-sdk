@@ -1,6 +1,10 @@
 /// This file attempts to list and document available configuration elements.
 /// For a more complete view of the configuration's structure, check out `zenoh/src/config.rs`'s `Config` structure.
 /// Note that the values here are correctly typed, but may not be sensible, so copying this file to change only the parts that matter to you is not good practice.
+/// Unity2Foxglove package note: this is the upstream ROS2 Zenoh router development profile.
+/// It listens on tcp/[::]:7447 without authentication or ACLs so routed ROS2 peers on
+/// the local network can connect during lab acceptance. Do not use this profile on an
+/// untrusted network; copy it to a localhost-only or ACL-protected deployment profile.
 {
   /// The identifier (as unsigned 128bit integer in hexadecimal lowercase - leading zeros are not accepted)
   /// that zenoh runtime will use.
@@ -555,10 +559,14 @@
       /// ROS setting: increase the value to avoid timeout at launch time with a large number of Nodes starting all together
       accept_timeout: 60000,
       /// Maximum number of links in pending state while performing the handshake for accepting it
-      /// ROS setting: increase the value to support a large number of Nodes starting all together
+      /// ROS setting: increase the value to support a large number of Nodes starting all together.
+      /// Unity2Foxglove package note: this high development default is unsuitable for
+      /// untrusted networks; use a hardened deployment profile with lower limits.
       accept_pending: 10000,
       /// Maximum number of transports that can be simultaneously alive for a single zenoh sessions
-      /// ROS setting: increase the value to support a large number of Nodes starting all together
+      /// ROS setting: increase the value to support a large number of Nodes starting all together.
+      /// Unity2Foxglove package note: this high development default is unsuitable for
+      /// untrusted networks; use a hardened deployment profile with lower limits.
       max_sessions: 10000,
       /// Maximum number of incoming links that are admitted per transport
       max_links: 1,

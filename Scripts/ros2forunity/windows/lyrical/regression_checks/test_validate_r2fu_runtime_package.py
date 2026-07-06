@@ -106,6 +106,36 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         by_name = {result.name: result for result in results}
         self.assertFalse(by_name["package declares no external dependencies"].ok)
 
+    def test_public_docs_must_explain_facade_independent_runtime(self) -> None:
+        """Runtime docs must make the no-facade-dependency package role explicit."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp)
+            readme = package / "README.md"
+            notices = package / "THIRD_PARTY_NOTICES.md"
+            package_json = package / "package.json"
+            manifest = package / "runtime-manifest.json"
+            artifact_sha = "b" * 64
+
+            readme.write_text(
+                "runtime.lyrical.win64 adapter combined Unity2Foxglove workflow\n"
+                "Install only one dev.unity2foxglove.ros2forunity.runtime.* package\n"
+                f"{artifact_sha}\n"
+                "WSL2 NAT diagnostic-only Windows Defender Firewall\n",
+                encoding="utf-8",
+            )
+            notices.write_text(artifact_sha, encoding="utf-8")
+            package_json.write_text("{}", encoding="utf-8")
+            manifest.write_text(f'{{"artifactSha256":"{artifact_sha}"}}', encoding="utf-8")
+
+            self.validator.PACKAGE = package
+            self.validator.PUBLIC_DOCS = (readme, notices, package_json, manifest)
+            results = []
+
+            self.validator.check_public_docs(results)
+
+        by_name = {result.name: result for result in results}
+        self.assertFalse(by_name["README documents runtime package has no facade dependency"].ok)
+
     def test_generator_alignment_reports_missing_generator_as_failed_check(self) -> None:
         """Missing generator source should produce a structured failed result."""
         with tempfile.TemporaryDirectory() as temp:
@@ -194,6 +224,57 @@ class RuntimePackageValidatorTests(unittest.TestCase):
         self.assertTrue(any("listen failure is non-fatal" in name for name in failed_names))
         self.assertTrue(any("defragmentation buffer is bounded" in name for name in failed_names))
         self.assertTrue(any("adminspace disabled" in name for name in failed_names))
+
+    def test_runtime_files_require_zenoh_router_security_notes(self) -> None:
+        """Open Zenoh router configs must document the trusted-lab boundary."""
+        unsafe_router_config = (
+            "listen: { endpoints: [\"tcp/[::]:7447\"] }\n"
+            "transport: { unicast: { accept_pending: 10000, max_sessions: 10000 } }\n"
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            plugin_config = (
+                root
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            streaming_config = (
+                root
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "StreamingAssets"
+                / "Ros2ForUnity"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            plugin_config.parent.mkdir(parents=True)
+            streaming_config.parent.mkdir(parents=True)
+            plugin_config.write_text(unsafe_router_config, encoding="utf-8")
+            streaming_config.write_text(unsafe_router_config, encoding="utf-8")
+
+            self.validator.RUNTIME_ROOT = root / "Runtime" / "Ros2ForUnity"
+            self.validator.PLUGIN_ROOT = root / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
+            self.validator.CRITICAL_PLUGIN_DLLS = ()
+            self.validator.RMW_DEPENDENCY_CLOSURE_SEEDS = ()
+            self.validator.LEAKY_UPSTREAM_EXAMPLES = ()
+            self.validator.ZENOH_CONFIG_FILES = (plugin_config, streaming_config)
+            self.validator.ZENOH_CONFIG_MIRRORS = ((plugin_config, streaming_config),)
+            results = []
+
+            self.validator.check_runtime_files(results)
+
+        failed_names = {result.name for result in results if not result.ok}
+        self.assertTrue(any("open-listen profile is documented" in name for name in failed_names))
+        self.assertTrue(any("high connection limits are documented" in name for name in failed_names))
 
     def test_expected_artifact_hash_is_full_sha256(self) -> None:
         """Pinned artifact hash is not accidentally truncated."""

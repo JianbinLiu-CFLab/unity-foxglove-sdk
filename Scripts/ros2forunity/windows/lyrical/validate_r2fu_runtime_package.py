@@ -662,6 +662,25 @@ def check_runtime_files(results: list[CheckResult]) -> None:
             rel(path),
         )
 
+    for path in [item for item in ZENOH_CONFIG_FILES if item.name == "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"]:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        add(
+            results,
+            f"Zenoh router open-listen profile is documented: {path.parent.parent.name}/{path.name}",
+            "tcp/[::]:7447" in text
+            and "without authentication or ACLs" in text
+            and "localhost-only or ACL-protected deployment profile" in text,
+            rel(path),
+        )
+        add(
+            results,
+            f"Zenoh router high connection limits are documented: {path.parent.parent.name}/{path.name}",
+            "accept_pending: 10000" in text
+            and "max_sessions: 10000" in text
+            and "high development default is unsuitable" in text,
+            rel(path),
+        )
+
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
     add(results, "Windows x86_64 DLL payload", len(dlls) >= 700, f"dll_count={len(dlls)}")
 
@@ -1025,6 +1044,21 @@ def check_public_docs(results: list[CheckResult]) -> None:
         results,
         "README documents WSL2 NAT topology limit",
         "WSL2 NAT" in readme and "diagnostic-only" in readme and "Windows Defender Firewall" in readme,
+        "README.md",
+    )
+    add(
+        results,
+        "README documents runtime package has no facade dependency",
+        "intentionally declares no UPM dependency on the facade package" in readme
+        and "binary/runtime payload" in readme,
+        "README.md",
+    )
+    add(
+        results,
+        "README documents Zenoh router development security boundary",
+        "listens on `tcp/[::]:7447`" in readme
+        and "no authentication or ACLs" in readme
+        and "trusted lab networks" in readme,
         "README.md",
     )
 
