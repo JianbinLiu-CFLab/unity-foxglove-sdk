@@ -5,7 +5,7 @@
       <sha>07a142431cc8c290277a4dc411de81914430f9e6</sha>
       <desc>v0.6.0-jazzy-preview.1-52-g07a1424</desc>
       <date>2026-06-22 22:56:09 +0200</date>
-      <branch>feature/humble-windows-standalone-runtime-closure</branch>
+      <branch>main</branch>
    </version>
    <standalone>1</standalone>
 </ros2cs>

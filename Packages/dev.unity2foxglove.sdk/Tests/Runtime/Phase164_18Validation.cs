@@ -28,7 +28,10 @@ namespace Unity.FoxgloveSDK.Tests
             var lidar = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs");
 
             Check(converter.Contains("public static float4x4 RigidWorldToLocal(Vector3 position, Quaternion rotation)", StringComparison.Ordinal)
-                  && converter.Contains("return math.inverse(transform);", StringComparison.Ordinal),
+                  && converter.Contains("var inverseRotation = UnityEngine.Quaternion.Inverse(rotation);", StringComparison.Ordinal)
+                  && converter.Contains("var inversePosition = inverseRotation * -position;", StringComparison.Ordinal)
+                  && converter.Contains("return float4x4.TRS(", StringComparison.Ordinal)
+                  && !converter.Contains("math.inverse(", StringComparison.Ordinal),
                 "164-18A-1: coordinate converter exposes a unit-scale rigid world-to-local helper");
             Check(scheduler.Contains("CoordinateConverterFloat3.RigidWorldToLocal(worldPos, worldRot)", StringComparison.Ordinal)
                   && !scheduler.Contains("Matrix4x4\r\n                    .TRS(worldPos, worldRot, Vector3.one)", StringComparison.Ordinal)
@@ -66,9 +69,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidarScanScheduler.cs");
             Check(!source.Contains("using System.Collections.Generic;", StringComparison.Ordinal)
-                  && source.Contains("private readonly int[] _scanCrossings = new int[4];", StringComparison.Ordinal)
+                  && source.Contains("private int[] _scanCrossings = new int[4];", StringComparison.Ordinal)
+                  && source.Contains("EnsureScanCrossingCapacity(_scanCrossingCount + 1);", StringComparison.Ordinal)
                   && source.Contains("private int _scanCrossingCount;", StringComparison.Ordinal),
-                "164-18C-1: LiDAR scheduler uses fixed crossing scratch storage instead of List<int>");
+                "164-18C-1: LiDAR scheduler uses grow-only array crossing scratch storage instead of List<int>");
             Check(!source.Contains("_scanCrossings.Clear();", StringComparison.Ordinal)
                   && source.Contains("_scanCrossingCount = 0;", StringComparison.Ordinal)
                   && source.Contains("_scanCrossings[_scanCrossingCount++] = batchCount;", StringComparison.Ordinal),
