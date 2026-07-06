@@ -141,6 +141,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "141B-31: Roslyn generator reports duplicate service names");
             Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE006" && diagnostic.Severity == DiagnosticSeverity.Warning),
                 "141B-32: Roslyn generator warns when schema metadata defaults are used");
+
+            Check(RunGenerator(NonPartialStaticServiceFixtureSource()).Diagnostics.Count(diagnostic => diagnostic.Id == "FOXSERVICE002") == 1,
+                "141B-32a: non-partial static FoxService reports one unsupported-signature diagnostic");
         }
 
         private static void VerifyValidationWiring()
@@ -325,6 +328,23 @@ namespace Phase141B
 
         [FoxService(""/phase141b/duplicate"")]
         private Response DuplicateB(Request request) => new Response();
+    }
+}
+";
+
+        private static string NonPartialStaticServiceFixtureSource()
+            => @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Phase141B
+{
+    public sealed class Request { }
+    public sealed class Response { }
+
+    public class NonPartialStaticService
+    {
+        [FoxService(""/phase141b/nonpartial_static"", Type = ""Phase141B.NonPartialStatic"", RequestSchemaName = ""Phase141B.Request"", ResponseSchemaName = ""Phase141B.Response"")]
+        private static Response StaticService(Request request) => new Response();
     }
 }
 ";

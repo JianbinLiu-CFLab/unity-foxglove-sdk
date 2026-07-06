@@ -50,6 +50,13 @@ public partial class MyLogger : MonoBehaviour
 - IL2CPP standalone build support
 - Coordinate system conversion (LeftHand/RightHand)
 
+## Security note
+
+Inspector-entered local gate secrets such as WSS certificate passwords, shared
+WebSocket tokens, replay cursor bearer tokens, and Remote MCAP bearer tokens
+are serialized into Unity scenes or prefabs. Use them for local development and
+manual acceptance only, and avoid committing real production secrets.
+
 ## Full documentation
 
 See [Documentation~/README.md](Documentation~/README.md).

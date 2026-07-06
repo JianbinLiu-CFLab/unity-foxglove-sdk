@@ -345,7 +345,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 return false;
 
             if (!SyntaxFacts.IsValidIdentifier(conditionName))
-                return false;
+            {
+                diagnosticId = "FOXRUN015";
+                return true;
+            }
 
             var candidates = containingType.GetMembers(conditionName);
             if (candidates.Length == 0)
@@ -414,8 +417,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var isPartial = containingType.DeclaringSyntaxReferences
                 .Any(r => r.GetSyntax(ct) is TypeDeclarationSyntax tds &&
                           tds.Modifiers.Any(SyntaxKind.PartialKeyword));
-            if (!isPartial)
-                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, className));
+            var hasInvalidSignature = !isPartial;
 
             var serviceName = serviceAttr.ConstructorArguments.Length > 0
                 ? serviceAttr.ConstructorArguments[0].Value as string ?? string.Empty
@@ -436,17 +438,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 diagnostics.Add(new ServiceDiagnostic("FOXSERVICE001", location, serviceName));
 
             if (symbol.IsStatic || symbol.IsGenericMethod || methodDecl.Modifiers.Any(SyntaxKind.AsyncKeyword))
-                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
+                hasInvalidSignature = true;
 
             if (symbol.Parameters.Length > 1)
-                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
+                hasInvalidSignature = true;
 
             ITypeSymbol requestType = null;
             if (symbol.Parameters.Length == 1)
             {
                 var parameter = symbol.Parameters[0];
                 if (parameter.RefKind != RefKind.None || parameter.IsParams)
-                    diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
+                    hasInvalidSignature = true;
                 requestType = parameter.Type;
                 diagnostics.AddRange(ValidateServiceDtoType(
                     requestType,
@@ -465,6 +467,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     "Response",
                     serviceName,
                     location));
+
+            if (hasInvalidSignature)
+                diagnostics.Add(new ServiceDiagnostic("FOXSERVICE002", location, symbol.Name));
 
             var hasExplicitMetadata = !string.IsNullOrWhiteSpace(serviceType)
                                       && !string.IsNullOrWhiteSpace(requestSchemaName)
@@ -857,7 +862,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var seenJsonNames = new HashSet<string>(StringComparer.Ordinal);
             for (var current = type; current != null && current.SpecialType != SpecialType.System_Object; current = current.BaseType)
             {
-                foreach (var member in current.GetMembers().OrderBy(MemberOrder))
+                var members = new List<ISymbol>(current.GetMembers().Length);
+                foreach (var member in current.GetMembers())
+                    members.Add(member);
+                members.Sort((left, right) => MemberOrder(left).CompareTo(MemberOrder(right)));
+
+                foreach (var member in members)
                 {
                     if (member is IFieldSymbol field)
                     {
@@ -1009,7 +1019,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             });
 
         private static int MemberOrder(ISymbol symbol)
-            => symbol.Locations.FirstOrDefault(candidate => candidate.IsInSource)?.SourceSpan.Start ?? int.MaxValue;
+        {
+            foreach (var candidate in symbol.Locations)
+            {
+                if (candidate.IsInSource)
+                    return candidate.SourceSpan.Start;
+            }
+
+            return int.MaxValue;
+        }
 
         private static string FullTypeName(ITypeSymbol type)
             => type == null
@@ -1310,7 +1328,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                    + "{\n"
                    + "    internal static class FoxRunGeneratedDescriptorInfo\n"
                    + "    {\n"
-                   + "        public const string DescriptorJson = \"" + escaped + "\";\n"
+                   + "        public static readonly string DescriptorJson = \"" + escaped + "\";\n"
                    + "    }\n"
                    + "}\n";
         }
@@ -1325,7 +1343,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             sb.AppendLine("{");
             sb.AppendLine("    internal static class FoxRunGeneratedDescriptorInfo");
             sb.AppendLine("    {");
-            sb.Append("        public static string DescriptorJson => string.Concat(");
+            sb.Append("        public static readonly string DescriptorJson = string.Concat(");
             for (var i = 0; i < chunkCount; i++)
             {
                 if (i > 0)

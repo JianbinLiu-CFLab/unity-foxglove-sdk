@@ -297,7 +297,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             }
         }
 
-        internal static void ClearForTests()
+        internal static void ClearCachedBuffers()
         {
             lock (Gate)
             {

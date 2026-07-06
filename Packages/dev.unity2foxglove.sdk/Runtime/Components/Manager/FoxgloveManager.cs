@@ -129,6 +129,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _remoteMcapFileServerHost = "127.0.0.1";
         [SerializeField, Min(1)] private int _remoteMcapFileServerPort = 8891;
         [SerializeField] private string _remoteMcapFileServerSourceId = "local-mcap";
+        [SerializeField] private string _remoteMcapFileServerToken = "";
         [Tooltip("Optional loopback endpoint that accepts Foxglove extension timeline cursor updates and applies them to Unity replay on the next runtime tick.")]
         [SerializeField] private bool _enableReplayCursorBridge = false;
         [SerializeField] private string _replayCursorBridgeHost = "127.0.0.1";

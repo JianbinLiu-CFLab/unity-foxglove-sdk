@@ -52,8 +52,15 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Replay File Path | Empty | Path to the `.mcap` file. | Set before Play Mode for replay. | Leaving a personal absolute path in shared scenes. |
 | Replay Auto Play | Disabled | Starts replay automatically. | Enable for quick acceptance tests. | Expecting replay to advance while paused. |
 | Disable Live Publishers | Disabled | Disables live publishers during replay. | Enable when you need clean replay-only verification. | Expecting live publishers to stay active while this is enabled. |
+| Foxglove as Replay Timeline | Disabled | Serves the replay MCAP through a local Remote Data Loader URL so Foxglove owns replay time. | Use when Foxglove should drive timeline seek/play/pause and Unity should follow. | Enabling it without a replay file or leaving the bearer token empty on an untrusted machine. |
+| Remote MCAP Bearer Token | Empty | Optional bearer token required by the local Remote MCAP HTTP endpoint. | Set for manual Remote File workflows where a browser origin can reach the loopback endpoint. | Treating the serialized token as a production secret store. |
 
 The **Replay Preflight** tools help prepare this path before Play Mode. **Use Latest Recording** selects the newest `.mcap` from the recording directory and writes the project-relative path into **Replay File Path**. **Compare With Current** reads the recording sidecar, compares the recorded FoxRun hash with the current generated FoxRun hash, and reports `Match`, `Mismatch`, or `Missing Evidence`. **Open Recording Evidence** reveals the paired `.schema` folder, and **Copy Identity Summary** copies the comparison for review notes.
+
+Remote MCAP bearer tokens, replay cursor bearer tokens, WSS certificate
+passwords, and shared WebSocket tokens are Inspector fields serialized with the
+scene or prefab. Keep them local-development only and do not commit real
+production credentials.
 
 ### 3.6 Security / WSS
 

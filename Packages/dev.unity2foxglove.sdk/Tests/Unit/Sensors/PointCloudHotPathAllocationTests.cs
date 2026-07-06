@@ -253,7 +253,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void PointCloud2PreferredPooledBuffersCanEvictNoisyExactSizes()
         {
-            PointCloudPackedByteBufferPool.ClearForTests();
+            PointCloudPackedByteBufferPool.ClearCachedBuffers();
             try
             {
                 const int preferredLength = 983040;
@@ -269,14 +269,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             }
             finally
             {
-                PointCloudPackedByteBufferPool.ClearForTests();
+                PointCloudPackedByteBufferPool.ClearCachedBuffers();
             }
         }
 
         [Fact]
         public void PointCloud2StableSourceWidthPoolConvergesAcrossVariableValidCounts()
         {
-            PointCloudPackedByteBufferPool.ClearForTests();
+            PointCloudPackedByteBufferPool.ClearCachedBuffers();
             try
             {
                 const int pointCount = 4096;
@@ -323,7 +323,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             }
             finally
             {
-                PointCloudPackedByteBufferPool.ClearForTests();
+                PointCloudPackedByteBufferPool.ClearCachedBuffers();
             }
         }
 

@@ -84,10 +84,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && generator.Contains("ChunkedDescriptorCarrierSource(escaped)", StringComparison.Ordinal),
                 "163-23C-1: descriptor carrier switches to chunked output before the IL string limit");
             Check(generator.Contains("private const string DescriptorJsonPart", StringComparison.Ordinal)
-                  && generator.Contains("public static string DescriptorJson => string.Concat", StringComparison.Ordinal),
+                  && generator.Contains("public static readonly string DescriptorJson = string.Concat", StringComparison.Ordinal),
                 "163-23C-2: chunked descriptor carrier keeps per-string constants below the large literal limit");
-            Check(generator.Contains("public const string DescriptorJson = \\\"", StringComparison.Ordinal),
-                "163-23C-3: small descriptor carrier keeps the historical const string shape");
+            Check(generator.Contains("public static readonly string DescriptorJson = \\\"", StringComparison.Ordinal),
+                "163-23C-3: small descriptor carrier uses the same readonly API shape");
         }
 
         private static void UnknownGeneratorDiagnosticsFailClosed()

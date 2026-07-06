@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class FoxRunConditionalPublishGateValidation
     {
-        private const string ExpectedCheckedInGeneratorSha256 = "91A9D3DF9D7FE15CF1E844DA7CA42E9EE9BC6C67F7F138FCED4D2A689B96A6C8";
+        private const string ExpectedCheckedInGeneratorSha256 = "F27A854A711203F29812767AA84108DF5BDEE592681C21A0EB7DA93B049D8904";
         private static int _passCount;
 
         public static void Validate()
@@ -40,6 +40,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyRuntimeToggleStopsSubscribedDataFrames();
             VerifyModelCarriesConditionMetadata();
             VerifyDiagnosticsInventory();
+            VerifyInvalidConditionIdentifiersReportMissingMemberDiagnostic();
             VerifyDocsMentionConditions();
 
             Console.WriteLine("Phase 141A: " + _passCount + " checks passed.\n");
@@ -204,6 +205,26 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        private static void VerifyInvalidConditionIdentifiersReportMissingMemberDiagnostic()
+        {
+            var diagnostics = RunGeneratorDiagnostics(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Unity.FoxgloveSDK.Tests.Fixtures
+{
+    public partial class Phase141AInvalidConditionFixture
+    {
+        [FoxRun(""/debug/invalid_when"", RateHz = 15, When = ""not valid"")]
+        public int invalidWhen;
+    }
+}
+");
+
+            Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN015")
+                  && !diagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN016"),
+                "141A-24: invalid When identifiers report FOXRUN015 instead of bool-type FOXRUN016");
+        }
+
         private static void VerifyDocsMentionConditions()
         {
             var en = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/07_FoxRun_Zero_Code_Publishing.md");
@@ -211,10 +232,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(en.Contains("| `When` | `\"\"` | Bool field", StringComparison.Ordinal)
                   && en.Contains("| `Unless` | `\"\"` | Bool field", StringComparison.Ordinal),
-                "141A-24: English docs mention When and Unless");
+                "141A-25: English docs mention When and Unless");
             Check(zh.Contains("| `When` | `string` | `\"\"` |", StringComparison.Ordinal)
                   && zh.Contains("| `Unless` | `string` | `\"\"` |", StringComparison.Ordinal),
-                "141A-25: Chinese docs mention When and Unless");
+                "141A-26: Chinese docs mention When and Unless");
         }
 
         private static void PublishIfAllowed(FoxgloveSession session, Type conditionInterface, object source, int topicIndex, uint channelId, ulong nowNs, ref int expectedFrames)
@@ -457,6 +478,22 @@ namespace Unity.FoxgloveSDK.Components
             if (errors.Count > 0)
                 throw new InvalidOperationException(string.Join(Environment.NewLine, errors));
             return driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources).ToList();
+        }
+
+        private static IReadOnlyList<Diagnostic> RunGeneratorDiagnostics(string source)
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp9));
+            var compilation = CSharpCompilation.Create(
+                "Phase141AInvalidConditionFixture",
+                new[] { syntaxTree },
+                References(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                new ISourceGenerator[] { new FoxgloveLogSourceGenerator().AsSourceGenerator() },
+                parseOptions: CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp9));
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
+            return driver.GetRunResult().Diagnostics;
         }
 
         private static IIncrementalGenerator LoadGeneratorFromDll(string dllPath)
