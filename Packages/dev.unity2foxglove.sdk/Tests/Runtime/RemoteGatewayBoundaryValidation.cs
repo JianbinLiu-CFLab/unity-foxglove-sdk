@@ -102,7 +102,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(mirrorContract.Contains("public interface IFoxgloveMirrorSink", StringComparison.Ordinal)
                   && runtime.Contains("SetMirrorSink", StringComparison.Ordinal)
                   && session.Contains("HasMirrorDemand", StringComparison.Ordinal)
-                  && session.Contains("TryMirrorPublish", StringComparison.Ordinal),
+                  && session.Contains("TryMirrorPublish", StringComparison.Ordinal)
+                  && managerPublishing.Contains("using Unity.FoxgloveSDK.Core;", StringComparison.Ordinal),
                 "171-10: core exposes a generic mirror sink hook without naming the optional gateway");
         }
 
@@ -152,12 +153,19 @@ namespace Unity.FoxgloveSDK.Tests
                                        && !line.Contains("deviceToken", StringComparison.Ordinal)),
                 "171-15: controller never logs the device token variable");
 
+            var handleDispose = controller.IndexOf("handle?.Dispose();", StringComparison.Ordinal);
+            var callbacksDispose = controller.IndexOf("callbacks?.Dispose();", StringComparison.Ordinal);
+            var eventsClear = controller.IndexOf("_events = null;", StringComparison.Ordinal);
             Check(controller.Contains("RemoteGatewayLifecycleGate.CanStartNativeGateway", StringComparison.Ordinal)
                   && controller.Contains("RemoteGatewayLifecycleGate.CanStopNativeGateway", StringComparison.Ordinal)
-                  && controller.Contains("ThreadPool.QueueUserWorkItem", StringComparison.Ordinal)
+                  && !controller.Contains("ThreadPool.QueueUserWorkItem", StringComparison.Ordinal)
+                  && !controller.Contains("using System.Threading;", StringComparison.Ordinal)
+                  && handleDispose >= 0
+                  && callbacksDispose > handleDispose
+                  && eventsClear > callbacksDispose
                   && lifecycle.Contains("Application.quitting", StringComparison.Ordinal)
                   && lifecycle.Contains("AssemblyReloadEvents.beforeAssemblyReload", StringComparison.Ordinal),
-                "171-16: lifecycle gate blocks unsafe start windows and stop is offloaded from Unity main thread");
+                "171-16: lifecycle gate blocks unsafe starts and stop releases callback roots after native shutdown");
         }
 
         private static void VerifyInboundCapabilityPolicy()

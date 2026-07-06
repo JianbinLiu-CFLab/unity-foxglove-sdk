@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Provides FoxgloveManager channel registration and publish helpers.
 
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using UnityEngine;

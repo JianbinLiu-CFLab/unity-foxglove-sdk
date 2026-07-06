@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.RemoteGateway.Native;
 using UnityEngine;
@@ -167,7 +166,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         private void StopGateway()
         {
-            if (_handle == null && _mirrorSink == null && _context == IntPtr.Zero && _callbacks == null)
+            if (_handle == null && _mirrorSink == null && _context == IntPtr.Zero && _callbacks == null && _events == null)
                 return;
             if (!RemoteGatewayLifecycleGate.CanStopNativeGateway())
                 return;
@@ -184,21 +183,20 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             _callbacks = null;
             _connectionStatus = "ShuttingDown";
 
-            ThreadPool.QueueUserWorkItem(_ =>
+            try
             {
-                try
-                {
-                    handle?.Dispose();
-                }
-                finally
-                {
-                    if (context != IntPtr.Zero)
-                        RemoteGatewayNativeMethods.ContextFree(context);
-                    callbacks?.Dispose();
-                }
-            });
+                // GatewayStop is blocking; callback roots must outlive it across reload/quit paths.
+                handle?.Dispose();
+            }
+            finally
+            {
+                if (context != IntPtr.Zero)
+                    RemoteGatewayNativeMethods.ContextFree(context);
+                callbacks?.Dispose();
+                _events = null;
+                _connectionStatus = "Shutdown";
+            }
 
-            _connectionStatus = "Shutdown";
         }
 
         private void CleanupFailedStart()
@@ -215,6 +213,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
             _callbacks?.Dispose();
             _callbacks = null;
+            _events = null;
             _connectionStatus = "Shutdown";
         }
 

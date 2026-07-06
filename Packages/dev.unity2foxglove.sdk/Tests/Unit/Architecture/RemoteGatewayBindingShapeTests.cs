@@ -115,6 +115,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         }
 
         [Fact]
+        public void ManagerPublishingImportsCoreMirrorContractNamespace()
+        {
+            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+
+            Assert.Contains("using Unity.FoxgloveSDK.Core;", source, StringComparison.Ordinal);
+            Assert.Contains("public void SetMirrorSink(IFoxgloveMirrorSink sink)", source, StringComparison.Ordinal);
+            Assert.Contains("public IFoxgloveMirrorSink GetMirrorSink()", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ChannelRegistryMirrorsThroughOfficialChannelLogAbi()
         {
             var source = Text(RuntimeRoot + "/RemoteGatewayChannelRegistry.cs");
@@ -148,6 +158,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("Debug.Log(_deviceToken", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Debug.LogWarning(_deviceToken", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Process.Start", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ControllerStopsGatewayInlineBeforeReleasingCallbackRoot()
+        {
+            var source = Text(RuntimeRoot + "/FoxgloveRemoteGatewayController.cs");
+            var handleDispose = source.IndexOf("handle?.Dispose();", StringComparison.Ordinal);
+            var callbacksDispose = source.IndexOf("callbacks?.Dispose();", StringComparison.Ordinal);
+            var eventsClear = source.IndexOf("_events = null;", StringComparison.Ordinal);
+
+            Assert.DoesNotContain("using System.Threading;", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("ThreadPool.QueueUserWorkItem", source, StringComparison.Ordinal);
+            Assert.True(handleDispose >= 0, "StopGateway must dispose the native gateway handle.");
+            Assert.True(callbacksDispose > handleDispose, "Callback GCHandle roots must outlive blocking native stop.");
+            Assert.True(eventsClear > callbacksDispose, "Pending native callback events must be cleared after callback roots are released.");
+            Assert.Contains("_connectionStatus = \"ShuttingDown\";", source, StringComparison.Ordinal);
+            Assert.Contains("_connectionStatus = \"Shutdown\";", source, StringComparison.Ordinal);
         }
 
         [Fact]
