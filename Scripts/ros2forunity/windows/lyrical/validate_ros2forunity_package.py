@@ -25,6 +25,8 @@ EXIT_FAILURE = 1
 MAX_REPORTED_OFFENDERS = 12
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+if not (ROOT / "Packages" / "dev.unity2foxglove.sdk").is_dir():
+    raise RuntimeError(f"REPO_ROOT_PARENT_DEPTH={REPO_ROOT_PARENT_DEPTH} resolved to wrong root: {ROOT}")
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.ros2forunity"
 CORE_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 MANIFEST = PACKAGE / "Compliance" / "ros2-for-unity-adoption-manifest.json"
@@ -72,7 +74,7 @@ ALLOWED_EDITOR_SUFFIXES = {
 }
 
 FORBIDDEN_PUBLIC_PHASE_PATTERN = re.compile(r"(?<![A-Za-z0-9_])(?:Phase|phase)\s*\d{2,4}[A-Z]?\b")
-RUNTIME_TOKEN_EXEMPT_SUFFIXES = {
+RUNTIME_TOKEN_EXEMPT_SUBDIRS = {
     "Native",
 }
 
@@ -118,15 +120,15 @@ def iter_files(root: Path) -> Iterable[Path]:
 
 
 def _is_runtime_token_exempt(path: Path, runtime_root: Path) -> bool:
-    """Return True when a runtime file is intentionally exempt from token scanning."""
+    """Return True when a runtime file is under an intentionally exempt subdirectory."""
     try:
         rel_parts = path.relative_to(runtime_root).parts
     except ValueError:
         return False
-    return rel_parts and rel_parts[0] in RUNTIME_TOKEN_EXEMPT_SUFFIXES
+    return rel_parts and rel_parts[0] in RUNTIME_TOKEN_EXEMPT_SUBDIRS
 
 
-def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
+def load_json(path: Path, results: list[CheckResult], name: str) -> dict | None:
     """Load JSON and record whether parsing succeeded."""
     cache_key = path.resolve()
     cached = JSON_CACHE.get(cache_key)
@@ -138,7 +140,7 @@ def load_json(path: Path, results: list[CheckResult], name: str) -> dict:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         add(results, name, False, f"{rel(path)}: {exc}")
-        return {}
+        return None
     JSON_CACHE[cache_key] = data
     add(results, name, True, rel(path))
     return data
@@ -148,8 +150,8 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     """Validate the optional Unity package metadata."""
     add(results, "optional package folder exists", PACKAGE.is_dir(), rel(PACKAGE))
     package_json = PACKAGE / "package.json"
-    data = load_json(package_json, results, "package.json parses") if package_json.exists() else {}
-    if not data:
+    data = load_json(package_json, results, "package.json parses") if package_json.exists() else None
+    if data is None:
         return
 
     expected = {
@@ -329,7 +331,7 @@ def check_manifest(results: list[CheckResult]) -> None:
         return
 
     data = load_json(MANIFEST, results, "manifest parses")
-    if not data:
+    if data is None:
         return
 
     expected = {
@@ -543,7 +545,7 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         return
 
     data = load_json(RUNTIME_INVENTORY, results, "runtime inventory parses")
-    if not data:
+    if data is None:
         return
 
     expected = {
@@ -1098,7 +1100,7 @@ def check_runtime_source_boundary(results: list[CheckResult]) -> None:
 def check_core_boundary(results: list[CheckResult]) -> None:
     """Confirm the core package does not depend on the optional R2FU package."""
     core_json = CORE_PACKAGE / "package.json"
-    data = load_json(core_json, results, "core package.json parses") if core_json.exists() else {}
+    data = load_json(core_json, results, "core package.json parses") if core_json.exists() else None
     dependencies = data.get("dependencies", {}) if isinstance(data, dict) else {}
     add(
         results,
