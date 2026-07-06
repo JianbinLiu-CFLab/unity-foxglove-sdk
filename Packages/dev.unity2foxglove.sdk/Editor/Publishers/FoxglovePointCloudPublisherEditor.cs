@@ -452,10 +452,11 @@ namespace Unity.FoxgloveSDK.Editor
             /// </summary>
             public static void ShowWindow()
             {
-                var window = CreateInstance<DracoHelpWindow>();
+                var window = GetWindow<DracoHelpWindow>(utility: true);
                 window.titleContent = new GUIContent("Draco PointCloud Setup");
                 window.minSize = new Vector2(560, 320);
-                window.ShowUtility();
+                window.Show();
+                window.Focus();
             }
 
             private void OnGUI()

@@ -14,6 +14,9 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public partial class FoxgloveManagerEditor : UnityEditor.Editor
     {
+        private readonly System.Collections.Generic.Dictionary<uint, TransportClientLabelCache> _transportClientLabelCache =
+            new System.Collections.Generic.Dictionary<uint, TransportClientLabelCache>();
+
         private void DrawDiagnosticsSection()
         {
             DrawProfilerDiagnostics();
@@ -102,12 +105,75 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorGUILayout.LabelField("Clients", EditorStyles.boldLabel);
                 foreach (var c in stats.Clients)
                 {
-                    EditorGUILayout.LabelField(
-                        $"#{c.ClientId}",
-                        $"queued: {c.QueuedFrames} ({c.QueuedBytes} B)  dropped: {c.DroppedDataFrames}  sent: {c.SentFrames}  idle: {c.LastActivityAgeMs} ms",
-                        EditorStyles.miniLabel);
+                    var label = GetTransportClientLabel(c);
+                    EditorGUILayout.LabelField(label.Name, label.Value, EditorStyles.miniLabel);
                 }
             }
+            else
+            {
+                ClearTransportClientLabelCache();
+            }
+        }
+
+        private TransportClientLabelCache GetTransportClientLabel(TransportClientStats client)
+        {
+            if (_transportClientLabelCache.Count > 0 && _transportClientLabelCache.Count > GetTransportStatsForRepaint().ActiveClientCount)
+                _transportClientLabelCache.Clear();
+
+            if (_transportClientLabelCache.TryGetValue(client.ClientId, out var cached)
+                && cached.Matches(client))
+            {
+                return cached;
+            }
+
+            cached = TransportClientLabelCache.From(client);
+            _transportClientLabelCache[client.ClientId] = cached;
+            return cached;
+        }
+
+        private void ClearTransportClientLabelCache()
+        {
+            _transportClientLabelCache.Clear();
+        }
+
+        private readonly struct TransportClientLabelCache
+        {
+            private readonly uint _clientId;
+            private readonly int _queuedFrames;
+            private readonly int _queuedBytes;
+            private readonly long _droppedDataFrames;
+            private readonly long _sentFrames;
+            private readonly long _lastActivityAgeMs;
+
+            private TransportClientLabelCache(TransportClientStats client)
+            {
+                _clientId = client.ClientId;
+                _queuedFrames = client.QueuedFrames;
+                _queuedBytes = client.QueuedBytes;
+                _droppedDataFrames = client.DroppedDataFrames;
+                _sentFrames = client.SentFrames;
+                _lastActivityAgeMs = client.LastActivityAgeMs;
+                Name = "#" + client.ClientId;
+                Value = "queued: " + client.QueuedFrames
+                    + " (" + client.QueuedBytes + " B)  dropped: " + client.DroppedDataFrames
+                    + "  sent: " + client.SentFrames
+                    + "  idle: " + client.LastActivityAgeMs + " ms";
+            }
+
+            public string Name { get; }
+            public string Value { get; }
+
+            public bool Matches(TransportClientStats client)
+                => client != null
+                   && _clientId == client.ClientId
+                   && _queuedFrames == client.QueuedFrames
+                   && _queuedBytes == client.QueuedBytes
+                   && _droppedDataFrames == client.DroppedDataFrames
+                   && _sentFrames == client.SentFrames
+                   && _lastActivityAgeMs == client.LastActivityAgeMs;
+
+            public static TransportClientLabelCache From(TransportClientStats client)
+                => new TransportClientLabelCache(client);
         }
     }
 }

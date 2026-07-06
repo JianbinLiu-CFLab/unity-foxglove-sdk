@@ -96,6 +96,9 @@ namespace Unity.FoxgloveSDK.Editor
         private string _cachedRemoteSourceId;
         private string _cachedRemoteBaseUrl;
         private string _cachedRemoteDirectFileUrl;
+        private Ros2BridgeQosProfile _ros2BridgeQosThisRepaint = Ros2BridgeQosProfile.ReliableDefault;
+        private Ros2BridgeStatsSnapshot _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
+        private int _ros2BridgeStatsFrame = -1;
 
         static FoxgloveManagerEditor()
         {
@@ -119,6 +122,9 @@ namespace Unity.FoxgloveSDK.Editor
             _cachedServiceHub = null;
             _cachedServiceSnapshotFrame = -1;
             _cachedServiceSnapshots = System.Array.Empty<Components.FoxgloveRegisteredServiceSnapshot>();
+            _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
+            _ros2BridgeStatsFrame = -1;
+            ClearTransportClientLabelCache();
         }
 
         private void CacheSerializedProperties()
@@ -527,7 +533,9 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var current = prop.enumValueIndex == (int)FoxgloveTransportMode.SecureWebSocket
+            var secureIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.SecureWebSocket), (int)FoxgloveTransportMode.SecureWebSocket);
+            var webSocketIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.WebSocket), (int)FoxgloveTransportMode.WebSocket);
+            var current = prop.enumValueIndex == secureIndex
                 ? FoxgloveTransportMode.SecureWebSocket
                 : FoxgloveTransportMode.WebSocket;
             var selected = EditorGUILayout.Popup(
@@ -535,9 +543,7 @@ namespace Unity.FoxgloveSDK.Editor
                 current == FoxgloveTransportMode.SecureWebSocket ? 1 : 0,
                 TransportModeLabels);
 
-            prop.enumValueIndex = selected == 1
-                ? (int)FoxgloveTransportMode.SecureWebSocket
-                : (int)FoxgloveTransportMode.WebSocket;
+            prop.enumValueIndex = selected == 1 ? secureIndex : webSocketIndex;
         }
 
         private void DrawFloatProperty(string propertyName, string label, string tooltip)
@@ -732,7 +738,42 @@ namespace Unity.FoxgloveSDK.Editor
         private bool IsSecureMode()
         {
             var prop = FindCachedProperty("_transportMode");
-            return prop != null && prop.enumValueIndex == (int)FoxgloveTransportMode.SecureWebSocket;
+            return prop != null && EnumPropertyIs(prop, nameof(FoxgloveTransportMode.SecureWebSocket), (int)FoxgloveTransportMode.SecureWebSocket);
+        }
+
+        private static bool EnumPropertyIs(SerializedProperty prop, string enumName, int fallbackIndex)
+            => prop != null && prop.enumValueIndex == EnumIndex(prop, enumName, fallbackIndex);
+
+        private static void SetEnumProperty(SerializedProperty prop, string enumName, int fallbackIndex)
+        {
+            if (prop != null)
+                prop.enumValueIndex = EnumIndex(prop, enumName, fallbackIndex);
+        }
+
+        private static int EnumIndex(SerializedProperty prop, string enumName, int fallbackIndex)
+        {
+            var names = prop?.enumNames;
+            if (names == null)
+                return fallbackIndex;
+
+            for (var i = 0; i < names.Length; i++)
+            {
+                if (string.Equals(names[i], enumName, System.StringComparison.Ordinal))
+                    return i;
+            }
+
+            return fallbackIndex;
+        }
+
+        private static SchemaIdentityMode SchemaIdentityModeFromProperty(SerializedProperty prop)
+        {
+            var names = prop?.enumNames;
+            if (names == null || prop.enumValueIndex < 0 || prop.enumValueIndex >= names.Length)
+                return SchemaIdentityMode.Off;
+
+            return System.Enum.TryParse(names[prop.enumValueIndex], out SchemaIdentityMode mode)
+                ? mode
+                : SchemaIdentityMode.Off;
         }
 
         private void DrawPasswordProperty(string propertyName, string label)
@@ -830,6 +871,8 @@ namespace Unity.FoxgloveSDK.Editor
                 EditorUtility.SetDirty(target);
 
                 var fingerprint = FoxgloveCertificateDistributor.ComputeSha256Fingerprint(result.RootCaPath);
+                _cachedRootCaFingerprintPath = result.RootCaPath;
+                _cachedRootCaFingerprint = fingerprint;
                 var pageStarted = StartEditorRootCaDistributor(
                     result.RootCaPath,
                     LocalRootCaDistributorHost,

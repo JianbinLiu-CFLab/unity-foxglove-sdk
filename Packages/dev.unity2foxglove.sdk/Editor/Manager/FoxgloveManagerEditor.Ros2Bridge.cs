@@ -54,10 +54,11 @@ namespace Unity.FoxgloveSDK.Editor
 
             using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.TextField("Effective QoS", manager.ResolveRos2BridgeQos().DisplaySummary);
+                RefreshRos2BridgeStatsForRepaint(manager);
+                EditorGUILayout.TextField("Effective QoS", _ros2BridgeQosThisRepaint.DisplaySummary);
             }
 
-            var stats = manager.GetRos2BridgeStatsSnapshot();
+            var stats = _ros2BridgeStatsThisRepaint;
             using (new EditorGUI.DisabledScope(true))
             {
                 EditorGUILayout.Toggle("Enabled", stats.Enabled);
@@ -72,6 +73,20 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUILayout.Space();
             _ros2BridgeHealthDrawer.Draw(serializedObject);
+        }
+
+        private void RefreshRos2BridgeStatsForRepaint(Components.FoxgloveManager manager)
+        {
+            if (_ros2BridgeStatsFrame == Time.frameCount)
+                return;
+
+            _ros2BridgeStatsFrame = Time.frameCount;
+            _ros2BridgeQosThisRepaint = manager != null
+                ? manager.ResolveRos2BridgeQos()
+                : Ros2BridgeQosProfile.ReliableDefault;
+            _ros2BridgeStatsThisRepaint = manager != null
+                ? manager.GetRos2BridgeStatsSnapshot()
+                : Ros2BridgeStatsSnapshot.Disabled;
         }
     }
 }
