@@ -31,9 +31,11 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
     """Regression coverage for optional package validator edge cases."""
 
     def setUp(self) -> None:
+        """Load a fresh validator module for each test."""
         self.validator = load_validator_module()
 
     def configure_package_paths(self, root: Path) -> None:
+        """Redirect validator globals to a temporary package layout."""
         package = root / "Packages" / "dev.unity2foxglove.ros2forunity"
         runtime = root / "Packages" / self.validator.RUNTIME_PACKAGE_NAME
         self.validator.ROOT = root
@@ -49,10 +51,12 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         self.validator.RVIZ_V1_SAMPLE = package / "Samples~" / "RViz2 Standard Visualization v1"
 
     def test_main_clears_file_caches_before_running_checks(self) -> None:
+        """The validator entrypoint should reset cached file reads before checks."""
         self.validator.JSON_CACHE[Path("stale.json")] = {"stale": True}
         self.validator.TEXT_CACHE[Path("stale.md")] = "stale"
 
         def cache_check(results):
+            """Observe that caches were cleared before the first check runs."""
             self.assertEqual({}, self.validator.JSON_CACHE)
             self.assertEqual({}, self.validator.TEXT_CACHE)
             results.append(self.validator.CheckResult("cache clear observed", True, ""))
@@ -70,6 +74,7 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         self.assertEqual(self.validator.EXIT_SUCCESS, self.validator.main())
 
     def test_editor_asmdef_allows_implicit_auto_referenced_default(self) -> None:
+        """Missing autoReferenced should keep Unity's implicit true default."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             self.configure_package_paths(root)
@@ -96,6 +101,7 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         self.assertTrue(surface.ok)
 
     def test_editor_asmdef_rejects_explicit_auto_referenced_false(self) -> None:
+        """Explicit autoReferenced=false should fail the editor asmdef surface check."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             self.configure_package_paths(root)
@@ -122,6 +128,7 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         self.assertFalse(surface.ok)
 
     def test_public_phase_scan_covers_rviz_sample_readmes_and_deduplicates_hits(self) -> None:
+        """Public docs scanning should include RViz samples and report unique phase tokens."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             self.configure_package_paths(root)
@@ -147,6 +154,7 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
         self.assertEqual("Phase110", phase_result.detail)
 
     def test_runtime_inventory_file_count_must_be_present(self) -> None:
+        """Runtime inventory file entries should require a declared fileCount."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             self.configure_package_paths(root)
