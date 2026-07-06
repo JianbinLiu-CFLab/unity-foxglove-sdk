@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Components
     [RequireComponent(typeof(Camera))]
     public partial class FoxgloveCameraPublisher : FoxglovePublisherBase
     {
-        private const float DefaultMaxCaptureRateHz = 6f;
+        private const float DefaultMaxCaptureRateHz = 10f;
 
         [Header("Camera Output")]
         [SerializeField] private CameraOutputMode _outputMode = CameraOutputMode.Jpeg;
@@ -314,7 +314,6 @@ namespace Unity.FoxgloveSDK.Components
         private void OnReadbackComplete(AsyncGPUReadbackRequest req, int generation, ulong renderUnixNs, int captureWidth, int captureHeight)
         {
             var readbackLatencyMs = TakeReadbackLatencyMs(renderUnixNs);
-            RecordPipelineCooldownIfNeeded(readbackLatencyMs);
             try
             {
                 // Equivalent to generation != _captureGeneration, but with a cross-thread visible read.

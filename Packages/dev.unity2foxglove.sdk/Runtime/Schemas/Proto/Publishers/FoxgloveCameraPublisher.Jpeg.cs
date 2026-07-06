@@ -188,7 +188,6 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _diagnostics.RecordJpegEncodeResult(result.EncodeMs, result.SerializeMs, result.JpegBytes);
-            RecordPipelineCooldownIfNeeded(result.EncodeMs);
 
             if (result.DroppedByEncodedBudget)
             {

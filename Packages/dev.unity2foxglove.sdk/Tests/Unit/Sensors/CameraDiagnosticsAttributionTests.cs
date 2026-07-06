@@ -99,7 +99,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.True(
                 File.Exists(gatePath),
                 "Camera capture needs a shared pre-render rate gate so heavy render/readback work is skipped before Camera.Render().");
-            Assert.Contains("private const float DefaultMaxCaptureRateHz = 6f;", publisher, StringComparison.Ordinal);
+            Assert.Contains("private const float DefaultMaxCaptureRateHz = 10f;", publisher, StringComparison.Ordinal);
             Assert.Contains("[SerializeField, Min(0f)] private float _maxCaptureRateHz = DefaultMaxCaptureRateHz;", publisher, StringComparison.Ordinal);
             Assert.Contains("AllowCameraCaptureBySourceRate", publisherDiagnostics, StringComparison.Ordinal);
             Assert.Contains("CameraCaptureRateGate.ShouldCapture", publisherDiagnostics, StringComparison.Ordinal);
@@ -154,8 +154,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("requireIdlePipeline: _requireIdleJpegPipeline", jpeg, StringComparison.Ordinal);
             Assert.Contains("pipelineCooldownActive: PipelineCooldownActive()", jpeg, StringComparison.Ordinal);
             Assert.Contains("RecordPipelineCooldownIfNeeded(renderMs)", publisher, StringComparison.Ordinal);
-            Assert.Contains("RecordPipelineCooldownIfNeeded(readbackLatencyMs)", publisher, StringComparison.Ordinal);
-            Assert.Contains("RecordPipelineCooldownIfNeeded(result.EncodeMs)", jpeg, StringComparison.Ordinal);
+            Assert.DoesNotContain("RecordPipelineCooldownIfNeeded(readbackLatencyMs)", publisher, StringComparison.Ordinal);
+            Assert.DoesNotContain("RecordPipelineCooldownIfNeeded(result.EncodeMs)", jpeg, StringComparison.Ordinal);
             var healthGateIndex = publisher.IndexOf("AllowJpegCaptureByPipelineHealth()", StringComparison.Ordinal);
             var renderIndex = publisher.IndexOf("_captureResources.CaptureCamera.Render();", StringComparison.Ordinal);
             Assert.True(healthGateIndex >= 0, "Camera publisher should check pipeline health before scheduling capture.");
