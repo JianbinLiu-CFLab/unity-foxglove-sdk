@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
@@ -24,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     public static class FoxRunConditionalPublishGateValidation
     {
+        private const string ExpectedCheckedInGeneratorSha256 = "AAFA5C1CA0FC2D806518B18895B60A014532B62921D090FD88515C4035889A69";
         private static int _passCount;
 
         public static void Validate()
@@ -207,17 +209,21 @@ namespace Unity.FoxgloveSDK.Tests
             var en = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/07_FoxRun_Zero_Code_Publishing.md");
             var zh = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/zh/07_FoxRun自动发布.md");
 
-            Check(en.Contains("When", StringComparison.Ordinal) && en.Contains("Unless", StringComparison.Ordinal),
+            Check(en.Contains("| `When` | `\"\"` | Bool field", StringComparison.Ordinal)
+                  && en.Contains("| `Unless` | `\"\"` | Bool field", StringComparison.Ordinal),
                 "141A-24: English docs mention When and Unless");
-            Check(zh.Contains("When", StringComparison.Ordinal) && zh.Contains("Unless", StringComparison.Ordinal),
+            Check(zh.Contains("| `When` | `string` | `\"\"` |", StringComparison.Ordinal)
+                  && zh.Contains("| `Unless` | `string` | `\"\"` |", StringComparison.Ordinal),
                 "141A-25: Chinese docs mention When and Unless");
         }
 
         private static void PublishIfAllowed(FoxgloveSession session, Type conditionInterface, object source, int topicIndex, uint channelId, ulong nowNs, ref int expectedFrames)
         {
-            var canPublish = (bool)conditionInterface
-                .GetMethod("FoxgloveLog_CanPublish")
-                .Invoke(source, new object[] { topicIndex });
+            var canPublishMethod = conditionInterface.GetMethod("FoxgloveLog_CanPublish")
+                ?? throw new InvalidOperationException("Missing IFoxgloveLogConditionSource.FoxgloveLog_CanPublish in runtime condition fixture.");
+            var result = canPublishMethod.Invoke(source, new object[] { topicIndex });
+            if (result is not bool canPublish)
+                throw new InvalidOperationException("FoxgloveLog_CanPublish did not return a bool for topic index " + topicIndex + ".");
             if (!canPublish)
                 return;
 
@@ -332,6 +338,70 @@ namespace Unity.FoxgloveSDK.Components
         void FoxgloveLog_Publish(int topicIndex, FoxgloveManager mgr, ulong nowNs);
     }
 
+    public enum FoxTopicVisibility
+    {
+        LocalOnly = 0,
+        Exported = 1
+    }
+
+    public enum FoxTopicWriterPolicy
+    {
+        SingleWriter = 0,
+        MultiWriter = 1
+    }
+
+    public sealed class FoxTopicContract
+    {
+        public FoxTopicContract(string topic, string schemaName, string encoding, string canonicalType, string stableFingerprint, FoxTopicVisibility visibility, FoxTopicWriterPolicy writerPolicy)
+        {
+            Topic = topic;
+            SchemaName = schemaName;
+            Encoding = encoding;
+            CanonicalType = canonicalType;
+            StableFingerprint = stableFingerprint;
+            Visibility = visibility;
+            WriterPolicy = writerPolicy;
+        }
+
+        public string Topic { get; }
+        public string SchemaName { get; }
+        public string Encoding { get; }
+        public string CanonicalType { get; }
+        public string StableFingerprint { get; }
+        public FoxTopicVisibility Visibility { get; }
+        public FoxTopicWriterPolicy WriterPolicy { get; }
+    }
+
+    public interface IFoxgloveTopicContractSource
+    {
+        string FoxgloveLog_Origin { get; }
+        FoxTopicContract FoxgloveLog_GetContract(int index);
+    }
+
+    public sealed class FoxTopicBus
+    {
+        public bool HasSubscribers(string topic) => true;
+
+        public void Publish<T>(FoxTopicContract contract, ulong timestampNs, in T payload, string origin) { }
+    }
+
+    public sealed class FoxTopicSinkRouter
+    {
+        public bool HasSinks => true;
+
+        public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+    }
+
+    public interface IFoxgloveTopicBusSource
+    {
+        void FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs);
+    }
+
+    public interface IFoxgloveTopicSinkSource
+    {
+        void FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs);
+    }
+
     public interface IFoxgloveLogConditionSource
     {
         bool FoxgloveLog_CanPublish(int topicIndex);
@@ -340,10 +410,35 @@ namespace Unity.FoxgloveSDK.Components
 ";
 
         private static bool GeneratedConditionCodeIsRuntimeGated(string source)
-            => source.Contains("IFoxgloveLogConditionSource", StringComparison.Ordinal)
-               && source.Contains("FoxgloveLog_CanPublish", StringComparison.Ordinal)
-               && source.Contains("return telemetryEnabled;", StringComparison.Ordinal)
-               && source.Contains("return !isPaused;", StringComparison.Ordinal);
+        {
+            return source.Contains("IFoxgloveLogConditionSource", StringComparison.Ordinal)
+                   && source.Contains("FoxgloveLog_CanPublish", StringComparison.Ordinal)
+                   && SwitchCaseContains(source, 0, "telemetryEnabled")
+                   && SwitchCaseContains(source, 1, "isPaused")
+                   && SwitchCaseContains(source, 1, "!");
+        }
+
+        private static bool SwitchCaseContains(string source, int caseIndex, string expected)
+        {
+            var methodStart = source.IndexOf("FoxgloveLog_CanPublish", StringComparison.Ordinal);
+            if (methodStart < 0)
+                return false;
+
+            var caseMarker = "case " + caseIndex + ":";
+            var start = source.IndexOf(caseMarker, methodStart, StringComparison.Ordinal);
+            if (start < 0)
+                return false;
+
+            var end = source.Length;
+            foreach (var marker in new[] { "case " + (caseIndex + 1) + ":", "default:" })
+            {
+                var candidate = source.IndexOf(marker, start + caseMarker.Length, StringComparison.Ordinal);
+                if (candidate >= 0 && candidate < end)
+                    end = candidate;
+            }
+
+            return source.IndexOf(expected, start, end - start, StringComparison.Ordinal) >= 0;
+        }
 
         private static IReadOnlyList<GeneratedSourceResult> RunGenerator(IIncrementalGenerator generator, string assemblyName)
         {
@@ -368,7 +463,16 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (!File.Exists(dllPath))
                 throw new FileNotFoundException("Checked-in analyzer DLL was not found.", dllPath);
-            var assembly = Assembly.Load(File.ReadAllBytes(Path.GetFullPath(dllPath)));
+            var dllBytes = File.ReadAllBytes(Path.GetFullPath(dllPath));
+            using (var sha256 = SHA256.Create())
+            {
+                var actualSha256 = BitConverter.ToString(sha256.ComputeHash(dllBytes)).Replace("-", string.Empty);
+                if (!string.Equals(actualSha256, ExpectedCheckedInGeneratorSha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Checked-in analyzer DLL SHA-256 mismatch. Expected "
+                        + ExpectedCheckedInGeneratorSha256 + ", got " + actualSha256 + ".");
+            }
+
+            var assembly = Assembly.Load(dllBytes);
             var type = assembly.GetType("Unity.FoxgloveSDK.SourceGenerators.FoxgloveLogSourceGenerator")
                        ?? throw new InvalidOperationException("Checked-in analyzer DLL does not contain FoxgloveLogSourceGenerator.");
             return (IIncrementalGenerator)Activator.CreateInstance(type);

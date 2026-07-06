@@ -18,11 +18,21 @@ namespace ROS2
 {
 
 /// <summary>
-/// Interface for acquiring time.
+/// Interface for acquiring ROS-compatible timestamp fields from a concrete time source.
 /// </summary>
 public interface ITimeSource
 {
+  /// <summary>
+  /// Tries to acquire the current timestamp for ROS message headers and clock messages.
+  /// </summary>
+  /// <param name="seconds">Whole seconds of the acquired timestamp, or 0 when this method returns false.</param>
+  /// <param name="nanoseconds">Nanoseconds within the second, or 0 when this method returns false.</param>
   /// <returns>True when a valid timestamp was acquired; false when the source is not currently usable.</returns>
+  /// <remarks>
+  /// Epoch semantics are source-specific: DotnetTimeSource and ROS2TimeSource report Unix/ROS-aligned time,
+  /// while UnityTimeSource reports Unity play time. Callers must not use the out values when this method
+  /// returns false.
+  /// </remarks>
   bool GetTime(out int seconds, out uint nanoseconds);
 }
 
