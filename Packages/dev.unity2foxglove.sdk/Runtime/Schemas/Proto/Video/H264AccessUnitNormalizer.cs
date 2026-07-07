@@ -25,14 +25,17 @@ namespace Foxglove.Schemas.Video
 
         private byte[] _cachedSps;
         private byte[] _cachedPps;
+        private readonly List<byte[]> _parsedNals = new List<byte[]>();
+        private readonly List<byte[]> _parameterSetNals = new List<byte[]>();
+        private readonly List<byte[]> _outputNals = new List<byte[]>();
 
         /// <summary>Caches SPS/PPS NAL units from a sequence header or sample.</summary>
         public void CacheParameterSets(byte[] data)
         {
-            if (!TryParseNalUnits(data, out var nals))
+            if (!TryParseNalUnits(data, _parameterSetNals))
                 return;
 
-            CacheParameterSets(nals);
+            CacheParameterSets(_parameterSetNals);
         }
 
         /// <summary>
@@ -42,19 +45,19 @@ namespace Foxglove.Schemas.Video
         public bool TryNormalizeSample(byte[] sample, out byte[] accessUnit)
         {
             accessUnit = null;
-            if (!TryParseNalUnits(sample, out var nals) || nals.Count == 0)
+            if (!TryParseNalUnits(sample, _parsedNals) || _parsedNals.Count == 0)
                 return false;
 
-            CacheParameterSets(nals);
+            CacheParameterSets(_parsedNals);
 
             var hasVcl = false;
             var hasIdr = false;
             var hasSps = false;
             var hasPps = false;
-            foreach (var nal in nals)
+            foreach (var nal in _parsedNals)
             {
                 var type = NalType(nal);
-                hasVcl |= type == NonIdrSlice || type == IdrSlice;
+                hasVcl |= IsVcl(nal);
                 hasIdr |= type == IdrSlice;
                 hasSps |= type == Sps;
                 hasPps |= type == Pps;
@@ -63,18 +66,18 @@ namespace Foxglove.Schemas.Video
             if (!hasVcl)
                 return false;
 
-            var outputNals = new List<byte[]>();
+            _outputNals.Clear();
             if (hasIdr && (!hasSps || !hasPps))
             {
                 if (_cachedSps != null && !hasSps)
-                    outputNals.Add(_cachedSps);
+                    _outputNals.Add(_cachedSps);
                 if (_cachedPps != null && !hasPps)
-                    outputNals.Add(_cachedPps);
+                    _outputNals.Add(_cachedPps);
             }
 
-            outputNals.AddRange(nals);
+            _outputNals.AddRange(_parsedNals);
 
-            var candidate = BuildAnnexB(outputNals);
+            var candidate = BuildAnnexB(_outputNals);
             if (!H264AnnexBAccessUnitPacketizer.LooksLikeDecodableH264AccessUnit(candidate))
                 return false;
 
@@ -98,21 +101,20 @@ namespace Foxglove.Schemas.Video
             }
         }
 
-        private static bool TryParseNalUnits(byte[] data, out List<byte[]> nals)
+        private static bool TryParseNalUnits(byte[] data, List<byte[]> nals)
         {
-            nals = null;
+            nals.Clear();
             if (data == null || data.Length == 0)
                 return false;
 
             if (H264AnnexBAccessUnitPacketizer.HasAnnexBStartCode(data))
-                return TryParseAnnexBNalUnits(data, out nals);
+                return TryParseAnnexBNalUnits(data, nals);
 
-            return TryParseLengthPrefixedNalUnits(data, out nals);
+            return TryParseLengthPrefixedNalUnits(data, nals);
         }
 
-        private static bool TryParseAnnexBNalUnits(byte[] data, out List<byte[]> nals)
+        private static bool TryParseAnnexBNalUnits(byte[] data, List<byte[]> nals)
         {
-            nals = new List<byte[]>();
             var search = 0;
             while (FindStartCode(data, search, out var start, out var length))
             {
@@ -132,9 +134,8 @@ namespace Foxglove.Schemas.Video
             return nals.Count > 0;
         }
 
-        private static bool TryParseLengthPrefixedNalUnits(byte[] data, out List<byte[]> nals)
+        private static bool TryParseLengthPrefixedNalUnits(byte[] data, List<byte[]> nals)
         {
-            nals = new List<byte[]>();
             var offset = 0;
             while (offset < data.Length)
             {
@@ -213,34 +214,6 @@ namespace Foxglove.Schemas.Video
         }
 
         private static bool FindStartCode(byte[] data, int startIndex, out int index, out int length)
-        {
-            index = -1;
-            length = 0;
-            if (data == null)
-                return false;
-
-            for (var i = Math.Max(0, startIndex); i <= data.Length - 3; i++)
-            {
-                if (i <= data.Length - 4
-                    && data[i] == 0
-                    && data[i + 1] == 0
-                    && data[i + 2] == 0
-                    && data[i + 3] == 1)
-                {
-                    index = i;
-                    length = 4;
-                    return true;
-                }
-
-                if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1)
-                {
-                    index = i;
-                    length = 3;
-                    return true;
-                }
-            }
-
-            return false;
-        }
+            => H264StartCodeScanner.Find(data, startIndex, out index, out length);
     }
 }
