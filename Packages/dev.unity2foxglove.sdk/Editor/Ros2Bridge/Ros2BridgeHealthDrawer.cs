@@ -32,8 +32,6 @@ namespace Unity.FoxgloveSDK.Editor
         {
             AssemblyReloadEvents.beforeAssemblyReload -= CancelHealthCheck;
             CancelHealthCheck();
-            _cancellation?.Dispose();
-            _cancellation = null;
         }
 
         internal void Draw(SerializedObject serializedObject)
@@ -134,8 +132,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (cancellation == null)
                 return;
 
+            _cancellation = null;
             try { cancellation.Cancel(); }
             catch { }
+            finally { cancellation.Dispose(); }
         }
 
         private void CompleteTaskIfReady()

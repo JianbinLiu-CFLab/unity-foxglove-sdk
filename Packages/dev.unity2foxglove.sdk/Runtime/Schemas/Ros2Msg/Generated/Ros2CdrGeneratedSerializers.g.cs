@@ -26,8 +26,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
         private static void WriteProtoVector3(Ros2CdrWriter writer, global::Foxglove.Vector3 value)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
 
@@ -38,8 +36,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
         private static void WriteProtoQuaternion(Ros2CdrWriter writer, global::Foxglove.Quaternion value)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
 
@@ -51,8 +47,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
         private static void WriteProtoPose(Ros2CdrWriter writer, global::Foxglove.Pose value)
         {
-            if (writer == null)
-                throw new ArgumentNullException(nameof(writer));
             if (value == null)
                 throw new ArgumentNullException(nameof(value));
 

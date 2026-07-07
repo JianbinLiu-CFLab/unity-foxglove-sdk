@@ -107,7 +107,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var demoSetup = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs");
             Check(demoSetup.Contains("private void OnDestroy()", StringComparison.Ordinal)
-                  && demoSetup.Contains("runtime.Parameters.OnParameterChanged -= OnParameterChanged", StringComparison.Ordinal)
+                  && demoSetup.Contains("ClearRuntimeWiring()", StringComparison.Ordinal)
+                  && demoSetup.Contains("_wiredRuntime.Parameters.OnParameterChanged -= OnParameterChanged", StringComparison.Ordinal)
+                  && demoSetup.Contains("_wiredManager.OnClientMessage -= OnClientMessageReceived", StringComparison.Ordinal)
                   && demoSetup.Contains("[FoxService(", StringComparison.Ordinal)
                   && !demoSetup.Contains("_resetSvcId", StringComparison.Ordinal),
                 "134-23-E1: Full demo setup unregisters runtime callbacks and uses declarative reset service ownership");
@@ -134,7 +136,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var demoSetup = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxgloveDemoSetup.cs");
             Check(demoSetup.Contains("_manager.OnClientMessage += OnClientMessageReceived", StringComparison.Ordinal)
-                  && demoSetup.Contains("_manager.OnClientMessage -= OnClientMessageReceived", StringComparison.Ordinal)
+                  && demoSetup.Contains("_wiredManager.OnClientMessage -= OnClientMessageReceived", StringComparison.Ordinal)
                   && !demoSetup.Contains("Session.OnClientMessage += OnClientMessageReceived", StringComparison.Ordinal),
                 "134-23-F1: Full demo client-message logging uses FoxgloveManager main-thread event");
             Check(demoSetup.Contains("ClientPayloadPreviewBytes", StringComparison.Ordinal)

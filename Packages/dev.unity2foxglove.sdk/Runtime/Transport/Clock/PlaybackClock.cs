@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Transport
             Playing = 0,
             /// <summary>Clock is frozen at the current position.</summary>
             Paused = 1,
-            /// <summary>Reserved for future buffering support.</summary>
+            /// <summary>Reserved protocol value; consumers should treat it as paused until buffering is implemented.</summary>
             Buffering = 2,
             /// <summary>Playback has reached the end of the range.</summary>
             Ended = 3
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Transport
 
             if (IsValidSpeed(speed))
                 _speed = speed;
-            else if (command == 0 && speed != 0f)
+            else if ((command == 0 || command == 1) && speed != 0f)
                 _speed = 1f;
 
             switch (command)

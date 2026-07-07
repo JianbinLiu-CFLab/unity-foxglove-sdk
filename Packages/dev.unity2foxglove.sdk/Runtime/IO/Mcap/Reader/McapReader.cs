@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.IO
     /// reader borrows the supplied stream; callers retain ownership and are
     /// responsible for disposing the stream.
     /// </summary>
-    public class McapReader
+    public class McapReader : IDisposable
     {
         private readonly Stream _stream;
         private readonly byte[] _buf = new byte[8];
@@ -36,6 +36,15 @@ namespace Unity.FoxgloveSDK.IO
         public McapReader(Stream stream)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        }
+
+        /// <summary>
+        /// Releases transient reader buffers. The supplied stream remains
+        /// caller-owned and is not disposed.
+        /// </summary>
+        public void Dispose()
+        {
+            _recordContentBuffer = null;
         }
 
         /// <summary>

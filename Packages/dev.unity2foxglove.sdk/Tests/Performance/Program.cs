@@ -15,6 +15,9 @@ namespace Unity.FoxgloveSDK.Performance
 {
     static class Program
     {
+        private const int GitCommitTimeoutMs = 3000;
+        private const string DefaultResultFilePrefix = "phase35_performance";
+
         private static string RepoRoot
         {
             get
@@ -35,6 +38,7 @@ namespace Unity.FoxgloveSDK.Performance
             var modeWasSpecified = false;
             string outputDir = null;
             string thresholdPath = null;
+            var resultPrefix = DefaultResultFilePrefix;
             var thresholdsEnabled = true;
             var thresholdSelfTest = false;
             for (int i = 0; i < args.Length; i++)
@@ -65,6 +69,11 @@ namespace Unity.FoxgloveSDK.Performance
                             return UsageError("--thresholds requires a JSON file.");
                         thresholdPath = args[++i];
                         break;
+                    case "--result-prefix":
+                        if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+                            return UsageError("--result-prefix requires a file-name prefix.");
+                        resultPrefix = args[++i];
+                        break;
                     default:
                         return UsageError("Unknown argument: " + args[i]);
                 }
@@ -93,11 +102,16 @@ namespace Unity.FoxgloveSDK.Performance
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
-                var proc = System.Diagnostics.Process.Start(psi);
-                commit = proc?.StandardOutput.ReadToEnd()?.Trim() ?? "";
-                proc?.WaitForExit();
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc != null && proc.WaitForExit(GitCommitTimeoutMs))
+                    commit = proc.StandardOutput.ReadToEnd()?.Trim() ?? "";
+                else if (proc != null)
+                    proc.Kill();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("Performance commit lookup failed: " + ex.GetType().Name + ": " + ex.Message);
+            }
 
             var runId = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
             string resolvedThresholdPath;
@@ -133,13 +147,14 @@ namespace Unity.FoxgloveSDK.Performance
             if (!string.IsNullOrWhiteSpace(thresholds.calibratedOn))
                 Console.WriteLine("Performance thresholds calibrated on: " + thresholds.calibratedOn);
 
+            var startedAtUtc = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
             var results = PerformanceRunner.RunAll(mode, thresholds);
 
             var output = new
             {
                 runId,
                 mode,
-                startedAtUtc = DateTime.UtcNow.ToString("o"),
+                startedAtUtc,
                 machine = Environment.MachineName,
                 dotnetVersion = Environment.Version.ToString(),
                 commit,
@@ -155,7 +170,7 @@ namespace Unity.FoxgloveSDK.Performance
                 ContractResolver = new CamelCasePropertyNamesContractResolver()
             });
 
-            var outputPath = Path.Combine(outputDir, $"phase35_performance_{mode}_{runId}.json");
+            var outputPath = Path.Combine(outputDir, $"{resultPrefix}_{mode}_{runId}.json");
             File.WriteAllText(outputPath, json);
             Console.WriteLine($"Results written to: {outputPath}");
 
@@ -184,7 +199,7 @@ namespace Unity.FoxgloveSDK.Performance
         {
             Console.Error.WriteLine(message);
             Console.Error.WriteLine(
-                "Usage: [--quick|--full] [--output <directory>] [--thresholds <json>] [--no-thresholds] [--threshold-self-test]");
+                "Usage: [--quick|--full] [--output <directory>] [--thresholds <json>] [--result-prefix <prefix>] [--no-thresholds] [--threshold-self-test]");
             return 2;
         }
 

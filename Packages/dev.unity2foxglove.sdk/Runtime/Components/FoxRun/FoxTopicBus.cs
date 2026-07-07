@@ -36,11 +36,12 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>Process-local typed bus for FoxRun topic envelopes.</summary>
+    /// <remarks>Not thread-safe. Register, subscribe, publish, and unsubscribe from the Unity main thread only.</remarks>
     public sealed class FoxTopicBus
     {
         private readonly Dictionary<string, Registration> _registrations = new Dictionary<string, Registration>(StringComparer.Ordinal);
         private readonly Dictionary<string, List<ISubscription>> _subscriptions = new Dictionary<string, List<ISubscription>>(StringComparer.Ordinal);
-        private readonly HashSet<string> _reportedSubscriberFaults = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<SubscriberFaultKey> _reportedSubscriberFaults = new HashSet<SubscriberFaultKey>();
         private int _nextSubscriptionId;
 
         public event Action<FoxTopicSubscriberFault> SubscriberFaulted;
@@ -60,6 +61,13 @@ namespace Unity.FoxgloveSDK.Components
             if (existing.Contract.WriterPolicy == FoxTopicWriterPolicy.MultiWriter
                 && contract.WriterPolicy == FoxTopicWriterPolicy.MultiWriter)
             {
+                if (!ContractsMatch(existing.Contract, contract))
+                {
+                    return new FoxTopicRegistrationResult(
+                        false,
+                        "Topic '" + contract.Topic + "' multi-writer contract does not match the existing registration.");
+                }
+
                 existing.AddOrigin(origin);
                 return new FoxTopicRegistrationResult(true, string.Empty);
             }
@@ -122,9 +130,11 @@ namespace Unity.FoxgloveSDK.Components
                 if (list[i] is Subscription<T> typedSubscription
                     && typedSubscription.Matches(callback))
                 {
+                    var subscriptionId = typedSubscription.Id;
                     list.RemoveAt(i);
                     if (list.Count == 0)
                         _subscriptions.Remove(topic);
+                    RemoveReportedFaults(subscriptionId, topic);
                     return true;
                 }
             }
@@ -154,6 +164,9 @@ namespace Unity.FoxgloveSDK.Components
                     ReportSubscriberFault(typedSubscription.Id, contract.Topic, origin, exception);
                 else if (!(subscription is Subscription<T>))
                 {
+                    if (HasReportedFault(subscription.Id, contract.Topic, typeof(InvalidOperationException)))
+                        continue;
+
                     ReportSubscriberFault(
                         subscription.Id,
                         contract.Topic,
@@ -168,11 +181,26 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ReportSubscriberFault(int subscriptionId, string topic, string origin, Exception exception)
         {
-            var key = topic + ":" + subscriptionId + ":" + exception.GetType().FullName;
+            var key = new SubscriberFaultKey(subscriptionId, topic, exception.GetType());
             if (!_reportedSubscriberFaults.Add(key))
                 return;
 
             SubscriberFaulted?.Invoke(new FoxTopicSubscriberFault(topic, origin, exception));
+        }
+
+        private bool HasReportedFault(int subscriptionId, string topic, Type exceptionType)
+            => _reportedSubscriberFaults.Contains(new SubscriberFaultKey(subscriptionId, topic, exceptionType));
+
+        private void RemoveReportedFaults(int subscriptionId, string topic)
+            => _reportedSubscriberFaults.RemoveWhere(key => key.SubscriptionId == subscriptionId
+                                                            && string.Equals(key.Topic, topic, StringComparison.Ordinal));
+
+        private static bool ContractsMatch(FoxTopicContract existing, FoxTopicContract candidate)
+        {
+            return string.Equals(existing.StableFingerprint, candidate.StableFingerprint, StringComparison.Ordinal)
+                   && string.Equals(existing.SchemaName, candidate.SchemaName, StringComparison.Ordinal)
+                   && string.Equals(existing.Encoding, candidate.Encoding, StringComparison.Ordinal)
+                   && string.Equals(existing.CanonicalType, candidate.CanonicalType, StringComparison.Ordinal);
         }
 
         private interface ISubscription
@@ -209,6 +237,42 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     exception = ex;
                     return false;
+                }
+            }
+        }
+
+        private readonly struct SubscriberFaultKey : IEquatable<SubscriberFaultKey>
+        {
+            public SubscriberFaultKey(int subscriptionId, string topic, Type exceptionType)
+            {
+                SubscriptionId = subscriptionId;
+                Topic = topic ?? string.Empty;
+                ExceptionType = exceptionType;
+            }
+
+            public int SubscriptionId { get; }
+            public string Topic { get; }
+            public Type ExceptionType { get; }
+
+            public bool Equals(SubscriberFaultKey other)
+            {
+                return SubscriptionId == other.SubscriptionId
+                       && string.Equals(Topic, other.Topic, StringComparison.Ordinal)
+                       && ExceptionType == other.ExceptionType;
+            }
+
+            public override bool Equals(object obj)
+                => obj is SubscriberFaultKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = 17;
+                    hash = hash * 31 + SubscriptionId;
+                    hash = hash * 31 + StringComparer.Ordinal.GetHashCode(Topic);
+                    hash = hash * 31 + (ExceptionType == null ? 0 : ExceptionType.GetHashCode());
+                    return hash;
                 }
             }
         }

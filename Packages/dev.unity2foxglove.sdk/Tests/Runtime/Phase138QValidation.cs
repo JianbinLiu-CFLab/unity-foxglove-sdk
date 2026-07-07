@@ -180,8 +180,8 @@ namespace Unity.FoxgloveSDK.Tests
             var drain = SliceMethod(camera, "private void DrainEncodedAccessUnits()");
             var submit = SliceMethod(camera, "private void SubmitVideoFrame(");
             Check(camera.Contains("private CameraVideoPublishPipeline EnsureVideoPublishPipeline()", StringComparison.Ordinal)
-                  && IndexOf(drain, "EnsureVideoPublishPipeline();") >= 0
-                  && IndexOf(drain, "EnsureVideoPublishPipeline();") < IndexOf(drain, "_videoPublishPipeline.TryDrainEncodedAccessUnits(")
+                  && IndexOf(drain, "var pipeline = EnsureVideoPublishPipeline();") >= 0
+                  && IndexOf(drain, "var pipeline = EnsureVideoPublishPipeline();") < IndexOf(drain, "pipeline.TryDrainEncodedAccessUnits(")
                   && IndexOf(submit, "EnsureVideoPublishPipeline();") >= 0
                   && IndexOf(submit, "EnsureVideoPublishPipeline();") < IndexOf(submit, "_videoPublishPipeline.SubmitVideoFrame("),
                 "138Q-3D2: camera video pipeline is lazily restored before runtime drain/submit use");
@@ -289,6 +289,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && IndexOf(drain, "EnsureJpegPublishPipeline();") >= 0
                   && IndexOf(drain, "EnsureJpegPublishPipeline();") < IndexOf(drain, "_jpegPublishPipeline.DrainCompleted("),
                 "138Q-5D2: camera JPEG pipeline is lazily restored before runtime queue/drain use");
+            Check(publishPipeline.Contains("return !dropped;", StringComparison.Ordinal)
+                  && !publishPipeline.Contains("return dropped;", StringComparison.Ordinal),
+                "138Q-5D3: camera JPEG TryQueueFrame follows true-means-queued Try semantics");
         }
 
         private static void CameraPublisherDelegatesPublishDiagnostics()

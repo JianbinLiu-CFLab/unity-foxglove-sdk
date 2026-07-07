@@ -16,6 +16,16 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const int MaxTypeHintScanDepth = 32;
 
+        private static readonly JsonLoadSettings LoadSettings = new JsonLoadSettings
+        {
+            CommentHandling = CommentHandling.Ignore,
+            DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
+        };
+
+        /// <remarks>
+        /// This parser is intended for low-frequency FoxRun control inputs. It decodes UTF-8
+        /// into a managed string and builds a JToken tree once per TryRead call.
+        /// </remarks>
         private static bool TryToken(byte[] payload, string field, out JToken token, out string error)
         {
             token = null;
@@ -29,12 +39,7 @@ namespace Unity.FoxgloveSDK.Components
             try
             {
                 var json = Encoding.UTF8.GetString(payload);
-                var settings = new JsonLoadSettings
-                {
-                    CommentHandling = CommentHandling.Ignore,
-                    DuplicatePropertyNameHandling = DuplicatePropertyNameHandling.Error
-                };
-                var root = JToken.Parse(json, settings);
+                var root = JToken.Parse(json, LoadSettings);
                 if (ContainsForbiddenTypeHint(root, 0, out var typeHintError))
                 {
                     error = typeHintError;

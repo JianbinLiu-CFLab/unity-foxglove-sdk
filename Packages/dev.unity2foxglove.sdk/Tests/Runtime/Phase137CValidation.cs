@@ -80,7 +80,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(File.Exists(entryPath), "137C-7: FoxgloveSourceEmitter entry source exists");
             var entry = File.ReadAllText(entryPath);
             Check(!entry.Contains("fields.Max(f => f.PublishMode)", StringComparison.Ordinal), "137C-8: unreachable Max call replaced");
-            Check(entry.Contains("return 0;", StringComparison.Ordinal), "137C-9: TopicPublishMode returns explicit 0");
+            Check(entry.Contains("return PublishModeFixedRate;", StringComparison.Ordinal)
+                  && entry.Contains("PublishModeOnTrigger", StringComparison.Ordinal),
+                "137C-9: TopicPublishMode returns named mode constants");
         }
 
         private static void VerifyCsprojGlobs()

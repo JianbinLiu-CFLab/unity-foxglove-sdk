@@ -63,7 +63,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             self.validator.PUBLIC_DOCS = (readme, notices, package_json, manifest)
             results = []
 
-            self.validator.check_public_docs(results)
+            self.validator.check_public_docs(results, {"artifactSha256": artifact_sha})
 
         failed = [result.name for result in results if not result.ok]
         self.assertIn("README documents artifact SHA-256", failed)

@@ -10,7 +10,6 @@
     "basis": "local Lyrical rebuild from R2FU and ros2cs sources"
   },
   "rosDistro": "lyrical",
-  "rmw": "rmw_fastrtps_cpp",
   "defaultRmwImplementation": "rmw_fastrtps_cpp",
   "supportedRmwImplementations": [
     "rmw_fastrtps_cpp",

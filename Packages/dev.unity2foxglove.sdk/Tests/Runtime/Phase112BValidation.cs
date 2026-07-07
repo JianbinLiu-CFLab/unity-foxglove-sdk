@@ -79,6 +79,19 @@ namespace Unity.FoxgloveSDK.Tests
             var noLabelJson = JObject.FromObject(singleValueEnvelope);
             Check(!noLabelJson.ContainsKey("label"),
                 "112B-A4: null label is omitted from overlay JSON");
+
+            var nested = new Dictionary<string, object> { ["value"] = 1 };
+            var outer = new Dictionary<string, object> { ["nested"] = nested };
+            Check(FoxgloveDebugOverlayEnvelope.TryCreate(
+                    "/debug/phase112b",
+                    "PlannerController",
+                    outer,
+                    null,
+                    out var nestedEnvelope),
+                "112B-A5: envelope accepts nested JSON dictionaries");
+            nested["value"] = 2;
+            Check((int)JObject.FromObject(nestedEnvelope)["values"]["nested"]["value"] == 1,
+                "112B-A6: envelope deep-copies nested mutable dictionaries");
         }
 
         private static void VerifyInputRejection()
@@ -158,6 +171,22 @@ namespace Unity.FoxgloveSDK.Tests
                     null,
                     out _),
                 "112B-B4e: stream debug values are rejected");
+
+            Check(FoxgloveDebugOverlayEnvelope.TryCreateValue(
+                    "/debug/phase112b",
+                    "PlannerController",
+                    "nested",
+                    BuildNestedDictionary(7),
+                    null,
+                    out _)
+                  && !FoxgloveDebugOverlayEnvelope.TryCreateValue(
+                      "/debug/phase112b",
+                      "PlannerController",
+                      "nested",
+                      BuildNestedDictionary(8),
+                      null,
+                      out _),
+                "112B-B5: debug overlay depth limit is inclusive at value depth eight");
         }
 
         private static void VerifySourceBoundaries()
@@ -280,6 +309,21 @@ namespace Unity.FoxgloveSDK.Tests
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))
                 throw new DirectoryNotFoundException("Could not find repository root for Phase112B validation.");
+            return root;
+        }
+
+        private static Dictionary<string, object> BuildNestedDictionary(int depth)
+        {
+            var root = new Dictionary<string, object>();
+            var current = root;
+            for (var i = 0; i < depth; i++)
+            {
+                var next = new Dictionary<string, object>();
+                current["next"] = next;
+                current = next;
+            }
+
+            current["value"] = 1;
             return root;
         }
 

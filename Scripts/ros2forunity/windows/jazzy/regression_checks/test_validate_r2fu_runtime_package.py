@@ -63,7 +63,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             self.validator.PUBLIC_DOCS = (readme, notices, package_json, manifest)
             results = []
 
-            self.validator.check_public_docs(results)
+            self.validator.check_public_docs(results, {"artifactSha256": artifact_sha})
 
         failed = [result.name for result in results if not result.ok]
         self.assertIn("README documents artifact SHA-256", failed)
@@ -90,7 +90,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             self.validator.MANIFEST = missing_manifest
             results = []
 
-            self.validator.check_public_docs(results)
+            self.validator.check_public_docs(results, {})
 
         failed = [result.name for result in results if not result.ok]
         self.assertIn("README documents artifact SHA-256", failed)
@@ -120,7 +120,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             self.validator.MANIFEST = manifest
             results = []
 
-            self.validator.check_public_docs(results)
+            self.validator.check_public_docs(results, {"artifactSha256": artifact_sha})
 
         one_runtime = [result for result in results if result.name == "README documents one-runtime policy"]
         self.assertTrue(one_runtime)

@@ -377,6 +377,7 @@ def main() -> int:
         package_results = run_parallel([
             ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
             ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
+            ("sync_full_demo.py", [sys.executable, "Scripts/samples/sync_full_demo.py", "--mode", "validate"]),
             ("validate_schema_generated_outputs.py", [sys.executable, SCHEMA_GENERATED_OUTPUT_VALIDATOR]),
             (
                 "validate_r2fu_runtime_package.py",
@@ -389,6 +390,7 @@ def main() -> int:
         ])
         results["validate-package"] = package_results["validate_unity_package.py"]
         results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]
+        results["validate-full-demo-sync"] = package_results["sync_full_demo.py"]
         results["validate-schema-generated"] = package_results["validate_schema_generated_outputs.py"]
         results["validate-r2fu"] = package_results["validate_r2fu_runtime_package.py"]
         results["validate-adapter"] = package_results["validate_ros2forunity_package.py"]

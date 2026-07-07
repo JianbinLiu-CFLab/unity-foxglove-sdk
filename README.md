@@ -116,6 +116,7 @@ Optional ROS2 For Unity packaging follows this boundary:
 |---|---|---|
 | `dev.unity2foxglove.sdk` | Core Foxglove WebSocket, MCAP, Replay, FoxRun, and normal Unity SDK workflows. | No |
 | `dev.unity2foxglove.ros2forunity` | Optional facade, adapter sample, docs, and diagnostics for ROS2 For Unity workflows. | No large runtime |
+| `dev.unity2foxglove.ros2forunity.runtime.humble.win64` | Optional Humble Windows x64 runtime package with ROS2 For Unity runtime files, package-path patch, manifest, inventory, checksums, and notices. | Yes |
 | `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Optional Jazzy Windows x64 runtime package with ROS2 For Unity runtime files, package-path patch, manifest, inventory, checksums, and notices. | Yes |
 | `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64` | Optional Lyrical Windows x64 runtime package with the same runtime-package boundary and metadata obligations. | Yes |
 

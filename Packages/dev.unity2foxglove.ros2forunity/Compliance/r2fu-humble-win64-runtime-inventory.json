@@ -10,7 +10,10 @@
     "basis": "local Humble rebuild from R2FU and ros2cs sources"
   },
   "rosDistro": "humble",
-  "rmw": "rmw_fastrtps_cpp",
+  "defaultRmwImplementation": "rmw_fastrtps_cpp",
+  "supportedRmwImplementations": [
+    "rmw_fastrtps_cpp"
+  ],
   "platform": "win64",
   "buildType": "standalone",
   "redistributionStatus": "candidate_not_published",

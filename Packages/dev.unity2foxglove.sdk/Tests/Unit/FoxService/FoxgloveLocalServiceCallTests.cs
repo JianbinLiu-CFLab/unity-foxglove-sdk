@@ -87,6 +87,30 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxService
                     StringSplitOptions.None).Length - 1);
             Assert.Contains("[global::UnityEngine.Scripting.Preserve]", generated, StringComparison.Ordinal);
             Assert.Contains("private global::Newtonsoft.Json.Linq.JToken __FoxService_Apply", generated, StringComparison.Ordinal);
+            Assert.Contains("lock (__foxgloveServicesLock)", generated, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("Bad\nMethod", "ManualAcceptance", "CombinedFoxRunAndService")]
+        [InlineData("Apply", "Bad\nNs", "CombinedFoxRunAndService")]
+        [InlineData("Apply", "ManualAcceptance", "Bad\nClass")]
+        public void ServiceEmitterRejectsInjectedIdentifiers(string methodName, string ns, string className)
+        {
+            var method = new FoxServiceSourceEmitter.ServiceMethod(
+                methodName,
+                "/phase173/apply",
+                "Phase173.Apply",
+                "",
+                "Phase173.ApplyRequest",
+                "Phase173.ApplyResponse",
+                "{}",
+                "{}",
+                "Phase173.ApplyRequest",
+                "Phase173.ApplyResponse",
+                hasRequest: true,
+                hasResponse: true);
+
+            Assert.Throws<ArgumentException>(() => FoxServiceSourceEmitter.EmitClass(ns, className, new[] { method }));
         }
 
         private static FoxgloveGeneratedServiceDescriptor Descriptor(Func<JToken, JToken> handler) =>

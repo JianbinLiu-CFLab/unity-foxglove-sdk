@@ -34,7 +34,10 @@ namespace Unity.FoxgloveSDK.Components
 
     public sealed class FoxRunInputRouter
     {
+        private readonly object _gate = new();
         private readonly Dictionary<string, List<Registration>> _registrations =
+            new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Registration[]> _registrationSnapshots =
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, Queue<double>> _arrivalTimes =
             new(StringComparer.Ordinal);
@@ -53,16 +56,20 @@ namespace Unity.FoxgloveSDK.Components
             if (source == null)
                 throw new ArgumentNullException(nameof(source));
 
-            for (var index = 0; index < source.FoxgloveInput_TopicCount; index++)
+            lock (_gate)
             {
-                var info = source.FoxgloveInput_GetTopic(index);
-                if (string.IsNullOrWhiteSpace(info.Topic))
-                    continue;
-                if (!_registrations.TryGetValue(info.Topic, out var registrations))
-                    _registrations[info.Topic] = registrations = new List<Registration>();
-                if (registrations.Exists(item => ReferenceEquals(item.Source, source) && item.TopicIndex == index))
-                    continue;
-                registrations.Add(new Registration(source, index, info.Encoding));
+                for (var index = 0; index < source.FoxgloveInput_TopicCount; index++)
+                {
+                    var info = source.FoxgloveInput_GetTopic(index);
+                    if (string.IsNullOrWhiteSpace(info.Topic))
+                        continue;
+                    if (!_registrations.TryGetValue(info.Topic, out var registrations))
+                        _registrations[info.Topic] = registrations = new List<Registration>();
+                    if (registrations.Exists(item => ReferenceEquals(item.Source, source) && item.TopicIndex == index))
+                        continue;
+                    registrations.Add(new Registration(source, index, info.Encoding));
+                    _registrationSnapshots[info.Topic] = registrations.ToArray();
+                }
             }
         }
 
@@ -71,17 +78,30 @@ namespace Unity.FoxgloveSDK.Components
             if (source == null)
                 return;
 
-            var emptyTopics = new List<string>();
-            foreach (var pair in _registrations)
+            lock (_gate)
             {
-                pair.Value.RemoveAll(item => ReferenceEquals(item.Source, source));
-                if (pair.Value.Count == 0)
-                    emptyTopics.Add(pair.Key);
-            }
-            foreach (var topic in emptyTopics)
-            {
-                _registrations.Remove(topic);
-                _arrivalTimes.Remove(topic);
+                var emptyTopics = new List<string>();
+                foreach (var pair in _registrations)
+                {
+                    if (pair.Value.RemoveAll(item => ReferenceEquals(item.Source, source)) == 0)
+                        continue;
+
+                    if (pair.Value.Count == 0)
+                    {
+                        emptyTopics.Add(pair.Key);
+                    }
+                    else
+                    {
+                        _registrationSnapshots[pair.Key] = pair.Value.ToArray();
+                    }
+                }
+
+                foreach (var topic in emptyTopics)
+                {
+                    _registrations.Remove(topic);
+                    _registrationSnapshots.Remove(topic);
+                    _arrivalTimes.Remove(topic);
+                }
             }
         }
 
@@ -91,9 +111,38 @@ namespace Unity.FoxgloveSDK.Components
             string encoding,
             double nowSeconds)
         {
-            if (string.IsNullOrEmpty(topic)
-                || !_registrations.TryGetValue(topic, out var registrations)
-                || registrations.Count == 0)
+            Registration[] registrations;
+            lock (_gate)
+            {
+                if (string.IsNullOrEmpty(topic)
+                    || !_registrationSnapshots.TryGetValue(topic, out registrations)
+                    || registrations.Length == 0)
+                {
+                    return new FoxRunInputDispatchResult(
+                        FoxRunInputDispatchStatus.UnknownTopic,
+                        "Topic is not in the generated FoxRun inbound allowlist.",
+                        0);
+                }
+
+                payload ??= Array.Empty<byte>();
+                if (payload.Length > Math.Max(1, MaxPayloadBytes))
+                {
+                    return new FoxRunInputDispatchResult(
+                        FoxRunInputDispatchStatus.PayloadTooLarge,
+                        "Payload exceeds the FoxRun inbound byte limit.",
+                        0);
+                }
+
+                if (!AcceptRate(topic, nowSeconds))
+                {
+                    return new FoxRunInputDispatchResult(
+                        FoxRunInputDispatchStatus.RateLimited,
+                        "Topic exceeded the FoxRun inbound rate limit.",
+                        0);
+                }
+            }
+
+            if (registrations.Length == 0)
             {
                 return new FoxRunInputDispatchResult(
                     FoxRunInputDispatchStatus.UnknownTopic,
@@ -101,26 +150,9 @@ namespace Unity.FoxgloveSDK.Components
                     0);
             }
 
-            payload ??= Array.Empty<byte>();
-            if (payload.Length > Math.Max(1, MaxPayloadBytes))
-            {
-                return new FoxRunInputDispatchResult(
-                    FoxRunInputDispatchStatus.PayloadTooLarge,
-                    "Payload exceeds the FoxRun inbound byte limit.",
-                    0);
-            }
-
-            if (!AcceptRate(topic, nowSeconds))
-            {
-                return new FoxRunInputDispatchResult(
-                    FoxRunInputDispatchStatus.RateLimited,
-                    "Topic exceeded the FoxRun inbound rate limit.",
-                    0);
-            }
-
             var applied = 0;
             var firstError = string.Empty;
-            foreach (var registration in registrations.ToArray())
+            foreach (var registration in registrations)
             {
                 if (!string.Equals(registration.Encoding, encoding ?? string.Empty, StringComparison.OrdinalIgnoreCase))
                 {

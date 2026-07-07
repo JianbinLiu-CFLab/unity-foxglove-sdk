@@ -236,7 +236,7 @@ namespace Unity.FoxgloveSDK.Transport
                             throw new InvalidDataException("WebSocket handshake line exceeds maximum length.");
                     }
                     if (next == '\n') break;
-                    if (next >= 0) sb.Append((char)next);
+                    throw new InvalidDataException("WebSocket handshake line contains a bare carriage return.");
                 }
                 else if (b == '\n')
                 {

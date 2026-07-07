@@ -87,6 +87,7 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     private ROS2Node ros2Node;
     private string ownerAgentName;
     private string cachedFrameName;
+    private bool rosParticipantsDisposed = true;
     private double lastTimestamp;
     private double timeSinceLastFixedUpdate;
 
@@ -117,6 +118,7 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     /// </summary>
     protected virtual void OnValidate()
     {
+        cachedFrameName = null;
         CalculateFrameTime();
     }
 
@@ -144,6 +146,7 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
         cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
         ros2UnityComponent = ros2Unity;
         ros2Node = node;
+        rosParticipantsDisposed = false;
         string nsName = agentName.Replace(" ", "_");
         publisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);
         ros2UnityComponent.RegisterExecutable(ExecutorThreadSensorPublishAction);
@@ -205,6 +208,10 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     private void DisposeRosParticipants()
     {
         // U2F-LOCAL-PATCH: unregister executor actions and release native endpoints deterministically.
+        if (rosParticipantsDisposed)
+            return;
+
+        rosParticipantsDisposed = true;
         if (ros2UnityComponent != null)
             ros2UnityComponent.UnregisterExecutable(ExecutorThreadSensorPublishAction);
 
@@ -214,14 +221,16 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
             {
                 ros2Node.RemovePublisher<T>(publisher);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                Debug.LogWarning("Failed to remove ROS2 sensor publisher during cleanup: " + ex.Message);
             }
         }
 
         publisher = null;
         ros2UnityComponent = null;
         ros2Node = null;
+        cachedFrameName = null;
     }
 
     /// <summary>
@@ -229,20 +238,21 @@ public abstract class Sensor<T> : ISensor where T : MessageWithHeader, new()
     /// </summary>
     void CalculateFrameTime()
     {
+        var clampedUpdateFreq = desiredUpdateFreq;
         double maxFrameFreq = 1.0 / Time.fixedDeltaTime;
-        if (desiredUpdateFreq > maxFrameFreq)
+        if (clampedUpdateFreq > maxFrameFreq)
         {
-            Debug.LogWarning("Desired frame rate of " + desiredUpdateFreq + " can't be met, "
+            Debug.LogWarning("Desired frame rate of " + clampedUpdateFreq + " can't be met, "
                             + "physics frequency is " + maxFrameFreq);
-            desiredUpdateFreq = maxFrameFreq;  //Can't go faster than physics
+            clampedUpdateFreq = maxFrameFreq;  //Can't go faster than physics
         }
-        if (desiredUpdateFreq < minimumFrequency)
+        if (clampedUpdateFreq < minimumFrequency)
         {
             Debug.LogWarning("Minimum frequency of " + minimumFrequency
-                             + " applied instead of " + desiredUpdateFreq);
-            desiredUpdateFreq = minimumFrequency;
+                             + " applied instead of " + clampedUpdateFreq);
+            clampedUpdateFreq = minimumFrequency;
         }
-        desiredFrameTime = 1.0 / desiredUpdateFreq;
+        desiredFrameTime = 1.0 / clampedUpdateFreq;
     }
 }
 

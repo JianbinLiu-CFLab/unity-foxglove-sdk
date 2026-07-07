@@ -37,7 +37,7 @@ RenderSettings:
   m_ReflectionBounces: 1
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
-  m_Sun: {fileID: 0}
+  m_Sun: {fileID: 410087040}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -224,7 +224,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
   m_Name:
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
   m_RequiresOpaqueTextureOption: 2
@@ -267,23 +267,48 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22775ec7d076a0f418601210279775ae, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxgloveCameraPublisher
-  _manager: {fileID: 0}
-  _topic:
+  _manager: {fileID: 346350281}
+  _topic: /unity/camera
+  _publishRateSource: 0
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
+  _outputMode: 0
   _frameId: unity_camera
   _width: 640
   _height: 480
   _jpegQuality: 70
-  _maxPendingReadbacks: 2
+  _maxPendingReadbacks: 1
+  _useAsyncJpeg: 1
+  _maxJpegEncodeQueue: 2
+  _maxCompletedJpegQueue: 2
+  _maxCompletedJpegPublishesPerFrame: 1
+  _maxPixelsPerFrame: 0
+  _logCameraDiagnostics: 0
+  _cameraDiagnosticsIntervalSeconds: 2
+  _ffmpegPath: 
+  _videoBitrateKbps: 4000
+  _videoKeyframeInterval: 30
+  _videoMaxOutputQueue: 4
+  _logVideoDiagnostics: 0
+  _logEncoderStderr: 0
+  _openH264HelperPath: 
+  _openH264DllPath: 
+  _openH264MaxInputQueue: 2
   _enableBackpressureAdaptation: 0
   _backpressureCooldownSeconds: 0.5
   _maxEncodedBytes: 0
   _logBackpressureSkips: 0
+  _sensorUnitProfile: {fileID: 0}
+  _useSharedSensorClock: 1
+  _publishStandardRos2CompressedImage: 0
+  _publishStandardRos2RawImage: 0
+  _sensorCameraRawImageTopic: /unity/sensor/camera/image
 --- !u!1 &346350280
 GameObject:
   m_ObjectHideFlags: 0
@@ -297,7 +322,7 @@ GameObject:
   - component: {fileID: 346350283}
   - component: {fileID: 346350284}
   m_Layer: 0
-  m_Name: Foxglove
+  m_Name: FoxgloveManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -313,16 +338,38 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
+  _publishCadenceDiagnosticsEnabled: 0
+  _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
+  _frameStallDiagnosticsEnabled: 0
+  _frameStallDiagnosticsThresholdMs: 200
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
   _transportMode: 0
+  _transportModeBeforeOutputDisabled: 0
+  _foxgloveOutputEnabled: 1
+  _ros2NativeEnabled: 0
+  _defaultPublishRateHz: 10
   _defaultPublisherEncoding: 1
   _allowPublisherOverride: 1
+  _ros2BridgeEnabled: 0
+  _ros2BridgeHost: 127.0.0.1
+  _ros2BridgePort: 8767
+  _ros2BridgeAutoConnect: 1
+  _defaultRos2BridgeOutputEnabled: 0
+  _allowPublisherRos2BridgeOverride: 1
+  _ros2BridgeNamespace: 
+  _ros2BridgeQosPreset: 0
+  _ros2BridgeCustomReliability: 0
+  _ros2BridgeCustomDurability: 0
+  _ros2BridgeCustomDepth: 10
+  _ros2BridgeQueueCapacity: 1024
+  _ros2BridgeReconnectIntervalMs: 1000
+  _ros2BridgeSendTimeoutMs: 1000
   _coordinateMode: 1
   _assetRoots:
   - uriPrefix: asset://demo/
@@ -340,6 +387,18 @@ MonoBehaviour:
   _replayFilePath:
   _replayAutoPlay: 0
   _disableLivePublishers: 0
+  _enableRemoteMcapFileServer: 0
+  _remoteMcapFileServerHost: 127.0.0.1
+  _remoteMcapFileServerPort: 8891
+  _remoteMcapFileServerSourceId: local-mcap
+  _enableReplayCursorBridge: 0
+  _replayCursorBridgeHost: 127.0.0.1
+  _replayCursorBridgePort: 8892
+  _replayCursorBridgeToken:
+  _identityModeSource: 0
+  _identityModeOverride: 2
+  _projectSettingsIdentityMode: 0
+  _schemaEvidenceRoot: Assets/Generated
   _allowHostedFoxgloveWeb: 1
   _allowedBrowserOrigins:
   - https://app.foxglove.dev
@@ -377,7 +436,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c65c7a2314563254aab3e6689c67c1b6, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDemoSetup
-  _manager: {fileID: 0}
+  _manager: {fileID: 346350281}
+  _cube: {fileID: 2004464831}
 --- !u!114 &346350284
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -387,10 +447,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 346350280}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3d0f1e2a4b5c6d7e8f9a0b1c2d3e4f5, type: 3}
+  m_Script: {fileID: 11500000, guid: 745c54bef9ea4071a9b783828520c63d, type: 3}
   m_Name:
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveReplayObjectAdapter
-  _manager: {fileID: 0}
+  _manager: {fileID: 346350281}
   _autoLookup: 1
   _frameOverrides: []
   _entityOverrides: []
@@ -504,8 +564,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   m_UsePipelineSettings: 1
   m_AdditionalLightsShadowResolutionTier: 2
   m_CustomShadowLayers: 0
@@ -550,7 +610,7 @@ MonoBehaviour:
   m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9360d8900353de14e93374b6565b62ac, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FoxRunTriggerTelemetrySmoke
   fixedCounter: 0
   triggerCounter: 0
@@ -564,6 +624,68 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 534487832}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &750568994
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 750568996}
+  - component: {fileID: 750568995}
+  m_Layer: 0
+  m_Name: Phase147ManualProbe
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &750568995
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 750568994}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16e2bce8534e4cd4aff23ad3f6f3f429, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe
+  _mutateValues: 1
+  _publishNullOptional: 0
+  _lastStatus: Reset probe values.
+  scalarValue: 0
+  textValue: hello 115F
+  vectorValue: {x: 0, y: 0, z: 0}
+  sampleArray:
+  - 0
+  - 1
+  - 2
+  sampleList:
+  - 0
+  - 1
+  - 2
+  nestedPayload:
+    count: 0
+    label: reset
+    offset: {x: 0, y: 0, z: 0}
+--- !u!4 &750568996
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 750568994}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -599,8 +721,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   m_IsGlobal: 1
   priority: 0
   blendDistance: 0
@@ -613,6 +735,166 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 832575517}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &908391461
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 908391463}
+  - component: {fileID: 908391462}
+  - component: {fileID: 908391464}
+  m_Layer: 0
+  m_Name: PointCloud_QoS_Smoke
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &908391462
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 908391461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 30efba2d25ad48cfb9769811e4e56e63, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.FoxgloveSDK.Proto::Unity.FoxgloveSDK.Components.FoxglovePointCloudPublisher
+  _manager: {fileID: 346350281}
+  _topic: /unity/point_cloud
+  _publishRateSource: 0
+  _publishRateHz: 10
+  _publishOnEnable: 1
+  _warnIfManagerMissing: 1
+  _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
+  _outputMode: 0
+  _frameId: unity_world
+  _pointSources: []
+  _includeInactiveChildren: 0
+  _useChildrenWhenSourcesEmpty: 1
+  _maxPoints: 4096
+  _maxPackedBytes: 0
+  _samplingMode: 1
+  _voxelSizeMeters: 0.1
+  _logQosDrops: 0
+  _logPerformanceDiagnostics: 0
+  _includeSyntheticIntensity: 0
+  _publishPointCloud2NativeTfAnchor: 0
+  _pointCloud2NativeTfParentFrame: map
+  _pointCloud2NativeTfChildFrame:
+  _pointCloud2NativeTfTranslation: {x: 0, y: 0, z: 0}
+  _pointCloud2NativeTfRotationEuler: {x: 0, y: 0, z: 0}
+  _enableMotionCompensation: 0
+  _motionCompensationOutputPolicy: 1
+  _deskewedPointCloud2NativeTopic: /unity/point_cloud2_deskewed
+  _motionCompensationReferenceTime: 0
+  _motionCompensationSource: 0
+  _nativeDracoMaxPublishRateHz: 6
+  _suppressTransformFallbackAfterSourceFrames: 1
+--- !u!4 &908391463
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 908391461}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &908391464
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 908391461}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3954bd01bbd432fa86691c319e4eef3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PointCloudSmokeSource
+  _publisher: {fileID: 908391462}
+  _pointCount: 1000
+  _frameId: unity_world
+  _columns: 50
+  _spacingMeters: 0.08
+  _waveHeightMeters: 0.35
+  _animate: 1
+  _animationSpeed: 1
+  _includeIntensity: 0
+  _publishContinuously: 1
+  _sourceHz: 10
+--- !u!1 &1134407402
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1134407404}
+  - component: {fileID: 1134407403}
+  m_Layer: 0
+  m_Name: DebugOverlaySmoke
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1134407403
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1134407402}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7aa8e0d2c19f48b0aaf3f4ee033fe112, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FoxgloveDebugOverlaySmoke
+  _manager: {fileID: 0}
+  _autoFindManager: 1
+  _topic: /debug/overlay_smoke
+  _source: FoxgloveDebugOverlaySmoke
+  _label: manual unity smoke
+  _publishIntervalSeconds: 0.5
+  _disableNormalPublish: 1
+  _invalidTopicShouldNotPublish: 0
+  _binaryValueShouldNotPublish: 0
+  _publishedCount: 0
+  _validOverlayStreamBlocked: 0
+  _lastPublishAccepted: 0
+  _lastInvalidTopicAccepted: 0
+  _lastBinaryProbeAccepted: 0
+  _lastStatus: Not started.
+--- !u!4 &1134407404
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1134407402}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -663,9 +945,74 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 81deb8f35602aae43b28002bdb1e18fa, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestLog
-  position: {x: 0, y: 0, z: 0}
+  telemetryEnabled: 1
+  isPaused: 0
+  conditionalPosition: {x: 0, y: 0, z: 0}
+  conditionalHealth: 100
+--- !u!1 &1691798670
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1691798672}
+  - component: {fileID: 1691798671}
+  m_Layer: 0
+  m_Name: FoxRun115FManualProbe
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1691798671
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1691798670}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16e2bce8534e4cd4aff23ad3f6f3f429, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FoxRun115FManualProbe
+  _mutateValues: 1
+  _publishNullOptional: 0
+  _lastStatus: Reset probe values.
+  scalarValue: 0
+  textValue: hello 115F
+  vectorValue: {x: 0, y: 0, z: 0}
+  sampleArray:
+  - 0
+  - 1
+  - 2
+  sampleList:
+  - 0
+  - 1
+  - 2
+  nestedPayload:
+    count: 0
+    label: reset
+    offset: {x: 0, y: 0, z: 0}
+--- !u!4 &1691798672
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1691798670}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2004464831
 GameObject:
   m_ObjectHideFlags: 0
@@ -698,16 +1045,19 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 49c73532e06675941b2a1b734765dc2d, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveSceneCubePublisher
-  _manager: {fileID: 0}
-  _topic:
+  _manager: {fileID: 346350281}
+  _topic: /scene
+  _publishRateSource: 1
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
-  _entityId:
-  _frameId:
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
+  _entityId: 
+  _frameId: 
   _size: {x: 1, y: 1, z: 1}
   _color: {r: 0.21568628, g: 0.21568628, b: 0.21568628, a: 1}
 --- !u!114 &2004464833
@@ -720,16 +1070,21 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4c1d6a066ac4948418f4df6fdc4c5e3c, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveTransformPublisher
-  _manager: {fileID: 0}
-  _topic:
+  _manager: {fileID: 346350281}
+  _topic: /tf
+  _publishRateSource: 1
   _publishRateHz: 10
   _publishOnEnable: 1
   _warnIfManagerMissing: 1
   _encodingOverride: 0
+  _ros2BridgeOutput: 0
+  _ros2BridgeTopicOverride: 
   _parentFrameId: unity_world
-  _childFrameId:
+  _childFrameId: 
+  _useLocalTransform: 0
+  _useSharedSensorClock: 1
 --- !u!65 &2004464834
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -833,7 +1188,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe56e0e2a70f9a949b4f5f57cafbab36, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MouseDragCube
   _rotateSpeed: 3
   _panSpeed: 0.01
@@ -841,6 +1196,52 @@ MonoBehaviour:
   _minScale: 0.2
   _maxScale: 5
   _demo: {fileID: 0}
+--- !u!1 &2020679427
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2020679429}
+  - component: {fileID: 2020679428}
+  m_Layer: 0
+  m_Name: Ws_Status_Messages
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2020679428
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2020679427}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b8019ef9d058808488f5dbfad2956afe, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FoxgloveStatusSmoke
+  manager: {fileID: 346350281}
+  autoClearSeconds: 3
+--- !u!4 &2020679429
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2020679427}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -851,4 +1252,9 @@ SceneRoots:
   - {fileID: 346350282}
   - {fileID: 2004464837}
   - {fileID: 1529818994}
+  - {fileID: 1691798672}
   - {fileID: 534487834}
+  - {fileID: 2020679429}
+  - {fileID: 908391463}
+  - {fileID: 1134407404}
+  - {fileID: 750568996}

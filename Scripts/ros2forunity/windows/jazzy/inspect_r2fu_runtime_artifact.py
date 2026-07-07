@@ -130,7 +130,7 @@ def summarize_components(file_names: Iterable[str]) -> list[dict[str, object]]:
     names = list(file_names)
     lower_names = [(name, name.lower()) for name in names]
     component_patterns = [
-        ("RobotecAI ROS2 For Unity", ("ros2forunity/", "ros2forunity/")),
+        ("RobotecAI ROS2 For Unity", ("ros2forunity/",)),
         ("ros2cs", ("ros2cs",)),
         ("ROS2 core native runtime", ("rcl.dll", "rcutils.dll", "rmw_")),
         ("Fast DDS / Fast CDR", ("fastrtps", "fastcdr", "fastdds")),
@@ -200,7 +200,8 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
             "basis": "local Jazzy rebuild from R2FU and ros2cs sources",
         },
         "rosDistro": "jazzy",
-        "rmw": "rmw_fastrtps_cpp",
+        "defaultRmwImplementation": "rmw_fastrtps_cpp",
+        "supportedRmwImplementations": ["rmw_fastrtps_cpp"],
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",

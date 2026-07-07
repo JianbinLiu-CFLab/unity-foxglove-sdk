@@ -403,6 +403,26 @@ namespace Demo
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
         }
 
+        [Fact]
+        public void SourceEmitterRejectsMalformedInboundMembers()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "CommandInput",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "CommandInput", "", "field", "System.Single",
+                        false, false, "", "/phase173/input", 10f, "",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        mode: (int)FoxRunMode.SubscribeOnly)
+                });
+
+            var ex = Assert.Throws<ArgumentException>(() => FoxgloveSourceEmitter.EmitClass(type));
+
+            Assert.Contains("Input TopicMember has empty MemberName", ex.Message, StringComparison.Ordinal);
+        }
+
         private static FoxRunGenerationModel ModelWithMode(FoxRunMode mode)
         {
             return FoxRunGenerationModel.FromMembers(new[]
@@ -432,7 +452,7 @@ namespace Demo
                 0,
                 0f,
                 0f,
-                mode: (int)mode);
+                flowMode: (int)mode);
         }
 
         private static FoxRunManifestMember ManifestMember(string memberName, string topic, string jsonFieldName)

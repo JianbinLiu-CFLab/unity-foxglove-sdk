@@ -4,6 +4,7 @@
 using System;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using UnityEngine;
 using Xunit;
 
@@ -92,8 +93,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void RouterUsesGeneratedAllowlistAndRegistrationOrder()
         {
-            var first = new RecordingInput("/phase157/cmd", 0);
-            var second = new RecordingInput("/phase157/cmd", 0);
+            var first = new RecordingInput("/phase157/cmd");
+            var second = new RecordingInput("/phase157/cmd");
             var router = new FoxRunInputRouter();
             router.Register(first);
             router.Register(second);
@@ -112,7 +113,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void RouterRejectsUnknownOversizedAndRateLimitedMessages()
         {
-            var input = new RecordingInput("/phase157/cmd", 0);
+            var input = new RecordingInput("/phase157/cmd");
             var router = new FoxRunInputRouter(maxPayloadBytes: 16, maxMessagesPerSecondPerTopic: 1);
             router.Register(input);
 
@@ -133,7 +134,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void RouterUnregisterStopsAssignment()
         {
-            var input = new RecordingInput("/phase157/cmd", 0);
+            var input = new RecordingInput("/phase157/cmd");
             var router = new FoxRunInputRouter();
             router.Register(input);
             router.Unregister(input);
@@ -148,7 +149,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         public void RouterIsolatesAssignmentExceptionsAndContinuesInRegistrationOrder()
         {
             var throwing = new ThrowingInput("/phase157/cmd");
-            var recording = new RecordingInput("/phase157/cmd", 0);
+            var recording = new RecordingInput("/phase157/cmd");
             var router = new FoxRunInputRouter();
             router.Register(throwing);
             router.Register(recording);
@@ -200,11 +201,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("shared token", noToken, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void RouterDispatchUsesRegistrationSnapshotWithoutPerMessageArrayCopy()
+        {
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
+            var dispatch = TestSources.Slice(source, "public FoxRunInputDispatchResult Dispatch", "        private bool AcceptRate");
+
+            Assert.Contains("Dictionary<string, Registration[]> _registrationSnapshots", source, StringComparison.Ordinal);
+            Assert.DoesNotContain(".ToArray()", dispatch, StringComparison.Ordinal);
+        }
+
         private sealed class RecordingInput : IFoxgloveInputSource
         {
             private readonly FoxgloveInputTopicInfo _topic;
 
-            public RecordingInput(string topic, int index)
+            public RecordingInput(string topic)
             {
                 _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunMode.SubscribeOnly);
             }

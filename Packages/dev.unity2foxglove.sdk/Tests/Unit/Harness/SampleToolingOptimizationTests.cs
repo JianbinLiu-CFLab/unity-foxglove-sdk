@@ -153,6 +153,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void ReleaseValidatorsAvoidUnboundedReadsAndRepeatedWalks()
         {
             var inspect = TestSources.Text("Scripts/ros2forunity/windows/jazzy/inspect_r2fu_runtime_artifact.py");
+            var humbleInspect = TestSources.Text("Scripts/ros2forunity/windows/humble/inspect_r2fu_runtime_artifact.py");
+            var lyricalInspect = TestSources.Text("Scripts/ros2forunity/windows/lyrical/inspect_r2fu_runtime_artifact.py");
             var summary = TestSources.Slice(inspect, "def summarize_components", "def inspect_zip");
             var build = TestSources.Text("Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py");
             var metas = TestSources.Slice(build, "def write_generated_metas", "def package_json");
@@ -168,6 +170,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("lower_names = [(name, name.lower()) for name in names]", summary, StringComparison.Ordinal);
             Assert.Contains("for name, lower in lower_names", summary, StringComparison.Ordinal);
             Assert.DoesNotContain("name.lower() for pattern", summary, StringComparison.Ordinal);
+            Assert.DoesNotContain("(\"ros2forunity/\", \"ros2forunity/\")", humbleInspect, StringComparison.Ordinal);
+            Assert.DoesNotContain("(\"ros2forunity/\", \"ros2forunity/\")", inspect, StringComparison.Ordinal);
+            Assert.DoesNotContain("(\"ros2forunity/\", \"ros2forunity/\")", lyricalInspect, StringComparison.Ordinal);
+            Assert.Contains("/ \"r2fu-runtime-artifacts\"", humbleInspect, StringComparison.Ordinal);
+            Assert.Contains("/ \"r2fu-runtime-artifacts\"", lyricalInspect, StringComparison.Ordinal);
+            Assert.Contains("\"defaultRmwImplementation\": \"rmw_fastrtps_cpp\"", humbleInspect, StringComparison.Ordinal);
+            Assert.Contains("\"defaultRmwImplementation\": \"rmw_fastrtps_cpp\"", inspect, StringComparison.Ordinal);
+            Assert.Contains("\"supportedRmwImplementations\": [\"rmw_fastrtps_cpp\"]", humbleInspect, StringComparison.Ordinal);
+            Assert.Contains("\"supportedRmwImplementations\": [\"rmw_fastrtps_cpp\"]", inspect, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"rmw\": \"rmw_fastrtps_cpp\"", humbleInspect, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"rmw\": \"rmw_fastrtps_cpp\"", inspect, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"rmw\": \"rmw_fastrtps_cpp\"", lyricalInspect, StringComparison.Ordinal);
             Assert.Contains("keyed_paths = sorted((path.as_posix(), path) for path in package.rglob(\"*\"))", metas, StringComparison.Ordinal);
             Assert.Contains("directories = [path for _, path in keyed_paths if path.is_dir()]", metas, StringComparison.Ordinal);
             Assert.Contains("files = [path for _, path in keyed_paths if path.is_file()]", metas, StringComparison.Ordinal);
@@ -176,6 +190,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("if path.is_dir() and path.name in forbidden_dirs:", artifacts, StringComparison.Ordinal);
             Assert.Contains("for name, ok in results.items():", runCi, StringComparison.Ordinal);
             Assert.Contains("failed = [n for n, ok in results.items() if not ok]", runCi, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RootReadmeListsAllOptionalRuntimePackages()
+        {
+            var readme = TestSources.Text("README.md");
+
+            Assert.Contains("dev.unity2foxglove.ros2forunity.runtime.humble.win64", readme, StringComparison.Ordinal);
+            Assert.Contains("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", readme, StringComparison.Ordinal);
+            Assert.Contains("dev.unity2foxglove.ros2forunity.runtime.lyrical.win64", readme, StringComparison.Ordinal);
         }
 
         [Fact]

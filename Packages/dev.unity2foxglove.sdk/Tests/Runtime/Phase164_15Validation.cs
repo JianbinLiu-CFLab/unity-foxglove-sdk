@@ -41,6 +41,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("_captureCameraDirty = true;", StringComparison.Ordinal)
                   && source.Contains("_lastCopiedSourceCamera = null;", StringComparison.Ordinal),
                 "164-15A-4: capture resource recreation and cleanup invalidate the camera-copy cache");
+            Check(source.Contains("private bool _sourceCameraResolved;", StringComparison.Ordinal)
+                  && source.Contains("Object.DestroyImmediate(target)", StringComparison.Ordinal),
+                "164-15A-5: capture resources cache missing source camera probes and destroy edit-mode objects immediately");
         }
 
         private static void VerifyReadbackTimingUsesSmallRingBuffer()
@@ -73,8 +76,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && submit.Contains("frameBytes.CopyTo(ownedFrameBytes);", StringComparison.Ordinal)
                   && !submit.Contains("frameBytes.ToArray()", StringComparison.Ordinal),
                 "164-15C-2: video submit path copies readback bytes into reusable scratch instead of allocating ToArray");
-            Check(publisherVideo.Contains("void ICameraVideoFrameBytesSource.CopyTo(byte[] destination)", StringComparison.Ordinal)
-                  || source.Contains("GetData<byte>().CopyTo(destination)", StringComparison.Ordinal),
+            Check(source.Contains("GetData<byte>().CopyTo(destination)", StringComparison.Ordinal)
+                  || (publisherVideo.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal)
+                      && publisherVideo.Contains("_data = request.GetData<byte>();", StringComparison.Ordinal)
+                      && source.Contains("_data.CopyTo(destination)", StringComparison.Ordinal)),
                 "164-15C-3: camera video readback source copies directly from AsyncGPUReadback data");
         }
 

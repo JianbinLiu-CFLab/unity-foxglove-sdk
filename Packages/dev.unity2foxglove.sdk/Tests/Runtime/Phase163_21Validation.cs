@@ -57,6 +57,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("cannot be converted", StringComparison.Ordinal)
                   && source.Contains("catch (Exception ex) when (ex is FormatException || ex is OverflowException || ex is InvalidCastException)", StringComparison.Ordinal),
                 "163-21B-3: FoxRun vector numeric conversion failures are reported without escaping");
+            Check(source.Contains("private static readonly JsonLoadSettings LoadSettings", StringComparison.Ordinal)
+                  && source.Contains("JToken.Parse(json, LoadSettings)", StringComparison.Ordinal)
+                  && source.Contains("intended for low-frequency FoxRun control inputs", StringComparison.Ordinal),
+                "163-21B-4: FoxRun inbound decoder reuses load settings and documents per-call JSON allocations");
         }
 
         private static void SinkRouterRequiresRegisteredLiveContracts()

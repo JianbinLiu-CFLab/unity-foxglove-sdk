@@ -14,6 +14,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     [Trait("Domain", "Harness")]
     public sealed class RemoteTimelineOptimizationTests
     {
+        private static readonly string CachedRepoRoot = FindRepoRoot();
+
         [Fact]
         public void Phase139ReadersCacheRepoRootAndSourceReads()
         {
@@ -74,6 +76,22 @@ function later() { dropMe(); }";
         }
 
         [Fact]
+        public void ExtractFunctionIgnoresTemplateInterpolationBraces()
+        {
+            const string source = @"
+context.onRender = () => {
+  const label = `value ${x ? ""{nested}"" : ""plain""}`;
+  keepMe();
+};
+function later() { dropMe(); }";
+
+            var render = ExtractFunction(source, "context.onRender =");
+
+            Assert.Contains("keepMe()", render, StringComparison.Ordinal);
+            Assert.DoesNotContain("dropMe()", render, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Phase14095MigratedConsolePhaseIsRemoved()
         {
             var registry = RuntimeText("PhaseValidationRegistry.cs");
@@ -88,7 +106,11 @@ function later() { dropMe(); }";
             => Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/" + fileName);
 
         private static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        {
+            var path = Path.Combine(CachedRepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(path), "Expected source file: " + path);
+            return File.ReadAllText(path);
+        }
 
         private static string ExtractFunction(string source, string signature)
         {
@@ -149,6 +171,7 @@ function later() { dropMe(); }";
                         templateDepth = 0;
                         continue;
                     }
+                    continue;
                 }
 
                 if (ch == '/' && next == '/')
@@ -216,22 +239,19 @@ function later() { dropMe(); }";
             return count;
         }
 
-        private static string RepoRoot
+        private static string FindRepoRoot()
         {
-            get
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
             {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
-                        return dir.FullName;
+                if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
+                    || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    return dir.FullName;
 
-                    dir = dir.Parent;
-                }
-
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                dir = dir.Parent;
             }
+
+            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
         }
     }
 }

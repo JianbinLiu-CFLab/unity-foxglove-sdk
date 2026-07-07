@@ -67,8 +67,14 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string EmitClass(string ns, string className, IReadOnlyList<ServiceMethod> methods)
         {
+            ValidateQualifiedIdentifierOrEmpty(ns, nameof(ns));
+            ValidateIdentifier(className, nameof(className));
+
             if (methods == null || methods.Count == 0)
                 throw new ArgumentException("At least one service method is required.", nameof(methods));
+
+            for (var i = 0; i < methods.Count; i++)
+                ValidateMethod(methods[i], i);
 
             var pad = string.IsNullOrEmpty(ns) ? string.Empty : "    ";
             var sb = new StringBuilder();
@@ -88,9 +94,17 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "partial class " + className + " : global::Unity.FoxgloveSDK.Components.IFoxgloveServiceSource");
             sb.AppendLine(pad + "{");
             sb.AppendLine(pad + "    private global::System.Collections.Generic.IReadOnlyList<global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor> __foxgloveServices;");
+            sb.AppendLine(pad + "    private readonly object __foxgloveServicesLock = new object();");
             sb.AppendLine();
             sb.AppendLine(pad + "    global::System.Collections.Generic.IReadOnlyList<global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor> global::Unity.FoxgloveSDK.Components.IFoxgloveServiceSource.FoxgloveServices");
-            sb.AppendLine(pad + "        => __foxgloveServices ?? (__foxgloveServices = new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor[]");
+            sb.AppendLine(pad + "    {");
+            sb.AppendLine(pad + "        get");
+            sb.AppendLine(pad + "        {");
+            sb.AppendLine(pad + "            if (__foxgloveServices != null)");
+            sb.AppendLine(pad + "                return __foxgloveServices;");
+            sb.AppendLine(pad + "            lock (__foxgloveServicesLock)");
+            sb.AppendLine(pad + "            {");
+            sb.AppendLine(pad + "                return __foxgloveServices ?? (__foxgloveServices = new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor[]");
             sb.AppendLine(pad + "        {");
             for (var i = 0; i < methods.Count; i++)
             {
@@ -106,6 +120,9 @@ namespace Unity.FoxgloveSDK.Editor
                               + IdentifierUtils.SanitizeIdentifier(method.MethodName) + ")" + (i + 1 == methods.Count ? string.Empty : ","));
             }
             sb.AppendLine(pad + "        });");
+            sb.AppendLine(pad + "            }");
+            sb.AppendLine(pad + "        }");
+            sb.AppendLine(pad + "    }");
             sb.AppendLine();
 
             foreach (var method in methods)
@@ -136,7 +153,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (method.HasResponse)
             {
                 sb.Append(pad + "        var response = ");
-                sb.Append(method.MethodName);
+                sb.Append(IdentifierUtils.EscapeIdentifier(method.MethodName));
                 sb.Append(method.HasRequest ? "(request);" : "();");
                 sb.AppendLine();
                 sb.AppendLine(pad + "        return response == null ? global::Newtonsoft.Json.Linq.JValue.CreateNull() : global::Newtonsoft.Json.Linq.JToken.FromObject(response);");
@@ -144,7 +161,7 @@ namespace Unity.FoxgloveSDK.Editor
             else
             {
                 sb.Append(pad + "        ");
-                sb.Append(method.MethodName);
+                sb.Append(IdentifierUtils.EscapeIdentifier(method.MethodName));
                 sb.Append(method.HasRequest ? "(request);" : "();");
                 sb.AppendLine();
                 sb.AppendLine(pad + "        return new global::Newtonsoft.Json.Linq.JObject();");
@@ -156,6 +173,38 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static string Lit(string value)
             => StringLiteralEmitter.CSharpStringLiteral(value);
+
+        private static void ValidateMethod(ServiceMethod method, int index)
+        {
+            if (method == null)
+                throw new ArgumentException("Service method " + index + " is null.", nameof(method));
+
+            ValidateIdentifier(method.MethodName, "methods[" + index + "].MethodName");
+        }
+
+        private static void ValidateQualifiedIdentifierOrEmpty(string value, string paramName)
+        {
+            if (string.IsNullOrEmpty(value))
+                return;
+
+            var parts = value.Split('.');
+            for (var i = 0; i < parts.Length; i++)
+                ValidateIdentifier(parts[i], paramName);
+        }
+
+        private static void ValidateIdentifier(string value, string paramName)
+        {
+            var text = (value ?? string.Empty).Trim();
+            if (text.StartsWith("@", StringComparison.Ordinal))
+                text = text.Substring(1);
+            if (text.Length == 0 || !IdentifierUtils.IsIdentifierStart(text[0]))
+                throw new ArgumentException("Generated service identifier is invalid: " + value, paramName);
+            for (var i = 1; i < text.Length; i++)
+            {
+                if (!IdentifierUtils.IsIdentifierPart(text[i]))
+                    throw new ArgumentException("Generated service identifier is invalid: " + value, paramName);
+            }
+        }
 
         private static string QualifyTypeName(string typeName)
         {

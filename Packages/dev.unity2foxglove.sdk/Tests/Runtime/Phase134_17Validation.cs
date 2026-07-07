@@ -148,6 +148,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(emptyDiagnostics.Any(d => d.Id == "FOXRUN006"
                                             && d.Message.Contains("empty type", StringComparison.OrdinalIgnoreCase)),
                 "134-17-E5: empty observed type reports an explicit empty-type diagnostic");
+
+            Check(!FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName("System.Tuple`2[[System.Int32, mscorlib],[]]").Contains(", >", StringComparison.Ordinal),
+                "134-17-E6: malformed CLR generic tails do not append empty type arguments");
         }
 
         private static void VerifyDescriptorRoundTripAndComparisonHardening()

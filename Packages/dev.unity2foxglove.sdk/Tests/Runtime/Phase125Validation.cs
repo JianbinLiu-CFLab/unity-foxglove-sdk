@@ -246,8 +246,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var cdrReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Cdr/Ros2CdrReader.cs");
             Check(!cdrReader.Contains("CopyEndianBytes", StringComparison.Ordinal)
-                  && cdrReader.Contains("BitConverter.ToDouble(_data, _offset)", StringComparison.Ordinal),
-                "125-H4: CDR primitive reads avoid per-field endian byte-array allocations on little-endian platforms");
+                  && !cdrReader.Contains("CopyReversedBytes", StringComparison.Ordinal)
+                  && cdrReader.Contains("BinaryPrimitives.ReadInt64LittleEndian", StringComparison.Ordinal),
+                "125-H4: CDR primitive reads avoid per-field endian byte-array allocations");
         }
 
         private static string CreateDecodedFixture()

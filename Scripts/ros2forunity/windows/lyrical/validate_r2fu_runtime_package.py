@@ -499,7 +499,6 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
         "runtimeId": "r2fu-lyrical-win64",
         "artifactName": ARTIFACT_NAME,
         "rosDistro": "lyrical",
-        "rmw": DEFAULT_RMW_IMPLEMENTATION,
         "defaultRmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
         "platform": "win64",
         "buildType": "standalone",

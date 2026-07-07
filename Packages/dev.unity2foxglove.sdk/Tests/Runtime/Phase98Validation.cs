@@ -217,7 +217,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "98A-6: sample scene contains publisher topic " + topic.Topic);
             Check(scene.Contains("_frameId: Moving Cube")
                   && scene.Contains("_childFrameId: Moving Cube")
-                  && sceneCubePublisher.Contains("return SanitizeFrameId(_frameId, gameObject.name);"),
+                  && sceneCubePublisher.Contains("return _cachedExplicitFrameId ?? SanitizeFrameId(_frameId, gameObject.name);", StringComparison.Ordinal),
                 "98A-8: sample scene cube frame resolves to the transform child frame id");
 
             var scripts = SampleScriptSources();

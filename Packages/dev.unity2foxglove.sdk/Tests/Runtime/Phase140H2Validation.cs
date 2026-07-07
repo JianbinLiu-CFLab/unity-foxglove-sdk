@@ -214,6 +214,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(nativePublisher, "private void PublishCompletedPointCloud2NativePayload", "\"deskewedNativeFrameReady\"")
                   && MethodContains(nativePublisher, "private void PublishPointCloud2NativeFrameReady", "LogPointCloud2NativeTiming"),
                 "140H2-5I: raw and deskewed PointCloud2 native handoffs record separate timing stages");
+            Check(nativePublisher.Contains("Debug.LogException(ex)", StringComparison.Ordinal)
+                  && !nativePublisher.Contains("PointCloud2 native frame subscriber failed: \" + ex.Message", StringComparison.Ordinal),
+                "140H2-5Ib: PointCloud2 native subscriber failures keep stack traces");
             Check(bridge.Contains("PointCloud2 native publish timing", StringComparison.Ordinal)
                   && bridge.Contains("stageTryEnsurePublisherMs", StringComparison.Ordinal)
                   && bridge.Contains("stageTfAnchorMs", StringComparison.Ordinal)

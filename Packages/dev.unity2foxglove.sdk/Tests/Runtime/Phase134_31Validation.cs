@@ -74,6 +74,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPerformanceBaselineRunner()
         {
             var source = ReadRepoText("Scripts/performance/run_baseline.py");
+            var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Performance/Program.cs");
 
             Check(source.Contains("DEFAULT_QUICK_TIMEOUT_MINUTES", StringComparison.Ordinal)
                   && source.Contains("DEFAULT_FULL_TIMEOUT_MINUTES", StringComparison.Ordinal)
@@ -83,6 +84,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("dotnet process timed out", StringComparison.Ordinal)
                   && source.Contains("EXIT_TIMEOUT = 124", StringComparison.Ordinal),
                 "134-31C-2: performance baseline timeout reports a deterministic failure");
+            Check(source.Contains("RESULT_FILE_PREFIX", StringComparison.Ordinal)
+                  && source.Contains("\"--result-prefix\", RESULT_FILE_PREFIX", StringComparison.Ordinal)
+                  && program.Contains("GitCommitTimeoutMs", StringComparison.Ordinal)
+                  && program.Contains("startedAtUtc = DateTime.UtcNow.ToString(\"o\", CultureInfo.InvariantCulture)", StringComparison.Ordinal),
+                "134-31C-3: performance baseline shares result prefix and records true start time");
         }
 
         private static void VerifyArchitectureAnalyzer()
@@ -108,6 +114,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("stale destination:", StringComparison.Ordinal)
                   && source.Contains("expected = portable_full_demo_scene_payload(src)", StringComparison.Ordinal),
                 "134-31E-2: sync_full_demo validate mode checks destination presence and content parity");
+            var ci = ReadRepoText("Scripts/release/run_ci.py");
+            Check(ci.Contains("Scripts/samples/sync_full_demo.py\", \"--mode\", \"validate\"", StringComparison.Ordinal)
+                  && ci.Contains("validate-full-demo-sync", StringComparison.Ordinal),
+                "134-31E-3: release CI validates full-demo sample/config parity");
         }
 
         private static void VerifyNativeHelpers()
