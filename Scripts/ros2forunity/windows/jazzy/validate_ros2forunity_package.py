@@ -23,6 +23,8 @@ REPO_ROOT_PARENT_DEPTH = 4
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 MAX_REPORTED_OFFENDERS = 12
+EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
+SUPPORTED_RMW_IMPLEMENTATIONS = (EXPECTED_RMW_IMPLEMENTATION,)
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 if not (ROOT / "Packages").is_dir() or not (ROOT / "Scripts").is_dir():
@@ -558,13 +560,21 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         "runtimeId": "r2fu-jazzy-win64",
         "artifactName": "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip",
         "rosDistro": "jazzy",
-        "rmw": "rmw_fastrtps_cpp",
+        "defaultRmwImplementation": EXPECTED_RMW_IMPLEMENTATION,
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    supported_rmw = data.get("supportedRmwImplementations", [])
+    add(
+        results,
+        "runtime inventory supported RMW implementations",
+        isinstance(supported_rmw, list) and list(supported_rmw) == list(SUPPORTED_RMW_IMPLEMENTATIONS),
+        f"supportedRmwImplementations={supported_rmw!r}",
+    )
 
     manifest_data = load_json(MANIFEST, results, "runtime inventory manifest cross-check parses")
     current = manifest_data.get("currentRecommendedRuntime", {}) if isinstance(manifest_data, dict) else {}

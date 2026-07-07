@@ -20,7 +20,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("Consume it", source, StringComparison.Ordinal);
             Assert.Contains("McapReader borrows the stream", source, StringComparison.Ordinal);
             Assert.Contains("reader borrows the supplied stream", reader, StringComparison.Ordinal);
-            Assert.DoesNotContain("public class McapReader : IDisposable", reader, StringComparison.Ordinal);
+            Assert.Contains("public class McapReader : IDisposable", reader, StringComparison.Ordinal);
+            Assert.Contains("_reader?.Dispose();", source, StringComparison.Ordinal);
+            Assert.True(
+                source.IndexOf("_reader?.Dispose();", StringComparison.Ordinal)
+                < source.IndexOf("_stream?.Dispose();", StringComparison.Ordinal),
+                "McapReplayEngine should release reader-owned buffers before closing the borrowed stream.");
         }
 
         [Fact]

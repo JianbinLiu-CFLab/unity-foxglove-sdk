@@ -580,10 +580,13 @@ namespace Unity.FoxgloveSDK.IO
         private void ResetLoadedState(bool disposeStream)
         {
             if (disposeStream)
+            {
+                _reader?.Dispose();
                 _stream?.Dispose();
+            }
             _stream = null;
-            // McapReader borrows the stream and holds only managed scratch buffers;
-            // the stream remains the single disposable resource owned here.
+            // McapReader borrows the stream; disposing it releases reader-owned
+            // scratch buffers without closing the stream.
             _reader = null;
             _summary = null;
             _pending.Clear();

@@ -23,6 +23,8 @@ REPO_ROOT_PARENT_DEPTH = 4
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 MAX_REPORTED_OFFENDERS = 12
+DEFAULT_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
+SUPPORTED_RMW_IMPLEMENTATIONS = ("rmw_fastrtps_cpp", "rmw_zenoh_cpp")
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 if not (ROOT / "Packages" / "dev.unity2foxglove.sdk").is_dir():
@@ -553,13 +555,21 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         "runtimeId": "r2fu-lyrical-win64",
         "artifactName": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
         "rosDistro": "lyrical",
-        "rmw": "rmw_fastrtps_cpp",
+        "defaultRmwImplementation": DEFAULT_RMW_IMPLEMENTATION,
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
+
+    supported_rmw = data.get("supportedRmwImplementations", [])
+    add(
+        results,
+        "runtime inventory supported RMW implementations",
+        isinstance(supported_rmw, list) and set(SUPPORTED_RMW_IMPLEMENTATIONS).issubset(set(supported_rmw)),
+        f"supportedRmwImplementations={supported_rmw!r}",
+    )
 
     manifest_data = load_json(MANIFEST, results, "runtime inventory manifest cross-check parses")
     supported = manifest_data.get("supportedRuntimePackages", []) if isinstance(manifest_data, dict) else []

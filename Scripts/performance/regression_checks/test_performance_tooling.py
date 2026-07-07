@@ -52,6 +52,7 @@ class PerformanceToolingTests(unittest.TestCase):
             run_calls = []
 
             def fake_run(cmd, **kwargs):
+                """Capture subprocess invocations without launching dotnet."""
                 run_calls.append(cmd)
                 return completed
 
