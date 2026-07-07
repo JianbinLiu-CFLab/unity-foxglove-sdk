@@ -8,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Foxglove.Schemas;
-using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
@@ -105,10 +104,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudEncoderSidecar.cs");
             var stop = Slice(source, "public void Stop()", "/// <summary>Stop and dispose");
-            var closeIndex = stop.IndexOf("process.StandardError.BaseStream.Close()", StringComparison.Ordinal);
-            var waitIndex = stop.IndexOf("WaitForTask(_stderrTask, 200)", StringComparison.Ordinal);
-            Check(closeIndex >= 0 && waitIndex >= 0 && closeIndex < waitIndex,
-                "140-16F-1: Draco helper Stop closes stderr before waiting for the stderr reader task");
+            var closeIndex = stop.IndexOf("CloseProcessStreams(process)", StringComparison.Ordinal);
+            var reapIndex = stop.IndexOf("Task.Run(() => ReapProcess(process, stderrTask, stop))", StringComparison.Ordinal);
+            var closeHelper = Slice(source, "private static void CloseProcessStreams", "private static void TryCloseProcessStream");
+            Check(closeIndex >= 0
+                  && reapIndex >= 0
+                  && closeIndex < reapIndex
+                  && closeHelper.Contains("process.StandardError.BaseStream.Close()", StringComparison.Ordinal)
+                  && closeHelper.Contains("process.StandardOutput.BaseStream.Close()", StringComparison.Ordinal),
+                "140-16F-1: Draco helper Stop closes stdout/stderr before background process reaping");
         }
 
         private static void Ros2PointCloudMapsPackedFieldTypesThroughARejectingHelper()
@@ -136,16 +140,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudMotionCompensationWarningCounterIsCapped()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var method = Slice(source, "private void WarnMotionCompensation", "private static long UnixNsToTicks");
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.MotionCompensation.cs");
+            var method = Slice(source, "private void WarnMotionCompensation", "    }\r\n}");
             Check(method.Contains("if (_motionCompensationWarningCount < int.MaxValue)", StringComparison.Ordinal),
                 "140-16I-1: PointCloud motion-compensation warning counter is capped before int overflow");
         }
 
         private static void DracoBackwardClockRateResetIsDocumented()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs");
-            var method = Slice(source, "private bool ShouldQueueVirtualLidarDracoFrame", "private ulong CurrentLogTimeNs");
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs");
+            var method = Slice(source, "private bool ShouldQueueVirtualLidarDracoFrame", "private ulong ResolveNativeDracoPublishIntervalNs");
             Check(method.Contains("backward clock", StringComparison.Ordinal)
                   && method.Contains("replay seek", StringComparison.Ordinal),
                 "140-16J-1: native Draco rate limiter documents backward-clock reset behavior");
@@ -157,7 +161,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase140_16Validation.cs", StringComparison.Ordinal),
                 "140-16K-1: test project compiles Phase140_16Validation");
-            Check(registry.Contains("Ci(\"--phase140-16\", \"Phase 140-16\", Phase140_16Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase140-16\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase140_16Validation.Validate", StringComparison.Ordinal),
                 "140-16K-2: validation registry exposes --phase140-16");
         }
 

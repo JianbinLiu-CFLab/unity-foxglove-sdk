@@ -4,7 +4,6 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Builds transform-fallback point-cloud frames for Foxglove publishers.
 
-using Foxglove.Schemas.PointCloud;
 using UnityEngine;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;

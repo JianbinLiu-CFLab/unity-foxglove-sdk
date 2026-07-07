@@ -437,7 +437,7 @@ namespace Unity.FoxgloveSDK.Editor
                 DrawPasswordProperty("_certificatePassword", "Certificate Password");
                 DrawPasswordProperty("_sharedToken", "Shared Token");
                 EditorGUILayout.HelpBox(
-                    "Certificate passwords and shared tokens are serialized with the scene or prefab. Use local-development credentials here and avoid committing production secrets.",
+                    "Certificate passwords and shared tokens entered here are serialized with the scene or prefab. Prefer FOXGLOVE_CERTIFICATE_PASSWORD and FOXGLOVE_SHARED_TOKEN for credentials that must not be committed.",
                     MessageType.Warning);
                 DrawProperty("_rootCaDistributorEnabled");
                 DrawProperty("_rootCaDistributorHost");

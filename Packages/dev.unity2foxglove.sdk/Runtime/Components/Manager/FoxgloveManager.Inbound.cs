@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Components
                     _enableFoxRunInbound,
                     _host,
                     _allowRemoteFoxRunInboundWithSharedToken,
-                    _sharedToken,
+                    ResolveSharedToken(),
                     out _);
             }
         }
@@ -50,7 +50,7 @@ namespace Unity.FoxgloveSDK.Components
                     _enableFoxRunInbound,
                     _host,
                     _allowRemoteFoxRunInboundWithSharedToken,
-                    _sharedToken,
+                    ResolveSharedToken(),
                     out var diagnostic);
                 return diagnostic;
             }

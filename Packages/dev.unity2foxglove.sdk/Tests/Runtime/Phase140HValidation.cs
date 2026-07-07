@@ -57,9 +57,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && editorDiagnostics.Contains("FoxgloveManagerInspectorLayout.Subheader(\"Publish Cadence\")", StringComparison.Ordinal)
                   && editorDiagnostics.Contains("_publishCadenceDiagnosticsEnabled", StringComparison.Ordinal),
                 "140H-1E: Inspector exposes cadence controls under Diagnostics");
-            Check(diagnostics.Contains("Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None)", StringComparison.Ordinal)
-                  && diagnostics.Contains("Application.SetStackTraceLogType(LogType.Log, previousStackTraceMode)", StringComparison.Ordinal),
-                "140H-1F: periodic cadence logs suppress per-summary stack traces");
+            Check(diagnostics.Contains("Debug.LogFormat(LogType.Log, LogOption.NoStacktrace", StringComparison.Ordinal)
+                  && !diagnostics.Contains("Application.SetStackTraceLogType", StringComparison.Ordinal),
+                "140H-1F: periodic cadence logs suppress per-summary stack traces without mutating global log settings");
         }
 
         private static void PublishBoundaryRecordsJsonProtobufAndRos2()

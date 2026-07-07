@@ -7,7 +7,6 @@
 using System;
 using System.Buffers;
 using Foxglove.Schemas;
-using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;

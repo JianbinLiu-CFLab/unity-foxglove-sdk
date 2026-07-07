@@ -8,7 +8,6 @@ using System;
 using System.IO;
 using System.Linq;
 using Foxglove.Schemas;
-using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
