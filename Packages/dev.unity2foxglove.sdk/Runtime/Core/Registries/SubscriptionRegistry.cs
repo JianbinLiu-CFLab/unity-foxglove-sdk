@@ -247,22 +247,25 @@ namespace Unity.FoxgloveSDK.Core
                 if (!_byChannel.TryGetValue(channelId, out var subscribers))
                     return removed;
 
-                foreach (var (clientId, subId) in subscribers)
+                var subscriberSnapshot = new List<(uint clientId, uint subscriptionId)>(subscribers);
+                foreach (var (clientId, subId) in subscriberSnapshot)
                 {
                     if (_clients.TryGetValue(clientId, out var subs)
                         && subs.TryGetValue(subId, out var chId)
                         && chId == channelId)
                     {
                         subs.Remove(subId);
+                        RemoveReverseIndex(chId, clientId, subId);
                         removed.Add((clientId, subId, chId));
                     }
                 }
 
                 _byChannel.Remove(channelId);
-                _totalSubscriptionCount -= removed.Count;
+                RecalculateTotalSubscriptionCountLocked();
 
-                // Only check clients affected by this removal for empty entries
-                foreach (var (clientId, _, _) in removed)
+                // Check every client named by the reverse index, including
+                // stale entries that did not produce a forward-map removal.
+                foreach (var (clientId, _) in subscriberSnapshot)
                 {
                     if (_clients.TryGetValue(clientId, out var clientSubs) && clientSubs.Count == 0)
                         _clients.Remove(clientId);
@@ -335,6 +338,14 @@ namespace Unity.FoxgloveSDK.Core
         }
 
         private int TotalSubscriptionCountLocked() => _totalSubscriptionCount;
+
+        private void RecalculateTotalSubscriptionCountLocked()
+        {
+            var count = 0;
+            foreach (var subscriptions in _clients.Values)
+                count += subscriptions.Count;
+            _totalSubscriptionCount = count;
+        }
 
         private void AddReverseIndex(uint channelId, uint clientId, uint subscriptionId)
         {

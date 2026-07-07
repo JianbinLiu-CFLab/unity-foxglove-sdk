@@ -10,6 +10,7 @@ using System.Threading;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 
 /// <summary>
@@ -33,6 +34,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private bool _warnedWaitingForManager;
     private bool _warnedInvalidScale;
     private SynchronizationContext _unityContext;
+    private FoxgloveManager _wiredManager;
+    private FoxgloveRuntime _wiredRuntime;
     private FoxgloveSceneCubePublisher _scenePublisher;
     private GameObject _cachedCube;
 
@@ -49,6 +52,14 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
 
     private bool TryInitializeDemo()
     {
+        if (_initialized)
+        {
+            if (_wiredRuntime?.Session != null)
+                return true;
+
+            ClearRuntimeWiring();
+        }
+
         if (_manager == null)
             _manager = GetComponent<FoxgloveManager>();
 
@@ -66,9 +77,6 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
             return false;
         }
 
-        if (_initialized)
-            return true;
-
         var rt = runtime;
 
         rt.RegisterParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
@@ -81,6 +89,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
 
         rt.Parameters.OnParameterChanged += OnParameterChanged;
+        _wiredManager = _manager;
+        _wiredRuntime = rt;
 
         var cubeObject = FindCube();
         if (cubeObject != null)
@@ -112,14 +122,11 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
 
     private void ClearRuntimeWiring()
     {
-        var runtime = _manager?.Runtime;
-        if (runtime != null)
-        {
-            runtime.Parameters.OnParameterChanged -= OnParameterChanged;
-        }
+        if (_wiredRuntime != null)
+            _wiredRuntime.Parameters.OnParameterChanged -= OnParameterChanged;
 
-        if (_manager != null)
-            _manager.OnClientMessage -= OnClientMessageReceived;
+        if (!ReferenceEquals(_wiredManager, null))
+            _wiredManager.OnClientMessage -= OnClientMessageReceived;
 
         if (_scenePublisher != null)
         {
@@ -128,6 +135,9 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         }
 
         _initialized = false;
+        _warnedInvalidScale = false;
+        _wiredManager = null;
+        _wiredRuntime = null;
     }
 
     [FoxService(
@@ -136,6 +146,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         Description = "Reset the demo cube pose.",
         RequestSchemaName = "Unity2Foxglove.Demo.ResetPoseRequest",
         ResponseSchemaName = "Unity2Foxglove.Demo.ResetPoseResponse")]
+    // The FoxService source generator discovers this private method and
+    // registers /cube/reset_pose through FoxgloveServiceHub at runtime.
     private ResetPoseResponse ResetPose(ResetPoseRequest request)
     {
         var cube = FindCube();
@@ -158,13 +170,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         if (!TryInitializeDemo())
             return;
 
-        var runtime = _manager?.Runtime;
-        if (runtime?.Session == null)
-        {
-            if (_initialized)
-                ClearRuntimeWiring();
-            return;
-        }
+        if (_wiredRuntime?.Session == null)
+            ClearRuntimeWiring();
     }
 
     /// <summary>

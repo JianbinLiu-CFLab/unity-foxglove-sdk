@@ -121,6 +121,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         Description = "Reset the demo cube pose.",
         RequestSchemaName = "Unity2Foxglove.Demo.ResetPoseRequest",
         ResponseSchemaName = "Unity2Foxglove.Demo.ResetPoseResponse")]
+    // The FoxService source generator discovers this private method and
+    // registers /cube/reset_pose through FoxgloveServiceHub at runtime.
     private ResetPoseResponse ResetPose(ResetPoseRequest request)
     {
         var cube = FindCube();

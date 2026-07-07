@@ -43,6 +43,19 @@ namespace Foxglove.Schemas.Video
 
     public static class FfmpegExecutableCheck
     {
+        private const int MinimumProcessTimeoutMs = 100;
+        private const int PostExitReaderDrainTimeoutMs = 200;
+
+        /// <summary>
+        /// Synchronously runs <c>ffmpeg -version</c> and returns a lightweight
+        /// availability result for Inspector diagnostics.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="timeoutMs"/> bounds the process lifetime. After the
+        /// process exits, stdout/stderr readers get only a short fixed drain
+        /// window so a completed FFmpeg process cannot double the caller's
+        /// timeout budget.
+        /// </remarks>
         public static FfmpegExecutableCheckResult Check(string configuredPath, int timeoutMs = 2000)
         {
             var executable = FfmpegExecutableResolver.ResolveExecutablePath(configuredPath);
@@ -81,10 +94,11 @@ namespace Foxglove.Schemas.Video
                     var stdoutTask = process.StandardOutput.ReadToEndAsync();
                     var stderrTask = process.StandardError.ReadToEndAsync();
 
-                    if (!process.WaitForExit(Math.Max(100, timeoutMs)))
+                    var processTimeoutMs = Math.Max(MinimumProcessTimeoutMs, timeoutMs);
+                    if (!process.WaitForExit(processTimeoutMs))
                     {
                         TryKill(process);
-                        WaitForReaderTasks(stdoutTask, stderrTask, 100);
+                        WaitForReaderTasks(stdoutTask, stderrTask, PostExitReaderDrainTimeoutMs);
                         return new FfmpegExecutableCheckResult(
                             FfmpegExecutableStatus.Invalid,
                             executable,
@@ -92,7 +106,7 @@ namespace Foxglove.Schemas.Video
                             "FFmpeg check timed out.");
                     }
 
-                    WaitForReaderTasks(stdoutTask, stderrTask, Math.Max(100, timeoutMs));
+                    WaitForReaderTasks(stdoutTask, stderrTask, PostExitReaderDrainTimeoutMs);
                     var stdout = CompletedText(stdoutTask);
                     var stderr = CompletedText(stderrTask);
                     var combined = (stdout ?? "") + "\n" + (stderr ?? "");
@@ -174,7 +188,7 @@ namespace Foxglove.Schemas.Video
         {
             try
             {
-                Task.WaitAll(new Task[] { stdoutTask, stderrTask }, Math.Max(100, timeoutMs));
+                Task.WaitAll(new Task[] { stdoutTask, stderrTask }, Math.Max(MinimumProcessTimeoutMs, timeoutMs));
             }
             catch
             {

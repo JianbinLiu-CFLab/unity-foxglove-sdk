@@ -114,7 +114,7 @@ namespace Foxglove.Schemas.Video
 
         /// <summary>Returns true when the byte sequence contains an Annex B start code.</summary>
         public static bool HasAnnexBStartCode(byte[] data)
-            => FindStartCode(data, 0, out _, out _);
+            => H264StartCodeScanner.Find(data, 0, out _, out _);
 
         /// <summary>Returns true when the access unit contains any VCL slice NAL.</summary>
         public static bool ContainsVclNal(byte[] accessUnit)
@@ -287,7 +287,7 @@ namespace Foxglove.Schemas.Video
                 return false;
 
             var searchFrom = 0;
-            while (FindStartCode(data, searchFrom, out var start, out var length))
+            while (H264StartCodeScanner.Find(data, searchFrom, out var start, out var length))
             {
                 var headerIndex = start + length;
                 if (headerIndex < data.Length && (data[headerIndex] & 0x1F) == type)
@@ -299,66 +299,7 @@ namespace Foxglove.Schemas.Video
             return false;
         }
 
-        private static bool FindStartCode(byte[] data, int startIndex, out int index, out int length)
-        {
-            index = -1;
-            length = 0;
-            if (data == null)
-                return false;
-
-            for (var i = Math.Max(0, startIndex); i <= data.Length - 3; i++)
-            {
-                if (i <= data.Length - 4
-                    && data[i] == 0
-                    && data[i + 1] == 0
-                    && data[i + 2] == 0
-                    && data[i + 3] == 1)
-                {
-                    index = i;
-                    length = 4;
-                    return true;
-                }
-
-                if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1)
-                {
-                    index = i;
-                    length = 3;
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         private static bool FindStartCode(List<byte> data, int startIndex, out int index, out int length)
-        {
-            index = -1;
-            length = 0;
-            if (data == null)
-                return false;
-
-            for (var i = Math.Max(0, startIndex); i <= data.Count - 3; i++)
-            {
-                if (i <= data.Count - 4
-                    && data[i] == 0
-                    && data[i + 1] == 0
-                    && data[i + 2] == 0
-                    && data[i + 3] == 1)
-                {
-                    index = i;
-                    length = 4;
-                    return true;
-                }
-
-                if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1)
-                {
-                    index = i;
-                    length = 3;
-                    return true;
-                }
-            }
-
-            return false;
-        }
+            => H264StartCodeScanner.Find(data, startIndex, out index, out length);
     }
 }

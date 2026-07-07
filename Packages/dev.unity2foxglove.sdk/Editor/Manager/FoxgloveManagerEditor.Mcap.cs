@@ -85,6 +85,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 Undo.RegisterCompleteObjectUndo(target, "Disable Replay Auto Play");
                 replayAutoPlay.boolValue = false;
+                serializedObject.ApplyModifiedProperties();
             }
 
             using (new EditorGUI.DisabledScope(remoteFileServerEnabled))
@@ -160,7 +161,6 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrWhiteSpace(remoteUrl))
                 return;
 
-            EditorGUIUtility.systemCopyBuffer = remoteUrl;
             var foxgloveUrl = FoxgloveAppUrl.BuildRemoteFileDesktopUrl(remoteUrl);
             Application.OpenURL(foxgloveUrl);
             Debug.Log("[Foxglove] Opening Remote files URL in Foxglove Desktop: " + remoteUrl);
@@ -280,21 +280,40 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void CopyCurrentSchemaEvidenceHash()
         {
-            var aggregateHash = Path.Combine(
-                Unity2FoxgloveSchemaEvidencePaths.ResolveUnity2FoxgloveOutputDirectory(),
-                "unity2foxglove.schema-manifest.hash");
-            var foxRunHash = Path.Combine(
-                Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory(),
-                "foxrun.manifest.hash");
-
-            if (File.Exists(aggregateHash))
+            try
             {
-                EditorGUIUtility.systemCopyBuffer = File.ReadAllText(aggregateHash).Trim();
-                return;
-            }
+                var aggregateHash = Path.Combine(
+                    Unity2FoxgloveSchemaEvidencePaths.ResolveUnity2FoxgloveOutputDirectory(),
+                    "unity2foxglove.schema-manifest.hash");
+                var foxRunHash = Path.Combine(
+                    Unity2FoxgloveSchemaEvidencePaths.ResolveFoxRunOutputDirectory(),
+                    "foxrun.manifest.hash");
 
-            if (File.Exists(foxRunHash))
-                EditorGUIUtility.systemCopyBuffer = File.ReadAllText(foxRunHash).Trim();
+                if (File.Exists(aggregateHash))
+                {
+                    EditorGUIUtility.systemCopyBuffer = File.ReadAllText(aggregateHash).Trim();
+                    return;
+                }
+
+                if (File.Exists(foxRunHash))
+                {
+                    EditorGUIUtility.systemCopyBuffer = File.ReadAllText(foxRunHash).Trim();
+                    return;
+                }
+
+                EditorUtility.DisplayDialog(
+                    "Copy Schema Evidence Hash",
+                    "No current schema evidence hash was found. Refresh evidence first.",
+                    "OK");
+            }
+            catch (System.Exception ex)
+            {
+                EditorUtility.DisplayDialog(
+                    "Copy Schema Evidence Hash",
+                    "Failed to copy schema evidence hash:\n" + ex.Message,
+                    "OK");
+                Debug.LogError("[Foxglove] Failed to copy schema evidence hash: " + ex.Message);
+            }
         }
     }
 }

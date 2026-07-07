@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             ReplayCursorJsonEscapesControlCharactersAndUsesNamedStatuses();
             ReplayCursorEndpointRestrictsCorsAndEscapesJson();
             ExternalCursorEnabledCheckIsSynchronized();
-            SchemaSidecarSuccessResultPointsAtExistingDirectory();
+            SchemaSidecarSuccessResultClearsStagingDirectory();
             SchemaSidecarPublishFailureReportsPreservedBackup();
             VerifyOpt1DrainReplayCallbacksUsesPooledBuffer();
             VerifyOpt4EndInitDeferralNoToArray();
@@ -157,7 +157,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-3E-1: external replay cursor Enabled gate is synchronized with enqueue");
         }
 
-        private static void SchemaSidecarSuccessResultPointsAtExistingDirectory()
+        private static void SchemaSidecarSuccessResultClearsStagingDirectory()
         {
             var tempRoot = NewTempRoot();
             try
@@ -174,9 +174,10 @@ namespace Unity.FoxgloveSDK.Tests
                     "140-3F-1: schema sidecar fixture writes successfully");
                 Check(Directory.Exists(result.SidecarDirectory),
                     "140-3F-2: schema sidecar final directory exists after success");
-                Check(result.TemporaryDirectory == result.SidecarDirectory
-                      && Directory.Exists(result.TemporaryDirectory),
-                    "140-3F-3: successful sidecar result reports an existing published directory");
+                SchemaEvidenceSidecarWriter.CleanupStagedSidecar(result);
+                Check(string.IsNullOrEmpty(result.TemporaryDirectory)
+                      && Directory.Exists(result.SidecarDirectory),
+                    "140-3F-3: successful sidecar result clears staging directory without deleting published sidecar");
             }
             finally
             {

@@ -35,6 +35,7 @@ FOXRUN025 | FoxRun | Warning | SubscribeOnly ignores publish timing options.
 FOXRUN026 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
 FOXRUN027 | FoxRun | Warning | SubscribeOnly member names should communicate input-port authority.
 FOXRUN028 | FoxRun | Error | FoxRun inbound targets must be writable.
+FOXRUN029 | FoxRun | Error | FoxRun Unless conditional gate member is missing or invalid.
 FOXSERVICE001 | FoxService | Error | FoxService name must be non-empty and absolute.
 FOXSERVICE002 | FoxService | Error | FoxService method signature is unsupported.
 FOXSERVICE003 | FoxService | Error | FoxService request type is unsupported.

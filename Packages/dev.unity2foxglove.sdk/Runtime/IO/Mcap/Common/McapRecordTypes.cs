@@ -87,7 +87,11 @@ namespace Unity.FoxgloveSDK.IO
         public uint UncompressedCrc;
         /// <summary>Compression algorithm used (<c>""</c>, <c>"lz4"</c>, or <c>"zstd"</c>).</summary>
         public string Compression;
-        /// <summary>Compressed byte size of the chunk records payload.</summary>
+        /// <summary>
+        /// Compressed byte size of the chunk records payload. Readers must reject
+        /// values larger than <see cref="int.MaxValue"/> before allocating
+        /// <see cref="Records"/>.
+        /// </summary>
         public ulong CompressedSize;
         /// <summary>Raw compressed or uncompressed chunk record payload bytes.</summary>
         public byte[] Records;
@@ -190,7 +194,7 @@ namespace Unity.FoxgloveSDK.IO
         public string Name;
         /// <summary>MIME media type (e.g. <c>"text/plain"</c>).</summary>
         public string MediaType;
-        /// <summary>Raw attachment data.</summary>
+        /// <summary>Raw attachment data. Backing arrays cannot exceed <see cref="int.MaxValue"/> bytes.</summary>
         public byte[] Data;
         /// <summary>CRC32 of the attachment record content before the CRC field.</summary>
         public uint Crc;
@@ -209,7 +213,11 @@ namespace Unity.FoxgloveSDK.IO
         public ulong LogTime;
         /// <summary>Creation timestamp (nanoseconds).</summary>
         public ulong CreateTime;
-        /// <summary>Size of the attachment data payload in bytes (excluding uint64 prefix).</summary>
+        /// <summary>
+        /// Size of the attachment data payload in bytes (excluding uint64 prefix).
+        /// Readers must reject values larger than <see cref="int.MaxValue"/>
+        /// before allocating the corresponding <see cref="McapAttachment.Data"/>.
+        /// </summary>
         public ulong DataSize;
         /// <summary>Attachment name.</summary>
         public string Name;

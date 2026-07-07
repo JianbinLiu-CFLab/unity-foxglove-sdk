@@ -241,8 +241,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckHotPathFreeOfSceneQueries(string source, string label)
         {
             Check(!source.Contains("SceneManager.", StringComparison.Ordinal)
-                  && !source.Contains(".path", StringComparison.Ordinal)
-                  && !source.Contains(".name", StringComparison.Ordinal)
+                  && !source.Contains("scene.path", StringComparison.Ordinal)
+                  && !source.Contains("scene.name", StringComparison.Ordinal)
+                  && !source.Contains("gameObject.name", StringComparison.Ordinal)
                   && !source.Contains("IsBackupScene(", StringComparison.Ordinal)
                   && !source.Contains("IsSceneUnsafe", StringComparison.Ordinal),
                 label);

@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.Editor
         private const string ConditionMissingDiagnosticId = "FOXRUN015";
         private const string ConditionNotBoolDiagnosticId = "FOXRUN016";
         private const string MixedConditionDiagnosticId = "FOXRUN017";
+        private const string UnlessConditionMissingDiagnosticId = "FOXRUN029";
+        private const float DefaultRateHz = 10f;
 
         private static readonly string[] UnityNativeContainerPrefixes =
         {
@@ -83,7 +85,7 @@ namespace Unity.FoxgloveSDK.Editor
                 && (member.PublishMode != 0
                     || member.ChangeEpsilon > 0f
                     || member.ForceIntervalSeconds > 0f
-                    || member.RateHz != 10f))
+                    || member.RateHz != DefaultRateHz))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
                     "FOXRUN025",
@@ -113,7 +115,7 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(ConditionMissingDiagnosticId, target, member.MemberName, "FoxRun When condition member name is invalid or missing."));
 
             if (IsInvalidConditionName(member.Unless))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(ConditionMissingDiagnosticId, target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(UnlessConditionMissingDiagnosticId, target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
 
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType))
             {

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -322,6 +323,15 @@ class RunCiTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as context:
                 self.run_ci.run(["tool"], "fatal", fatal=True)
         self.assertEqual(7, context.exception.code)
+
+    def test_run_ci_reports_timeout_without_hanging(self) -> None:
+        """Subprocess timeouts should fail the command instead of hanging local CI."""
+        with mock.patch.dict(os.environ, {"UNITY2FOXGLOVE_CI_TIMEOUT": "1"}):
+            with mock.patch.object(self.run_ci.subprocess, "run", side_effect=subprocess.TimeoutExpired(["tool"], 1)):
+                self.assertFalse(self.run_ci.run(["tool"], "timeout", fatal=False))
+                with self.assertRaises(SystemExit) as context:
+                    self.run_ci.run(["tool"], "fatal-timeout", fatal=True)
+        self.assertEqual(124, context.exception.code)
 
 
 class UnityIl2CppBuildTests(unittest.TestCase):

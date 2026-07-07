@@ -110,7 +110,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private AssetRootDefinition[] _assetRoots = { };
 
         [SerializeField] private bool _enablePlaybackControl;
+        [Range(-3600f, 3600f)]
         [SerializeField] private float _playbackStartOffsetSeconds = 0;
+        [Min(0f)]
         [SerializeField] private float _playbackDurationSeconds = 60;
 
         [Header("MCAP Recording")]

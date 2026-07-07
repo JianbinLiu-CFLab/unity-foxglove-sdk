@@ -109,8 +109,35 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var nowMs = (long)(System.DateTime.UtcNow - UnixEpochUtc).TotalMilliseconds;
-            var startNs = (ulong)((nowMs + (long)(_playbackStartOffsetSeconds * PlaybackMillisecondsPerSecond)) * NanosecondsPerMillisecond);
-            var endNs = startNs + (ulong)(_playbackDurationSeconds * NanosecondsPerSecond);
+            if (_playbackDurationSeconds <= 0f || float.IsNaN(_playbackDurationSeconds) || float.IsInfinity(_playbackDurationSeconds))
+            {
+                Debug.LogWarning("[Foxglove] Playback control disabled because Playback Duration Seconds must be positive.");
+                return;
+            }
+
+            if (float.IsNaN(_playbackStartOffsetSeconds) || float.IsInfinity(_playbackStartOffsetSeconds))
+            {
+                Debug.LogWarning("[Foxglove] Playback control disabled because Playback Start Offset Seconds must be finite.");
+                return;
+            }
+
+            var startMs = nowMs + (long)(_playbackStartOffsetSeconds * PlaybackMillisecondsPerSecond);
+            if (startMs < 0)
+            {
+                Debug.LogWarning("[Foxglove] Playback control disabled because the computed playback start is before Unix epoch.");
+                return;
+            }
+
+            var startNs = (ulong)(startMs * NanosecondsPerMillisecond);
+            var durationNsDouble = _playbackDurationSeconds * (double)NanosecondsPerSecond;
+            if (durationNsDouble > ulong.MaxValue || durationNsDouble > ulong.MaxValue - startNs)
+            {
+                Debug.LogWarning("[Foxglove] Playback control disabled because the computed playback window is too large.");
+                return;
+            }
+
+            var durationNs = (ulong)durationNsDouble;
+            var endNs = startNs + durationNs;
             _runtime.EnablePlaybackControl(startNs, endNs);
         }
 

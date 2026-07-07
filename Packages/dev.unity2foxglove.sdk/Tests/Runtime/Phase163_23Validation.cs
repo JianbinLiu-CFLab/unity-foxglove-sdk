@@ -65,10 +65,11 @@ namespace Unity.FoxgloveSDK.Tests
                     })
             }));
 
-            Check(invalidUnless.Any(diagnostic => diagnostic.Id == "FOXRUN015" && diagnostic.MemberName == "_speed"),
-                "163-23B-1: invalid Unless condition names use FOXRUN015 instead of bool-type FOXRUN016");
+            Check(invalidUnless.Any(diagnostic => diagnostic.Id == "FOXRUN029" && diagnostic.MemberName == "_speed"),
+                "163-23B-1: invalid Unless condition names use FOXRUN029 instead of When/boolean diagnostics");
             Check(generator.Contains("TryGetConditionDiagnostic(containingType, topics, out var conditionDiagnosticId)", StringComparison.Ordinal)
                   && generator.Contains("diagnosticId = \"FOXRUN016\";", StringComparison.Ordinal)
+                  && generator.Contains("\"FOXRUN029\"", StringComparison.Ordinal)
                   && generator.Contains("SpecialType.System_Boolean", StringComparison.Ordinal),
                 "163-23B-2: Roslyn generator validates resolved When/Unless members are bool");
             Check(validator.Contains("FoxRun Unless condition member name is invalid or missing.", StringComparison.Ordinal)

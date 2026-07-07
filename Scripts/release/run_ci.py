@@ -35,6 +35,24 @@ SOURCE_GENERATOR_PROJ = (
 )
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
+
+
+def command_timeout_seconds() -> int:
+    """Return the per-command CI timeout in seconds."""
+    raw = os.environ.get("UNITY2FOXGLOVE_CI_TIMEOUT", "").strip()
+    if not raw:
+        return DEFAULT_COMMAND_TIMEOUT_SECONDS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        print(
+            red(
+                f"{FAIL} invalid UNITY2FOXGLOVE_CI_TIMEOUT={raw!r}; "
+                f"using {DEFAULT_COMMAND_TIMEOUT_SECONDS}s"
+            )
+        )
+        return DEFAULT_COMMAND_TIMEOUT_SECONDS
 
 
 def _msbuild_dir(path: Path) -> str:
@@ -90,7 +108,13 @@ def cyan(msg: str) -> str:
 def run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
     """Run a subprocess command and return True on success."""
     print(f"\n{cyan('--- ' + label + ' ---')}")
-    result = subprocess.run(cmd, cwd=REPO_ROOT)
+    try:
+        result = subprocess.run(cmd, cwd=REPO_ROOT, timeout=command_timeout_seconds())
+    except subprocess.TimeoutExpired:
+        print(red(f"{FAIL} {label} timed out after {command_timeout_seconds()}s"))
+        if fatal:
+            raise SystemExit(124)
+        return False
     ok = result.returncode == 0
     if ok:
         print(green(f"{PASS} {label}"))
@@ -103,14 +127,21 @@ def run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
 
 def run_captured(cmd: list[str], label: str) -> tuple[str, bool, int, str, str]:
     """Run a subprocess and capture output for later ordered replay."""
-    result = subprocess.run(
-        cmd,
-        cwd=REPO_ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        errors="replace",
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=REPO_ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            errors="replace",
+            timeout=command_timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired as ex:
+        stdout = ex.stdout.decode(errors="replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
+        stderr = ex.stderr.decode(errors="replace") if isinstance(ex.stderr, bytes) else (ex.stderr or "")
+        stderr += f"\n{FAIL} {label} timed out after {command_timeout_seconds()}s\n"
+        return label, False, 124, stdout, stderr
     return label, result.returncode == 0, result.returncode, result.stdout, result.stderr
 
 
