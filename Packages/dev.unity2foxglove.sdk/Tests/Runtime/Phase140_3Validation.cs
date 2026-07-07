@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             SchemaSidecarSuccessResultClearsStagingDirectory();
             SchemaSidecarPublishFailureReportsPreservedBackup();
             VerifyOpt1DrainReplayCallbacksUsesPooledBuffer();
-            VerifyOpt4EndInitDeferralNoToArray();
+            VerifyOpt4EndInitDeferralReturnsSnapshot();
             VerifyOpt2ReplayControllerCachedInvocationList();
             VerifyOpt3ReplayOrchestratorCachedInvocationList();
             VerifyPhase173_024SessionLockBoundaries();
@@ -245,10 +245,11 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// OPT-4: Verify EndInitDeferral returns _resolvedHeld directly
-        /// instead of allocating a copy via ToArray().
+        /// OPT-4: Verify EndInitDeferral returns a stable snapshot.
+        /// The copy is intentional because callers and older validation keep
+        /// the returned list readable after later arbiter mutations.
         /// </summary>
-        private static void VerifyOpt4EndInitDeferralNoToArray()
+        private static void VerifyOpt4EndInitDeferralReturnsSnapshot()
         {
             var arbiter = new ReplayPoseOwnershipArbiter();
             var held = arbiter.OfferPose(
