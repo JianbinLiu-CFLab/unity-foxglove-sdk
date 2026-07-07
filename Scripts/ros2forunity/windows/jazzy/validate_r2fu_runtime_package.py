@@ -150,7 +150,7 @@ INTERNAL_TOKENS = (
     "phase",
     "137B",
     "106B",
-    "110",
+    "Phase110",
 )
 
 
@@ -206,6 +206,11 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def is_sha256(value: object) -> bool:
+    """Return true for a complete lowercase SHA-256 hex string."""
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
 def unity_editor_using_is_guarded(text: str) -> bool:
@@ -279,9 +284,8 @@ def check_required_files(results: list[CheckResult]) -> None:
         add(results, f"required file: {path.name}", path.exists(), rel(path))
 
 
-def check_runtime_manifest(results: list[CheckResult]) -> None:
+def check_runtime_manifest(results: list[CheckResult], data: dict) -> None:
     """Validate the runtime support manifest."""
-    data = load_json(MANIFEST, results, "runtime manifest parses")
     if not data:
         return
 
@@ -373,12 +377,11 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     )
 
 
-def check_inventory(results: list[CheckResult], release_gate: bool = False, skip_dll_hash: bool = False) -> None:
+def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bool = False, skip_dll_hash: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
     if not data:
         return
-    manifest = load_json(MANIFEST, results, "runtime manifest parses for inventory cross-check")
 
     expected = {
         "schemaVersion": 1,
@@ -784,7 +787,11 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         results,
         "TimeUtils normalizes nanoseconds",
         "Math.Floor(secondsIn)" in time_utils
-        and ("normalizedNanoseconds < 0" in time_utils or "wholeNanoseconds >= 1000000000" in time_utils),
+        and (
+            "normalizedNanoseconds < 0" in time_utils
+            or "wholeNanoseconds >= 1000000000" in time_utils
+            or "wholeNanoseconds >= NanosecondsPerSecond" in time_utils
+        ),
         "TimeUtils.cs",
     )
     add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
@@ -829,7 +836,7 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         add(results, f"runtime package generator token: {token}", token in generator, token)
 
 
-def check_public_docs(results: list[CheckResult]) -> None:
+def check_public_docs(results: list[CheckResult], manifest: dict) -> None:
     """Validate public runtime docs avoid internal planning names."""
     combined = ""
     for path in PUBLIC_DOCS:
@@ -850,19 +857,18 @@ def check_public_docs(results: list[CheckResult]) -> None:
         "Install only one" in readme and ("ros2forunity.runtime." in readme or "runtime packages" in readme),
         "README.md",
     )
-    manifest_data = load_json(MANIFEST, results, "runtime manifest parses for docs cross-check")
-    artifact_sha = str(manifest_data.get("artifactSha256", "")).strip()
+    artifact_sha = str(manifest.get("artifactSha256", "")).strip()
     add(
         results,
         "README documents artifact SHA-256",
-        bool(artifact_sha) and artifact_sha in readme,
+        is_sha256(artifact_sha) and artifact_sha in readme,
         "README.md",
     )
     notices = (PACKAGE / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8", errors="replace") if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists() else ""
     add(
         results,
         "THIRD_PARTY_NOTICES documents artifact SHA-256",
-        bool(artifact_sha) and artifact_sha in notices,
+        is_sha256(artifact_sha) and artifact_sha in notices,
         "THIRD_PARTY_NOTICES.md",
     )
     add(
@@ -906,14 +912,15 @@ def run_checks(release_gate: bool = False, skip_dll_hash: bool = False) -> list[
     results: list[CheckResult] = []
     check_package_metadata(results)
     check_required_files(results)
-    check_runtime_manifest(results)
-    check_inventory(results, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
+    manifest = load_json(MANIFEST, results, "runtime manifest parses")
+    check_runtime_manifest(results, manifest)
+    check_inventory(results, manifest, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
     check_runtime_files(results)
     check_package_path_patch(results)
     check_runtime_asmdef(results)
     check_runtime_source_patches(results)
     check_generator_alignment(results)
-    check_public_docs(results)
+    check_public_docs(results, manifest)
     check_package_boundaries(results)
     return results
 
@@ -937,7 +944,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Skip per-DLL SHA-256 verification during routine validation; ignored by --release-gate.",
+        help="Skip per-DLL SHA-256 verification for faster routine validation; ignored by --release-gate.",
     )
     parser.add_argument(
         "--skip-dll-hash",
