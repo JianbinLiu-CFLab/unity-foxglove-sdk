@@ -111,6 +111,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(expected.SequenceEqual(writer.ToArray()),
                 "168-7: MsgPack writer emits canonical small map payload bytes");
+            var buffer = writer.GetBuffer(out var length);
+            Check(length == expected.Length && expected.SequenceEqual(buffer.Take(length)),
+                "168-7b: MsgPack writer exposes a valid owned buffer segment for zero-copy callers");
         }
 
         private static void VerifyMcapSchemalessMsgPackChannel()
@@ -206,6 +209,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && editorLabels.Contains("schemaless raw channel for custom clients", StringComparison.Ordinal)
                   && editorLabels.Contains("Foxglove Desktop does not currently parse or render live MsgPack panels", StringComparison.Ordinal),
                 "168-15: Inspector encoding labels expose MsgPack with custom-client expectations");
+            Check(editorLabels.Contains("AssertLabelCount<GlobalEncoding>", StringComparison.Ordinal)
+                  && editorLabels.Contains("AssertLabelCount<PublisherEncodingOverride>", StringComparison.Ordinal)
+                  && editorLabels.Contains("AssertLabelCount<Ros2BridgeOutputOverride>", StringComparison.Ordinal)
+                  && editorLabels.Contains("AssertLabelCount<Ros2BridgeQosPreset>", StringComparison.Ordinal),
+                "168-15b: Inspector encoding label arrays assert enum cardinality");
 
             Check(publisherEncoding.Contains("Fallback order intentionally keeps MsgPack before JSON", StringComparison.Ordinal),
                 "168-15B: encoding fallback order documents the MsgPack before JSON choice");

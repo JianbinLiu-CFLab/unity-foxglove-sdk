@@ -208,6 +208,7 @@ namespace Foxglove.Schemas.Video
 
             drain?.Invoke();
             _sidecar.Dispose();
+            drain?.Invoke();
             ResetSidecarState();
         }
 

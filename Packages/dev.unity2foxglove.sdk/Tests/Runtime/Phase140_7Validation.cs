@@ -238,9 +238,11 @@ namespace Unity.FoxgloveSDK.Tests
             CheckThrows<ObjectDisposedException>(
                 () => pipeline.Enqueue(new Phase140_7Request { Value = 1 }, out _, out _),
                 "140-7G2-1: background encode pipeline rejects enqueue after Dispose");
-            CheckThrows<ObjectDisposedException>(
-                () => pipeline.Drain(new List<int>(), out _),
-                "140-7G2-2: background encode pipeline rejects drain after Dispose");
+
+            var drained = new List<int> { -1 };
+            pipeline.Drain(drained, out var droppedAfterDispose);
+            Check(drained.Count == 0 && droppedAfterDispose == 0,
+                "140-7G2-2: background encode pipeline allows empty tail drain after Dispose");
         }
 
         private static void PointCloudStrideScanShortCircuitsWhenLayoutIsKnown()

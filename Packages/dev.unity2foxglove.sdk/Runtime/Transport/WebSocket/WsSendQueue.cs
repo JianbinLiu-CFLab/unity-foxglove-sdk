@@ -179,20 +179,24 @@ namespace Unity.FoxgloveSDK.Transport
 
         public bool WaitToDequeue(CancellationToken ct, out QueuedFrame frame)
         {
+            frame = default;
             lock (_lock)
             {
                 while (true)
                 {
                     ct.ThrowIfCancellationRequested();
-                    FoxgloveProfiler.Global.BeginSample("WsSendQueue.Flush");
-                    try
+                    if (CountLocked > 0)
                     {
-                        if (TryDequeueLocked(out frame))
-                            return true;
-                    }
-                    finally
-                    {
-                        FoxgloveProfiler.Global.EndSample();
+                        FoxgloveProfiler.Global.BeginSample("WsSendQueue.Flush");
+                        try
+                        {
+                            if (TryDequeueLocked(out frame))
+                                return true;
+                        }
+                        finally
+                        {
+                            FoxgloveProfiler.Global.EndSample();
+                        }
                     }
 
                     if (_completed)

@@ -121,7 +121,6 @@ namespace Unity.FoxgloveSDK.Util
         {
             if (results == null)
                 throw new ArgumentNullException(nameof(results));
-            ThrowIfDisposed();
 
             lock (_worker.Gate)
             {

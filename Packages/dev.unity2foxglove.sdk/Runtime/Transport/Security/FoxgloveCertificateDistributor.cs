@@ -31,14 +31,19 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Maximum HTTP headers accepted before the local distributor rejects the request.</summary>
         private const int MaxRequestHeaders = 100;
         private const int MaxConcurrentClients = 10;
+        private const int StopAcceptLoopWaitMs = 1000;
+        private const int StopClientHandlersWaitMs = 1000;
         private readonly string _rootCaPath;
         private readonly string _rootCaPemPath;
         private readonly IFoxgloveLogger _logger;
         private readonly int _clientIoTimeoutMs;
+        private readonly ManualResetEventSlim _clientHandlersIdle = new ManualResetEventSlim(true);
         private TcpListener _listener;
         private CancellationTokenSource _cts;
+        private Task _acceptLoopTask;
         private string _rootCaSha256Fingerprint;
         private int _activeClientHandlers;
+        private bool _disposed;
 
         public FoxgloveCertificateDistributor(
             string rootCaPath,
@@ -56,12 +61,25 @@ namespace Unity.FoxgloveSDK.Transport
         public bool IsRunning => _listener != null;
 
         /// <summary>SHA-256 fingerprint of the configured root CA file.</summary>
-        public string RootCaSha256Fingerprint =>
-            _rootCaSha256Fingerprint ??= ComputeSha256Fingerprint(_rootCaPath);
+        public string RootCaSha256Fingerprint
+        {
+            get
+            {
+                var cached = Volatile.Read(ref _rootCaSha256Fingerprint);
+                if (cached != null)
+                    return cached;
+
+                var computed = ComputeSha256Fingerprint(_rootCaPath);
+                Interlocked.CompareExchange(ref _rootCaSha256Fingerprint, computed, null);
+                return _rootCaSha256Fingerprint;
+            }
+        }
 
         /// <summary>Start serving the configured root CA file.</summary>
         public void Start(string host, int port)
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(FoxgloveCertificateDistributor));
             if (_listener != null)
                 throw new InvalidOperationException("Certificate distributor already started.");
 
@@ -74,24 +92,36 @@ namespace Unity.FoxgloveSDK.Transport
             _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _cts = new CancellationTokenSource();
             _listener.Start();
-            _ = Task.Run(() => AcceptLoop(_cts.Token));
+            _clientHandlersIdle.Set();
+            _acceptLoopTask = Task.Run(() => AcceptLoop(_cts.Token));
         }
 
         /// <summary>Stop accepting requests and release the listener port.</summary>
         public void Stop()
         {
+            if (_disposed)
+                return;
+
             var cts = _cts;
             _cts = null;
             cts?.Cancel();
             try { _listener?.Stop(); } catch { }
             _listener = null;
+            WaitForShutdownTask(_acceptLoopTask, StopAcceptLoopWaitMs);
+            _acceptLoopTask = null;
+            _clientHandlersIdle.Wait(StopClientHandlersWaitMs);
             cts?.Dispose();
         }
 
         /// <summary>Stop the listener and release resources.</summary>
         public void Dispose()
         {
+            if (_disposed)
+                return;
+
             Stop();
+            _clientHandlersIdle.Dispose();
+            _disposed = true;
         }
 
         /// <summary>Compute a colon-separated SHA-256 fingerprint for a file.</summary>
@@ -126,16 +156,23 @@ namespace Unity.FoxgloveSDK.Transport
                     if (Interlocked.Increment(ref _activeClientHandlers) > MaxConcurrentClients)
                     {
                         Interlocked.Decrement(ref _activeClientHandlers);
+                        if (Volatile.Read(ref _activeClientHandlers) == 0)
+                            _clientHandlersIdle.Set();
                         _logger.LogWarning(
                             $"Rejected certificate distributor client because active client limit {MaxConcurrentClients} is reached.");
                         try { client.Dispose(); } catch { }
                         continue;
                     }
 
+                    _clientHandlersIdle.Reset();
                     _ = Task.Run(() =>
                     {
                         try { HandleClient(client, ct); }
-                        finally { Interlocked.Decrement(ref _activeClientHandlers); }
+                        finally
+                        {
+                            if (Interlocked.Decrement(ref _activeClientHandlers) == 0)
+                                _clientHandlersIdle.Set();
+                        }
                     });
                 }
                 catch (ObjectDisposedException) when (ct.IsCancellationRequested) { break; }
@@ -304,6 +341,13 @@ namespace Unity.FoxgloveSDK.Transport
                 if (b == '\r')
                 {
                     var next = stream.ReadByte();
+                    if (next >= 0)
+                    {
+                        bytesRead++;
+                        if (bytesRead > maxBytes)
+                            throw new InvalidDataException("HTTP request line exceeds maximum length.");
+                    }
+
                     if (next == '\n')
                         break;
                     if (next >= 0)
@@ -320,6 +364,31 @@ namespace Unity.FoxgloveSDK.Transport
             }
 
             return sb.ToString();
+        }
+
+        private void WaitForShutdownTask(Task task, int timeoutMs)
+        {
+            if (task == null)
+                return;
+
+            try
+            {
+                task.Wait(Math.Max(0, timeoutMs));
+            }
+            catch (AggregateException ex)
+            {
+                foreach (var inner in ex.InnerExceptions)
+                {
+                    if (inner is OperationCanceledException
+                        || inner is ObjectDisposedException
+                        || inner is SocketException)
+                        continue;
+
+                    _logger.LogError($"Certificate distributor shutdown error: {inner.Message}");
+                    break;
+                }
+            }
+            catch (ObjectDisposedException) { }
         }
     }
 }

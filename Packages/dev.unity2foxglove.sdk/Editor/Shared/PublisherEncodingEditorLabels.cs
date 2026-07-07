@@ -4,6 +4,7 @@
 // Module: Editor/Shared
 // Purpose: Shared Inspector labels for publisher encoding enums.
 
+using System;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Ros2Bridge;
 using UnityEditor;
@@ -19,6 +20,14 @@ namespace Unity.FoxgloveSDK.Editor
         private static readonly string[] BridgeQosPresetLabels = { "Reliable Default", "Sensor Data", "Transient Local", "Custom" };
         private const string MsgPackConsumerNotice =
             "MsgPack is a schemaless raw channel for custom clients. Foxglove Desktop does not currently parse or render live MsgPack panels.";
+
+        static PublisherEncodingEditorLabels()
+        {
+            AssertLabelCount<GlobalEncoding>(GlobalEncodingLabels, nameof(GlobalEncodingLabels));
+            AssertLabelCount<PublisherEncodingOverride>(PublisherOverrideLabels, nameof(PublisherOverrideLabels));
+            AssertLabelCount<Ros2BridgeOutputOverride>(BridgeOverrideLabels, nameof(BridgeOverrideLabels));
+            AssertLabelCount<Ros2BridgeQosPreset>(BridgeQosPresetLabels, nameof(BridgeQosPresetLabels));
+        }
 
         public static void DrawGlobalEncoding(SerializedProperty property, string label)
         {
@@ -73,6 +82,15 @@ namespace Unity.FoxgloveSDK.Editor
             if (index < 0) return 0;
             if (index >= count) return count - 1;
             return index;
+        }
+
+        private static void AssertLabelCount<TEnum>(string[] labels, string labelSetName)
+            where TEnum : Enum
+        {
+            var enumCount = Enum.GetValues(typeof(TEnum)).Length;
+            if (labels.Length != enumCount)
+                throw new InvalidOperationException(
+                    labelSetName + " has " + labels.Length + " labels but " + typeof(TEnum).Name + " has " + enumCount + " values.");
         }
 
         private static void DrawMsgPackConsumerNotice(GlobalEncoding encoding)

@@ -5,6 +5,7 @@
 // Purpose: Small SDK-owned MessagePack writer for custom Foxglove raw channels.
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -14,7 +15,7 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
     /// <summary>
     /// Minimal MessagePack writer for Foxglove custom raw channels.
     /// </summary>
-    public sealed class FoxgloveMsgPackWriter
+    public sealed class FoxgloveMsgPackWriter : IDisposable
     {
         private readonly MemoryStream _stream;
 
@@ -41,6 +42,21 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
         public byte[] ToArray()
         {
             return _stream.ToArray();
+        }
+
+        /// <summary>
+        /// Return the writer-owned backing buffer and the valid byte length.
+        /// The returned array is invalidated by further writes, Clear(), or Dispose().
+        /// </summary>
+        public byte[] GetBuffer(out int length)
+        {
+            length = checked((int)_stream.Length);
+            return _stream.GetBuffer();
+        }
+
+        public void Dispose()
+        {
+            _stream.Dispose();
         }
 
         public void WriteNil()
@@ -145,9 +161,21 @@ namespace Unity.FoxgloveSDK.Schemas.MsgPack
                 return;
             }
 
-            var bytes = Encoding.UTF8.GetBytes(value);
-            WriteStringHeader(bytes.Length);
-            _stream.Write(bytes, 0, bytes.Length);
+            var byteCount = Encoding.UTF8.GetByteCount(value);
+            WriteStringHeader(byteCount);
+            if (byteCount == 0)
+                return;
+
+            var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                var written = Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, 0);
+                _stream.Write(buffer, 0, written);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         public void WriteBinary(byte[] value)
