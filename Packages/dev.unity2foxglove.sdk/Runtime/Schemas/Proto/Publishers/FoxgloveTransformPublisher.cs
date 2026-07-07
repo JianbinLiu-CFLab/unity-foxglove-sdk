@@ -40,6 +40,7 @@ namespace Unity.FoxgloveSDK.Components
         private string _cachedChildFrameIdRaw;
         private string _cachedChildFrameIdFallback;
         private string _cachedResolvedChildFrameId;
+        private string _cachedGameObjectName;
         private bool _parentFrameIdCacheValid;
         private string _cachedParentFrameIdRaw;
         private string _cachedResolvedParentFrameId;
@@ -47,6 +48,13 @@ namespace Unity.FoxgloveSDK.Components
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/tf";
+        }
+
+        protected override void OnEnable()
+        {
+            RefreshGameObjectNameCache();
+            InvalidateFrameIdCache();
+            base.OnEnable();
         }
 
         /// <summary>Resolved child frame id used in generated frame transform messages.</summary>
@@ -60,6 +68,7 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnValidate()
         {
             base.OnValidate();
+            RefreshGameObjectNameCache();
             InvalidateFrameIdCache();
         }
 
@@ -107,17 +116,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (publishNativeFrame)
-            {
-                try
-                {
-                    message ??= CreateMessage(unixNs, pos, rot);
-                    nativeHandler?.Invoke(message);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning("[Foxglove] Transform native subscriber failed: " + ex.Message);
-                }
-            }
+                PublishNativeFrame(nativeHandler, message ??= CreateMessage(unixNs, pos, rot));
         }
 
         protected override FrameTransformMessage CreateMessage()
@@ -164,7 +163,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private string ResolveChildFrameId()
         {
-            var fallback = gameObject.name;
+            var fallback = string.IsNullOrEmpty(_cachedGameObjectName)
+                ? nameof(FoxgloveTransformPublisher)
+                : _cachedGameObjectName;
             if (!_childFrameIdCacheValid
                 || !string.Equals(_cachedChildFrameIdRaw, _childFrameId, StringComparison.Ordinal)
                 || !string.Equals(_cachedChildFrameIdFallback, fallback, StringComparison.Ordinal))
@@ -176,6 +177,35 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return _cachedResolvedChildFrameId;
+        }
+
+        private static void PublishNativeFrame(Action<FrameTransformMessage> nativeHandler, FrameTransformMessage message)
+        {
+            if (nativeHandler == null)
+                return;
+
+            foreach (var subscriber in nativeHandler.GetInvocationList())
+            {
+                try
+                {
+                    ((Action<FrameTransformMessage>)subscriber)(message);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning(
+                        "[Foxglove] Transform native subscriber "
+                        + DescribeSubscriber(subscriber)
+                        + " failed: "
+                        + ex);
+                }
+            }
+        }
+
+        private static string DescribeSubscriber(Delegate subscriber)
+        {
+            var method = subscriber.Method;
+            var declaringType = method.DeclaringType == null ? "(unknown)" : method.DeclaringType.FullName;
+            return declaringType + "." + method.Name;
         }
 
         private string ResolveParentFrameId()
@@ -195,6 +225,11 @@ namespace Unity.FoxgloveSDK.Components
         {
             _childFrameIdCacheValid = false;
             _parentFrameIdCacheValid = false;
+        }
+
+        private void RefreshGameObjectNameCache()
+        {
+            _cachedGameObjectName = gameObject == null ? nameof(FoxgloveTransformPublisher) : gameObject.name;
         }
 
         private void ResolveTransform(out UVector3 position, out UQuaternion rotation)

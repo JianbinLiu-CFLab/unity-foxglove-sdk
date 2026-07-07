@@ -232,8 +232,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "138T-7A: Transform publisher exposes a ROS-free native frame event");
             Check(transformPublisher.Contains("var nativeHandler = FrameTransformReady;", StringComparison.Ordinal)
                   && transformPublisher.Contains("var publishNativeFrame = nativeHandler != null;", StringComparison.Ordinal)
-                  && transformPublisher.Contains("nativeHandler?.Invoke(message);", StringComparison.Ordinal),
-                "138T-7B: Transform publisher emits native frames only when there is native demand");
+                  && transformPublisher.Contains("if (publishNativeFrame)", StringComparison.Ordinal)
+                  && transformPublisher.Contains("PublishNativeFrame(nativeHandler, message ??= CreateMessage", StringComparison.Ordinal)
+                  && transformPublisher.Contains("foreach (var subscriber in nativeHandler.GetInvocationList())", StringComparison.Ordinal),
+                "138T-7B: Transform publisher emits native frames only when there is native demand and isolates subscribers");
             Check(nativeSource.Contains("Ros2ForUnityTransformNativeBridge", StringComparison.Ordinal)
                   && nativeSource.Contains("FindObjectsByType<FoxgloveTransformPublisher>", StringComparison.Ordinal),
                 "138T-7C: R2FU native bridge discovers Transform publishers");

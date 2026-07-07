@@ -20,15 +20,17 @@ namespace Unity.FoxgloveSDK.IO
     {
         /// <summary>Decompress MCAP chunk data using the specified compression algorithm.</summary>
         public static byte[] Decompress(string compression, byte[] data, int uncompressedSize)
-            => Decompress(compression, data, uncompressedSize, (int)McapReader.DefaultChunkUncompressedSizeLimit);
+            => Decompress(compression, data, uncompressedSize, DefaultChunkUncompressedSizeLimitAsInt());
 
-        /// <summary>Decompress MCAP chunk data while bounding the retained output size.</summary>
+        /// <summary>Decompress MCAP chunk data while bounding the retained output size. A max output of 0 means unbounded.</summary>
         public static byte[] Decompress(string compression, byte[] data, int uncompressedSize, int maxOutputBytes)
         {
             if (data == null && compression == "lz4")
                 throw new InvalidDataException("LZ4 chunk data is null.");
             if (data == null && compression == "zstd")
                 throw new InvalidDataException("Zstd chunk data is null.");
+            if (data == null && compression == "" && uncompressedSize > 0)
+                throw new InvalidDataException("Uncompressed chunk data is null.");
             return Decompress(
                 compression,
                 new ArraySegment<byte>(data ?? Array.Empty<byte>()),
@@ -193,6 +195,14 @@ namespace Unity.FoxgloveSDK.IO
                 default:
                     throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");
             }
+        }
+
+        private static int DefaultChunkUncompressedSizeLimitAsInt()
+        {
+            if (McapReader.DefaultChunkUncompressedSizeLimit > int.MaxValue)
+                throw new InvalidOperationException("Default MCAP chunk uncompressed size limit exceeds supported int range.");
+
+            return (int)McapReader.DefaultChunkUncompressedSizeLimit;
         }
     }
 }

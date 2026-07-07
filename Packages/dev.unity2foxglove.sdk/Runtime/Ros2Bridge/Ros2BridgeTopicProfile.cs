@@ -141,7 +141,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             effectiveTopic = string.IsNullOrEmpty(normalizedNamespace)
                 ? normalizedPublisherTopic
                 : CollapseSlashes(normalizedNamespace + "/" + normalizedPublisherTopic.TrimStart('/'));
-            return !string.IsNullOrEmpty(effectiveTopic);
+            return true;
         }
 
         public static bool IsValidRos2TopicName(string value)

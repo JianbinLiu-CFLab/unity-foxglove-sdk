@@ -198,7 +198,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         private static string Text(string relativePath)
-            => File.ReadAllText(PathOf(relativePath));
+        {
+            var path = PathOf(relativePath);
+            Assert.True(
+                File.Exists(path),
+                "Required source file for camera health source-shape test was not found: "
+                + relativePath
+                + " resolved to "
+                + path);
+
+            return File.ReadAllText(path);
+        }
 
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -217,7 +227,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                     dir = dir.Parent;
                 }
 
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                Assert.Fail("Could not locate repository root for camera health source-shape tests from " + AppContext.BaseDirectory);
+                return string.Empty;
             }
         }
     }
