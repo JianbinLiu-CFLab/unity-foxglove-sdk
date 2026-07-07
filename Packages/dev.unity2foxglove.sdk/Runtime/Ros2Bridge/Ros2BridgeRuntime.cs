@@ -214,6 +214,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS2 Bridge connect timeout must be positive.");
+            // The worker uses the constructor timeout; the interface timeout is validated for sink compatibility.
             Start(enabled: true, autoConnect: true);
         }
 
@@ -226,13 +227,15 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         {
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs), "ROS2 Bridge send timeout must be positive.");
+            // Transport send timeout is owned by the background worker so this enqueue stays non-blocking.
             if (!TryEnqueue(frame, out var reason))
                 throw new InvalidOperationException(reason);
         }
 
-        /// <summary>Stops the background worker and clears queued frames.</summary>
+        /// <summary>Stops the background worker and clears queued frames without disposing this reusable runtime.</summary>
         public void Disconnect()
         {
+            // Dispose owns the wait handle; Disconnect is a non-terminal sink stop so Connect can start the worker again.
             Stop();
         }
 

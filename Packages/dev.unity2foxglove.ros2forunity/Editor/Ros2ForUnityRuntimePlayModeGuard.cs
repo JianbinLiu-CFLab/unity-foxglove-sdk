@@ -20,6 +20,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         static Ros2ForUnityRuntimePlayModeGuard()
         {
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            EditorApplication.hierarchyChanged += InvalidateNativeOutputDemandCache;
             CompilationPipeline.compilationStarted += OnCompilationStarted;
             CompilationPipeline.compilationFinished += OnCompilationFinished;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
@@ -37,9 +38,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string Ros2NativeEnabledSerializedProperty =
             "_ros2NativeEnabled";
         private const double NativeReloadUnlockDelaySeconds = 2.0;
+        private const double ZenohRouterProbeCacheSeconds = 2.0;
 
         private static bool _reloadAssembliesLockedForR2fu;
         private static double _unlockReloadAssembliesAfter;
+        private static bool _nativeOutputDemandCacheValid;
+        private static bool _cachedNativeOutputDemand;
+        private static bool _zenohRouterProcessCacheValid;
+        private static bool _cachedZenohRouterProcessRunning;
+        private static double _zenohRouterProcessCacheUntil;
 
         private static void OnPlayModeStateChanged(PlayModeStateChange state)
         {
@@ -143,6 +150,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static bool IsZenohRouterProcessRunning()
         {
+            var now = EditorApplication.timeSinceStartup;
+            if (_zenohRouterProcessCacheValid && now < _zenohRouterProcessCacheUntil)
+                return _cachedZenohRouterProcessRunning;
+
             Process[] processes;
             try
             {
@@ -150,19 +161,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
             catch (Exception)
             {
+                CacheZenohRouterProcessResult(false, now);
                 return false;
             }
 
+            var running = false;
             foreach (var process in processes)
             {
                 using (process)
                 {
                     if (IsZenohRouterProcess(process))
-                        return true;
+                    {
+                        running = true;
+                        break;
+                    }
                 }
             }
 
-            return false;
+            CacheZenohRouterProcessResult(running, now);
+            return running;
+        }
+
+        private static void CacheZenohRouterProcessResult(bool running, double now)
+        {
+            _cachedZenohRouterProcessRunning = running;
+            _zenohRouterProcessCacheValid = true;
+            _zenohRouterProcessCacheUntil = now + ZenohRouterProbeCacheSeconds;
         }
 
         private static bool IsZenohRouterProcess(Process process)
@@ -199,6 +223,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static bool HasR2fuNativeOutputDemand()
         {
+            if (_nativeOutputDemandCacheValid)
+                return _cachedNativeOutputDemand;
+
+            var hasDemand = false;
             foreach (var behaviour in Resources.FindObjectsOfTypeAll<MonoBehaviour>())
             {
                 if (behaviour == null)
@@ -217,7 +245,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 if (ros2NativeEnabled != null && ros2NativeEnabled.propertyType == SerializedPropertyType.Boolean)
                 {
                     if (ros2NativeEnabled.boolValue)
-                        return true;
+                    {
+                        hasDemand = true;
+                        break;
+                    }
                     continue;
                 }
 
@@ -230,7 +261,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 try
                 {
                     if ((bool)property.GetValue(behaviour, null))
-                        return true;
+                    {
+                        hasDemand = true;
+                        break;
+                    }
                 }
                 catch (Exception)
                 {
@@ -238,11 +272,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 }
             }
 
-            return false;
+            _cachedNativeOutputDemand = hasDemand;
+            _nativeOutputDemandCacheValid = true;
+            return hasDemand;
+        }
+
+        private static void InvalidateNativeOutputDemandCache()
+        {
+            _nativeOutputDemandCacheValid = false;
         }
 
         private static void OnCompilationStarted(object context)
         {
+            InvalidateNativeOutputDemandCache();
+            _zenohRouterProcessCacheValid = false;
             Ros2ForUnityRuntimeSelection.InvalidateStatusCache();
             if (StopPlayModeBeforeNativeReload("script compilation"))
             {
@@ -260,6 +303,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void OnBeforeAssemblyReload()
         {
+            InvalidateNativeOutputDemandCache();
+            _zenohRouterProcessCacheValid = false;
             var compilationStartedWhilePlaying = SessionState.GetBool(CompilationStartedWhileR2fuPlayModeKey, false);
             if (!compilationStartedWhilePlaying && !EditorApplication.isPlaying)
                 return;
