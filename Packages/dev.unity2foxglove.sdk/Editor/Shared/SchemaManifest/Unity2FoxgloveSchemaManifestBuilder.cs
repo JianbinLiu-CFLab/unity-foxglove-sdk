@@ -7,8 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
+using System.Threading;
 using Foxglove.Schemas;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
@@ -17,8 +16,10 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public static class Unity2FoxgloveSchemaManifestBuilder
     {
-        private const string LowerHexDigits = "0123456789abcdef";
-        private static readonly IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> SortedSdkTypedPublisherEntries = BuildSortedSdkTypedPublisherEntries();
+        private static readonly Lazy<IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry>> SortedSdkTypedPublisherEntries =
+            new Lazy<IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry>>(
+                BuildSortedSdkTypedPublisherEntries,
+                LazyThreadSafetyMode.PublicationOnly);
 
         public const int ManifestVersion = 1;
         public const string PackageName = "Unity2Foxglove";
@@ -204,7 +205,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()
         {
-            return new Unity2FoxgloveSdkTypedPublishersSection(SortedSdkTypedPublisherEntries.Count, SortedSdkTypedPublisherEntries);
+            var entries = SortedSdkTypedPublisherEntries.Value;
+            return new Unity2FoxgloveSdkTypedPublishersSection(entries.Count, entries);
         }
 
         private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()
@@ -261,18 +263,5 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static string Sha256Hex(byte[] bytes)
-        {
-            using var sha = SHA256.Create();
-            var hash = sha.ComputeHash(bytes ?? Array.Empty<byte>());
-            var sb = new StringBuilder(hash.Length * 2);
-            foreach (var b in hash)
-            {
-                sb.Append(LowerHexDigits[b >> 4]);
-                sb.Append(LowerHexDigits[b & 0x0F]);
-            }
-
-            return sb.ToString();
-        }
     }
 }

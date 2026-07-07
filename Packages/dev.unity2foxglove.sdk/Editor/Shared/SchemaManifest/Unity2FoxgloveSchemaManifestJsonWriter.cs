@@ -66,6 +66,9 @@ namespace Unity.FoxgloveSDK.Editor
             string generatedAtUtc,
             IReadOnlyList<string> warnings)
         {
+            if (manifest == null)
+                throw new ArgumentNullException(nameof(manifest));
+
             var sb = new StringBuilder();
             sb.Append('{');
             AppendPropertyName(sb, "generatedAtUtc");
@@ -379,8 +382,23 @@ namespace Unity.FoxgloveSDK.Editor
         private static void AppendString(StringBuilder sb, string value)
         {
             sb.Append('"');
-            foreach (var ch in value ?? string.Empty)
+            var text = value ?? string.Empty;
+            for (var i = 0; i < text.Length; i++)
             {
+                var ch = text[i];
+                if (char.IsHighSurrogate(ch))
+                {
+                    if (i + 1 >= text.Length || !char.IsLowSurrogate(text[i + 1]))
+                        throw new ArgumentException("JSON strings cannot contain an unpaired high surrogate.", nameof(value));
+
+                    AppendUnicodeEscape(sb, ch);
+                    AppendUnicodeEscape(sb, text[++i]);
+                    continue;
+                }
+
+                if (char.IsLowSurrogate(ch))
+                    throw new ArgumentException("JSON strings cannot contain an unpaired low surrogate.", nameof(value));
+
                 switch (ch)
                 {
                     case '"': sb.Append("\\\""); break;
@@ -399,6 +417,11 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
             sb.Append('"');
+        }
+
+        private static void AppendUnicodeEscape(StringBuilder sb, char ch)
+        {
+            sb.Append("\\u").Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));
         }
     }
 }

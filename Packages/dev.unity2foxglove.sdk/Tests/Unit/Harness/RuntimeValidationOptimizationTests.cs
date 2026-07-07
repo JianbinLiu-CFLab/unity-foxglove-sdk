@@ -310,12 +310,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
         public static string Slice(string source, string startText, string endText)
         {
-            var start = source.IndexOf(startText, StringComparison.Ordinal);
+            var normalized = NormalizeLineEndings(source);
+            var normalizedStart = NormalizeLineEndings(startText);
+            var normalizedEnd = NormalizeLineEndings(endText);
+            var start = normalized.IndexOf(normalizedStart, StringComparison.Ordinal);
             Assert.True(start >= 0, "Could not locate source slice start: " + startText);
-            var end = source.IndexOf(endText, start + startText.Length, StringComparison.Ordinal);
+            var end = normalized.IndexOf(normalizedEnd, start + normalizedStart.Length, StringComparison.Ordinal);
             if (end < 0)
-                end = source.Length;
-            return source.Substring(start, end - start);
+                end = normalized.Length;
+            return normalized.Substring(start, end - start);
         }
 
         public static string ExtractMethod(string source, string signature)
@@ -352,6 +355,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             return count;
         }
+
+        private static string NormalizeLineEndings(string text)
+            => (text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal);
 
         private static string RepoRoot
         {
