@@ -110,6 +110,27 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void AggregateMemberEmitsBusSideChannelReusingExplicitJsonBytes()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "VehicleTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "VehicleTelemetry", "_speed", "field", "System.Single",
+                        true, false, "", "/phase173/bus", 10f, "Demo.VehicleTelemetry",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: true, jsonFieldName: "speed")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("var __payload = __foxRunLastJson_0 ?? __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
+            Assert.Contains("bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), nowNs, in __payload,", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void LegacySingleFieldTopicEmitsSinkFanoutSideChannel()
         {
             var type = new FoxRunGenerationType(
@@ -154,6 +175,52 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("var __sink_0 = __BuildFoxRunJson_0();", source, StringComparison.Ordinal);
             Assert.DoesNotContain("_samples == null ? null : _samples.ToString()", source, StringComparison.Ordinal);
             Assert.Contains("__json.Append('[');", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LegacyStringSinkFanoutEscapesSurrogates()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "StringTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "StringTelemetry", "_text", "field", "System.String",
+                        true, false, "", "/phase173/string", 10f, "",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false, jsonFieldName: "text")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("global::System.Char.IsSurrogate(__c)", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LegacyUnityVector4AndColor32EmitStructuredJsonForSinkFanout()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "UnityTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "UnityTelemetry", "_vector", "field", "UnityEngine.Vector4",
+                        true, false, "", "/phase173/unity", 10f, "",
+                        0, 0f, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false, jsonFieldName: "vector"),
+                    new FoxRunGenerationMember(
+                        "Demo", "UnityTelemetry", "_color", "field", "UnityEngine.Color32",
+                        true, false, "", "/phase173/unity", 10f, "",
+                        0, 0f, 0f, "UnitTest", 1, "",
+                        isAggregateMember: false, jsonFieldName: "color")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("this._vector.w", source, StringComparison.Ordinal);
+            Assert.Contains("((float)this._color.r / 255f)", source, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -18,6 +18,7 @@ from datetime import datetime
 
 _ROS2_OPT_BIN_PATHS_CACHE: dict[pathlib.Path, tuple[pathlib.Path, ...]] = {}
 _QT_PLUGIN_PATH_CACHE: dict[pathlib.Path, pathlib.Path | None] = {}
+_SENSITIVE_ENV_NAME_FRAGMENTS = ("TOKEN", "PASSWORD", "SECRET", "API_KEY", "ACCESS_KEY")
 
 
 def find_workspace_root() -> pathlib.Path:
@@ -137,7 +138,7 @@ def build_ros_env(
     """Build a deterministic Windows ROS2 environment."""
 
     pixi = ros2_root / ".pixi" / "envs" / "default"
-    env = os.environ.copy()
+    env = sanitized_subprocess_env(os.environ)
     env["PATH"] = os.pathsep.join(
         [
             str(ros2_root / "bin"),
@@ -180,6 +181,17 @@ def build_ros_env(
         env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = discovery_range
     env.pop("ROS_LOCALHOST_ONLY", None)
     env.pop("ROS_DISCOVERY_SERVER", None)
+    return env
+
+
+def sanitized_subprocess_env(source: os._Environ[str] | dict[str, str]) -> dict[str, str]:
+    """Copy an environment for ROS tools without forwarding unrelated secrets."""
+
+    env = dict(source)
+    for key in list(env):
+        upper = key.upper()
+        if any(fragment in upper for fragment in _SENSITIVE_ENV_NAME_FRAGMENTS):
+            env.pop(key, None)
     return env
 
 
@@ -468,9 +480,14 @@ def launch_rviz(
             stdout=stdout_target,
             stderr=subprocess.STDOUT if log_file is not None else subprocess.DEVNULL,
         )
-    finally:
+    except Exception:
         if log_file is not None:
             log_file.close()
+        raise
+    if log_file is not None:
+        # Keep the redirected stream alive with the returned process object.
+        # Some callers hold RViz for manual inspection and only keep Popen.
+        process._unity2foxglove_stdout_log = log_file
     popen_elapsed = time.perf_counter() - popen_started
     total_elapsed = time.perf_counter() - launch_started
     log_event(

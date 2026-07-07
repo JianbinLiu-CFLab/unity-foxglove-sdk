@@ -101,7 +101,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("private int _deskewRateSkips;", diagnostics, StringComparison.Ordinal);
             Assert.Contains("public void RecordDeskewRateSkip(bool enabled", diagnostics, StringComparison.Ordinal);
             Assert.Contains("deskewRateSkip={9}", diagnostics, StringComparison.Ordinal);
-            Assert.Contains("_deskewRateSkips = 0;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Interlocked.Exchange(ref _deskewRateSkips, 0);", diagnostics, StringComparison.Ordinal);
             Assert.Contains("_diagnostics.RecordDeskewRateSkip(_logPerformanceDiagnostics);", motionPublisher, StringComparison.Ordinal);
             Assert.DoesNotContain("_diagnostics.RecordDrop(_logPerformanceDiagnostics);\n                return false;", motionPublisher, StringComparison.Ordinal);
         }
@@ -117,7 +117,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("private int _dracoRateSkips;", diagnostics, StringComparison.Ordinal);
             Assert.Contains("public void RecordDracoRateSkip(bool enabled", diagnostics, StringComparison.Ordinal);
             Assert.Contains("dracoRateSkip={8}", diagnostics, StringComparison.Ordinal);
-            Assert.Contains("_dracoRateSkips = 0;", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("Interlocked.Exchange(ref _dracoRateSkips, 0);", diagnostics, StringComparison.Ordinal);
             Assert.Contains("_diagnostics.RecordDracoRateSkip(_logPerformanceDiagnostics);", dracoPublisher, StringComparison.Ordinal);
             Assert.DoesNotContain("_diagnostics.RecordDrop(_logPerformanceDiagnostics);\n                return false;", dracoPublisher, StringComparison.Ordinal);
         }

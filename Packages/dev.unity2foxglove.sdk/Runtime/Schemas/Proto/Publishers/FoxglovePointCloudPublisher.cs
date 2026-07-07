@@ -235,7 +235,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!IsPointCloud2NativeOutput || !_enableMotionCompensation)
                 return;
 
-            ResolveManager();
+            EnsureManagerAvailable();
             var unixNs = _manager == null
                 ? CurrentLogTimeNs
                 : _manager.GetSharedSensorClockUnixTime(Time.fixedTimeAsDouble);
@@ -257,13 +257,13 @@ namespace Unity.FoxgloveSDK.Components
             if (frame != null)
                 MarkSourceDrivenPointCloud();
 
-            var droppedPendingFrame = _pendingFrameSlot.SetFrame(frame, _logQosDrops, out var warning);
+            var droppedPendingFrame = _pendingFrameSlot.SetFrame(frame, Volatile.Read(ref _logQosDrops), out var warning);
 
             if (!string.IsNullOrEmpty(warning))
                 Debug.LogWarning(warning);
 
             if (droppedPendingFrame)
-                _diagnostics.RecordDrop(_logPerformanceDiagnostics);
+                _diagnostics.RecordDrop(Volatile.Read(ref _logPerformanceDiagnostics));
         }
 
         /// <summary>

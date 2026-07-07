@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Editor
                 if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
-                    sb.AppendLine($"{pad}                var __payload = __BuildFoxRunJson_{i}();");
+                    sb.AppendLine($"{pad}                var __payload = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
                     sb.AppendLine($"{pad}                bus.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __payload, \"{StringLiteralEmitter.CSharpStringLiteral(origin)}\");");
                 }
                 else
@@ -225,7 +225,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}                case '\\r': __json.Append(\"\\\\r\"); break;");
             sb.AppendLine($"{pad}                case '\\t': __json.Append(\"\\\\t\"); break;");
             sb.AppendLine($"{pad}                default:");
-            sb.AppendLine($"{pad}                    if (__c < ' ')");
+            sb.AppendLine($"{pad}                    if (__c < ' ' || global::System.Char.IsSurrogate(__c))");
             sb.AppendLine($"{pad}                        __json.Append(\"\\\\u\").Append(((int)__c).ToString(\"x4\", global::System.Globalization.CultureInfo.InvariantCulture));");
             sb.AppendLine($"{pad}                    else");
             sb.AppendLine($"{pad}                        __json.Append(__c);");
@@ -315,6 +315,12 @@ namespace Unity.FoxgloveSDK.Editor
                     break;
                 case "Color":
                     AppendVector(sb, pad, access, "r", "g", "b", "a");
+                    break;
+                case "Vector4":
+                    AppendVector(sb, pad, access, "x", "y", "z", "w");
+                    break;
+                case "Color32":
+                    AppendColor32(sb, pad, access);
                     break;
                 default:
                     if (IsIntegralType(type))
@@ -406,6 +412,16 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}__json.Append(\"{separator}\\\"{field}\\\":\");");
                 sb.AppendLine($"{pad}if (float.IsNaN({access}.{field}) || float.IsInfinity({access}.{field})) __json.Append(\"null\"); else __json.Append({access}.{field}.ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
             }
+            sb.AppendLine($"{pad}__json.Append('}}');");
+        }
+
+        private static void AppendColor32(StringBuilder sb, string pad, string access)
+        {
+            sb.AppendLine($"{pad}__json.Append('{{');");
+            sb.AppendLine($"{pad}__json.Append(\"\\\"r\\\":\").Append(((float){access}.r / 255f).ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
+            sb.AppendLine($"{pad}__json.Append(\",\\\"g\\\":\").Append(((float){access}.g / 255f).ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
+            sb.AppendLine($"{pad}__json.Append(\",\\\"b\\\":\").Append(((float){access}.b / 255f).ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
+            sb.AppendLine($"{pad}__json.Append(\",\\\"a\\\":\").Append(((float){access}.a / 255f).ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
             sb.AppendLine($"{pad}__json.Append('}}');");
         }
 
