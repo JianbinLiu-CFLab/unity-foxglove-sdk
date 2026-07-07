@@ -45,16 +45,17 @@ namespace Foxglove.Schemas.Video
         public bool TryNormalizeSample(byte[] sample, out byte[] accessUnit)
         {
             accessUnit = null;
-            if (!TryParseNalUnits(sample, _parsedNals) || _parsedNals.Count == 0)
+            var nals = _parsedNals;
+            if (!TryParseNalUnits(sample, nals) || nals.Count == 0)
                 return false;
 
-            CacheParameterSets(_parsedNals);
+            CacheParameterSets(nals);
 
             var hasVcl = false;
             var hasIdr = false;
             var hasSps = false;
             var hasPps = false;
-            foreach (var nal in _parsedNals)
+            foreach (var nal in nals)
             {
                 var type = NalType(nal);
                 hasVcl |= IsVcl(nal);
@@ -75,7 +76,7 @@ namespace Foxglove.Schemas.Video
                     _outputNals.Add(_cachedPps);
             }
 
-            _outputNals.AddRange(_parsedNals);
+            _outputNals.AddRange(nals);
 
             var candidate = BuildAnnexB(_outputNals);
             if (!H264AnnexBAccessUnitPacketizer.LooksLikeDecodableH264AccessUnit(candidate))

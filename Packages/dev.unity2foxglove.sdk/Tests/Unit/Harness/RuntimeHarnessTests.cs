@@ -365,17 +365,21 @@ namespace Unity.FoxgloveSDK.UnitTests
                 "Tests",
                 "Runtime",
                 fileName);
+            Assert.True(File.Exists(path), $"Runtime source file not found: {path}");
             return File.ReadAllText(path);
         }
 
         private static void AssertInternalClass(string fileName, string className)
         {
-            var declaration = LoadRuntimeSyntax(fileName)
+            var declarations = LoadRuntimeSyntax(fileName)
                 .GetRoot()
                 .DescendantNodes()
                 .OfType<ClassDeclarationSyntax>()
-                .Single(node => node.Identifier.ValueText == className);
+                .Where(node => node.Identifier.ValueText == className)
+                .ToList();
+            Assert.Single(declarations);
 
+            var declaration = declarations[0];
             Assert.Contains(declaration.Modifiers, token => token.IsKind(SyntaxKind.InternalKeyword));
         }
 

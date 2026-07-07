@@ -99,8 +99,13 @@ namespace Foxglove.Schemas.Video
         }
 
         /// <summary>
-        /// Flushes the final buffered access unit when the stream ends.
+        /// Flushes buffered bytes at stream end and returns one completed access unit.
         /// </summary>
+        /// <remarks>
+        /// A flush can complete more than one AUD-delimited access unit. Call
+        /// <see cref="TryDequeueAccessUnit"/> after a successful flush until it
+        /// returns <c>false</c> to drain any remaining completed units.
+        /// </remarks>
         public bool Flush(out byte[] accessUnit)
         {
             ParseBufferedBytes(flush: true);

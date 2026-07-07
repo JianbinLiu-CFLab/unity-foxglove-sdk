@@ -175,7 +175,10 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("id")] public string Id { get; set; }
     }
 
-    /// <summary>SceneEntityDeletion type enum. Serialized as integer per official v1 spec.</summary>
+    /// <summary>
+    /// SceneEntityDeletion type enum. Serialized as integer per official v1 spec.
+    /// Do not serialize SceneUpdate DTOs with a global StringEnumConverter.
+    /// </summary>
     public enum SceneEntityDeletionType
     {
         MatchingId = 0,
@@ -199,6 +202,11 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("metadata")] public List<FoxgloveKeyValuePair> Metadata { get; set; } = new List<FoxgloveKeyValuePair>();
 
         /// <summary>Arrow primitives.</summary>
+        /// <remarks>
+        /// The Foxglove SceneEntity schema requires all primitive arrays, even
+        /// when they are empty. Reuse SceneEntity instances for high-frequency
+        /// publishers that update many entities every frame.
+        /// </remarks>
         [JsonProperty("arrows")] public List<ArrowPrimitive> Arrows { get; set; } = new List<ArrowPrimitive>();
         /// <summary>Cube or rectangular prism primitives.</summary>
         [JsonProperty("cubes")] public List<CubePrimitive> Cubes { get; set; } = new List<CubePrimitive>();
@@ -270,7 +278,10 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("color")] public FoxgloveColor Color { get; set; }
     }
 
-    /// <summary>Line primitive point interpretation.</summary>
+    /// <summary>
+    /// Line primitive point interpretation. Serialized as integer per official
+    /// v1 spec; do not use a global StringEnumConverter for SceneUpdate DTOs.
+    /// </summary>
     public enum LinePrimitiveType
     {
         LineStrip = 0,

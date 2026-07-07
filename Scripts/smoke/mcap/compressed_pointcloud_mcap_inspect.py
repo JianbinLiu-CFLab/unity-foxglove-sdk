@@ -57,9 +57,6 @@ def load_draco_probe_decoder():
     return module.decode_compressed_pointcloud_payload
 
 
-decode_compressed_pointcloud_payload = load_draco_probe_decoder()
-
-
 @dataclass(frozen=True)
 class McapSchema:
     """Decoded MCAP Schema record."""
@@ -303,8 +300,16 @@ def messages_for_topic(parsed: ParsedMcap, topic: str) -> list[McapMessage]:
     return [message for message in parsed.messages if message.channel_id == channel.id]
 
 
-def inspect_mcap(parsed: ParsedMcap, raw_topic: str, compressed_topic: str) -> tuple[bool, list[str]]:
+def inspect_mcap(
+    parsed: ParsedMcap,
+    raw_topic: str,
+    compressed_topic: str,
+    decode_compressed_pointcloud_payload=None,
+) -> tuple[bool, list[str]]:
     """Validate raw/compressed channels and one Draco payload."""
+    if decode_compressed_pointcloud_payload is None:
+        decode_compressed_pointcloud_payload = load_draco_probe_decoder()
+
     lines: list[str] = []
     if parsed.unsupported_chunks:
         lines.append(
@@ -389,7 +394,13 @@ def main() -> int:
 
     try:
         parsed = parse_mcap(mcap_path.read_bytes())
-        ok, lines = inspect_mcap(parsed, args.raw_topic, args.compressed_topic)
+        try:
+            decode_payload = load_draco_probe_decoder()
+        except ImportError as exc:
+            print(f"[phase88] Could not load Draco probe decoder: {exc}", file=sys.stderr)
+            return EXIT_FAILURE
+
+        ok, lines = inspect_mcap(parsed, args.raw_topic, args.compressed_topic, decode_payload)
     except (OSError, UnicodeDecodeError, struct.error, ValueError) as exc:
         print(f"[phase88] failed to inspect MCAP: {exc}", file=sys.stderr)
         return EXIT_FAILURE
