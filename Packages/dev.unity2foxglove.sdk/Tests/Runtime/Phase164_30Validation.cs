@@ -63,6 +63,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && inspectZip.Contains("read_cached_inventory(paths.output, artifact_hash)", StringComparison.Ordinal)
                   && cachedInventory.Contains("data.get(\"sha256\") == artifact_hash", StringComparison.Ordinal),
                 "164-30B-2: Humble artifact inspect reuses an existing inventory when the artifact hash is unchanged");
+            Check(inspect.Contains("Computed repository root is invalid", StringComparison.Ordinal)
+                  && cachedInventory.Contains("except (json.JSONDecodeError, ValueError, KeyError):", StringComparison.Ordinal)
+                  && !cachedInventory.Contains("except Exception:", StringComparison.Ordinal),
+                "164-30B-3: Humble artifact inspect validates repo root and does not swallow filesystem errors");
         }
 
         private static void VerifyHumbleAdapterAndSmokeFastPaths()
@@ -77,7 +81,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!textBoundaries.Contains("runtime_inventory = RUNTIME_INVENTORY.read_text", StringComparison.Ordinal)
                   && !textBoundaries.Contains("+ \"\\n\" + runtime_inventory", StringComparison.Ordinal)
-                  && textBoundaries.Contains("runtime_notices = RUNTIME_NOTICES.read_text", StringComparison.Ordinal),
+                  && textBoundaries.Contains("runtime_notices = read_text_cached(RUNTIME_NOTICES)", StringComparison.Ordinal),
                 "164-30C-1: Humble adapter public-doc text scan excludes generated runtime inventory");
             Check(smokeEnv.Contains("_QT_PLUGIN_PATH_CACHE: dict[pathlib.Path, pathlib.Path | None] = {}", StringComparison.Ordinal)
                   && launch.Contains("cached_qt_plugin_path(ros2_root, qt_plugin_candidates)", StringComparison.Ordinal)

@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.Editor
             float forceIntervalSeconds,
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0)
+            int flowMode = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -60,7 +60,7 @@ namespace Unity.FoxgloveSDK.Editor
             RateHz = rateHz;
             SchemaName = schemaName ?? string.Empty;
             PublishMode = publishMode;
-            FlowMode = mode;
+            FlowMode = flowMode;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
             IsAggregateMember = isAggregateMember;

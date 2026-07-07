@@ -120,9 +120,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainEncodedAccessUnits()
         {
-            var pipeline = _videoPublishPipeline;
-            if (pipeline == null)
-                return;
+            var pipeline = EnsureVideoPublishPipeline();
 
             if (!pipeline.TryDrainEncodedAccessUnits(
                 () => CurrentLogTimeNs,

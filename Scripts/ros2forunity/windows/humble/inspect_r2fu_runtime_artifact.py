@@ -27,6 +27,8 @@ EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
+if not (ROOT / "Packages").is_dir():
+    raise RuntimeError(f"Computed repository root is invalid: {ROOT}")
 DEFAULT_ARTIFACT = ROOT / "build" / "dist" / "Ros2ForUnity_humble_standalone_windows_x86_64.zip"
 DEFAULT_SHA256 = ROOT / "build" / "dist" / "Ros2ForUnity_humble_standalone_windows_x86_64.sha256.txt"
 DEFAULT_OUTPUT = (
@@ -219,7 +221,7 @@ def read_cached_inventory(path: Path, artifact_hash: str) -> dict[str, object] |
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, ValueError, KeyError):
         return None
     return data if isinstance(data, dict) and data.get("sha256") == artifact_hash else None
 

@@ -181,10 +181,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("BitConverter.SingleToInt32Bits", source, StringComparison.Ordinal);
             Assert.Contains("BitConverter.DoubleToInt64Bits", source, StringComparison.Ordinal);
             Assert.DoesNotContain("BitConverter.GetBytes", source, StringComparison.Ordinal);
-            Assert.Contains("Encoding.UTF8.GetMaxByteCount(value.Length)", source, StringComparison.Ordinal);
+            Assert.Contains("Encoding.UTF8.GetByteCount(value)", source, StringComparison.Ordinal);
             Assert.Contains("Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position)", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("Encoding.UTF8.GetByteCount(value)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("Encoding.UTF8.GetMaxByteCount(value.Length)", source, StringComparison.Ordinal);
             Assert.DoesNotContain("Encoding.UTF8.GetBytes(value ?? string.Empty)", source, StringComparison.Ordinal);
+            Assert.Contains("_buffer.Length <= int.MaxValue / 2 ? _buffer.Length * 2 : int.MaxValue", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("checked(_buffer.Length * 2)", source, StringComparison.Ordinal);
             Assert.Contains("public void WriteByteArray(ReadOnlySpan<byte> value)", source, StringComparison.Ordinal);
 
             var scalarWriter = new Ros2CdrWriter();

@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             value ??= string.Empty;
             Align(4);
             var lengthPosition = _position;
-            EnsureCapacity(4 + Encoding.UTF8.GetMaxByteCount(value.Length) + 1);
+            EnsureCapacity(4 + Encoding.UTF8.GetByteCount(value) + 1);
             _position += 4;
             var byteCount = Encoding.UTF8.GetBytes(value, 0, value.Length, _buffer, _position);
             BinaryPrimitives.WriteUInt32LittleEndian(_buffer.AsSpan(lengthPosition, 4), checked((uint)byteCount + 1U));
@@ -234,7 +234,8 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (required <= _buffer.Length)
                 return;
 
-            var newLength = Math.Max(checked(_buffer.Length * 2), required);
+            var doubled = _buffer.Length <= int.MaxValue / 2 ? _buffer.Length * 2 : int.MaxValue;
+            var newLength = Math.Max(doubled, required);
 
             Array.Resize(ref _buffer, newLength);
         }

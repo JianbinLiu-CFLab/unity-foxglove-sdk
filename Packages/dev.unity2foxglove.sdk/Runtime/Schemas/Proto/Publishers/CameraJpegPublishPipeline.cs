@@ -198,7 +198,7 @@ namespace Unity.FoxgloveSDK.Components
             var dropped = _jpegPipeline.Queue(request);
             if (dropped)
                 onEncodeQueueDrop?.Invoke();
-            return dropped;
+            return !dropped;
         }
 
         public int DrainCompleted(

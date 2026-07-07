@@ -45,6 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestPlaybackStateEncode();
             TestPlaybackClockPausePlaySeek();
             TestPlaybackClockPauseSpeedZeroPreservesSpeed();
+            TestPlaybackClockPauseInvalidSpeedResetsToDefault();
             TestPlaybackControlPauseSpeedZeroDoesNotWarn();
             TestAssetRejectsDirectoryAndOversize();
             TestPlaybackCapabilityOn();
@@ -236,6 +237,17 @@ namespace Unity.FoxgloveSDK.Tests
             var state = clock.ToState(false, "pause-zero");
             Assert(state.Status == 1, "Pause speed 0 sets paused status");
             Assert(Math.Abs(state.Speed - 2f) < 0.0001f, $"Pause speed 0 preserves previous speed (got {state.Speed})");
+        }
+
+        private static void TestPlaybackClockPauseInvalidSpeedResetsToDefault()
+        {
+            var clock = new PlaybackClock();
+            clock.EnableRange(0, 10_000_000_000);
+            clock.Apply(0, 2f, false, 0);
+            clock.Apply(1, float.NaN, false, 0);
+            var state = clock.ToState(false, "pause-nan");
+            Assert(state.Status == 1, "Pause NaN speed sets paused status");
+            Assert(Math.Abs(state.Speed - 1f) < 0.0001f, $"Pause NaN speed resets default speed (got {state.Speed})");
         }
 
         /// <summary>

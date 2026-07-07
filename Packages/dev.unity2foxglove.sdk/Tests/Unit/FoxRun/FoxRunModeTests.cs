@@ -452,7 +452,7 @@ namespace Demo
                 0,
                 0f,
                 0f,
-                mode: (int)mode);
+                flowMode: (int)mode);
         }
 
         private static FoxRunManifestMember ManifestMember(string memberName, string topic, string jsonFieldName)

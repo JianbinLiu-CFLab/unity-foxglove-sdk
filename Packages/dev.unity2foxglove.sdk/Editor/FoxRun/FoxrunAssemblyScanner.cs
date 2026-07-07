@@ -163,7 +163,7 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode));
+                        a.When, a.Unless, flowMode: (int)a.Mode));
                 }
 
                 var aggregateField = fi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode));
+                        a.When, a.Unless, flowMode: (int)a.Mode));
                 }
 
                 var aggregateField = pi.GetCustomAttribute<FoxRunFieldAttribute>();

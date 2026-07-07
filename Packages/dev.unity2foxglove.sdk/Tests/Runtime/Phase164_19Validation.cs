@@ -26,17 +26,19 @@ namespace Unity.FoxgloveSDK.Tests
             var align = PhaseValidationSourceHelpers.SourceMethod(source, "private void Align");
             var ensureCapacity = PhaseValidationSourceHelpers.SourceMethod(source, "private void EnsureCapacity");
 
-            Check(writeString.Contains("Encoding.UTF8.GetMaxByteCount(value.Length)", StringComparison.Ordinal)
+            Check(writeString.Contains("Encoding.UTF8.GetByteCount(value)", StringComparison.Ordinal)
                   && writeString.Contains("var lengthPosition = _position;", StringComparison.Ordinal)
                   && writeString.Contains("BinaryPrimitives.WriteUInt32LittleEndian(_buffer.AsSpan(lengthPosition, 4)", StringComparison.Ordinal)
-                  && !writeString.Contains("Encoding.UTF8.GetByteCount(value)", StringComparison.Ordinal),
-                "164-19A-1: CDR string writer encodes UTF-8 once and back-patches the length");
+                  && !writeString.Contains("Encoding.UTF8.GetMaxByteCount(value.Length)", StringComparison.Ordinal),
+                "164-19A-1: CDR string writer uses exact UTF-8 capacity and back-patches the length");
             Check(align.Contains("_buffer.AsSpan(_position, padding).Clear();", StringComparison.Ordinal)
                   && !align.Contains("Array.Clear(_buffer, _position, padding)", StringComparison.Ordinal),
                 "164-19A-2: CDR alignment padding uses span clearing");
-            Check(ensureCapacity.Contains("Math.Max(checked(_buffer.Length * 2), required)", StringComparison.Ordinal)
+            Check(ensureCapacity.Contains("_buffer.Length <= int.MaxValue / 2 ? _buffer.Length * 2 : int.MaxValue", StringComparison.Ordinal)
+                  && ensureCapacity.Contains("Math.Max(doubled, required)", StringComparison.Ordinal)
+                  && !ensureCapacity.Contains("checked(_buffer.Length * 2)", StringComparison.Ordinal)
                   && !ensureCapacity.Contains("while (newLength < required)", StringComparison.Ordinal),
-                "164-19A-3: CDR buffer growth computes the next capacity without a loop");
+                "164-19A-3: CDR buffer growth computes the next capacity without overflow or a loop");
         }
 
         private static void VerifyGeneratedSerializersUseCapacityHints()
