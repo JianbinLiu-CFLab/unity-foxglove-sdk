@@ -65,6 +65,7 @@ namespace Unity.FoxgloveSDK.Util
             if (hasReflectivity) stride += Float32Bytes;
             if (hasRing) stride += Uint16Bytes;
             if (hasTimeOffset) stride += Float32Bytes;
+            if (frame.EmitAbsoluteTimeNs && hasTimeOffset) stride += Float32Bytes;
             return stride;
         }
 

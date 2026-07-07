@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const int CloseDrainTimeoutMs = 250;
         private const int SendLoopCloseTimeoutMs = 1000;
         private const int MaxSendBatchFrames = 32;
-        private static readonly double StopwatchTicksToMilliseconds = 1000d / Stopwatch.Frequency;
+        private static readonly long StopwatchTicksPerMillisecond = Math.Max(1L, Stopwatch.Frequency / 1000L);
 
         /// <summary>Underlying TCP client owned by this connection after handshake.</summary>
         private readonly TcpClient _tcpClient;
@@ -90,7 +90,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         private static long MonotonicMilliseconds()
         {
-            return (long)(Stopwatch.GetTimestamp() * StopwatchTicksToMilliseconds);
+            return Stopwatch.GetTimestamp() / StopwatchTicksPerMillisecond;
         }
 
         public void StartSendLoop(Action onSendFailed, CancellationToken parentToken)
@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Transport
             return _sendQueue.Enqueue(new QueuedFrame(OpText, payload, priority));
         }
 
-        internal EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)
+        public EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)
         {
             return _sendQueue.Enqueue(new QueuedFrame(OpText, utf8Json ?? Array.Empty<byte>(), priority));
         }
@@ -203,15 +203,6 @@ namespace Unity.FoxgloveSDK.Transport
             }
 
             _stream.Flush();
-            TouchActivity();
-        }
-
-        /// <summary>Build and write a complete WebSocket frame (FIN + opcode + length-prefixed payload).</summary>
-        private void WriteFrame(byte opcode, byte[] payload)
-        {
-            WsFrameCodec.WriteFrame(_stream, opcode, payload);
-            Interlocked.Increment(ref _sentFrames);
-            Interlocked.Add(ref _sentBytes, payload.Length);
             TouchActivity();
         }
 

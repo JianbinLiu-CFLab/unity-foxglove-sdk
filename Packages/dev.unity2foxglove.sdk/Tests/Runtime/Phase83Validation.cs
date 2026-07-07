@@ -9,6 +9,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -58,6 +59,11 @@ namespace Unity.FoxgloveSDK.Tests
             mixed.Points.Add(new PointCloudPoint(4, 5, 6) { Ring = 2 });
             Check(PointCloudQoS.ComputePackedStride(mixed) == 14,
                 "83A-3: stride is frame-wide when any point has an optional field");
+
+            var absoluteTime = new PointCloudFrame { EmitAbsoluteTimeNs = true };
+            absoluteTime.Points.Add(new PointCloudPoint(1, 2, 3) { TimeOffsetSeconds = 0.001f });
+            Check((uint)PointCloudQoS.ComputePackedStride(absoluteTime) == PointCloudPackedDataBuilder.BuildLayout(absoluteTime).Stride,
+                "83A-4: stride includes absolute-time t field when emitted");
         }
 
         private static void VerifyEffectiveBudget()

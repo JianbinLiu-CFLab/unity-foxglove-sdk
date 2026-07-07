@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                 }
             }
-            if (start <= text.Length)
+            if (start < text.Length)
                 result.Add(StripAssembly(text.Substring(start)));
             return result;
         }

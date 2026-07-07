@@ -58,8 +58,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 var buffer = BuildLengthOnly(length);
                 var offset = 0;
-                Assert.True(ThrowsInvalidData(() => McapBinaryReader.ReadString(buffer, ref offset)),
-                    $"134-8B: string length {length} throws InvalidDataException");
+                Assert.Throws<InvalidDataException>(() => McapBinaryReader.ReadString(buffer, ref offset));
             }
         }
 
@@ -70,8 +69,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 var buffer = BuildLengthOnly(length);
                 var offset = 0;
-                Assert.True(ThrowsInvalidData(() => McapBinaryReader.ReadPrefixed(buffer, ref offset)),
-                    $"134-8C: prefixed byte length {length} throws InvalidDataException");
+                Assert.Throws<InvalidDataException>(() => McapBinaryReader.ReadPrefixed(buffer, ref offset));
             }
         }
 
@@ -82,8 +80,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 var buffer = BuildLengthOnly(length);
                 var offset = 0;
-                Assert.True(ThrowsInvalidData(() => McapBinaryReader.ReadMap(buffer, ref offset)),
-                    $"134-8D: map length {length} throws InvalidDataException");
+                Assert.Throws<InvalidDataException>(() => McapBinaryReader.ReadMap(buffer, ref offset));
             }
         }
 
@@ -97,16 +94,14 @@ namespace Unity.FoxgloveSDK.UnitTests
             WriteU32LE(buffer, 0, 5);
             Buffer.BlockCopy(body.ToArray(), 0, buffer, 4, body.Count);
             var offset = 0;
-            Assert.True(ThrowsInvalidData(() => McapBinaryReader.ReadMap(buffer, ref offset)),
-                "134-8E: map key/value reads cannot consume bytes outside declared map length");
+            Assert.Throws<InvalidDataException>(() => McapBinaryReader.ReadMap(buffer, ref offset));
         }
 
         [Fact]
         public void NonSeekableRecorderStreamFailsBeforeWriting()
         {
             var stream = new NonSeekableMemoryStream();
-            Assert.True(Throws<NotSupportedException>(() => new McapRecorder(stream)),
-                "134-8F-1: recorder rejects non-seekable streams before writing header bytes");
+            Assert.Throws<NotSupportedException>(() => new McapRecorder(stream));
             Assert.True(stream.Length == 0,
                 "134-8F-2: rejected non-seekable stream remains untouched");
         }
@@ -114,10 +109,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void CompressionRejectsNullCompressedPayloads()
         {
-            Assert.True(ThrowsInvalidData(() => McapCompression.Decompress("lz4", null, 0)),
-                "134-8G-1: lz4 decompression rejects null compressed data");
-            Assert.True(ThrowsInvalidData(() => McapCompression.Decompress("zstd", null, 0)),
-                "134-8G-2: zstd decompression rejects null compressed data");
+            Assert.Throws<InvalidDataException>(() => McapCompression.Decompress("lz4", null, 0));
+            Assert.Throws<InvalidDataException>(() => McapCompression.Decompress("zstd", null, 0));
         }
 
         [Fact]
@@ -126,12 +119,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             var payload = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
 
             var lz4 = McapCompression.Compress("lz4", payload);
-            Assert.True(ThrowsInvalidData(() => McapCompression.Decompress("lz4", lz4, payload.Length + 2)),
-                "163-47A-1: lz4 declared-size mismatch throws InvalidDataException");
+            Assert.Throws<InvalidDataException>(() => McapCompression.Decompress("lz4", lz4, payload.Length + 2));
 
             var zstd = McapCompression.Compress("zstd", payload);
-            Assert.True(ThrowsInvalidData(() => McapCompression.Decompress("zstd", zstd, payload.Length + 2)),
-                "163-47A-2: zstd declared-size mismatch throws InvalidDataException");
+            Assert.Throws<InvalidDataException>(() => McapCompression.Decompress("zstd", zstd, payload.Length + 2));
         }
 
         [Fact]
@@ -199,32 +190,6 @@ namespace Unity.FoxgloveSDK.UnitTests
             buffer[offset + 1] = (byte)(value >> 8);
             buffer[offset + 2] = (byte)(value >> 16);
             buffer[offset + 3] = (byte)(value >> 24);
-        }
-
-        private static bool ThrowsInvalidData(Action action)
-        {
-            try
-            {
-                action();
-                return false;
-            }
-            catch (InvalidDataException)
-            {
-                return true;
-            }
-        }
-
-        private static bool Throws<T>(Action action) where T : Exception
-        {
-            try
-            {
-                action();
-                return false;
-            }
-            catch (T)
-            {
-                return true;
-            }
         }
 
         private sealed class NonSeekableMemoryStream : MemoryStream

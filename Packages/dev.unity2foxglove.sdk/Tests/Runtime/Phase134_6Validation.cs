@@ -144,6 +144,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(connectionSource.Contains("_connectedAtMs", StringComparison.Ordinal)
                   && connectionSource.Contains("nowMs - _connectedAtMs", StringComparison.Ordinal),
                 "134-6C-6: connection duration uses monotonic time instead of wall-clock deltas");
+            Check(connectionSource.Contains("StopwatchTicksPerMillisecond", StringComparison.Ordinal)
+                  && connectionSource.Contains("Stopwatch.GetTimestamp() / StopwatchTicksPerMillisecond", StringComparison.Ordinal),
+                "134-6C-6b: connection monotonic milliseconds avoid floating-point precision loss");
+            Check(connectionSource.Contains("public EnqueueResult SendTextEncoded", StringComparison.Ordinal)
+                  && !connectionSource.Contains("private void WriteFrame(byte opcode", StringComparison.Ordinal),
+                "134-6C-6c: WebSocket connection exposes encoded text enqueue path and removes dead single-frame writer");
             Check(certSource.Contains("_rootCaSha256Fingerprint", StringComparison.Ordinal)
                   && (certSource.Contains("??= ComputeSha256Fingerprint", StringComparison.Ordinal)
                       || certSource.Contains("Interlocked.CompareExchange(ref _rootCaSha256Fingerprint", StringComparison.Ordinal)),

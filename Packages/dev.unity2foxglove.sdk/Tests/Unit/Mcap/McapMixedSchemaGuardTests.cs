@@ -24,8 +24,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ServerChannelWithSchemaThenClientWithoutSchemaIsSkipped()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
             recorder.AddChannel(1, "/unity/camera", "json", "foxglove.CompressedImage", "jsonschema", "{}");
             recorder.WriteMessage(1, 0, new byte[] { 1, 2, 3 });
             recorder.WriteMessage(1, 100, new byte[] { 4, 5, 6 });
@@ -36,7 +36,8 @@ namespace Unity.FoxgloveSDK.UnitTests
             recorder.Close();
 
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 1,
                 "Mixed schema: only 1 channel recorded (second was skipped)");
             Assert.True(summary.Channels[0].Topic == "/unity/camera",
@@ -48,15 +49,16 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void NewSchemalessClientTopicIsRecorded()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
 
             recorder.WriteClientMessage(1, 10, 500, new byte[] { 1 }, "/move_base_simple/goal",
                 enc: "json", sName: "", sEnc: "", sContent: "");
 
             recorder.Close();
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 1,
                 "New schemaless client: 1 channel recorded");
             Assert.True(summary.Channels[0].Topic == "/move_base_simple/goal",
@@ -66,8 +68,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ClientWithMatchingSchemaIsRecorded()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
 
             recorder.AddChannel(1, "/tf", "json", "foxglove.FrameTransform", "jsonschema", "schema_v1");
             recorder.WriteMessage(1, 0, new byte[] { 1 });
@@ -80,7 +82,8 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             recorder.Close();
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 2,
                 "Matching schema: 2 channels (server + client)");
             Assert.True(summary.Statistics.MessageCount == 3,
@@ -93,8 +96,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ClientWithDifferentSchemaIsSkipped()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
 
             recorder.AddChannel(1, "/data", "json", "foxglove.SceneUpdate", "jsonschema", "{}");
             recorder.WriteMessage(1, 0, new byte[] { 1 });
@@ -104,7 +107,8 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             recorder.Close();
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 1,
                 "Different schema: only 1 channel recorded (client incompatible was skipped)");
             Assert.True(summary.Channels[0].Topic == "/data",
@@ -114,8 +118,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void SameSchemaNameDifferentContentIsSkipped()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
 
             recorder.AddChannel(1, "/metrics", "json", "custom.Metrics", "jsonschema", @"{""type"":""object""}");
             recorder.WriteMessage(1, 0, new byte[] { 1 });
@@ -125,7 +129,8 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             recorder.Close();
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 1,
                 "Diff content: only server channel recorded (client incompatible skipped)");
         }
@@ -133,8 +138,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void DifferentEncodingIsSkipped()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
 
             recorder.AddChannel(1, "/binary", "json", "foo.Binary", "jsonschema", "{}");
             recorder.WriteMessage(1, 0, new byte[] { 1 });
@@ -144,7 +149,8 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             recorder.Close();
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 1,
                 "Diff encoding: only server channel recorded (client incompatible skipped)");
         }
@@ -152,8 +158,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ServerDuplicateTopicWithIncompatibleSchemaIsSkipped()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
 
             recorder.AddChannel(1, "/server_data", "json", "schema.A", "jsonschema", "{}");
             recorder.WriteMessage(1, 0, new byte[] { 1 });
@@ -163,7 +169,8 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             recorder.Close();
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 1,
                 "Server duplicate: only 1 channel (second was skipped)");
             Assert.True(summary.Channels[0].Topic == "/server_data",
@@ -173,8 +180,8 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void ClientCanReuseAdvertisedTopicSchemaWithoutContent()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using var ms = new MemoryStream();
+            using var recorder = new McapRecorder(ms);
 
             recorder.AddChannel(1, "/unity/client_log", "json", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
 
@@ -183,7 +190,8 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             recorder.Close();
             ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
+            using var reader = new McapReader(ms);
+            var summary = reader.ReadSummary();
             Assert.True(summary.Channels.Count == 1,
                 "Client schema name only: reused existing /unity/client_log channel");
             Assert.True(summary.Statistics.MessageCount == 1,
@@ -193,38 +201,48 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void EmptyEncodingEquivalentToJson()
         {
-            var ms = new MemoryStream();
-            var recorder = new McapRecorder(ms);
+            using (var ms = new MemoryStream())
+            {
+                using (var recorder = new McapRecorder(ms))
+                {
+                    recorder.AddChannel(1, "/enc_test", "json", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
+                    recorder.WriteMessage(1, 0, new byte[] { 1 });
 
-            recorder.AddChannel(1, "/enc_test", "json", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
-            recorder.WriteMessage(1, 0, new byte[] { 1 });
+                    recorder.WriteClientMessage(2, 70, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
+                        "/enc_test", enc: "", sName: "foxglove.Log", sEnc: "", sContent: "");
 
-            recorder.WriteClientMessage(2, 70, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
-                "/enc_test", enc: "", sName: "foxglove.Log", sEnc: "", sContent: "");
+                    recorder.Close();
+                }
 
-            recorder.Close();
-            ms.Position = 0;
-            var summary = new McapReader(ms).ReadSummary();
-            Assert.True(summary.Channels.Count == 1,
-                "Empty encoding: reused existing channel (empty == json)");
-            Assert.True(summary.Statistics.MessageCount == 2,
-                "Empty encoding: server and client messages both recorded");
+                ms.Position = 0;
+                using var reader = new McapReader(ms);
+                var summary = reader.ReadSummary();
+                Assert.True(summary.Channels.Count == 1,
+                    "Empty encoding: reused existing channel (empty == json)");
+                Assert.True(summary.Statistics.MessageCount == 2,
+                    "Empty encoding: server and client messages both recorded");
+            }
 
-            ms = new MemoryStream();
-            recorder = new McapRecorder(ms);
+            using (var ms = new MemoryStream())
+            {
+                using (var recorder = new McapRecorder(ms))
+                {
+                    recorder.AddChannel(1, "/enc_test2", "", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
 
-            recorder.AddChannel(1, "/enc_test2", "", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
+                    recorder.WriteClientMessage(2, 71, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
+                        "/enc_test2", enc: "json", sName: "foxglove.Log", sEnc: "", sContent: "");
 
-            recorder.WriteClientMessage(2, 71, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
-                "/enc_test2", enc: "json", sName: "foxglove.Log", sEnc: "", sContent: "");
+                    recorder.Close();
+                }
 
-            recorder.Close();
-            ms.Position = 0;
-            summary = new McapReader(ms).ReadSummary();
-            Assert.True(summary.Channels.Count == 1,
-                "Empty encoding reverse: reused existing channel (json == empty)");
-            Assert.True(summary.Channels[0].MessageEncoding == "json",
-                "Empty encoding reverse: stored encoding normalized to json");
+                ms.Position = 0;
+                using var reader = new McapReader(ms);
+                var summary = reader.ReadSummary();
+                Assert.True(summary.Channels.Count == 1,
+                    "Empty encoding reverse: reused existing channel (json == empty)");
+                Assert.True(summary.Channels[0].MessageEncoding == "json",
+                    "Empty encoding reverse: stored encoding normalized to json");
+            }
         }
     }
 }

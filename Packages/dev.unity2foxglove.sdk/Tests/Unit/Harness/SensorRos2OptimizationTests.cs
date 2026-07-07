@@ -89,6 +89,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void JazzySensorLifecycleKeepsInspectorStateAndLogsCleanupFailures()
+        {
+            var sensor = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs");
+            var dispose = TestSources.Slice(sensor, "private void DisposeRosParticipants()", "void CalculateFrameTime()");
+            var calculate = TestSources.Slice(sensor, "void CalculateFrameTime()", "\n}");
+
+            Assert.Contains("cachedFrameName = null;", sensor, StringComparison.Ordinal);
+            Assert.Contains("private bool rosParticipantsDisposed = true;", sensor, StringComparison.Ordinal);
+            Assert.Contains("if (rosParticipantsDisposed)", dispose, StringComparison.Ordinal);
+            Assert.Contains("Debug.LogWarning(\"Failed to remove ROS2 sensor publisher during cleanup", dispose, StringComparison.Ordinal);
+            Assert.Contains("var clampedUpdateFreq = desiredUpdateFreq;", calculate, StringComparison.Ordinal);
+            Assert.DoesNotContain("desiredUpdateFreq = maxFrameFreq", calculate, StringComparison.Ordinal);
+            Assert.DoesNotContain("desiredUpdateFreq = minimumFrequency", calculate, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void Phase14064MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_64Validation.cs", "--phase140-64", "Phase140_64Validation.Validate");
     }
