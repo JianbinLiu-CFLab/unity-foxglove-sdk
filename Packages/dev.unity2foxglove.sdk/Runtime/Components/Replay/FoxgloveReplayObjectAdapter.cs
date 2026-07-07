@@ -109,7 +109,14 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private void Start()
-            => SubscribeReplay();
+        {
+            EnsureMappingArrays();
+            foreach (var fm in _frameOverrides)
+                LoadFrameOverride(fm);
+            foreach (var em in _entityOverrides)
+                LoadEntityOverride(em);
+            SubscribeReplay();
+        }
 
         private void OnValidate()
         {
@@ -157,21 +164,33 @@ namespace Unity.FoxgloveSDK.Components
             EnsureMappingArrays();
             foreach (var fm in _frameOverrides)
             {
-                if (string.IsNullOrEmpty(fm.ChildFrameId) || fm.Target == null)
-                    continue;
-                _frameCache[fm.ChildFrameId] = fm.Target;
-                _missedFrames.Remove(fm.ChildFrameId);
-                _warnedFrames.Remove(fm.ChildFrameId);
+                LoadFrameOverride(fm);
             }
 
             foreach (var em in _entityOverrides)
             {
-                if (string.IsNullOrEmpty(em.EntityId) || em.Target == null)
-                    continue;
-                _entityCache[em.EntityId] = em.Target;
-                _missedEntities.Remove(em.EntityId);
-                _warnedEntities.Remove(em.EntityId);
+                LoadEntityOverride(em);
             }
+        }
+
+        private void LoadFrameOverride(FrameMapping mapping)
+        {
+            if (string.IsNullOrEmpty(mapping.ChildFrameId) || mapping.Target == null)
+                return;
+
+            _frameCache[mapping.ChildFrameId] = mapping.Target;
+            _missedFrames.Remove(mapping.ChildFrameId);
+            _warnedFrames.Remove(mapping.ChildFrameId);
+        }
+
+        private void LoadEntityOverride(EntityMapping mapping)
+        {
+            if (string.IsNullOrEmpty(mapping.EntityId) || mapping.Target == null)
+                return;
+
+            _entityCache[mapping.EntityId] = mapping.Target;
+            _missedEntities.Remove(mapping.EntityId);
+            _warnedEntities.Remove(mapping.EntityId);
         }
 
         private void SubscribeReplay()
