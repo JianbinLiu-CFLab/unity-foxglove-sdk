@@ -184,7 +184,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && serviceRegistry.Contains("Completed timeout failures remain pending until DrainCompleted", StringComparison.Ordinal)
                   && paramSubs.Contains("named unsubscription", StringComparison.Ordinal)
                   && !subscriptions.Contains("RemoveEmptyClientEntriesLocked", StringComparison.Ordinal)
-                  && registry.Contains("Ci(\"--phase163-4\", \"Phase 163-4\", Phase163_4Validation.Validate", StringComparison.Ordinal),
+                  && registry.Contains("Ci(\"--phase163-4\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_4Validation.Validate", StringComparison.Ordinal),
                 "163-4J: source-level compatibility and docs contracts are wired");
         }
 

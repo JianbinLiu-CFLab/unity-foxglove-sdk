@@ -84,6 +84,23 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void JsonFallbackPrecedesRos2WhenManagerDefaultIsUnsupported()
+        {
+            var resolution = PublisherEncodingPolicy.Resolve(
+                GlobalEncoding.Protobuf,
+                allowPublisherOverride: false,
+                PublisherEncodingOverride.UseManager,
+                supportsJson: true,
+                supportsProtobuf: false,
+                supportsRos2: true,
+                supportsMsgPack: false);
+
+            Assert.Equal(PublisherEffectiveEncoding.Protobuf, resolution.Requested);
+            Assert.Equal(PublisherEffectiveEncoding.Json, resolution.Effective);
+            Assert.True(resolution.FellBack);
+        }
+
+        [Fact]
         public void MsgPackLabelsUseSchemalessProtocolEncoding()
         {
             Assert.Equal("MsgPack", PublisherEncodingPolicy.ToDisplayEncoding(PublisherEffectiveEncoding.MsgPack));

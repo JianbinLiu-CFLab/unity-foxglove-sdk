@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Editor
                     foreach (var type in asm.GetTypes())
                     {
                         if (!type.IsClass || type.IsAbstract) continue;
-                        if (!IsPartial(type)) continue;
+                        if (!AssumePartialWasEnforcedBySourceGenerator(type)) continue;
                         if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
                         var members = ScanType(type);
                         if (members.Count == 0) continue;

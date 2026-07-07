@@ -49,11 +49,9 @@ namespace Unity.FoxgloveSDK.Core
 
         /// <summary>Remove a client from graph subscription updates.</summary>
         public void Unsubscribe(uint clientId)
-        {
-            lock (_lock) { _graphSubscribers.Remove(clientId); }
-        }
+            => RemoveClient(clientId);
 
-        /// <summary>Remove a client from graph subscription state (alias for Unsubscribe).</summary>
+        /// <summary>Remove a disconnected client from graph subscription state.</summary>
         public void RemoveClient(uint clientId)
         {
             lock (_lock) { _graphSubscribers.Remove(clientId); }

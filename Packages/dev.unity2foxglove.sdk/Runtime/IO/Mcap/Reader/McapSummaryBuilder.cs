@@ -220,21 +220,18 @@ namespace Unity.FoxgloveSDK.IO
 
         internal McapFileSummary Build()
         {
-            if (_messageCount > 0 || _collectInventory)
+            _summary.Statistics = new McapStatistics
             {
-                _summary.Statistics = new McapStatistics
-                {
-                    MessageCount = _messageCount,
-                    SchemaCount = (ushort)_summary.Schemas.Count,
-                    ChannelCount = (uint)_summary.Channels.Count,
-                    AttachmentCount = _attachmentCount,
-                    MetadataCount = _metadataCount,
-                    ChunkCount = _chunkCount,
-                    MessageStartTime = _messageCount > 0 ? _messageStart : 0,
-                    MessageEndTime = _messageCount > 0 ? _messageEnd : 0,
-                    ChannelMessageCounts = _channelMessageCounts
-                };
-            }
+                MessageCount = _messageCount,
+                SchemaCount = (ushort)_summary.Schemas.Count,
+                ChannelCount = (uint)_summary.Channels.Count,
+                AttachmentCount = _attachmentCount,
+                MetadataCount = _metadataCount,
+                ChunkCount = _chunkCount,
+                MessageStartTime = _messageCount > 0 ? _messageStart : 0,
+                MessageEndTime = _messageCount > 0 ? _messageEnd : 0,
+                ChannelMessageCounts = _channelMessageCounts
+            };
 
             return _summary;
         }

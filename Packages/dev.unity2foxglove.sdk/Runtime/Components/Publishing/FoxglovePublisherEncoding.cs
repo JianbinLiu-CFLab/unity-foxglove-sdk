@@ -259,6 +259,8 @@ namespace Unity.FoxgloveSDK.Components
             // that opt into compact custom-client raw channels.
             if (supportsMsgPack) return PublisherEffectiveEncoding.MsgPack;
             if (supportsJson) return PublisherEffectiveEncoding.Json;
+            // ROS2 CDR is transport-specific, so it is only used after generic
+            // Foxglove encodings are exhausted.
             if (supportsRos2) return PublisherEffectiveEncoding.Ros2;
             return PublisherEffectiveEncoding.Unsupported;
         }

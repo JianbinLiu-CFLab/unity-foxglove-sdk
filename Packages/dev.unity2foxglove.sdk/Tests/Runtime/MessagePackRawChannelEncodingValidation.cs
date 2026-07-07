@@ -129,6 +129,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             ms.Position = 0;
+            // McapReader does not own or dispose the caller-provided stream.
             var reader = new McapReader(ms);
             var summary = reader.ReadSummary();
 
