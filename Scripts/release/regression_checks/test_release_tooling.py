@@ -331,6 +331,18 @@ class UnityIl2CppBuildTests(unittest.TestCase):
                 with mock.patch.dict(self.unity_il2cpp.os.environ, {"PROGRAMFILES": str(Path(temp) / "ProgramFiles")}, clear=False):
                     self.assertIsNone(self.unity_il2cpp.find_unity_from_project_version(project))
 
+    def test_unity_version_key_ignores_patch_suffix_letters(self) -> None:
+        """Unity Hub sorting should compare numeric version components only."""
+        path = Path("C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Unity.exe")
+
+        self.assertEqual((6000, 3, 14, 1), self.unity_il2cpp.unity_version_key(path))
+
+    def test_default_build_dir_uses_utc_stamp(self) -> None:
+        """Generated build directories should be timezone-stable in CI logs."""
+        build_dir = self.unity_il2cpp.default_build_dir(Path("repo"), "win64")
+
+        self.assertRegex(str(build_dir), r"win64-il2cpp-\d{8}-\d{6}Z$")
+
 
 if __name__ == "__main__":
     unittest.main()

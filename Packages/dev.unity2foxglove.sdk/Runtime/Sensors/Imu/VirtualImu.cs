@@ -47,6 +47,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Tooltip("Topic for imu data. Default: /imu/data.")] private string _topic = DefaultTopic;
         [SerializeField, Tooltip("Reference frame id for each IMU sample.")] private string _frameId = DefaultFrameId;
         [SerializeField, HideInInspector] private bool _publishImuNative;
+        // Migration shadow from the first native-IMU rollout; native output now follows _topic.
         [SerializeField, HideInInspector] private string _imuNativeTopic = DefaultTopic;
         [SerializeField, Tooltip("IMU orientation covariance (9 values, diagonal default).")] private double[] _imuOrientationCovariance = { 0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01 };
         [SerializeField, Tooltip("IMU angular velocity covariance (9 values, diagonal default).")] private double[] _imuAngularVelocityCovariance = { 0.02, 0, 0, 0, 0.02, 0, 0, 0, 0.02 };
@@ -111,6 +112,16 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Raised when a native IMU frame is ready for optional DDS adapters.</summary>
         public event Action<ImuNativeFrame> ImuNativeFrameReady;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticPhysicsOverrideState()
+        {
+            _fixedDeltaOverrideUsers = 0;
+            _fixedDeltaOverrideOriginal = 0f;
+            _fixedDeltaOverrideTarget = 0f;
+            _fixedDeltaOverrideTargetHz = 0;
+            _warnedFixedDeltaOverrideConflict = false;
+        }
 
         private void Start()
         {
@@ -384,7 +395,7 @@ namespace Unity.FoxgloveSDK.Components
                 _fixedDeltaOverrideTarget = target;
                 _fixedDeltaOverrideTargetHz = targetHz;
             }
-            else if (Math.Abs(_fixedDeltaOverrideTarget - target) > float.Epsilon
+            else if (_fixedDeltaOverrideTargetHz != targetHz
                      && !_warnedFixedDeltaOverrideConflict)
             {
                 Debug.LogWarning(
@@ -406,7 +417,7 @@ namespace Unity.FoxgloveSDK.Components
                 _fixedDeltaOverrideUsers--;
 
             if (_fixedDeltaOverrideUsers == 0
-                && Math.Abs(Time.fixedDeltaTime - _fixedDeltaOverrideOriginal) > float.Epsilon)
+                && Math.Abs(Time.fixedDeltaTime - _fixedDeltaOverrideOriginal) > 1e-6f)
             {
                 Time.fixedDeltaTime = _fixedDeltaOverrideOriginal;
             }

@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VirtualLidarReinitializesScanClockAfterManagerResolution();
             VirtualImuPhysicsRateOverrideIsReferenceCounted();
+            VirtualImuPhysicsRateOverrideResetsAcrossDomainReload();
             VirtualImuReenableResetsState();
             RosettePositiveElevationUsesYUpSensorFrame();
             MetadataJsonUsesModelDefaultMinRange();
@@ -60,6 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VirtualImuPhysicsRateOverrideIsReferenceCounted()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var meta = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs.meta");
             var apply = Slice(source, "private void ApplyGlobalPhysicsRateOverride", "private void RestoreFixedDeltaTime()");
             var restore = Slice(source, "private void RestoreFixedDeltaTime()", "private void EnsureSchemaRegistered()");
 
@@ -69,6 +71,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && restore.Contains("_fixedDeltaOverrideUsers--", StringComparison.Ordinal)
                   && restore.Contains("_fixedDeltaOverrideUsers == 0", StringComparison.Ordinal),
                 "140-17B-1: VirtualImu global physics-rate override is reference-counted across instances");
+            Check(meta.Contains("MonoImporter:", StringComparison.Ordinal)
+                  && meta.Contains("executionOrder: 0", StringComparison.Ordinal),
+                "140-17B-2: VirtualImu script meta keeps a complete MonoImporter block");
+        }
+
+        private static void VirtualImuPhysicsRateOverrideResetsAcrossDomainReload()
+        {
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
+            var reset = Slice(source, "private static void ResetStaticPhysicsOverrideState", "private void Start()");
+            var apply = Slice(source, "private void ApplyGlobalPhysicsRateOverride", "private void RestoreFixedDeltaTime()");
+
+            Check(source.Contains("RuntimeInitializeLoadType.SubsystemRegistration", StringComparison.Ordinal)
+                  && reset.Contains("_fixedDeltaOverrideUsers = 0", StringComparison.Ordinal)
+                  && reset.Contains("_warnedFixedDeltaOverrideConflict = false", StringComparison.Ordinal)
+                  && apply.Contains("_fixedDeltaOverrideTargetHz != targetHz", StringComparison.Ordinal),
+                "140-17B-3: VirtualImu resets static physics-rate override state on domain reload and compares target Hz");
         }
 
         private static void VirtualImuReenableResetsState()
@@ -193,7 +211,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase140_17Validation.cs", StringComparison.Ordinal),
                 "140-17K-1: test project compiles Phase140_17Validation");
-            Check(registry.Contains("Ci(\"--phase140-17\", \"Phase 140-17\", Phase140_17Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase140-17\", \"Phase 140-17: regression coverage for virtual LiDAR and IMU sensor lifecycle fixes\", Phase140_17Validation.Validate", StringComparison.Ordinal),
                 "140-17K-2: validation registry exposes --phase140-17");
         }
 

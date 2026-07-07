@@ -59,6 +59,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             if (_disposed)
                 return;
 
+            // The owner must call blocking GatewayStop first. Native callbacks
+            // receive this GCHandle as their context and may still be in flight
+            // until the gateway has fully stopped.
             _disposed = true;
             if (_selfHandle.IsAllocated)
                 _selfHandle.Free();
