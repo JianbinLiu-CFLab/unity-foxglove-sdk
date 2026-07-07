@@ -26,6 +26,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static volatile bool _nativeReloadWindow;
         private static volatile bool _isStablePlayModeScene;
         private static volatile int _lastRefreshedActiveSceneHandle = int.MinValue;
+        private static volatile int _lastRefreshedSceneCount = -1;
+        private static volatile int _unsafeSceneHandleCount;
+        private static volatile bool _sceneStateDirty = true;
         private static int[] _unsafeSceneHandles = Array.Empty<int>();
 
 #if UNITY_EDITOR
@@ -43,7 +46,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             get
             {
-                RefreshSceneState();
+                RefreshSceneStateIfNeeded();
                 return _isStablePlayModeScene
                        && !_applicationQuitting
                        && !IsHardEditorShutdownWindow
@@ -53,7 +56,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal static bool CanInitializeNativeRuntimeForBridge(Scene ownerScene)
         {
-            RefreshSceneState();
+            RefreshSceneStateIfNeeded();
             return !_nativeReloadWindow
                    && _isStablePlayModeScene
                    && IsActiveSceneCacheCurrent
@@ -69,7 +72,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             var handle = scene.handle;
             var unsafeHandles = _unsafeSceneHandles;
-            for (var i = 0; i < unsafeHandles.Length; i++)
+            var unsafeCount = _unsafeSceneHandleCount;
+            for (var i = 0; i < unsafeCount; i++)
             {
                 if (unsafeHandles[i] == handle)
                     return true;
@@ -141,6 +145,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _nativeReloadWindow = false;
             _isStablePlayModeScene = false;
             _lastRefreshedActiveSceneHandle = int.MinValue;
+            _lastRefreshedSceneCount = -1;
+            _unsafeSceneHandleCount = 0;
+            _sceneStateDirty = true;
             _unsafeSceneHandles = Array.Empty<int>();
 #if UNITY_EDITOR
             ResetEditorState();
@@ -208,7 +215,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static void OnEditorHierarchyChanged()
         {
             _isStablePlayModeScene = false;
-            RefreshSceneState();
+            _sceneStateDirty = true;
         }
 
         private static void OnEditorSceneOpened(Scene scene, OpenSceneMode mode)
@@ -273,29 +280,45 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _nativeReloadWindow = _applicationQuitting || IsEditorLifecycleWindow;
         }
 
-        private static void RefreshSceneState()
+        private static void RefreshSceneStateIfNeeded()
         {
             var activeScene = SceneManager.GetActiveScene();
+            var sceneCount = SceneManager.sceneCount;
+            if (_sceneStateDirty
+                || activeScene.handle != _lastRefreshedActiveSceneHandle
+                || sceneCount != _lastRefreshedSceneCount)
+            {
+                RefreshSceneState(activeScene, sceneCount);
+            }
+        }
+
+        private static void RefreshSceneState()
+            => RefreshSceneState(SceneManager.GetActiveScene(), SceneManager.sceneCount);
+
+        private static void RefreshSceneState(Scene activeScene, int sceneCount)
+        {
             var activeSceneStable = IsStableUserScene(activeScene);
-            var unsafeHandles = BuildUnsafeSceneHandles(activeScene, out var anyBackupSceneLoaded);
+            var unsafeCount = BuildUnsafeSceneHandles(activeScene, sceneCount, out var anyBackupSceneLoaded);
 
             _lastRefreshedActiveSceneHandle = activeScene.handle;
-            _unsafeSceneHandles = unsafeHandles;
+            _lastRefreshedSceneCount = sceneCount;
+            _unsafeSceneHandleCount = unsafeCount;
             _isStablePlayModeScene = Application.isPlaying
                                      && activeSceneStable
                                      && !anyBackupSceneLoaded
                                      && !_applicationQuitting
                                      && !IsHardEditorShutdownWindow;
+            _sceneStateDirty = false;
             RefreshNativeReloadWindow();
         }
 
-        private static int[] BuildUnsafeSceneHandles(Scene activeScene, out bool anyBackupSceneLoaded)
+        private static int BuildUnsafeSceneHandles(Scene activeScene, int sceneCount, out bool anyBackupSceneLoaded)
         {
             var count = 0;
-            var handles = new int[Math.Max(SceneManager.sceneCount, 1)];
+            var handles = EnsureUnsafeSceneHandleCapacity(Math.Max(sceneCount, 1));
             anyBackupSceneLoaded = false;
 
-            for (var i = 0; i < SceneManager.sceneCount; i++)
+            for (var i = 0; i < sceneCount; i++)
             {
                 var scene = SceneManager.GetSceneAt(i);
                 if (!IsBackupScene(scene))
@@ -308,16 +331,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (IsBackupScene(activeScene) && !ContainsHandle(handles, count, activeScene.handle))
             {
                 anyBackupSceneLoaded = true;
-                if (count == handles.Length)
-                    Array.Resize(ref handles, count + 1);
+                if (count == _unsafeSceneHandles.Length)
+                    handles = EnsureUnsafeSceneHandleCapacity(count + 1);
                 handles[count++] = activeScene.handle;
             }
 
-            if (count == handles.Length)
-                return handles;
+            return count;
+        }
 
-            Array.Resize(ref handles, count);
-            return handles;
+        private static int[] EnsureUnsafeSceneHandleCapacity(int requiredCapacity)
+        {
+            if (_unsafeSceneHandles.Length < requiredCapacity)
+                Array.Resize(ref _unsafeSceneHandles, requiredCapacity);
+
+            return _unsafeSceneHandles;
         }
 
         private static bool ContainsHandle(int[] handles, int count, int handle)

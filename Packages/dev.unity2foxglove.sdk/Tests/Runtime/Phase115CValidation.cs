@@ -205,13 +205,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRos2RegistryGuard()
         {
             var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestBuilder.cs");
-            Check(builder.Contains("entries.Count != FoxgloveRos2MsgSchemaCatalog.SourceFileCount", StringComparison.Ordinal)
+            Check(builder.Contains("entries.Count != FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount", StringComparison.Ordinal)
                   && builder.Contains("ROS2 .msg schema catalog count mismatch", StringComparison.Ordinal),
-                "115C-E1: aggregate builder guards ROS2 source count drift");
+                "115C-E1: aggregate builder guards ROS2 runtime registered count drift");
 
             var aggregate = Unity2FoxgloveSchemaManifestBuilder.Build(FoxRunManifestBuilder.Build(Phase115BFixtureMembers()));
             Check(aggregate.Sections.Ros2MsgRegistry.EntryCount == aggregate.Sections.Ros2MsgRegistry.SourceFileCount,
-                "115C-E2: valid ROS2 registry still builds with matching source count");
+                "115C-E2: valid ROS2 registry still builds with matching runtime registered count");
         }
 
         private static void VerifyInspectorAndSettingsSyncSource()

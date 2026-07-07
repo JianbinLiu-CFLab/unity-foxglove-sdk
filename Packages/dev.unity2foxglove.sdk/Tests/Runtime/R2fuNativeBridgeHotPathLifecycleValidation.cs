@@ -94,8 +94,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             var hierarchyHandler = RequiredMethod(source, "private static void OnEditorHierarchyChanged", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
             Check(hierarchyHandler.Contains("_isStablePlayModeScene = false", StringComparison.Ordinal)
-                  && hierarchyHandler.Contains("RefreshSceneState();", StringComparison.Ordinal),
-                "165-A11: editor hierarchy refresh conservatively closes native bootstrap before rechecking scenes");
+                  && hierarchyHandler.Contains("_sceneStateDirty = true", StringComparison.Ordinal)
+                  && !hierarchyHandler.Contains("RefreshSceneState();", StringComparison.Ordinal),
+                "165-A11: editor hierarchy refresh conservatively closes native bootstrap and defers scene rebuild");
             Check(source.Contains("_lastRefreshedActiveSceneHandle", StringComparison.Ordinal)
                   && source.Contains("_lastRefreshedActiveSceneHandle = activeScene.handle", StringComparison.Ordinal)
                   && source.Contains("SceneManager.GetActiveScene().handle == _lastRefreshedActiveSceneHandle", StringComparison.Ordinal)
@@ -104,11 +105,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("!IsActiveSceneCacheCurrent || IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
                 "165-A12: lifecycle gate fail-closes bridge bootstrap when active scene changes before event refresh");
             var nativeInitGate = RequiredMethod(source, "internal static bool CanInitializeNativeRuntimeForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
-            Check(nativeInitGate.Contains("RefreshSceneState();", StringComparison.Ordinal)
+            Check(nativeInitGate.Contains("RefreshSceneStateIfNeeded();", StringComparison.Ordinal)
                   && nativeInitGate.Contains("!_nativeReloadWindow", StringComparison.Ordinal)
                   && nativeInitGate.Contains("_isStablePlayModeScene", StringComparison.Ordinal)
                   && nativeInitGate.Contains("!IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
-                "165-A13: lifecycle gate refreshes scene state before cold native runtime initialization");
+                "165-A13: lifecycle gate refreshes dirty scene state before cold native runtime initialization");
+            Check(source.Contains("private static volatile bool _sceneStateDirty = true", StringComparison.Ordinal)
+                  && source.Contains("private static volatile int _unsafeSceneHandleCount", StringComparison.Ordinal)
+                  && source.Contains("EnsureUnsafeSceneHandleCapacity", StringComparison.Ordinal)
+                  && !source.Contains("new int[Math.Max(SceneManager.sceneCount, 1)]", StringComparison.Ordinal),
+                "173-055-E1: lifecycle gate reuses unsafe-scene handle storage and avoids getter-time array churn");
         }
 
         private static void VerifyBridgeHotPathsUseCheapLifecycleReads()
@@ -154,12 +160,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText(NativeDir + "/Ros2ForUnityPointCloud2NativeBridge.cs");
             var refreshBody = RequiredMethod(source, "private void RefreshBindings()", "Ros2ForUnityPointCloud2NativeBridge.cs");
+            var registerBody = RequiredMethod(source, "private void RegisterPublisherBinding", "Ros2ForUnityPointCloud2NativeBridge.cs");
             var callbackBody = RequiredMethod(source, "private void OnPointCloud2NativeFrameReady", "Ros2ForUnityPointCloud2NativeBridge.cs");
             var prewarmBody = RequiredMethod(source, "public void PrewarmPublishers", "Ros2ForUnityPointCloud2NativeBridge.cs");
             var deskewPrewarmBody = RequiredMethod(source, "private string ResolvePrewarmDeskewedTopic", "Ros2ForUnityPointCloud2NativeBridge.cs");
 
-            Check(refreshBody.Contains("PrewarmPublishers(_ros2Unity)", StringComparison.Ordinal),
-                "165-PC1: PointCloud2 bridge prewarms DDS publishers during scan refresh");
+            Check(refreshBody.Contains("RegisterPublisherBinding(publisher)", StringComparison.Ordinal)
+                  && registerBody.Contains("PrewarmPublishers(_ros2Unity)", StringComparison.Ordinal),
+                "165-PC1: PointCloud2 bridge prewarms DDS publishers while scan refresh registers bindings");
             Check(prewarmBody.Contains("TryEnsurePublisher(ros2Unity, Topic", StringComparison.Ordinal)
                   && prewarmBody.Contains("ResolvePrewarmDeskewedTopic()", StringComparison.Ordinal)
                   && prewarmBody.Contains("TryEnsurePublisher(ros2Unity, deskewedTopic", StringComparison.Ordinal),

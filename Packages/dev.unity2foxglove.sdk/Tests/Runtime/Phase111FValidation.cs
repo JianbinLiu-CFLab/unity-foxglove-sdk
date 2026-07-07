@@ -188,9 +188,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && (core.Contains("threadToJoin.Join(1000)", StringComparison.Ordinal)
                       || core.Contains("threadToJoin.Join(TimeSpan.FromSeconds(2))", StringComparison.Ordinal)),
                 "111F-E5: ROS2UnityCore has deterministic shutdown");
-            Check(core.Contains("Ros2cs.SpinOnce(ros2csNodes", StringComparison.Ordinal)
-                  && !core.Contains("nodesSnapshot", StringComparison.Ordinal),
-                "111F-E5b: ROS2UnityCore keeps node spin serialized with graph mutation");
+            Check(core.Contains("private readonly List<Action> actionsSnapshot", StringComparison.Ordinal)
+                  && core.Contains("private readonly List<INode> nodesSnapshot", StringComparison.Ordinal)
+                  && core.Contains("snapshotVersion != collectionVersion", StringComparison.Ordinal)
+                  && core.Contains("RunExecutorSnapshot()", StringComparison.Ordinal)
+                  && core.Contains("Ros2cs.SpinOnce(nodesSnapshot", StringComparison.Ordinal),
+                "111F-E5b: ROS2UnityCore runs executor work from lock-refreshed snapshots");
             Check(core.Contains("private HashSet<Action> executableActionSet", StringComparison.Ordinal)
                   && core.Contains("executableActionSet.Add(executable)", StringComparison.Ordinal)
                   && core.Contains("executableActionSet.Remove(executable)", StringComparison.Ordinal),
@@ -201,6 +204,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && core.Contains("QuarantineNodesAfterExecutorTimeout", StringComparison.Ordinal)
                   && core.Contains("TryDetachRuntimeState(executorStopped, out instance)", StringComparison.Ordinal),
                 "111F-E5d: ROS2UnityCore quarantines timed-out executor state without skipping lifecycle cleanup");
+            Check(core.Contains("Monitor.Enter(mutex, ref lockTaken)", StringComparison.Ordinal)
+                  && core.Contains("if (lockTaken)")
+                  && !core.Contains("private volatile bool cachedOk", StringComparison.Ordinal),
+                "173-055-D1: ROS2UnityCore detaches runtime state with conditional lock release and non-volatile cached Ok");
 
             var dotnetTime = ReadRepoText(RuntimeScripts + "/Time/DotnetTimeSource.cs");
             Check(dotnetTime.Contains("/ Stopwatch.Frequency", StringComparison.Ordinal)

@@ -284,6 +284,21 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertEqual(ssl.CERT_NONE, context.verify_mode)
         self.assertIn("--insecure", stderr.getvalue())
 
+    def test_topic_rate_probe_restricts_insecure_tls_to_loopback(self) -> None:
+        """The topic-rate probe should not disable TLS validation for remote WSS endpoints."""
+        module = load_smoke_module("topic_rate_tls_under_test", "websocket/topic_rate_probe.py")
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            context = module.build_ssl_context("wss://localhost:8765", True)
+
+        self.assertIsNotNone(context)
+        self.assertFalse(context.check_hostname)
+        self.assertEqual(ssl.CERT_NONE, context.verify_mode)
+        self.assertIn("--insecure", stdout.getvalue())
+        with self.assertRaises(ValueError):
+            module.build_ssl_context("wss://example.com:8765", True)
+
     def test_pointcloud_probe_rejects_non_strict_json_base64(self) -> None:
         """Whitespace-tolerant base64 decoding should not hide malformed payloads."""
         module = load_smoke_module("pointcloud_qos_base64_under_test", "websocket/pointcloud_qos_probe.py")

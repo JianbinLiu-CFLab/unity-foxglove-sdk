@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static Unity2FoxgloveRos2MsgRegistrySection BuildRos2MsgRegistrySection()
         {
-            var entries = FoxgloveRos2MsgSchemaCatalog.Entries
+            var entries = FoxgloveRos2MsgSchemaCatalog.RegisteredEntries
                 .Select(entry => new Unity2FoxgloveRos2MsgRegistryEntry(
                     entry.SchemaName,
                     entry.SourceFile,
@@ -186,11 +186,11 @@ namespace Unity.FoxgloveSDK.Editor
                 .ToList()
                 .AsReadOnly();
 
-            if (entries.Count != FoxgloveRos2MsgSchemaCatalog.SourceFileCount)
+            if (entries.Count != FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount)
             {
                 throw new InvalidOperationException(
                     "ROS2 .msg schema catalog count mismatch. " +
-                    $"Entries={entries.Count}, SourceFileCount={FoxgloveRos2MsgSchemaCatalog.SourceFileCount}.");
+                    $"Entries={entries.Count}, TotalRegisteredCount={FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount}.");
             }
 
             return new Unity2FoxgloveRos2MsgRegistrySection(
@@ -198,7 +198,7 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxgloveRos2MsgSchemaCatalog.SourceSnapshot,
                 FoxgloveRos2MsgSchemaCatalog.SourceCommit,
                 FoxgloveRos2MsgSchemaCatalog.SourceTreeSha256,
-                FoxgloveRos2MsgSchemaCatalog.SourceFileCount,
+                FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount,
                 entries.Count,
                 entries);
         }

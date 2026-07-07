@@ -147,10 +147,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && section.SourceTreeSha256 == FoxgloveRos2MsgSchemaCatalog.SourceTreeSha256,
                 "115-C1: ROS2 .msg section records source snapshot identity");
 
-            Check(section.SourceFileCount == FoxgloveRos2MsgSchemaCatalog.SourceFileCount
-                  && section.EntryCount == FoxgloveRos2MsgSchemaCatalog.Entries.Count
+            Check(section.SourceFileCount == FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount
+                  && section.EntryCount == FoxgloveRos2MsgSchemaCatalog.RegisteredEntries.Count
                   && section.EntryCount == section.SourceFileCount,
-                "115-C2: ROS2 .msg section entry count matches SourceFileCount");
+                "115-C2: ROS2 .msg section entry count matches runtime registered schema count");
 
             Check(section.Entries.All(e => IsLowercaseSha256Hex(e.SourceSha256))
                   && section.Entries.Select(e => e.SchemaName)

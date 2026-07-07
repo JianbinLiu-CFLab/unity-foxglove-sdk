@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Newtonsoft.Json;
@@ -30,6 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyGeneratedDescriptorSchemaSurface();
             VerifyRoslynGeneratedServiceSchemaPayloads();
             VerifySchemaPreviewMatchesRuntimeSerializationShape();
+            VerifyDescriptorLiteralParserSkipsParenthesesInsideStrings();
             VerifyHubForwardsGeneratedSchemas();
             VerifyManagerInspectorServiceStatusSurface();
             VerifyDocumentationPolish();
@@ -84,6 +86,8 @@ namespace Unity.FoxgloveSDK.Tests
             var roslynLiterals = ExtractDescriptorStringLiterals(generated, "/phase141e/schema_parity");
             var roslynRequest = JObject.Parse(roslynLiterals[roslynLiterals.Length - 2]);
             var roslynResponse = JObject.Parse(roslynLiterals[roslynLiterals.Length - 1]);
+
+            VerifySchemaParityFixtureSourceMatchesReflectionTypes();
 
             var reflectionRequest = JObject.Parse(FoxServiceSchemaEmitter.Emit(FoxServiceSchemaReflectionBuilder.Build(
                 typeof(SchemaParityRequest),
@@ -204,7 +208,7 @@ namespace Unity.FoxgloveSDK.Tests
                 return Array.Empty<string>();
 
             var lineStart = generated.LastIndexOf("new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor", serviceIndex, StringComparison.Ordinal);
-            var lineEnd = generated.IndexOf(")", serviceIndex, StringComparison.Ordinal);
+            var lineEnd = FindMatchingInvocationCloseParen(generated, lineStart);
             if (lineStart < 0 || lineEnd < 0)
                 return Array.Empty<string>();
 
@@ -244,6 +248,125 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return values.ToArray();
+        }
+
+        private static void VerifyDescriptorLiteralParserSkipsParenthesesInsideStrings()
+        {
+            var generated = "new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor("
+                            + "\"/phase141e/paren\", \"value)\", \"{\\\"enum\\\":[\\\"a)\\\",\\\"b\\\"]}\")";
+
+            var literals = ExtractDescriptorStringLiterals(generated, "/phase141e/paren");
+
+            Check(literals.Length == 3
+                  && literals[1] == "value)"
+                  && literals[2].Contains("a)", StringComparison.Ordinal),
+                "173-055-F1: descriptor literal parser ignores parentheses inside string literals");
+        }
+
+        private static int FindMatchingInvocationCloseParen(string source, int constructorIndex)
+        {
+            if (constructorIndex < 0)
+                return -1;
+
+            var openParen = source.IndexOf('(', constructorIndex);
+            if (openParen < 0)
+                return -1;
+
+            var depth = 0;
+            var inString = false;
+            var inVerbatimString = false;
+            for (var i = openParen; i < source.Length; i++)
+            {
+                var ch = source[i];
+                if (inString)
+                {
+                    if (inVerbatimString)
+                    {
+                        if (ch == '"' && i + 1 < source.Length && source[i + 1] == '"')
+                        {
+                            i++;
+                            continue;
+                        }
+
+                        if (ch == '"')
+                        {
+                            inString = false;
+                            inVerbatimString = false;
+                        }
+
+                        continue;
+                    }
+
+                    if (ch == '\\')
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    if (ch == '"')
+                        inString = false;
+
+                    continue;
+                }
+
+                if (ch == '@' && i + 1 < source.Length && source[i + 1] == '"')
+                {
+                    inString = true;
+                    inVerbatimString = true;
+                    i++;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+
+                if (ch == '(')
+                {
+                    depth++;
+                    continue;
+                }
+
+                if (ch == ')')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static void VerifySchemaParityFixtureSourceMatchesReflectionTypes()
+        {
+            var source = SchemaParityFixtureSource();
+            Check(SourceClassContainsPublicProperty(source, "SchemaParityRequest", "int", "UserId")
+                  && SourceClassContainsPublicProperty(source, "SchemaParityRequest", "Mode", "Mode")
+                  && SourceClassContainsPublicProperty(source, "SchemaParityRequest", "string", "ReadOnlyScalar")
+                  && SourceClassContainsPublicProperty(source, "SchemaParityResponse", "string", "StatusText")
+                  && SourceClassContainsPublicProperty(source, "SchemaParityResponse", "Mode", "Mode"),
+                "141E-7g: fixture source schema DTO shape matches reflection parity anchors");
+            Check(typeof(SchemaParityRequest).GetProperty("UserId") != null
+                  && typeof(SchemaParityRequest).GetProperty("Mode") != null
+                  && typeof(SchemaParityRequest).GetProperty("ReadOnlyScalar") != null
+                  && typeof(SchemaParityResponse).GetProperty("StatusText") != null
+                  && typeof(SchemaParityResponse).GetProperty("Mode") != null,
+                "141E-7h: reflection parity DTO shape is explicitly anchored");
+        }
+
+        private static bool SourceClassContainsPublicProperty(string source, string className, string typeName, string propertyName)
+        {
+            var classIndex = source.IndexOf("class " + className, StringComparison.Ordinal);
+            if (classIndex < 0)
+                return false;
+
+            var nextClassIndex = source.IndexOf("class ", classIndex + 1, StringComparison.Ordinal);
+            var endIndex = nextClassIndex >= 0 ? nextClassIndex : source.Length;
+            var classBody = source.Substring(classIndex, endIndex - classIndex);
+            return classBody.Contains("public " + typeName + " " + propertyName, StringComparison.Ordinal);
         }
 
         private static MetadataReference[] References()
@@ -377,17 +500,36 @@ namespace Phase141EParity
                 throw new InvalidOperationException("[FAIL] " + label);
 
             Console.WriteLine("[PASS] " + label);
-            _passCount++;
+            Interlocked.Increment(ref _passCount);
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+        {
+            try
+            {
+                return File.ReadAllText(RepoPath(relativePath));
+            }
+            catch (FileNotFoundException ex)
+            {
+                Check(false, "141E file read failed for " + relativePath + ": " + ex.GetType().Name);
+                return string.Empty;
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                Check(false, "141E file read failed for " + relativePath + ": " + ex.GetType().Name);
+                return string.Empty;
+            }
+        }
 
         private static string RepoPath(string relativePath)
         {
             var root = Phase16Validation.FindRepoRoot();
             if (string.IsNullOrEmpty(root))
-                throw new DirectoryNotFoundException("Could not find repository root for Phase141E validation.");
+            {
+                Check(false, "141E repository root could not be located for " + relativePath);
+                return relativePath;
+            }
+
             return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
         }
     }

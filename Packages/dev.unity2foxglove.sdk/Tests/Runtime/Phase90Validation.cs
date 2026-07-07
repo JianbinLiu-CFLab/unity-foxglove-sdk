@@ -60,6 +60,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "90B-2: catalog records source tree SHA-256");
             Check(FoxgloveRos2MsgSchemaCatalog.Entries.Count == 41,
                 "90B-3: catalog exposes 41 entries");
+            Check(FoxgloveRos2MsgSchemaCatalog.TotalRegisteredCount == 44
+                  && FoxgloveRos2MsgSchemaCatalog.RegisteredEntries.Count == 44
+                  && FoxgloveRos2MsgSchemaCatalog.RegisteredEntries.Any(entry => entry.SchemaName == "sensor_msgs/msg/PointCloud2"),
+                "173-055-C1: registered catalog evidence includes standard sensor_msgs fallback schemas");
             Check(FoxgloveRos2MsgSchemaCatalog.TryGet("foxglove_msgs/msg/PointCloud", out var pointCloud),
                 "90B-4: catalog contains foxglove_msgs/msg/PointCloud");
             Check(FoxgloveRos2MsgSchemaCatalog.TryGet("foxglove_msgs/msg/CompressedPointCloud", out _),

@@ -124,6 +124,12 @@ bool do_rectify
 
         private static readonly Dictionary<string, FoxgloveRos2MsgSchemaCatalogEntry> BySchemaName = BuildSchemaNameMap();
 
+        /// <summary>Read-only list of bundled standard ROS 2 schemas registered alongside generated Foxglove schemas.</summary>
+        public static IReadOnlyList<FoxgloveRos2MsgSchemaCatalogEntry> Entries { get; } = Array.AsReadOnly(EntriesArray);
+
+        /// <summary>Number of bundled standard ROS 2 schemas registered by this catalog.</summary>
+        public static int EntryCount => EntriesArray.Length;
+
         /// <summary>
         /// Resolves one bundled standard ROS 2 schema entry by schema name.
         /// </summary>
