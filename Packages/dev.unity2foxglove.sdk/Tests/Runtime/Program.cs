@@ -18,6 +18,22 @@ using Unity.FoxgloveSDK.Tests;
 /// <summary>Console entry point for runtime validation and manual smoke servers.</summary>
 class Program
 {
+    private static readonly (string Flag, string Category, string Name)[] LegacyToolFlags =
+    {
+        ("--phase97-health", "Tool", "Phase 97 health report generator"),
+        ("--phase98-sample-send-all", "Tool", "Phase 98 all-schema sample sender"),
+        ("--phase98-live", "Tool", "Phase 98 live evidence generator"),
+        ("--phase99-live", "Tool", "Phase 99 release evidence generator"),
+        ("--phase94-bridge-send", "Tool", "Phase 94 bridge sender smoke"),
+        ("--phase91-ros2-cdr-mcap", "Tool", "Phase 91 ROS2 CDR MCAP generator"),
+        ("--phase92-ros2-product-mcap", "Tool", "Phase 92 ROS2 product MCAP generator"),
+        ("--phase93-ros2-full-mcap", "Tool", "Phase 93 ROS2 full-schema MCAP generator"),
+        ("--phase93-inspect-mcap", "Tool", "Phase 93 ROS2 full-schema MCAP inspector"),
+        ("--phase68-indexed-reader-smoke", "Tool", "Phase 68 indexed reader external MCAP smoke"),
+        ("--phase44-all-schemas-mcap", "Tool", "Phase 44 all-schema MCAP generator"),
+        ("--phase139b-remote-data-loader-server", "Manual", "Phase 139B remote data loader server"),
+    };
+
     /// <summary>
     /// Dispatches to test runner or interactive server mode based on
     /// command-line arguments. <c>--serve</c> starts a manual test
@@ -55,6 +71,12 @@ class Program
 
             var demo = argSet.Contains("--demo");
             var demo3d = argSet.Contains("--demo3d");
+            if (demo && demo3d)
+            {
+                Console.Error.WriteLine("--demo and --demo3d cannot be used together.");
+                return 1;
+            }
+
             if (IsCiEnvironment())
             {
                 Console.Error.WriteLine("--serve is manual-only and is disabled when CI-like environment variables are set.");
@@ -70,14 +92,14 @@ class Program
             return 1;
         }
 
-        if (argSet.Contains("--phase139b-remote-data-loader-server"))
-            return RunPhase139BRemoteDataLoaderServer(argList);
-
         if (TryRunRegisteredValidation(argList, argSet, out var registeredValidationExitCode))
             return registeredValidationExitCode;
 
+        if (argSet.Contains("--phase139b-remote-data-loader-server"))
+            return RunPhase139BRemoteDataLoaderServer(argList);
+
         if (argSet.Contains("--phase97-health"))
-            return RunPhase97Health(argList);
+            return RunPhase97Health(argList, argSet);
 
         var phase98SampleSendAllIdx = argList.IndexOf("--phase98-sample-send-all");
         if (phase98SampleSendAllIdx >= 0)
@@ -215,6 +237,8 @@ class Program
                     flags = "(default only)";
                 Console.WriteLine($"{flags} [{validation.Category}] {validation.Name}");
             }
+            foreach (var tool in LegacyToolFlags)
+                Console.WriteLine($"{tool.Flag} [{tool.Category}] {tool.Name}");
 
             exitCode = 0;
             return true;
@@ -422,7 +446,7 @@ class Program
         }
     }
 
-    private static int RunPhase97Health(List<string> argList)
+    private static int RunPhase97Health(List<string> argList, IReadOnlyCollection<string> argSet)
     {
         try
         {
@@ -433,7 +457,7 @@ class Program
                 return 1;
             }
 
-            var liveMode = argList.Contains("--phase97-live")
+            var liveMode = argSet.Contains("--phase97-live")
                 || string.Equals(
                     Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_PHASE97_LIVE"),
                     "1",
@@ -542,22 +566,15 @@ class Program
             ? "=== FoxgloveSDK CI-safe + local evidence validation ===\n"
             : "=== FoxgloveSDK CI-safe validation ===\n");
 
-        try
+        foreach (var validation in PhaseValidationRegistry.DefaultValidations(includeLocalEvidence))
         {
-            foreach (var validation in PhaseValidationRegistry.DefaultValidations(includeLocalEvidence))
-            {
-                var result = RunValidation(validation);
-                if (result != 0)
-                    return result;
-            }
+            var result = RunValidation(validation);
+            if (result != 0)
+                return result;
+        }
 
-            Console.WriteLine("\nAll checks passed.");
-            return 0;
-        }
-        finally
-        {
-            TempMcapHelper.Cleanup();
-        }
+        Console.WriteLine("\nAll checks passed.");
+        return 0;
     }
 
     /// <summary>Runs the manual Phase139B loopback server used by browser and Python acceptance probes.</summary>
@@ -673,16 +690,16 @@ class Program
                 runtime.RegisterChannel(ch);
                 Console.WriteLine("Demo: registered /debug/heartbeat (1 Hz)");
 
-                ulong seq = 0;
+                long seq = 0;
                 heartbeat = new Timer(_ =>
                 {
                     if (Volatile.Read(ref stopping) != 0)
                         return;
 
-                    seq++;
+                    var nextSeq = (ulong)Interlocked.Increment(ref seq);
                     var payload = new
                     {
-                        seq,
+                        seq = nextSeq,
                         unixTimeNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL,
                         message = "hello foxglove"
                     };
@@ -697,13 +714,13 @@ class Program
                 runtime.RegisterSchemaChannel(2, "/scene", "foxglove.SceneUpdate");
                 Console.WriteLine("Demo3D: registered /tf (FrameTransform) and /scene (SceneUpdate) at 1 Hz");
 
-                ulong tfSeq = 0;
+                long tfSeq = 0;
                 sceneTimer = new Timer(_ =>
                 {
                     if (Volatile.Read(ref stopping) != 0)
                         return;
 
-                    tfSeq++;
+                    Interlocked.Increment(ref tfSeq);
                     var unixNs = (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000UL;
                     var sec = unixNs / 1_000_000_000UL;
                     var nsec = (uint)(unixNs % 1_000_000_000UL);

@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
@@ -152,6 +154,156 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         self.assertIn("ValidateRmwImplementation(rmwImpl);", patched)
         self.assertIn("supportedRmwImplementations", patched)
         self.assertNotIn("return rmwImpl == \"rmw_fastrtps_cpp\";", patched)
+
+    def test_package_json_declares_empty_dependencies_for_self_contained_runtime(self) -> None:
+        """Generated package metadata should explicitly document that the runtime package is self-contained."""
+        package = self.builder.package_json()
+
+        self.assertEqual({}, package.get("dependencies"))
+
+    def test_standalone_isolation_keeps_windows_env_setup_single_pass(self) -> None:
+        """Standalone env ownership should not be repeated in the Windows PATH block."""
+        source = (
+            ROOT
+            / "Packages"
+            / self.builder.PACKAGE_NAME
+            / "Runtime"
+            / "Ros2ForUnity"
+            / "Scripts"
+            / "ROS2ForUnity.cs"
+        ).read_text(encoding="utf-8")
+
+        patched = self.builder.patch_standalone_environment_isolation(source)
+        constructor = patched[patched.find("internal ROS2ForUnity()") :]
+        windows_start = constructor.find("if (GetOS() == Platform.Windows)")
+        windows_end = constructor.find("} else {", windows_start)
+        windows_block = constructor[windows_start:windows_end]
+
+        self.assertIn("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN", patched)
+        self.assertIn("PrewarmUnityPaths", patched)
+        self.assertNotIn("SetStandaloneRosDistro(currentRos2Version)", windows_block)
+        self.assertNotIn("SetStandalonePrefixPath();", windows_block)
+        self.assertNotIn("SetStandaloneRmwImplementation();", windows_block)
+        self.assertNotIn("SetStandaloneRcutilsConsoleMode();", windows_block)
+
+    def test_component_patch_prewarms_paths_and_removes_dead_shutdown_reset(self) -> None:
+        """ROS2UnityComponent patch should prewarm Unity API paths and remove the dead reset."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            component = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2UnityComponent.cs"
+            component.parent.mkdir(parents=True)
+            component.write_text(
+                "class ROS2UnityComponent\n"
+                "{\n"
+                "    private readonly object mutex = new object();\n"
+                "    private double spinTimeout = 0.0001;\n\n"
+                "    void LazyConstruct()\n"
+                "    {\n"
+                "            runtimeShutdownRequested = false;\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+
+            self.builder.patch_component_main_thread_prewarm(package)
+
+            patched = component.read_text(encoding="utf-8")
+            self.assertIn("private void Awake()", patched)
+            self.assertIn("ROS2ForUnity.PrewarmUnityPaths();", patched)
+            self.assertNotIn("runtimeShutdownRequested = false;", patched)
+
+    def test_zenoh_router_patch_documents_development_profile(self) -> None:
+        """Generated router configs should retain trusted-lab security notes."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            config = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            mirror = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "StreamingAssets"
+                / "Ros2ForUnity"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            config.parent.mkdir(parents=True)
+            mirror.parent.mkdir(parents=True)
+            text = (
+                "/// This file attempts to list and document available configuration elements.\n"
+                "/// For a more complete view of the configuration's structure, check out `zenoh/src/config.rs`'s `Config` structure.\n"
+                "/// Note that the values here are correctly typed, but may not be sensible, so copying this file to change only the parts that matter to you is not good practice.\n"
+                "{\n"
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
+                "      accept_pending: 10000,\n"
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
+                "      max_sessions: 10000,\n"
+                "}\n"
+            )
+            config.write_text(text, encoding="utf-8")
+            mirror.write_text(text, encoding="utf-8")
+
+            self.builder.patch_zenoh_router_config_notes(package)
+
+            patched = config.read_text(encoding="utf-8")
+            self.assertIn("without authentication or ACLs", patched)
+            self.assertIn("localhost-only or ACL-protected deployment profile", patched)
+            self.assertIn("high development default is unsuitable", patched)
+            self.assertEqual(patched, mirror.read_text(encoding="utf-8"))
+
+    def test_zenoh_config_inventory_hashes_are_refreshed_after_patches(self) -> None:
+        """Generated inventory hashes should describe the package-patched config files."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            config = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            )
+            inventory = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
+            config.parent.mkdir(parents=True)
+            inventory.parent.mkdir(parents=True)
+            config.write_text("patched router config\n", encoding="utf-8")
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+                                "sha256": "0" * 64,
+                                "size": 1,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.builder.update_zenoh_config_inventory_hashes(package)
+
+            data = json.loads(inventory.read_text(encoding="utf-8"))
+            entry = data["files"][0]
+            self.assertEqual(hashlib.sha256(config.read_bytes()).hexdigest(), entry["sha256"])
+            self.assertEqual(config.stat().st_size, entry["size"])
 
     def test_standalone_isolation_rejects_partial_startup_patch(self) -> None:
         """Do not accept a source that declares metadata without standalone setup calls."""

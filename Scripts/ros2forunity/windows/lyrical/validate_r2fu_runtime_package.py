@@ -358,7 +358,7 @@ def check_package_metadata(results: list[CheckResult]) -> None:
     for key, value in expected.items():
         add(results, f"package {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
-    add(results, "package has no dependencies", "dependencies" not in data, f"dependencies={data.get('dependencies')!r}")
+    add(results, "package declares no external dependencies", data.get("dependencies") == {}, f"dependencies={data.get('dependencies')!r}")
     keywords = data.get("keywords", [])
     add(
         results,
@@ -575,6 +575,8 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
     malformed: list[str] = []
     missing: list[str] = []
     mismatched: list[str] = []
+    config_mismatched: list[str] = []
+    checked_zenoh_configs = 0
     checked_dlls = 0
     should_hash_dlls = release_gate or not skip_dll_hash
     if isinstance(files, list):
@@ -583,6 +585,22 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
                 malformed.append(repr(item))
                 continue
             path_text = str(item.get("path", ""))
+            if "DEFAULT_RMW_ZENOH" in path_text and path_text.endswith(".json5"):
+                expected_hash = str(item.get("sha256", "")).lower()
+                parts = PurePosixPath(path_text).parts
+                package_path = (
+                    RUNTIME_ROOT.joinpath(*parts)
+                    if parts and parts[0] == "StreamingAssets"
+                    else RUNTIME_ROOT.joinpath(*parts[1:])
+                    if len(parts) >= 2 and parts[0] == "Ros2ForUnity"
+                    else None
+                )
+                checked_zenoh_configs += 1
+                if package_path is None or not package_path.is_file():
+                    config_mismatched.append(path_text + " (missing)")
+                elif expected_hash and file_sha256(package_path) != expected_hash:
+                    config_mismatched.append(path_text)
+
             if not path_text.lower().endswith(".dll"):
                 continue
             checked_dlls += 1
@@ -614,6 +632,12 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
             else f"checked_dlls={checked_dlls} mismatched={mismatched[:8]!r}"
         ),
     )
+    add(
+        results,
+        "runtime inventory Zenoh config hashes match disk",
+        checked_zenoh_configs >= 4 and not config_mismatched,
+        f"checked_zenoh_configs={checked_zenoh_configs} mismatched={config_mismatched[:8]!r}",
+    )
 
 
 def check_runtime_files(results: list[CheckResult]) -> None:
@@ -637,6 +661,48 @@ def check_runtime_files(results: list[CheckResult]) -> None:
             and streaming_assets_config.exists()
             and plugin_config.read_bytes() == streaming_assets_config.read_bytes(),
             f"{rel(plugin_config)} <-> {rel(streaming_assets_config)}",
+        )
+
+    for path in [item for item in ZENOH_CONFIG_FILES if item.name == "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"]:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        add(
+            results,
+            f"Zenoh session listen failure is non-fatal: {path.parent.parent.name}/{path.name}",
+            "exit_on_failure: false" in text,
+            rel(path),
+        )
+        add(
+            results,
+            f"Zenoh session RX defragmentation buffer is bounded: {path.parent.parent.name}/{path.name}",
+            "max_message_size: 134217728" in text and "max_message_size: 1073741824" not in text,
+            rel(path),
+        )
+        adminspace_index = text.find("adminspace:")
+        adminspace = text[adminspace_index:] if adminspace_index >= 0 else ""
+        add(
+            results,
+            f"Zenoh session adminspace disabled by default: {path.parent.parent.name}/{path.name}",
+            "enabled: false" in adminspace and "read: false" in adminspace,
+            rel(path),
+        )
+
+    for path in [item for item in ZENOH_CONFIG_FILES if item.name == "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"]:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        add(
+            results,
+            f"Zenoh router open-listen profile is documented: {path.parent.parent.name}/{path.name}",
+            "tcp/[::]:7447" in text
+            and "without authentication or ACLs" in text
+            and "localhost-only or ACL-protected deployment profile" in text,
+            rel(path),
+        )
+        add(
+            results,
+            f"Zenoh router high connection limits are documented: {path.parent.parent.name}/{path.name}",
+            "accept_pending: 10000" in text
+            and "max_sessions: 10000" in text
+            and "high development default is unsuitable" in text,
+            rel(path),
         )
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
@@ -844,12 +910,38 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
     add(
         results,
+        "ROS2ForUnity Windows CRT environment import is Windows-symbol guarded",
+        "#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN" in runtime
+        and "PlatformNotSupportedException(\"Windows CRT environment updates require a Windows Unity build target.\")" in runtime,
+        "ROS2ForUnity.cs",
+    )
+    constructor = runtime[runtime.find("internal ROS2ForUnity()") :]
+    windows_block = constructor[constructor.find("if (GetOS() == Platform.Windows)") : constructor.find("} else {")]
+    add(
+        results,
+        "ROS2ForUnity standalone environment setup is not repeated in the Windows PATH block",
+        "SetStandaloneRosDistro(currentRos2Version)" not in windows_block
+        and "SetStandalonePrefixPath();" not in windows_block
+        and "SetStandaloneRmwImplementation();" not in windows_block
+        and "SetStandaloneRcutilsConsoleMode();" not in windows_block,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
         "ROS2UnityComponent prevents restart during shared ROS shutdown",
         "runtimeShutdownRequested" in component
         and "MarkRuntimeShutdown()" in component
         and "component.MarkRuntimeShutdown();" in component
         and "throw new ObjectDisposedException(nameof(ROS2UnityComponent))" in component
         and "ros2forUnity == null" in component,
+        "ROS2UnityComponent.cs",
+    )
+    add(
+        results,
+        "ROS2UnityComponent prewarms Unity path Lazy values on the main thread",
+        "private void Awake()" in component
+        and "ROS2ForUnity.PrewarmUnityPaths();" in component
+        and "            runtimeShutdownRequested = false;" not in component,
         "ROS2UnityComponent.cs",
     )
 
@@ -976,6 +1068,23 @@ def check_public_docs(results: list[CheckResult]) -> None:
         results,
         "README documents WSL2 NAT topology limit",
         "WSL2 NAT" in readme and "diagnostic-only" in readme and "Windows Defender Firewall" in readme,
+        "README.md",
+    )
+    add(
+        results,
+        "README documents runtime package has no facade dependency",
+        "intentionally declares no UPM dependency on the facade package" in readme
+        and "binary/runtime payload" in readme,
+        "README.md",
+    )
+    add(
+        results,
+        "README documents Zenoh router development security boundary",
+        "listens on `tcp/[::]:7447`" in readme
+        and "exits if port `7447` is already bound" in readme
+        and "no authentication or ACLs" in readme
+        and "read-only Zenoh adminspace" in readme
+        and "trusted lab networks" in readme,
         "README.md",
     )
 

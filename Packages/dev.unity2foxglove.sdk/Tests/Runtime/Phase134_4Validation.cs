@@ -221,10 +221,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(publisherBase.Contains("_warnedManagerMissing = false;", StringComparison.Ordinal),
                 "134-4I-1: publisher manager-missing warning latch resets on enable");
-            Check(!publisherBase.Contains("_supportedEncodingSummary", StringComparison.Ordinal)
-                  && publisherBase.Contains("get { return BuildSupportedEncodingSummary(); }", StringComparison.Ordinal)
-                  && !publisherBase.Contains("new System.Collections.Generic.List<string>(3)", StringComparison.Ordinal),
-                "134-4I-2: supported encoding summary recomputes from current publisher capabilities without list allocation");
+            Check(publisherBase.Contains("_supportedEncodingSummaryCache", StringComparison.Ordinal)
+                  && publisherBase.Contains("get { return _supportedEncodingSummaryCache ??= BuildSupportedEncodingSummary(); }", StringComparison.Ordinal)
+                  && publisherBase.Contains("InvalidateSupportedEncodingSummaryCache();", StringComparison.Ordinal),
+                "134-4I-2: supported encoding summary is cached and invalidated with publisher validation");
         }
 
         private static void AssertQuaternionRoundTrip(TestQuaternion unity, string message)

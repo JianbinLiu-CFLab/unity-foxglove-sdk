@@ -61,10 +61,22 @@ namespace Unity.FoxgloveSDK.Components
         private string _lastBridgeWarningKey;
         private string _lastPublishTopicWarningKey;
         private string _lastRos2BridgeTopicWarningKey;
+        private string _supportedEncodingSummaryCache;
+        private bool _managerWasResolved;
+        private double _nextManagerResolveTime;
 
         protected FoxgloveManager Manager => _manager;
         protected abstract string SchemaName { get; }
-        protected ulong CurrentLogTimeNs => _manager?.NowNs ?? Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
+        protected ulong CurrentLogTimeNs
+        {
+            get
+            {
+                if (_manager == null)
+                    return Schemas.FoxgloveTimeUtil.NowUnixTimeNs();
+
+                return _manager.NowNs;
+            }
+        }
 
         /// <summary>
         /// True when this publisher can serialize JSON-compatible Foxglove messages.
@@ -110,11 +122,15 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Resolved effective encoding for this publisher.
         /// Reads global default, override permission, publisher override, and capabilities.
+        /// This property resolves on each access; cache the value locally before
+        /// using it more than once in a hot path.
         /// </summary>
         public PublisherEffectiveEncoding EffectiveEncoding => EncodingResolution.Effective;
 
         /// <summary>
         /// Full encoding resolution used by Inspector UI and publish helpers.
+        /// This property resolves on each access; cache the value locally before
+        /// using it more than once in a hot path.
         /// </summary>
         public PublisherEncodingResolution EncodingResolution => ResolvePublisherEncoding();
 
@@ -146,6 +162,8 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>
         /// Full ROS2 Bridge output resolution used by Inspector UI and publish helpers.
+        /// This property resolves on each access; cache the value locally before
+        /// using it more than once in a hot path.
         /// </summary>
         public Ros2BridgeOutputResolution BridgeOutputResolution => ResolveRos2BridgeOutput();
 
@@ -202,7 +220,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public string SupportedEncodingSummary
         {
-            get { return BuildSupportedEncodingSummary(); }
+            get { return _supportedEncodingSummaryCache ??= BuildSupportedEncodingSummary(); }
         }
 
         protected virtual void Reset()
@@ -217,6 +235,7 @@ namespace Unity.FoxgloveSDK.Components
             _publishRateState = default;
             _publishRateStateFixed = default;
             InvalidatePublishRateCache();
+            InvalidateSupportedEncodingSummaryCache();
             _warnedManagerMissing = false;
             _lastEncodingFallbackWarningKey = 0;
             _lastEncodingMismatchWarningKey = 0;
@@ -232,14 +251,25 @@ namespace Unity.FoxgloveSDK.Components
         protected virtual void OnValidate()
         {
             InvalidatePublishRateCache();
+            InvalidateSupportedEncodingSummaryCache();
         }
 
         protected void ResolveManager()
         {
-            if (_manager != null) return;
+            if (_manager != null)
+            {
+                _managerWasResolved = true;
+                return;
+            }
 
             var managers = FindObjectsByType<FoxgloveManager>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             _manager = ResolveManagerFromCandidates(managers);
+            if (_manager != null)
+            {
+                _managerWasResolved = true;
+                _warnedManagerMissing = false;
+                return;
+            }
 
             if (_manager == null && _warnIfManagerMissing && !_warnedManagerMissing)
             {
@@ -249,6 +279,26 @@ namespace Unity.FoxgloveSDK.Components
                     : $"[Foxglove] {GetType().Name}: No FoxgloveManager found in scene.");
                 _warnedManagerMissing = true;
             }
+        }
+
+        protected bool EnsureManagerAvailable()
+        {
+            if (_manager != null)
+                return true;
+
+            if (_managerWasResolved)
+            {
+                _managerWasResolved = false;
+                _warnedManagerMissing = false;
+            }
+
+            var now = Time.realtimeSinceStartupAsDouble;
+            if (now < _nextManagerResolveTime)
+                return false;
+
+            _nextManagerResolveTime = now + 1.0;
+            ResolveManager();
+            return _manager != null;
         }
 
         private FoxgloveManager ResolveManagerFromCandidates(FoxgloveManager[] managers)
@@ -288,6 +338,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>True if enough time has elapsed since last publish.</summary>
         protected bool ShouldPublishNow()
         {
+            if (!_publishOnEnable)
+                return false;
+
 #if UNITY_2020_3_OR_NEWER
             using (PublisherTickMarker.Auto())
             {
@@ -309,6 +362,9 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool ShouldPublishNowFixed()
         {
+            if (!_publishOnEnable)
+                return false;
+
 #if UNITY_2020_3_OR_NEWER
             using (PublisherTickMarker.Auto())
             {
@@ -388,7 +444,7 @@ namespace Unity.FoxgloveSDK.Components
             PublisherEncodingResolution resolution,
             PublisherEffectiveEncoding attemptedEncoding)
         {
-            if (_manager == null) return false;
+            if (!EnsureManagerAvailable()) return false;
             if (!ValidateConfiguredTopic("publish")) return false;
 
             WarnIfEncodingFallback(resolution);
@@ -436,7 +492,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool ShouldPrepareRos2BridgePayload(Ros2BridgeOutputResolution resolution)
         {
-            if (_manager == null) return false;
+            if (!EnsureManagerAvailable()) return false;
             if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return false;
 
             WarnIfRos2BridgeFallback(resolution);
@@ -477,7 +533,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish a message using a previously resolved encoding. Safe no-op if manager is null.</summary>
         protected void Publish(object message, ulong logTimeNs, PublisherEncodingResolution resolution)
         {
-            if (_manager == null) return;
+            if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
             WarnIfEncodingFallback(resolution);
@@ -501,7 +557,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish protobuf bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
         protected void PublishProto(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
         {
-            if (_manager == null) return;
+            if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
             WarnIfEncodingFallback(resolution);
@@ -525,7 +581,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish MessagePack bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
         protected void PublishMsgPack(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
         {
-            if (_manager == null) return;
+            if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
             WarnIfEncodingFallback(resolution);
@@ -549,7 +605,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Publish ROS 2 CDR bytes through the manager using an already resolved encoding. Safe no-op if manager is null.</summary>
         protected void PublishRos2(byte[] payload, ulong logTimeNs, PublisherEncodingResolution resolution)
         {
-            if (_manager == null) return;
+            if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("publish")) return;
 
             WarnIfEncodingFallback(resolution);
@@ -579,7 +635,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Mirror ROS 2 CDR bytes to ROS2 Bridge using an already resolved output resolution.</summary>
         protected void PublishRos2Bridge(byte[] payload, ulong logTimeNs, Ros2BridgeOutputResolution resolution)
         {
-            if (_manager == null) return;
+            if (!EnsureManagerAvailable()) return;
             if (!ValidateConfiguredTopic("ROS2 Bridge publish")) return;
 
             WarnIfRos2BridgeFallback(resolution);
@@ -670,6 +726,11 @@ namespace Unity.FoxgloveSDK.Components
         private void InvalidatePublishRateCache()
         {
             _publishRateCacheValid = false;
+        }
+
+        private void InvalidateSupportedEncodingSummaryCache()
+        {
+            _supportedEncodingSummaryCache = null;
         }
 
         private string BuildSupportedEncodingSummary()

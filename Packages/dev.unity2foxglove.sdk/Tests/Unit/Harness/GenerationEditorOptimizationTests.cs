@@ -157,6 +157,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void RoslynGeneratorReviewFixesStayPinned()
+        {
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generate = TestSources.Slice(source, "private static void Generate", "private static string DiagnosticDeclaringType");
+            var services = TestSources.Slice(source, "private static void GenerateServices", "        /// <summary>\r\n        /// Emits the generated partial class");
+            var locationFor = TestSources.ExtractMethod(source, "private static Location LocationFor");
+            var chunkedDescriptor = TestSources.ExtractMethod(source, "private static string ChunkedDescriptorCarrierSource");
+            var escape = TestSources.ExtractMethod(source, "private static string EscapeStringLiteral");
+
+            Assert.Contains("catch (Exception ex) when (ex is OverflowException || ex is InvalidCastException || ex is FormatException)", source, StringComparison.Ordinal);
+            Assert.Contains("roslynMemberCapacity", generate, StringComparison.Ordinal);
+            Assert.Contains("item.Topics?.Length ?? 0", generate, StringComparison.Ordinal);
+            Assert.Contains("var servicesByName = new Dictionary<string, List<ServiceMethodData>>(StringComparer.Ordinal);", services, StringComparison.Ordinal);
+            Assert.DoesNotContain(".GroupBy(item => item.ServiceName", services, StringComparison.Ordinal);
+            Assert.Contains("diagnostic.Target ?? string.Empty", locationFor, StringComparison.Ordinal);
+            Assert.Contains("public static readonly string DescriptorJson = string.Concat(", chunkedDescriptor, StringComparison.Ordinal);
+            Assert.DoesNotContain("public static string DescriptorJson => string.Concat(", chunkedDescriptor, StringComparison.Ordinal);
+            Assert.Contains("char.IsHighSurrogate(ch)", escape, StringComparison.Ordinal);
+            Assert.Contains("char.IsLowSurrogate(ch)", escape, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void EditorGeneratorPreservesLoadedAssemblyDiscovery()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");

@@ -1099,7 +1099,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 value = Convert.ToSingle(constant.Value);
                 return true;
             }
-            catch
+            catch (Exception ex) when (ex is OverflowException || ex is InvalidCastException || ex is FormatException)
             {
                 return false;
             }
@@ -1116,7 +1116,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 value = Convert.ToInt32(constant.Value);
                 return true;
             }
-            catch
+            catch (Exception ex) when (ex is OverflowException || ex is InvalidCastException || ex is FormatException)
             {
                 return false;
             }
@@ -1128,7 +1128,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// </summary>
         private static void Generate(SourceProductionContext spc, ImmutableArray<MemberData> items)
         {
-            var roslynMembers = new List<FoxRunRoslynGenerationMember>(items.Length);
+            var roslynMemberCapacity = 0;
+            foreach (var item in items)
+                if (item?.DiagnosticLocation == null)
+                    roslynMemberCapacity += item.Topics?.Length ?? 0;
+
+            var roslynMembers = new List<FoxRunRoslynGenerationMember>(
+                roslynMemberCapacity > 0 ? roslynMemberCapacity : items.Length);
             var memberLocations = new Dictionary<string, Location>(items.Length);
             var firstMemberByClass = new Dictionary<(string Ns, string ClassName), MemberData>();
             foreach (var item in items)
@@ -1225,23 +1231,46 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     valid.Add(item);
             }
 
-            var duplicateServices = valid
-                .GroupBy(item => item.ServiceName, StringComparer.Ordinal)
-                .Where(group => group.Count() > 1)
-                .ToList();
-            var duplicateNames = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var duplicate in duplicateServices)
+            var servicesByName = new Dictionary<string, List<ServiceMethodData>>(StringComparer.Ordinal);
+            foreach (var item in valid)
             {
+                if (!servicesByName.TryGetValue(item.ServiceName, out var list))
+                {
+                    list = new List<ServiceMethodData>();
+                    servicesByName.Add(item.ServiceName, list);
+                }
+                list.Add(item);
+            }
+
+            var duplicateNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var duplicate in servicesByName)
+            {
+                if (duplicate.Value.Count <= 1)
+                    continue;
+
                 duplicateNames.Add(duplicate.Key);
-                foreach (var item in duplicate)
+                foreach (var item in duplicate.Value)
                     spc.ReportDiagnostic(Diagnostic.Create(Diags.DuplicateServiceName, item.Location, item.ServiceName));
             }
 
-            foreach (var group in valid
-                         .Where(item => !duplicateNames.Contains(item.ServiceName))
-                         .GroupBy(item => (item.Ns, item.ClassName)))
+            var methodsByType = new Dictionary<(string Ns, string ClassName), List<ServiceMethodData>>();
+            foreach (var item in valid)
             {
-                var methods = group
+                if (duplicateNames.Contains(item.ServiceName))
+                    continue;
+
+                var key = (item.Ns, item.ClassName);
+                if (!methodsByType.TryGetValue(key, out var list))
+                {
+                    list = new List<ServiceMethodData>();
+                    methodsByType.Add(key, list);
+                }
+                list.Add(item);
+            }
+
+            foreach (var group in methodsByType)
+            {
+                var methods = group.Value
                     .OrderBy(item => item.ServiceName, StringComparer.Ordinal)
                     .Select(item => item.ToEmitterMethod())
                     .ToList();
@@ -1275,7 +1304,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             if (!string.IsNullOrEmpty(diagnostic.MemberName))
             {
-                var declaringType = diagnostic.Target;
+                var declaringType = diagnostic.Target ?? string.Empty;
                 var memberSuffix = "." + diagnostic.MemberName;
                 if (declaringType.EndsWith(memberSuffix, StringComparison.Ordinal))
                     declaringType = declaringType.Substring(0, declaringType.Length - memberSuffix.Length);
@@ -1384,7 +1413,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case '\r': sb.Append("\\r"); break;
                     case '\t': sb.Append("\\t"); break;
                     default:
-                        if (ch < 0x20)
+                        if (ch < 0x20 || char.IsHighSurrogate(ch) || char.IsLowSurrogate(ch))
                         {
                             sb.Append("\\u");
                             sb.Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));

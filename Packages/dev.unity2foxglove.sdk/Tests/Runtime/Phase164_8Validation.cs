@@ -25,19 +25,18 @@ namespace Unity.FoxgloveSDK.Tests
             var engine = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
             var snapshot = SourceMethod(engine, "public List<McapMessage> Snapshot");
             var history = SourceMethod(engine, "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)");
-            var addHistory = SourceMethod(engine, "private static void AddHistoryMessage");
 
             Check(engine.Contains("_snapshotLatestByChannel", StringComparison.Ordinal)
                   && snapshot.Contains("var latestByChannel = _snapshotLatestByChannel", StringComparison.Ordinal)
                   && snapshot.Contains("latestByChannel.Clear()", StringComparison.Ordinal)
                   && !snapshot.Contains("new Dictionary<ushort, McapMessage>", StringComparison.Ordinal),
                 "164-8A-1: replay snapshots reuse the latest-by-channel dictionary");
-            Check(history.Contains("var historyHeadIndex = 0", StringComparison.Ordinal)
-                  && history.Contains("CompactHistory(result, ref historyHeadIndex)", StringComparison.Ordinal)
-                  && addHistory.Contains("historyHeadIndex++", StringComparison.Ordinal)
-                  && addHistory.Contains("CompactHistory(result, ref historyHeadIndex)", StringComparison.Ordinal)
-                  && !addHistory.Contains("RemoveAt(0)", StringComparison.Ordinal),
-                "164-8A-2: capped replay history trims through a head index instead of RemoveAt(0)");
+            Check(history.Contains("result.Add(new McapMessage", StringComparison.Ordinal)
+                  && history.Contains("result.Sort(CompareMessages)", StringComparison.Ordinal)
+                  && history.Contains("TrimHistoryToLatestMessages(result, maxMessages)", StringComparison.Ordinal)
+                  && !history.Contains("result.Insert(", StringComparison.Ordinal)
+                  && engine.Contains("private static void TrimHistoryToLatestMessages", StringComparison.Ordinal),
+                "164-8A-2: capped replay history sorts once and trims without per-message Insert");
         }
 
         private static void VerifyCursorEndpointHotPostPathAvoidsTransientBuffers()

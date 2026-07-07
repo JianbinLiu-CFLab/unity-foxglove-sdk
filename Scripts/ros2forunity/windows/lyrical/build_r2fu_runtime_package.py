@@ -585,6 +585,7 @@ def package_json() -> dict[str, object]:
             "lyrical",
             "win64",
         ],
+        "dependencies": {},
         "author": {"name": "Unity2Foxglove"},
     }
 
@@ -657,6 +658,8 @@ Recommended combinations:
 - `dev.unity2foxglove.ros2forunity` plus this runtime package: enables adapter-backed ROS2 publish/subscribe.
 - `dev.unity2foxglove.sdk` plus adapter plus this runtime package: enables the combined Unity2Foxglove workflow.
 
+The runtime package intentionally declares no UPM dependency on the facade package. It is a binary/runtime payload that must remain importable for diagnostics and artifact validation even when the adapter facade is not installed.
+
 ## One Runtime Policy
 
 Install only one `dev.unity2foxglove.ros2forunity.runtime.*` package in a Unity project. Multiple ROS2 runtime packages can load conflicting native DLLs or generated message assemblies.
@@ -689,6 +692,8 @@ This patch is limited to locating runtime files from a Unity package. It does no
 ## Network Acceptance Notes
 
 WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Lyrical or a real remote Linux topology for final external-graph acceptance. Zenoh mode is Lyrical-only and requires selecting `rmw_zenoh_cpp` before ROS2 For Unity initializes, plus a reachable Zenoh router for routed topologies. Zenoh config files are mirrored under `Plugins/Windows/x86_64/share` for native runtime closure and `StreamingAssets/Ros2ForUnity/share` for Unity player access; package validation requires the mirrored files to stay byte-identical.
+
+The bundled Zenoh router config is a development profile. It listens on `tcp/[::]:7447`, exits if port `7447` is already bound, has no authentication or ACLs, enables read-only Zenoh adminspace for topology inspection, and keeps high pending/session limits for large ROS2 graph startup bursts. Use it only on trusted lab networks. For CI, shared office networks, or production-like deployments, copy the router config to a localhost-only or ACL-protected profile with lower connection limits and disabled adminspace.
 
 ## Support Boundary
 
@@ -953,6 +958,56 @@ def patch_standalone_environment_isolation(text: str) -> str:
 '''
     text = text.replace(old_owned_rmw, new_rmw)
 
+    text = text.replace(
+        '''    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    private static extern int _wputenv_s(string name, string value);
+''',
+        '''#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+    [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
+    private static extern int _wputenv_s(string name, string value);
+#endif
+''',
+        1,
+    )
+    text = text.replace(
+        '''        if (GetOS() == Platform.Windows)
+        {
+            int result = _wputenv_s(name, value);
+            if (result != 0)
+            {
+                throw new InvalidOperationException(
+                    "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
+            }
+        }
+''',
+        '''        if (GetOS() == Platform.Windows)
+        {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            int result = _wputenv_s(name, value);
+            if (result != 0)
+            {
+                throw new InvalidOperationException(
+                    "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
+            }
+#else
+            throw new PlatformNotSupportedException("Windows CRT environment updates require a Windows Unity build target.");
+#endif
+        }
+''',
+        1,
+    )
+    if "internal static void PrewarmUnityPaths()" not in text:
+        text = text.replace(
+            "\n    public static string GetRos2ForUnityPath()\n",
+            "\n    internal static void PrewarmUnityPaths()\n"
+            "    {\n"
+            "        _ = GetRos2ForUnityPath();\n"
+            "        _ = GetPluginPath();\n"
+            "    }\n\n"
+            "    public static string GetRos2ForUnityPath()\n",
+            1,
+        )
+
     old_distro = '''        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("ROS_DISTRO")))
         {
             SetProcessEnvironmentVariable("ROS_DISTRO", ros2Codename);
@@ -1034,8 +1089,43 @@ def patch_standalone_environment_isolation(text: str) -> str:
         "                if (standaloneBuild)\n",
         1,
     )
+    text = text.replace(
+        '''                if (standaloneBuild)
+                {
+                    SetStandaloneRosDistro(currentRos2Version);
+                    SetStandalonePrefixPath();
+                    SetStandaloneRmwImplementation();
+                    SetStandaloneRcutilsConsoleMode();
+                }
+''',
+        "",
+        1,
+    )
 
     return text
+
+
+def patch_component_main_thread_prewarm(package: Path) -> None:
+    """Patch ROS2UnityComponent so Unity API backed Lazy paths are warmed on the main thread."""
+    component = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2UnityComponent.cs"
+    text = component.read_text(encoding="utf-8")
+    if "ROS2ForUnity.PrewarmUnityPaths();" not in text:
+        text = text.replace(
+            "    private readonly object mutex = new object();\n    private double spinTimeout = 0.0001;\n\n",
+            "    private readonly object mutex = new object();\n"
+            "    private double spinTimeout = 0.0001;\n\n"
+            "    private void Awake()\n"
+            "    {\n"
+            "        ROS2ForUnity.PrewarmUnityPaths();\n"
+            "    }\n\n"
+            "    /// <summary>\n"
+            "    /// Checks ROS2 availability. The first call must happen on Unity's main thread,\n"
+            "    /// or after Awake has prewarmed Unity API backed package paths.\n"
+            "    /// </summary>\n",
+            1,
+        )
+    text = text.replace("            runtimeShutdownRequested = false;\n", "", 1)
+    component.write_text(text, encoding="utf-8", newline="\n")
 
 
 def patch_ros_time_source_contract(package: Path) -> None:
@@ -1110,6 +1200,83 @@ def patch_ros_time_source_contract(package: Path) -> None:
         write_text(source, text)
 
 
+def patch_zenoh_router_config_notes(package: Path) -> None:
+    """Document the bundled Zenoh router config as a trusted-lab development profile."""
+    runtime_root = package / "Runtime" / "Ros2ForUnity"
+    config_relatives = (
+        Path("Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"),
+        Path("StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"),
+    )
+    header_note = (
+        "/// Unity2Foxglove package note: this is the upstream ROS2 Zenoh router development profile.\n"
+        "/// It listens on tcp/[::]:7447 without authentication or ACLs so routed ROS2 peers on\n"
+        "/// the local network can connect during lab acceptance. Do not use this profile on an\n"
+        "/// untrusted network; copy it to a localhost-only or ACL-protected deployment profile.\n"
+    )
+    limit_note = (
+        "      /// Unity2Foxglove package note: this high development default is unsuitable for\n"
+        "      /// untrusted networks; use a hardened deployment profile with lower limits.\n"
+    )
+
+    for relative in config_relatives:
+        path = runtime_root / relative
+        if not path.exists():
+            continue
+
+        text = path.read_text(encoding="utf-8")
+        if "Unity2Foxglove package note: this is the upstream ROS2 Zenoh router development profile." not in text:
+            marker = "/// Note that the values here are correctly typed, but may not be sensible, so copying this file to change only the parts that matter to you is not good practice.\n"
+            if marker not in text:
+                raise ValueError(f"Could not find Zenoh router header in {relative.as_posix()}.")
+            text = text.replace(marker, marker + header_note, 1)
+
+        if "Unity2Foxglove package note: this high development default is unsuitable for" not in text:
+            text = text.replace(
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
+                "      accept_pending: 10000,\n",
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together.\n"
+                + limit_note +
+                "      accept_pending: 10000,\n",
+                1,
+            )
+            text = text.replace(
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
+                "      max_sessions: 10000,\n",
+                "      /// ROS setting: increase the value to support a large number of Nodes starting all together.\n"
+                + limit_note +
+                "      max_sessions: 10000,\n",
+                1,
+            )
+
+        write_text(path, text)
+
+
+def update_zenoh_config_inventory_hashes(package: Path) -> None:
+    """Refresh inventory hashes for package-patched Zenoh config mirrors."""
+    inventory_path = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
+    if not inventory_path.exists():
+        return
+
+    data = json.loads(inventory_path.read_text(encoding="utf-8"))
+    changed = False
+    for item in data.get("files", []):
+        relative = str(item.get("path", ""))
+        if "DEFAULT_RMW_ZENOH" not in relative:
+            continue
+
+        source_relative = "Ros2ForUnity/" + relative if relative.startswith("StreamingAssets/") else relative
+        source_path = package / "Runtime" / source_relative
+        if not source_path.exists():
+            continue
+
+        item["sha256"] = sha256_file(source_path)
+        item["size"] = source_path.stat().st_size
+        changed = True
+
+    if changed:
+        write_json(inventory_path, data)
+
+
 def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifact: RuntimeArtifact) -> None:
     """Write package metadata, docs, notices, and support manifests."""
     write_json(paths.package / "package.json", package_json())
@@ -1118,6 +1285,7 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifac
     write_text(paths.package / "THIRD_PARTY_NOTICES.md", notices_text(inventory, artifact))
     write_json(paths.package / "RuntimeSupport" / "runtime-manifest.json", runtime_manifest(artifact))
     shutil.copyfile(paths.inventory, paths.package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json")
+    update_zenoh_config_inventory_hashes(paths.package)
     write_json(
         paths.package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef",
         runtime_asmdef(),
@@ -1136,7 +1304,9 @@ def build_package(paths: BuildPaths) -> None:
         prune_non_contract_examples(paths.package)
         apply_local_patch_overlays(paths.package, overlays)
         patch_ros2_for_unity(paths.package)
+        patch_component_main_thread_prewarm(paths.package)
         patch_ros_time_source_contract(paths.package)
+        patch_zenoh_router_config_notes(paths.package)
         write_package_files(paths, inventory, artifact)
         apply_meta_overlays(paths.package, meta_overlays)
         write_generated_metas(paths.package)

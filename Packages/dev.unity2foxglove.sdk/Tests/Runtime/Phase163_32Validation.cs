@@ -23,9 +23,11 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectorScopesCommunicationModePerRuntime();
             RuntimeSelectorSurfacesMissingZenohPayload();
             LyricalRuntimeCapturesSourcedDistroBeforeStandalonePatch();
+            LyricalRuntimeAvoidsDuplicateWindowsStandaloneSetup();
             LyricalRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             LyricalRuntimeDoesNotRestartAfterSharedShutdown();
             LyricalZenohPlayModeRequiresRunningRouter();
+            LyricalZenohSessionDefaultsAreUnitySafe();
             LyricalBuilderAndValidatorRegenerateRuntimePatches();
             LyricalValidationUsesRepoRootDiscovery();
             PhaseWiringIsPresent();
@@ -118,6 +120,25 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-32D-3: Lyrical runtime lifecycle logs avoid Editor stack trace extraction");
         }
 
+        private static void LyricalRuntimeAvoidsDuplicateWindowsStandaloneSetup()
+        {
+            var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
+            var constructor = ExtractCSharpMethod(runtime, "ROS2ForUnity");
+            var windowsBlockStart = constructor.IndexOf("if (GetOS() == Platform.Windows)", StringComparison.Ordinal);
+            var windowsBlockEnd = constructor.IndexOf("} else {", windowsBlockStart, StringComparison.Ordinal);
+            var windowsBlock = windowsBlockStart >= 0 && windowsBlockEnd > windowsBlockStart
+                ? constructor.Substring(windowsBlockStart, windowsBlockEnd - windowsBlockStart)
+                : string.Empty;
+
+            Check(runtime.Contains("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN", StringComparison.Ordinal)
+                  && runtime.Contains("PlatformNotSupportedException(\"Windows CRT environment updates require a Windows Unity build target.\")", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRosDistro(currentRos2Version)", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandalonePrefixPath();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRmwImplementation();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRcutilsConsoleMode();", StringComparison.Ordinal),
+                "163-32D-4: Lyrical Windows PATH setup does not repeat standalone environment ownership and guards CRT import");
+        }
+
         private static void LyricalRuntimeDoesNotRestartAfterSharedShutdown()
         {
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs");
@@ -137,7 +158,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && lazyConstruct.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
                   && startExecutor.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && startExecutor.Contains("ros2forUnity == null", StringComparison.Ordinal)
-                  && markRuntimeShutdown.Contains("ros2forUnity = null;", StringComparison.Ordinal),
+                  && markRuntimeShutdown.Contains("ros2forUnity = null;", StringComparison.Ordinal)
+                  && component.Contains("private void Awake()", StringComparison.Ordinal)
+                  && component.Contains("ROS2ForUnity.PrewarmUnityPaths();", StringComparison.Ordinal)
+                  && !component.Contains("            runtimeShutdownRequested = false;", StringComparison.Ordinal),
                 "163-32E-2: Lyrical component does not lazy-construct or start an executor after shared shutdown begins");
         }
 
@@ -165,6 +189,25 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-32F: Lyrical Zenoh Play Mode fails closed when no local Zenoh router is running");
         }
 
+        private static void LyricalZenohSessionDefaultsAreUnitySafe()
+        {
+            foreach (var relativePath in new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+            })
+            {
+                var config = ReadRepoText(relativePath);
+                var adminspace = config.Substring(config.IndexOf("adminspace:", StringComparison.Ordinal));
+                Check(config.Contains("exit_on_failure: false", StringComparison.Ordinal)
+                      && config.Contains("max_message_size: 134217728", StringComparison.Ordinal)
+                      && !config.Contains("max_message_size: 1073741824", StringComparison.Ordinal)
+                      && adminspace.Contains("enabled: false", StringComparison.Ordinal)
+                      && adminspace.Contains("read: false", StringComparison.Ordinal),
+                    "163-32G-session: Lyrical Zenoh session defaults are non-fatal, bounded, and adminspace-off for " + relativePath);
+            }
+        }
+
         private static void LyricalBuilderAndValidatorRegenerateRuntimePatches()
         {
             var builder = ReadRepoText("Scripts/ros2forunity/windows/lyrical/build_r2fu_runtime_package.py");
@@ -179,17 +222,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && patch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
                   && patch.Contains("CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
                   && !patch.Contains("ROS2 version in standalone process environment does not match this runtime package", StringComparison.Ordinal),
-                "163-32F-1: Lyrical builder regenerates standalone ROS_DISTRO override isolation");
+                "163-32H-1: Lyrical builder regenerates standalone ROS_DISTRO override isolation");
             Check(packagePath.Contains("re.search(", StringComparison.Ordinal)
                   && packagePath.Contains("UnityEditor\\.PackageManager\\.PackageInfo", StringComparison.Ordinal)
                   && !packagePath.Contains("text.index(\"#if UNITY_EDITOR\")", StringComparison.Ordinal),
-                "163-32F-2: Lyrical validator checks PackageManager lookup guard around the lookup itself");
+                "163-32H-2: Lyrical validator checks PackageManager lookup guard around the lookup itself");
             Check(sourcePatch.Contains("sourcedRosDistroBeforeStandalonePatch", StringComparison.Ordinal)
                   && sourcePatch.Contains("WarnIfStandaloneRosDistroOverride", StringComparison.Ordinal)
                   && !sourcePatch.Contains("CheckIntegrity(sourcedRosDistroBeforeStandalonePatch)", StringComparison.Ordinal)
                   && sourcePatch.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && sourcePatch.Contains("MarkRuntimeShutdown()", StringComparison.Ordinal),
-                "163-32F-3: Lyrical validator requires standalone env isolation and no-reinit shutdown patches");
+                "163-32H-3: Lyrical validator requires standalone env isolation and no-reinit shutdown patches");
         }
 
         private static void LyricalValidationUsesRepoRootDiscovery()
@@ -198,7 +241,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(validation.Contains("Phase16Validation.FindRepoRoot()", StringComparison.Ordinal)
                   && !validation.Contains("AppContext.BaseDirectory, \"..\", \"..\", \"..\", \"..\"", StringComparison.Ordinal),
-                "163-32G: Lyrical validation resolves paths from the repository root helper");
+                "163-32I: Lyrical validation resolves paths from the repository root helper");
         }
 
         private static void PhaseWiringIsPresent()
@@ -207,10 +250,10 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
 
             Check(project.Contains("Phase163_32Validation.cs", StringComparison.Ordinal),
-                "163-32H-1: runtime test project compiles Phase163_32Validation");
+                "163-32J-1: runtime test project compiles Phase163_32Validation");
             Check(registry.Contains("--phase163-32", StringComparison.Ordinal)
                   && registry.Contains("Phase163_32Validation.Validate", StringComparison.Ordinal),
-                "163-32H-2: validation registry exposes --phase163-32");
+                "163-32J-2: validation registry exposes --phase163-32");
         }
 
         private static string ExtractPythonFunction(string source, string functionName)

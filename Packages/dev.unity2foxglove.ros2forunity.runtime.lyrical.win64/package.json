@@ -12,6 +12,7 @@
     "lyrical",
     "win64"
   ],
+  "dependencies": {},
   "author": {
     "name": "Unity2Foxglove"
   }

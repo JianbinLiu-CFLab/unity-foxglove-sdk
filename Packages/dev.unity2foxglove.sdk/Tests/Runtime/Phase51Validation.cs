@@ -474,9 +474,14 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMcapReplayHistoryCapAvoidsRepeatedFullSort()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
-            var addHistory = ExtractMethodBody(source, "private static void AddHistoryMessage");
-            Check(addHistory.Contains("FindHistoryInsertIndex") && !addHistory.Contains("result.Sort(CompareMessages)"),
-                "51C-2f: capped history retention inserts chronologically instead of sorting on every overflow");
+            var history = ExtractMethodBody(source, "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)");
+            var trimHistory = ExtractMethodBody(source, "private static void TrimHistoryToLatestMessages");
+            Check(history.Contains("result.Sort(CompareMessages)")
+                  && history.Contains("TrimHistoryToLatestMessages(result, maxMessages)")
+                  && trimHistory.Contains("result.RemoveRange(0, result.Count - maxMessages)")
+                  && !source.Contains("private static void AddHistoryMessage", StringComparison.Ordinal)
+                  && !source.Contains("FindHistoryInsertIndex", StringComparison.Ordinal),
+                "51C-2f: capped history retention sorts once after load and trims the latest messages");
         }
 
         private static void VerifyMcapReplayUsesLoggerForCrcWarnings()

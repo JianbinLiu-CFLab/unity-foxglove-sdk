@@ -5249,16 +5249,16 @@
     {
       "path": "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
       "category": "other_support_files",
-      "size": 43332,
+      "size": 43216,
       "compressedSize": 10985,
-      "sha256": "fa0f1061646a833794a084bad9480ed1e48956f8430b849ec2d2fd8fcfd886c0"
+      "sha256": "21f4abbd1a3f2b977064dcc7ee834245bb518087ff78cd22fff81f268de768d9"
     },
     {
       "path": "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
       "category": "other_support_files",
-      "size": 43933,
+      "size": 43122,
       "compressedSize": 11001,
-      "sha256": "c49838216ae8b1cacab4758c9358d35ee4f4a64efd55f69cb8fef2c876347051"
+      "sha256": "428cf56acdf7c0e6119c325f5713370f994cdb16e3e6e6ec1aeed1e7c4b1ab66"
     },
     {
       "path": "Ros2ForUnity/Plugins/Windows/x86_64/spdlog.dll",
@@ -8833,16 +8833,16 @@
     {
       "path": "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
       "category": "other_support_files",
-      "size": 43332,
+      "size": 43216,
       "compressedSize": 10985,
-      "sha256": "fa0f1061646a833794a084bad9480ed1e48956f8430b849ec2d2fd8fcfd886c0"
+      "sha256": "21f4abbd1a3f2b977064dcc7ee834245bb518087ff78cd22fff81f268de768d9"
     },
     {
       "path": "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
       "category": "other_support_files",
-      "size": 43933,
+      "size": 43122,
       "compressedSize": 11001,
-      "sha256": "c49838216ae8b1cacab4758c9358d35ee4f4a64efd55f69cb8fef2c876347051"
+      "sha256": "428cf56acdf7c0e6119c325f5713370f994cdb16e3e6e6ec1aeed1e7c4b1ab66"
     }
   ]
 }

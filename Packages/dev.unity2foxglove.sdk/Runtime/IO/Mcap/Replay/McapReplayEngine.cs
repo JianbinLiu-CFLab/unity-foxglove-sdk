@@ -208,6 +208,11 @@ namespace Unity.FoxgloveSDK.IO
         /// Emit messages due between last tick time and nowNs.
         /// Returns up to MaxMessagesPerTick. Time is driven externally by PlaybackClock.
         /// </summary>
+        /// <remarks>
+        /// The returned list is owned and reused by this engine. Consume it
+        /// before calling Tick again, or use the caller-owned overload for any
+        /// deferred processing path.
+        /// </remarks>
         public List<McapMessage> Tick(ulong nowNs)
         {
             return Tick(nowNs, _defaultTickBuffer);
@@ -428,7 +433,6 @@ namespace Unity.FoxgloveSDK.IO
             if (clampedTo < clampedFrom)
                 return result;
 
-            var historyHeadIndex = 0;
             foreach (var chunkIndex in _summary.ChunkIndexes)
             {
                 if (chunkIndex.MessageStartTime > clampedTo)
@@ -479,20 +483,21 @@ namespace Unity.FoxgloveSDK.IO
                     Buffer.BlockCopy(uncompressed, offset, data, 0, dataLen);
                     offset += dataLen;
 
-                    AddHistoryMessage(result, new McapMessage
+                    result.Add(new McapMessage
                     {
                         ChannelId = chId,
                         Sequence = seq,
                         LogTime = logNs,
                         PublishTime = pubNs,
                         Data = data
-                    }, maxMessages, ref historyHeadIndex);
+                    });
                 }
             }
 
-            CompactHistory(result, ref historyHeadIndex);
-            if (maxMessages <= 0 && result.Count > 1)
+            if (result.Count > 1)
                 result.Sort(CompareMessages);
+
+            TrimHistoryToLatestMessages(result, maxMessages);
             return result;
         }
 
@@ -577,6 +582,8 @@ namespace Unity.FoxgloveSDK.IO
             if (disposeStream)
                 _stream?.Dispose();
             _stream = null;
+            // McapReader borrows the stream and holds only managed scratch buffers;
+            // the stream remains the single disposable resource owned here.
             _reader = null;
             _summary = null;
             _pending.Clear();
@@ -625,51 +632,12 @@ namespace Unity.FoxgloveSDK.IO
         private void AddPending(McapMessage message)
             => _pending.Add(message);
 
-        private static void AddHistoryMessage(List<McapMessage> result, McapMessage message, int maxMessages, ref int historyHeadIndex)
+        private static void TrimHistoryToLatestMessages(List<McapMessage> result, int maxMessages)
         {
-            if (maxMessages <= 0)
-            {
-                result.Add(message);
-                return;
-            }
-
-            var activeCount = result.Count - historyHeadIndex;
-            if (activeCount >= maxMessages && CompareMessages(message, result[historyHeadIndex]) <= 0)
+            if (maxMessages <= 0 || result.Count <= maxMessages)
                 return;
 
-            result.Insert(FindHistoryInsertIndex(result, message, historyHeadIndex, result.Count), message);
-            activeCount++;
-            if (activeCount > maxMessages)
-                historyHeadIndex++;
-            if (historyHeadIndex > 512 && historyHeadIndex * 2 >= result.Count)
-                CompactHistory(result, ref historyHeadIndex);
-        }
-
-        private static int FindHistoryInsertIndex(List<McapMessage> result, McapMessage message, int start, int end)
-        {
-            var low = start;
-            var high = end;
-            while (low < high)
-            {
-                var mid = low + ((high - low) / 2);
-                if (CompareMessages(result[mid], message) <= 0)
-                    low = mid + 1;
-                else
-                    high = mid;
-            }
-            return low;
-        }
-
-        private static void CompactHistory(List<McapMessage> result, ref int historyHeadIndex)
-        {
-            if (historyHeadIndex <= 0)
-                return;
-
-            if (historyHeadIndex >= result.Count)
-                result.Clear();
-            else
-                result.RemoveRange(0, historyHeadIndex);
-            historyHeadIndex = 0;
+            result.RemoveRange(0, result.Count - maxMessages);
         }
 
         private void SortPending()

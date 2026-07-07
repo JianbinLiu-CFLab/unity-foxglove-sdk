@@ -50,8 +50,10 @@ internal class ROS2ForUnity : IDisposable
     private const string zenohRmwImplementation = "rmw_zenoh_cpp";
     private const string supportedRmwImplementationsDescription = "rmw_fastrtps_cpp, rmw_zenoh_cpp";
 
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     private static extern int _wputenv_s(string name, string value);
+#endif
 
 #if UNITY_EDITOR
     private static bool editorHandlersRegistered = false;
@@ -117,13 +119,23 @@ internal class ROS2ForUnity : IDisposable
         Environment.SetEnvironmentVariable(name, value);
         if (GetOS() == Platform.Windows)
         {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
             int result = _wputenv_s(name, value);
             if (result != 0)
             {
                 throw new InvalidOperationException(
                     "Failed to set Windows CRT environment variable '" + name + "' (ucrtbase _wputenv_s returned " + result + ")");
             }
+#else
+            throw new PlatformNotSupportedException("Windows CRT environment updates require a Windows Unity build target.");
+#endif
         }
+    }
+
+    internal static void PrewarmUnityPaths()
+    {
+        _ = GetRos2ForUnityPath();
+        _ = GetPluginPath();
     }
 
     public static string GetRos2ForUnityPath()
@@ -573,13 +585,6 @@ internal class ROS2ForUnity : IDisposable
                 if (!pathConfigured)
                 {
                     SetEnvPathVariable();
-                }
-                if (standaloneBuild)
-                {
-                    SetStandaloneRosDistro(currentRos2Version);
-                    SetStandalonePrefixPath();
-                    SetStandaloneRmwImplementation();
-                    SetStandaloneRcutilsConsoleMode();
                 }
             } else {
                 // For foxy, it is necessary to use modified version of librcpputils to resolve custom msgs packages.

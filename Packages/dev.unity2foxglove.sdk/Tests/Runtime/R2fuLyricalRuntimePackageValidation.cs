@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -89,7 +90,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             var packageJson = ReadRepoText(RuntimePackage + "/package.json");
             Check(packageJson.Contains("dev.unity2foxglove.ros2forunity.runtime.lyrical.win64", StringComparison.Ordinal)
-                  && packageJson.Contains("Lyrical Win64", StringComparison.Ordinal),
+                  && packageJson.Contains("Lyrical Win64", StringComparison.Ordinal)
+                  && packageJson.Contains("\"dependencies\": {}", StringComparison.Ordinal),
                 "146B-A5: package metadata names the Lyrical Win64 runtime package");
 
             var manifest = ReadRepoText(RuntimePackage + "/RuntimeSupport/runtime-manifest.json");
@@ -283,6 +285,35 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!RepoFileExists(HumbleRuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/rmw_zenoh_cpp.dll")
                   && !RepoFileExists(JazzyRuntimePackage + "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/rmw_zenoh_cpp.dll"),
                 "162-B1: Humble and Jazzy runtime packages remain FastDDS-only");
+
+            foreach (var relative in new[]
+            {
+                "/Runtime/Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+                "/Runtime/Ros2ForUnity/StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+            })
+            {
+                var config = ReadRepoText(RuntimePackage + relative);
+                var adminspace = config.Substring(config.IndexOf("adminspace:", StringComparison.Ordinal));
+                Check(config.Contains("exit_on_failure: false", StringComparison.Ordinal)
+                      && config.Contains("max_message_size: 134217728", StringComparison.Ordinal)
+                      && !config.Contains("max_message_size: 1073741824", StringComparison.Ordinal)
+                      && adminspace.Contains("enabled: false", StringComparison.Ordinal)
+                      && adminspace.Contains("read: false", StringComparison.Ordinal),
+                    "162-B2: Lyrical Zenoh session config is Unity-safe by default: " + relative);
+            }
+
+            VerifyInventoriedZenohConfigHash(
+                "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+                "162-B3a");
+            VerifyInventoriedZenohConfigHash(
+                "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+                "162-B3b");
+            VerifyInventoriedZenohConfigHash(
+                "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+                "162-B3c");
+            VerifyInventoriedZenohConfigHash(
+                "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+                "162-B3d");
         }
 
         private static void Phase162SelectorScopesCommunicationModeToZenohCapability()
@@ -399,6 +430,19 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtimeSource.IndexOf("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
                      < runtimeSource.IndexOf("Ros2cs.Shutdown()", StringComparison.Ordinal),
                 "162-E6: Lyrical runtime stops ROS2 executor threads before unloading Zenoh/RMW through Ros2cs.Shutdown");
+            var constructor = ExtractMethod(runtimeSource, "internal ROS2ForUnity()");
+            var windowsBlockStart = constructor.IndexOf("if (GetOS() == Platform.Windows)", StringComparison.Ordinal);
+            var windowsBlockEnd = constructor.IndexOf("} else {", windowsBlockStart, StringComparison.Ordinal);
+            var windowsBlock = windowsBlockStart >= 0 && windowsBlockEnd > windowsBlockStart
+                ? constructor.Substring(windowsBlockStart, windowsBlockEnd - windowsBlockStart)
+                : string.Empty;
+            Check(runtimeSource.Contains("#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN", StringComparison.Ordinal)
+                  && runtimeSource.Contains("PlatformNotSupportedException(\"Windows CRT environment updates require a Windows Unity build target.\")", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRosDistro(currentRos2Version)", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandalonePrefixPath();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRmwImplementation();", StringComparison.Ordinal)
+                  && !windowsBlock.Contains("SetStandaloneRcutilsConsoleMode();", StringComparison.Ordinal),
+                "162-E6b: Lyrical Windows environment setup is symbol-guarded and not repeated after standalone setup");
             Check(componentSource.Contains("private static readonly HashSet<ROS2UnityComponent> instances", StringComparison.Ordinal)
                   && componentSource.Contains("instances.Add(this)", StringComparison.Ordinal)
                   && componentSource.Contains("instances.Remove(this)", StringComparison.Ordinal)
@@ -410,6 +454,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && componentSource.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
                   && componentSource.Contains("ros2forUnity == null", StringComparison.Ordinal),
                 "162-E8: Lyrical ROS2UnityComponent does not reinitialize after shared runtime shutdown starts");
+            Check(componentSource.Contains("private void Awake()", StringComparison.Ordinal)
+                  && componentSource.Contains("ROS2ForUnity.PrewarmUnityPaths();", StringComparison.Ordinal)
+                  && !componentSource.Contains("            runtimeShutdownRequested = false;", StringComparison.Ordinal),
+                "162-E8b: Lyrical ROS2UnityComponent prewarms Unity path Lazy values and has no dead shutdown reset");
             Check(runtimeSource.Contains("if (!isInitialized || shutdownInProgress)", StringComparison.Ordinal),
                 "162-E9: Lyrical runtime reports not-ready while native shutdown is in progress");
         }
@@ -501,6 +549,35 @@ namespace Unity.FoxgloveSDK.Tests
             return text;
         }
 
+        private static void VerifyInventoriedZenohConfigHash(string inventoryRelativePath, string checkPrefix)
+        {
+            var inventory = ReadRepoText(RuntimePackage + "/RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json");
+            var expected = ExtractInventorySha256(inventory, inventoryRelativePath);
+            var diskRelative = inventoryRelativePath.StartsWith("StreamingAssets/", StringComparison.Ordinal)
+                ? "Runtime/Ros2ForUnity/" + inventoryRelativePath
+                : "Runtime/" + inventoryRelativePath;
+            var actual = Sha256Hex(RepoPath(RuntimePackage + "/" + diskRelative));
+            Check(string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase),
+                checkPrefix + ": inventoried Zenoh config hash matches disk for " + inventoryRelativePath);
+        }
+
+        private static string ExtractInventorySha256(string inventory, string inventoryRelativePath)
+        {
+            var pattern = "\\{[^{}]*\"path\"\\s*:\\s*\"" + Regex.Escape(inventoryRelativePath)
+                + "\"[^{}]*\"sha256\"\\s*:\\s*\"([0-9a-fA-F]{64})\"";
+            var match = Regex.Match(inventory, pattern, RegexOptions.Singleline);
+            if (!match.Success)
+                throw new Exception("[FAIL] inventory entry missing for " + inventoryRelativePath);
+            return match.Groups[1].Value;
+        }
+
+        private static string Sha256Hex(string path)
+        {
+            using var sha = SHA256.Create();
+            using var stream = File.OpenRead(path);
+            return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
+        }
+
         private static string RepoPath(string relativePath)
             => Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
 
@@ -514,6 +591,9 @@ namespace Unity.FoxgloveSDK.Tests
                 values[index] = matches[index].Groups[1].Value;
             return values;
         }
+
+        private static string ExtractMethod(string source, string methodName)
+            => PhaseValidationSourceHelpers.SourceMethod(source, methodName);
 
         private static void Check(bool condition, string message)
         {
