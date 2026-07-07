@@ -221,6 +221,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "ReceiveLoop",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Check(receiveLoop != null, "144: ReceiveLoop private method exists for protocol edge harness");
+            var parameters = receiveLoop?.GetParameters() ?? Array.Empty<ParameterInfo>();
+            Check(parameters.Length == 3
+                  && parameters[0].ParameterType == typeof(uint)
+                  && parameters[1].ParameterType == typeof(WsConnection)
+                  && parameters[2].ParameterType == typeof(CancellationToken),
+                "144: ReceiveLoop signature matches protocol edge harness expectations");
             receiveLoop.Invoke(backend, new object[] { 1u, conn, CancellationToken.None });
 
             return result;
@@ -296,7 +302,7 @@ namespace Unity.FoxgloveSDK.Tests
             public override bool CanRead => true;
             public override bool CanSeek => false;
             public override bool CanWrite => true;
-            public override long Length => _input.Length;
+            public override long Length => throw new NotSupportedException();
             public override long Position
             {
                 get => _input.Position;

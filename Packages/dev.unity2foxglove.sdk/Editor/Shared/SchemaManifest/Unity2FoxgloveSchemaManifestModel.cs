@@ -140,18 +140,12 @@ namespace Unity.FoxgloveSDK.Editor
             SchemaEncoding = schemaEncoding ?? string.Empty;
             CatalogEntryHash = catalogEntryHash ?? string.Empty;
             DescriptorDataSha256 = descriptorDataSha256 ?? string.Empty;
-            Entries = Copy(entries);
-            ValidateEntryCount(entryCount, Entries.Count, nameof(Unity2FoxgloveProtobufRegistrySection));
+            Entries = Unity2FoxgloveSchemaManifestModelHelpers.Copy(entries);
+            Unity2FoxgloveSchemaManifestModelHelpers.ValidateEntryCount(
+                entryCount,
+                Entries.Count,
+                nameof(Unity2FoxgloveProtobufRegistrySection));
             EntryCount = entryCount;
-        }
-
-        private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values)
-            => new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
-
-        private static void ValidateEntryCount(int declared, int actual, string sectionName)
-        {
-            if (declared != actual)
-                throw new ArgumentException(sectionName + " entryCount " + declared + " does not match entries.Count " + actual + ".");
         }
     }
 
@@ -202,18 +196,12 @@ namespace Unity.FoxgloveSDK.Editor
             SourceCommit = sourceCommit ?? string.Empty;
             SourceTreeSha256 = sourceTreeSha256 ?? string.Empty;
             SourceFileCount = sourceFileCount;
-            Entries = Copy(entries);
-            ValidateEntryCount(entryCount, Entries.Count, nameof(Unity2FoxgloveRos2MsgRegistrySection));
+            Entries = Unity2FoxgloveSchemaManifestModelHelpers.Copy(entries);
+            Unity2FoxgloveSchemaManifestModelHelpers.ValidateEntryCount(
+                entryCount,
+                Entries.Count,
+                nameof(Unity2FoxgloveRos2MsgRegistrySection));
             EntryCount = entryCount;
-        }
-
-        private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values)
-            => new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
-
-        private static void ValidateEntryCount(int declared, int actual, string sectionName)
-        {
-            if (declared != actual)
-                throw new ArgumentException(sectionName + " entryCount " + declared + " does not match entries.Count " + actual + ".");
         }
     }
 
@@ -249,12 +237,11 @@ namespace Unity.FoxgloveSDK.Editor
             int entryCount,
             IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> entries)
         {
-            Entries = new List<Unity2FoxgloveSdkTypedPublisherEntry>(
-                entries ?? Array.Empty<Unity2FoxgloveSdkTypedPublisherEntry>()).AsReadOnly();
-            if (entryCount != Entries.Count)
-                throw new ArgumentException(
-                    nameof(Unity2FoxgloveSdkTypedPublishersSection) + " entryCount " + entryCount +
-                    " does not match entries.Count " + Entries.Count + ".");
+            Entries = Unity2FoxgloveSchemaManifestModelHelpers.Copy(entries);
+            Unity2FoxgloveSchemaManifestModelHelpers.ValidateEntryCount(
+                entryCount,
+                Entries.Count,
+                nameof(Unity2FoxgloveSdkTypedPublishersSection));
             EntryCount = entryCount;
         }
     }
@@ -300,6 +287,18 @@ namespace Unity.FoxgloveSDK.Editor
             SupportsMsgPack = supportsMsgPack;
             IsTemplate = isTemplate;
             ProductNote = productNote ?? string.Empty;
+        }
+    }
+
+    internal static class Unity2FoxgloveSchemaManifestModelHelpers
+    {
+        public static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values)
+            => new List<T>(values ?? Array.Empty<T>()).AsReadOnly();
+
+        public static void ValidateEntryCount(int declared, int actual, string sectionName)
+        {
+            if (declared != actual)
+                throw new ArgumentException(sectionName + " entryCount " + declared + " does not match entries.Count " + actual + ".");
         }
     }
 }
