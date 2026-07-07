@@ -7,7 +7,7 @@
 using System;
 using System.IO;
 using Foxglove.Schemas;
-using Foxglove.Schemas.PointCloud;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Unity.FoxgloveSDK.Tests
 {

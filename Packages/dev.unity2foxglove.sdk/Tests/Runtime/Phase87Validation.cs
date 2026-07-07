@@ -95,7 +95,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("MaxPayloadBytes") && source.Contains("ReadLittleEndianLength") && source.Contains("payloadLength <= 0"),
                 "87B-4: sidecar reads bounded length-prefixed Draco payloads");
 
-            var protocolType = FindType("Foxglove.Schemas.PointCloud.DracoPointCloudHelperProtocol");
+            var protocolType = FindType("Unity.FoxgloveSDK.Schemas.PointCloud.DracoPointCloudHelperProtocol");
             Check(protocolType != null,
                 "87B-5: helper protocol type is loadable");
             var build = protocolType.GetMethod("BuildXyzFramePayload", BindingFlags.Public | BindingFlags.Static);

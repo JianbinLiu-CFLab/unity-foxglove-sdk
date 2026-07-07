@@ -12,7 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Schemas;
 
-namespace Foxglove.Schemas.PointCloud
+namespace Unity.FoxgloveSDK.Schemas.PointCloud
 {
     /// <summary>Serializes point-cloud frames for the Phase 87 Draco helper protocol.</summary>
     public static class DracoPointCloudHelperProtocol
@@ -49,6 +49,7 @@ namespace Foxglove.Schemas.PointCloud
     /// Synchronous, length-prefixed wrapper around a spike-only native Draco
     /// helper executable. The helper remains external and is never bundled.
     /// </summary>
+    [Obsolete("DracoPointCloudEncoderSidecar is spike-only. Use DracoPointCloudNativeEncoder for production.", false)]
     public sealed class DracoPointCloudEncoderSidecar : IDisposable
     {
         private const int MaxPayloadBytes = 64 * 1024 * 1024;
@@ -149,7 +150,10 @@ namespace Foxglove.Schemas.PointCloud
             }
         }
 
-        /// <summary>Encode one frame and read exactly one length-prefixed Draco payload.</summary>
+        /// <summary>
+        /// Encode one frame and read exactly one length-prefixed Draco payload.
+        /// This spike-only API blocks the calling thread until the helper replies or times out.
+        /// </summary>
         public bool TryEncode(PointCloudFrame frame, int timeoutMs, out byte[] dracoPayload)
         {
             dracoPayload = null;
@@ -227,39 +231,21 @@ namespace Foxglove.Schemas.PointCloud
         /// <summary>Stop the helper process and release streams.</summary>
         public void Stop()
         {
-            var stop = _stop;
+            var stop = Interlocked.Exchange(ref _stop, null);
             if (stop != null && !stop.IsCancellationRequested)
                 stop.Cancel();
 
-            var process = _process;
+            var process = Interlocked.Exchange(ref _process, null);
+            var stderrTask = Interlocked.Exchange(ref _stderrTask, null);
             if (process != null)
             {
-                try
-                {
-                    if (!process.HasExited)
-                        process.StandardInput.BaseStream.Close();
-                }
-                catch
-                {
-                }
-
+                CloseProcessStreams(process);
                 TryKillProcess(process);
-                try
-                {
-                    process.StandardError.BaseStream.Close();
-                }
-                catch
-                {
-                }
-                WaitForProcessExit(process, 200);
-                WaitForTask(_stderrTask, 200);
-                process.Dispose();
+                _ = Task.Run(() => ReapProcess(process, stderrTask, stop));
+                return;
             }
 
-            _process = null;
-            _stderrTask = null;
-            _stop?.Dispose();
-            _stop = null;
+            stop?.Dispose();
         }
 
         /// <summary>Stop and dispose the helper wrapper.</summary>
@@ -275,7 +261,14 @@ namespace Foxglove.Schemas.PointCloud
                 var reader = process.StandardError;
                 while (!token.IsCancellationRequested)
                 {
-                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    var readTask = reader.ReadLineAsync();
+                    var completed = await Task.WhenAny(
+                        readTask,
+                        Task.Delay(Timeout.InfiniteTimeSpan, token)).ConfigureAwait(false);
+                    if (!ReferenceEquals(completed, readTask))
+                        break;
+
+                    var line = await readTask.ConfigureAwait(false);
                     if (line == null)
                         break;
 
@@ -286,6 +279,45 @@ namespace Foxglove.Schemas.PointCloud
             {
                 if (!(ex is ObjectDisposedException))
                     SetLastError(ex.Message);
+            }
+        }
+
+        private static void CloseProcessStreams(Process process)
+        {
+            TryCloseProcessStream(() => process.StandardInput.BaseStream.Close());
+            TryCloseProcessStream(() => process.StandardOutput.BaseStream.Close());
+            TryCloseProcessStream(() => process.StandardError.BaseStream.Close());
+        }
+
+        private static void TryCloseProcessStream(Action close)
+        {
+            try
+            {
+                close();
+            }
+            catch
+            {
+                // Best-effort shutdown; process termination follows.
+            }
+        }
+
+        private static void ReapProcess(Process process, Task stderrTask, CancellationTokenSource stop)
+        {
+            try
+            {
+                WaitForProcessExit(process, 200);
+                WaitForTask(stderrTask, 200);
+            }
+            finally
+            {
+                try
+                {
+                    process.Dispose();
+                }
+                finally
+                {
+                    stop?.Dispose();
+                }
             }
         }
 
@@ -355,6 +387,9 @@ namespace Foxglove.Schemas.PointCloud
             try
             {
                 error = string.Empty;
+                if (task == null)
+                    return true;
+
                 if (!task.Wait(RemainingMilliseconds(deadlineUtc)))
                 {
                     ObserveFaultedTask(task);

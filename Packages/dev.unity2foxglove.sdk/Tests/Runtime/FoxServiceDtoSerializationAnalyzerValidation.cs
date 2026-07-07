@@ -149,11 +149,21 @@ namespace Unity.FoxgloveSDK.Tests
             run.Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
                                                   && diagnostic.Path.Contains("readOnlyScalar", StringComparison.Ordinal)),
                 "141D-11: reflection validator reports structured warning diagnostics");
+            run.Check(reflectionBad.All(diagnostic => diagnostic.ServiceName == "/phase141d/reflection-bad"
+                                                   && diagnostic.Target.Contains("/phase141d/reflection-bad", StringComparison.Ordinal)),
+                "141D-11a: reflection validator preserves service name on returned diagnostics");
             run.Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract("System.Collections.Generic.List<T>")
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract(typeof(List<>).FullName)
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract("System.Collections.Generic.Dictionary<TKey, TValue>")
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract(typeof(Dictionary<,>).FullName),
                 "141D-11b: DTO type-name helpers accept Roslyn and reflection generic contract names");
+
+            var reflectionWarningMemo = Unity.FoxgloveSDK.Editor.FoxServiceDtoReflectionValidator.Validate(
+                typeof(Phase141DSharedWarningReferences),
+                Unity.FoxgloveSDK.Editor.FoxServiceDtoSide.Request,
+                "/phase141d/reflection-warning-memo");
+            run.Check(reflectionWarningMemo.Count(diagnostic => diagnostic.Id == "FOXSERVICE007") == 1,
+                "141D-11c: reflection validator memoizes warning-only shared DTO types");
         }
 
         private static void VerifyValidationWiringAndReleaseMetadata(ValidationRun run)
@@ -582,6 +592,17 @@ namespace Phase141C
         {
             public IEnumerable<int> sequence { get; set; }
             public string readOnlyScalar { get { return "value"; } }
+        }
+
+        private sealed class Phase141DSharedWarningReferences
+        {
+            public Phase141DSharedWarningType first { get; set; }
+            public Phase141DSharedWarningType second { get; set; }
+        }
+
+        private sealed class Phase141DSharedWarningType
+        {
+            public string value { get { return "value"; } }
         }
 
         private static string ReadRepoText(string relativePath)

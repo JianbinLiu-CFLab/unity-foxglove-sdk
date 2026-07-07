@@ -15,7 +15,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase134_1Validation
     {
-        private static readonly string[] SerializedSecretFields = { "_certificatePassword", "_sharedToken" };
+        private static readonly string[] SerializedSecretFields =
+            { "_certificatePassword", "_sharedToken", "_replayCursorBridgeToken" };
         private static int _passed;
 
         /// <summary>

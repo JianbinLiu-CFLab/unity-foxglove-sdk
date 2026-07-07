@@ -54,6 +54,9 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private const int FirstAutoChannelId = 1;
         private const int MaxRecordingChunkSizeKB = int.MaxValue / 1024;
+        public const string SharedTokenEnvironmentVariable = "FOXGLOVE_SHARED_TOKEN";
+        public const string CertificatePasswordEnvironmentVariable = "FOXGLOVE_CERTIFICATE_PASSWORD";
+        public const string ReplayCursorBridgeTokenEnvironmentVariable = "FOXGLOVE_REPLAY_CURSOR_TOKEN";
 
         [Header("General")]
         [SerializeField] private string _serverName = "Unity Foxglove SDK";
@@ -134,7 +137,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _enableReplayCursorBridge = false;
         [SerializeField] private string _replayCursorBridgeHost = "127.0.0.1";
         [SerializeField, Min(1)] private int _replayCursorBridgePort = 8892;
-        [SerializeField] private string _replayCursorBridgeToken = "";
+        [Tooltip("Optional replay cursor bearer token. Prefer FOXGLOVE_REPLAY_CURSOR_TOKEN for credentials that must not be serialized into scenes.")]
+        [SerializeField, HideInInspector] private string _replayCursorBridgeToken = "";
 
         [SerializeField] private SchemaIdentityModeSource _identityModeSource = SchemaIdentityModeSource.ProjectSettings;
         [SerializeField] private SchemaIdentityMode _identityModeOverride = SchemaIdentityMode.Off;
@@ -148,13 +152,15 @@ namespace Unity.FoxgloveSDK.Components
         [Tooltip("Additional browser origins for custom/private WebSocket clients. Full page URLs are accepted and normalized. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
         [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new();
         [SerializeField] private string _certificatePfxPath = "";
-        [SerializeField] private string _certificatePassword = "";
+        [Tooltip("Optional PFX password. Prefer FOXGLOVE_CERTIFICATE_PASSWORD for credentials that must not be serialized into scenes.")]
+        [SerializeField, HideInInspector] private string _certificatePassword = "";
         [SerializeField] private bool _rootCaDistributorEnabled;
         [SerializeField] private string _rootCaDistributorHost = "127.0.0.1";
         [Range(1, 65535)]
         [SerializeField] private int _rootCaDistributorPort = 8766;
         [SerializeField] private string _rootCaFilePath = "";
-        [SerializeField] private string _sharedToken = "";
+        [Tooltip("Optional WebSocket bearer token. Prefer FOXGLOVE_SHARED_TOKEN for credentials that must not be serialized into scenes.")]
+        [SerializeField, HideInInspector] private string _sharedToken = "";
 
         private Core.FoxgloveRuntime _runtime;
         private Ros2BridgeRuntime _ros2BridgeRuntime;

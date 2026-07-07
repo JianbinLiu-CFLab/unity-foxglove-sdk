@@ -8,6 +8,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using Unity.FoxgloveSDK.Util;
@@ -18,7 +19,7 @@ namespace Unity.FoxgloveSDK.IO
     /// Low-level binary writer for MCAP files.
     /// Encodes individual MCAP records (Header, Footer, Schema, Channel, Message, Chunk, Metadata, Statistics, Indexes, SummaryOffsets, DataEnd) and provides static LE helpers for writing primitive fields.
     /// </summary>
-    public class McapWriter : IDisposable
+    public sealed class McapWriter : IDisposable
     {
         private readonly Stream _stream;
         private readonly bool _leaveOpen;
@@ -68,14 +69,23 @@ namespace Unity.FoxgloveSDK.IO
         internal const byte OpcodeDataEnd = 0x0F;
 
         /// <summary>Create an MCAP writer that wraps the given stream.</summary>
-        public McapWriter(Stream stream, bool leaveOpen = false) { _stream = stream; _leaveOpen = leaveOpen; }
+        public McapWriter(Stream stream, bool leaveOpen = false)
+        {
+            _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            _leaveOpen = leaveOpen;
+        }
 
         /// <summary>Write the MCAP magic bytes at the start of the file.</summary>
-        public void WriteMagic() => _stream.Write(McapConstants.MagicBytes, 0, McapConstants.MagicBytes.Length);
+        public void WriteMagic()
+        {
+            ThrowIfDisposed();
+            _stream.Write(McapConstants.MagicBytes, 0, McapConstants.MagicBytes.Length);
+        }
 
         /// <summary>Write a raw MCAP record: 1-byte opcode, 8-byte LE length prefix, then the content payload.</summary>
         public void WriteRecord(byte opcode, byte[] content)
         {
+            ThrowIfDisposed();
             if (IsReservedOpcode(opcode))
                 throw new ArgumentOutOfRangeException(
                     nameof(opcode),
@@ -101,6 +111,7 @@ namespace Unity.FoxgloveSDK.IO
 
         internal void TruncateToPosition(long position)
         {
+            ThrowIfDisposed();
             if (!_stream.CanSeek)
                 throw new NotSupportedException("The MCAP output stream does not support truncation.");
             if (position < 0)
@@ -112,6 +123,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private void WriteRecord(byte opcode, MemoryStream content)
         {
+            ThrowIfDisposed();
             _stream.WriteByte(opcode);
             WriteU64(_stream, (ulong)(content?.Length ?? 0));
             WriteMemoryStreamContent(content);
@@ -119,6 +131,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private void WriteBufferedRecord(byte opcode, Action<Stream> writeContent)
         {
+            ThrowIfDisposed();
             _recordBuffer.SetLength(0);
             writeContent(_recordBuffer);
             WriteRecord(opcode, _recordBuffer);
@@ -285,6 +298,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Write an Attachment record (opcode <c>0x09</c>) and return its index for summary registration.</summary>
         public McapAttachmentIndex WriteAttachment(ulong logTime, ulong createTime, string name, string mediaType, byte[] data, bool enableCrc = true)
         {
+            ThrowIfDisposed();
             var off = (ulong)_stream.Position;
             _recordBuffer.SetLength(0);
             WriteU64(_recordBuffer, logTime);
@@ -331,10 +345,16 @@ namespace Unity.FoxgloveSDK.IO
                 WriteString(m, index.MediaType);
             });
         /// <summary>Write raw bytes directly to the underlying stream without MCAP opcode/length framing.</summary>
-        public void WriteBytes(byte[] data) { if (data != null && data.Length > 0) _stream.Write(data, 0, data.Length); }
+        public void WriteBytes(byte[] data)
+        {
+            ThrowIfDisposed();
+            if (data != null && data.Length > 0)
+                _stream.Write(data, 0, data.Length);
+        }
         /// <summary>Write a raw byte segment directly to the underlying stream without MCAP opcode/length framing.</summary>
         public void WriteBytes(ArraySegment<byte> data)
         {
+            ThrowIfDisposed();
             if (data.Array != null && data.Count > 0)
                 _stream.Write(data.Array, data.Offset, data.Count);
         }
@@ -344,6 +364,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public uint ComputeCrc32FromStartToCurrent()
         {
+            ThrowIfDisposed();
             if (!_stream.CanSeek)
                 throw new NotSupportedException("Data-section CRC requires a seekable MCAP output stream.");
 
@@ -373,10 +394,11 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     _stream.Flush();
                 }
-                catch
+                catch (Exception ex)
                 {
                     // Dispose is best-effort. Call Flush() explicitly when
                     // callers need durable error reporting.
+                    Trace.TraceWarning("[MCAP] Stream flush failed during dispose: " + ex.Message);
                 }
             }
             finally
@@ -398,6 +420,12 @@ namespace Unity.FoxgloveSDK.IO
                     }
                 }
             }
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(McapWriter));
         }
 
         // Static helpers used by recorder, reader, and tests.

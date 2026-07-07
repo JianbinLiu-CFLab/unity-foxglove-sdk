@@ -19,7 +19,6 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static IReadOnlyList<FoxServiceDtoDiagnostic> Validate(Type rootType, FoxServiceDtoSide side, string serviceName)
         {
-            _ = serviceName;
             var diagnostics = new List<FoxServiceDtoDiagnostic>();
             var stack = new HashSet<string>(StringComparer.Ordinal);
             var validatedTypes = new HashSet<string>(StringComparer.Ordinal);
@@ -33,6 +32,7 @@ namespace Unity.FoxgloveSDK.Editor
                 stack,
                 validatedTypes,
                 0);
+            AttachServiceName(diagnostics, serviceName);
             return diagnostics;
         }
 
@@ -127,7 +127,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var diagnosticCountBeforeMembers = diagnostics.Count;
+            var errorCountBeforeMembers = CountErrors(diagnostics);
             foreach (var member in FoxServiceDtoReflectionMembers.SerializableMembers(type))
             {
                 if (member is FieldInfo field)
@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             stack.Remove(stackKey);
-            if (diagnostics.Count == diagnosticCountBeforeMembers)
+            if (CountErrors(diagnostics) == errorCountBeforeMembers)
                 validatedTypes.Add(stackKey);
         }
 
@@ -296,5 +296,37 @@ namespace Unity.FoxgloveSDK.Editor
             string reason,
             List<FoxServiceDtoDiagnostic> diagnostics)
             => diagnostics.Add(new FoxServiceDtoDiagnostic(id, isWarning, side, rootType, path, offendingType, reason));
+
+        private static int CountErrors(List<FoxServiceDtoDiagnostic> diagnostics)
+        {
+            var count = 0;
+            for (var i = 0; i < diagnostics.Count; i++)
+            {
+                if (!diagnostics[i].IsWarning)
+                    count++;
+            }
+
+            return count;
+        }
+
+        private static void AttachServiceName(List<FoxServiceDtoDiagnostic> diagnostics, string serviceName)
+        {
+            if (diagnostics.Count == 0 || string.IsNullOrEmpty(serviceName))
+                return;
+
+            for (var i = 0; i < diagnostics.Count; i++)
+            {
+                var diagnostic = diagnostics[i];
+                diagnostics[i] = new FoxServiceDtoDiagnostic(
+                    diagnostic.Id,
+                    diagnostic.IsWarning,
+                    diagnostic.Side,
+                    diagnostic.RootType,
+                    diagnostic.Path,
+                    diagnostic.OffendingType,
+                    diagnostic.Reason,
+                    serviceName);
+            }
+        }
     }
 }

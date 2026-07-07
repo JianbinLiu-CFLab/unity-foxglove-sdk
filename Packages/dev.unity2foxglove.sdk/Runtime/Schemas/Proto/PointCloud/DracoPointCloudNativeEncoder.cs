@@ -11,7 +11,7 @@ using System.Text;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
-namespace Foxglove.Schemas.PointCloud
+namespace Unity.FoxgloveSDK.Schemas.PointCloud
 {
     /// <summary>Encodes point-cloud XYZ data through the bundled native Draco plugin.</summary>
     public static class DracoPointCloudNativeEncoder

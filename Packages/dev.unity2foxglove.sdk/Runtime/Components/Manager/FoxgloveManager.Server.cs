@@ -4,6 +4,7 @@
 // Module: Runtime/Components/Manager
 // Purpose: Owns FoxgloveManager server lifecycle and transport selection.
 
+using System;
 using System.Globalization;
 using System.IO;
 using Unity.FoxgloveSDK.Core;
@@ -148,7 +149,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             var options = new ManagedWebSocketOptions
             {
-                SharedToken = _sharedToken ?? string.Empty
+                SharedToken = ResolveSharedToken()
             };
 
             if (ActiveTransportMode == FoxgloveTransportMode.SecureWebSocket)
@@ -156,7 +157,7 @@ namespace Unity.FoxgloveSDK.Components
                 var tlsOptions = new FoxgloveTlsOptions
                 {
                     CertificatePfxPath = ResolveProjectPath(_certificatePfxPath),
-                    CertificatePassword = _certificatePassword ?? string.Empty
+                    CertificatePassword = ResolveCertificatePassword()
                 };
                 return new ManagedWssBackend(tlsOptions, options, logger);
             }
@@ -217,7 +218,7 @@ namespace Unity.FoxgloveSDK.Components
                 _host,
                 _port,
                 ActiveTransportMode == FoxgloveTransportMode.SecureWebSocket,
-                _sharedToken,
+                ResolveSharedToken(),
                 redactToken);
         }
 
@@ -452,7 +453,7 @@ namespace Unity.FoxgloveSDK.Components
                 host: _replayCursorBridgeHost,
                 port: _replayCursorBridgePort,
                 path: "/v1/replay-cursor",
-                bearerToken: _replayCursorBridgeToken,
+                bearerToken: ResolveReplayCursorBridgeToken(),
                 maxBodyBytes: UnityReplayCursorEndpointOptions.Default.MaxBodyBytes);
             try
             {
@@ -492,11 +493,12 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var shouldRunEndpoint = ShouldRunReplayCursorEndpoint();
+            var token = ResolveReplayCursorBridgeToken();
             if (_replayCursorEndpointConfigKnown
                 && _replayCursorEndpointKnownEnabled == shouldRunEndpoint
                 && string.Equals(_replayCursorEndpointKnownHost, _replayCursorBridgeHost, System.StringComparison.Ordinal)
                 && _replayCursorEndpointKnownPort == _replayCursorBridgePort
-                && string.Equals(_replayCursorEndpointKnownToken, _replayCursorBridgeToken, System.StringComparison.Ordinal))
+                && string.Equals(_replayCursorEndpointKnownToken, token, System.StringComparison.Ordinal))
             {
                 return;
             }
@@ -510,11 +512,28 @@ namespace Unity.FoxgloveSDK.Components
             _replayCursorEndpointKnownEnabled = ShouldRunReplayCursorEndpoint();
             _replayCursorEndpointKnownHost = _replayCursorBridgeHost;
             _replayCursorEndpointKnownPort = _replayCursorBridgePort;
-            _replayCursorEndpointKnownToken = _replayCursorBridgeToken;
+            _replayCursorEndpointKnownToken = ResolveReplayCursorBridgeToken();
         }
 
         private bool ShouldRunReplayCursorEndpoint()
             => _enableReplayCursorBridge || _remoteMcapFileServer != null;
+
+        private string ResolveSharedToken()
+            => ResolveSecretValue(SharedTokenEnvironmentVariable, _sharedToken);
+
+        private string ResolveCertificatePassword()
+            => ResolveSecretValue(CertificatePasswordEnvironmentVariable, _certificatePassword);
+
+        private string ResolveReplayCursorBridgeToken()
+            => ResolveSecretValue(ReplayCursorBridgeTokenEnvironmentVariable, _replayCursorBridgeToken);
+
+        private static string ResolveSecretValue(string environmentVariable, string serializedValue)
+        {
+            var environmentValue = Environment.GetEnvironmentVariable(environmentVariable);
+            return string.IsNullOrEmpty(environmentValue)
+                ? serializedValue ?? string.Empty
+                : environmentValue;
+        }
 
         private void ClearReplayCursorEndpointConfig()
         {

@@ -84,14 +84,24 @@ namespace Unity.FoxgloveSDK.Tests
                 stopMethod = PhaseValidationSourceHelpers.SourceMethod(source, "private void Stop(");
             if (string.IsNullOrEmpty(stopMethod))
                 throw new InvalidOperationException("[FAIL] missing source method: private void Stop(");
-            Check(source.Contains("var process = _process;")
-                  && source.Contains("RunStdinWriter(process, token)")
+            var capturesProcess = source.Contains("var process = _process;") ||
+                                  source.Contains("var process = Interlocked.Exchange(ref _process, null);");
+            var waitsTasks = (stopMethod.Contains("WaitForTask(_stdinTask") &&
+                              stopMethod.Contains("WaitForTask(_stdoutTask") &&
+                              stopMethod.Contains("WaitForTask(_stderrTask") &&
+                              Ordered(stopMethod, "WaitForTask(_stderrTask", "process.Dispose()")) ||
+                             (stopMethod.Contains("var stdinTask = Interlocked.Exchange(ref _stdinTask, null);") &&
+                              stopMethod.Contains("var stdoutTask = Interlocked.Exchange(ref _stdoutTask, null);") &&
+                              stopMethod.Contains("var stderrTask = Interlocked.Exchange(ref _stderrTask, null);") &&
+                              stopMethod.Contains("WaitForTask(stdinTask") &&
+                              stopMethod.Contains("WaitForTask(stdoutTask") &&
+                              stopMethod.Contains("WaitForTask(stderrTask") &&
+                              Ordered(stopMethod, "WaitForTask(stderrTask", "process.Dispose()"));
+            Check(capturesProcess
+                  && source.Contains("RunStdinWriter(process, token")
                   && source.Contains("RunStdoutReader(process, token)")
                   && source.Contains("RunStderrReader(process, token)")
-                  && stopMethod.Contains("WaitForTask(_stdinTask")
-                  && stopMethod.Contains("WaitForTask(_stdoutTask")
-                  && stopMethod.Contains("WaitForTask(_stderrTask")
-                  && Ordered(stopMethod, "WaitForTask(_stderrTask", "process.Dispose()"),
+                  && waitsTasks,
                 checkName);
         }
 

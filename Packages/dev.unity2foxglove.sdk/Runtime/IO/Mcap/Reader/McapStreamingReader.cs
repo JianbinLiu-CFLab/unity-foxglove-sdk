@@ -381,7 +381,7 @@ namespace Unity.FoxgloveSDK.IO
             if (options.Order == McapReadOrder.LogTimeDescending || options.Order == McapReadOrder.FileOrder)
                 messages.RemoveRange(options.MaxMessages, messages.Count - options.MaxMessages);
             else
-                messages.RemoveRange(0, messages.Count - options.MaxMessages);
+                messages.RemoveRange(options.MaxMessages, messages.Count - options.MaxMessages);
         }
 
         private sealed class StreamingReadFilter

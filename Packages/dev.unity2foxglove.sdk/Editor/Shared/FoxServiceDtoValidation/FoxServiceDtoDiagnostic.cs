@@ -15,7 +15,8 @@ namespace Unity.FoxgloveSDK.Editor
             string rootType,
             string path,
             string offendingType,
-            string reason)
+            string reason,
+            string serviceName = null)
         {
             Id = id ?? string.Empty;
             IsWarning = isWarning;
@@ -24,18 +25,21 @@ namespace Unity.FoxgloveSDK.Editor
             Path = path ?? string.Empty;
             OffendingType = offendingType ?? string.Empty;
             Reason = reason ?? string.Empty;
+            ServiceName = serviceName ?? string.Empty;
         }
 
         public string Id { get; }
         public bool IsWarning { get; }
+        public string ServiceName { get; }
         public string Side { get; }
         public string RootType { get; }
         public string Path { get; }
         public string OffendingType { get; }
         public string Reason { get; }
+        public string Target => FormatTarget(ServiceName);
 
         public string FormatTarget(string serviceName)
-            => "FoxService '" + (serviceName ?? string.Empty) + "' "
+            => "FoxService '" + (!string.IsNullOrEmpty(serviceName) ? serviceName : ServiceName) + "' "
                + Side + " DTO '" + RootType + "' member '" + Path
                + "' uses '" + OffendingType + "': " + Reason;
     }

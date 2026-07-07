@@ -273,6 +273,33 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void StreamingAscendingMaxMessagesKeepsEarliestLogTimes()
+        {
+            using var stream = OpenSimpleMessageMcap(SimpleFiveMessageMcap);
+            using var streaming = new McapStreamingReader(stream, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var result = streaming.Read(new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeAscending,
+                MaxMessages = 2
+            });
+            Assert.True(result.Messages.Count == 2 && result.Messages[0].Sequence == 1 && result.Messages[1].Sequence == 2,
+                "173-040A: streaming LogTimeAscending + MaxMessages keeps earliest messages");
+        }
+
+        [Fact]
+        public void StreamingMessagesOwnPayloadCopies()
+        {
+            using var stream = CreatePayloadMessageMcap();
+            using var streaming = new McapStreamingReader(stream, leaveOpen: true, McapSequentialReadLimits.UnlimitedForTests);
+            var result = streaming.Read(new McapReadOptions { Order = McapReadOrder.FileOrder });
+
+            Assert.Equal(2, result.Messages.Count);
+            Assert.Equal("first", Encoding.UTF8.GetString(result.Messages[0].Data));
+            Assert.Equal("second", Encoding.UTF8.GetString(result.Messages[1].Data));
+            Assert.NotSame(result.Messages[0].Data, result.Messages[1].Data);
+        }
+
+        [Fact]
         public void MalformedMetadataMapLengthThrowsInvalidData()
         {
             var content = new MemoryStream();
@@ -394,6 +421,26 @@ namespace Unity.FoxgloveSDK.UnitTests
         private static MemoryStream OpenSimpleMessageMcap(byte[] bytes)
         {
             return new MemoryStream(bytes, writable: false);
+        }
+
+        private static MemoryStream CreatePayloadMessageMcap()
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "phase173-040-payload-copy");
+                writer.WriteSchema(1, "phase173_040.Schema", "jsonschema", Encoding.UTF8.GetBytes("{}"));
+                writer.WriteChannel(1, 1, "/phase173_040", "json", new Dictionary<string, string>());
+                writer.WriteMessage(1, 1, 1, 1, Encoding.UTF8.GetBytes("first"));
+                writer.WriteMessage(1, 2, 2, 2, Encoding.UTF8.GetBytes("second"));
+                writer.WriteDataEnd();
+                writer.WriteFooter(0, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
         }
 
         private static byte[] CreateSimpleMessageMcapBytes(int messageCount)
