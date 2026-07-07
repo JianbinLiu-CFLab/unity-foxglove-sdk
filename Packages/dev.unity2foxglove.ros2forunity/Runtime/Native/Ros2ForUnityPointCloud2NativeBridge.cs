@@ -13,6 +13,7 @@ using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Util;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
@@ -32,6 +33,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private readonly Dictionary<int, Binding> _bindings = new Dictionary<int, Binding>();
         private readonly HashSet<int> _seen = new HashSet<int>();
+        private readonly List<GameObject> _scanRoots = new List<GameObject>(16);
+        private readonly List<FoxglovePointCloudPublisher> _scanPublishers =
+            new List<FoxglovePointCloudPublisher>(16);
         private readonly List<int> _stale = new List<int>();
         private ROS2UnityComponent _ros2Unity;
         private float _nextScanAt;
@@ -70,6 +74,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 hideFlags = HideFlags.HideAndDontSave
             };
+            // HideAndDontSave prevents scene serialization; DontDestroyOnLoad keeps the bridge alive across scene swaps.
             DontDestroyOnLoad(bridgeObject);
             _instance = bridgeObject.AddComponent<Ros2ForUnityPointCloud2NativeBridge>();
         }
@@ -86,11 +91,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _isStopping = true;
             ClearBindings();
             Application.quitting -= OnApplicationQuitting;
-        }
-
-        private void OnApplicationQuit()
-        {
-            BeginShutdown();
         }
 
         private void OnDestroy()
@@ -127,34 +127,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private void RefreshBindings()
         {
             _seen.Clear();
-            var publishers = FindObjectsByType<FoxglovePointCloudPublisher>(
-                FindObjectsInactive.Exclude,
-                FindObjectsSortMode.None);
 
-            foreach (var publisher in publishers)
+            for (var sceneIndex = 0; sceneIndex < SceneManager.sceneCount; sceneIndex++)
             {
-                if (!IsEligible(publisher))
+                var scene = SceneManager.GetSceneAt(sceneIndex);
+                if (!scene.isLoaded)
                     continue;
 
-                var instanceId = publisher.GetInstanceID();
-                _seen.Add(instanceId);
-                var topic = NormalizeTopic(publisher.PointCloud2NativeTopic);
-                if (_bindings.TryGetValue(instanceId, out var existing))
+                _scanRoots.Clear();
+                scene.GetRootGameObjects(_scanRoots);
+                foreach (var root in _scanRoots)
                 {
-                    if (existing.Topic == topic)
-                    {
-                        existing.PrewarmPublishers(_ros2Unity);
-                        continue;
-                    }
-
-                    existing.Dispose();
-                    _bindings.Remove(instanceId);
+                    _scanPublishers.Clear();
+                    root.GetComponentsInChildren(includeInactive: false, _scanPublishers);
+                    foreach (var publisher in _scanPublishers)
+                        RegisterPublisherBinding(publisher);
                 }
-
-                var binding = new Binding(this, publisher, topic);
-                binding.Subscribe();
-                binding.PrewarmPublishers(_ros2Unity);
-                _bindings.Add(instanceId, binding);
             }
 
             _stale.Clear();
@@ -169,6 +157,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _bindings[key].Dispose();
                 _bindings.Remove(key);
             }
+        }
+
+        private void RegisterPublisherBinding(FoxglovePointCloudPublisher publisher)
+        {
+            if (!IsEligible(publisher))
+                return;
+
+            var instanceId = publisher.GetInstanceID();
+            _seen.Add(instanceId);
+            var topic = NormalizeTopic(publisher.PointCloud2NativeTopic);
+            if (_bindings.TryGetValue(instanceId, out var existing))
+            {
+                if (existing.Topic == topic)
+                {
+                    existing.PrewarmPublishers(_ros2Unity);
+                    return;
+                }
+
+                existing.Dispose();
+                _bindings.Remove(instanceId);
+            }
+
+            var binding = new Binding(this, publisher, topic);
+            binding.Subscribe();
+            binding.PrewarmPublishers(_ros2Unity);
+            _bindings.Add(instanceId, binding);
         }
 
         private static bool IsEligible(FoxglovePointCloudPublisher publisher)
@@ -295,12 +309,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly Dictionary<string, IPublisher<sensor_msgs.msg.PointCloud2>> _publishers =
                 new Dictionary<string, IPublisher<sensor_msgs.msg.PointCloud2>>(StringComparer.Ordinal);
             private readonly HashSet<string> _readyLoggedTopics = new HashSet<string>(StringComparer.Ordinal);
+            private readonly tf2_msgs.msg.TFMessage _tfAnchorMessage;
+            private readonly geometry_msgs.msg.TransformStamped _tfAnchorTransform;
             private readonly bool _usesZenohRmw;
             private ROS2Node _node;
             private IPublisher<tf2_msgs.msg.TFMessage> _tfAnchorPublisher;
             private float _zenohBackpressureSuppressUntil;
             private bool _subscribed;
             private bool _warnedPublishFailure;
+            private bool _warnedUnexpectedTopic;
             private int _publishFailureCount;
 
             public Binding(
@@ -312,6 +329,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _source = source;
                 Topic = topic;
                 _usesZenohRmw = IsZenohRmwActive();
+                _tfAnchorTransform = new geometry_msgs.msg.TransformStamped
+                {
+                    Header = new std_msgs.msg.Header
+                    {
+                        Stamp = new builtin_interfaces.msg.Time()
+                    },
+                    Transform = new geometry_msgs.msg.Transform
+                    {
+                        Translation = new geometry_msgs.msg.Vector3(),
+                        Rotation = new geometry_msgs.msg.Quaternion()
+                    }
+                };
+                _tfAnchorMessage = new tf2_msgs.msg.TFMessage
+                {
+                    Transforms = new[] { _tfAnchorTransform }
+                };
             }
 
             public string Topic { get; }
@@ -367,6 +400,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
 
                 var frameTopic = ResolveFrameTopic(frame);
+                if (!IsKnownFrameTopic(frameTopic))
+                {
+                    if (!_warnedUnexpectedTopic)
+                    {
+                        _warnedUnexpectedTopic = true;
+                        RecordPublishFailure(
+                            "Ignoring unexpected dynamic PointCloud2 Native topic '" + frameTopic
+                            + "' for configured topic '" + Topic + "'.");
+                    }
+
+                    return;
+                }
+
                 if (ShouldSkipZenohBackpressureFrame())
                 {
                     if (timingEnabled)
@@ -493,6 +539,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_owner.IsShuttingDown)
                     return false;
 
+                if (!IsKnownFrameTopic(topic))
+                    return false;
+
                 if (_node != null && _publishers.TryGetValue(topic, out publisher) && publisher != null)
                     return true;
 
@@ -544,6 +593,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return Topic;
 
                 return NormalizeTopic(_source.MotionCompensatedPointCloud2Topic);
+            }
+
+            private bool IsKnownFrameTopic(string topic)
+            {
+                if (string.Equals(topic, Topic, StringComparison.Ordinal))
+                    return true;
+
+                var deskewedTopic = ResolvePrewarmDeskewedTopic();
+                return !string.IsNullOrWhiteSpace(deskewedTopic)
+                       && string.Equals(topic, deskewedTopic, StringComparison.Ordinal);
             }
 
             private void LogReady(string topic)
@@ -638,41 +697,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var unixNs = frame == null ? 0UL : frame.UnixNs;
                 ResolveDynamicTfAnchor(out var translation, out var rotation);
 
-                return new tf2_msgs.msg.TFMessage
-                {
-                    Transforms = new[]
-                    {
-                        new geometry_msgs.msg.TransformStamped
-                        {
-                            Header = new std_msgs.msg.Header
-                            {
-                                Stamp = new builtin_interfaces.msg.Time
-                                {
-                                    Sec = (int)(unixNs / 1_000_000_000UL),
-                                    Nanosec = (uint)(unixNs % 1_000_000_000UL)
-                                },
-                                Frame_id = parentFrame
-                            },
-                            Child_frame_id = childFrame,
-                            Transform = new geometry_msgs.msg.Transform
-                            {
-                                Translation = new geometry_msgs.msg.Vector3
-                                {
-                                    X = translation.x,
-                                    Y = translation.y,
-                                    Z = translation.z
-                                },
-                                Rotation = new geometry_msgs.msg.Quaternion
-                                {
-                                    X = rotation.x,
-                                    Y = rotation.y,
-                                    Z = rotation.z,
-                                    W = rotation.w
-                                }
-                            }
-                        }
-                    }
-                };
+                _tfAnchorTransform.Header.Stamp.Sec = (int)(unixNs / 1_000_000_000UL);
+                _tfAnchorTransform.Header.Stamp.Nanosec = (uint)(unixNs % 1_000_000_000UL);
+                _tfAnchorTransform.Header.Frame_id = parentFrame;
+                _tfAnchorTransform.Child_frame_id = childFrame;
+                _tfAnchorTransform.Transform.Translation.X = translation.x;
+                _tfAnchorTransform.Transform.Translation.Y = translation.y;
+                _tfAnchorTransform.Transform.Translation.Z = translation.z;
+                _tfAnchorTransform.Transform.Rotation.X = rotation.x;
+                _tfAnchorTransform.Transform.Rotation.Y = rotation.y;
+                _tfAnchorTransform.Transform.Rotation.Z = rotation.z;
+                _tfAnchorTransform.Transform.Rotation.W = rotation.w;
+                return _tfAnchorMessage;
             }
 
             private void ResolveDynamicTfAnchor(out Vector3 translation, out Quaternion rotation)
