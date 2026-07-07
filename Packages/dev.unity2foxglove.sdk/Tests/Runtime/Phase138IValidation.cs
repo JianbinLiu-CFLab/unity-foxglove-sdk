@@ -365,6 +365,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(metadataOnlyFrame.GetPointCount() == 123,
                 "138I-28: metadata-only native Draco frames count ValidCount without managed points");
+            Check(!DracoPointCloudNativeEncoder.TryEncode(metadataOnlyFrame, out _, out var encodeError)
+                  && encodeError.Contains("requires managed Points", StringComparison.Ordinal)
+                  && encodeError.Contains("TryEncodeVirtualLidarPoints", StringComparison.Ordinal),
+                "138I-28B: metadata-only native Draco frames get an actionable managed-points diagnostic");
         }
 
         private static void VerifyVirtualLidarNativeDracoPublishRateCap()
@@ -414,7 +418,8 @@ namespace Unity.FoxgloveSDK.Tests
             };
 
             Check(!DracoPointCloudNativeEncoder.TryEncode(metadataOnlyFrame, out _, out var error)
-                  && error.Contains("empty", StringComparison.OrdinalIgnoreCase),
+                  && error.Contains("requires managed Points", StringComparison.Ordinal)
+                  && error.Contains("TryEncodeVirtualLidarPoints", StringComparison.Ordinal),
                 "138I-32: managed Draco encoder rejects metadata-only frames before indexing managed points");
         }
 

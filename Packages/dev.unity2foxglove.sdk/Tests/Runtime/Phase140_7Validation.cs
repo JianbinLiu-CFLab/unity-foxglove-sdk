@@ -50,6 +50,7 @@ namespace Unity.FoxgloveSDK.Tests
             DropOldestBoundedQueueHasConcurrentStressCoverage();
             BackgroundEncodePipelineTimeoutInvalidatesStaleWorkerResults();
             BackgroundEncodePipelineDrainsIntoReusableList();
+            BackgroundEncodePipelineDisposeIsIdempotent();
             PointCloudStrideScanShortCircuitsWhenLayoutIsKnown();
             StreamCrcUsesPooledBuffer();
             SingleValueDebugEnvelopeAvoidsIntermediateDictionary();
@@ -84,7 +85,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(BinaryEncoding.ReadU32LE(frame, 6) == 0U,
                 "140-7B-1: fetchAsset success frame still encodes zero errorMessageLen");
-            Check(success.Contains("WriteU32LE(frame, 6, 0u);", StringComparison.Ordinal)
+            Check(success.Contains("WriteU32LEUnchecked(frame, 6, 0u);", StringComparison.Ordinal)
                   && !success.Contains("frame[6] = 0; frame[7] = 0; frame[8] = 0; frame[9] = 0;", StringComparison.Ordinal),
                 "140-7B-2: fetchAsset success frame uses shared little-endian writer for errorMessageLen");
         }
@@ -221,6 +222,25 @@ namespace Unity.FoxgloveSDK.Tests
             Check(results.Count == 1 && results[0] == 42,
                 "140-7G-2: reusable drain clears and fills the caller-owned list");
             pipeline.Stop(clearCompleted: true, out _);
+        }
+
+        private static void BackgroundEncodePipelineDisposeIsIdempotent()
+        {
+            var pipeline = new BackgroundEncodePipeline<Phase140_7Request, int>(
+                "phase140-7-dispose",
+                completedCapacity: 1,
+                stopWaitMs: 100,
+                encode: request => request.Value);
+
+            pipeline.Dispose();
+            pipeline.Dispose();
+
+            CheckThrows<ObjectDisposedException>(
+                () => pipeline.Enqueue(new Phase140_7Request { Value = 1 }, out _, out _),
+                "140-7G2-1: background encode pipeline rejects enqueue after Dispose");
+            CheckThrows<ObjectDisposedException>(
+                () => pipeline.Drain(new List<int>(), out _),
+                "140-7G2-2: background encode pipeline rejects drain after Dispose");
         }
 
         private static void PointCloudStrideScanShortCircuitsWhenLayoutIsKnown()

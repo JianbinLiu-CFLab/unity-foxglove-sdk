@@ -11,6 +11,7 @@ import json
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -63,7 +64,7 @@ class SampleSyncToolingTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             module.validate_portable_full_demo_scene_payload(
-                b"  _sharedToken: secret\n  _certificatePfxPath: C:/Users/Alice/cert.pfx\n"
+                "  _sharedToken: secret\n  _certificatePfxPath: C:/Users/Alice/cert.pfx\n"
             )
 
     def test_validate_file_maps_reports_invalid_portable_scene_source(self) -> None:
@@ -88,6 +89,21 @@ class SampleSyncToolingTests(unittest.TestCase):
 
         self.assertEqual(1, len(errors))
         self.assertIn("invalid source", errors[0])
+
+    def test_validate_mode_prints_neutral_error_label(self) -> None:
+        """Validate mode should not classify stale content as missing files."""
+        module = load_module("sync_full_demo_validate_label_under_test", "Scripts/samples/sync_full_demo.py")
+
+        with mock.patch.object(module, "parse_args", return_value=type("Args", (), {"mode": "validate"})()):
+            with mock.patch.object(module, "build_pairs", return_value=[]):
+                with mock.patch.object(module, "validate_file_maps", return_value=["stale destination: sample"]):
+                    stderr = StringIO()
+                    with mock.patch("sys.stderr", stderr):
+                        result = module.main()
+
+        self.assertEqual(module.EXIT_FAILURE, result)
+        self.assertIn("[error] stale destination: sample", stderr.getvalue())
+        self.assertNotIn("[missing]", stderr.getvalue())
 
     def test_ros2_sample_default_imported_root_uses_package_manifest_version(self) -> None:
         """Sample sync should not hardcode the imported sample package version."""

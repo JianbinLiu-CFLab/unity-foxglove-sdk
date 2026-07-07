@@ -325,7 +325,7 @@ def main() -> int:
             errors = validate_file_maps(pairs)
             if errors:
                 for error in errors:
-                    print(f"[missing] {error}", file=sys.stderr)
+                    print(f"[error] {error}", file=sys.stderr)
                 return EXIT_FAILURE
             print(f"sync_full_demo: validated {len(pairs)} file map(s).")
             return EXIT_SUCCESS

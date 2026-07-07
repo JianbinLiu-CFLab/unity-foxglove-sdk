@@ -264,6 +264,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void LyricalNoticesHashMatchesManifest()
+        {
+            var manifest = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Compliance/ros2-for-unity-adoption-manifest.json");
+            var notices = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity/Compliance/r2fu-lyrical-win64-runtime-notices.md");
+            var manifestMatch = Regex.Match(
+                manifest,
+                "\"runtimeId\"\\s*:\\s*\"r2fu-lyrical-win64\"[\\s\\S]*?\"artifactSha256\"\\s*:\\s*\"([0-9a-f]{64})\"");
+            var noticeMatch = Regex.Match(notices, "\\| SHA-256 \\| `([0-9a-f]{64})` \\|");
+
+            Assert.True(manifestMatch.Success);
+            Assert.True(noticeMatch.Success);
+            Assert.Equal(manifestMatch.Groups[1].Value, noticeMatch.Groups[1].Value);
+        }
+
+        [Fact]
         public void Phase14024MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_24Validation.cs", "--phase140-24", "Phase140_24Validation.Validate");
     }

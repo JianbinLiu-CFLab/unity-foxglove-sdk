@@ -232,10 +232,13 @@ namespace Unity.FoxgloveSDK.Tests
             var lifecycleSource = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Utilities/BackgroundWorkerLifecycle.cs");
             Check(source.Contains("_dracoEncodePipeline?.Stop(clearCompleted: true)")
+                  && source.Contains("_dracoEncodePipeline?.Dispose()")
                   && pointCloudPipelineSource.Contains("_pipeline.Stop(clearCompleted, out var waitedForWorker)")
+                  && pointCloudPipelineSource.Contains("_pipeline.Dispose()")
                   && pipelineSource.Contains("_worker.Idle.Wait(_stopWaitMs)")
+                  && pipelineSource.Contains("_workerSignal.Dispose()")
                   && lifecycleSource.Contains("ManualResetEventSlim"),
-                "134-14J-8: Draco worker has an explicit disable/destroy shutdown path");
+                "134-14J-8: Draco worker has an explicit disable/destroy shutdown and dispose path");
         }
 
         private static string ReadPointCloudPublisherSources()

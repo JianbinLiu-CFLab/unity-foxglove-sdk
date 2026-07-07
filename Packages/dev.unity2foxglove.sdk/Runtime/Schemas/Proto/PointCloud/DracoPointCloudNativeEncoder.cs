@@ -95,7 +95,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
             if (frame.Points == null || frame.Points.Count == 0)
             {
-                error = "Draco point-cloud frame is empty.";
+                error = "Draco TryEncode(PointCloudFrame) requires managed Points; use TryEncodeVirtualLidarPoints for native VirtualLidar snapshots.";
                 return false;
             }
 
