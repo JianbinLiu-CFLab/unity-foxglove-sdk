@@ -167,7 +167,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(sidecar.Contains("public string OpenH264DllPath { get; set; }", StringComparison.Ordinal)
                   && startInfo.Contains("--openh264-dll ", StringComparison.Ordinal)
-                  && startInfo.Contains("QuoteArgument(options.OpenH264DllPath)", StringComparison.Ordinal),
+                  && startInfo.Contains("Path.GetFullPath(options.OpenH264DllPath)", StringComparison.Ordinal)
+                  && startInfo.Contains("QuoteArgument(openH264DllPath)", StringComparison.Ordinal),
                 "163-16G-1: experimental OpenH264 probe passes the DLL path required by the Windows helper");
             Check(validate.Contains("RequiresExplicitOpenH264Dll", StringComparison.Ordinal)
                   && validate.Contains("OpenH264 DLL path is empty", StringComparison.Ordinal)

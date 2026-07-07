@@ -182,9 +182,17 @@ namespace Unity.FoxgloveSDK.Components
                     out var firstUnixNs,
                     out var lastUnixNs,
                     out referenceUnixNs,
+                    out var hasValidPoints,
                     out error))
             {
                 return false;
+            }
+
+            if (!hasValidPoints)
+            {
+                CopyReferenceFramePoints(source, pointCount, output);
+                outputPointCount = pointCount;
+                return true;
             }
 
             if (request.InputConvention == PointCloudMotionCompensationInputConvention.ScanReferenceSensorFrame)
@@ -280,6 +288,7 @@ namespace Unity.FoxgloveSDK.Components
                 out _,
                 out _,
                 out referenceUnixNs,
+                out _,
                 out error);
         }
 
@@ -291,11 +300,13 @@ namespace Unity.FoxgloveSDK.Components
             out ulong firstUnixNs,
             out ulong lastUnixNs,
             out ulong referenceUnixNs,
+            out bool hasValidPoints,
             out string error)
         {
             firstUnixNs = scanStartUnixNs;
             lastUnixNs = scanStartUnixNs;
             referenceUnixNs = scanStartUnixNs;
+            hasValidPoints = false;
             error = null;
             if (source == null)
             {
@@ -312,11 +323,9 @@ namespace Unity.FoxgloveSDK.Components
                 error = "point count is outside the source buffer";
                 return false;
             }
-            if (!TryGetTimeRange(source, pointCount, scanStartUnixNs, out firstUnixNs, out lastUnixNs))
-            {
-                error = "valid point time offsets are absent";
-                return false;
-            }
+            hasValidPoints = TryGetTimeRange(source, pointCount, scanStartUnixNs, out firstUnixNs, out lastUnixNs);
+            if (!hasValidPoints)
+                return true;
 
             referenceUnixNs = ResolveReferenceUnixNs(firstUnixNs, lastUnixNs, request.ReferenceTime);
             return true;
@@ -404,6 +413,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private static uint TimeOffsetSecondsToNanoseconds(float seconds)
         {
+            // Stored per-point time offsets are encoded as unsigned nanoseconds, clamped to MCAP/PointCloud2 field width.
             if (float.IsNaN(seconds) || seconds <= 0f)
                 return 0U;
 

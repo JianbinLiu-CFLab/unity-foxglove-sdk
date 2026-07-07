@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Protocol;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -25,16 +26,20 @@ namespace Unity.FoxgloveSDK.Components
         private static FoxgloveServiceHub _instance;
         private static readonly object PendingGate = new();
         private static readonly List<IFoxgloveServiceSource> PendingRegistrations = new();
+        private static readonly HashSet<IFoxgloveServiceSource> PendingRegistrationSet = new();
 
         [SerializeField] private FoxgloveManager _manager;
         [SerializeField] private bool _enableFallbackSceneScan = true;
 
+        private readonly List<IFoxgloveServiceSource> _pendingDrainBuffer = new();
+        private readonly List<IFoxgloveServiceSource> _staleSources = new();
         private readonly Dictionary<IFoxgloveServiceSource, List<uint>> _serviceIdsBySource = new();
         private readonly Dictionary<IFoxgloveServiceSource, List<FoxgloveGeneratedServiceDescriptor>> _descriptorsBySource = new();
         private readonly Dictionary<string, IFoxgloveServiceSource> _ownersByServiceName = new();
         private readonly HashSet<string> _warnedFailures = new();
         private float _managerSearchCooldown;
         private float _scanTimer;
+        private bool _fallbackSceneScanDirty = true;
         private bool _managerWasRunning;
 
         /// <summary>Registers a generated service source without waiting for fallback scene scan.</summary>
@@ -45,7 +50,7 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (PendingGate)
             {
-                if (!PendingRegistrations.Contains(source))
+                if (PendingRegistrationSet.Add(source))
                     PendingRegistrations.Add(source);
             }
         }
@@ -58,6 +63,7 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (PendingGate)
             {
+                PendingRegistrationSet.Remove(source);
                 PendingRegistrations.Remove(source);
             }
 
@@ -77,6 +83,7 @@ namespace Unity.FoxgloveSDK.Components
             lock (PendingGate)
             {
                 PendingRegistrations.Clear();
+                PendingRegistrationSet.Clear();
             }
         }
 
@@ -107,6 +114,13 @@ namespace Unity.FoxgloveSDK.Components
                 _instance = this;
         }
 
+        private void OnEnable()
+        {
+            MarkFallbackSceneScanDirty();
+            SceneManager.sceneLoaded += OnSceneChanged;
+            SceneManager.sceneUnloaded += OnSceneChanged;
+        }
+
         private void Update()
         {
             ResolveManagerIfNeeded();
@@ -134,9 +148,10 @@ namespace Unity.FoxgloveSDK.Components
             if (_enableFallbackSceneScan)
             {
                 _scanTimer -= Time.deltaTime;
-                if (_scanTimer <= 0f)
+                if (_fallbackSceneScanDirty && _scanTimer <= 0f)
                 {
                     _scanTimer = ScanIntervalSeconds;
+                    _fallbackSceneScanDirty = false;
                     Scan();
                 }
             }
@@ -144,6 +159,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnDisable()
         {
+            SceneManager.sceneLoaded -= OnSceneChanged;
+            SceneManager.sceneUnloaded -= OnSceneChanged;
             UnregisterAll();
         }
 
@@ -179,18 +196,25 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainPendingRegistrations()
         {
-            IFoxgloveServiceSource[] pending;
             lock (PendingGate)
             {
                 if (PendingRegistrations.Count == 0)
                     return;
 
-                pending = PendingRegistrations.ToArray();
+                _pendingDrainBuffer.AddRange(PendingRegistrations);
                 PendingRegistrations.Clear();
+                PendingRegistrationSet.Clear();
             }
 
-            foreach (var source in pending)
-                RegisterSourceNow(source);
+            try
+            {
+                foreach (var source in _pendingDrainBuffer)
+                    RegisterSourceNow(source);
+            }
+            finally
+            {
+                _pendingDrainBuffer.Clear();
+            }
         }
 
         private void RegisterSourceNow(IFoxgloveServiceSource source)
@@ -288,15 +312,16 @@ namespace Unity.FoxgloveSDK.Components
             if (_serviceIdsBySource.Count == 0)
                 return;
 
-            var stale = new List<IFoxgloveServiceSource>();
+            _staleSources.Clear();
             foreach (var source in _serviceIdsBySource.Keys)
             {
                 if (SourceUnavailable(source))
-                    stale.Add(source);
+                    _staleSources.Add(source);
             }
 
-            foreach (var source in stale)
+            foreach (var source in _staleSources)
                 UnregisterSourceNow(source);
+            _staleSources.Clear();
         }
 
         private void UnregisterSourceNow(IFoxgloveServiceSource source)
@@ -328,6 +353,7 @@ namespace Unity.FoxgloveSDK.Components
             if (ReferenceEquals(source, null))
                 return true;
 
+            // Non-MonoBehaviour service sources own their lifetime and must call UnregisterSource explicitly.
             if (source is MonoBehaviour behaviour)
                 return behaviour == null || !behaviour.isActiveAndEnabled;
 
@@ -345,6 +371,23 @@ namespace Unity.FoxgloveSDK.Components
             _serviceIdsBySource.Clear();
             _descriptorsBySource.Clear();
             _ownersByServiceName.Clear();
+            _warnedFailures.Clear();
+        }
+
+        private void OnSceneChanged(Scene scene, LoadSceneMode mode)
+        {
+            MarkFallbackSceneScanDirty();
+        }
+
+        private void OnSceneChanged(Scene scene)
+        {
+            MarkFallbackSceneScanDirty();
+        }
+
+        private void MarkFallbackSceneScanDirty()
+        {
+            _fallbackSceneScanDirty = true;
+            _scanTimer = 0f;
         }
 
         public IReadOnlyList<FoxgloveRegisteredServiceSnapshot> GetRegisteredServiceSnapshots()

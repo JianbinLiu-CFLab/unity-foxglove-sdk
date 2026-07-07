@@ -165,12 +165,13 @@ public class ROS2UnityComponent : MonoBehaviour
         }
 
         bool removed = false;
+        bool removedRos2csNode = false;
         lock (mutex)
         {
             if (nodes != null)
             {
                 removed = nodes.Remove(node);
-                bool removedRos2csNode = ros2csNodes.Remove(node.node);
+                removedRos2csNode = ros2csNodes.Remove(node.node);
                 if (removed || removedRos2csNode)
                 {
                     collectionVersion++;
@@ -178,7 +179,7 @@ public class ROS2UnityComponent : MonoBehaviour
             }
         }
 
-        if (dispose && removed)
+        if (dispose && (removed || removedRos2csNode))
         {
             node.Dispose();
         }
@@ -315,11 +316,18 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private void MarkRuntimeShutdown()
     {
+        ROS2ForUnity runtimeToDestroy;
         lock (mutex)
         {
+            runtimeToDestroy = ros2forUnity;
             ros2forUnity = null;
             cachedOk = false;
             runtimeShutdownRequested = true;
+        }
+
+        if (runtimeToDestroy != null)
+        {
+            runtimeToDestroy.DestroyROS2ForUnity();
         }
     }
 

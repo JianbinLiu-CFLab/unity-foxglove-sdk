@@ -283,7 +283,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var sourceTreeSha = TestSources.Slice(catalog, "def source_tree_sha", "def try_source_commit");
             var openh264 = TestSources.Text("Scripts/native/openh264_probe/openh264_probe_encoder.cpp");
             var packageOpenh264 = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Native/OpenH264/openh264_probe_encoder.cpp");
-            var writeAccessUnit = TestSources.Slice(openh264, "void WriteAccessUnit", "int main");
+            var writeAccessUnit = TestSources.Slice(openh264, "bool WriteAccessUnit", "int main");
             var openh264Main = TestSources.Slice(openh264, "int main(int argc, char** argv)", "    if (exitCode == 0)");
             var draco = TestSources.Text("Scripts/native/draco_probe/draco_probe_encoder.cpp");
             var processOneFrame = TestSources.Slice(draco, "bool ProcessOneFrame", "}  // namespace");
@@ -300,14 +300,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("sha.update(file_bytes[path])", sourceTreeSha, StringComparison.Ordinal);
             Assert.DoesNotContain("path.read_text", generate, StringComparison.Ordinal);
             Assert.Equal(1, TestSources.Count(generate, "path.read_bytes()"));
-            Assert.Contains("void WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", openh264, StringComparison.Ordinal);
-            Assert.Contains("void WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", packageOpenh264, StringComparison.Ordinal);
+            Assert.Equal(openh264, packageOpenh264);
+            Assert.Contains("bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", openh264, StringComparison.Ordinal);
+            Assert.Contains("bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)", packageOpenh264, StringComparison.Ordinal);
             AssertWindowsMinMaxMacrosAreDisabledBeforeWindowsHeader(openh264);
             AssertWindowsMinMaxMacrosAreDisabledBeforeWindowsHeader(packageOpenh264);
             Assert.Contains("accessUnit.clear();", writeAccessUnit, StringComparison.Ordinal);
             Assert.DoesNotContain("std::vector<uint8_t> accessUnit;", writeAccessUnit, StringComparison.Ordinal);
             Assert.Contains("std::vector<uint8_t> accessUnit;", openh264Main, StringComparison.Ordinal);
-            Assert.Contains("WriteAccessUnit(info, accessUnit);", openh264Main, StringComparison.Ordinal);
+            Assert.Contains("if (!WriteAccessUnit(info, accessUnit))", openh264Main, StringComparison.Ordinal);
             Assert.Contains("bool ProcessOneFrame(std::vector<float>* xyz)", draco, StringComparison.Ordinal);
             Assert.Contains("xyz->resize(float_count);", processOneFrame, StringComparison.Ordinal);
             Assert.Contains("ReadExact(reinterpret_cast<char*>(xyz->data())", processOneFrame, StringComparison.Ordinal);

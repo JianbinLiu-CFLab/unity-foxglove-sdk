@@ -393,14 +393,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_node != null && _publisher != null)
                 {
                     try { _node.RemovePublisher<sensor_msgs.msg.Imu>(_publisher); }
-                    catch (Exception) { }
+                    catch (Exception ex)
+                    {
+                        if (!_owner.IsShuttingDown)
+                            Debug.LogWarning("[Foxglove][R2FU] IMU publisher cleanup failed: " + ex.Message);
+                    }
                 }
 
                 _publisher = null;
                 if (_owner._ros2Unity != null && _node != null)
                 {
                     try { _owner._ros2Unity.RemoveNode(_node); }
-                    catch (Exception) { }
+                    catch (Exception ex)
+                    {
+                        if (!_owner.IsShuttingDown)
+                            Debug.LogWarning("[Foxglove][R2FU] IMU node cleanup failed: " + ex.Message);
+                    }
                 }
 
                 _node = null;

@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Architecture
@@ -197,9 +198,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         public void ControllerStopsGatewayInlineBeforeReleasingCallbackRoot()
         {
             var source = Text(RuntimeRoot + "/FoxgloveRemoteGatewayController.cs");
-            var handleDispose = source.IndexOf("handle?.Dispose();", StringComparison.Ordinal);
-            var callbacksDispose = source.IndexOf("callbacks?.Dispose();", StringComparison.Ordinal);
-            var eventsClear = source.IndexOf("_events = null;", StringComparison.Ordinal);
+            var stopGateway = ParseMethod(source, "StopGateway");
+            var statements = stopGateway
+                .DescendantNodes()
+                .OfType<ExpressionStatementSyntax>()
+                .Select(statement => statement.ToString())
+                .ToArray();
+            var handleDispose = Array.FindIndex(
+                statements,
+                statement => statement.Contains("handle?.Dispose()", StringComparison.Ordinal));
+            var callbacksDispose = Array.FindIndex(
+                statements,
+                statement => statement.Contains("callbacks?.Dispose()", StringComparison.Ordinal));
+            var eventsClear = Array.FindIndex(
+                statements,
+                statement => statement.Contains("_events = null", StringComparison.Ordinal));
 
             Assert.DoesNotContain("using System.Threading;", source, StringComparison.Ordinal);
             Assert.DoesNotContain("ThreadPool.QueueUserWorkItem", source, StringComparison.Ordinal);
@@ -228,12 +241,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
         private static string Text(string relativePath)
             => File.ReadAllText(PathOf(relativePath));
 
+        private static MethodDeclarationSyntax ParseMethod(string source, string methodName)
+        {
+            var root = CSharpSyntaxTree.ParseText(source).GetRoot();
+            var method = root
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .FirstOrDefault(candidate => string.Equals(candidate.Identifier.ValueText, methodName, StringComparison.Ordinal));
+
+            Assert.NotNull(method);
+            Assert.NotNull(method.Body);
+            return method;
+        }
+
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot.Value, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
         private static MetadataReference[] BasicReferences()
         {
-            var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
+            var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+            Assert.False(
+                string.IsNullOrEmpty(trustedAssemblies),
+                "TRUSTED_PLATFORM_ASSEMBLIES must be available to compile the remote gateway shape test surface.");
+
+            var trusted = trustedAssemblies
                 .Split(Path.PathSeparator)
                 .Select(path => MetadataReference.CreateFromFile(path));
 
@@ -282,6 +313,8 @@ namespace UnityEngine
     public static class Debug
     {
         public static void Log(string message) {}
+        public static void LogError(string message) {}
+        public static void LogException(Exception exception) {}
         public static void LogWarning(string message) {}
     }
 
@@ -359,18 +392,31 @@ namespace Unity.FoxgloveSDK.Components
 
         private static string FindRepoRoot()
         {
+            var overrideRoot = Environment.GetEnvironmentVariable("REPO_ROOT");
+            if (IsRepoRoot(overrideRoot))
+                return Path.GetFullPath(overrideRoot);
+
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
             {
-                if (File.Exists(Path.Combine(dir.FullName, "README.md"))
-                    && Directory.Exists(Path.Combine(dir.FullName, "Unity2Foxglove"))
-                    && Directory.Exists(Path.Combine(dir.FullName, "Packages")))
+                if (IsRepoRoot(dir.FullName))
                     return dir.FullName;
 
                 dir = dir.Parent;
             }
 
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            throw new DirectoryNotFoundException(
+                "Could not locate repository root from "
+                + AppContext.BaseDirectory
+                + ". Set REPO_ROOT to a checkout containing README.md, Unity2Foxglove/, and Packages/.");
+        }
+
+        private static bool IsRepoRoot(string path)
+        {
+            return !string.IsNullOrWhiteSpace(path)
+                   && File.Exists(Path.Combine(path, "README.md"))
+                   && Directory.Exists(Path.Combine(path, "Unity2Foxglove"))
+                   && Directory.Exists(Path.Combine(path, "Packages"));
         }
     }
 }

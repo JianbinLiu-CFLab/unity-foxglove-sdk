@@ -288,7 +288,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestBuilder.cs");
             var buildFoxRun = TestSources.Slice(source, "private static Unity2FoxgloveFoxRunSummarySection BuildFoxRunSection", "        private static Unity2FoxgloveProtobufRegistrySection BuildProtobufRegistrySection()");
-            var sha = TestSources.Slice(source, "private static string Sha256Hex(byte[] bytes)", "    }\r\n}");
             var buildSdk = TestSources.Slice(source, "private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()", "        private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()");
             var buildSorted = TestSources.Slice(source, "private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()", "        private static void ValidatePublisherCatalog");
 
@@ -296,12 +295,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("contracts += type.Contracts.Count;", buildFoxRun, StringComparison.Ordinal);
             Assert.Contains("fields += contract.Fields.Count;", buildFoxRun, StringComparison.Ordinal);
             Assert.DoesNotContain(".Sum(", buildFoxRun, StringComparison.Ordinal);
-            Assert.Contains("private const string LowerHexDigits", source, StringComparison.Ordinal);
-            Assert.Contains("LowerHexDigits[b >> 4]", sha, StringComparison.Ordinal);
-            Assert.Contains("LowerHexDigits[b & 0x0F]", sha, StringComparison.Ordinal);
-            Assert.DoesNotContain("ToString(\"x2\")", sha, StringComparison.Ordinal);
-            Assert.Contains("private static readonly IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> SortedSdkTypedPublisherEntries", source, StringComparison.Ordinal);
-            Assert.Contains("SortedSdkTypedPublisherEntries.Count", buildSdk, StringComparison.Ordinal);
+            Assert.DoesNotContain("private static string Sha256Hex(byte[] bytes)", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunManifestHasher.Sha256Hex", source, StringComparison.Ordinal);
+            Assert.Contains("private static readonly Lazy<IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry>> SortedSdkTypedPublisherEntries", source, StringComparison.Ordinal);
+            Assert.Contains("var entries = SortedSdkTypedPublisherEntries.Value;", buildSdk, StringComparison.Ordinal);
+            Assert.Contains("entries.Count", buildSdk, StringComparison.Ordinal);
             Assert.DoesNotContain("OrderBy", buildSdk, StringComparison.Ordinal);
             Assert.Contains("ValidatePublisherCatalog(entries)", buildSorted, StringComparison.Ordinal);
         }

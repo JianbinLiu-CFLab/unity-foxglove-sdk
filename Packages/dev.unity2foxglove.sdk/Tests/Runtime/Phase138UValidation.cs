@@ -192,6 +192,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && referenceResult.ReferenceUnixNs == 1_050_000_000UL
                   && referenceResult.Points[1].TimeOffsetSeconds == 0f,
                 "138U-3H: scan-reference deskew branch publishes closed midpoint visualization XYZ without pose history");
+
+            var invalidOnly = new[]
+            {
+                new VirtualLidarPointData { X = 1f, Y = 2f, Z = 3f, IsValid = 0, TimeOffsetSeconds = 0.05f }
+            };
+            Check(PointCloudMotionCompensator.TryCompensateVirtualLidar(
+                    invalidOnly,
+                    invalidOnly.Length,
+                    1_000_000_000UL,
+                    request,
+                    out var invalidResult,
+                    out var invalidError)
+                  && invalidResult.PointCount == invalidOnly.Length
+                  && invalidResult.ReferenceUnixNs == 1_000_000_000UL
+                  && invalidResult.Points[0].IsValid == 0,
+                "138U-3I: all-invalid point snapshots copy through without failing deskew " + invalidError);
         }
 
         /// <summary>

@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageRuntimeTickMs")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageClientLifecycleDrainMs")
                   && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageClientMessageDrainMs")
-                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageManagerUpdateMs")
+                  && MethodContains(diagnostics, "private static void LogFrameStallDiagnostics", "stageTotalMs")
                   && editor.Contains("Stage Timing Diagnostics", StringComparison.Ordinal),
                 "140H2-5F: frame stall diagnostics can include manager Update sub-stage timings");
         }

@@ -121,7 +121,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             content.Write(new byte[17], 0, 17);
 
             Assert.True(ThrowsInvalidData(() => McapRecordReader.DecodeMessageIndex(content.ToArray())),
-                "140-35A-1: malformed message index vector length is rejected");
+                "134-9C-4: malformed message index vector length is rejected");
         }
 
         [Fact]

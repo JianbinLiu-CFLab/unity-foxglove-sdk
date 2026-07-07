@@ -58,6 +58,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static IReadOnlyList<FoxRunGenerationType> CopyTypes(IReadOnlyList<FoxRunGenerationType> types)
         {
+            // Public FoxRunGenerationType construction already sorts members; this copy preserves that stable order.
             return (types ?? Array.Empty<FoxRunGenerationType>())
                 .OrderBy(type => type.DeclaringType, StringComparer.Ordinal)
                 .Select(type => new FoxRunGenerationType(type.Namespace, type.ClassName, type.Members, membersAlreadySorted: true))

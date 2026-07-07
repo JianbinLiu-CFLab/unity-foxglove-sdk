@@ -30,6 +30,8 @@
 
 namespace
 {
+    constexpr int MaxBitrateKbps = 1000000;
+
     enum class FrameReadStatus
     {
         Frame,
@@ -124,6 +126,7 @@ namespace
             && options.height > 0
             && options.fps > 0
             && options.bitrateKbps > 0
+            && options.bitrateKbps <= MaxBitrateKbps
             && options.keyint > 0
 #ifdef _WIN32
             && !options.openh264Dll.empty()
@@ -250,14 +253,19 @@ namespace
 
         if (read != static_cast<std::streamsize>(frame.size()))
         {
-            std::cerr << "Partial I420 frame received before EOF. bytes=" << read << std::endl;
+            std::cerr
+                << (std::cin.eof()
+                    ? "Partial I420 frame received at EOF. bytes="
+                    : "Partial I420 frame received before EOF. bytes=")
+                << read
+                << std::endl;
             return FrameReadStatus::PartialFrame;
         }
 
         return FrameReadStatus::Frame;
     }
 
-    void AppendLayerNalUnits(const SLayerBSInfo& layer, std::vector<uint8_t>& accessUnit)
+    bool AppendLayerNalUnits(const SLayerBSInfo& layer, std::vector<uint8_t>& accessUnit)
     {
         int offset = 0;
         for (int nal = 0; nal < layer.iNalCount; ++nal)
@@ -270,7 +278,7 @@ namespace
                 || accessUnit.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max() - static_cast<uint32_t>(length)))
             {
                 std::cerr << "OpenH264 access unit exceeds helper output length limit." << std::endl;
-                std::exit(7);
+                return false;
             }
 
             accessUnit.insert(
@@ -279,9 +287,11 @@ namespace
                 layer.pBsBuf + offset + length);
             offset += length;
         }
+
+        return true;
     }
 
-    void WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)
+    bool WriteAccessUnit(const SFrameBSInfo& info, std::vector<uint8_t>& accessUnit)
     {
         accessUnit.clear();
 
@@ -289,33 +299,37 @@ namespace
         {
             std::cerr << "OpenH264 skipped frame." << std::endl;
             WriteSkippedFrameSentinel();
-            return;
+            return true;
         }
 
         if (info.eFrameType == videoFrameTypeInvalid)
         {
             WriteSkippedFrameSentinel();
-            return;
+            return true;
         }
 
         for (int layer = 0; layer < info.iLayerNum; ++layer)
-            AppendLayerNalUnits(info.sLayerInfo[layer], accessUnit);
+        {
+            if (!AppendLayerNalUnits(info.sLayerInfo[layer], accessUnit))
+                return false;
+        }
 
         if (accessUnit.empty())
         {
             WriteSkippedFrameSentinel();
-            return;
+            return true;
         }
 
         if (accessUnit.size() > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
         {
             std::cerr << "OpenH264 access unit exceeds uint32 length prefix." << std::endl;
-            std::exit(7);
+            return false;
         }
 
         WriteLittleEndianLength(static_cast<uint32_t>(accessUnit.size()));
         std::cout.write(reinterpret_cast<const char*>(accessUnit.data()), static_cast<std::streamsize>(accessUnit.size()));
         std::cout.flush();
+        return true;
     }
 }
 
@@ -353,7 +367,8 @@ int main(int argc, char** argv)
     params.iPicWidth = options.width;
     params.iPicHeight = options.height;
     params.fMaxFrameRate = static_cast<float>(options.fps);
-    params.iTargetBitrate = options.bitrateKbps * 1000;
+    const int bitrateBps = options.bitrateKbps * 1000;
+    params.iTargetBitrate = bitrateBps;
     params.iRCMode = RC_BITRATE_MODE;
     params.iTemporalLayerNum = 1;
     params.iSpatialLayerNum = 1;
@@ -363,8 +378,8 @@ int main(int argc, char** argv)
     params.sSpatialLayers[0].iVideoWidth = options.width;
     params.sSpatialLayers[0].iVideoHeight = options.height;
     params.sSpatialLayers[0].fFrameRate = static_cast<float>(options.fps);
-    params.sSpatialLayers[0].iSpatialBitrate = options.bitrateKbps * 1000;
-    params.sSpatialLayers[0].iMaxSpatialBitrate = options.bitrateKbps * 1000;
+    params.sSpatialLayers[0].iSpatialBitrate = bitrateBps;
+    params.sSpatialLayers[0].iMaxSpatialBitrate = bitrateBps;
     params.sSpatialLayers[0].sSliceArgument.uiSliceMode = SM_SINGLE_SLICE;
     params.sSpatialLayers[0].sSliceArgument.uiSliceNum = 1;
 
@@ -419,7 +434,11 @@ int main(int argc, char** argv)
             return 6;
         }
 
-        WriteAccessUnit(info, accessUnit);
+        if (!WriteAccessUnit(info, accessUnit))
+        {
+            exitCode = 7;
+            break;
+        }
         ++framesEncoded;
     }
 

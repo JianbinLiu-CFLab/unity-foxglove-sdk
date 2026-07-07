@@ -74,7 +74,7 @@ def repo_root_from(start: Path) -> Path:
 def run_git_ls_files(repo_root: Path, *pathspecs: str) -> list[str]:
     """Return git-tracked paths for optional pathspecs."""
     command = ["git", "ls-files", *pathspecs]
-    result = subprocess.run(command, cwd=repo_root, text=True, capture_output=True, check=False)
+    result = subprocess.run(command, cwd=repo_root, text=True, capture_output=True, check=False, timeout=30)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "git ls-files failed")
     return [line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()]
