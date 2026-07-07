@@ -317,6 +317,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("OrderBy", buildSdk, StringComparison.Ordinal);
             Assert.Contains("return SortedSdkTypedPublisherEntries.Value;", getSorted, StringComparison.Ordinal);
             Assert.Contains("ValidatePublisherCatalog(entries)", buildSorted, StringComparison.Ordinal);
+
+            var hasher = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest/FoxRunManifestHasher.cs");
+            Assert.Contains("using var sha = SHA256.Create();", hasher, StringComparison.Ordinal);
+            Assert.DoesNotContain("ThreadLocal<SHA256>", hasher, StringComparison.Ordinal);
+
+            var memberData = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunMemberData.cs");
+            Assert.Contains("LooksLikeArrayType(rawType)", memberData, StringComparison.Ordinal);
+            Assert.Contains("Type-based MemberData constructor", memberData, StringComparison.Ordinal);
         }
 
         [Fact]

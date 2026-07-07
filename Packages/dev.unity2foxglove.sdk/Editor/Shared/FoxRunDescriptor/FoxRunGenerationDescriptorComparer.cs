@@ -153,7 +153,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void CompareSemantic(string key, string field, float left, float right, List<string> diffs)
         {
-            if (Math.Abs(left - right) > 0f)
+            if (!left.Equals(right))
                 diffs.Add(key + " semantic " + field + ": '" + left + "' != '" + right + "'");
         }
 

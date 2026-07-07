@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Components;
@@ -278,6 +280,48 @@ namespace Demo
             Assert.Contains(
                 comparison.SemanticDifferences,
                 difference => difference.Contains("mode", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void DescriptorComparerTreatsMatchingNanFloatsAsSameValue()
+        {
+            var compare = typeof(FoxRunGenerationDescriptorComparer).GetMethod(
+                "CompareSemantic",
+                BindingFlags.NonPublic | BindingFlags.Static,
+                null,
+                new[] { typeof(string), typeof(string), typeof(float), typeof(float), typeof(List<string>) },
+                null);
+            Assert.NotNull(compare);
+            var diffs = new List<string>();
+
+            compare.Invoke(null, new object[] { "member", "rateHz", float.NaN, float.NaN, diffs });
+
+            Assert.Empty(diffs);
+        }
+
+        [Fact]
+        public void FoxRunJsonSchemaBuilderAcceptsDecimalFieldsAsNumbers()
+        {
+            var contract = new FoxRunSchemaContractInfo(
+                "Demo.DecimalState",
+                "/phase173/decimal",
+                "",
+                "json",
+                "contract",
+                "binding",
+                "policy",
+                "FixedRate",
+                10f,
+                0f,
+                0f,
+                new[]
+                {
+                    new FoxRunSchemaFieldInfo("amount", "_amount", "field", "decimal", false, false)
+                });
+
+            var json = FoxRunJsonSchemaBuilder.Build(contract);
+
+            Assert.Contains("\"amount\":{\"anyOf\":[{\"type\":\"number\"},{\"type\":\"null\"}]}", json, StringComparison.Ordinal);
         }
 
         [Fact]

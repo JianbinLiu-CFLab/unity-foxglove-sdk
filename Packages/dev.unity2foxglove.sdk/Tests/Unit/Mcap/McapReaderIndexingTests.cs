@@ -125,6 +125,30 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void MessageIndexRejectsDeclaredRecordsPastPayloadBeforeLooping()
+        {
+            var content = new MemoryStream();
+            WriteU16LE(content, 1);
+            WriteU32LE(content, 0xFFFFFFF0);
+
+            var ex = Assert.Throws<InvalidDataException>(() => McapRecordReader.DecodeMessageIndex(content.ToArray()));
+
+            Assert.Contains("exceeds remaining payload length", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TestRecordParserRejectsBytesAfterTrailingMagic()
+        {
+            using var stream = new MemoryStream();
+            stream.Write(McapWriter.Magic, 0, McapWriter.Magic.Length);
+            stream.Write(McapWriter.Magic, 0, McapWriter.Magic.Length);
+            stream.WriteByte(0xFF);
+
+            Assert.True(ThrowsInvalidData(() => McapRecordReader.Parse(stream.ToArray())),
+                "173-078A: test MCAP parser rejects bytes after trailing magic");
+        }
+
+        [Fact]
         public void StatisticsVectorLengthMustBeMultipleOfPairSize()
         {
             var content = new MemoryStream();

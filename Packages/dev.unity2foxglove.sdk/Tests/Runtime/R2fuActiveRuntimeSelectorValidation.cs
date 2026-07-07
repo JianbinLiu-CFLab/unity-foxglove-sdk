@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("candidate runtime packages", StringComparison.Ordinal)
                   && source.Contains("exactly one active runtime", StringComparison.Ordinal),
-                "146A-F1: README documents candidate runtimes versus the active manifest runtime");
+                "146A-G1: README documents candidate runtimes versus the active manifest runtime");
             Check(source.Contains("manifest.json", StringComparison.Ordinal)
                   && source.Contains("ROS2 For Unity Runtime", StringComparison.Ordinal)
                   && source.Contains("package reimport", StringComparison.Ordinal)
