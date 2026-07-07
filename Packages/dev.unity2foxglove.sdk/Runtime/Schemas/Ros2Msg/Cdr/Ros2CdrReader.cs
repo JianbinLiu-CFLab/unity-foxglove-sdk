@@ -5,6 +5,7 @@
 // Purpose: Minimal XCDR1 little-endian reader for packaged Foxglove ROS 2 .msg payloads.
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
 using System.Text;
 
@@ -62,9 +63,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(2);
             Ensure(2);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToInt16(_data, _offset)
-                : BitConverter.ToInt16(CopyReversedBytes(2), 0);
+            var value = BinaryPrimitives.ReadInt16LittleEndian(_data.AsSpan(_offset, 2));
             _offset += 2;
             return value;
         }
@@ -74,9 +73,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(2);
             Ensure(2);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToUInt16(_data, _offset)
-                : BitConverter.ToUInt16(CopyReversedBytes(2), 0);
+            var value = BinaryPrimitives.ReadUInt16LittleEndian(_data.AsSpan(_offset, 2));
             _offset += 2;
             return value;
         }
@@ -86,9 +83,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(4);
             Ensure(4);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToInt32(_data, _offset)
-                : BitConverter.ToInt32(CopyReversedBytes(4), 0);
+            var value = BinaryPrimitives.ReadInt32LittleEndian(_data.AsSpan(_offset, 4));
             _offset += 4;
             return value;
         }
@@ -98,9 +93,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(4);
             Ensure(4);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToUInt32(_data, _offset)
-                : BitConverter.ToUInt32(CopyReversedBytes(4), 0);
+            var value = BinaryPrimitives.ReadUInt32LittleEndian(_data.AsSpan(_offset, 4));
             _offset += 4;
             return value;
         }
@@ -110,9 +103,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(8);
             Ensure(8);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToInt64(_data, _offset)
-                : BitConverter.ToInt64(CopyReversedBytes(8), 0);
+            var value = BinaryPrimitives.ReadInt64LittleEndian(_data.AsSpan(_offset, 8));
             _offset += 8;
             return value;
         }
@@ -122,9 +113,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(8);
             Ensure(8);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToUInt64(_data, _offset)
-                : BitConverter.ToUInt64(CopyReversedBytes(8), 0);
+            var value = BinaryPrimitives.ReadUInt64LittleEndian(_data.AsSpan(_offset, 8));
             _offset += 8;
             return value;
         }
@@ -134,9 +123,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(4);
             Ensure(4);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToSingle(_data, _offset)
-                : BitConverter.ToSingle(CopyReversedBytes(4), 0);
+            var value = BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(_data.AsSpan(_offset, 4)));
             _offset += 4;
             return value;
         }
@@ -146,9 +133,7 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         {
             Align(8);
             Ensure(8);
-            var value = BitConverter.IsLittleEndian
-                ? BitConverter.ToDouble(_data, _offset)
-                : BitConverter.ToDouble(CopyReversedBytes(8), 0);
+            var value = BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(_data.AsSpan(_offset, 8)));
             _offset += 8;
             return value;
         }
@@ -241,14 +226,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
                 return;
 
             _offset += alignment - relative;
-        }
-
-        private byte[] CopyReversedBytes(int length)
-        {
-            var bytes = new byte[length];
-            Buffer.BlockCopy(_data, _offset, bytes, 0, length);
-            Array.Reverse(bytes);
-            return bytes;
         }
 
         private void Ensure(int count)

@@ -27,6 +27,11 @@ namespace Unity.FoxgloveSDK.Editor
     /// </remarks>
     public static class FoxgloveSourceEmitter
     {
+        private const int PublishModeFixedRate = 0;
+        private const int PublishModeOnChange = 1;
+        private const int PublishModeOnChangeOrInterval = 2;
+        private const int PublishModeOnTrigger = 3;
+
         /// <summary>
         /// Descriptor for a single topic-member mapping used by the shared
         /// emitter. Backs both <c>FoxrunCodeGenerator.MemberData</c> and the
@@ -112,12 +117,9 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Emits the generated partial class source for one class name / namespace
-        /// pair.
+        /// Emits the generated partial class source for one generation model.
         /// </summary>
-        /// <param name="ns">Containing namespace (empty for global).</param>
-        /// <param name="className">Declaring class name.</param>
-        /// <param name="members">All <c>[FoxRun]</c> attributed members of this class.</param>
+        /// <param name="type">Generation model for one class.</param>
         /// <returns>Generated C# source as a string.</returns>
         public static string EmitClass(FoxRunGenerationType type)
         {
@@ -166,6 +168,16 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(member => member.Topic, StringComparer.Ordinal)
                 .ThenBy(member => member.MemberName, StringComparer.Ordinal)
                 .ToList();
+
+            foreach (var m in inputMembers)
+            {
+                if (string.IsNullOrWhiteSpace(m.MemberName))
+                    throw new ArgumentException("Input TopicMember has empty MemberName.", nameof(members));
+                if (string.IsNullOrWhiteSpace(m.TypeName))
+                    throw new ArgumentException("Input TopicMember '" + m.MemberName + "' has empty TypeName.", nameof(members));
+                if (string.IsNullOrWhiteSpace(m.Topic))
+                    throw new ArgumentException("Input TopicMember '" + m.MemberName + "' has empty Topic.", nameof(members));
+            }
 
             var topicMap = new Dictionary<string, List<TopicMember>>();
             foreach (var m in publishMembers)
@@ -225,13 +237,13 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static int TopicPublishMode(IReadOnlyList<TopicMember> fields)
         {
-            if (fields.Any(f => f.PublishMode == 3))
-                return 3;
-            if (fields.Any(f => f.PublishMode == 2))
-                return 2;
-            if (fields.Any(f => f.PublishMode == 1))
-                return 1;
-            return 0;
+            if (fields.Any(f => f.PublishMode == PublishModeOnTrigger))
+                return PublishModeOnTrigger;
+            if (fields.Any(f => f.PublishMode == PublishModeOnChangeOrInterval))
+                return PublishModeOnChangeOrInterval;
+            if (fields.Any(f => f.PublishMode == PublishModeOnChange))
+                return PublishModeOnChange;
+            return PublishModeFixedRate;
         }
 
         internal static string DefaultJsonFieldName(string memberName)

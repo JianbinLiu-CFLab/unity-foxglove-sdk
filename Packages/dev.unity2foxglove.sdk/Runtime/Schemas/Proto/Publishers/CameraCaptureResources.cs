@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Components
         private CameraClearFlags _lastClearFlags;
         private Color _lastBackgroundColor;
         private bool _captureCameraDirty = true;
+        private bool _sourceCameraResolved;
 
         public Camera CaptureCamera => _captureCamera;
 
@@ -42,7 +43,11 @@ namespace Unity.FoxgloveSDK.Components
             if (owner == null)
                 return;
 
-            _sourceCamera = _sourceCamera != null ? _sourceCamera : owner.GetComponent<Camera>();
+            if (_sourceCamera == null && !_sourceCameraResolved)
+            {
+                _sourceCamera = owner.GetComponent<Camera>();
+                _sourceCameraResolved = true;
+            }
             width = Math.Max(1, width);
             height = Math.Max(1, height);
 
@@ -124,6 +129,7 @@ namespace Unity.FoxgloveSDK.Components
             DestroyUnityObject(_texture2D);
             _texture2D = null;
             _sourceCamera = null;
+            _sourceCameraResolved = false;
             _lastCopiedSourceCamera = null;
             _captureCameraDirty = true;
         }
@@ -176,8 +182,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private static void DestroyUnityObject(Object target)
         {
-            if (target != null)
+            if (target == null)
+                return;
+
+            if (Application.isPlaying)
                 Object.Destroy(target);
+            else
+                Object.DestroyImmediate(target);
         }
     }
 }

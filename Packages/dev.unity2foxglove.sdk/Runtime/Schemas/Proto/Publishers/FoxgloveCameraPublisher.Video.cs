@@ -6,6 +6,7 @@
 using System;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
+using Unity.Collections;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.Camera;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
@@ -68,17 +69,17 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly struct CameraVideoReadbackFrameBytesSource : ICameraVideoFrameBytesSource
         {
-            private readonly AsyncGPUReadbackRequest _request;
+            private readonly NativeArray<byte> _data;
 
             public CameraVideoReadbackFrameBytesSource(AsyncGPUReadbackRequest request)
             {
-                _request = request;
+                _data = request.GetData<byte>();
             }
 
-            public int Length => _request.GetData<byte>().Length;
+            public int Length => _data.Length;
 
             public void CopyTo(byte[] destination)
-                => _request.GetData<byte>().CopyTo(destination);
+                => _data.CopyTo(destination);
         }
 
         /// <summary>
@@ -119,8 +120,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private void DrainEncodedAccessUnits()
         {
-            EnsureVideoPublishPipeline();
-            if (!_videoPublishPipeline.TryDrainEncodedAccessUnits(
+            var pipeline = _videoPublishPipeline;
+            if (pipeline == null)
+                return;
+
+            if (!pipeline.TryDrainEncodedAccessUnits(
                 () => CurrentLogTimeNs,
                 PublishVideoAccessUnit,
                 sidecar => LogEncoderStderrIfNeeded(sidecar),
@@ -151,8 +155,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void StopVideoSidecar()
         {
-            EnsureVideoPublishPipeline();
-            _videoPublishPipeline.StopVideoSidecar(DrainEncodedAccessUnits);
+            _videoPublishPipeline?.StopVideoSidecar(DrainEncodedAccessUnits);
         }
 
         /// <summary>
@@ -207,15 +210,18 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void EmitVideoDiagnosticsIfNeeded()
         {
-            EnsureVideoPublishPipeline();
-            var profile = CameraVideoOutputProfile.ForMode(_videoPublishPipeline.Mode);
+            var pipeline = _videoPublishPipeline;
+            if (pipeline == null)
+                return;
+
+            var profile = CameraVideoOutputProfile.ForMode(pipeline.Mode);
             _diagnostics.LogVideoIfNeeded(
                 _logVideoDiagnostics,
                 Time.unscaledTimeAsDouble,
                 _cameraDiagnosticsIntervalSeconds,
                 profile.DisplayName,
-                _videoPublishPipeline.SidecarWidth,
-                _videoPublishPipeline.SidecarHeight,
+                pipeline.SidecarWidth,
+                pipeline.SidecarHeight,
                 _pendingRequests,
                 out var message);
             if (message != null)
@@ -238,8 +244,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void LogVideoEncoderUnavailable(CameraVideoOutputProfile profile, string reason)
         {
-            EnsureVideoPublishPipeline();
-            _videoPublishPipeline.TryLogVideoEncoderUnavailable(profile, reason);
+            _videoPublishPipeline?.TryLogVideoEncoderUnavailable(profile, reason);
         }
 
 
@@ -248,11 +253,14 @@ namespace Unity.FoxgloveSDK.Components
             if (!_logEncoderStderr || sidecar == null)
                 return;
 
-            EnsureVideoPublishPipeline();
-            _videoPublishPipeline.LogEncoderStderrIfNeeded(
+            var pipeline = _videoPublishPipeline;
+            if (pipeline == null)
+                return;
+
+            pipeline.LogEncoderStderrIfNeeded(
                 _logEncoderStderr,
                 sidecar,
-                CameraVideoOutputProfile.ForMode(_videoPublishPipeline.Mode).DisplayName);
+                CameraVideoOutputProfile.ForMode(pipeline.Mode).DisplayName);
         }
     }
 }

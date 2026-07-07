@@ -121,6 +121,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && method.Contains("new CameraVideoReadbackFrameBytesSource(req)", StringComparison.Ordinal)
                   && method.Contains("readbackData,", StringComparison.Ordinal),
                 "140-14G-2: camera video readback submit does not allocate a per-frame bytes factory closure");
+
+            Check(source.Contains("private readonly NativeArray<byte> _data;", StringComparison.Ordinal)
+                  && source.Contains("public int Length => _data.Length;", StringComparison.Ordinal)
+                  && source.Contains("_data.CopyTo(destination);", StringComparison.Ordinal),
+                "140-14G-2b: camera video readback byte source reuses one GetData view for length and copy");
         }
 
         private static void CameraDemandChecksReuseResolvedProfile()

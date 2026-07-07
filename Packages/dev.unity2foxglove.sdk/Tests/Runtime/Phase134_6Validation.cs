@@ -152,6 +152,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && handshakeSource.Contains("string.Equals(origin, \"file://\"", StringComparison.Ordinal)
                   && !handshakeSource.Contains("StartsWith(\"file://\"", StringComparison.Ordinal),
                 "134-6C-8: WebSocket Origin guard only auto-allows exact file origin");
+            Check(handshakeSource.Contains("bare carriage return", StringComparison.Ordinal)
+                  && !handshakeSource.Contains("sb.Append((char)next)", StringComparison.Ordinal),
+                "134-6C-8b: WebSocket handshake rejects bare carriage returns in header lines");
             var tickSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             Check(playbackSource.Contains("not internally synchronized", StringComparison.Ordinal)
                   && playbackSource.Contains("NormalizeSpeed", StringComparison.Ordinal)

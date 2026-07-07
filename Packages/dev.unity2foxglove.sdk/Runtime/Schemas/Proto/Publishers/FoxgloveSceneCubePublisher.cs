@@ -30,6 +30,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private UColor _color = UColor.green;
         private UnityEngine.Renderer _renderer;
         private UnityEngine.MaterialPropertyBlock _propertyBlock;
+        private string _cachedEntityId;
+        private string _cachedExplicitFrameId;
 
         public override bool SupportsProtobufEncoding => true;
         public override bool SupportsRos2Encoding => true;
@@ -75,6 +77,7 @@ namespace Unity.FoxgloveSDK.Components
         protected override void OnValidate()
         {
             base.OnValidate();
+            RefreshResolvedIds();
             UnityEditor.EditorApplication.delayCall += () =>
             {
                 if (this != null)
@@ -98,18 +101,19 @@ namespace Unity.FoxgloveSDK.Components
         {
             base.OnEnable();
             _transformPublisher = GetComponent<FoxgloveTransformPublisher>();
+            RefreshResolvedIds();
             EnsureRendererCache();
         }
 
         private string ResolvedEntityId =>
-            SanitizeFrameId(_entityId, gameObject.name);
+            _cachedEntityId ?? SanitizeFrameId(_entityId, gameObject.name);
 
         private string ResolvedFrameId
         {
             get
             {
                 if (!string.IsNullOrEmpty(_frameId))
-                    return SanitizeFrameId(_frameId, gameObject.name);
+                    return _cachedExplicitFrameId ?? SanitizeFrameId(_frameId, gameObject.name);
                 if (_transformPublisher != null)
                 {
                     var child = _transformPublisher.ResolvedChildFrameId;
@@ -117,6 +121,15 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 return "unity_world";
             }
+        }
+
+        private void RefreshResolvedIds()
+        {
+            var fallback = gameObject != null ? gameObject.name : "scene_cube";
+            _cachedEntityId = SanitizeFrameId(_entityId, fallback);
+            _cachedExplicitFrameId = string.IsNullOrEmpty(_frameId)
+                ? null
+                : SanitizeFrameId(_frameId, fallback);
         }
 
         protected override void Update()
@@ -135,9 +148,8 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var unixNs = CurrentLogTimeNs;
-            var message = CreateMessage(unixNs);
-            if (message == null) return;
             byte[] ros2Payload = null;
+            SceneUpdateMessage message = null;
 
             if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Protobuf)
             {
@@ -145,16 +157,22 @@ namespace Unity.FoxgloveSDK.Components
             }
             else if (publishWebSocket && encodingResolution.Effective == PublisherEffectiveEncoding.Ros2)
             {
+                message = CreateMessage(unixNs);
+                if (message == null) return;
                 if (TryBuildRos2SceneUpdate(message, out ros2Payload))
                     PublishRos2(ros2Payload, unixNs, encodingResolution);
             }
             else if (publishWebSocket)
             {
+                message = CreateMessage(unixNs);
+                if (message == null) return;
                 Publish(message, unixNs, encodingResolution);
             }
 
             if (publishBridge)
             {
+                message = message ?? CreateMessage(unixNs);
+                if (message == null) return;
                 if (ros2Payload != null || TryBuildRos2SceneUpdate(message, out ros2Payload))
                     PublishRos2Bridge(ros2Payload, unixNs, bridgeResolution);
             }
@@ -204,6 +222,11 @@ namespace Unity.FoxgloveSDK.Components
             catch (System.NotSupportedException ex)
             {
                 Debug.LogWarning("[Foxglove] SceneUpdate ROS2 publish skipped: " + ex.Message);
+                return false;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("[Foxglove] SceneUpdate ROS2 publish failed: " + ex.Message);
                 return false;
             }
         }

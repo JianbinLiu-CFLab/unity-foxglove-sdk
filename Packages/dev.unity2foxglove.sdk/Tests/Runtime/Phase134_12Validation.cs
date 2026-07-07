@@ -99,7 +99,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && cameraSession.Contains("ITimestampedCameraVideoEncoderSidecar timestampedSidecar")
                   && cameraSession.Contains("timestampedSidecar.TrySubmitFrame(frameBytes, timestampNs)"),
                 "134-12C-3: primary camera submits video frames with render timestamps when sidecar supports it");
-            Check(camera.Contains("_videoPublishPipeline.TryDrainEncodedAccessUnits(")
+            Check((camera.Contains("_videoPublishPipeline.TryDrainEncodedAccessUnits(")
+                   || camera.Contains("pipeline.TryDrainEncodedAccessUnits("))
                   && cameraPipeline.Contains("_videoSidecarSession.TryDrain(")
                   && cameraSession.Contains("publishAccessUnit(accessUnit.Data, accessUnit.TimestampNs, videoFormat)"),
                 "134-12C-4: primary camera publishes encoded video with queued frame timestamp");
@@ -232,6 +233,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-12I-3: scene cube protobuf path uses shared timestamp helper");
             Check(!source.Contains("unixNs / 1_000_000_000UL"),
                 "134-12I-4: scene cube publisher no longer inlines timestamp conversion");
+            Check(source.Contains("PublishProtobufSceneUpdate(unixNs, encodingResolution)", StringComparison.Ordinal)
+                  && source.Contains("SceneUpdateMessage message = null;", StringComparison.Ordinal),
+                "134-12I-5: scene cube protobuf path avoids building a discarded JSON SceneUpdateMessage");
         }
 
         /// <summary>
