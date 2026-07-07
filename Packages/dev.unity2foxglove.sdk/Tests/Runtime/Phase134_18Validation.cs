@@ -138,6 +138,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var directory = CreateTempDirectory();
             var originalWarningSink = FoxRunGeneratedSourceReconciler.MetaDeleteWarningSink;
+            var originalDeleteAction = FoxRunGeneratedSourceReconciler.MetaDeleteAction;
             try
             {
                 var stale = Path.Combine(directory, "MetaLocked_FoxRun.g.cs");
@@ -145,7 +146,8 @@ namespace Unity.FoxgloveSDK.Tests
                 string warning = null;
                 File.WriteAllText(stale, OwnedSource("MetaLocked"));
                 File.WriteAllText(meta, "fileFormatVersion: 2\n");
-                File.SetAttributes(meta, File.GetAttributes(meta) | FileAttributes.ReadOnly);
+                FoxRunGeneratedSourceReconciler.MetaDeleteAction = _ =>
+                    throw new IOException("simulated meta delete failure");
                 FoxRunGeneratedSourceReconciler.MetaDeleteWarningSink = message => warning = message;
 
                 var deleted = FoxRunGeneratedSourceReconciler.ReconcileGeneratedSourceFiles(
@@ -164,6 +166,7 @@ namespace Unity.FoxgloveSDK.Tests
             finally
             {
                 FoxRunGeneratedSourceReconciler.MetaDeleteWarningSink = originalWarningSink;
+                FoxRunGeneratedSourceReconciler.MetaDeleteAction = originalDeleteAction;
                 ClearReadOnlyFiles(directory);
                 TryDeleteDirectory(directory);
             }

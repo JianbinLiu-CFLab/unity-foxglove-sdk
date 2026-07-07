@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Editor
         public const string GeneratedSourcePattern = "*_FoxRun.g.cs";
         public const string GeneratedServiceSourcePattern = "*_FoxService.g.cs";
         internal static Action<string> MetaDeleteWarningSink = message => Trace.TraceWarning(message);
+        internal static Action<string> MetaDeleteAction = File.Delete;
 
         public static IReadOnlyList<string> ReconcileGeneratedSourceFiles(
             string outputDirectory,
@@ -138,7 +139,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
-                File.Delete(metaPath);
+                MetaDeleteAction(metaPath);
             }
             catch (IOException ex)
             {
