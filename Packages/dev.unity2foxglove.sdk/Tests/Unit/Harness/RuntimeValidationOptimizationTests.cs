@@ -294,11 +294,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
     internal static class TestSources
     {
+        private static readonly string CachedRepoRoot = FindRepoRoot();
+
         public static string Runtime(string fileName)
             => Text("Packages/dev.unity2foxglove.sdk/Tests/Runtime/" + fileName);
 
         public static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        {
+            var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
+            return File.ReadAllText(path);
+        }
 
         public static void AssertConsolePhaseRemoved(string validationFile, string flag, string entryPoint)
         {
@@ -360,21 +366,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             => (text ?? string.Empty).Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal);
 
         private static string RepoRoot
+            => CachedRepoRoot;
+
+        private static string FindRepoRoot()
         {
-            get
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
             {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
-                        return dir.FullName;
+                if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
+                    || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    return dir.FullName;
 
-                    dir = dir.Parent;
-                }
-
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                dir = dir.Parent;
             }
+
+            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
         }
     }
 }
