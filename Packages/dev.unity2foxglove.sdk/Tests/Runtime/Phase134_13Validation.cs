@@ -228,9 +228,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "shutdown timed out waiting for the");
             ContainsAll(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/FfmpegH265EncoderSidecar.cs",
-                "134-13F-8: FFmpeg H.265 shutdown waits use a single deadline and task diagnostics",
+                "134-13F-8: FFmpeg H.265 shutdown waits each background task with diagnostics",
                 "ShutdownTimeoutMs",
-                "RemainingMilliseconds",
+                "task.Wait(ShutdownTimeoutMs)",
                 "shutdown timed out waiting for the");
         }
 

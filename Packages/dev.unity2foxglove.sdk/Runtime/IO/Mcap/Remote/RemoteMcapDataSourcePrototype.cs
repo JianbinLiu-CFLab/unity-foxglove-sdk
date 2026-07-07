@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly string _sourceId;
         private readonly string _manifestName;
         private readonly string _requiredBearerToken;
+        private readonly byte[] _requiredBearerTokenBytes;
         private readonly string _dataRoute;
         private readonly string _directFileRoute;
         private readonly long _maxInMemoryDataBytes;
@@ -51,6 +52,9 @@ namespace Unity.FoxgloveSDK.IO
             _sourceId = string.IsNullOrEmpty(sourceId) ? "local-mcap" : sourceId;
             _manifestName = string.IsNullOrEmpty(manifestName) ? _sourceId : manifestName;
             _requiredBearerToken = requiredBearerToken ?? string.Empty;
+            _requiredBearerTokenBytes = string.IsNullOrEmpty(_requiredBearerToken)
+                ? Array.Empty<byte>()
+                : Encoding.UTF8.GetBytes(_requiredBearerToken);
             _dataRoute = string.IsNullOrEmpty(dataRoute)
                 ? "/data?sourceId=" + Uri.EscapeDataString(_sourceId)
                 : dataRoute;
@@ -272,7 +276,7 @@ namespace Unity.FoxgloveSDK.IO
             if (token.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
                 token = token.Substring(bearerPrefix.Length);
 
-            return ManagedWebSocketOptions.FixedTimeEqualsUtf8(_requiredBearerToken, token)
+            return ManagedWebSocketOptions.FixedTimeEqualsUtf8(_requiredBearerTokenBytes, token)
                 ? RemoteMcapAuthorizationResult.Allow()
                 : RemoteMcapAuthorizationResult.Deny("Bearer token rejected.");
         }
@@ -356,6 +360,9 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     return _cachedManifestBytes;
                 }
+
+                if (!storeStamp.Equals(stamp))
+                    return bytes;
 
                 _cachedManifestBytes = bytes;
                 _cachedManifestLength = storeStamp.Length;
