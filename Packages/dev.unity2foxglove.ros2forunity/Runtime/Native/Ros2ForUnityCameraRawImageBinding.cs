@@ -35,7 +35,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             public override bool IsStillEligible()
-                => IsRawEligible(_source) && NormalizeTopic(_source.SensorCameraRawImageTopic) == Topic;
+                => IsRawEligible(_source) && NormalizeTopic(_source.SensorCameraRawImageTopic, DefaultRawImageTopic) == Topic;
 
             public override void Dispose()
             {

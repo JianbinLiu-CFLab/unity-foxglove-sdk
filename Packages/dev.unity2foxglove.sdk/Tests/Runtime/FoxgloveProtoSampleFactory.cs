@@ -163,7 +163,7 @@ namespace Unity.FoxgloveSDK.Tests
             if (name == "text") return "phase44";
             if (name == "message") return "phase44 sample";
             if (name == "name") return "phase44";
-            if (name == "file") return "Phase44Validation.cs";
+            if (name == "file") return "unity2foxglove_sample.cs";
             return "phase44";
         }
 

@@ -63,6 +63,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264ExecutableCheck.cs");
             var check = ExtractMethod(source, "public static OpenH264ExecutableCheckResult Check");
+            var wait = ExtractMethod(source, "private static string WaitForStreamDrain");
+            var output = ExtractMethod(source, "private static byte[] GetCompletedOutput");
             var validator = ExtractMethod(source, "private static bool TryValidateLengthPrefixedAccessUnit");
             var compatibility = ExtractMethod(source, "private static string BuildCompatibilityError");
 
@@ -77,6 +79,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(compatibility.Contains("stderr:", StringComparison.Ordinal)
                   && compatibility.Contains("OpenH264 helper reported stderr during validation", StringComparison.Ordinal),
                 "163-16B-3: OpenH264 executable check surfaces helper stderr instead of hiding non-outdated failures");
+            Check(check.Contains("var streamError = WaitForStreamDrain(stdoutTask, stderrTask, 500)", StringComparison.Ordinal)
+                  && check.Contains("FirstNonEmpty(streamError, stdoutReadError, stderrError)", StringComparison.Ordinal)
+                  && wait.Contains("OpenH264 helper stream read failed", StringComparison.Ordinal)
+                  && output.Contains("OpenH264 helper stdout read failed", StringComparison.Ordinal),
+                "163-16B-4: OpenH264 executable check surfaces stream-drain failures distinctly");
+            Check(compatibility.Contains("trimmed.IndexOf(\"Usage: openh264_probe_encoder\"", StringComparison.Ordinal)
+                  && compatibility.Contains("trimmed.IndexOf(\"--openh264-dll\"", StringComparison.Ordinal),
+                "163-16B-5: OpenH264 compatibility check uses trimmed stderr consistently");
         }
 
         private static void OpenH264InstallerUsesTemporaryDownloadsBeforeFinalPaths()

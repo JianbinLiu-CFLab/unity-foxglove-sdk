@@ -220,6 +220,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && bridge.Contains("FindObjectsByType<FoxgloveCameraInfoPublisher>", StringComparison.Ordinal)
                   && bridge.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal),
                 "138M-6B: R2FU camera bridge is automatic and gated by the Manager ROS2 Native toggle");
+            Check(bridge.Contains("DefaultCompressedImageTopic", StringComparison.Ordinal)
+                  && bridge.Contains("DefaultRawImageTopic", StringComparison.Ordinal)
+                  && bridge.Contains("DefaultCameraInfoTopic", StringComparison.Ordinal)
+                  && bridge.Contains("NormalizeTopic(publisher.SensorCameraImageTopic, DefaultCompressedImageTopic)", StringComparison.Ordinal)
+                  && bridge.Contains("NormalizeTopic(publisher.SensorCameraRawImageTopic, DefaultRawImageTopic)", StringComparison.Ordinal)
+                  && bridge.Contains("NormalizeTopic(publisher.SensorCameraInfoTopic, DefaultCameraInfoTopic)", StringComparison.Ordinal),
+                "138M-6B2: R2FU camera bridge keeps distinct default topics for compressed, raw, and camera-info outputs");
             Check(nativeSource.Contains("CreatePublisher<sensor_msgs.msg.CompressedImage>", StringComparison.Ordinal)
                   && nativeSource.Contains("CreatePublisher<sensor_msgs.msg.CameraInfo>", StringComparison.Ordinal)
                   && nativeSource.Contains("CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic)", StringComparison.Ordinal),

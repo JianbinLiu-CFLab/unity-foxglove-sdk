@@ -125,6 +125,12 @@ function canSendTokenToEndpoint(endpoint: string): boolean {
   }
 }
 
+export function tokenEndpointWarningMessage(endpoint: string, token: string): string {
+  return token.length > 0 && !canSendTokenToEndpoint(endpoint)
+    ? "Access tokens are only sent to localhost or HTTPS endpoints."
+    : "";
+}
+
 function cloneTime(time: Time | undefined): { sec: number; nsec: number } | undefined {
   if (time == undefined) {
     return undefined;
@@ -294,6 +300,7 @@ function buildPanelDom(state: PanelState, canFollow: boolean): {
   tokenInput: HTMLInputElement;
   maxHzInput: HTMLInputElement;
   followInput: HTMLInputElement | undefined;
+  tokenWarning: HTMLSpanElement;
   replayTime: HTMLSpanElement;
   unityStatus: HTMLSpanElement;
 } {
@@ -393,6 +400,13 @@ function buildPanelDom(state: PanelState, canFollow: boolean): {
       .bridge-status.error {
         color: #f87171;
       }
+
+      .bridge-warning {
+        color: #fbbf24;
+        font-size: 12px;
+        min-height: 16px;
+        overflow-wrap: anywhere;
+      }
     </style>
     <div class="bridge-panel">
       <label class="bridge-sync">
@@ -406,6 +420,7 @@ function buildPanelDom(state: PanelState, canFollow: boolean): {
       <div class="bridge-field">
         <label for="token">Access token (optional)</label>
         <input id="token" type="password" />
+        <span id="token-warning" class="bridge-warning"></span>
       </div>
       <div class="bridge-field">
         <label for="maxhz">Cursor rate (Hz)</label>
@@ -434,6 +449,7 @@ function buildPanelDom(state: PanelState, canFollow: boolean): {
   const tokenInput = root.querySelector<HTMLInputElement>("#token");
   const maxHzInput = root.querySelector<HTMLInputElement>("#maxhz");
   const followInput = canFollow ? root.querySelector<HTMLInputElement>("#follow") ?? undefined : undefined;
+  const tokenWarning = root.querySelector<HTMLSpanElement>("#token-warning");
   const replayTime = root.querySelector<HTMLSpanElement>("#replay-time");
   const unityStatus = root.querySelector<HTMLSpanElement>("#unity-status");
   if (
@@ -441,6 +457,7 @@ function buildPanelDom(state: PanelState, canFollow: boolean): {
     endpointInput == undefined ||
     tokenInput == undefined ||
     maxHzInput == undefined ||
+    tokenWarning == undefined ||
     replayTime == undefined ||
     unityStatus == undefined ||
     (canFollow && followInput == undefined)
@@ -455,7 +472,8 @@ function buildPanelDom(state: PanelState, canFollow: boolean): {
   if (followInput != undefined) {
     followInput.checked = state.followUnity;
   }
-  return { root, enabledInput, endpointInput, tokenInput, maxHzInput, followInput, replayTime, unityStatus };
+  tokenWarning.textContent = tokenEndpointWarningMessage(state.endpoint, state.token);
+  return { root, enabledInput, endpointInput, tokenInput, maxHzInput, followInput, tokenWarning, replayTime, unityStatus };
 }
 
 export function initPanel(context: PanelExtensionContext): void | (() => void) {
@@ -519,6 +537,10 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     message: "Waiting for Foxglove replay time. Keep Unity in Play Mode.",
   };
   const panel = buildPanelDom(state, canFollow);
+
+  function updateTokenWarning(): void {
+    panel.tokenWarning.textContent = tokenEndpointWarningMessage(state.endpoint, state.token);
+  }
 
   function stopFollow(): void {
     followActive = false;
@@ -752,11 +774,13 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   panel.endpointInput.addEventListener("change", () => {
     state = { ...state, endpoint: normalizeEndpoint(panel.endpointInput.value) };
     panel.endpointInput.value = state.endpoint;
+    updateTokenWarning();
     savePanelState(context, state);
   }, listenerOptions);
 
   panel.tokenInput.addEventListener("change", () => {
     state = { ...state, token: panel.tokenInput.value };
+    updateTokenWarning();
   }, listenerOptions);
 
   panel.maxHzInput.addEventListener("change", () => {
