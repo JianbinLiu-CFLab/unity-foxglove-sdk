@@ -39,6 +39,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("StreamReader", reconciler, StringComparison.Ordinal);
             Assert.Contains("ReadLine()", reconciler, StringComparison.Ordinal);
             Assert.DoesNotContain("File.ReadAllText(path)", reconciler, StringComparison.Ordinal);
+            Assert.DoesNotContain("using System.Linq", reconciler, StringComparison.Ordinal);
             Assert.Contains("new StringBuilder(EstimateCapacity(model))", writer, StringComparison.Ordinal);
         }
 

@@ -150,6 +150,13 @@ namespace Unity.FoxgloveSDK.Core
             out FoxgloveServiceCall call,
             out string error)
         {
+            if (payload != null && payload.Length > MaxPayloadBytes)
+            {
+                call = null;
+                error = $"Service call payload exceeds {MaxPayloadBytes} bytes";
+                return false;
+            }
+
             lock (_lock)
             {
                 var key = (clientId, callId);
@@ -298,13 +305,19 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_lock)
             {
-                var toRemove = new List<(uint, uint)>();
-                foreach (var (key, call) in _pending)
-                    if (call.ClientId == clientId)
-                        toRemove.Add(key);
-                foreach (var key in toRemove)
-                    _pending.Remove(key);
-                _pendingCountByClient.Remove(clientId);
+                _completedKeysScratch.Clear();
+                try
+                {
+                    foreach (var (key, call) in _pending)
+                        if (call.ClientId == clientId)
+                            _completedKeysScratch.Add(key);
+                    foreach (var key in _completedKeysScratch)
+                        RemovePendingCall(key);
+                }
+                finally
+                {
+                    _completedKeysScratch.Clear();
+                }
             }
         }
 

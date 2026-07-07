@@ -6,8 +6,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.Editor
         public const string GeneratedSourceSentinel = "Generated as a physical fallback for Player/IL2CPP builds.";
         public const string GeneratedSourcePattern = "*_FoxRun.g.cs";
         public const string GeneratedServiceSourcePattern = "*_FoxService.g.cs";
+        internal static Action<string> MetaDeleteWarningSink = message => Trace.TraceWarning(message);
 
         public static IReadOnlyList<string> ReconcileGeneratedSourceFiles(
             string outputDirectory,
@@ -139,12 +140,25 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 File.Delete(metaPath);
             }
-            catch (IOException)
+            catch (IOException ex)
             {
+                WarnMetaDeleteFailure(metaPath, ex);
             }
-            catch (UnauthorizedAccessException)
+            catch (UnauthorizedAccessException ex)
             {
+                WarnMetaDeleteFailure(metaPath, ex);
             }
+        }
+
+        private static void WarnMetaDeleteFailure(string metaPath, Exception ex)
+        {
+            MetaDeleteWarningSink?.Invoke(
+                "Failed to remove stale FoxRun generated source meta file '"
+                + Path.GetFileName(metaPath)
+                + "' at '"
+                + metaPath
+                + "': "
+                + ex.Message);
         }
     }
 }

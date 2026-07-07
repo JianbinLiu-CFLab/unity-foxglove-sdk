@@ -50,6 +50,10 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("private static HashSet<string> BuildInterfaceSet", StringComparison.Ordinal)
                   && checkInterfaces.Contains("availableInterfaces.Contains(schemaName)", StringComparison.Ordinal),
                 "164-39B-2: ROS2 bridge health runner checks all bundled schema names from the catalog output");
+            Check(!source.Contains("using System.Linq;", StringComparison.Ordinal)
+                  && !checkInterfaces.Contains("checks.Last()", StringComparison.Ordinal)
+                  && !checkInterfaces.Contains("result.Succeeded && !availableInterfaces.Contains", StringComparison.Ordinal),
+                "173-054-B1: ROS2 bridge health runner avoids LINQ and dead success guards in interface checks");
             Check(checkInterfaces.Contains("Could not list foxglove_msgs interfaces", StringComparison.Ordinal)
                   && checkInterfaces.Contains("ros2 interface package foxglove_msgs", StringComparison.Ordinal),
                 "164-39B-3: ROS2 bridge health runner reports catalog command failures directly");

@@ -250,6 +250,26 @@ class RunCiTests(unittest.TestCase):
         with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
             self.assertFalse(self.run_ci._check_boundary())
 
+    def test_changelog_verified_stub_check_fails_on_unreplaced_stub(self) -> None:
+        """Release CI should fail if changelog verified entries still contain generated stubs."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "CHANGELOG.md").write_text(
+                "### Verified\n\n"
+                "- Runtime validation suite should be run before tagging this release.\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.run_ci, "REPO_ROOT", root):
+                self.assertFalse(self.run_ci._check_changelog_verified_stubs())
+
+            (root / "CHANGELOG.md").write_text(
+                "### Verified\n\n"
+                "- Runtime validation suite passed before tagging this release.\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(self.run_ci, "REPO_ROOT", root):
+                self.assertTrue(self.run_ci._check_changelog_verified_stubs())
+
     def test_boundary_check_uses_plain_ls_files_for_nested_developer(self) -> None:
         """Nested Developer checks should not depend on git pathspec glob support."""
         calls: list[list[str]] = []

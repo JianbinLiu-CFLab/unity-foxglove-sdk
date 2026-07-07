@@ -28,6 +28,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyStaleGeneratedFileCleanup();
             VerifyAllOwnedFilesCanBeRemovedWhenNoTypesRemain();
             VerifyReadOnlyGeneratedFileReportsActionableFailure();
+            VerifyMetaDeleteFailureReportsWarning();
             VerifyCodeGeneratorCallsReconciler();
             VerifyAnalyzerReleaseSeverity();
             VerifyEmitSourceFileRejectsEmptyMembers();
@@ -128,6 +129,41 @@ namespace Unity.FoxgloveSDK.Tests
             }
             finally
             {
+                ClearReadOnlyFiles(directory);
+                TryDeleteDirectory(directory);
+            }
+        }
+
+        private static void VerifyMetaDeleteFailureReportsWarning()
+        {
+            var directory = CreateTempDirectory();
+            var originalWarningSink = FoxRunGeneratedSourceReconciler.MetaDeleteWarningSink;
+            try
+            {
+                var stale = Path.Combine(directory, "MetaLocked_FoxRun.g.cs");
+                var meta = stale + ".meta";
+                string warning = null;
+                File.WriteAllText(stale, OwnedSource("MetaLocked"));
+                File.WriteAllText(meta, "fileFormatVersion: 2\n");
+                File.SetAttributes(meta, File.GetAttributes(meta) | FileAttributes.ReadOnly);
+                FoxRunGeneratedSourceReconciler.MetaDeleteWarningSink = message => warning = message;
+
+                var deleted = FoxRunGeneratedSourceReconciler.ReconcileGeneratedSourceFiles(
+                    directory,
+                    Array.Empty<string>());
+
+                Check(deleted.SequenceEqual(new[] { "MetaLocked_FoxRun.g.cs" })
+                      && !File.Exists(stale)
+                      && File.Exists(meta),
+                    "173-054-A1: stale generated source still deletes when its meta sidecar cannot be removed");
+                Check(warning != null
+                      && warning.Contains("MetaLocked_FoxRun.g.cs.meta", StringComparison.Ordinal)
+                      && warning.Contains("Failed to remove stale FoxRun generated source meta file", StringComparison.Ordinal),
+                    "173-054-A2: stale meta cleanup failure reports a warning");
+            }
+            finally
+            {
+                FoxRunGeneratedSourceReconciler.MetaDeleteWarningSink = originalWarningSink;
                 ClearReadOnlyFiles(directory);
                 TryDeleteDirectory(directory);
             }

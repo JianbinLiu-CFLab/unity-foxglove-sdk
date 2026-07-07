@@ -7,7 +7,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
@@ -49,7 +48,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
             checks.Add(CheckConfiguration(options));
             ThrowIfCancellationRequested(options);
-            if (checks.Last().Status == Ros2BridgeHealthStatus.Fail)
+            if (checks[checks.Count - 1].Status == Ros2BridgeHealthStatus.Fail)
             {
                 return BuildReport(options, checks, rosDistro);
             }
@@ -212,7 +211,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             {
                 ThrowIfCancellationRequested(options);
                 var schemaName = entries[i].SchemaName;
-                if (result.Succeeded && !availableInterfaces.Contains(schemaName))
+                if (!availableInterfaces.Contains(schemaName))
                     missing.Add(schemaName);
             }
 
