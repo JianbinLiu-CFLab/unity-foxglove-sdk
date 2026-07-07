@@ -212,7 +212,7 @@ namespace Unity.FoxgloveSDK.Components
             ResetJpegPipelineState();
             ResetVideoDiagnosticState();
             EnsureCaptureResources();
-            if (_useAsyncJpeg && ActiveProfile.Mode == CameraOutputMode.Jpeg)
+            if (_manager != null && _useAsyncJpeg && ActiveProfile.Mode == CameraOutputMode.Jpeg)
                 EnsureJpegWorkerStarted();
             _rawBandwidthWarningIssued = false;
         }

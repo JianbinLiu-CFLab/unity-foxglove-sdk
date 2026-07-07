@@ -245,6 +245,8 @@ async def measure_compressed_pointcloud(
             frame = await asyncio.wait_for(ws.recv(), timeout=timeout)
         except asyncio.TimeoutError:
             continue
+        except websockets.exceptions.ConnectionClosed:
+            break
 
         if not isinstance(frame, bytes):
             continue
@@ -305,6 +307,8 @@ async def drain_for_seconds(ws: websockets.WebSocketClientProtocol, seconds: flo
         try:
             await asyncio.wait_for(ws.recv(), timeout=max(0.01, end - time.perf_counter()))
         except asyncio.TimeoutError:
+            continue
+        except websockets.exceptions.ConnectionClosed:
             break
 
 

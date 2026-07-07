@@ -67,6 +67,8 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             runtime.SetMirrorSink(null);
             Assert.False(runtime.HasChannelDemand(7));
+            Assert.Single(sink.Unregistered);
+            Assert.Equal(7U, sink.Unregistered[0]);
             runtime.Publish(7, new byte[] { 10 }, 1712UL);
             Assert.Single(sink.Published);
         }
