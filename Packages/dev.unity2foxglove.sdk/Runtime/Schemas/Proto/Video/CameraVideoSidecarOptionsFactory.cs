@@ -24,9 +24,9 @@ namespace Foxglove.Schemas.Video
             => new FfmpegH264EncoderOptions
             {
                 FfmpegPath = ffmpegPath ?? "",
-                Width = width,
-                Height = height,
-                FrameRate = frameRate,
+                Width = Math.Max(1, width),
+                Height = Math.Max(1, height),
+                FrameRate = Math.Max(1, frameRate),
                 BitrateKbps = Math.Max(1, bitrateKbps),
                 KeyframeInterval = Math.Max(1, keyframeInterval),
                 MaxInputQueue = Math.Max(1, maxInputQueue),
@@ -45,9 +45,9 @@ namespace Foxglove.Schemas.Video
             => new FfmpegH265EncoderOptions
             {
                 FfmpegPath = ffmpegPath ?? "",
-                Width = width,
-                Height = height,
-                FrameRate = frameRate,
+                Width = Math.Max(1, width),
+                Height = Math.Max(1, height),
+                FrameRate = Math.Max(1, frameRate),
                 BitrateKbps = Math.Max(1, bitrateKbps),
                 KeyframeInterval = Math.Max(1, keyframeInterval),
                 MaxInputQueue = Math.Max(1, maxInputQueue),
@@ -68,9 +68,9 @@ namespace Foxglove.Schemas.Video
             {
                 HelperExecutablePath = helperExecutablePath,
                 OpenH264DllPath = openH264DllPath,
-                Width = width,
-                Height = height,
-                FrameRate = frameRate,
+                Width = Math.Max(1, width),
+                Height = Math.Max(1, height),
+                FrameRate = Math.Max(1, frameRate),
                 BitrateKbps = Math.Max(1, bitrateKbps),
                 KeyframeInterval = Math.Max(1, keyframeInterval),
                 MaxInputQueue = Math.Max(1, maxInputQueue),
@@ -87,9 +87,9 @@ namespace Foxglove.Schemas.Video
             int maxOutputQueue)
             => new MediaFoundationH264EncoderOptions
             {
-                Width = width,
-                Height = height,
-                FrameRate = frameRate,
+                Width = Math.Max(1, width),
+                Height = Math.Max(1, height),
+                FrameRate = Math.Max(1, frameRate),
                 BitrateKbps = Math.Max(1, bitrateKbps),
                 KeyframeInterval = Math.Max(1, keyframeInterval),
                 MaxInputQueue = Math.Max(1, maxInputQueue),
