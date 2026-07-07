@@ -16,6 +16,7 @@ import {
   readPanelState,
   shouldSendCursor,
   summarizeResponseText,
+  tokenEndpointWarningMessage,
 } from "./index";
 
 function makeContext(initialState?: unknown): PanelExtensionContext & { onRender?: PanelExtensionContext["onRender"] } {
@@ -218,6 +219,14 @@ describe("Unity Replay Sync panel lifecycle", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(context.panelElement.querySelector("#token-warning")?.textContent).toContain("localhost or HTTPS");
+  });
+
+  test("token endpoint warning distinguishes localhost, https, and remote plain-http", () => {
+    expect(tokenEndpointWarningMessage("http://127.0.0.1:8892/replay", "token")).toBe("");
+    expect(tokenEndpointWarningMessage("https://example.com/replay", "token")).toBe("");
+    expect(tokenEndpointWarningMessage("http://example.com/replay", "")).toBe("");
+    expect(tokenEndpointWarningMessage("http://example.com/replay", "token")).toContain("localhost or HTTPS");
   });
 
   test("cleanup aborts an in-flight cursor request", () => {
@@ -362,60 +371,57 @@ describe("Unity Replay Sync panel lifecycle", () => {
   });
 
   test("follow parks at the end and does not run away", async () => {
-    const seekPlayback = vi.fn();
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
-    vi.stubGlobal("fetch", fetchMock);
-    const context = makeContext({ followUnity: true });
-    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
-    const cleanup = initPanel(context);
+    vi.useFakeTimers();
+    let cleanup: void | (() => void);
+    try {
+      const seekPlayback = vi.fn();
+      const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const context = makeContext({ followUnity: true });
+      (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+      cleanup = initPanel(context);
 
-    // Seed just shy of the end so the loop reaches it within a few steps.
-    const bounds = { startTime: { sec: 0, nsec: 0 }, endTime: { sec: 10, nsec: 120_000_000 } };
-    context.onRender?.({ currentTime: { sec: 10, nsec: 0 }, ...bounds }, vi.fn());
+      // Seed just shy of the end so the loop reaches it within a few steps.
+      const bounds = { startTime: { sec: 0, nsec: 0 }, endTime: { sec: 10, nsec: 120_000_000 } };
+      context.onRender?.({ currentTime: { sec: 10, nsec: 0 }, ...bounds }, vi.fn());
 
-    // It advances to the end, then parks (fetch count stops growing across polls).
-    let parkedCount = 0;
-    await vi.waitFor(() => {
-      const n = fetchMock.mock.calls.length;
-      expect(n).toBeGreaterThan(0);
-      if (n !== parkedCount) {
-        parkedCount = n;
-        throw new Error("still streaming");
-      }
-    });
+      await vi.advanceTimersByTimeAsync(1000);
+      const parkedCount = fetchMock.mock.calls.length;
+      expect(parkedCount).toBeGreaterThan(0);
 
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    expect(fetchMock.mock.calls.length).toBe(parkedCount);
-    cleanup?.();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(fetchMock.mock.calls.length).toBe(parkedCount);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
   });
 
   test("scrubbing before the end resumes follow after the loop parked", async () => {
-    const seekPlayback = vi.fn();
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
-    vi.stubGlobal("fetch", fetchMock);
-    const context = makeContext({ followUnity: true });
-    (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
-    const cleanup = initPanel(context);
+    vi.useFakeTimers();
+    let cleanup: void | (() => void);
+    try {
+      const seekPlayback = vi.fn();
+      const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const context = makeContext({ followUnity: true });
+      (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+      cleanup = initPanel(context);
 
-    const bounds = { startTime: { sec: 0, nsec: 0 }, endTime: { sec: 10, nsec: 120_000_000 } };
-    context.onRender?.({ currentTime: { sec: 10, nsec: 0 }, ...bounds }, vi.fn());
+      const bounds = { startTime: { sec: 0, nsec: 0 }, endTime: { sec: 10, nsec: 120_000_000 } };
+      context.onRender?.({ currentTime: { sec: 10, nsec: 0 }, ...bounds }, vi.fn());
 
-    let parkedCount = 0;
-    await vi.waitFor(() => {
-      const n = fetchMock.mock.calls.length;
-      expect(n).toBeGreaterThan(0);
-      if (n !== parkedCount) {
-        parkedCount = n;
-        throw new Error("still streaming");
-      }
-    });
+      await vi.advanceTimersByTimeAsync(1000);
+      const parkedCount = fetchMock.mock.calls.length;
+      expect(parkedCount).toBeGreaterThan(0);
 
-    context.onRender?.({ currentTime: { sec: 2, nsec: 0 }, didSeek: true, ...bounds }, vi.fn());
-    await vi.waitFor(() => {
+      context.onRender?.({ currentTime: { sec: 2, nsec: 0 }, didSeek: true, ...bounds }, vi.fn());
+      await vi.advanceTimersByTimeAsync(200);
       expect(fetchMock.mock.calls.length).toBeGreaterThan(parkedCount + 1);
-    });
-
-    cleanup?.();
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
   });
 
   test("follow loop survives a host that throws on seekPlayback (keeps streaming cursors)", async () => {

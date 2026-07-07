@@ -6,6 +6,7 @@
 
 using System;
 using Unity.FoxgloveSDK.Schemas.MsgPack;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests
@@ -17,7 +18,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void WriterEmitsCanonicalMapWithStringsNumbersBooleansAndBinary()
         {
-            var writer = new FoxgloveMsgPackWriter();
+            using var writer = new FoxgloveMsgPackWriter();
 
             writer.WriteMapHeader(4);
             writer.WriteString("name");
@@ -48,7 +49,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void WriterEmitsFloat64AsBigEndianPayload()
         {
-            var writer = new FoxgloveMsgPackWriter();
+            using var writer = new FoxgloveMsgPackWriter();
 
             writer.WriteDouble(1.5);
 
@@ -60,7 +61,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void WriterEmitsFloatPayloadsWithoutPerValueHeapAllocations()
         {
-            var writer = new FoxgloveMsgPackWriter(64);
+            using var writer = new FoxgloveMsgPackWriter(64);
 
             var before = GC.GetAllocatedBytesForCurrentThread();
             writer.WriteFloat(1.5f);
@@ -80,7 +81,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void WriterUsesThirtyTwoBitHeadersAtLargeStringAndBinaryBoundaries()
         {
-            var writer = new FoxgloveMsgPackWriter(65_550);
+            using var writer = new FoxgloveMsgPackWriter(65_550);
 
             writer.WriteString(new string('a', 65_536));
             var stringBytes = writer.ToArray();
@@ -95,10 +96,35 @@ namespace Unity.FoxgloveSDK.UnitTests
         [Fact]
         public void WriterRejectsNegativeContainerLengths()
         {
-            var writer = new FoxgloveMsgPackWriter();
+            using var writer = new FoxgloveMsgPackWriter();
 
             Assert.Throws<ArgumentOutOfRangeException>(() => writer.WriteArrayHeader(-1));
             Assert.Throws<ArgumentOutOfRangeException>(() => writer.WriteMapHeader(-1));
+        }
+
+        [Fact]
+        public void WriterExposesOwnedBufferSegmentWithoutCopy()
+        {
+            using var writer = new FoxgloveMsgPackWriter();
+
+            writer.WriteString("unity");
+            var buffer = writer.GetBuffer(out var length);
+            var owned = writer.ToArray();
+
+            Assert.Equal(owned.Length, length);
+            Assert.NotSame(owned, buffer);
+            Assert.Equal(owned, buffer[..length]);
+        }
+
+        [Fact]
+        public void WriterUsesPooledUtf8StringEncodingPath()
+        {
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/MsgPack/FoxgloveMsgPackWriter.cs");
+            var writeString = TestSources.Slice(source, "public void WriteString", "public void WriteBinary");
+
+            Assert.Contains("ArrayPool<byte>.Shared.Rent", writeString, StringComparison.Ordinal);
+            Assert.Contains("Encoding.UTF8.GetByteCount(value)", writeString, StringComparison.Ordinal);
+            Assert.DoesNotContain("Encoding.UTF8.GetBytes(value)", writeString, StringComparison.Ordinal);
         }
     }
 }

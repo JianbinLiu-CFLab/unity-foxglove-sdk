@@ -104,15 +104,22 @@ namespace Unity.FoxgloveSDK.Editor
                     if (!process.WaitForExit(Math.Max(500, timeoutMs)))
                     {
                         TryKill(process);
-                        WaitForStreamDrain(stdoutTask, stderrTask, 500);
+                        var drainError = WaitForStreamDrain(stdoutTask, stderrTask, 500);
+                        if (!string.IsNullOrEmpty(drainError))
+                            return Invalid(normalizedHelper, normalizedDll, "", drainError);
                         return Invalid(normalizedHelper, normalizedDll, "", "OpenH264 validation timed out.");
                     }
 
-                    WaitForStreamDrain(stdoutTask, stderrTask, 500);
-                    var stdout = GetCompletedOutput(stdoutTask);
+                    var streamError = WaitForStreamDrain(stdoutTask, stderrTask, 500);
+                    var stdout = GetCompletedOutput(stdoutTask, out var stdoutReadError);
                     var hasAccessUnit = TryValidateLengthPrefixedAccessUnit(stdout, out var stdoutError);
-                    var stderr = GetCompletedOutput(stderrTask);
+                    var stderr = GetCompletedOutput(stderrTask, out var stderrError);
                     var diagnostic = LastNonEmptyLine(stderr);
+                    var streamReadError = FirstNonEmpty(streamError, stdoutReadError, stderrError);
+                    if (!string.IsNullOrEmpty(streamReadError))
+                    {
+                        return Invalid(normalizedHelper, normalizedDll, diagnostic, streamReadError);
+                    }
                     if (process.ExitCode != 0)
                     {
                         var compatibilityError = BuildCompatibilityError(stderr);
@@ -175,7 +182,7 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             });
 
-        private static void WaitForStreamDrain(Task<byte[]> stdout, Task<string> stderr, int timeoutMs)
+        private static string WaitForStreamDrain(Task<byte[]> stdout, Task<string> stderr, int timeoutMs)
         {
             try
             {
@@ -183,34 +190,51 @@ namespace Unity.FoxgloveSDK.Editor
                     Task.WaitAll(stdout, stderr);
                 else
                     Task.WaitAll(new Task[] { stdout, stderr }, timeoutMs);
+                return "";
             }
-            catch
+            catch (Exception ex)
             {
+                return "OpenH264 helper stream read failed: " + ex.GetBaseException().Message;
             }
         }
 
-        private static byte[] GetCompletedOutput(Task<byte[]> task)
+        private static byte[] GetCompletedOutput(Task<byte[]> task, out string error)
         {
+            error = "";
             try
             {
                 return task.IsCompleted ? task.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
             }
-            catch
+            catch (Exception ex)
             {
+                error = "OpenH264 helper stdout read failed: " + ex.GetBaseException().Message;
                 return Array.Empty<byte>();
             }
         }
 
-        private static string GetCompletedOutput(Task<string> task)
+        private static string GetCompletedOutput(Task<string> task, out string error)
         {
+            error = "";
             try
             {
                 return task.IsCompleted ? task.Result ?? "" : "";
             }
-            catch
+            catch (Exception ex)
             {
+                error = "OpenH264 helper stderr read failed: " + ex.GetBaseException().Message;
                 return "";
             }
+        }
+
+        private static string FirstNonEmpty(params string[] values)
+        {
+            foreach (var value in values)
+            {
+                if (!string.IsNullOrEmpty(value))
+                    return value;
+            }
+
+            return "";
         }
 
         private static string NormalizePath(string path)
@@ -268,8 +292,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return "";
 
             var trimmed = stderr.Trim();
-            if (stderr.IndexOf("Usage: openh264_probe_encoder", StringComparison.OrdinalIgnoreCase) >= 0
-                && stderr.IndexOf("--openh264-dll", StringComparison.OrdinalIgnoreCase) < 0)
+            if (trimmed.IndexOf("Usage: openh264_probe_encoder", StringComparison.OrdinalIgnoreCase) >= 0
+                && trimmed.IndexOf("--openh264-dll", StringComparison.OrdinalIgnoreCase) < 0)
             {
                 return "Selected OpenH264 helper is outdated. Rebuild or reselect the Phase 81 helper executable; expected usage includes --openh264-dll <path>."
                     + "\nstderr:\n"

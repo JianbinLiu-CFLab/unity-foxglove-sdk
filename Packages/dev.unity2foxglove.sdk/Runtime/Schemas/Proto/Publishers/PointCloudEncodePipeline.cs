@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Components
     /// Coordinates a generation-guarded background encode queue and main-thread
     /// drain/stop lifecycle for point-cloud payload encoders.
     /// </summary>
-    internal sealed class PointCloudEncodePipeline<TRequest, TResult>
+    internal sealed class PointCloudEncodePipeline<TRequest, TResult> : IDisposable
         where TRequest : class, IPointCloudWorkerRequest
         where TResult : class, IPointCloudWorkerResult<TRequest>
     {
@@ -145,6 +145,11 @@ namespace Unity.FoxgloveSDK.Components
 
             _logWarning(_workerShutdownWarning);
             _warnedWorkerShutdown = true;
+        }
+
+        public void Dispose()
+        {
+            _pipeline.Dispose();
         }
 
         private void LogFailure(string message)

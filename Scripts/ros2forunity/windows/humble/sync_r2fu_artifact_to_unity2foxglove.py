@@ -112,6 +112,15 @@ def write_json(path: Path, data: dict[str, object]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def runtime_package_version(project_root: Path) -> str:
+    """Read the checked-in Humble runtime package version."""
+    package_json = read_json(project_root / "Packages" / PACKAGE_NAME / "package.json")
+    version = package_json.get("version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError(f"Missing version in Packages/{PACKAGE_NAME}/package.json")
+    return version
+
+
 def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> dict[str, object]:
     """Validate an artifact against its optional sidecar manifest."""
     if not artifact.exists():
@@ -192,7 +201,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
             lock_changed = True
         if update and PACKAGE_NAME not in lock_dependencies:
             lock_dependencies[PACKAGE_NAME] = {
-                "version": PACKAGE_VERSION,
+                "version": runtime_package_version(project_root),
                 "depth": 0,
                 "source": "local",
                 "dependencies": {},

@@ -145,7 +145,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && connectionSource.Contains("nowMs - _connectedAtMs", StringComparison.Ordinal),
                 "134-6C-6: connection duration uses monotonic time instead of wall-clock deltas");
             Check(certSource.Contains("_rootCaSha256Fingerprint", StringComparison.Ordinal)
-                  && certSource.Contains("??= ComputeSha256Fingerprint", StringComparison.Ordinal),
+                  && (certSource.Contains("??= ComputeSha256Fingerprint", StringComparison.Ordinal)
+                      || certSource.Contains("Interlocked.CompareExchange(ref _rootCaSha256Fingerprint", StringComparison.Ordinal)),
                 "134-6C-7: root CA fingerprint is cached after first computation");
             Check(handshakeSource.Contains("IsAllowedFileOrigin", StringComparison.Ordinal)
                   && handshakeSource.Contains("string.Equals(origin, \"file://\"", StringComparison.Ordinal)

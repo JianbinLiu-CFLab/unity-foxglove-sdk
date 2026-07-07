@@ -113,7 +113,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void LidarModelRegistryAvoidsLinqAndPreservesLookupBehavior()
+        public void LidarModelRegistryAvoidsLinqInProductionCodeAndPreservesOrder()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/LidarModelRegistry.cs");
 
@@ -139,6 +139,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var ouster = LidarModelRegistry.ForVendor(LidarVendor.Ouster).ToList();
             Assert.NotEmpty(ouster);
             Assert.All(ouster, spec => Assert.Equal(LidarVendor.Ouster, spec.Vendor));
+            // ForVendor preserves the insertion order of the canonical All list.
             Assert.True(ouster.Select(s => s.Model).SequenceEqual(all.Where(s => s.Vendor == LidarVendor.Ouster).Select(s => s.Model)));
         }
 

@@ -27,8 +27,13 @@ def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules.pop(spec.name, None)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
@@ -38,6 +43,17 @@ class VersionBumpTests(unittest.TestCase):
     def setUp(self) -> None:
         """Load a fresh bump_version module for each test."""
         self.bump_module = load_module("bump_version_under_test", BUMP_VERSION_PATH)
+
+    def test_load_module_cleans_partial_module_after_exec_failure(self) -> None:
+        """Syntax/import failures should not leave a partial module registered."""
+        with tempfile.TemporaryDirectory() as temp:
+            broken = Path(temp) / "broken.py"
+            broken.write_text("raise RuntimeError('boom')\n", encoding="utf-8")
+
+            with self.assertRaises(RuntimeError):
+                load_module("broken_release_tool_under_test", broken)
+
+        self.assertNotIn("broken_release_tool_under_test", sys.modules)
 
     def test_update_readme_keeps_two_newest_release_notes_without_corruption(self) -> None:
         """Trim old release notes without stale-offset deletion."""

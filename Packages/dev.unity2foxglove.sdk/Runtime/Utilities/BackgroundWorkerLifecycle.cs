@@ -4,12 +4,13 @@
 // Module: Runtime/Utilities
 // Purpose: Small lifecycle helper for generation-guarded background workers.
 
+using System;
 using System.Threading;
 
 namespace Unity.FoxgloveSDK.Util
 {
     /// <summary>Tracks stop, generation, running, and idle state for one background worker.</summary>
-    internal sealed class BackgroundWorkerLifecycle
+    internal sealed class BackgroundWorkerLifecycle : IDisposable
     {
         public object Gate { get; } = new object();
         public ManualResetEventSlim Idle { get; } = new ManualResetEventSlim(true);
@@ -62,6 +63,11 @@ namespace Unity.FoxgloveSDK.Util
             IsRunning = false;
             StopRequested = false;
             Idle.Set();
+        }
+
+        public void Dispose()
+        {
+            Idle.Dispose();
         }
     }
 }

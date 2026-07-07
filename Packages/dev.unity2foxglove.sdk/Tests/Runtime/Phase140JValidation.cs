@@ -106,6 +106,18 @@ namespace Unity.FoxgloveSDK.Tests
                   && available["time"]?["sec"] != null
                   && available["message"]?.ToString() == "Replay cursor state available.",
                 "140J-2D: cursor GET remains backward compatible on available state");
+
+            var playingSnapshot = snapshot;
+            playingSnapshot.Status = 0;
+            var playing = ReplayCursorState.FromPlayback(true, true, playingSnapshot, 10, 20);
+            Check(playing.Playing && !playing.Ended,
+                "140J-2E: cursor state maps playback status 0 to playing");
+
+            var endedSnapshot = snapshot;
+            endedSnapshot.Status = 3;
+            var ended = ReplayCursorState.FromPlayback(true, true, endedSnapshot, 10, 20);
+            Check(!ended.Playing && ended.Ended,
+                "140J-2F: cursor state maps playback status 3 to ended");
         }
 
         private static void SetupReplaySurfacesNonSchemaFailure()

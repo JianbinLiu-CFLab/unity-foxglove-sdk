@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             "2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f";
 
         private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.Ordinal);
+        private static readonly List<string> Failures = new List<string>();
 
         private static int _passed;
 
@@ -42,16 +43,21 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine();
             Console.WriteLine("=== Phase 160: R2FU Humble Win64 Runtime Package ===");
             _passed = 0;
+            FileTextCache.Clear();
+            Failures.Clear();
 
-            RuntimePackageShapeIsPresent();
-            RuntimePackageContainsHumbleDependencyFloor();
-            RuntimePackageRecordsPluginImportAndManifestHealth();
-            HumbleScriptsAreDistroSpecific();
-            AdapterManifestRecordsHumbleRuntime();
-            SelectorDiscoversHumbleByConvention();
-            UnityProjectResolvesOnlyHumbleRuntime();
-            RuntimeCandidatesAreNotEmbedded();
-            ValidationRegistryWiresPhase160();
+            RunCheckGroup("runtime package shape", RuntimePackageShapeIsPresent);
+            RunCheckGroup("runtime dependency floor", RuntimePackageContainsHumbleDependencyFloor);
+            RunCheckGroup("plugin import health", RuntimePackageRecordsPluginImportAndManifestHealth);
+            RunCheckGroup("humble scripts", HumbleScriptsAreDistroSpecific);
+            RunCheckGroup("adapter manifest", AdapterManifestRecordsHumbleRuntime);
+            RunCheckGroup("runtime selector", SelectorDiscoversHumbleByConvention);
+            RunCheckGroup("unity project runtime", UnityProjectResolvesOnlyHumbleRuntime);
+            RunCheckGroup("embedded runtime candidates", RuntimeCandidatesAreNotEmbedded);
+            RunCheckGroup("validation registry", ValidationRegistryWiresPhase160);
+
+            if (Failures.Count > 0)
+                throw new Exception("Phase 160 failed:\n" + string.Join("\n", Failures.Select(failure => "  - " + failure)));
 
             Console.WriteLine($"Phase 160: {_passed} checks passed.");
         }
@@ -324,6 +330,10 @@ namespace Unity.FoxgloveSDK.Tests
             var activeRuntimeManifest = ReadRepoText("Packages/" + activeRuntimePackage + "/RuntimeSupport/runtime-manifest.json");
             Check(RuntimeId(activeRuntimeManifest) == ExpectedRuntimeId(activeRuntimePackage),
                 "160-F4: active runtime package identity matches its runtime manifest");
+
+            var runtimeSettings = ReadRepoText("Unity2Foxglove/ProjectSettings/Unity2FoxgloveRos2ForUnitySettings.json");
+            Check(RuntimeSettingsActivePackage(runtimeSettings) == activeRuntimePackage,
+                "160-F5: Unity runtime selection settings match the active project runtime package");
         }
 
         private static void RuntimeCandidatesAreNotEmbedded()
@@ -396,6 +406,15 @@ namespace Unity.FoxgloveSDK.Tests
             return "r2fu-" + suffix.Replace('.', '-');
         }
 
+        private static string RuntimeSettingsActivePackage(string settingsJson)
+        {
+            var match = Regex.Match(
+                settingsJson ?? string.Empty,
+                "\"activeRuntimePackage\"\\s*:\\s*\"([^\"]+)\"",
+                RegexOptions.CultureInvariant);
+            return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+
         private static string PlannedRuntimeSection(string json)
         {
             var match = Regex.Match(
@@ -445,10 +464,27 @@ namespace Unity.FoxgloveSDK.Tests
             return count;
         }
 
+        private static void RunCheckGroup(string name, Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                Failures.Add(name + ": " + ex.Message);
+                Console.WriteLine("[FAIL] " + name + ": " + ex.Message);
+            }
+        }
+
         private static void Check(bool condition, string message)
         {
             if (!condition)
-                throw new Exception("[FAIL] " + message);
+            {
+                Failures.Add(message);
+                Console.WriteLine("[FAIL] " + message);
+                return;
+            }
             _passed++;
             Console.WriteLine("[PASS] " + message);
         }

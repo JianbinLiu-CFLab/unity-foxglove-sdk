@@ -19,6 +19,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     {
         private const string BridgeObjectName = "Unity2Foxglove R2FU Camera Native Bridge";
         private const string TfAnchorTopic = "/tf";
+        private const string DefaultCompressedImageTopic = "/unity/sensor/camera/image/compressed";
+        private const string DefaultRawImageTopic = "/unity/sensor/camera/image/raw";
+        private const string DefaultCameraInfoTopic = "/unity/sensor/camera/camera_info";
         private const float ScanIntervalSeconds = 0.5f;
         private const int MaxNodeCreateAttempts = 4;
         private const int WarningIntervalFrames = 240;
@@ -134,7 +137,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var instanceId = publisher.GetInstanceID();
                 _rawImageSeen.Add(instanceId);
-                var topic = NormalizeTopic(publisher.SensorCameraRawImageTopic);
+                var topic = NormalizeTopic(publisher.SensorCameraRawImageTopic, DefaultRawImageTopic);
                 if (_rawImageBindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
@@ -163,7 +166,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var instanceId = publisher.GetInstanceID();
                 _imageSeen.Add(instanceId);
-                var topic = NormalizeTopic(publisher.SensorCameraImageTopic);
+                var topic = NormalizeTopic(publisher.SensorCameraImageTopic, DefaultCompressedImageTopic);
                 if (_imageBindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
@@ -195,7 +198,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var instanceId = publisher.GetInstanceID();
                 _infoSeen.Add(instanceId);
-                var topic = NormalizeTopic(publisher.SensorCameraInfoTopic);
+                var topic = NormalizeTopic(publisher.SensorCameraInfoTopic, DefaultCameraInfoTopic);
                 if (_infoBindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
@@ -345,10 +348,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _infoBindings.Clear();
         }
 
-        private static string NormalizeTopic(string topic)
+        private static string NormalizeTopic(string topic, string defaultTopic)
         {
             var value = string.IsNullOrWhiteSpace(topic)
-                ? "/unity/sensor/camera/image/compressed"
+                ? defaultTopic
                 : topic.Trim();
 
             return value.StartsWith("/", StringComparison.Ordinal) ? value : "/" + value;

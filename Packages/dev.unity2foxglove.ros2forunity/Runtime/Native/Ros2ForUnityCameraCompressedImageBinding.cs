@@ -35,7 +35,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             public override bool IsStillEligible()
-                => IsEligible(_source) && NormalizeTopic(_source.SensorCameraImageTopic) == Topic;
+                => IsEligible(_source) && NormalizeTopic(_source.SensorCameraImageTopic, DefaultCompressedImageTopic) == Topic;
 
             public override void Dispose()
             {

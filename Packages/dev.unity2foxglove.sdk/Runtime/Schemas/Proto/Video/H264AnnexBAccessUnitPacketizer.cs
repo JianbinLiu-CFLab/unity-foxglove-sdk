@@ -66,7 +66,7 @@ namespace Foxglove.Schemas.Video
         {
             if (data == null || count <= 0)
                 return;
-            if (offset < 0 || count < 0 || offset + count > data.Length)
+            if (offset < 0 || offset + count > data.Length)
                 throw new ArgumentOutOfRangeException(nameof(count));
 
             if (AvailableBufferBytes + count > _maxPendingAccessUnitBytes)
@@ -256,6 +256,9 @@ namespace Foxglove.Schemas.Video
 
         private byte[] CopyBufferRange(int offset, int count)
         {
+            // This packetizer intentionally materializes NAL ranges before the
+            // final access-unit copy. It runs on the FFmpeg reader task, and
+            // avoids exposing mutable backing buffers across access-unit gates.
             var copy = new byte[Math.Max(0, count)];
             if (copy.Length > 0)
                 _buffer.CopyTo(offset, copy, 0, copy.Length);

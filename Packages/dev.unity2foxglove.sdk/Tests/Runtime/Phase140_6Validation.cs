@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Reflection;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -46,6 +47,7 @@ namespace Unity.FoxgloveSDK.Tests
             SendQueueWaitUsesMonotonicElapsedTime();
             PlaybackClockHandlesInvalidRangesAndUnknownCommands();
             CertificateDistributorHonorsCancellationAndAvoidsSizeCheckRace();
+            CertificateDistributorStopDrainsAcceptLoopAndCountsReadLineBytes();
             TlsOptionsDoesNotMarkLoadedPrivateKeysExportable();
             FrameDecodeUsesStackBuffers();
             LiveDataBroadcastAvoidsClientArraySnapshot();
@@ -123,6 +125,33 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!writeFile.Contains("new FileInfo(path)", StringComparison.Ordinal)
                   && source.Contains("ReadFileWithinLimit", StringComparison.Ordinal),
                 "140-6E-2: certificate distributor enforces response size while reading the file");
+        }
+
+        private static void CertificateDistributorStopDrainsAcceptLoopAndCountsReadLineBytes()
+        {
+            var source = ReadRepoText(CertificateDistributorPath);
+            var start = ExtractMethodBody(source, "public void Start");
+            var stop = ExtractMethodBody(source, "public void Stop");
+            var readLine = ExtractMethodBody(source, "private static string ReadLine");
+
+            Check(source.Contains("private Task _acceptLoopTask;", StringComparison.Ordinal)
+                  && start.Contains("_acceptLoopTask = Task.Run", StringComparison.Ordinal)
+                  && stop.Contains("WaitForShutdownTask(_acceptLoopTask", StringComparison.Ordinal)
+                  && stop.Contains("_clientHandlersIdle.Wait", StringComparison.Ordinal),
+                "173-065A: certificate distributor Stop drains accept loop and active handlers with bounded waits");
+            Check(readLine.Contains("var next = stream.ReadByte();", StringComparison.Ordinal)
+                  && readLine.Contains("bytesRead++;", StringComparison.Ordinal)
+                  && readLine.Contains("if (bytesRead > maxBytes)", StringComparison.Ordinal),
+                "173-065B: certificate distributor ReadLine counts CR lookahead bytes against the limit");
+
+            var method = typeof(Unity.FoxgloveSDK.Transport.FoxgloveCertificateDistributor).GetMethod(
+                "ReadLine",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Check(method != null, "173-065C-setup: certificate distributor exposes private ReadLine for boundary validation");
+            using var stream = new MemoryStream(new byte[] { (byte)'a', (byte)'\r', (byte)'X' });
+            CheckThrows<InvalidDataException>(
+                () => method.Invoke(null, new object[] { stream, 2 }),
+                "173-065D: certificate distributor ReadLine rejects CR lookahead bytes beyond the limit");
         }
 
         private static void TlsOptionsDoesNotMarkLoadedPrivateKeysExportable()
@@ -230,6 +259,29 @@ namespace Unity.FoxgloveSDK.Tests
 
             _passed++;
             Console.WriteLine("[PASS] " + message);
+        }
+
+        private static void CheckThrows<TException>(Action action, string message)
+            where TException : Exception
+        {
+            try
+            {
+                action();
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException is TException)
+            {
+                _passed++;
+                Console.WriteLine("[PASS] " + message);
+                return;
+            }
+            catch (TException)
+            {
+                _passed++;
+                Console.WriteLine("[PASS] " + message);
+                return;
+            }
+
+            throw new Exception("[FAIL] " + message);
         }
     }
 }

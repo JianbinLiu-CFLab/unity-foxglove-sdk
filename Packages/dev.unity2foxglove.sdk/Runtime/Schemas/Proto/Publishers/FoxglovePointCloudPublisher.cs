@@ -226,8 +226,10 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnDestroy()
         {
-            _dracoEncodePipeline?.Stop(clearCompleted: true);
-            _pointCloud2NativePipeline?.Stop(clearCompleted: true);
+            _dracoEncodePipeline?.Dispose();
+            _dracoEncodePipeline = null;
+            _pointCloud2NativePipeline?.Dispose();
+            _pointCloud2NativePipeline = null;
         }
 
         protected virtual void FixedUpdate()

@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Util
     /// The encode delegate runs on a background thread; drain and stop are called
     /// from the owning main-thread component.
     /// </summary>
-    internal sealed class BackgroundEncodePipeline<TRequest, TResult>
+    internal sealed class BackgroundEncodePipeline<TRequest, TResult> : IDisposable
         where TRequest : class, IBackgroundEncodeRequest
     {
         private readonly BackgroundWorkerLifecycle _worker = new BackgroundWorkerLifecycle();
@@ -37,6 +37,7 @@ namespace Unity.FoxgloveSDK.Util
         private TRequest _pending;
         private int _droppedCompletedCount;
         private int _encodeErrorCount;
+        private bool _disposed;
 
         public BackgroundEncodePipeline(
             string threadName,
@@ -67,6 +68,7 @@ namespace Unity.FoxgloveSDK.Util
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
+            ThrowIfDisposed();
 
             var startWorker = false;
             var workerGeneration = 0;
@@ -137,6 +139,12 @@ namespace Unity.FoxgloveSDK.Util
 
         public bool Stop(bool clearCompleted, out bool waitedForWorker)
         {
+            if (_disposed)
+            {
+                waitedForWorker = false;
+                return true;
+            }
+
             var shouldWait = false;
             TRequest pendingRequest;
             List<TResult> droppedResults = null;
@@ -175,6 +183,17 @@ namespace Unity.FoxgloveSDK.Util
                 _worker.InvalidateTimedOutWorkerLocked();
 
             return false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            Stop(clearCompleted: true, out _);
+            _workerSignal.Dispose();
+            _worker.Dispose();
+            _disposed = true;
         }
 
         private void StartWorker(int workerGeneration)
@@ -326,6 +345,12 @@ namespace Unity.FoxgloveSDK.Util
 
             foreach (var droppedResult in results)
                 DropResult(droppedResult);
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
         }
     }
 }
