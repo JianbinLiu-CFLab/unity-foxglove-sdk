@@ -681,7 +681,8 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "TryDetachRuntimeState",
         "QuarantineNodesAfterExecutorTimeout",
         "ReferenceEquals(executorThread, threadToJoin)",
-        "Ros2cs.SpinOnce(ros2csNodes, spinTimeout)",
+        "nodesSnapshot.AddRange(ros2csNodes)",
+        "Ros2cs.SpinOnce(nodesSnapshot, spinTimeout)",
         "ROS2ForUnity.PrewarmUnityMainThreadPaths();",
     ):
         add(results, f"ROS2UnityCore lifecycle token: {token}", token in core, token)

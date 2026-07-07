@@ -410,8 +410,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("Array.IndexOf(SupportedRosVersions, ros2Codename)", checkSupport, StringComparison.Ordinal);
             Assert.Contains("nodesSnapshot.AddRange(ros2csNodes)", component, StringComparison.Ordinal);
             Assert.Contains("Ros2cs.SpinOnce(nodesSnapshot", component, StringComparison.Ordinal);
-            Assert.Contains("Ros2cs.SpinOnce(ros2csNodes", core, StringComparison.Ordinal);
-            Assert.DoesNotContain("nodesSnapshot", core, StringComparison.Ordinal);
+            Assert.Contains("nodesSnapshot.AddRange(ros2csNodes)", core, StringComparison.Ordinal);
+            Assert.Contains("Ros2cs.SpinOnce(nodesSnapshot", core, StringComparison.Ordinal);
         }
 
         [Fact]
