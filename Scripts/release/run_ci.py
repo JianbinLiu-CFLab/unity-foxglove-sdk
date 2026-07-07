@@ -39,6 +39,7 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 
 
 def command_timeout_seconds() -> int:
+    """Return the per-command CI timeout in seconds."""
     raw = os.environ.get("UNITY2FOXGLOVE_CI_TIMEOUT", "").strip()
     if not raw:
         return DEFAULT_COMMAND_TIMEOUT_SECONDS

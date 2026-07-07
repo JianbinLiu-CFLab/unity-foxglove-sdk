@@ -141,7 +141,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && !source.Contains("RegisterService(new Unity.FoxgloveSDK.Protocol.ServiceDescriptor", StringComparison.Ordinal),
                 "134-24-F4: Full Demo reset service uses declarative FoxService registration");
             Check(source.Contains("_manager.OnClientMessage += OnClientMessageReceived;", StringComparison.Ordinal)
-                  && source.Contains("_manager.OnClientMessage -= OnClientMessageReceived;", StringComparison.Ordinal),
+                  && (source.Contains("_manager.OnClientMessage -= OnClientMessageReceived;", StringComparison.Ordinal)
+                      || source.Contains("_wiredManager.OnClientMessage -= OnClientMessageReceived;", StringComparison.Ordinal)),
                 "134-24-F5: Full Demo uses manager-level client-message events");
             Check(source.Contains("FormatPayloadPreview(payload)", StringComparison.Ordinal)
                   && !source.Contains("Encoding.UTF8.GetString(payload)", StringComparison.Ordinal),

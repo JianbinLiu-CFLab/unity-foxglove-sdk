@@ -328,8 +328,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
             foreach (var topic in topics)
             {
-                if (TryGetConditionDiagnostic(containingType, topic.When, out diagnosticId)
-                    || TryGetConditionDiagnostic(containingType, topic.Unless, out diagnosticId))
+                if (TryGetConditionDiagnostic(containingType, topic.When, "FOXRUN015", out diagnosticId)
+                    || TryGetConditionDiagnostic(containingType, topic.Unless, "FOXRUN029", out diagnosticId))
                 {
                     return true;
                 }
@@ -339,7 +339,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             return false;
         }
 
-        private static bool TryGetConditionDiagnostic(INamedTypeSymbol containingType, string conditionName, out string diagnosticId)
+        private static bool TryGetConditionDiagnostic(INamedTypeSymbol containingType, string conditionName, string missingDiagnosticId, out string diagnosticId)
         {
             diagnosticId = string.Empty;
             if (containingType == null || string.IsNullOrWhiteSpace(conditionName))
@@ -347,14 +347,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             if (!SyntaxFacts.IsValidIdentifier(conditionName))
             {
-                diagnosticId = "FOXRUN015";
+                diagnosticId = missingDiagnosticId;
                 return true;
             }
 
             var candidates = containingType.GetMembers(conditionName);
             if (candidates.Length == 0)
             {
-                diagnosticId = "FOXRUN015";
+                diagnosticId = missingDiagnosticId;
                 return true;
             }
 
@@ -1806,6 +1806,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "Topic '{0}' has mixed When or Unless values across FoxRun members",
                 "FoxRun", DiagnosticSeverity.Error, true);
 
+            public static readonly DiagnosticDescriptor UnlessConditionMissing = new DiagnosticDescriptor(
+                "FOXRUN029", "FoxRun Unless condition member missing",
+                "{0}: FoxRun Unless condition member could not be resolved",
+                "FoxRun", DiagnosticSeverity.Error, true);
+
             public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
             {
                 return new DiagnosticDescriptor(
@@ -1917,6 +1922,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN015": return ConditionMissing;
                     case "FOXRUN016": return ConditionNotBool;
                     case "FOXRUN017": return MixedTopicConditions;
+                    case "FOXRUN029": return UnlessConditionMissing;
                     case "FOXRUN019": return MixedAggregateTopic;
                     case "FOXRUN020": return AggregateArrayUnsupported;
                     case "FOXRUN022": return DuplicateAggregateJsonName;
@@ -1937,6 +1943,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     case "FOXRUN004": return MultiVariableDeclaration;
                     case "FOXRUN015": return ConditionMissing;
                     case "FOXRUN016": return ConditionNotBool;
+                    case "FOXRUN029": return UnlessConditionMissing;
                     case "FOXRUN018": return AggregateFieldWithoutMessage;
                     case "FOXRUN021": return StaticAggregateMember;
                     case "FOXRUN028": return InboundTargetNotWritable;

@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private const string DeviceTokenEnvironmentVariable = "FOXGLOVE_DEVICE_TOKEN";
         private const string EditorUserSettingsTokenKey = "Unity2Foxglove.RemoteGateway.DeviceToken";
         private const int DefaultEventQueueCapacity = 1024;
+        private const int MissingManagerRetryFrames = 60;
 
         [Header("Remote Gateway")]
         [Tooltip("Default off. When enabled in Play Mode, publishes Unity scene data to Foxglove Cloud through the official Foxglove Remote Access Gateway.")]
@@ -42,7 +43,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private string _connectionStatus = "Shutdown";
         private bool _warnedMissingToken;
         private bool _warnedSerializedToken;
+        private bool _warnedMissingManager;
         private bool _starting;
+        private int _missingManagerRetryFramesRemaining;
 
         public bool EnableRemoteGateway
         {
@@ -61,6 +64,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         private void OnEnable()
         {
+            _missingManagerRetryFramesRemaining = 0;
             EnsureManager();
         }
 
@@ -266,8 +270,24 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             if (_manager != null)
                 return true;
 
+            if (_missingManagerRetryFramesRemaining > 0)
+            {
+                _missingManagerRetryFramesRemaining--;
+                return false;
+            }
+
             _manager = FindObjectOfType<FoxgloveManager>();
-            return _manager != null;
+            if (_manager != null)
+                return true;
+
+            _missingManagerRetryFramesRemaining = MissingManagerRetryFrames;
+            if (!_warnedMissingManager)
+            {
+                _warnedMissingManager = true;
+                Debug.LogWarning("[Foxglove] Remote gateway is enabled but no FoxgloveManager was found.");
+            }
+
+            return false;
         }
 
         private sealed class NativeStructPointer : IDisposable
