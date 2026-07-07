@@ -4,7 +4,6 @@
 // Module: Editor/Sensors
 
 using System;
-using System.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Sensors.Lidar;
 using UnityEditor;
@@ -16,6 +15,8 @@ namespace Unity.FoxgloveSDK.Editor
     [CustomEditor(typeof(SensorUnitProfile))]
     public class SensorUnitProfileEditor : UnityEditor.Editor
     {
+        private static readonly string[] RotationInputLabels = { "Quaternion", "3x3 Rotation Matrix" };
+
         private SerializedProperty _manager, _pointCloudPublisher;
         private SerializedProperty _profileSource, _metadataJson, _metadataMode;
         private SerializedProperty _vendor, _model, _mode;
@@ -33,6 +34,22 @@ namespace Unity.FoxgloveSDK.Editor
             _cameraToSensorTranslationMeters, _cameraToSensorRotation;
         private SerializedProperty _customPixelsPerColumn, _customFovTopDeg, _customFovBottomDeg,
             _customColumnsPerFrame, _customScanRateHz, _customMinRangeMeters;
+        private bool _hasCachedVendor;
+        private LidarVendor _cachedVendor;
+        private LidarModelSpec[] _cachedVendorModels = Array.Empty<LidarModelSpec>();
+        private string[] _cachedVendorModelNames = Array.Empty<string>();
+        private TextAsset _cachedMetadataJson;
+        private string _cachedMetadataMode;
+        private LidarProfile _cachedMetadataProfile;
+        private string _cachedMetadataError;
+        private bool _hasCachedCustomProfile;
+        private int _cachedCustomPixelsPerColumn;
+        private int _cachedCustomColumnsPerFrame;
+        private float _cachedCustomScanRateHz;
+        private float _cachedCustomFovTopDeg;
+        private float _cachedCustomFovBottomDeg;
+        private float _cachedCustomMinRangeMeters;
+        private LidarProfile _cachedCustomProfile;
 
         private void OnEnable()
         {
@@ -101,8 +118,6 @@ namespace Unity.FoxgloveSDK.Editor
                     break;
             }
 
-            serializedObject.ApplyModifiedProperties();
-            serializedObject.Update();
             DrawModelDefaults();
 
             EditorGUILayout.Space();
@@ -114,9 +129,6 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_cameraImageTopic, new GUIContent("Camera Image Topic"));
             EditorGUILayout.PropertyField(_cameraInfoTopic, new GUIContent("CameraInfo Topic"));
 
-            serializedObject.ApplyModifiedProperties();
-            serializedObject.Update();
-
             DrawExtrinsics();
 
             serializedObject.ApplyModifiedProperties();
@@ -127,7 +139,7 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_vendor);
             var vendor = (LidarVendor)_vendor.enumValueIndex;
 
-            var models = LidarModelRegistry.ForVendor(vendor).ToList();
+            var models = GetVendorModels(vendor);
             if (models.Count == 0)
             {
                 EditorGUILayout.HelpBox(
@@ -136,7 +148,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            var modelNames = models.Select(m => m.Model).ToArray();
+            var modelNames = _cachedVendorModelNames;
             var modelIdx = Array.IndexOf(modelNames, _model.stringValue);
             if (modelIdx < 0) modelIdx = 0;
             var newModelIdx = EditorGUILayout.Popup("Model", modelIdx, modelNames);
@@ -159,11 +171,9 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.PropertyField(_metadataJson);
             EditorGUILayout.PropertyField(_metadataMode);
 
-            if (_metadataJson.objectReferenceValue is TextAsset ta && !string.IsNullOrEmpty(ta.text))
-            {
-                if (!LidarProfileLoader.TryParseFromJson(ta.text, _metadataMode.stringValue, out _, out var error))
-                    EditorGUILayout.HelpBox($"Parse error: {error}", MessageType.Warning);
-            }
+            GetMetadataProfile(out var error);
+            if (!string.IsNullOrEmpty(error))
+                EditorGUILayout.HelpBox($"Parse error: {error}", MessageType.Warning);
         }
 
         private void DrawCustomSection()
@@ -192,15 +202,11 @@ namespace Unity.FoxgloveSDK.Editor
                         DrawSpecPreview(spec, _mode.stringValue);
                     break;
                 case SensorUnitProfile.ProfileSource.MetadataJson:
-                    if (_metadataJson.objectReferenceValue is TextAsset ta && !string.IsNullOrEmpty(ta.text) &&
-                        LidarProfileLoader.TryParseFromJson(ta.text, _metadataMode.stringValue, out var parsed, out _))
+                    if (GetMetadataProfile(out _) is { } parsed)
                         DrawProfilePreview(parsed);
                     break;
                 case SensorUnitProfile.ProfileSource.Custom:
-                    DrawProfilePreview(LidarProfileLoader.CreateUniform(
-                        "Custom", _customPixelsPerColumn.intValue, _customColumnsPerFrame.intValue,
-                        _customScanRateHz.floatValue, _customFovTopDeg.floatValue, _customFovBottomDeg.floatValue,
-                        _customMinRangeMeters.floatValue));
+                    DrawProfilePreview(GetCustomProfile());
                     break;
             }
 
@@ -212,6 +218,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawExtrinsics()
         {
+            var profile = (SensorUnitProfile)target;
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Extrinsics", EditorStyles.boldLabel);
             DrawExtrinsicsHelp();
@@ -269,10 +276,6 @@ namespace Unity.FoxgloveSDK.Editor
                 _cameraToSensorRotationInputFormat,
                 _cameraToSensorRotation);
 
-            serializedObject.ApplyModifiedProperties();
-            serializedObject.Update();
-
-            var profile = (SensorUnitProfile)target;
             if (!_useLidarToSensorExtrinsic.boolValue)
                 DrawDerivedExtrinsicPreview("Derived LiDAR -> Sensor", "LiDAR->Sensor", profile.EffectiveLidarToSensor);
             if (!_useImuToSensorExtrinsic.boolValue)
@@ -335,7 +338,7 @@ namespace Unity.FoxgloveSDK.Editor
                 rotationFormatProperty.enumValueIndex = EditorGUILayout.Popup(
                     "Rotation Input",
                     rotationFormatProperty.enumValueIndex,
-                    new[] { "Quaternion", "3x3 Rotation Matrix" });
+                    RotationInputLabels);
 
                 var format = (SensorUnitProfile.RotationInputFormat)rotationFormatProperty.enumValueIndex;
                 if (format == SensorUnitProfile.RotationInputFormat.Matrix3x3)
@@ -496,29 +499,100 @@ namespace Unity.FoxgloveSDK.Editor
                 rate = mr;
             }
 
-            EditorGUI.BeginDisabledGroup(true);
-            EditorGUILayout.TextField("Vendor", spec.Vendor.ToString());
-            EditorGUILayout.TextField("Model", spec.Model);
-            EditorGUILayout.TextField("Scan Kind", spec.Kind.ToString());
-
-            if (spec.Kind == LidarScanKind.Spinning)
+            using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.IntField("Rings", spec.Rings);
-                EditorGUILayout.IntField("Columns / Frame", columns);
-                EditorGUILayout.FloatField("FOV Top (deg)", (float)spec.FovTopDeg);
-                EditorGUILayout.FloatField("FOV Bottom (deg)", (float)spec.FovBottomDeg);
+                EditorGUILayout.TextField("Vendor", spec.Vendor.ToString());
+                EditorGUILayout.TextField("Model", spec.Model);
+                EditorGUILayout.TextField("Scan Kind", spec.Kind.ToString());
+
+                if (spec.Kind == LidarScanKind.Spinning)
+                {
+                    EditorGUILayout.IntField("Rings", spec.Rings);
+                    EditorGUILayout.IntField("Columns / Frame", columns);
+                    EditorGUILayout.FloatField("FOV Top (deg)", (float)spec.FovTopDeg);
+                    EditorGUILayout.FloatField("FOV Bottom (deg)", (float)spec.FovBottomDeg);
+                }
+                else
+                {
+                    EditorGUILayout.FloatField("FOV Horizontal (deg)", (float)spec.FovHDeg);
+                    EditorGUILayout.FloatField("FOV Vertical (deg)", (float)spec.FovVDeg);
+                    EditorGUILayout.IntField("Beams / Frame", spec.BeamsPerFrame);
+                }
+
+                EditorGUILayout.FloatField("Scan Rate (Hz)", (float)rate);
+                EditorGUILayout.FloatField("Min Range (m)", (float)spec.MinRangeMeters);
+                EditorGUILayout.FloatField("Max Range (m)", (float)spec.MaxRangeMeters);
             }
-            else
+        }
+
+        private System.Collections.Generic.IReadOnlyList<LidarModelSpec> GetVendorModels(LidarVendor vendor)
+        {
+            if (!_hasCachedVendor || _cachedVendor != vendor)
             {
-                EditorGUILayout.FloatField("FOV Horizontal (deg)", (float)spec.FovHDeg);
-                EditorGUILayout.FloatField("FOV Vertical (deg)", (float)spec.FovVDeg);
-                EditorGUILayout.IntField("Beams / Frame", spec.BeamsPerFrame);
+                _hasCachedVendor = true;
+                _cachedVendor = vendor;
+                var source = LidarModelRegistry.ForVendor(vendor);
+                _cachedVendorModels = source as LidarModelSpec[] ?? new System.Collections.Generic.List<LidarModelSpec>(source).ToArray();
+                _cachedVendorModelNames = new string[_cachedVendorModels.Length];
+                for (var i = 0; i < _cachedVendorModels.Length; i++)
+                    _cachedVendorModelNames[i] = _cachedVendorModels[i].Model;
             }
 
-            EditorGUILayout.FloatField("Scan Rate (Hz)", (float)rate);
-            EditorGUILayout.FloatField("Min Range (m)", (float)spec.MinRangeMeters);
-            EditorGUILayout.FloatField("Max Range (m)", (float)spec.MaxRangeMeters);
-            EditorGUI.EndDisabledGroup();
+            return _cachedVendorModels;
+        }
+
+        private LidarProfile GetMetadataProfile(out string error)
+        {
+            var asset = _metadataJson.objectReferenceValue as TextAsset;
+            var mode = _metadataMode.stringValue;
+            if (_cachedMetadataJson != asset || !string.Equals(_cachedMetadataMode, mode, StringComparison.Ordinal))
+            {
+                _cachedMetadataJson = asset;
+                _cachedMetadataMode = mode;
+                _cachedMetadataProfile = null;
+                _cachedMetadataError = null;
+                if (asset != null && !string.IsNullOrEmpty(asset.text) &&
+                    !LidarProfileLoader.TryParseFromJson(asset.text, mode, out _cachedMetadataProfile, out _cachedMetadataError))
+                {
+                    _cachedMetadataProfile = null;
+                }
+            }
+
+            error = _cachedMetadataError;
+            return _cachedMetadataProfile;
+        }
+
+        private LidarProfile GetCustomProfile()
+        {
+            var pixelsPerColumn = _customPixelsPerColumn.intValue;
+            var columnsPerFrame = _customColumnsPerFrame.intValue;
+            var scanRateHz = _customScanRateHz.floatValue;
+            var fovTopDeg = _customFovTopDeg.floatValue;
+            var fovBottomDeg = _customFovBottomDeg.floatValue;
+            var minRangeMeters = _customMinRangeMeters.floatValue;
+
+            if (!_hasCachedCustomProfile ||
+                _cachedCustomPixelsPerColumn != pixelsPerColumn ||
+                _cachedCustomColumnsPerFrame != columnsPerFrame ||
+                !Mathf.Approximately(_cachedCustomScanRateHz, scanRateHz) ||
+                !Mathf.Approximately(_cachedCustomFovTopDeg, fovTopDeg) ||
+                !Mathf.Approximately(_cachedCustomFovBottomDeg, fovBottomDeg) ||
+                !Mathf.Approximately(_cachedCustomMinRangeMeters, minRangeMeters))
+            {
+                _hasCachedCustomProfile = true;
+                _cachedCustomPixelsPerColumn = pixelsPerColumn;
+                _cachedCustomColumnsPerFrame = columnsPerFrame;
+                _cachedCustomScanRateHz = scanRateHz;
+                _cachedCustomFovTopDeg = fovTopDeg;
+                _cachedCustomFovBottomDeg = fovBottomDeg;
+                _cachedCustomMinRangeMeters = minRangeMeters;
+                _cachedCustomProfile = LidarProfileLoader.CreateUniform(
+                    "Custom", pixelsPerColumn, columnsPerFrame,
+                    scanRateHz, fovTopDeg, fovBottomDeg,
+                    minRangeMeters);
+            }
+
+            return _cachedCustomProfile;
         }
 
         private static void DrawProfilePreview(LidarProfile profile)
