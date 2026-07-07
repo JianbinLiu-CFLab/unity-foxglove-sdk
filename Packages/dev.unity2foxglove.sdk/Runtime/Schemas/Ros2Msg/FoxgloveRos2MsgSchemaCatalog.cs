@@ -1572,6 +1572,12 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         /// <summary>Read-only list of all generated ROS 2 .msg schemas.</summary>
         public static IReadOnlyList<FoxgloveRos2MsgSchemaCatalogEntry> Entries { get; } = Array.AsReadOnly(EntriesArray);
 
+        /// <summary>Read-only list of all runtime-registered ROS 2 .msg schemas, including standard ROS 2 fallback schemas.</summary>
+        public static IReadOnlyList<FoxgloveRos2MsgSchemaCatalogEntry> RegisteredEntries { get; } = BuildRegisteredEntries();
+
+        /// <summary>Total number of ROS 2 .msg schemas registered at runtime.</summary>
+        public static int TotalRegisteredCount => EntriesArray.Length + Ros2StandardMsgSchemaCatalog.EntryCount;
+
         /// <summary>Find a catalog entry by ROS 2 interface schema name, including standard ROS 2 fallback schemas.</summary>
         public static bool TryGet(string schemaName, out FoxgloveRos2MsgSchemaCatalogEntry entry)
         {
@@ -1634,6 +1640,14 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             }
 
             return map;
+        }
+
+        private static IReadOnlyList<FoxgloveRos2MsgSchemaCatalogEntry> BuildRegisteredEntries()
+        {
+            var entries = new List<FoxgloveRos2MsgSchemaCatalogEntry>(TotalRegisteredCount);
+            entries.AddRange(EntriesArray);
+            entries.AddRange(Ros2StandardMsgSchemaCatalog.Entries);
+            return entries.AsReadOnly();
         }
 
         private static string Decode(string base64)

@@ -65,6 +65,19 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void TryEnqueueRejectsOversizedPayloadAtRegistryBoundary()
+        {
+            var reg = new FoxgloveServiceRegistry();
+            var payload = new byte[FoxgloveServiceRegistry.MaxPayloadBytes + 1];
+
+            var accepted = reg.TryEnqueue(1, 1, 1, "json", payload, out var call, out var error);
+
+            Assert.False(accepted);
+            Assert.Null(call);
+            Assert.Contains(FoxgloveServiceRegistry.MaxPayloadBytes.ToString(), error, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void EmptyParamNamesMeansAll()
         {
             var reg = new ParameterSubscriptionRegistry();

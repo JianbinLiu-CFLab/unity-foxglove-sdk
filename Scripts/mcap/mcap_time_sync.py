@@ -57,7 +57,7 @@ class MessageSamples:
     topic: str
     log_times_ns: list[int]
     publish_times_ns: list[int]
-    payload_times_ns: list[int]
+    payload_times_ns: list[int | None]
 
 
 def percent_if(values: list[float], limit_ms: float) -> float:
@@ -105,14 +105,23 @@ def skip_field(data: bytes, offset: int, wire_type: int) -> int:
         return offset
 
     if wire_type == WIRE_FIXED64:
-        return offset + 8
+        end = offset + 8
+        if end > len(data):
+            raise ValueError("malformed protobuf fixed64 field")
+        return end
 
     if wire_type == WIRE_LENGTH_DELIMITED:
         length, offset = parse_varint(data, offset)
-        return offset + length
+        end = offset + length
+        if length < 0 or end > len(data):
+            raise ValueError("malformed protobuf length field")
+        return end
 
     if wire_type == WIRE_FIXED32:
-        return offset + 4
+        end = offset + 4
+        if end > len(data):
+            raise ValueError("malformed protobuf fixed32 field")
+        return end
 
     if wire_type in (WIRE_START_GROUP, WIRE_END_GROUP):
         raise ValueError("unsupported protobuf group wire type")
@@ -174,33 +183,37 @@ def parse_payload_timestamp_ns(payload: bytes) -> int | None:
     offset = 0
     sec = None
     nsec = None
+    nested_timestamp = None
 
-    while offset < len(payload):
-        tag, offset = parse_varint(payload, offset)
-        field_number = tag >> 3
-        wire_type = tag & 0x07
+    try:
+        while offset < len(payload):
+            tag, offset = parse_varint(payload, offset)
+            field_number = tag >> 3
+            wire_type = tag & 0x07
 
-        # Timestamp usually sits in field #1 as a nested length-delimited message.
-        if field_number == 1 and wire_type == WIRE_LENGTH_DELIMITED:
-            nested, offset = read_length_prefixed(payload, offset)
-            parsed = parse_timestamp_message(nested)
-            if parsed is not None:
-                return parsed
-            continue
+            # Timestamp usually sits in field #1 as a nested length-delimited message.
+            if field_number == 1 and wire_type == WIRE_LENGTH_DELIMITED:
+                nested, offset = read_length_prefixed(payload, offset)
+                parsed = parse_timestamp_message(nested)
+                if parsed is not None and nested_timestamp is None:
+                    nested_timestamp = parsed
+                continue
 
-        # Fallback if a caller sends a raw sec/nsec-style flat payload.
-        if field_number == 1 and wire_type == WIRE_VARINT:
-            sec, offset = parse_varint(payload, offset)
-            continue
+            # Fallback if a caller sends a raw sec/nsec-style flat payload.
+            if field_number == 1 and wire_type == WIRE_VARINT:
+                sec, offset = parse_varint(payload, offset)
+                continue
 
-        if field_number == 2 and wire_type == WIRE_VARINT:
-            nsec, offset = parse_varint(payload, offset)
-            continue
+            if field_number == 2 and wire_type == WIRE_VARINT:
+                nsec, offset = parse_varint(payload, offset)
+                continue
 
-        if sec is not None and nsec is not None:
-            return int(sec) * 1_000_000_000 + int(nsec)
+            offset = skip_field(payload, offset, wire_type)
+    except ValueError:
+        return None
 
-        offset = skip_field(payload, offset, wire_type)
+    if nested_timestamp is not None:
+        return nested_timestamp
 
     if sec is not None and nsec is not None:
         return int(sec) * 1_000_000_000 + int(nsec)
@@ -332,9 +345,7 @@ def parse_mcap(mcap_path: Path, imu_topic: str, pointcloud_topic: str) -> dict[s
             samples.log_times_ns.append(message.log_time)
             samples.publish_times_ns.append(message.publish_time)
 
-            payload_ns = parse_payload_timestamp_ns(message.data)
-            if payload_ns is not None:
-                samples.payload_times_ns.append(payload_ns)
+            samples.payload_times_ns.append(parse_payload_timestamp_ns(message.data))
 
     return topic_samples
 
@@ -366,8 +377,8 @@ def validate_topics(
     report["counts"] = {
         "imu_messages": len(imu_samples.log_times_ns),
         "pointcloud_messages": len(pointcloud_samples.log_times_ns),
-        "imu_payload_parsed": len(imu_samples.payload_times_ns),
-        "pointcloud_payload_parsed": len(pointcloud_samples.payload_times_ns),
+        "imu_payload_parsed": sum(1 for value in imu_samples.payload_times_ns if value is not None),
+        "pointcloud_payload_parsed": sum(1 for value in pointcloud_samples.payload_times_ns if value is not None),
     }
 
     pc_log_payload_ms = [
@@ -377,8 +388,8 @@ def validate_topics(
     ]
     report["pointcloud_log_minus_payload_ms"] = describe_deltas(pc_log_payload_ms)
 
-    imu_payload_ns = imu_samples.payload_times_ns
-    pointcloud_payload_ns = pointcloud_samples.payload_times_ns
+    imu_payload_ns = [value for value in imu_samples.payload_times_ns if value is not None]
+    pointcloud_payload_ns = [value for value in pointcloud_samples.payload_times_ns if value is not None]
 
     if len(imu_payload_ns) >= 2 and len(pointcloud_payload_ns) >= 2:
         align_input = pointcloud_payload_ns[skip_frames:]

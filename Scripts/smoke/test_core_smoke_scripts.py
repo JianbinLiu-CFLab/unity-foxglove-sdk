@@ -205,13 +205,12 @@ class CoreSmokeScriptTests(unittest.TestCase):
             startup_timeout=0.02,
         )
 
-        with mock.patch.object(module.subprocess, "Popen", return_value=SilentProcess()):
-            started = time.monotonic()
+        process = SilentProcess()
+        with mock.patch.object(module.subprocess, "Popen", return_value=process):
             with self.assertRaises(RuntimeError):
                 module.launch_backend(args, ROOT)
-            elapsed = time.monotonic() - started
 
-        self.assertLess(elapsed, 0.12)
+        self.assertTrue(getattr(process, "terminated", False))
 
     def test_phase139b_windows_stop_backend_does_not_raise_on_wait_timeout(self) -> None:
         """Windows cleanup should not mask the original smoke result."""
@@ -284,6 +283,21 @@ class CoreSmokeScriptTests(unittest.TestCase):
         self.assertFalse(context.check_hostname)
         self.assertEqual(ssl.CERT_NONE, context.verify_mode)
         self.assertIn("--insecure", stderr.getvalue())
+
+    def test_topic_rate_probe_restricts_insecure_tls_to_loopback(self) -> None:
+        """The topic-rate probe should not disable TLS validation for remote WSS endpoints."""
+        module = load_smoke_module("topic_rate_tls_under_test", "websocket/topic_rate_probe.py")
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout):
+            context = module.build_ssl_context("wss://localhost:8765", True)
+
+        self.assertIsNotNone(context)
+        self.assertFalse(context.check_hostname)
+        self.assertEqual(ssl.CERT_NONE, context.verify_mode)
+        self.assertIn("--insecure", stdout.getvalue())
+        with self.assertRaises(ValueError):
+            module.build_ssl_context("wss://example.com:8765", True)
 
     def test_pointcloud_probe_rejects_non_strict_json_base64(self) -> None:
         """Whitespace-tolerant base64 decoding should not hide malformed payloads."""

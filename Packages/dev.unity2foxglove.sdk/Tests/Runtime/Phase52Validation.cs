@@ -607,13 +607,13 @@ namespace Unity.FoxgloveSDK.Tests
                   !managerSource.Contains("if (!IsRunning)\n            {\n                StopCertificateDistributor();\n                return;\n            }"),
                 "52C-1g3: StopServer still stops runtime so active recordings are finalized even if transport is already stopped");
             var stopIndex = runtimeSource.IndexOf("public void Stop()", StringComparison.Ordinal);
-            var detachRecorderIndex = runtimeSource.IndexOf("session?.SetRecorder(null);", stopIndex, StringComparison.Ordinal);
+            var firstDetachRecordingIndex = runtimeSource.IndexOf("_recording.DetachFromSession();", stopIndex, StringComparison.Ordinal);
             var disposeSessionIndex = runtimeSource.IndexOf("session?.Dispose();", stopIndex, StringComparison.Ordinal);
-            var detachRecordingIndex = runtimeSource.IndexOf("_recording.DetachFromSession();", stopIndex, StringComparison.Ordinal);
+            var finalDetachRecordingIndex = runtimeSource.IndexOf("_recording.DetachFromSession();", disposeSessionIndex, StringComparison.Ordinal);
             Check(stopIndex >= 0 &&
-                  detachRecorderIndex > stopIndex &&
-                  disposeSessionIndex > detachRecorderIndex &&
-                  detachRecordingIndex > disposeSessionIndex,
+                  firstDetachRecordingIndex > stopIndex &&
+                  disposeSessionIndex > firstDetachRecordingIndex &&
+                  finalDetachRecordingIndex > disposeSessionIndex,
                 "52C-1g4: runtime detaches recorder from session and stops transport before finalizing recording");
 
             var startIndex = demoSource.IndexOf("private void Start()", StringComparison.Ordinal);

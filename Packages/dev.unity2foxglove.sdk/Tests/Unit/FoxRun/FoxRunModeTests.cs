@@ -291,15 +291,38 @@ namespace Demo
             {
                 ManifestMember(FoxRunMode.SubscribeOnly)
             });
+            var publishAndSubscribe = FoxRunManifestBuilder.Build(new[]
+            {
+                ManifestMember(FoxRunMode.PublishAndSubscribe)
+            });
 
             var publishJson = FoxRunManifestJsonWriter.WriteCanonical(publishOnly);
             var subscribeJson = FoxRunManifestJsonWriter.WriteCanonical(subscribeOnly);
+            var publishAndSubscribeJson = FoxRunManifestJsonWriter.WriteCanonical(publishAndSubscribe);
 
             Assert.DoesNotContain("\"flowMode\"", publishJson, StringComparison.Ordinal);
             Assert.Contains("\"flowMode\":\"SubscribeOnly\"", subscribeJson, StringComparison.Ordinal);
+            Assert.Contains("\"flowMode\":\"PublishAndSubscribe\"", publishAndSubscribeJson, StringComparison.Ordinal);
             Assert.NotEqual(
                 publishOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
                 subscribeOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash);
+            Assert.NotEqual(
+                publishOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
+                publishAndSubscribe.Sections.FoxRun.Types[0].Contracts[0].ContractHash);
+        }
+
+        [Fact]
+        public void ManifestPolicyHashInputCanonicalizesNonFiniteFloats()
+        {
+            var hashInput = FoxRunManifestJsonWriter.WritePolicyHashInput(new FoxRunManifestPolicy(
+                "OnChange",
+                float.NaN,
+                float.PositiveInfinity,
+                float.NegativeInfinity));
+
+            Assert.Contains("\"rateHz\":0", hashInput, StringComparison.Ordinal);
+            Assert.Contains("\"changeEpsilon\":0", hashInput, StringComparison.Ordinal);
+            Assert.Contains("\"forceIntervalSeconds\":0", hashInput, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -372,8 +395,10 @@ namespace Demo
 
         private static MetadataReference[] BasicReferences()
         {
-            var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
+            var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? string.Empty;
+            var trusted = trustedAssemblies
                 .Split(Path.PathSeparator)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(path => MetadataReference.CreateFromFile(path));
 
             return trusted

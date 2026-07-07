@@ -75,6 +75,9 @@ namespace Unity.FoxgloveSDK.Components
 
     internal static class CameraTimingDiagnostics
     {
+        // Main-thread diagnostics bridge: camera publishers publish from Unity callbacks and
+        // FoxgloveManager reads during its Update/stall logging path. Do not write this from
+        // background workers; CameraTimingSnapshot is intentionally a large immutable struct.
         private static CameraTimingSnapshot s_lastSnapshot = CameraTimingSnapshot.NoFrame;
 
         public static CameraTimingSnapshot LastSnapshotOrDefault

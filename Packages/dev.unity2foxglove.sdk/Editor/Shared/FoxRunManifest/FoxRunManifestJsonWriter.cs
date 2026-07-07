@@ -60,6 +60,11 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Write the canonical contract hash input. Callers should pass
+        /// pre-normalized policy/contract data; non-finite policy floats are
+        /// canonicalized to 0 by the policy writer for runtime-stable hashes.
+        /// </summary>
         public static string WriteContractHashInput(
             string declaringType,
             string schemaName,
@@ -113,6 +118,11 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Write the canonical policy hash input. NaN and infinity policy
+        /// floats are written as 0 so hash identity stays stable across
+        /// Unity/Mono/.NET runtimes.
+        /// </summary>
         public static string WritePolicyHashInput(FoxRunManifestPolicy policy)
         {
             var sb = new StringBuilder();
@@ -349,6 +359,11 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append('"');
         }
 
+        /// <summary>
+        /// Append a canonical manifest float. Non-finite values are written as
+        /// 0 because JSON has no NaN/Infinity literal and manifest hash input
+        /// must stay deterministic across runtimes.
+        /// </summary>
         private static void AppendFloat(StringBuilder sb, float value)
         {
             if (float.IsNaN(value) || float.IsInfinity(value))

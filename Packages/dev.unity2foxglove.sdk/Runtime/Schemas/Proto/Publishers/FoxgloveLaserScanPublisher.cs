@@ -7,7 +7,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Foxglove.Schemas;
 using UnityEngine;
@@ -40,6 +39,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _syntheticRangesCount;
         private double _syntheticRangesMeters;
         private readonly ConcurrentQueue<QueuedLaserScanFrame> _queuedPublishFrames = new ConcurrentQueue<QueuedLaserScanFrame>();
+        private readonly object _queuedPublishFramesGate = new object();
         private int _queuedPublishFrameCount;
         private int _queuedOffMainThreadPublishFrameCount;
         private int _droppedQueuedPublishFrameCount;
@@ -246,31 +246,37 @@ namespace Unity.FoxgloveSDK.Components
         {
             var rangeCopy = CopyRequiredValues(ranges, nameof(ranges));
             var intensityCopy = CopyOptionalValues(intensities);
-            var queuedCount = Interlocked.Increment(ref _queuedPublishFrameCount);
-            if (queuedCount > MaxQueuedPublishFrames)
+            lock (_queuedPublishFramesGate)
             {
-                Interlocked.Decrement(ref _queuedPublishFrameCount);
-                Interlocked.Increment(ref _droppedQueuedPublishFrameCount);
-                return;
-            }
+                var queuedCount = Interlocked.Increment(ref _queuedPublishFrameCount);
+                if (queuedCount > MaxQueuedPublishFrames)
+                {
+                    Interlocked.Decrement(ref _queuedPublishFrameCount);
+                    Interlocked.Increment(ref _droppedQueuedPublishFrameCount);
+                    return;
+                }
 
-            _queuedPublishFrames.Enqueue(new QueuedLaserScanFrame(
-                logTimeNs,
-                frameId,
-                startAngleRadians,
-                endAngleRadians,
-                rangeCopy,
-                intensityCopy));
+                _queuedPublishFrames.Enqueue(new QueuedLaserScanFrame(
+                    logTimeNs,
+                    frameId,
+                    startAngleRadians,
+                    endAngleRadians,
+                    rangeCopy,
+                    intensityCopy));
+            }
             Interlocked.Increment(ref _queuedOffMainThreadPublishFrameCount);
         }
 
         private void ClearQueuedPublishFrames()
         {
-            while (_queuedPublishFrames.TryDequeue(out _))
+            lock (_queuedPublishFramesGate)
             {
+                Interlocked.Exchange(ref _queuedPublishFrameCount, 0);
+                while (_queuedPublishFrames.TryDequeue(out _))
+                {
+                }
             }
 
-            Interlocked.Exchange(ref _queuedPublishFrameCount, 0);
             Interlocked.Exchange(ref _queuedOffMainThreadPublishFrameCount, 0);
             Interlocked.Exchange(ref _droppedQueuedPublishFrameCount, 0);
         }
@@ -288,9 +294,8 @@ namespace Unity.FoxgloveSDK.Components
             if (dropped > 0)
                 Debug.LogWarning($"[Foxglove] LaserScan dropped {dropped} queued PublishFrame request(s) because the main-thread queue is full.");
 
-            while (_queuedPublishFrames.TryDequeue(out var frame))
+            while (TryDequeuePublishFrame(out var frame))
             {
-                Interlocked.Decrement(ref _queuedPublishFrameCount);
                 if (!canPublishFrames)
                     continue;
 
@@ -304,6 +309,18 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private bool TryDequeuePublishFrame(out QueuedLaserScanFrame frame)
+        {
+            lock (_queuedPublishFramesGate)
+            {
+                if (!_queuedPublishFrames.TryDequeue(out frame))
+                    return false;
+
+                Interlocked.Decrement(ref _queuedPublishFrameCount);
+                return true;
+            }
+        }
+
         private bool IsUnityMainThread()
         {
             return _unityThreadId != 0 && Thread.CurrentThread.ManagedThreadId == _unityThreadId;
@@ -313,14 +330,22 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (values == null)
                 throw new ArgumentNullException(parameterName);
-            return values is double[] array ? (double[])array.Clone() : values.ToArray();
+            return values is double[] array ? (double[])array.Clone() : CopyEnumerable(values);
         }
 
         private static double[] CopyOptionalValues(IEnumerable<double> values)
         {
             if (values == null)
                 return Array.Empty<double>();
-            return values is double[] array ? (double[])array.Clone() : values.ToArray();
+            return values is double[] array ? (double[])array.Clone() : CopyEnumerable(values);
+        }
+
+        private static double[] CopyEnumerable(IEnumerable<double> values)
+        {
+            var copy = new List<double>();
+            foreach (var value in values)
+                copy.Add(value);
+            return copy.ToArray();
         }
 
         private static string SanitizeNonEmptyFrameId(string raw, string fallback)

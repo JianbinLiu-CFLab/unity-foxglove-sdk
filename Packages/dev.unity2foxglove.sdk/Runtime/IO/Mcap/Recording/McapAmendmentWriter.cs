@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.IO
 
             _filePath = Path.GetFullPath(filePath);
             _enableCrcs = enableCrcs;
-            _sourceStream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.None);
+            _sourceStream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             try
             {
                 var reader = new McapReader(_sourceStream);
@@ -206,7 +206,16 @@ namespace Unity.FoxgloveSDK.IO
             try
             {
                 if (!_closed && !_failed)
-                    Close();
+                {
+                    try
+                    {
+                        Close();
+                    }
+                    catch
+                    {
+                        _failed = true;
+                    }
+                }
             }
             finally
             {

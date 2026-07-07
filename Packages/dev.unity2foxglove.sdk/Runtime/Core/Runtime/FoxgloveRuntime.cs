@@ -343,7 +343,7 @@ namespace Unity.FoxgloveSDK.Core
             _replayOrchestrator.Detach(_replay);
             var session = _session;
             _session = null;
-            session?.SetRecorder(null);
+            _recording.DetachFromSession();
             try
             {
                 session?.Dispose();

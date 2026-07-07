@@ -88,6 +88,56 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(expected, QuoteArgument(value));
         }
 
+        [Fact]
+        public void CameraVideoSidecarOptionsFactoryClampsGeometryAndRate()
+        {
+            var h264 = (FfmpegH264EncoderOptions)CreateOptions(
+                "CreateH264Options",
+                "",
+                0,
+                -1,
+                0,
+                -2,
+                -3,
+                0,
+                -4);
+            var h265 = (FfmpegH265EncoderOptions)CreateOptions(
+                "CreateH265Options",
+                "",
+                0,
+                -1,
+                0,
+                -2,
+                -3,
+                0,
+                -4);
+            var openH264 = (OpenH264EncoderOptions)CreateOptions(
+                "CreateOpenH264Options",
+                "",
+                "",
+                0,
+                -1,
+                0,
+                -2,
+                -3,
+                0,
+                -4);
+            var mediaFoundation = (MediaFoundationH264EncoderOptions)CreateOptions(
+                "CreateMediaFoundationH264Options",
+                0,
+                -1,
+                0,
+                -2,
+                -3,
+                0,
+                -4);
+
+            AssertPositiveVideoOptions(h264);
+            AssertPositiveVideoOptions(h265);
+            AssertPositiveVideoOptions(openH264);
+            AssertPositiveVideoOptions(mediaFoundation);
+        }
+
         private static ConcurrentQueue<ulong> PendingTimestamps(OpenH264EncoderSidecar sidecar)
         {
             var field = typeof(OpenH264EncoderSidecar).GetField(
@@ -104,6 +154,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert.NotNull(method);
             return (string)method.Invoke(null, new object[] { value });
+        }
+
+        private static object CreateOptions(string methodName, params object[] args)
+        {
+            var factory = typeof(FfmpegH264EncoderOptions).Assembly.GetType(
+                "Foxglove.Schemas.Video.CameraVideoSidecarOptionsFactory");
+            Assert.NotNull(factory);
+            var method = factory.GetMethod(methodName, BindingFlags.Static | BindingFlags.Public);
+            Assert.NotNull(method);
+            return method.Invoke(null, args);
+        }
+
+        private static void AssertPositiveVideoOptions(object options)
+        {
+            Assert.Equal(1, IntProperty(options, "Width"));
+            Assert.Equal(1, IntProperty(options, "Height"));
+            Assert.Equal(1, IntProperty(options, "FrameRate"));
+            Assert.Equal(1, IntProperty(options, "BitrateKbps"));
+            Assert.Equal(1, IntProperty(options, "KeyframeInterval"));
+            Assert.Equal(1, IntProperty(options, "MaxInputQueue"));
+            Assert.Equal(1, IntProperty(options, "MaxOutputQueue"));
+        }
+
+        private static int IntProperty(object target, string name)
+        {
+            var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(field);
+            return (int)field.GetValue(target);
         }
     }
 }

@@ -353,9 +353,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Verified
 
-- Runtime validation suite should be run before tagging this release.
-- Release package validation should be run before tagging this release.
-- Manual WSS and replay-scrub smoke tests should be repeated before publishing binary evidence.
+- Historical verification evidence for v1.4.0 was not recorded in this changelog before tagging.
+- Treat this entry as release-history documentation only; do not use it as validation evidence for later releases.
 
 ## 1.3.0 - 2026-05-12
 
@@ -369,8 +368,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Verified
 
-- Runtime validation suite should be run before tagging this release.
-- Release package validation should be run before tagging this release.
+- Historical verification evidence for v1.3.0 was not recorded in this changelog before tagging.
+- Treat this entry as release-history documentation only; do not use it as validation evidence for later releases.
 
 ## 1.2.0 - 2026-05-11
 

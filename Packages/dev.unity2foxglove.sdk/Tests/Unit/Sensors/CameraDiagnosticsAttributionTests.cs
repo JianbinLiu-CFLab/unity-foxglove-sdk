@@ -72,12 +72,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.DoesNotContain("CameraPublishDiagnostics", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("CameraTimingDiagnostics.Publish", cameraDiagnostics, StringComparison.Ordinal);
             Assert.Contains("CameraTimingDiagnostics.Reset", cameraDiagnostics, StringComparison.Ordinal);
+            Assert.Contains("Main-thread diagnostics bridge", sharedSnapshot, StringComparison.Ordinal);
             Assert.Contains("cameraSnapshotAgeMs=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraRenderMs=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraPendingReadbacksBefore=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraPendingReadbacksAfter=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraEncodeQueue=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraCompletedQueue=", managerDiagnostics, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CameraHealthSkipsAreLoggedSeparatelyFromHardBudgetSkips()
+        {
+            var diagnostics = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/CameraPublishDiagnostics.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("_readbackBudgetSkipCount", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("_healthReadbackSkipCount", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("healthSkips(readback=", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("renderPressureSkip=", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("videoOutputSkip=", diagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("case CameraPipelineHealthSkipReason.ReadbackQueueFull:\n                    _readbackBudgetSkipCount++;", diagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("case CameraPipelineHealthSkipReason.PixelBudgetExceeded:\n                    _pixelBudgetSkipCount++;", diagnostics, StringComparison.Ordinal);
         }
 
         [Fact]

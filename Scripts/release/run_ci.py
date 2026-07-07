@@ -202,6 +202,22 @@ def _check_boundary() -> bool:
     return True
 
 
+def _check_changelog_verified_stubs() -> bool:
+    """Fail if release changelog verification stubs were not replaced."""
+    stub = "should be run before tagging this release"
+    path = REPO_ROOT / "CHANGELOG.md"
+    text = path.read_text(encoding="utf-8")
+    if stub not in text:
+        print(f"\n{green(PASS)} Changelog verified sections contain no release stubs")
+        return True
+
+    print(f"\n{red('FAIL')} CHANGELOG.md still contains release verification stub text:")
+    for index, line in enumerate(text.splitlines(), start=1):
+        if stub in line:
+            print(f"  CHANGELOG.md:{index}: {line}")
+    return False
+
+
 def main() -> int:
     """Parse args, run selected CI suites, and return exit code."""
 
@@ -350,6 +366,7 @@ def main() -> int:
     if args.only in (None, "boundary"):
         boundary_ok = _check_boundary()
         results["boundary"] = boundary_ok
+        results["changelog-verified"] = _check_changelog_verified_stubs()
 
     # --- summary ---
     print(f"\n{'=' * 60}")
