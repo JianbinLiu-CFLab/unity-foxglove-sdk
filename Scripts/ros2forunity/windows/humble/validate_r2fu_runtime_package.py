@@ -42,6 +42,7 @@ CRITICAL_DLLS = (
     "rcl.dll",
     "yaml.dll",
     "spdlog.dll",
+    "rosgraph_msgs_assembly.dll",
 )
 
 BASELINE_MESSAGE_PACKAGES = (
@@ -104,7 +105,7 @@ INTERNAL_TOKENS = (
     "phase",
     "137B",
     "106B",
-    "110",
+    "Phase110",
 )
 
 
@@ -160,6 +161,37 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def critical_runtime_file_path(name: str) -> Path:
+    """Resolve critical runtime files across managed and native plugin roots."""
+    if name.endswith("_assembly.dll"):
+        return RUNTIME_ROOT / "Plugins" / name
+    return PLUGIN_ROOT / name
+
+
+def is_sha256(value: object) -> bool:
+    """Return true for a complete lowercase SHA-256 hex string."""
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def unity_editor_using_is_guarded(text: str) -> bool:
+    """Return true when every UnityEditor using is inside a UNITY_EDITOR block."""
+    in_unity_editor = False
+    found = False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#if") and "UNITY_EDITOR" in stripped:
+            in_unity_editor = True
+            continue
+        if stripped.startswith("#endif"):
+            in_unity_editor = False
+            continue
+        if "using UnityEditor;" in stripped:
+            found = True
+            if not in_unity_editor:
+                return False
+    return found
 
 
 def check_package_metadata(results: list[CheckResult]) -> None:
@@ -246,9 +278,8 @@ def check_message_package_floor(results: list[CheckResult]) -> None:
         add(results, f"Humble handoff DLL present: {dll}", path.exists(), rel(path))
 
 
-def check_runtime_manifest(results: list[CheckResult]) -> None:
+def check_runtime_manifest(results: list[CheckResult], data: dict) -> None:
     """Validate the runtime support manifest."""
-    data = load_json(MANIFEST, results, "runtime manifest parses")
     if not data:
         return
 
@@ -281,7 +312,7 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     add(
         results,
         "runtime manifest artifactSha256",
-        isinstance(artifact_sha, str) and len(artifact_sha) == 64 and re.fullmatch(r"[0-9a-f]+", artifact_sha) is not None,
+        is_sha256(artifact_sha),
         f"artifactSha256={artifact_sha!r}",
     )
     add(results, "runtime manifest artifactSize", isinstance(artifact_size, int) and artifact_size > 0, f"artifactSize={artifact_size!r}")
@@ -319,12 +350,11 @@ def check_runtime_manifest(results: list[CheckResult]) -> None:
     )
 
 
-def check_inventory(results: list[CheckResult], release_gate: bool = False, skip_dll_hash: bool = False) -> None:
+def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bool = False, skip_dll_hash: bool = False) -> None:
     """Validate the copied runtime inventory."""
     data = load_json(INVENTORY, results, "runtime inventory parses")
     if not data:
         return
-    manifest = load_json(MANIFEST, results, "runtime manifest parses for inventory cross-check")
 
     expected = {
         "schemaVersion": 1,
@@ -442,7 +472,7 @@ def check_inventory(results: list[CheckResult], release_gate: bool = False, skip
 def check_runtime_files(results: list[CheckResult]) -> None:
     """Validate critical runtime files and package layout."""
     for dll in CRITICAL_DLLS:
-        path = PLUGIN_ROOT / dll
+        path = critical_runtime_file_path(dll)
         add(results, f"critical DLL present: {dll}", path.exists(), rel(path))
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []
@@ -487,8 +517,7 @@ def check_package_path_patch(results: list[CheckResult]) -> None:
     add(
         results,
         "UnityEditor using guarded",
-        re.search(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", text) is not None
-        and re.sub(r"#if\s+UNITY_EDITOR\s+using UnityEditor;\s+#endif", "", text).find("using UnityEditor;") < 0,
+        unity_editor_using_is_guarded(text),
         "ROS2ForUnity.cs",
     )
     add(
@@ -602,9 +631,17 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     add(results, "ROS2UnityCore bounded join", core_join, "ROS2UnityCore.cs")
 
     runtime = read_optional_text(scripts / "ROS2ForUnity.cs")
-    old_lifecycle = all(token in runtime for token in ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered"))
-    current_lifecycle = all(token in runtime for token in ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered"))
-    add(results, "ROS2ForUnity deterministic lifecycle", old_lifecycle or current_lifecycle, "ROS2ForUnity.cs")
+    old_tokens = ("ownerCount", "ownsLifecycle", "lifecycleGate", "UnregisterCallbacks()", "editorCallbacksRegistered")
+    current_tokens = ("referenceCount", "ownsReference", "initMutex", "ShutdownShared()", "editorHandlersRegistered")
+    old_lifecycle = all(token in runtime for token in old_tokens)
+    current_lifecycle = all(token in runtime for token in current_tokens)
+    mixed_partial = old_lifecycle and any(token in runtime for token in current_tokens) and not current_lifecycle
+    add(
+        results,
+        "ROS2ForUnity deterministic lifecycle",
+        (old_lifecycle or current_lifecycle) and not mixed_partial,
+        f"old_lifecycle={old_lifecycle} current_lifecycle={current_lifecycle} mixed_partial={mixed_partial}",
+    )
     add(results, "ROS2ForUnity avoids finalizer shutdown", "~ROS2ForUnity" not in runtime, "ROS2ForUnity.cs")
     add(
         results,
@@ -627,9 +664,37 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         and "standalone runtime owns its RMW selection" in runtime
         and "standalone runtime owns ROS_DISTRO" in runtime
         and "WarnIfStandaloneRosDistroOverride" in runtime
-        and "packagedRos2Version = GetMetadataValue" in runtime
         and "CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)" in runtime
         and "ROS2 version in standalone process environment does not match this runtime package" not in runtime,
+        "ROS2ForUnity.cs",
+    )
+    constructor_start = runtime.find("internal ROS2ForUnity()")
+    constructor_end = runtime.find("\n    private", constructor_start + 1)
+    constructor = runtime[constructor_start:constructor_end] if constructor_start >= 0 and constructor_end > constructor_start else ""
+    library_loading = constructor[constructor.find("// Library loading"):] if "// Library loading" in constructor else constructor
+    add(
+        results,
+        "ROS2ForUnity avoids duplicate standalone environment setup",
+        constructor.count("SetStandalonePrefixPath();") == 1
+        and constructor.count("SetStandaloneRmwImplementation();") == 1
+        and constructor.count("SetStandaloneRcutilsConsoleMode();") == 1
+        and constructor.count("SetStandaloneRosDistro(currentRos2Version);") == 1
+        and "packagedRos2Version = GetMetadataValue" not in constructor
+        and "SetStandalonePrefixPath();" in library_loading,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "ROS2ForUnity unregisters editor handlers before assembly reload",
+        "AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared" in runtime
+        and "AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared" in runtime,
+        "ROS2ForUnity.cs",
+    )
+    add(results, "ROS2ForUnity removes dead unsynchronized init guard", "ThrowIfUninitialized" not in runtime, "ROS2ForUnity.cs")
+    add(
+        results,
+        "ROS2ForUnity metadata prerequisite error names LoadMetadata",
+        "LoadMetadata() must complete before metadata-backed properties are read." in runtime,
         "ROS2ForUnity.cs",
     )
 
@@ -718,7 +783,7 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         add(results, f"runtime package generator token: {token}", token in generator, token)
 
 
-def check_public_docs(results: list[CheckResult]) -> None:
+def check_public_docs(results: list[CheckResult], manifest: dict) -> None:
     """Validate public runtime docs avoid internal planning names."""
     combined = ""
     for path in PUBLIC_DOCS:
@@ -736,20 +801,21 @@ def check_public_docs(results: list[CheckResult]) -> None:
     add(
         results,
         "README documents one-runtime policy",
-        "Install only one" in readme and "runtime.*" in readme,
+        "Install only one" in readme and ("ros2forunity.runtime." in readme or "runtime packages" in readme),
         "README.md",
     )
+    artifact_sha = str(manifest.get("artifactSha256", "")).strip()
     add(
         results,
         "README documents artifact SHA-256",
-        str(load_json(MANIFEST, results, "runtime manifest parses for docs cross-check").get("artifactSha256", "")) in readme,
+        is_sha256(artifact_sha) and artifact_sha in readme,
         "README.md",
     )
     notices = (PACKAGE / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8", errors="replace") if (PACKAGE / "THIRD_PARTY_NOTICES.md").exists() else ""
     add(
         results,
         "THIRD_PARTY_NOTICES documents artifact SHA-256",
-        str(load_json(MANIFEST, results, "runtime manifest parses for notices cross-check").get("artifactSha256", "")) in notices,
+        is_sha256(artifact_sha) and artifact_sha in notices,
         "THIRD_PARTY_NOTICES.md",
     )
     add(
@@ -794,14 +860,15 @@ def run_checks(release_gate: bool = False, skip_dll_hash: bool = False) -> list[
     check_package_metadata(results)
     check_required_files(results)
     check_message_package_floor(results)
-    check_runtime_manifest(results)
-    check_inventory(results, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
+    manifest = load_json(MANIFEST, results, "runtime manifest parses")
+    check_runtime_manifest(results, manifest)
+    check_inventory(results, manifest, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
     check_runtime_files(results)
     check_package_path_patch(results)
     check_runtime_asmdef(results)
     check_runtime_source_patches(results)
     check_generator_alignment(results)
-    check_public_docs(results)
+    check_public_docs(results, manifest)
     check_package_boundaries(results)
     return results
 
@@ -825,7 +892,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--fast",
         action="store_true",
-        help="Skip per-DLL SHA-256 verification during routine validation; ignored by --release-gate.",
+        help="Skip per-DLL SHA-256 verification for faster routine validation; ignored by --release-gate.",
     )
     parser.add_argument(
         "--skip-dll-hash",

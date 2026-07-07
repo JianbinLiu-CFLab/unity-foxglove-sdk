@@ -3,7 +3,7 @@
    <ros2>humble</ros2>
    <version>
       <sha>b77c088964a604b7ebf426fd97dd72fb8f2f2522</sha>
-      <desc>v0.6.0-jazzy-preview.1-51-gb77c088</desc>
+      <desc>v0.6.0-humble-preview.1-51-gb77c088</desc>
       <date>2026-06-22 21:34:19 +0200</date>
       <branch>feature/humble-windows-standalone-runtime-closure</branch>
    </version>

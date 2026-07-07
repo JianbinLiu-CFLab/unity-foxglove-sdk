@@ -595,6 +595,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
             "rcl.dll",
             "yaml.dll",
             "spdlog.dll",
+            "rosgraph_msgs_assembly.dll",
         ],
         "packagePathPatch": {
             "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",
@@ -959,14 +960,6 @@ def patch_standalone_environment_isolation(text: str) -> str:
     startup_patch = '''            // Load metadata
             LoadMetadata();
             string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
-            if (IsStandalone())
-            {
-                string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
-                SetStandaloneRosDistro(packagedRos2Version);
-                SetStandalonePrefixPath();
-                SetStandaloneRmwImplementation();
-                SetStandaloneRcutilsConsoleMode();
-            }
 '''
     if "packagedRos2Version = GetMetadataValue" not in text and startup_marker in text:
         text = text.replace(startup_marker, startup_patch, 1)
@@ -976,6 +969,16 @@ def patch_standalone_environment_isolation(text: str) -> str:
             "            LoadMetadata();\n            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n            if (IsStandalone())",
             1,
         )
+    duplicate_standalone_block = '''            if (IsStandalone())
+            {
+                string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
+                SetStandaloneRosDistro(packagedRos2Version);
+                SetStandalonePrefixPath();
+                SetStandaloneRmwImplementation();
+                SetStandaloneRcutilsConsoleMode();
+            }
+'''
+    text = text.replace(duplicate_standalone_block, "")
     text = text.replace(
         '            string standalone = IsStandalone() ? "standalone" : "non-standalone";\n',
         '            bool standaloneBuild = IsStandalone();\n'

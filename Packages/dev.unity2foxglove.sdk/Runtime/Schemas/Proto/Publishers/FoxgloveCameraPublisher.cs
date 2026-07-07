@@ -399,6 +399,8 @@ namespace Unity.FoxgloveSDK.Components
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
             StopJpegWorker(clearQueues: true);
+            _jpegPublishPipeline?.Dispose();
+            _jpegPublishPipeline = null;
             if (_pendingRequests == 0)
                 CleanupResources();
             UnlockRuntimeOutputMode();
@@ -415,6 +417,8 @@ namespace Unity.FoxgloveSDK.Components
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
             StopJpegWorker(clearQueues: true);
+            _jpegPublishPipeline?.Dispose();
+            _jpegPublishPipeline = null;
             if (_pendingRequests == 0)
                 CleanupResources();
             UnlockRuntimeOutputMode();

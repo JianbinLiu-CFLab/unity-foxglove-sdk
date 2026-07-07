@@ -8,7 +8,9 @@ import type { PanelExtensionContext } from "@foxglove/extension";
 
 import {
   buildPayload,
+  cloneTimeIfChanged,
   escapeHtml,
+  formatReplayTimeUtc,
   initPanel,
   isBeforeTime,
   readPanelState,
@@ -87,6 +89,12 @@ describe("Unity Replay Sync panel helpers", () => {
     });
   });
 
+  test("readPanelState rejects invalid or non-http endpoints", () => {
+    expect(readPanelState({ endpoint: "not a url" }).endpoint).toBe("http://127.0.0.1:8892/v1/replay-cursor");
+    expect(readPanelState({ endpoint: "javascript:alert(1)" }).endpoint).toBe("http://127.0.0.1:8892/v1/replay-cursor");
+    expect(readPanelState({ endpoint: "https://example.com/replay" }).endpoint).toBe("https://example.com/replay");
+  });
+
   test("readPanelState restores a valid persisted cursor rate and follow flag", () => {
     const state = readPanelState({ maxHz: 30, followUnity: true });
     expect(state.maxHz).toBe(30);
@@ -107,6 +115,29 @@ describe("Unity Replay Sync panel helpers", () => {
     expect(isBeforeTime({ sec: 1_800_000_000, nsec: 999_999_999 }, { sec: 1_800_000_001, nsec: 0 })).toBe(true);
     expect(isBeforeTime({ sec: 1_800_000_001, nsec: 0 }, { sec: 1_800_000_000, nsec: 999_999_999 })).toBe(false);
     expect(isBeforeTime({ sec: 1_800_000_000, nsec: 2 }, { sec: 1_800_000_000, nsec: 3 })).toBe(true);
+  });
+
+  test("cloneTimeIfChanged preserves object identity when bounds do not change", () => {
+    const first = cloneTimeIfChanged(undefined, { sec: 1, nsec: 2 });
+    const second = cloneTimeIfChanged(first, { sec: 1, nsec: 2 });
+    const third = cloneTimeIfChanged(second, { sec: 1, nsec: 3 });
+
+    expect(second).toBe(first);
+    expect(third).not.toBe(first);
+    expect(third).toEqual({ sec: 1, nsec: 3 });
+  });
+
+  test("formatReplayTimeUtc caches same timestamp and resets missing replay time", () => {
+    const cache = { lastSec: undefined as number | undefined, lastNsec: undefined as number | undefined, text: "" };
+
+    expect(formatReplayTimeUtc(undefined, cache)).toBe("Waiting for Foxglove playback");
+    const first = formatReplayTimeUtc({ sec: 1, nsec: 0 }, cache);
+    const second = formatReplayTimeUtc({ sec: 1, nsec: 0 }, cache);
+    const third = formatReplayTimeUtc({ sec: 2, nsec: 0 }, cache);
+
+    expect(second).toBe(first);
+    expect(third).not.toBe(first);
+    expect(formatReplayTimeUtc(undefined, cache)).toBe("Waiting for Foxglove playback");
   });
 });
 
@@ -159,6 +190,34 @@ describe("Unity Replay Sync panel lifecycle", () => {
     for (const call of vi.mocked(context.saveState).mock.calls) {
       expect(call[0]).not.toHaveProperty("token");
     }
+  });
+
+  test("cleanup removes input listeners before remounting on the same panel element", () => {
+    const context = makeContext();
+    const firstCleanup = initPanel(context);
+    firstCleanup?.();
+    initPanel(context);
+
+    const endpoint = context.panelElement.querySelector<HTMLInputElement>("#endpoint");
+    endpoint!.value = "http://127.0.0.1:9001/remounted";
+    endpoint!.dispatchEvent(new Event("change"));
+
+    expect(context.saveState).toHaveBeenCalledTimes(1);
+  });
+
+  test("token is not sent to remote plain-http endpoints", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const context = makeContext({ endpoint: "http://example.com/replay" });
+    initPanel(context);
+    const token = context.panelElement.querySelector<HTMLInputElement>("#token");
+
+    token!.value = "session-token";
+    token!.dispatchEvent(new Event("change"));
+    context.onRender?.({ currentTime: { sec: 4, nsec: 0 } }, vi.fn());
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test("cleanup aborts an in-flight cursor request", () => {
@@ -241,6 +300,33 @@ describe("Unity Replay Sync panel lifecycle", () => {
 
     cleanup?.();
     vi.useRealTimers();
+  });
+
+  test("follow mode retries the same replay time after a stalled request", () => {
+    vi.useFakeTimers();
+    let cleanup: void | (() => void);
+    try {
+      const seekPlayback = vi.fn();
+      const fetchMock = vi.fn((_endpoint: string, _init?: RequestInit) => new Promise<Response>(() => {}));
+      vi.stubGlobal("fetch", fetchMock);
+      const context = makeContext({ followUnity: true });
+      (context as unknown as { seekPlayback: unknown }).seekPlayback = seekPlayback;
+      cleanup = initPanel(context);
+
+      context.onRender?.({ currentTime: { sec: 5, nsec: 120_000_000 } }, vi.fn());
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(2000);
+      vi.runOnlyPendingTimers();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const firstPayload = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+      const secondPayload = JSON.parse(fetchMock.mock.calls[1]![1]!.body as string);
+      expect(secondPayload.replayTime).toEqual(firstPayload.replayTime);
+    } finally {
+      cleanup?.();
+      vi.useRealTimers();
+    }
   });
 
   test("follow mode self-clocks forward via seekPlayback without waiting for currentTime to change", async () => {

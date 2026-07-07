@@ -199,8 +199,19 @@ bool is_valid_ros2_topic_name(const std::string & value)
 
 std::string qos_signature(const BridgeFrame & frame)
 {
-  return frame.schema_name + "\n" + frame.reliability + "\n" + frame.durability + "\n" +
-         std::to_string(frame.depth);
+  auto append_field = [](std::string & signature, const std::string & value) {
+      signature += std::to_string(value.size());
+      signature.push_back(':');
+      signature += value;
+      signature.push_back('|');
+    };
+
+  std::string signature;
+  append_field(signature, frame.schema_name);
+  append_field(signature, frame.reliability);
+  append_field(signature, frame.durability);
+  append_field(signature, std::to_string(frame.depth));
+  return signature;
 }
 
 rclcpp::QoS make_qos(const BridgeFrame & frame)
@@ -349,6 +360,8 @@ int accept_with_timeout(int listen_fd)
   receive_timeout.tv_sec = 0;
   receive_timeout.tv_usec = 250000;
   ::setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO, &receive_timeout, sizeof(receive_timeout));
+  timeval send_timeout = receive_timeout;
+  ::setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(send_timeout));
   return client_fd;
 }
 
@@ -400,6 +413,22 @@ void write_all(int fd, const std::vector<uint8_t> & bytes)
     if (sent <= 0) {
       if (errno == EINTR) {
         continue;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        fd_set write_fds;
+        FD_ZERO(&write_fds);
+        FD_SET(fd, &write_fds);
+        timeval timeout {};
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 250000;
+        const int ready = ::select(fd + 1, nullptr, &write_fds, nullptr, &timeout);
+        if (ready > 0) {
+          continue;
+        }
+        if (ready < 0 && errno == EINTR) {
+          continue;
+        }
+        throw std::runtime_error("socket write timed out");
       }
       throw std::runtime_error("socket write failed");
     }

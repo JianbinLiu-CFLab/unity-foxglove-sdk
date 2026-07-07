@@ -43,6 +43,7 @@ CRITICAL_FILES = (
     "rcl.dll",
     "yaml.dll",
     "spdlog.dll",
+    "rosgraph_msgs_assembly.dll",
     "fmt.dll",
 )
 

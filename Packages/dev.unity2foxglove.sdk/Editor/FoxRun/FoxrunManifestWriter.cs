@@ -8,7 +8,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Threading;
 
@@ -20,7 +19,6 @@ namespace Unity.FoxgloveSDK.Editor
         public const string ManifestHashFileName = "foxrun.manifest.hash";
         public const string ManifestReportFileName = "foxrun.manifest.report.json";
         private const int ReplaceAttempts = 3;
-        private const int ReplaceRetryDelayMilliseconds = 50;
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         public static FoxRunCanonicalManifest WriteManifestFiles(
@@ -170,7 +168,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static void DelayBeforeRetry(int attempt)
         {
             if (attempt + 1 < ReplaceAttempts)
-                Thread.Sleep(ReplaceRetryDelayMilliseconds);
+                Thread.Yield();
         }
 
         private static void TryDeleteTempFile(string tempPath)

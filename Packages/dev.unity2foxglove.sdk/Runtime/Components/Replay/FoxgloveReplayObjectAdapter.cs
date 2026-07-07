@@ -77,6 +77,8 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<int, Transform> _transformByPoseKey = new();
         /// <summary>Local channel overrides used when heuristic topic fallback fails to decode.</summary>
         private readonly Dictionary<ushort, ReplayChannelBehavior> _channelBehaviorOverrides = new();
+        /// <summary>Renderer cache for replay colour application hot paths.</summary>
+        private readonly Dictionary<int, Renderer> _rendererCache = new();
         /// <summary>Pure pose ownership state for the active replay session.</summary>
         private readonly ReplayPoseOwnershipArbiter _poseArbiter = new();
         /// <summary>Suppresses duplicate warnings for missing frames.</summary>
@@ -100,20 +102,20 @@ namespace Unity.FoxgloveSDK.Components
         /// Resolves the FoxgloveManager and loads manual FrameMapping and
         /// EntityMapping overrides into the lookup cache.
         /// </summary>
-        private void Start()
+        private void Awake()
         {
             ResolveManager();
+            LoadManualOverrides();
+        }
+
+        private void Start()
+        {
             EnsureMappingArrays();
             foreach (var fm in _frameOverrides)
-                if (!string.IsNullOrEmpty(fm.ChildFrameId) && fm.Target != null)
-                    _frameCache[fm.ChildFrameId] = fm.Target;
-
+                LoadFrameOverride(fm);
             foreach (var em in _entityOverrides)
-                if (!string.IsNullOrEmpty(em.EntityId) && em.Target != null)
-                    _entityCache[em.EntityId] = em.Target;
-
-            if (isActiveAndEnabled)
-                SubscribeReplay();
+                LoadEntityOverride(em);
+            SubscribeReplay();
         }
 
         private void OnValidate()
@@ -125,6 +127,7 @@ namespace Unity.FoxgloveSDK.Components
         private void OnEnable()
         {
             ResolveManager();
+            LoadManualOverrides();
             SubscribeReplay();
         }
 
@@ -154,6 +157,40 @@ namespace Unity.FoxgloveSDK.Components
                 _frameOverrides = Array.Empty<FrameMapping>();
             if (_entityOverrides == null)
                 _entityOverrides = Array.Empty<EntityMapping>();
+        }
+
+        private void LoadManualOverrides()
+        {
+            EnsureMappingArrays();
+            foreach (var fm in _frameOverrides)
+            {
+                LoadFrameOverride(fm);
+            }
+
+            foreach (var em in _entityOverrides)
+            {
+                LoadEntityOverride(em);
+            }
+        }
+
+        private void LoadFrameOverride(FrameMapping mapping)
+        {
+            if (string.IsNullOrEmpty(mapping.ChildFrameId) || mapping.Target == null)
+                return;
+
+            _frameCache[mapping.ChildFrameId] = mapping.Target;
+            _missedFrames.Remove(mapping.ChildFrameId);
+            _warnedFrames.Remove(mapping.ChildFrameId);
+        }
+
+        private void LoadEntityOverride(EntityMapping mapping)
+        {
+            if (string.IsNullOrEmpty(mapping.EntityId) || mapping.Target == null)
+                return;
+
+            _entityCache[mapping.EntityId] = mapping.Target;
+            _missedEntities.Remove(mapping.EntityId);
+            _warnedEntities.Remove(mapping.EntityId);
         }
 
         private void SubscribeReplay()
@@ -230,12 +267,25 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var jsonBehavior = ReplayChannelBehaviorClassifier.ClassifyJsonObject(json);
                 if (jsonBehavior != ReplayChannelBehavior.NonPose)
+                {
+                    CacheResolvedBehavior(context.ChannelId, jsonBehavior);
                     return jsonBehavior;
+                }
             }
 
-            return behavior == ReplayChannelBehavior.NotLoaded
+            var classified = behavior == ReplayChannelBehavior.NotLoaded
                 ? ReplayChannelBehaviorClassifier.ClassifyChannel(context.MessageEncoding, context.SchemaName, context.SchemaEncoding, context.Topic)
                 : behavior;
+            CacheResolvedBehavior(context.ChannelId, classified);
+            return classified;
+        }
+
+        private void CacheResolvedBehavior(ushort channelId, ReplayChannelBehavior behavior)
+        {
+            if (behavior != ReplayChannelBehavior.NonPose
+                && behavior != ReplayChannelBehavior.Unclassified
+                && behavior != ReplayChannelBehavior.NotLoaded)
+                _channelBehaviorOverrides[channelId] = behavior;
         }
 
         private void OnReplayBatchCompleted(ReplayBatchContext context)
@@ -278,6 +328,7 @@ namespace Unity.FoxgloveSDK.Components
             _poseArbiter.Reset();
             _transformByPoseKey.Clear();
             _channelBehaviorOverrides.Clear();
+            _rendererCache.Clear();
             _missedFrames.Clear();
             _missedEntities.Clear();
             _warnedFrames.Clear();
@@ -316,6 +367,10 @@ namespace Unity.FoxgloveSDK.Components
         private void RemoveStalePoseTarget(int transformKey)
             => _transformByPoseKey.Remove(transformKey);
 
+        /// <summary>
+        /// Source-shape anchor for Phase115GValidation check 115G-C8. Keep this with
+        /// _channelBehaviorOverrides unless that validation is intentionally updated.
+        /// </summary>
         private static bool IsTopicFallbackBehavior(ReplayMessageContext context)
         {
             if (!string.IsNullOrWhiteSpace(context.SchemaName))
@@ -693,15 +748,15 @@ namespace Unity.FoxgloveSDK.Components
         {
             var scaleObj = primitive[sizeKey] as JObject;
             if (scaleObj != null)
-                target.localScale = new Vector3(
+                ApplyScaleIfNonZero(target, new Vector3(
                     ReadJsonFloat(scaleObj, "x", 0f),
                     ReadJsonFloat(scaleObj, "y", 0f),
-                    ReadJsonFloat(scaleObj, "z", 0f));
+                    ReadJsonFloat(scaleObj, "z", 0f)));
 
             var color = primitive["color"] as JObject;
             if (color != null)
             {
-                var renderer = target.GetComponent<Renderer>();
+                var renderer = ResolveRenderer(target);
                 if (renderer != null)
                 {
                     if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
@@ -719,7 +774,7 @@ namespace Unity.FoxgloveSDK.Components
         private void ApplySceneVisuals(object scale, object color, Transform target)
         {
             if (scale != null)
-                target.localScale = ToUnityVector(scale);
+                ApplyScaleIfNonZero(target, ToUnityVector(scale));
 
             if (color != null)
                 ApplyColor(color, target);
@@ -774,7 +829,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ApplyColor(object color, Transform target)
         {
-            var renderer = target.GetComponent<Renderer>();
+            var renderer = ResolveRenderer(target);
             if (renderer == null) return;
 
             if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
@@ -785,6 +840,30 @@ namespace Unity.FoxgloveSDK.Components
                 GetFloatProperty(color, "B"),
                 GetFloatProperty(color, "A")));
             renderer.SetPropertyBlock(_propBlock);
+        }
+
+        private Renderer ResolveRenderer(Transform target)
+        {
+            var key = target.GetInstanceID();
+            if (_rendererCache.TryGetValue(key, out var cached))
+            {
+                if (cached != null)
+                    return cached;
+                _rendererCache.Remove(key);
+            }
+
+            if (!target.TryGetComponent<Renderer>(out var renderer))
+                return null;
+
+            _rendererCache[key] = renderer;
+            return renderer;
+        }
+
+        private static void ApplyScaleIfNonZero(Transform target, Vector3 scale)
+        {
+            if (scale == Vector3.zero)
+                return;
+            target.localScale = scale;
         }
 
         private void TracePoseWrite(string source, ReplayMessageContext context, string id, Transform target)

@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Tests;
 using Xunit;
@@ -199,6 +200,51 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void IndexedReaderConcurrentDisposeDisposesOwnedStreamOnce()
+        {
+            var stream = new CountingDisposeStream(SimpleFiveMessageMcap);
+            var reader = new McapIndexedReader(stream, leaveOpen: false, McapSequentialReadLimits.UnlimitedForTests);
+            using var gate = new ManualResetEventSlim(false);
+            Exception firstException = null;
+            Exception secondException = null;
+
+            var first = new Thread(() =>
+            {
+                try
+                {
+                    gate.Wait();
+                    reader.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    firstException = ex;
+                }
+            });
+            var second = new Thread(() =>
+            {
+                try
+                {
+                    gate.Wait();
+                    reader.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    secondException = ex;
+                }
+            });
+
+            first.Start();
+            second.Start();
+            gate.Set();
+            first.Join();
+            second.Join();
+
+            Assert.Null(firstException);
+            Assert.Null(secondException);
+            Assert.Equal(1, stream.DisposeCount);
+        }
+
+        [Fact]
         public void FileOrderMaxMessagesKeepsFirstMatches()
         {
             using var stream = OpenSimpleMessageMcap(SimpleFiveMessageMcap);
@@ -260,6 +306,25 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             stream.Position = 0;
             return stream;
+        }
+
+        private sealed class CountingDisposeStream : MemoryStream
+        {
+            private int _disposeCount;
+
+            public CountingDisposeStream(byte[] buffer)
+                : base(buffer, writable: false)
+            {
+            }
+
+            public int DisposeCount => Volatile.Read(ref _disposeCount);
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                    Interlocked.Increment(ref _disposeCount);
+                base.Dispose(disposing);
+            }
         }
 
         private static MemoryStream CreateSummaryRecordCrossingFooterMcap()
