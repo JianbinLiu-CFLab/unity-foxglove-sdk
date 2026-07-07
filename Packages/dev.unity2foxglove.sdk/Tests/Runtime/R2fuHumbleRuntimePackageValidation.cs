@@ -105,6 +105,21 @@ namespace Unity.FoxgloveSDK.Tests
             Check(runtimeSource.Contains("StopAllExecutorsForRosShutdown", StringComparison.Ordinal)
                   && componentSource.Contains("StopAllExecutorsForRosShutdown", StringComparison.Ordinal),
                 "160-A7b: ROS2ForUnity shutdown hook is implemented by ROS2UnityComponent");
+            var constructor = ExtractMethodBody(runtimeSource, "ROS2ForUnity");
+            Check(constructor.Contains("string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();", StringComparison.Ordinal)
+                  && CountSubstring(constructor, "SetStandalonePrefixPath();") == 1
+                  && CountSubstring(constructor, "SetStandaloneRmwImplementation();") == 1
+                  && CountSubstring(constructor, "SetStandaloneRcutilsConsoleMode();") == 1
+                  && CountSubstring(constructor, "SetStandaloneRosDistro(currentRos2Version);") == 1
+                  && !constructor.Contains("packagedRos2Version = GetMetadataValue", StringComparison.Ordinal)
+                  && runtimeSource.Contains("AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared", StringComparison.Ordinal)
+                  && runtimeSource.Contains("AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared", StringComparison.Ordinal)
+                  && !runtimeSource.Contains("ThrowIfUninitialized", StringComparison.Ordinal)
+                  && runtimeSource.Contains("LoadMetadata() must complete before metadata-backed properties are read.", StringComparison.Ordinal),
+                "160-A7c: Humble ROS2ForUnity avoids duplicate standalone env setup and stale reload handlers");
+            Check(runtimeSource.Contains("not performed from a finalizer", StringComparison.Ordinal)
+                  && !runtimeSource.Contains("~ROS2ForUnity", StringComparison.Ordinal),
+                "160-A7d: Humble ROS2ForUnity documents deterministic Dispose without native finalizer shutdown");
 
             var asmdef = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.HumbleWin64.asmdef");
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
@@ -219,7 +234,9 @@ namespace Unity.FoxgloveSDK.Tests
             var validator = ReadRepoText(HumbleScripts + "/validate_r2fu_runtime_package.py");
             Check(validator.Contains("rosgraph_msgs", StringComparison.Ordinal)
                   && validator.Contains("HUMBLE_HANDOFF_FAMILIES", StringComparison.Ordinal)
-                  && validator.Contains("rmw_fastrtps_cpp", StringComparison.Ordinal),
+                  && validator.Contains("rmw_fastrtps_cpp", StringComparison.Ordinal)
+                  && validator.Contains("avoids duplicate standalone environment setup", StringComparison.Ordinal)
+                  && validator.Contains("before assembly reload", StringComparison.Ordinal),
                 "160-C3: Humble validator locks the message dependency floor and FastRTPS-only boundary");
 
             var smoke = ReadRepoText(Ros2SmokeScripts + "/phase160_humble_lidar_deskew_acceptance.py");
@@ -386,6 +403,46 @@ namespace Unity.FoxgloveSDK.Tests
                 "\"plannedRuntimePackages\"\\s*:\\s*\\[(.*?)\\]",
                 RegexOptions.Singleline | RegexOptions.CultureInvariant);
             return match.Success ? match.Groups[1].Value : string.Empty;
+        }
+
+        private static string ExtractMethodBody(string source, string methodName)
+        {
+            var marker = methodName + "(";
+            var signature = source.IndexOf(marker, StringComparison.Ordinal);
+            if (signature < 0)
+                return string.Empty;
+
+            var openBrace = source.IndexOf('{', signature);
+            if (openBrace < 0)
+                return string.Empty;
+
+            var depth = 0;
+            for (var i = openBrace; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(openBrace, i - openBrace + 1);
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static int CountSubstring(string source, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
         }
 
         private static void Check(bool condition, string message)

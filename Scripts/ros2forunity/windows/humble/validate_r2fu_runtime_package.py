@@ -627,9 +627,37 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         and "standalone runtime owns its RMW selection" in runtime
         and "standalone runtime owns ROS_DISTRO" in runtime
         and "WarnIfStandaloneRosDistroOverride" in runtime
-        and "packagedRos2Version = GetMetadataValue" in runtime
         and "CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch)" in runtime
         and "ROS2 version in standalone process environment does not match this runtime package" not in runtime,
+        "ROS2ForUnity.cs",
+    )
+    constructor_start = runtime.find("internal ROS2ForUnity()")
+    constructor_end = runtime.find("\n    private", constructor_start + 1)
+    constructor = runtime[constructor_start:constructor_end] if constructor_start >= 0 and constructor_end > constructor_start else ""
+    library_loading = constructor[constructor.find("// Library loading"):] if "// Library loading" in constructor else constructor
+    add(
+        results,
+        "ROS2ForUnity avoids duplicate standalone environment setup",
+        constructor.count("SetStandalonePrefixPath();") == 1
+        and constructor.count("SetStandaloneRmwImplementation();") == 1
+        and constructor.count("SetStandaloneRcutilsConsoleMode();") == 1
+        and constructor.count("SetStandaloneRosDistro(currentRos2Version);") == 1
+        and "packagedRos2Version = GetMetadataValue" not in constructor
+        and "SetStandalonePrefixPath();" in library_loading,
+        "ROS2ForUnity.cs",
+    )
+    add(
+        results,
+        "ROS2ForUnity unregisters editor handlers before assembly reload",
+        "AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared" in runtime
+        and "AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared" in runtime,
+        "ROS2ForUnity.cs",
+    )
+    add(results, "ROS2ForUnity removes dead unsynchronized init guard", "ThrowIfUninitialized" not in runtime, "ROS2ForUnity.cs")
+    add(
+        results,
+        "ROS2ForUnity metadata prerequisite error names LoadMetadata",
+        "LoadMetadata() must complete before metadata-backed properties are read." in runtime,
         "ROS2ForUnity.cs",
     )
 

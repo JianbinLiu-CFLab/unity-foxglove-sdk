@@ -34,6 +34,8 @@ namespace ROS2
 /// <summary>
 /// Handles ROS2cs validation, initialization, and shutdown for R2FU.
 /// Wraps reference-counted init/shutdown so multiple callers can share one ROS 2 context.
+/// Callers must dispose every instance deterministically; native shutdown is intentionally
+/// not performed from a finalizer because ROS2cs and Unity executor teardown are thread-affine.
 /// </summary>
 internal class ROS2ForUnity : IDisposable
 {
@@ -375,7 +377,8 @@ internal class ROS2ForUnity : IDisposable
     }
 
     /// <summary>
-    /// Returns the effective ROS 2 distro, preferring a sourced environment over packaged metadata.
+    /// In standalone mode, returns the packaged ROS 2 distro. In non-standalone mode,
+    /// returns the sourced ROS_DISTRO value when present, otherwise packaged metadata.
     /// </summary>
     public string GetROSVersion()
     {
@@ -525,7 +528,9 @@ internal class ROS2ForUnity : IDisposable
     {
         if (doc.DocumentElement == null)
         {
-            throw new InvalidOperationException("Metadata document is empty while reading " + valuePath);
+            throw new InvalidOperationException(
+                "Metadata document is empty while reading " + valuePath +
+                ". LoadMetadata() must complete before metadata-backed properties are read.");
         }
 
         XmlNode node = doc.DocumentElement.SelectSingleNode(valuePath);
@@ -613,14 +618,6 @@ internal class ROS2ForUnity : IDisposable
             // Load metadata
             LoadMetadata();
             string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
-            if (IsStandalone())
-            {
-                string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
-                SetStandaloneRosDistro(packagedRos2Version);
-                SetStandalonePrefixPath();
-                SetStandaloneRmwImplementation();
-                SetStandaloneRcutilsConsoleMode();
-            }
             string currentRos2Version = GetROSVersion();
             bool standaloneBuild = IsStandalone();
             string standalone = standaloneBuild ? "standalone" : "non-standalone";
@@ -675,14 +672,6 @@ internal class ROS2ForUnity : IDisposable
             isInitialized = true;
             referenceCount = 1;
             ownsReference = true;
-        }
-    }
-
-    private static void ThrowIfUninitialized(string callContext)
-    {
-        if (!isInitialized)
-        {
-            throw new InvalidOperationException("Ros2 For Unity is not initialized, can't " + callContext);
         }
     }
 
@@ -836,6 +825,7 @@ internal class ROS2ForUnity : IDisposable
 
         EditorApplication.playModeStateChanged += EditorPlayStateChanged;
         EditorApplication.quitting += ShutdownShared;
+        AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared;
         editorHandlersRegistered = true;
     }
 
@@ -848,6 +838,7 @@ internal class ROS2ForUnity : IDisposable
 
         EditorApplication.playModeStateChanged -= EditorPlayStateChanged;
         EditorApplication.quitting -= ShutdownShared;
+        AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared;
         editorHandlersRegistered = false;
     }
 

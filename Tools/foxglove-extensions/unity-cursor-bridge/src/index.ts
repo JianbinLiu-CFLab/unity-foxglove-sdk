@@ -86,12 +86,64 @@ type ReplayTime = {
   nsec: number;
 };
 
+function normalizeEndpoint(endpoint: unknown): string {
+  if (typeof endpoint !== "string") {
+    return DEFAULT_ENDPOINT;
+  }
+
+  const trimmed = endpoint.trim();
+  if (trimmed.length === 0) {
+    return DEFAULT_ENDPOINT;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : DEFAULT_ENDPOINT;
+  } catch {
+    return DEFAULT_ENDPOINT;
+  }
+}
+
+function isLocalEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]" || url.hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function canSendTokenToEndpoint(endpoint: string): boolean {
+  if (isLocalEndpoint(endpoint)) {
+    return true;
+  }
+
+  try {
+    return new URL(endpoint).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function cloneTime(time: Time | undefined): { sec: number; nsec: number } | undefined {
   if (time == undefined) {
     return undefined;
   }
 
   return { sec: time.sec, nsec: time.nsec };
+}
+
+export function cloneTimeIfChanged(
+  current: { sec: number; nsec: number } | undefined,
+  next: Time | undefined,
+): { sec: number; nsec: number } | undefined {
+  if (next == undefined) {
+    return undefined;
+  }
+  if (current?.sec === next.sec && current.nsec === next.nsec) {
+    return current;
+  }
+  return { sec: next.sec, nsec: next.nsec };
 }
 
 export function isBeforeTime(left: ReplayTime, right: ReplayTime): boolean {
@@ -115,7 +167,7 @@ export function summarizeResponseText(responseText: string, maxLength = 200): st
   return `${responseText.slice(0, maxLength)}…`;
 }
 
-function formatReplayTimeUtc(time: Time | undefined, cache: ReplayTimeDisplayCache): string {
+export function formatReplayTimeUtc(time: Time | undefined, cache: ReplayTimeDisplayCache): string {
   if (time == undefined) {
     if (cache.lastSec !== undefined || cache.lastNsec !== undefined || cache.text.length === 0) {
       cache.lastSec = undefined;
@@ -143,6 +195,13 @@ async function sendCursor(
   payload: CursorPayload,
   signal?: AbortSignal,
 ): Promise<SendStatus> {
+  if (token.length > 0 && !canSendTokenToEndpoint(endpoint)) {
+    return {
+      ok: false,
+      message: "Access tokens are only sent to localhost or HTTPS endpoints.",
+    };
+  }
+
   const headers: Record<string, string> =
     token.length > 0 ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` } : NO_TOKEN_HEADERS;
 
@@ -192,10 +251,7 @@ export function readPanelState(initialState: unknown): PanelState {
   }
 
   const stored = initialState as Partial<PanelState>;
-  const endpoint =
-    typeof stored.endpoint === "string" && stored.endpoint.trim().length > 0
-      ? stored.endpoint.trim()
-      : DEFAULT_ENDPOINT;
+  const endpoint = normalizeEndpoint(stored.endpoint);
   const enabled = typeof stored.enabled === "boolean" ? stored.enabled : defaults.enabled;
   const maxHz =
     typeof stored.maxHz === "number" && isFinite(stored.maxHz) && stored.maxHz > 0
@@ -442,6 +498,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   let lastStartTime: { sec: number; nsec: number } | undefined;
   let lastEndTime: { sec: number; nsec: number } | undefined;
   let minIntervalMs = 1000 / state.maxHz;
+  const listenerController = new AbortController();
+  const listenerOptions = { signal: listenerController.signal };
 
   const seekPlayback = (context as unknown as MaybeSeekable).seekPlayback;
   const canFollow = typeof seekPlayback === "function";
@@ -689,17 +747,17 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   panel.enabledInput.addEventListener("change", () => {
     state = { ...state, enabled: panel.enabledInput.checked };
     savePanelState(context, state);
-  });
+  }, listenerOptions);
 
   panel.endpointInput.addEventListener("change", () => {
-    state = { ...state, endpoint: panel.endpointInput.value.trim() || DEFAULT_ENDPOINT };
+    state = { ...state, endpoint: normalizeEndpoint(panel.endpointInput.value) };
     panel.endpointInput.value = state.endpoint;
     savePanelState(context, state);
-  });
+  }, listenerOptions);
 
   panel.tokenInput.addEventListener("change", () => {
     state = { ...state, token: panel.tokenInput.value };
-  });
+  }, listenerOptions);
 
   panel.maxHzInput.addEventListener("change", () => {
     const parsed = Number.parseFloat(panel.maxHzInput.value);
@@ -708,7 +766,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     minIntervalMs = 1000 / state.maxHz;
     panel.maxHzInput.value = String(state.maxHz);
     savePanelState(context, state);
-  });
+  }, listenerOptions);
 
   panel.followInput?.addEventListener("change", () => {
     const follow = panel.followInput;
@@ -723,7 +781,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
     } else {
       stopFollow();
     }
-  });
+  }, listenerOptions);
 
   context.panelElement.replaceChildren(panel.root);
 
@@ -735,7 +793,9 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
   context.onRender = (renderState, done) => {
     try {
       const currentTime = renderState.currentTime;
-      panel.enabledInput.checked = state.enabled;
+      if (panel.enabledInput.checked !== state.enabled) {
+        panel.enabledInput.checked = state.enabled;
+      }
       // While following, the panel-owned clock is the source of truth (the Foxglove playhead may
       // stay frozen if the host ignores programmatic seeks), so show that instead — it lets the
       // user confirm the loop is actually advancing without reading the Unity console.
@@ -750,8 +810,8 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
         lastRenderSec = currentTime.sec;
         lastRenderNsec = currentTime.nsec;
       }
-      lastStartTime = cloneTime(renderState.startTime);
-      lastEndTime = cloneTime(renderState.endTime);
+      lastStartTime = cloneTimeIfChanged(lastStartTime, renderState.startTime);
+      lastEndTime = cloneTimeIfChanged(lastEndTime, renderState.endTime);
 
       resumeFollowFromScrubIfNeeded(renderState, currentTime);
 
@@ -790,6 +850,7 @@ export function initPanel(context: PanelExtensionContext): void | (() => void) {
 
   return () => {
     mounted = false;
+    listenerController.abort();
     stopFollow();
     if (cursorTimeout != undefined) {
       clearTimeout(cursorTimeout);
