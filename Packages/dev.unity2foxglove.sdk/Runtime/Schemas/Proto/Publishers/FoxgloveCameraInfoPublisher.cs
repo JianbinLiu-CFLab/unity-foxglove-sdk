@@ -38,6 +38,10 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private double _cxOverride;
         [SerializeField] private double _cyOverride;
         [SerializeField] private string _distortionModel = "plumb_bob";
+        private Camera _cachedSourceCamera;
+        private bool _sourceCameraCacheResolved;
+        private FoxgloveCameraPublisher _cachedImagePublisher;
+        private bool _imagePublisherCacheResolved;
         private bool _warnedScreenDimensionFallback;
 
         protected override string SchemaName => FoxgloveSchemaDefinitions.CameraCalibrationSchemaName;
@@ -74,15 +78,21 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Awake()
         {
-            ApplySensorProfileDefaults();
             if (string.IsNullOrWhiteSpace(_topic))
                 _topic = "/unity/sensor/camera/camera_info";
         }
 
         protected override void OnEnable()
         {
+            ResetResolvedPublisherCaches();
             ApplySensorProfileDefaults();
             base.OnEnable();
+        }
+
+        protected override void OnDisable()
+        {
+            ResetResolvedPublisherCaches();
+            base.OnDisable();
         }
 
         private void Update()
@@ -168,10 +178,42 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private Camera ResolveSourceCamera()
-            => _sourceCamera != null ? _sourceCamera : GetComponent<Camera>() ?? Camera.main;
+        {
+            if (_sourceCamera != null)
+                return _sourceCamera;
+
+            if (!_sourceCameraCacheResolved)
+            {
+                _cachedSourceCamera = GetComponent<Camera>();
+                if (_cachedSourceCamera == null)
+                    _cachedSourceCamera = Camera.main;
+                _sourceCameraCacheResolved = true;
+            }
+
+            return _cachedSourceCamera;
+        }
 
         private FoxgloveCameraPublisher ResolveImagePublisher()
-            => _imagePublisher != null ? _imagePublisher : GetComponent<FoxgloveCameraPublisher>();
+        {
+            if (_imagePublisher != null)
+                return _imagePublisher;
+
+            if (!_imagePublisherCacheResolved)
+            {
+                _cachedImagePublisher = GetComponent<FoxgloveCameraPublisher>();
+                _imagePublisherCacheResolved = true;
+            }
+
+            return _cachedImagePublisher;
+        }
+
+        private void ResetResolvedPublisherCaches()
+        {
+            _cachedSourceCamera = null;
+            _sourceCameraCacheResolved = false;
+            _cachedImagePublisher = null;
+            _imagePublisherCacheResolved = false;
+        }
 
         private ulong ResolveCameraInfoUnixNs()
             => _useSharedSensorClock && _manager != null

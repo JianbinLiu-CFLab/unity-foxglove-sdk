@@ -45,7 +45,7 @@ namespace Unity.FoxgloveSDK.Components
         void CopyTo(byte[] destination);
     }
 
-    internal sealed class CameraVideoPublishPipeline
+    internal sealed class CameraVideoPublishPipeline : IDisposable
     {
         private readonly CameraPublishDiagnostics _diagnostics;
         private readonly Action<string> _logWarning;
@@ -153,16 +153,6 @@ namespace Unity.FoxgloveSDK.Components
 
             var ownedFrameBytes = EnsureRgbScratch(frameBytes.Length);
             frameBytes.CopyTo(ownedFrameBytes);
-            if (ownedFrameBytes == null || ownedFrameBytes.Length == 0)
-            {
-                _diagnostics.RecordVideoSubmitFailure();
-                var result = new CameraVideoSubmitResult(
-                    CameraVideoSubmitOutcome.FrameDataMissing,
-                    "Video frame data is empty.",
-                    ElapsedMs(submitStart));
-                _diagnostics.RecordVideoSubmitMs(result.SubmitMs);
-                return result;
-            }
 
             if (_videoSidecarSession.IsOpenH264Mode)
             {
@@ -245,6 +235,11 @@ namespace Unity.FoxgloveSDK.Components
 
         public void StopVideoSidecar(Action drainEncodedAccessUnits)
             => _videoSidecarSession.Stop(drainEncodedAccessUnits);
+
+        public void Dispose()
+        {
+            _videoSidecarSession.Dispose();
+        }
 
         public CameraVideoSidecarMatchResult EnsureSidecarMatchesMode(
             CameraVideoOutputProfile profile,

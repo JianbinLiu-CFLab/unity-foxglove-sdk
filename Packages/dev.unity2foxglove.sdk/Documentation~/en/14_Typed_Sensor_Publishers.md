@@ -2,7 +2,7 @@
 
 Use this page when you want to publish typed sensor-style Foxglove messages from Unity without writing the low-level schema and byte-packing code yourself.
 
-Phase 49 adds dedicated Unity components for:
+This page covers dedicated Unity components for:
 
 - `foxglove.PointCloud`
 - `foxglove.LaserScan`

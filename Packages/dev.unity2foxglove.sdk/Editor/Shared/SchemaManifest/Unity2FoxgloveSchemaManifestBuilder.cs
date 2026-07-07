@@ -205,8 +205,28 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()
         {
-            var entries = SortedSdkTypedPublisherEntries.Value;
+            var entries = GetSortedSdkTypedPublisherEntries();
             return new Unity2FoxgloveSdkTypedPublishersSection(entries.Count, entries);
+        }
+
+        private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> GetSortedSdkTypedPublisherEntries()
+        {
+            try
+            {
+                return SortedSdkTypedPublisherEntries.Value;
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new InvalidOperationException(
+                    "Unity2Foxglove SDK typed publisher catalog validation failed: " + ex.Message,
+                    ex);
+            }
+            catch (TypeInitializationException ex) when (ex.InnerException != null)
+            {
+                throw new InvalidOperationException(
+                    "Unity2Foxglove SDK typed publisher catalog initialization failed: " + ex.InnerException.Message,
+                    ex);
+            }
         }
 
         private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()

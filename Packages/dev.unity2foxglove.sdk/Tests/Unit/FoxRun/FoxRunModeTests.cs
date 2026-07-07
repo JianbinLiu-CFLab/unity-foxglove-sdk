@@ -312,6 +312,48 @@ namespace Demo
         }
 
         [Fact]
+        public void ManifestRejectsUnknownPublishMode()
+        {
+            var member = new FoxRunManifestMember(
+                "Demo",
+                "CommandInput",
+                "_incomingVelocity",
+                "field",
+                "UnityEngine.Vector3",
+                true,
+                false,
+                "",
+                "/phase157/cmd_vel",
+                10f,
+                "",
+                99,
+                0f,
+                0f);
+
+            var ex = Assert.Throws<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[] { member }));
+
+            Assert.Contains("publish mode", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ManifestGroupsIdenticalContractsWithOrdinalKeys()
+        {
+            var manifest = FoxRunManifestBuilder.Build(new[]
+            {
+                ManifestMember("_speed", "/phase157/state", "speed"),
+                ManifestMember("_state", "/phase157/state", "state"),
+                ManifestMember("_speedUpper", "/phase157/State", "speedUpper")
+            });
+
+            var contracts = manifest.Sections.FoxRun.Types[0].Contracts;
+
+            Assert.Equal(2, contracts.Count);
+            Assert.Contains(contracts, contract => contract.Topic == "/phase157/state" && contract.Fields.Count == 2);
+            Assert.Contains(contracts, contract => contract.Topic == "/phase157/State" && contract.Fields.Count == 1);
+        }
+
+        [Fact]
         public void ManifestPolicyHashInputCanonicalizesNonFiniteFloats()
         {
             var hashInput = FoxRunManifestJsonWriter.WritePolicyHashInput(new FoxRunManifestPolicy(
@@ -391,6 +433,26 @@ namespace Demo
                 0f,
                 0f,
                 mode: (int)mode);
+        }
+
+        private static FoxRunManifestMember ManifestMember(string memberName, string topic, string jsonFieldName)
+        {
+            return new FoxRunManifestMember(
+                "Demo",
+                "CommandInput",
+                memberName,
+                "field",
+                "System.Single",
+                true,
+                false,
+                "",
+                topic,
+                10f,
+                "",
+                0,
+                0f,
+                0f,
+                jsonFieldName: jsonFieldName);
         }
 
         private static MetadataReference[] BasicReferences()

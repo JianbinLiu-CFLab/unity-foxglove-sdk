@@ -372,6 +372,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Ping, new byte[126], masked: true, fin: true)) == null,
                 "52B-5c: oversized control frames are rejected before dispatch");
 
+            using (var oversized = new MemoryStream(BuildOversizedMaskedFrameHeader()))
+            {
+                var rejected = !WsFrameCodec.TryReadFrame(oversized, out var frame) && frame == null;
+                Check(rejected && oversized.Position == WsFrameCodec.MaxFrameHeaderBytes,
+                    "52B-5c2: oversized masked data frames are rejected before reading mask bytes");
+            }
+
             Check(ReadFrameFromBytes(BuildClientFrame(WsOpcode.Text, Encoding.UTF8.GetBytes("hi"), masked: true, fin: true, reservedBits: 0x40)) == null,
                 "52B-5d: client frames with RSV bits are rejected when no extension is negotiated");
 
@@ -947,6 +954,28 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return ms.ToArray();
+        }
+
+        private static byte[] BuildOversizedMaskedFrameHeader()
+        {
+            var length = (ulong)WsFrameCodec.MaxPayloadBytes + 1UL;
+            return new byte[]
+            {
+                (byte)(0x80 | WsOpcode.Binary),
+                (byte)(0x80 | 127),
+                (byte)(length >> 56),
+                (byte)(length >> 48),
+                (byte)(length >> 40),
+                (byte)(length >> 32),
+                (byte)(length >> 24),
+                (byte)(length >> 16),
+                (byte)(length >> 8),
+                (byte)length,
+                0x12,
+                0x34,
+                0x56,
+                0x78
+            };
         }
 
         private static string ReadRepoText(string relativePath)

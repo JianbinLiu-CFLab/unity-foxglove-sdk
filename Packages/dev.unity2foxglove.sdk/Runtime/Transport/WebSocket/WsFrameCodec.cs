@@ -137,11 +137,11 @@ namespace Unity.FoxgloveSDK.Transport
                 && (!fin || payloadLen > SmallPayloadLimit))
                 return false;
 
-            Span<byte> mask = stackalloc byte[4];
-            if (!ReadExact(stream, mask))
+            if (payloadLen > MaxPayloadBytes)
                 return false;
 
-            if (payloadLen > MaxPayloadBytes)
+            Span<byte> mask = stackalloc byte[4];
+            if (!ReadExact(stream, mask))
                 return false;
 
             var payload = new byte[payloadLen];

@@ -30,7 +30,7 @@ namespace Unity.FoxgloveSDK.Editor
                     foreach (var type in asm.GetTypes())
                     {
                         if (!type.IsClass || type.IsAbstract) continue;
-                        if (!IsPartial(type)) continue;
+                        if (!AssumePartialWasEnforcedBySourceGenerator(type)) continue;
                         if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
 
                         var ns = type.Namespace ?? "";
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Editor
                     foreach (var type in asm.GetTypes())
                     {
                         if (!type.IsClass || type.IsAbstract) continue;
-                        if (!IsPartial(type)) continue;
+                        if (!AssumePartialWasEnforcedBySourceGenerator(type)) continue;
                         if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
 
                         var members = ScanType(type);
@@ -121,20 +121,17 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Checks whether a type was declared <c>partial</c>.
+        /// Documents the build-time partial-class enforcement boundary.
         /// <para>Runtime detection is not possible because the CLR erases partial
         /// metadata. The build pipeline assumes every <c>MonoBehaviour</c> with
         /// <c>[FoxRun]</c> members was declared partial; the Roslyn ISG enforces this
         /// at Editor compile time via FOXRUN001.</para>
         /// </summary>
-        static bool IsPartial(Type type)
+        static bool AssumePartialWasEnforcedBySourceGenerator(Type type)
         {
-            // Partial classes in C# have no runtime metadata at the type level.
-            // We detect by checking if the generated members (via ISG) would create
-            // a partial extension. For the build step, we assume any MonoBehaviour
-            // with [FoxRun] members was declared partial in source.
-            // If the class was NOT partial, ISG would have emitted FOXRUN001 at Editor compile time,
-            // so this is a safe assumption for Player builds.
+            // Partial classes have no CLR metadata. This is intentionally a named
+            // no-op so callers do not mistake it for a runtime filter: FOXRUN001
+            // is enforced by the Roslyn generator during Editor compilation.
             return true;
         }
 

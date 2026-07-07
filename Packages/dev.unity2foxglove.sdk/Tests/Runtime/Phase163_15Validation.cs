@@ -115,7 +115,9 @@ namespace Unity.FoxgloveSDK.Tests
             var infoEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraInfoPublisherEditor.cs");
 
             Check(jpeg.Contains("var copyStart = Stopwatch.GetTimestamp();", StringComparison.Ordinal)
-                  && jpeg.Contains("onReadbackCopy: (latency, _) => _diagnostics.RecordReadbackCopy(latency, ElapsedMs(copyStart))", StringComparison.Ordinal),
+                  && jpeg.Contains("var copyMs = ElapsedMs(copyStart);", StringComparison.Ordinal)
+                  && jpeg.Contains("_diagnostics.RecordReadbackCopy(", StringComparison.Ordinal)
+                  && jpeg.Contains("copyMs,", StringComparison.Ordinal),
                 "163-15F-1: JPEG readback copy diagnostics use elapsed copy timing despite pipeline placeholder argument");
             Check(outputMode.Contains("mode switches change schema/encoding without forcing topic churn", StringComparison.Ordinal),
                 "163-15F-2: camera output mode defaults document intentional shared topic behavior");

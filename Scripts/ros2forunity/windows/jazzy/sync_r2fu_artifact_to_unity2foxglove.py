@@ -164,7 +164,8 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
     if changed:
         write_json(manifest_path, manifest)
 
-    if direct_asset.exists():
+    direct_asset_exists = direct_asset.exists()
+    if direct_asset_exists:
         raise RuntimeError(
             "Direct Unity2Foxglove/Assets/Ros2ForUnity is importable. "
             "Remove or quarantine it before package-mode acceptance."
@@ -180,22 +181,25 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
         "manifestUpdated": changed,
         "lockPath": str(lock_path),
         "lockHasRuntimePackage": lock_has_runtime,
-        "directAssetsRos2ForUnityExists": direct_asset.exists(),
+        "directAssetsRos2ForUnityExists": direct_asset_exists,
     }
 
 
 def run_unity_import(unity_exe: Path, project_path: Path, log_path: Path) -> None:
     """Run a clean Unity batch import for the runtime package."""
+    if sys.platform != "win32":
+        raise RuntimeError("Unity import for the Jazzy Win64 runtime package must be run on Windows.")
     if not unity_exe.exists():
         raise FileNotFoundError(f"Unity editor not found: {unity_exe}")
     clean_env = os.environ.copy()
     for key in ("ROS_DISTRO", "ROS_VERSION", "ROS_PYTHON_VERSION", "AMENT_PREFIX_PATH", "COLCON_PREFIX_PATH", "RMW_IMPLEMENTATION"):
         clean_env.pop(key, None)
-    clean_env["PATH"] = ";".join(
+    clean_env["PATH"] = os.pathsep.join(
         item
-        for item in clean_env.get("PATH", "").split(";")
+        for item in clean_env.get("PATH", "").split(os.pathsep)
         if "ros2_jazzy" not in item.lower()
         and "ros2-windows" not in item.lower()
+        and "ros2" not in item.lower()
         and ".pixi\\envs\\default" not in item.lower()
     )
     run(
@@ -280,7 +284,12 @@ def main(argv: list[str] | None = None) -> int:
         unity_log = evidence_dir / f"sync-r2fu-runtime-unity-import-{timestamp}.log"
         run_unity_import(args.unity_editor, project_root / "Unity2Foxglove", unity_log)
 
-    package_manifest = read_json(package_path / "RuntimeSupport" / "runtime-manifest.json")
+    runtime_manifest_path = package_path / "RuntimeSupport" / "runtime-manifest.json"
+    if not runtime_manifest_path.exists():
+        raise FileNotFoundError(
+            f"Expected runtime manifest was not produced by {build_script}: {runtime_manifest_path}"
+        )
+    package_manifest = read_json(runtime_manifest_path)
     summary = {
         "schemaVersion": 1,
         "generatedAtLocal": dt.datetime.now().astimezone().isoformat(),

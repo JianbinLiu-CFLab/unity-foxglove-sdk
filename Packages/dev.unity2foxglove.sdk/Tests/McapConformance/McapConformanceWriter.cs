@@ -133,13 +133,14 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             var statsStart = (ulong)summaryBuilder.Position;
             if (options.UseStatistics)
             {
+                const uint chunkCount = 0; // Chunked conformance cases are rejected before writing.
                 summaryWriter.WriteStatistics(
                     messageCount,
                     checked((ushort)schemas.Count),
                     checked((uint)channels.Count),
                     attachmentCount,
                     metadataCount,
-                    0,
+                    chunkCount,
                     messageCount > 0 ? messageStartTime : 0,
                     messageCount > 0 ? messageEndTime : 0,
                     channelMessageCounts);

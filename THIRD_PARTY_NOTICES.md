@@ -238,6 +238,7 @@ SOFTWARE.
 - **Usage**: The compiled DLL is bundled at `Runtime/Plugins/StbImageWriteSharp.dll` and used as a Unity-free JPEG encoder for async camera publishing.
 
 StbImageWriteSharp is a C# port of `stb_image_write.h`. The upstream project README identifies the license as Public Domain.
+Upstream states: "Public Domain." No CC0 or Unlicense text is provided by the project.
 
 ---
 
@@ -253,6 +254,8 @@ StbImageWriteSharp is a C# port of `stb_image_write.h`. The upstream project REA
 
 ```
 MIT License
+
+Copyright (c) Oleg Stepanischev
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

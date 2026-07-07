@@ -166,7 +166,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(catchIndex >= 0 && detachIndex > catchIndex && detachIndex < clearIndex,
                 "115C-C1: recording attach failure detaches parameter change handler before clearing state");
 
-            Check(source.Contains("if (_parameters != null) _parameters.OnParameterChanged -= OnParameterChanged;", StringComparison.Ordinal),
+            Check(source.Contains("Interlocked.Exchange(ref _parameters, null)", StringComparison.Ordinal)
+                  && source.Contains("parameters.OnParameterChanged -= OnParameterChanged;", StringComparison.Ordinal),
                 "115C-C2: recording detach unsubscribes even when no recorder was installed");
         }
 

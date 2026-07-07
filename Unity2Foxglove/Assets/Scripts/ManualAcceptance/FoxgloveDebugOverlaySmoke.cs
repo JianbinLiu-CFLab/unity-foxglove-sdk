@@ -12,6 +12,12 @@ using UnityEngine;
 /// Manual Unity/Foxglove smoke test for the FoxRun debug overlay helper.
 /// </summary>
 /// <remarks>
+/// This is a manual smoke component rather than production telemetry. When the
+/// manager is not assigned, it throttles scene scans while auto-resolving a
+/// <see cref="FoxgloveManager"/>. The observed-state fields are serialized for
+/// Inspector visibility during Play Mode; do not save scenes during a smoke run
+/// if those transient values should remain reset.
+///
 /// Usage:
 /// 1. Add this component to any enabled GameObject in a scene that also has a
 ///    running <see cref="FoxgloveManager"/>.
@@ -70,6 +76,7 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
     [SerializeField] private string _lastStatus = "Not started.";
 
     private float _nextPublishTime;
+    private float _nextManagerSearchTime;
     private bool _loggedFirstPublish;
     private bool _loggedInvalidTopicProbe;
     private bool _loggedBinaryRejectionProbe;
@@ -91,6 +98,7 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
         _previousRunInBackground = Application.runInBackground;
         Application.runInBackground = true;
         _nextPublishTime = 0f;
+        _nextManagerSearchTime = 0f;
         _publishedCount = 0;
         _validOverlayStreamBlocked = false;
         _lastPublishAccepted = false;
@@ -233,8 +241,11 @@ public sealed class FoxgloveDebugOverlaySmoke : MonoBehaviour
     /// </summary>
     private bool TryResolveManager()
     {
-        if (_manager == null && _autoFindManager)
+        if (_manager == null && _autoFindManager && Time.unscaledTime >= _nextManagerSearchTime)
+        {
+            _nextManagerSearchTime = Time.unscaledTime + 0.5f;
             _manager = Object.FindFirstObjectByType<FoxgloveManager>();
+        }
 
         if (_manager != null)
             return true;

@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// </summary>
     public static class LidarProfileLoader
     {
+        private const double DegToRad = Math.PI / 180.0;
+
         /// <summary>
         /// Build a spinning-LiDAR profile with beams evenly spaced across a vertical
         /// FOV. Suitable for Ouster/Velodyne-style sensors; azimuth is co-axial (0).
@@ -180,7 +182,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             }
             var altitude = new double[altArray.Count];
             for (var i = 0; i < altArray.Count; i++)
-                altitude[i] = altArray[i].Value<double>();
+                altitude[i] = altArray[i].Value<double>() * DegToRad;
 
             // pixels_per_column: from data_format/lidar_data_format/top level; else infer.
             var pixelsPerColumn = FromFormat("pixels_per_column")?.Value<int?>() ?? altArray.Count;
@@ -203,7 +205,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 }
                 azimuth = new double[azmArray.Count];
                 for (var i = 0; i < azmArray.Count; i++)
-                    azimuth[i] = azmArray[i].Value<double>();
+                    azimuth[i] = azmArray[i].Value<double>() * DegToRad;
             }
             else
             {

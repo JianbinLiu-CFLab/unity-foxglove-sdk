@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Xunit;
+using Xunit.Sdk;
 
 namespace Unity.FoxgloveSDK.UnitTests.Architecture
 {
@@ -233,7 +234,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         private static string Text(string relativePath)
         {
-            return File.ReadAllText(Path(relativePath));
+            var path = Path(relativePath);
+            if (!File.Exists(path))
+                throw new XunitException("Required Unity demo sample asset is missing: " + relativePath + " (" + path + ")");
+
+            return File.ReadAllText(path);
         }
 
         private static string Path(string relativePath)
@@ -243,18 +248,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
         private static string FindRepoRoot()
         {
+            var overrideRoot = Environment.GetEnvironmentVariable("FOXGLOVE_REPO_ROOT");
+            if (!string.IsNullOrWhiteSpace(overrideRoot) && IsRepoRoot(overrideRoot))
+                return System.IO.Path.GetFullPath(overrideRoot);
+
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
             {
-                if (File.Exists(System.IO.Path.Combine(dir.FullName, "README.md"))
-                    && Directory.Exists(System.IO.Path.Combine(dir.FullName, "Unity2Foxglove"))
-                    && Directory.Exists(System.IO.Path.Combine(dir.FullName, "Packages")))
+                if (IsRepoRoot(dir.FullName))
                     return dir.FullName;
 
                 dir = dir.Parent;
             }
 
-            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+            throw new DirectoryNotFoundException(
+                "Could not locate repository root from " + AppContext.BaseDirectory +
+                ". Set FOXGLOVE_REPO_ROOT to the repository root when running from an external build directory.");
+        }
+
+        private static bool IsRepoRoot(string candidate)
+        {
+            return File.Exists(System.IO.Path.Combine(candidate, "README.md"))
+                   && Directory.Exists(System.IO.Path.Combine(candidate, "Unity2Foxglove"))
+                   && Directory.Exists(System.IO.Path.Combine(candidate, "Packages"));
         }
     }
 }
