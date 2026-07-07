@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Text.Json;
 using Unity.FoxgloveSDK.Editor;
 using Xunit;
 
@@ -107,6 +108,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void DescriptorWriterRejectsLoneSurrogatesAndEscapesPairs()
+        {
+            var lone = CreateDescriptorModel("\uD800");
+            Assert.Throws<InvalidOperationException>(() => FoxRunGenerationDescriptorJsonWriter.Write(lone));
+
+            var paired = CreateDescriptorModel("face\U0001F600");
+            var json = FoxRunGenerationDescriptorJsonWriter.Write(paired);
+
+            Assert.Contains("\\ud83d\\ude00", json, StringComparison.Ordinal);
+            using var _ = JsonDocument.Parse(json);
+        }
+
+        [Fact]
         public void GeneratedSourceOwnershipStillUsesHeaderSentinels()
         {
             var temp = Path.Combine(Path.GetTempPath(), "u2f_phase140_68_" + Guid.NewGuid().ToString("N") + ".g.cs");
@@ -129,6 +143,38 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void Phase14068MigratedConsolePhaseIsRemoved()
             => TestSources.AssertConsolePhaseRemoved("Phase140_68Validation.cs", "--phase140-68", "Phase140_68Validation.Validate");
+
+        private static FoxRunGenerationModel CreateDescriptorModel(string jsonFieldName)
+            => new FoxRunGenerationModel(new[]
+            {
+                new FoxRunGenerationType(
+                    "Demo",
+                    "Text",
+                    new[]
+                    {
+                        new FoxRunGenerationMember(
+                            "Demo",
+                            "Text",
+                            "value",
+                            "field",
+                            "System.String",
+                            "string",
+                            "string",
+                            false,
+                            false,
+                            "",
+                            "/demo/text",
+                            0f,
+                            "unity2foxglove.String",
+                            1,
+                            0f,
+                            0f,
+                            "reflection",
+                            1,
+                            "",
+                            jsonFieldName: jsonFieldName)
+                    })
+            });
 
         [Fact]
         public void TestSourceSlicesNormalizeLineEndings()

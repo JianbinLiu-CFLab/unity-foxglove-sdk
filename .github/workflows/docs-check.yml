@@ -42,6 +42,10 @@ on:
       - "Unity2Foxglove/Docs/**"
       - "Scripts/**"
 
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   docs:
     runs-on: ubuntu-latest
@@ -115,7 +119,7 @@ jobs:
                   files.extend(root.rglob("*.md"))
                   files.extend(root.rglob("*.cff"))
 
-          link_pattern = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+          link_pattern = re.compile(r"!?\[[^\]]*\]\(((?:\\.|[^()\\]|\\([^()]*\\))*)\)")
           missing = []
           mojibake = []
           for file in files:

@@ -115,11 +115,11 @@ Start here when Unity cannot open the demo, Foxglove cannot connect, `/debug/*` 
 2. **Confirm FoxRun Source Generator is working**:
    - In Unity Editor, `[FoxRun]` attributes are processed by the Roslyn Source Generator, which dynamically generates IL code
    - Confirm the project compiles without errors (no red errors in the Console)
-   - Check that `Assets/Scripts/Generated/TestLog_FoxRun.g.cs` exists (as a physical fallback for IL2CPP builds)
+   - Check that a generated `.g.cs` file for your FoxRun class exists under `Assets/Scripts/Generated/` (as a physical fallback for IL2CPP builds)
 
 3. **Confirm FoxgloveManager configuration**:
-   - The `FoxgloveManager` component should have an `_isgRegistry` field (ISG Registry reference)
-   - If this field is empty, the Source Generator cannot auto-register
+   - The `FoxgloveManager` component should have an ISG Registry reference field
+   - If this reference is empty, the Source Generator cannot auto-register
 
 4. **Rebuild Generated files**:
    - Delete `.cs` files under `Assets/Scripts/Generated/`

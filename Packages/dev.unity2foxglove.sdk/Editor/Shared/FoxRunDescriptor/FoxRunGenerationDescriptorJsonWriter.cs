@@ -151,8 +151,10 @@ namespace Unity.FoxgloveSDK.Editor
         private static void WriteString(StringBuilder sb, string value)
         {
             sb.Append('"');
-            foreach (var ch in value ?? string.Empty)
+            var text = value ?? string.Empty;
+            for (var i = 0; i < text.Length; i++)
             {
+                var ch = text[i];
                 switch (ch)
                 {
                     case '"': sb.Append("\\\""); break;
@@ -163,10 +165,18 @@ namespace Unity.FoxgloveSDK.Editor
                     case '\r': sb.Append("\\r"); break;
                     case '\t': sb.Append("\\t"); break;
                     default:
-                        if (ch < 0x20 || char.IsSurrogate(ch))
+                        if (ch < 0x20)
                         {
-                            sb.Append("\\u");
-                            sb.Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));
+                            WriteEscapedCodeUnit(sb, ch);
+                        }
+                        else if (char.IsSurrogate(ch))
+                        {
+                            if (!char.IsHighSurrogate(ch) || i + 1 >= text.Length || !char.IsLowSurrogate(text[i + 1]))
+                                throw new InvalidOperationException("FoxRun descriptor strings must not contain lone surrogate code units.");
+
+                            WriteEscapedCodeUnit(sb, ch);
+                            i++;
+                            WriteEscapedCodeUnit(sb, text[i]);
                         }
                         else
                         {
@@ -176,6 +186,12 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
             sb.Append('"');
+        }
+
+        private static void WriteEscapedCodeUnit(StringBuilder sb, char ch)
+        {
+            sb.Append("\\u");
+            sb.Append(((int)ch).ToString("x4", CultureInfo.InvariantCulture));
         }
     }
 }
