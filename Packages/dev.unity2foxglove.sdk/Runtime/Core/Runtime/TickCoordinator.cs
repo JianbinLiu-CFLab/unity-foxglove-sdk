@@ -280,10 +280,13 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void DisableReplay(ReplayController replay)
         {
-            ClearExternalCursorState();
-            ClearPendingReplaySnapshot();
-            ClearPendingReplaySceneSnapshot();
-            replay.Disable();
+            lock (_playbackControlLock)
+            {
+                ClearExternalCursorState();
+                ClearPendingReplaySnapshot();
+                ClearPendingReplaySceneSnapshot();
+                replay.Disable();
+            }
         }
 
         /// <summary>

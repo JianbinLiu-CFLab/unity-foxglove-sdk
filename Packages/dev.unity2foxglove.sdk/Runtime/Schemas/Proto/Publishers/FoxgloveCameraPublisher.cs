@@ -398,6 +398,8 @@ namespace Unity.FoxgloveSDK.Components
             Interlocked.Increment(ref _captureGeneration);
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
+            _videoPublishPipeline?.Dispose();
+            _videoPublishPipeline = null;
             StopJpegWorker(clearQueues: true);
             _jpegPublishPipeline?.Dispose();
             _jpegPublishPipeline = null;
@@ -416,6 +418,8 @@ namespace Unity.FoxgloveSDK.Components
             Interlocked.Increment(ref _captureGeneration);
             _cleanupWhenReadbacksDrain = _pendingRequests > 0;
             StopVideoSidecar();
+            _videoPublishPipeline?.Dispose();
+            _videoPublishPipeline = null;
             StopJpegWorker(clearQueues: true);
             _jpegPublishPipeline?.Dispose();
             _jpegPublishPipeline = null;
