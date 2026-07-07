@@ -205,15 +205,32 @@ namespace Unity.FoxgloveSDK.UnitTests
             r.Close();
             var data = ms.ToArray();
             var (_, records, _) = McapRecordReader.Parse(data);
-            var schemas = records.Where(x => x.Opcode == 0x03).ToList();
+            var schemas = records
+                .Where(x => x.Opcode == 0x03)
+                .Select(x => McapRecordReader.DecodeSchema(x.Content))
+                .ToList();
             Assert.Equal(2, schemas.Count);
+            Assert.Single(schemas.Select(schema => schema.id).Distinct());
 
-            foreach (var schema in schemas.Select(x => McapRecordReader.DecodeSchema(x.Content)))
+            foreach (var schema in schemas)
             {
                 Assert.Equal("foxglove.FrameTransform", schema.name);
                 Assert.Equal("jsonschema", schema.encoding);
                 Assert.Equal(Encoding.UTF8.GetBytes("{}"), schema.data);
             }
+
+            var schemaId = schemas[0].id;
+            var uniqueChannels = records
+                .Where(x => x.Opcode == 0x04)
+                .Select(x => McapRecordReader.DecodeChannel(x.Content))
+                .GroupBy(channel => channel.id)
+                .Select(group => group.First())
+                .ToList();
+
+            Assert.Equal(2, uniqueChannels.Count);
+            Assert.All(uniqueChannels, channel => Assert.Equal(schemaId, channel.schemaId));
+            Assert.Contains(uniqueChannels, channel => channel.topic == "/t1");
+            Assert.Contains(uniqueChannels, channel => channel.topic == "/t2");
         }
 
         [Fact]

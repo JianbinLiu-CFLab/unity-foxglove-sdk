@@ -198,6 +198,12 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static int TopicPublishMode(IReadOnlyList<FoxRunManifestMember> members)
         {
+            var invalid = members.FirstOrDefault(member => member.PublishMode < 0 || member.PublishMode > 3);
+            if (invalid != null)
+                throw new InvalidOperationException(
+                    "FoxRun manifest publish mode is outside the supported range 0..3 for " +
+                    DeclaringType(invalid) + "." + invalid.MemberName + ".");
+
             if (members.Any(member => member.PublishMode == 3))
                 return 3;
             if (members.Any(member => member.PublishMode == 2))
@@ -245,7 +251,7 @@ namespace Unity.FoxgloveSDK.Editor
                 : "field";
         }
 
-        private readonly struct ContractKey
+        private readonly struct ContractKey : IEquatable<ContractKey>
         {
             public readonly string Topic;
             public readonly string SchemaName;
@@ -256,6 +262,27 @@ namespace Unity.FoxgloveSDK.Editor
                 Topic = topic ?? string.Empty;
                 SchemaName = schemaName ?? string.Empty;
                 Encoding = encoding ?? string.Empty;
+            }
+
+            public bool Equals(ContractKey other)
+            {
+                return string.Equals(Topic, other.Topic, StringComparison.Ordinal)
+                       && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
+                       && string.Equals(Encoding, other.Encoding, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+                => obj is ContractKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = StringComparer.Ordinal.GetHashCode(Topic);
+                    hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(SchemaName);
+                    hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(Encoding);
+                    return hash;
+                }
             }
         }
     }
