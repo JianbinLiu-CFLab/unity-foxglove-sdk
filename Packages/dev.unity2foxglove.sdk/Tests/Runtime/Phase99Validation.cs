@@ -309,7 +309,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "99D-1: package metadata includes ROS2 Bridge Sample as fourth sample");
 
             var releaseValidation = ReadRepoText("Scripts/package/validate_unity_package.py");
-            Check(releaseValidation.Contains("EXPECTED_SAMPLE_COUNT = 4")
+            Check(releaseValidation.Contains("EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)")
                   && releaseValidation.Contains("\"ROS2 Bridge Sample\""),
                 "99D-2: release validation expects the fourth sample");
 

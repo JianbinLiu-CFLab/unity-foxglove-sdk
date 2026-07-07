@@ -238,7 +238,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     case '\r': __json.Append("\\r"); break;
                     case '\t': __json.Append("\\t"); break;
                     default:
-                        if (__c < ' ')
+                        if (__c < ' ' || global::System.Char.IsSurrogate(__c))
                             __json.Append("\\u").Append(((int)__c).ToString("x4", global::System.Globalization.CultureInfo.InvariantCulture));
                         else
                             __json.Append(__c);

@@ -28,6 +28,7 @@ namespace ROS2
 /// Spins and executes actions (e. g. clock, sensor publish triggers) in a dedicated thread.
 /// Multiple component instances are expected to work because the underlying ROS2 layer reference-counts init/shutdown.
 /// </summary>
+[DisallowMultipleComponent]
 public class ROS2UnityComponent : MonoBehaviour
 {
     private static readonly object instancesMutex = new object();
@@ -64,6 +65,7 @@ public class ROS2UnityComponent : MonoBehaviour
     /// </summary>
     public bool Ok()
     {
+        bool needsConstruct;
         lock (mutex)
         {
             if (disposed)
@@ -72,19 +74,24 @@ public class ROS2UnityComponent : MonoBehaviour
             if (initialized && cachedOk && nodes != null && ros2forUnity != null)
                 return true;
 
-            if (ros2forUnity == null)
-            {
-                try
-                {
-                    LazyConstruct();
-                }
-                catch (ObjectDisposedException)
-                {
-                    return false;
-                }
-            }
+            needsConstruct = ros2forUnity == null;
+        }
 
-            if (nodes == null)
+        if (needsConstruct)
+        {
+            try
+            {
+                LazyConstruct();
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        lock (mutex)
+        {
+            if (disposed || nodes == null || ros2forUnity == null)
             {
                 cachedOk = false;
                 return false;
@@ -145,6 +152,7 @@ public class ROS2UnityComponent : MonoBehaviour
     void Start()
     {
         LazyConstruct();
+        StartExecutor();
     }
 
     public ROS2Node CreateNode(string name)
@@ -328,6 +336,7 @@ public class ROS2UnityComponent : MonoBehaviour
             quitting = false;
             executorThread = new Thread(() => Tick());
             executorThread.IsBackground = true;
+            executorThread.Name = "ROS2UnityComponent.Executor";
             initialized = true;
             executorStarted = true;
             threadToStart = executorThread;
@@ -347,6 +356,7 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private void StopExecutor()
     {
+        // Idempotent by design: shutdown, domain-reload guards, and ROS shutdown hooks can all converge here.
         Thread threadToJoin = null;
         lock (mutex)
         {

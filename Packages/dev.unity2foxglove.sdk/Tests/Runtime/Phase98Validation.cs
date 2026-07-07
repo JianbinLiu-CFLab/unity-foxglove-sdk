@@ -380,7 +380,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(phase17.Contains("samples.Count == 4") && phase17.Contains("ROS2 Bridge Sample"),
                 "98F-1: Phase17 package validation accepts four samples");
-            Check(validatePackage.Contains("EXPECTED_SAMPLE_COUNT = 4")
+            Check(validatePackage.Contains("EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)")
                   && validatePackage.Contains("\"ROS2 Bridge Sample\"")
                   && validatePackage.Contains("Samples~/Ros2BridgeSample"),
                 "98F-2: release validation expects ROS2 Bridge Sample");

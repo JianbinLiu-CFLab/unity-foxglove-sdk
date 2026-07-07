@@ -83,7 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var validator = ReadRepoFile(ReleaseValidator);
 
-            Check(validator.Contains("EXPECTED_SAMPLE_COUNT = 4", StringComparison.Ordinal)
+            Check(validator.Contains("EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)", StringComparison.Ordinal)
                   && validator.Contains("SAMPLES = PACKAGE / \"Samples~\"", StringComparison.Ordinal),
                 "134-23-D1: release validator keeps explicit Samples~ package boundary");
             Check(validator.Contains("\"Basic Visualization\": \"Samples~/BasicVisualization\"", StringComparison.Ordinal)
