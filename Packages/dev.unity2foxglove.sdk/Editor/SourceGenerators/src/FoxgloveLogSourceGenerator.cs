@@ -20,8 +20,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 {
     /// <summary>
     /// Roslyn incremental source generator that scans user assemblies for
-    /// <c>[FoxRun]</c> attributed fields/properties on partial classes and emits
-    /// <c>IFoxgloveLogSource</c> implementation source at Editor compile time.
+    /// <c>[FoxRun]</c> fields/properties and <c>[FoxService]</c> methods on
+    /// partial classes, then emits FoxRun log-source and FoxService wrapper
+    /// implementation source at Editor compile time.
     /// </summary>
     [Generator]
     public class FoxgloveLogSourceGenerator : IIncrementalGenerator

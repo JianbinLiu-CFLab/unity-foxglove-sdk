@@ -359,7 +359,13 @@ namespace Phase141B
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+        {
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new InvalidOperationException("[FAIL] 141B-source: required source file missing: " + relativePath);
+
+            return File.ReadAllText(path);
+        }
 
         private static string RepoPath(string relativePath)
         {

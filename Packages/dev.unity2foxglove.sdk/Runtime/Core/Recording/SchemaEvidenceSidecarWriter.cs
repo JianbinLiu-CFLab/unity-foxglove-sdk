@@ -41,7 +41,12 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Directory written beside the MCAP recording.</summary>
         public string SidecarDirectory { get; }
 
-        /// <summary>Temporary directory holding a staged sidecar before final publish.</summary>
+        /// <summary>
+        /// Temporary directory holding a staged sidecar before final publish.
+        /// Empty after <see cref="SchemaEvidenceSidecarWriter.WriteSidecar"/>
+        /// succeeds because the staging directory has been moved to
+        /// <see cref="SidecarDirectory"/>.
+        /// </summary>
         public string TemporaryDirectory { get; }
 
         /// <summary>Warnings describing missing or partially copied evidence.</summary>
@@ -100,7 +105,7 @@ namespace Unity.FoxgloveSDK.Core
                     staged.Complete,
                     staged.SidecarDirectory,
                     staged.Warnings,
-                    staged.SidecarDirectory);
+                    string.Empty);
 
             var warnings = new List<string>(staged.Warnings);
             warnings.Add(publishWarning);
@@ -149,11 +154,11 @@ namespace Unity.FoxgloveSDK.Core
                     ? string.Empty
                     : Path.GetFullPath(currentEvidenceRoot);
 
-                CopyGroup(fullEvidenceRoot, temporaryDirectory, "FoxRun", FoxRunFiles, warnings);
-                CopyGroup(fullEvidenceRoot, temporaryDirectory, "Unity2Foxglove", Unity2FoxgloveFiles, warnings);
+                CopyGroup(fullEvidenceRoot, temporaryDirectory, "FoxRun", FoxRunFiles, warnings, optional: false);
+                CopyGroup(fullEvidenceRoot, temporaryDirectory, "Unity2Foxglove", Unity2FoxgloveFiles, warnings, optional: false);
 
                 var complete = warnings.Count == 0;
-                CopyOptionalGroup(fullEvidenceRoot, temporaryDirectory, "FoxRun", OptionalFoxRunFiles, warnings);
+                CopyGroup(fullEvidenceRoot, temporaryDirectory, "FoxRun", OptionalFoxRunFiles, warnings, optional: true);
                 WriteIndex(
                     temporaryDirectory,
                     mcapPath,
@@ -256,7 +261,8 @@ namespace Unity.FoxgloveSDK.Core
             string sidecarRoot,
             string groupName,
             IReadOnlyList<string> files,
-            List<string> warnings)
+            List<string> warnings,
+            bool optional)
         {
             var sourceDirectory = Path.Combine(sourceRoot ?? string.Empty, groupName);
             var targetDirectory = Path.Combine(sidecarRoot, groupName);
@@ -267,31 +273,8 @@ namespace Unity.FoxgloveSDK.Core
                 var sourcePath = Path.Combine(sourceDirectory, fileName);
                 if (!File.Exists(sourcePath))
                 {
-                    warnings.Add("Missing schema evidence file: " + Path.Combine(groupName, fileName));
-                    continue;
-                }
-
-                File.Copy(sourcePath, Path.Combine(targetDirectory, fileName), overwrite: true);
-            }
-        }
-
-        private static void CopyOptionalGroup(
-            string sourceRoot,
-            string sidecarRoot,
-            string groupName,
-            IReadOnlyList<string> files,
-            List<string> warnings)
-        {
-            var sourceDirectory = Path.Combine(sourceRoot ?? string.Empty, groupName);
-            var targetDirectory = Path.Combine(sidecarRoot, groupName);
-            Directory.CreateDirectory(targetDirectory);
-
-            foreach (var fileName in files)
-            {
-                var sourcePath = Path.Combine(sourceDirectory, fileName);
-                if (!File.Exists(sourcePath))
-                {
-                    warnings.Add("Optional schema evidence file missing: " + Path.Combine(groupName, fileName));
+                    warnings.Add((optional ? "Optional schema evidence file missing: " : "Missing schema evidence file: ")
+                                 + Path.Combine(groupName, fileName));
                     continue;
                 }
 

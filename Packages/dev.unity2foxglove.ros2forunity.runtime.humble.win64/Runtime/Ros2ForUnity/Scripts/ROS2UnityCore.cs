@@ -246,33 +246,23 @@ namespace ROS2
 
         public void Dispose()
         {
-            lock (mutex)
+            bool executorStopped = StopExecutor();
+            if (executorStopped)
             {
-                if (disposed)
-                {
-                    return;
-                }
-
-                // Mark disposal as started before joining/disposing to make concurrent Dispose calls idempotent.
-                disposed = true;
-                cachedOk = false;
+                DisposeNodes();
+            }
+            else
+            {
+                Debug.LogError(
+                    "ROS2UnityCore executor thread timed out during dispose; " +
+                    "continuing best-effort lifecycle cleanup with nodes quarantined.");
+                QuarantineNodesAfterExecutorTimeout();
             }
 
-            StopExecutor();
-            DisposeNodes();
-
             ROS2ForUnity instance = null;
-            lock (mutex)
+            if (!TryDetachRuntimeState(executorStopped, out instance))
             {
-                instance = ros2forUnity;
-                ros2forUnity = null;
-                cachedOk = false;
-                executableActions = null;
-                executableActionSet = null;
-                nodes = null;
-                ros2csNodes = null;
-                actionsSnapshot.Clear();
-                nodesSnapshot.Clear();
+                return;
             }
 
             if (instance != null)
@@ -281,26 +271,75 @@ namespace ROS2
             }
         }
 
-        private void StopExecutor()
+        private bool StopExecutor()
         {
-            Thread threadToJoin = null;
-            lock (mutex)
-            {
-                quitting = true;
-                threadToJoin = executorThread;
-            }
+            quitting = true;
+            Thread threadToJoin = Volatile.Read(ref executorThread);
 
             if (threadToJoin != null && threadToJoin != Thread.CurrentThread)
             {
                 if (!threadToJoin.Join(TimeSpan.FromSeconds(2)))
                 {
                     Debug.LogWarning("ROS2UnityCore executor thread did not stop within 2 seconds");
+                    return false;
                 }
             }
 
             lock (mutex)
             {
-                executorThread = null;
+                if (ReferenceEquals(executorThread, threadToJoin))
+                {
+                    executorThread = null;
+                }
+            }
+
+            return true;
+        }
+
+        private bool TryDetachRuntimeState(bool executorStopped, out ROS2ForUnity instance)
+        {
+            instance = null;
+            var lockTaken = false;
+            if (!executorStopped && !Monitor.TryEnter(mutex, TimeSpan.FromMilliseconds(250)))
+            {
+                Debug.LogError("ROS2UnityCore could not acquire state lock after executor timeout; ROS2 lifecycle owner remains active.");
+                return false;
+            }
+
+            try
+            {
+                if (executorStopped)
+                {
+                    Monitor.Enter(mutex, ref lockTaken);
+                }
+                else
+                {
+                    lockTaken = true;
+                }
+
+                if (disposed)
+                {
+                    return false;
+                }
+
+                disposed = true;
+                cachedOk = false;
+                instance = ros2forUnity;
+                ros2forUnity = null;
+                executableActions = null;
+                executableActionSet = null;
+                nodes = null;
+                ros2csNodes = null;
+                actionsSnapshot.Clear();
+                nodesSnapshot.Clear();
+                collectionVersion++;
+                snapshotVersion = collectionVersion;
+                return true;
+            }
+            finally
+            {
+                if (lockTaken)
+                    Monitor.Exit(mutex);
             }
         }
 
@@ -333,6 +372,29 @@ namespace ROS2
                 {
                     Debug.LogException(e);
                 }
+            }
+        }
+
+        private void QuarantineNodesAfterExecutorTimeout()
+        {
+            if (!Monitor.TryEnter(mutex, TimeSpan.FromMilliseconds(250)))
+            {
+                Debug.LogError("ROS2UnityCore could not acquire node lock after executor timeout; nodes remain quarantined by the stuck executor.");
+                return;
+            }
+
+            try
+            {
+                if (nodes != null)
+                {
+                    nodes.Clear();
+                    ros2csNodes.Clear();
+                    collectionVersion++;
+                }
+            }
+            finally
+            {
+                Monitor.Exit(mutex);
             }
         }
 
