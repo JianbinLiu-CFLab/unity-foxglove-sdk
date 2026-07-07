@@ -595,6 +595,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
             "rcl.dll",
             "yaml.dll",
             "spdlog.dll",
+            "rosgraph_msgs_assembly.dll",
         ],
         "packagePathPatch": {
             "modifiedFile": "Runtime/Ros2ForUnity/Scripts/ROS2ForUnity.cs",

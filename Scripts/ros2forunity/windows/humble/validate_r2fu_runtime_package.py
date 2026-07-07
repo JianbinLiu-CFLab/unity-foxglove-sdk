@@ -42,6 +42,7 @@ CRITICAL_DLLS = (
     "rcl.dll",
     "yaml.dll",
     "spdlog.dll",
+    "rosgraph_msgs_assembly.dll",
 )
 
 BASELINE_MESSAGE_PACKAGES = (
@@ -160,6 +161,13 @@ def file_sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def critical_runtime_file_path(name: str) -> Path:
+    """Resolve critical runtime files across managed and native plugin roots."""
+    if name.endswith("_assembly.dll"):
+        return RUNTIME_ROOT / "Plugins" / name
+    return PLUGIN_ROOT / name
 
 
 def is_sha256(value: object) -> bool:
@@ -464,7 +472,7 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
 def check_runtime_files(results: list[CheckResult]) -> None:
     """Validate critical runtime files and package layout."""
     for dll in CRITICAL_DLLS:
-        path = PLUGIN_ROOT / dll
+        path = critical_runtime_file_path(dll)
         add(results, f"critical DLL present: {dll}", path.exists(), rel(path))
 
     dlls = list(PLUGIN_ROOT.glob("*.dll")) if PLUGIN_ROOT.exists() else []

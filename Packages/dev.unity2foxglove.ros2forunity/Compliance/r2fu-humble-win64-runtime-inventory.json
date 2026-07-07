@@ -46,6 +46,13 @@
       ]
     },
     {
+      "name": "rosgraph_msgs_assembly.dll",
+      "present": true,
+      "paths": [
+        "Ros2ForUnity/Plugins/rosgraph_msgs_assembly.dll"
+      ]
+    },
+    {
       "name": "fmt.dll",
       "present": false,
       "paths": []

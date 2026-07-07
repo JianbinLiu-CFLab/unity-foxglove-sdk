@@ -6,6 +6,7 @@
 // FoxgloveManager Inspector without importing trust into the OS.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -196,14 +197,16 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
 
             var labelLength = 0;
+            var labelStart = 0;
             for (var i = 0; i < value.Length; i++)
             {
                 var c = value[i];
                 if (c == '.')
                 {
-                    if (labelLength == 0)
+                    if (labelLength == 0 || value[labelStart] == '-' || value[i - 1] == '-')
                         return false;
                     labelLength = 0;
+                    labelStart = i + 1;
                     continue;
                 }
 
@@ -219,7 +222,7 @@ namespace Unity.FoxgloveSDK.Editor
                     return false;
             }
 
-            return labelLength > 0;
+            return labelLength > 0 && value[labelStart] != '-' && value[value.Length - 1] != '-';
         }
 
         /// <summary>Build IP SAN addresses for the generated local-development certificate.</summary>
@@ -297,9 +300,9 @@ namespace Unity.FoxgloveSDK.Editor
         private const string KeyUsageOid = "2.5.29.15";
         private const string ServerAuthenticationOid = "1.3.6.1.5.5.7.3.1";
         private static readonly byte[] LocalDevKeyUsageDer = { 0x03, 0x02, 0x02, 0xA4 };
-        private static readonly Dictionary<string, Type> MonoSecurityTypeCache = new Dictionary<string, Type>();
-        private static readonly Dictionary<string, PropertyInfo> PropertyCache = new Dictionary<string, PropertyInfo>();
-        private static readonly Dictionary<string, MethodInfo[]> MethodCache = new Dictionary<string, MethodInfo[]>();
+        private static readonly ConcurrentDictionary<string, Type> MonoSecurityTypeCache = new ConcurrentDictionary<string, Type>();
+        private static readonly ConcurrentDictionary<string, PropertyInfo> PropertyCache = new ConcurrentDictionary<string, PropertyInfo>();
+        private static readonly ConcurrentDictionary<string, MethodInfo[]> MethodCache = new ConcurrentDictionary<string, MethodInfo[]>();
 
         public FoxgloveLocalDevCertificateResult Generate(
             FoxgloveLocalDevCertificateGenerator.GenerationContext context)
@@ -407,24 +410,20 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static Type RequireMonoSecurityType(string fullName)
         {
-            if (MonoSecurityTypeCache.TryGetValue(fullName, out var cachedType))
-                return cachedType;
+            return MonoSecurityTypeCache.GetOrAdd(fullName, ResolveMonoSecurityType);
+        }
 
+        private static Type ResolveMonoSecurityType(string fullName)
+        {
             var type = Type.GetType(fullName + ", " + MonoSecurityAssemblyName, false);
             if (type != null)
-            {
-                MonoSecurityTypeCache[fullName] = type;
                 return type;
-            }
 
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 type = assembly.GetType(fullName, false);
                 if (type != null)
-                {
-                    MonoSecurityTypeCache[fullName] = type;
                     return type;
-                }
             }
 
             try
@@ -440,7 +439,6 @@ namespace Unity.FoxgloveSDK.Editor
             if (type == null)
                 throw new NotSupportedException($"Unity Mono.Security type is not available: {fullName}");
 
-            MonoSecurityTypeCache[fullName] = type;
             return type;
         }
 
@@ -487,28 +485,21 @@ namespace Unity.FoxgloveSDK.Editor
         private static PropertyInfo ResolveProperty(Type type, string name)
         {
             var key = type.AssemblyQualifiedName + "|" + name;
-            if (PropertyCache.TryGetValue(key, out var cached))
-                return cached;
-
-            var property = type.GetProperty(name);
-            if (property == null)
-                throw new MissingMethodException(type.FullName, name);
-
-            PropertyCache[key] = property;
-            return property;
+            return PropertyCache.GetOrAdd(key, _ =>
+            {
+                var property = type.GetProperty(name);
+                if (property == null)
+                    throw new MissingMethodException(type.FullName, name);
+                return property;
+            });
         }
 
         private static MethodInfo[] ResolveMethods(Type type, string name, BindingFlags flags)
         {
             var key = type.AssemblyQualifiedName + "|" + (int)flags + "|" + name;
-            if (MethodCache.TryGetValue(key, out var cached))
-                return cached;
-
-            var methods = type.GetMethods(flags)
+            return MethodCache.GetOrAdd(key, _ => type.GetMethods(flags)
                 .Where(method => method.Name == name)
-                .ToArray();
-            MethodCache[key] = methods;
-            return methods;
+                .ToArray());
         }
 
         private static bool ParametersMatch(ParameterInfo[] parameters, object[] args)
@@ -570,10 +561,10 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var base64 = Convert.ToBase64String(der);
             var sb = new StringBuilder();
-            sb.AppendLine($"-----BEGIN {label}-----");
+            sb.Append("-----BEGIN ").Append(label).Append("-----\n");
             for (var i = 0; i < base64.Length; i += 64)
-                sb.AppendLine(base64.Substring(i, Math.Min(64, base64.Length - i)));
-            sb.AppendLine($"-----END {label}-----");
+                sb.Append(base64.Substring(i, Math.Min(64, base64.Length - i))).Append('\n');
+            sb.Append("-----END ").Append(label).Append("-----\n");
             return sb.ToString();
         }
 
@@ -745,7 +736,10 @@ namespace Unity.FoxgloveSDK.Editor
                 if (!string.IsNullOrEmpty(path) && File.Exists(path))
                     File.Delete(path);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning($"[Foxglove] Could not delete temporary certificate file '{path}': {ex.Message}");
+            }
         }
     }
 
