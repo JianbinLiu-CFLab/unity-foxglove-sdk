@@ -165,17 +165,33 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>The selected model's default LiDAR-to-IMU extrinsic derived from child-to-sensor metadata.</summary>
         public LidarTIlExtrinsic ModelLidarToImu
-            => Compose(ModelLidarToSensor, Invert(ModelImuToSensor));
+        {
+            get
+            {
+                if (TryGetBuiltinSpec(out var spec))
+                {
+                    var lidarToSensor = new LidarTIlExtrinsic(
+                        spec.LidarToSensorTranslationMeters,
+                        spec.LidarToSensorRotation);
+                    var imuToSensor = new LidarTIlExtrinsic(
+                        spec.ImuToSensorTranslationMeters,
+                        spec.ImuToSensorRotation);
+                    return Compose(lidarToSensor, Invert(imuToSensor));
+                }
+
+                return LidarTIlExtrinsic.Identity;
+            }
+        }
 
         /// <summary>The selected model's default camera-to-sensor extrinsic.</summary>
         public LidarTIlExtrinsic ModelCameraToSensor => LidarTIlExtrinsic.Identity;
 
         /// <summary>Effective LiDAR-to-sensor extrinsic after optional per-unit override.</summary>
+        /// <remarks>Does not mutate serialized selection state; <see cref="OnValidate"/> owns normalization.</remarks>
         public LidarTIlExtrinsic EffectiveLidarToSensor
         {
             get
             {
-                NormalizeExtrinsicSelection();
                 return _useLidarToSensorExtrinsic
                     ? AuthoredLidarToSensor
                     : Compose(AuthoredLidarToImu, AuthoredImuToSensor);
@@ -183,11 +199,11 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>Effective IMU-to-sensor extrinsic after optional per-unit override.</summary>
+        /// <remarks>Does not mutate serialized selection state; <see cref="OnValidate"/> owns normalization.</remarks>
         public LidarTIlExtrinsic EffectiveImuToSensor
         {
             get
             {
-                NormalizeExtrinsicSelection();
                 return _useImuToSensorExtrinsic
                     ? AuthoredImuToSensor
                     : Compose(Invert(AuthoredLidarToImu), AuthoredLidarToSensor);
@@ -195,11 +211,11 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>Derived LiDAR-to-IMU extrinsic, suitable for FAST-LIO2-style configs.</summary>
+        /// <remarks>Does not mutate serialized selection state; <see cref="OnValidate"/> owns normalization.</remarks>
         public LidarTIlExtrinsic EffectiveLidarToImu
         {
             get
             {
-                NormalizeExtrinsicSelection();
                 return _useLidarToImuExtrinsic
                     ? AuthoredLidarToImu
                     : Compose(AuthoredLidarToSensor, Invert(AuthoredImuToSensor));

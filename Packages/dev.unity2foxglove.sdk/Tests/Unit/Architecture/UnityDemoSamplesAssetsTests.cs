@@ -7,7 +7,6 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Xml.Linq;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Architecture
@@ -41,18 +40,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             "Unity2Foxglove/Assets/Samples/Unity2Foxglove SDK/1.9.4/Virtual LiDAR Maze Demo",
             "Packages/dev.unity2foxglove.sdk/Samples~/Virtual LiDAR Maze Demo"
         };
-
-        [Fact]
-        public void FoxRunLinkXmlUsesOneAssemblyBlockPerAssembly()
-        {
-            var document = XDocument.Parse(Text("Unity2Foxglove/Assets/FoxRun_link.xml"));
-            var assemblyNames = document.Root!.Elements("assembly")
-                .Select(e => (string)e.Attribute("fullname"))
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .ToArray();
-
-            Assert.Equal(assemblyNames.Distinct(StringComparer.Ordinal).Count(), assemblyNames.Length);
-        }
 
         [Fact]
         public void FoxRunLinkXmlEmitterGroupsTypesBeforeWritingAssemblies()

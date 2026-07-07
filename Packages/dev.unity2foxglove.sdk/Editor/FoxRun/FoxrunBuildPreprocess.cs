@@ -23,10 +23,11 @@ namespace Unity.FoxgloveSDK.Editor
     /// Before Player build, generates real .g.cs files for [FoxRun] annotated classes
     /// so IL2CPP has the IFoxgloveLogSource implementation without relying on Roslyn analyzer.
     /// </summary>
-    public class FoxrunBuildPreprocess : IPreprocessBuildWithReport, IProcessSceneWithReport
+    public class FoxrunBuildPreprocess : IPreprocessBuildWithReport, IPostprocessBuildWithReport, IProcessSceneWithReport
     {
         private const int ReplaceAttempts = 3;
         private const int ReplaceRetryDelayMilliseconds = 50;
+        private const string FoxRunLinkAssetPath = "Assets/FoxRun_link.xml";
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         /// <summary>
@@ -104,7 +105,7 @@ namespace Unity.FoxgloveSDK.Editor
             // Collect [FoxRun] types for IL2CPP preservation even when no file
             // changed on disk. Discovery happens in the Editor build step; the
             // generated Player code still publishes without runtime reflection.
-            var linkPath = Path.Combine(Application.dataPath, "FoxRun_link.xml");
+            var linkPath = FoxRunLinkAbsolutePath();
             EnsureFoxRunLinkXml(linkPath, foxRunTypes);
 
             try
@@ -125,8 +126,17 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Scans for <c>[FoxRun]</c> types and generates (or deletes)
-        /// <c>Assets/FoxRun_link.xml</c>.
+        /// Removes the build-only <c>Assets/FoxRun_link.xml</c> after the
+        /// player build has consumed it.
+        /// </summary>
+        public void OnPostprocessBuild(BuildReport report)
+        {
+            RemoveGeneratedLinkXmlAfterBuild();
+        }
+
+        /// <summary>
+        /// Generates (or deletes) <c>Assets/FoxRun_link.xml</c> from the
+        /// already-collected <c>[FoxRun]</c> type list.
         ///
         /// Three branches:
         /// <list type="bullet">
@@ -135,29 +145,6 @@ namespace Unity.FoxgloveSDK.Editor
         ///   <item>Scan/validation failure - <c>BuildFailedException</c></item>
         /// </list>
         /// </summary>
-        static void EnsureFoxRunLinkXml(string linkPath)
-        {
-            List<(string AsmName, string Ns, string ClassName)> types;
-            try
-            {
-                types = FoxrunCodeGenerator.CollectFoxRunTypes();
-            }
-            catch (Exception ex)
-            {
-                throw new BuildFailedException(
-                    "[FoxRun] IL2CPP preservation failed.\n" +
-                    "The build was stopped because [FoxRun] types were detected but\n" +
-                    "Assets/FoxRun_link.xml could not be generated.\n" +
-                    "This prevents a Player build where FoxRun topics silently\n" +
-                    "disappear after IL2CPP stripping.\n\n" +
-                    "Details:\n" +
-                    "  - Failed at: scan\n" +
-                    $"  - Reason: {ex.GetType().Name}: {ex.Message}\n");
-            }
-
-            EnsureFoxRunLinkXml(linkPath, types);
-        }
-
         static void EnsureFoxRunLinkXml(
             string linkPath,
             List<(string AsmName, string Ns, string ClassName)> types)
@@ -252,6 +239,35 @@ namespace Unity.FoxgloveSDK.Editor
                     $"  - Reason: {ex.GetType().Name}: {ex.Message}\n");
             }
         }
+
+        private static void RemoveGeneratedLinkXmlAfterBuild()
+        {
+            var linkPath = FoxRunLinkAbsolutePath();
+            try
+            {
+                if (!File.Exists(linkPath))
+                    return;
+
+                if (!AssetDatabase.DeleteAsset(FoxRunLinkAssetPath))
+                    File.Delete(linkPath);
+
+                var metaPath = linkPath + ".meta";
+                if (File.Exists(metaPath))
+                    File.Delete(metaPath);
+
+                AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                Debug.Log("[FoxrunBuildPreprocess] Removed build-only FoxRun_link.xml.");
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Debug.LogWarning(
+                    "[FoxrunBuildPreprocess] Could not remove build-only Assets/FoxRun_link.xml after build: " +
+                    ex.Message);
+            }
+        }
+
+        private static string FoxRunLinkAbsolutePath()
+            => Path.Combine(Application.dataPath, "FoxRun_link.xml");
 
         private static void WriteTextIfChanged(string path, string text)
         {

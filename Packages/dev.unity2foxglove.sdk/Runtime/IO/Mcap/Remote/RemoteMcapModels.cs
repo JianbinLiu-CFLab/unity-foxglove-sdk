@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -193,8 +194,7 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Closes the owned response stream, if one was opened.</summary>
         public void Dispose()
         {
-            DataStream?.Dispose();
-            DataStream = null;
+            Interlocked.Exchange(ref DataStream, null)?.Dispose();
         }
     }
 

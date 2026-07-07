@@ -38,7 +38,6 @@ namespace Unity.FoxgloveSDK.Tests
             var scanner = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
             var preprocess = PhaseValidationSourceHelpers.SourceMethod(build, "public void OnPreprocessBuild");
             var ensureWithTypes = PhaseValidationSourceHelpers.SourceMethod(build, "List<(string AsmName, string Ns, string ClassName)> types)");
-            var collect = PhaseValidationSourceHelpers.SourceMethod(build, "static void EnsureFoxRunLinkXml(string linkPath)");
             var generate = PhaseValidationSourceHelpers.SourceMethod(codegen, "out List<(string AsmName, string Ns, string ClassName)> foxRunTypes)");
             var combined = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices");
 
@@ -46,10 +45,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && preprocess.Contains("EnsureFoxRunLinkXml(linkPath, foxRunTypes)", StringComparison.Ordinal)
                   && !preprocess.Contains("CollectFoxRunTypes()", StringComparison.Ordinal),
                 "164-24B-1: build preprocess passes generated FoxRun type list into link.xml writer");
-            Check(collect.Contains("CollectFoxRunTypes()", StringComparison.Ordinal)
+            Check(!build.Contains("static void EnsureFoxRunLinkXml(string linkPath)", StringComparison.Ordinal)
                   && ensureWithTypes.Contains("types = types ?? new List", StringComparison.Ordinal)
                   && ensureWithTypes.Contains("FoxrunCodeGenerator.EmitLinkXml(types)", StringComparison.Ordinal),
-                "164-24B-2: standalone link.xml path remains available while build hot path accepts cached types");
+                "164-24B-2: link.xml writer has one cached-type path and no duplicate standalone scan");
             Check(generate.Contains("foxRunTypes = editorScan.FoxRunTypes;", StringComparison.Ordinal)
                   && combined.Contains("foxRunTypes.Add((asm.GetName().Name, ns, type.Name));", StringComparison.Ordinal),
                 "164-24B-3: combined generator scan records FoxRun types for IL2CPP preservation");
