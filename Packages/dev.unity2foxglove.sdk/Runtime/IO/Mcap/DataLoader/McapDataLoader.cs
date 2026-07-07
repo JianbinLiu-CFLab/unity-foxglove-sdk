@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.IO
@@ -21,8 +22,6 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapIndexedReader _reader;
         private readonly McapSequentialReadLimits _sequentialReadLimits;
         private readonly long _sourceLengthBytes;
-        private static readonly List<ushort> EmptyChannelIds = new List<ushort>(0);
-        private static readonly List<string> EmptyTopics = new List<string>(0);
         private McapDataLoaderInitialization _initialization;
         private Dictionary<ushort, McapSchema> _schemaMap;
         private Dictionary<ushort, McapChannel> _channelMap;
@@ -32,6 +31,7 @@ namespace Unity.FoxgloveSDK.IO
         private McapDecodeOptions _cachedDecodeOptions;
         private int _cachedDecodeOptionsFingerprint;
         private McapDecodeRegistry _cachedDecodeRegistry;
+        private int _lazyEnumerationActive;
         private bool _disposed;
 
         /// <summary>Opens a local MCAP file and owns the file stream.</summary>
@@ -84,6 +84,7 @@ namespace Unity.FoxgloveSDK.IO
         public McapDataLoaderInitialization Initialize()
         {
             ThrowIfDisposed();
+            ThrowIfLazyEnumerationActive();
             if (_initialization != null)
                 return _initialization;
 
@@ -110,6 +111,7 @@ namespace Unity.FoxgloveSDK.IO
         public IEnumerable<McapDataLoaderMessage> CreateIterator(McapDataLoaderQuery query)
         {
             ThrowIfDisposed();
+            ThrowIfLazyEnumerationActive();
             Initialize();
             if (!QueryCanMatch(query?.ChannelIds, query?.Topics))
                 return Array.Empty<McapDataLoaderMessage>();
@@ -171,6 +173,7 @@ namespace Unity.FoxgloveSDK.IO
             McapDecodeOptions options = null)
         {
             ThrowIfDisposed();
+            ThrowIfLazyEnumerationActive();
             Initialize();
             var registry = GetDecodeRegistry(options);
             var decodedMessages = new List<McapDecodedMessage>();
@@ -193,6 +196,7 @@ namespace Unity.FoxgloveSDK.IO
             out McapDecodedMessage decoded)
         {
             ThrowIfDisposed();
+            ThrowIfLazyEnumerationActive();
             Initialize();
             return GetDecodeRegistry(options).TryDecode(message, out decoded);
         }
@@ -201,6 +205,7 @@ namespace Unity.FoxgloveSDK.IO
         public IReadOnlyList<McapDataLoaderMessage> GetBackfill(McapDataLoaderBackfillQuery query)
         {
             ThrowIfDisposed();
+            ThrowIfLazyEnumerationActive();
             Initialize();
 
             query = query ?? new McapDataLoaderBackfillQuery();
@@ -286,6 +291,9 @@ namespace Unity.FoxgloveSDK.IO
             if (!hasChannelFilter && !hasTopicFilter)
                 return true;
 
+            if (hasChannelFilter && hasTopicFilter)
+                return QueryCanMatchChannelAndTopic(channelIds, topics);
+
             if (hasChannelFilter && _knownChannelIds != null)
             {
                 for (var i = 0; i < channelIds.Count; i++)
@@ -301,6 +309,27 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var topic = topics[i] ?? string.Empty;
                     if (_topicChannelMap.TryGetValue(topic, out var ids) && ids.Count > 0)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool QueryCanMatchChannelAndTopic(List<ushort> channelIds, List<string> topics)
+        {
+            if (_channelMap == null)
+                return false;
+
+            for (var i = 0; i < channelIds.Count; i++)
+            {
+                if (!_channelMap.TryGetValue(channelIds[i], out var channel))
+                    continue;
+
+                var channelTopic = channel.Topic ?? string.Empty;
+                for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
+                {
+                    if (string.Equals(channelTopic, topics[topicIndex] ?? string.Empty, StringComparison.Ordinal))
                         return true;
                 }
             }
@@ -644,16 +673,24 @@ namespace Unity.FoxgloveSDK.IO
         internal IEnumerable<McapDataLoaderMessage> EnumerateLazyMessages(McapReadOptions options)
         {
             ThrowIfDisposed();
-            foreach (var message in _reader.EnumerateMessages(options))
+            BeginLazyEnumeration();
+            try
             {
-                ThrowIfDisposed();
-                yield return ToDataLoaderMessage(message);
+                foreach (var message in _reader.EnumerateMessages(options))
+                {
+                    ThrowIfDisposed();
+                    yield return ToDataLoaderMessage(message);
+                }
+            }
+            finally
+            {
+                EndLazyEnumeration();
             }
         }
 
         private IEnumerable<McapDecodedMessage> EnumerateLazyDecodedMessages(McapReadOptions options, McapDecodeOptions decodeOptions)
         {
-            var registry = CreateDecodeRegistry(decodeOptions);
+            var registry = GetDecodeRegistry(decodeOptions);
             foreach (var raw in EnumerateLazyMessages(options))
             {
                 registry.TryDecode(raw, out var decoded);
@@ -713,10 +750,27 @@ namespace Unity.FoxgloveSDK.IO
                 () => ((IEnumerable<McapDecodedMessage>)Array.Empty<McapDecodedMessage>()).GetEnumerator());
 
         private static List<ushort> CopyUShorts(List<ushort> source)
-            => source == null || source.Count == 0 ? EmptyChannelIds : new List<ushort>(source);
+            => source == null || source.Count == 0 ? new List<ushort>(0) : new List<ushort>(source);
 
         private static List<string> CopyStrings(List<string> source)
-            => source == null || source.Count == 0 ? EmptyTopics : new List<string>(source);
+            => source == null || source.Count == 0 ? new List<string>(0) : new List<string>(source);
+
+        private void BeginLazyEnumeration()
+        {
+            if (Interlocked.Exchange(ref _lazyEnumerationActive, 1) != 0)
+                throw new InvalidOperationException("McapDataLoader allows only one active lazy enumeration per loader.");
+        }
+
+        private void EndLazyEnumeration()
+        {
+            Volatile.Write(ref _lazyEnumerationActive, 0);
+        }
+
+        private void ThrowIfLazyEnumerationActive()
+        {
+            if (Volatile.Read(ref _lazyEnumerationActive) != 0)
+                throw new InvalidOperationException("Cannot start another MCAP read while a lazy enumeration is active on this loader.");
+        }
 
         private void ThrowIfDisposed()
         {

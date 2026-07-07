@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private readonly Dictionary<uint, ChannelHandle> _channels = new Dictionary<uint, ChannelHandle>();
         private readonly IntPtr _context;
         private readonly Func<ulong> _gatewaySinkId;
+        private readonly ulong[] _logTimeScratch = new ulong[1];
         private bool _disposed;
 
         internal RemoteGatewayChannelRegistry(IntPtr context, Func<ulong> gatewaySinkId)
@@ -28,7 +29,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         internal bool RegisterChannel(AdvertiseChannel channel)
         {
-            if (channel == null || _disposed)
+            if (channel == null)
                 return false;
 
             lock (_gate)
@@ -55,37 +56,37 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         internal bool Publish(uint channelId, ulong logTimeNs, byte[] payload)
         {
-            if (payload == null || payload.Length == 0 || _disposed)
+            if (payload == null || payload.Length == 0)
                 return false;
 
-            ChannelHandle channel;
             lock (_gate)
             {
-                if (_disposed || !_channels.TryGetValue(channelId, out channel))
+                if (_disposed || !_channels.TryGetValue(channelId, out var channel))
                     return false;
-            }
 
-            var sinkId = GatewaySinkId;
-            if (sinkId == 0UL)
-                return false;
+                var sinkId = GatewaySinkId;
+                if (sinkId == 0UL)
+                    return false;
 
-            var payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
-            var logTime = new[] { logTimeNs };
-            var logTimeHandle = GCHandle.Alloc(logTime, GCHandleType.Pinned);
-            try
-            {
-                var error = RemoteGatewayNativeMethods.ChannelLog(
-                    channel.Pointer,
-                    payloadHandle.AddrOfPinnedObject(),
-                    (UIntPtr)payload.Length,
-                    logTimeHandle.AddrOfPinnedObject(),
-                    sinkId);
-                return error == RemoteGatewayNativeMethods.FoxgloveError.Ok;
-            }
-            finally
-            {
-                logTimeHandle.Free();
-                payloadHandle.Free();
+                _logTimeScratch[0] = logTimeNs;
+                var payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+                var logTimeHandle = GCHandle.Alloc(_logTimeScratch, GCHandleType.Pinned);
+                try
+                {
+                    var error = RemoteGatewayNativeMethods.ChannelLog(
+                        channel.Pointer,
+                        payloadHandle.AddrOfPinnedObject(),
+                        (UIntPtr)payload.Length,
+                        logTimeHandle.AddrOfPinnedObject(),
+                        sinkId);
+                    return error == RemoteGatewayNativeMethods.FoxgloveError.Ok;
+                }
+                finally
+                {
+                    logTimeHandle.Free();
+                    payloadHandle.Free();
+                    _logTimeScratch[0] = 0UL;
+                }
             }
         }
 
@@ -108,8 +109,11 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             nativeChannel = IntPtr.Zero;
             using (var topic = PinnedUtf8String.Create(channel.Topic))
             using (var encoding = PinnedUtf8String.Create(channel.Encoding))
-            using (var schema = NativeSchema.Create(channel))
+            using (var schema = NativeSchema.TryCreate(channel))
             {
+                if (schema == null)
+                    return false;
+
                 var error = RemoteGatewayNativeMethods.RawChannelCreate(
                     topic.Value,
                     encoding.Value,
@@ -170,7 +174,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
             internal IntPtr Pointer => _pointer;
 
-            internal static NativeSchema Create(AdvertiseChannel channel)
+            internal static NativeSchema TryCreate(AdvertiseChannel channel)
             {
                 if (string.IsNullOrEmpty(channel.SchemaName)
                     && string.IsNullOrEmpty(channel.SchemaEncoding)
@@ -179,9 +183,13 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                     return Empty();
                 }
 
+                var schemaBytes = TryBuildSchemaBytes(channel.SchemaEncoding, channel.Schema);
+                if (schemaBytes == null)
+                    return null;
+
                 var name = PinnedUtf8String.Create(channel.SchemaName);
                 var encoding = PinnedUtf8String.Create(channel.SchemaEncoding);
-                var data = PinnedBytes.Create(BuildSchemaBytes(channel.SchemaEncoding, channel.Schema));
+                var data = PinnedBytes.Create(schemaBytes);
                 var native = new RemoteGatewayNativeMethods.FoxgloveSchema
                 {
                     Name = name.Value,
@@ -210,13 +218,22 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             private static NativeSchema Empty()
                 => new NativeSchema(null, null, null, IntPtr.Zero);
 
-            private static byte[] BuildSchemaBytes(string schemaEncoding, string schema)
+            private static byte[] TryBuildSchemaBytes(string schemaEncoding, string schema)
             {
                 if (string.IsNullOrEmpty(schema))
                     return Array.Empty<byte>();
 
                 if (string.Equals(schemaEncoding, "protobuf", StringComparison.OrdinalIgnoreCase))
-                    return Convert.FromBase64String(schema);
+                {
+                    try
+                    {
+                        return Convert.FromBase64String(schema);
+                    }
+                    catch (FormatException)
+                    {
+                        return null;
+                    }
+                }
 
                 return Encoding.UTF8.GetBytes(schema);
             }
