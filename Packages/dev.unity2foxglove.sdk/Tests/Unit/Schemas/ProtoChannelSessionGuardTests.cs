@@ -35,6 +35,49 @@ namespace FoxgloveSdk.UnitTests.Schemas
         }
 
         [Fact]
+        public void ProtoChannelReusesCapturedChannelIdAcrossLogs()
+        {
+            var assembly = CompileProtoChannelHarness();
+            var manager = CreateManager(assembly);
+            var channel = CreateProtoChannel(assembly, manager, "/phase150/proto");
+
+            InvokeLog(channel, new Foxglove.KeyValuePair { Key = "first", Value = "1" }, 100UL);
+            InvokeLog(channel, new Foxglove.KeyValuePair { Key = "second", Value = "2" }, 200UL);
+
+            Assert.Equal(1U, Get<uint>(channel, "ChannelId"));
+            Assert.Equal(1U, Get<uint>(manager, "LastPublishedChannelId"));
+            Assert.Equal(1, Get<int>(manager, "RegisterCallCount"));
+            Assert.Equal(200UL, Get<ulong>(manager, "LastPublishedTimestampNs"));
+        }
+
+        [Fact]
+        public void ProtoChannelRejectsNullMessage()
+        {
+            var assembly = CompileProtoChannelHarness();
+            var manager = CreateManager(assembly);
+            var channel = CreateProtoChannel(assembly, manager, "/phase150/proto");
+
+            var ex = Assert.Throws<TargetInvocationException>(
+                () => InvokeLog(channel, null, 42UL));
+
+            Assert.IsType<ArgumentNullException>(ex.InnerException);
+            Assert.Null(Get<byte[]>(manager, "LastPublishedPayload"));
+        }
+
+        [Fact]
+        public void ProtoChannelRejectsUnknownClrType()
+        {
+            var assembly = CompileProtoChannelHarness();
+            var manager = CreateManager(assembly);
+
+            var ex = Assert.Throws<TargetInvocationException>(
+                () => CreateProtoChannel(assembly, manager, "/phase150/unknown", typeof(Google.Protobuf.WellKnownTypes.StringValue)));
+
+            var inner = Assert.IsType<InvalidOperationException>(ex.InnerException);
+            Assert.Contains("Unknown Foxglove protobuf message type", inner.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ProtoChannelRejectsLogAfterSessionGenerationChanges()
         {
             var assembly = CompileProtoChannelHarness();
@@ -107,6 +150,9 @@ namespace FoxgloveSdk.UnitTests.Schemas
         }
 
         private static object CreateProtoChannel(Assembly assembly, object manager, string topic)
+            => CreateProtoChannel(assembly, manager, topic, typeof(Foxglove.KeyValuePair));
+
+        private static object CreateProtoChannel(Assembly assembly, object manager, string topic, Type messageType)
         {
             var type = assembly.GetType("Unity.FoxgloveSDK.Components.FoxgloveProtoChannelExtensions", throwOnError: true);
             var method = type.GetMethods(BindingFlags.Public | BindingFlags.Static)
@@ -114,7 +160,7 @@ namespace FoxgloveSdk.UnitTests.Schemas
                                      && candidate.GetParameters().Length == 2
                                      && candidate.GetParameters()[1].ParameterType == typeof(string));
 
-            return method.MakeGenericMethod(typeof(Foxglove.KeyValuePair)).Invoke(null, new[] { manager, topic });
+            return method.MakeGenericMethod(messageType).Invoke(null, new[] { manager, topic });
         }
 
         private static void InvokeLog(object channel, Foxglove.KeyValuePair message, ulong timestampNs)
@@ -168,6 +214,8 @@ namespace Unity.FoxgloveSDK.Components
 
         public uint LastPublishedChannelId { get; private set; }
 
+        public int RegisterCallCount { get; private set; }
+
         public string LastPublishedTopic { get; private set; }
 
         public ulong LastPublishedTimestampNs { get; private set; }
@@ -183,6 +231,7 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrWhiteSpace(schemaName))
                 throw new InvalidOperationException(""Schema required."");
 
+            RegisterCallCount++;
             return _nextChannelId++;
         }
 

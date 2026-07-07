@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,8 @@ PLUGIN_DIR = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64" / "Run
 TOKEN_ENV = "FOXGLOVE_DEVICE_TOKEN"
 EXPECTED_START_LOG = "[Foxglove] Remote gateway started. Publishing to Foxglove Cloud."
 UNSUPPORTED_V1 = "ClientPublish, Services, Parameters, Assets, ConnectionGraph"
+UNITY_VERSION_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)([abfp])(\d+)")
+UNITY_VERSION_QUALIFIER_RANK = {"a": 0, "b": 1, "f": 2, "p": 3}
 
 
 def parse_args() -> argparse.Namespace:
@@ -123,12 +126,29 @@ def find_unity_exe(configured: str | None) -> Path:
         if root.exists():
             candidates.extend(root.glob(r"*\Editor\Unity.exe"))
 
-    candidates = sorted(candidates, key=lambda path: path.parent.parent.name, reverse=True)
+    candidates = sorted(candidates, key=lambda path: unity_version_sort_key(path.parent.parent.name), reverse=True)
     if candidates:
         return candidates[0]
 
     raise SystemExit(
         "Could not find Unity.exe. Pass --unity-exe or set UNITY_EXE in this PowerShell session."
+    )
+
+
+def unity_version_sort_key(version: str) -> tuple[int, int, int, int, int, str]:
+    """Return a sortable Unity version key for Hub directory names."""
+    match = UNITY_VERSION_PATTERN.match(version)
+    if not match:
+        return (0, 0, 0, 0, 0, version)
+
+    major, minor, patch, qualifier, suffix = match.groups()
+    return (
+        int(major),
+        int(minor),
+        int(patch),
+        UNITY_VERSION_QUALIFIER_RANK.get(qualifier, 0),
+        int(suffix),
+        version,
     )
 
 

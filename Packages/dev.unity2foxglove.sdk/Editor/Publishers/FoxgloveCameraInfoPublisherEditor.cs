@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 EditorGUILayout.HelpBox(
-                    "Enable only when no scene, robot, or SLAM TF tree already resolves the CameraInfo frame.",
+                    "Enable only when no scene, robot, or SLAM TF tree already resolves the CameraInfo frame. The TF child frame is the CameraInfo Frame Id above.",
                     MessageType.None);
             }
         }
@@ -188,7 +188,11 @@ namespace Unity.FoxgloveSDK.Editor
 
             var index = property.enumValueIndex;
             if (index < 0 || index >= property.enumDisplayNames.Length)
+            {
+                Debug.LogWarning(
+                    $"[Foxglove] CameraInfo Inspector: enum property '{property.name}' has out-of-range index {property.enumValueIndex}; resetting to 0.");
                 index = 0;
+            }
 
             property.enumValueIndex = EditorGUILayout.Popup(label, index, property.enumDisplayNames);
         }
