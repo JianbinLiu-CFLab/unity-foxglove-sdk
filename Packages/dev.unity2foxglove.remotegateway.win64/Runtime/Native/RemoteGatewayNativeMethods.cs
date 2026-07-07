@@ -123,6 +123,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             public IntPtr FetchAssetContext;
             public FetchAssetCallback FetchAsset;
             public FoxgloveString FoxgloveApiUrl;
+            // Optional pointer-sized C ABI fields: IntPtr.Zero means "use the native default".
             public IntPtr FoxgloveApiTimeoutSecs;
             public IntPtr MessageBacklogSize;
         }

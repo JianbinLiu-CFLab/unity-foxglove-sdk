@@ -106,6 +106,19 @@ namespace Unity.FoxgloveSDK.Components
             EnsureJpegPublishPipeline();
             var copyStart = Stopwatch.GetTimestamp();
             frameBytes ??= req.GetData<byte>().ToArray();
+            var copyMs = ElapsedMs(copyStart);
+            _diagnostics.RecordReadbackCopy(
+                readbackLatencyMs,
+                copyMs,
+                Time.realtimeSinceStartupAsDouble,
+                _pendingRequests,
+                _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
+                _jpegPublishPipeline?.CompletedQueueDepth ?? 0);
+            EmitCameraSlowStageIfNeeded(
+                "readbackCopy",
+                copyMs,
+                _pendingRequests,
+                _pendingRequests);
             _jpegPublishPipeline.TryQueueFrame(
                 frameBytes,
                 unixNs,
@@ -120,22 +133,6 @@ namespace Unity.FoxgloveSDK.Components
                 ResolveFrameId(),
                 _publishStandardRos2CompressedImage,
                 _maxEncodedBytes,
-                onReadbackCopy: (latency, _) =>
-                {
-                    var copyMs = ElapsedMs(copyStart);
-                    _diagnostics.RecordReadbackCopy(
-                        latency,
-                        copyMs,
-                        Time.realtimeSinceStartupAsDouble,
-                        _pendingRequests,
-                        _jpegPublishPipeline?.EncodeQueueDepth ?? 0,
-                        _jpegPublishPipeline?.CompletedQueueDepth ?? 0);
-                    EmitCameraSlowStageIfNeeded(
-                        "readbackCopy",
-                        copyMs,
-                        _pendingRequests,
-                        _pendingRequests);
-                },
                 onEncodeQueueDrop: () => _diagnostics.RecordEncodeQueueDrop());
         }
 

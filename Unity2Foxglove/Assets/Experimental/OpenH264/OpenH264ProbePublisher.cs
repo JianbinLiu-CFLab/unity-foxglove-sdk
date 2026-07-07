@@ -5,6 +5,7 @@
 // Purpose: Demo-only OpenH264 camera probe for Phase 80 source spike.
 
 using System;
+using System.Threading.Tasks;
 using Foxglove.Schemas;
 using Foxglove.Schemas.Video;
 using Unity.FoxgloveSDK.Components;
@@ -53,7 +54,6 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     private int _pendingRequests;
     private bool _destroyed;
     private int _captureGeneration;
-    private bool _cleanupWhenReadbacksDrain;
     private int _sidecarWidth;
     private int _sidecarHeight;
     private bool _warnedUnavailable;
@@ -92,7 +92,6 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         base.OnEnable();
         _destroyed = false;
         _pendingRequests = 0;
-        _cleanupWhenReadbacksDrain = false;
         _captureGeneration++;
         _warnedUnavailable = false;
         _conversionFailureCount = 0;
@@ -112,10 +111,8 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     {
         base.OnDisable();
         _captureGeneration++;
-        _cleanupWhenReadbacksDrain = _pendingRequests > 0;
         StopSidecar();
-        if (_pendingRequests == 0)
-            CleanupResources();
+        CleanupResources();
     }
 
     private void OnDestroy()
@@ -123,9 +120,7 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         _destroyed = true;
         _captureGeneration++;
         StopSidecar();
-        _cleanupWhenReadbacksDrain = _pendingRequests > 0;
-        if (_pendingRequests == 0)
-            CleanupResources();
+        CleanupResources();
     }
 
     private void LateUpdate()
@@ -365,11 +360,6 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
     private void CompletePendingReadback()
     {
         _pendingRequests = Mathf.Max(0, _pendingRequests - 1);
-        if (_pendingRequests == 0 && _cleanupWhenReadbacksDrain)
-        {
-            _cleanupWhenReadbacksDrain = false;
-            CleanupResources();
-        }
     }
 
     private void CleanupResources()
@@ -393,10 +383,21 @@ public sealed class OpenH264ProbePublisher : FoxglovePublisherBase
         if (_sidecar == null)
             return;
 
-        _sidecar.Dispose();
+        var sidecar = _sidecar;
         _sidecar = null;
         _sidecarWidth = 0;
         _sidecarHeight = 0;
+        Task.Run(() =>
+        {
+            try
+            {
+                sidecar.Dispose();
+            }
+            catch
+            {
+                // Experimental probe shutdown must not surface background dispose failures on Unity's main thread.
+            }
+        });
     }
 
     private void LogUnavailable(string message)

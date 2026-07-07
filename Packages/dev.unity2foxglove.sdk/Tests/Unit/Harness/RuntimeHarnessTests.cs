@@ -238,6 +238,23 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void RuntimeCompileSurfaceDocumentsUnityDependentGlobs()
+        {
+            var project = File.ReadAllText(Path.Combine(
+                FindRepoRoot(),
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Tests",
+                "Runtime",
+                "FoxgloveSdk.Tests.csproj"));
+
+            Assert.Contains("Runtime/Sensors wildcard is intentionally broad", project, StringComparison.Ordinal);
+            Assert.Contains("Runtime/Schemas/Proto wildcard is intentionally broad", project, StringComparison.Ordinal);
+            Assert.Contains("Exclude=\"../../Runtime/Sensors/**/VirtualLidar.cs;", project, StringComparison.Ordinal);
+            Assert.Contains("Exclude=\"../../Runtime/Schemas/Proto/**/*Publisher.cs;", project, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DescriptorReaderRejectsUnknownPublishMode()
         {
             var method = LoadRuntimeSyntax("FoxRunGenerationDescriptorJsonReader.cs")

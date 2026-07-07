@@ -160,6 +160,8 @@ namespace Unity.FoxgloveSDK.Tests
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                // FoxgloveLogSourceGenerator is intentionally the combined
+                // Roslyn entry point for both [FoxRun] and [FoxService].
                 new ISourceGenerator[] { new FoxgloveLogSourceGenerator().AsSourceGenerator() },
                 parseOptions: CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.CSharp9));
             driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);
@@ -198,7 +200,7 @@ namespace Unity.FoxgloveSDK.Tests
                 return Array.Empty<string>();
 
             var lineStart = generated.LastIndexOf("new global::Unity.FoxgloveSDK.Components.FoxgloveGeneratedServiceDescriptor", serviceIndex, StringComparison.Ordinal);
-            var lineEnd = generated.IndexOf(")", serviceIndex, StringComparison.Ordinal);
+            var lineEnd = FindDescriptorConstructorEnd(generated, lineStart);
             if (lineStart < 0 || lineEnd < 0)
                 return Array.Empty<string>();
 
@@ -238,6 +240,55 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return values.ToArray();
+        }
+
+        private static int FindDescriptorConstructorEnd(string generated, int start)
+        {
+            if (start < 0)
+                return -1;
+
+            var depth = 0;
+            var inString = false;
+            var escaped = false;
+            for (var i = start; i < generated.Length; i++)
+            {
+                var ch = generated[i];
+                if (inString)
+                {
+                    if (escaped)
+                    {
+                        escaped = false;
+                        continue;
+                    }
+                    if (ch == '\\')
+                    {
+                        escaped = true;
+                        continue;
+                    }
+                    if (ch == '"')
+                        inString = false;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = true;
+                    continue;
+                }
+                if (ch == '(')
+                {
+                    depth++;
+                    continue;
+                }
+                if (ch == ')')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return i;
+                }
+            }
+
+            return -1;
         }
 
         private static MetadataReference[] References()

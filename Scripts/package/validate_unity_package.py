@@ -26,9 +26,6 @@ REPO_ROOT_PARENT_DEPTH = 2
 EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 
-# Expected number of package samples declared in package.json.
-EXPECTED_SAMPLE_COUNT = 4
-
 # Maximum problem count printed for long offender lists.
 MAX_REPORTED_OFFENDERS = 12
 MAX_REPORTED_MISSING_META = 10
@@ -41,6 +38,14 @@ PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
+
+EXPECTED_SAMPLES = {
+    "Basic Visualization": "Samples~/BasicVisualization",
+    "Full Demo Visualization": "Samples~/FullDemoVisualization",
+    "ROS2 Bridge Sample": "Samples~/Ros2BridgeSample",
+    "Virtual LiDAR Maze Demo": "Samples~/Virtual LiDAR Maze Demo",
+}
+EXPECTED_SAMPLE_COUNT = len(EXPECTED_SAMPLES)
 
 # File extensions that Unity tracks with .meta sidecar files in samples.
 UNITY_META_EXTENSIONS = {
@@ -241,13 +246,7 @@ def check_package_identity(results: list[CheckResult], data: dict) -> None:
     if not isinstance(samples, list):
         return
 
-    expected_samples = {
-        "Basic Visualization": "Samples~/BasicVisualization",
-        "Full Demo Visualization": "Samples~/FullDemoVisualization",
-        "ROS2 Bridge Sample": "Samples~/Ros2BridgeSample",
-        "Virtual LiDAR Maze Demo": "Samples~/Virtual LiDAR Maze Demo",
-    }
-    for display_name, sample_path in expected_samples.items():
+    for display_name, sample_path in EXPECTED_SAMPLES.items():
         match = next((s for s in samples if s.get("displayName") == display_name), None)
         add(
             results,
@@ -471,12 +470,21 @@ def check_third_party_notices(results: list[CheckResult]) -> None:
 
     notices = THIRD_PARTY_NOTICES.read_text(encoding="utf-8", errors="replace")
     missing: list[str] = []
+    absent_artifacts: list[str] = []
     for artifact, required_tokens in THIRD_PARTY_NOTICE_REQUIREMENTS:
         if not artifact.exists():
+            absent_artifacts.append(rel(artifact))
             continue
         absent = [token for token in required_tokens if token not in notices]
         if absent:
             missing.append(f"{rel(artifact)} missing {', '.join(absent)}")
+
+    add(
+        results,
+        "third-party notice artifact scope visible",
+        True,
+        "all listed artifacts are bundled" if not absent_artifacts else "not bundled: " + "; ".join(absent_artifacts),
+    )
 
     add(
         results,

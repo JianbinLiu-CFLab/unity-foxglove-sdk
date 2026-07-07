@@ -135,8 +135,9 @@ namespace Unity.FoxgloveSDK.Transport
             return FixedTimeEqualsUtf8(expectedBytes, actual);
         }
 
-        private static bool FixedTimeEqualsUtf8(byte[] expectedBytes, string actual)
+        internal static bool FixedTimeEqualsUtf8(byte[] expectedBytes, string actual)
         {
+            expectedBytes = expectedBytes ?? Array.Empty<byte>();
             var actualBytes = Encoding.UTF8.GetBytes(actual ?? string.Empty);
             var max = Math.Max(expectedBytes.Length, actualBytes.Length);
             var diff = expectedBytes.Length ^ actualBytes.Length;

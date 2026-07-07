@@ -85,6 +85,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(3UL, queue.Dequeue().TimestampNs);
         }
 
+        [Fact]
+        public void DequeueOnEmptyQueueReturnsDefaultSample()
+        {
+            var queue = new ImuSampleQueue();
+
+            var sample = queue.Dequeue();
+
+            Assert.Equal(0UL, sample.TimestampNs);
+            Assert.Equal(0, queue.Count);
+            Assert.Equal(0, queue.DroppedCount);
+        }
+
+        [Fact]
+        public void ResizeToSameCapacityDoesNotChangeQueueState()
+        {
+            var queue = new ImuSampleQueue();
+            queue.Resize(2, 2);
+            queue.Enqueue(Sample(10));
+            queue.Enqueue(Sample(20));
+            queue.Enqueue(Sample(30));
+
+            queue.Resize(2, 2);
+
+            Assert.Equal(2, queue.Count);
+            Assert.Equal(1, queue.DroppedCount);
+            Assert.Equal(20UL, queue.Dequeue().TimestampNs);
+            Assert.Equal(30UL, queue.Dequeue().TimestampNs);
+        }
+
         private static ImuSample Sample(ulong timestampNs)
             => new ImuSample(
                 timestampNs,

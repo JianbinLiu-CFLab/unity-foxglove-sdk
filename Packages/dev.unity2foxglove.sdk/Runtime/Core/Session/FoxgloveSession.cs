@@ -116,7 +116,13 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Attach an optional mirror sink and seed it with current server-side channels.</summary>
         internal void SetMirrorSink(IFoxgloveMirrorSink sink, bool replayExistingChannels = true)
         {
-            Volatile.Write(ref _mirrorSink, sink);
+            var previous = Interlocked.Exchange(ref _mirrorSink, sink);
+            if (previous != null && !ReferenceEquals(previous, sink))
+            {
+                foreach (var channel in _channels.GetAll())
+                    TryUnregisterMirrorChannel(previous, channel.Id);
+            }
+
             if (sink == null || !replayExistingChannels)
                 return;
 

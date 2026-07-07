@@ -222,6 +222,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             var coolingResult = CameraFrameBudgetPolicy.Evaluate(cooling);
             Assert.False(coolingResult.AllowCapture);
             Assert.Equal(CameraFrameBudgetSkipReason.PipelineCooldown, coolingResult.SkipReason);
+
+            var tooManyPixels = idle;
+            tooManyPixels.MaxPixelsPerFrame = (640 * 480) - 1;
+            var pixelResult = CameraFrameBudgetPolicy.Evaluate(tooManyPixels);
+            Assert.False(pixelResult.AllowCapture);
+            Assert.Equal(CameraFrameBudgetSkipReason.PixelBudgetExceeded, pixelResult.SkipReason);
         }
 
         [Fact]
@@ -288,6 +294,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         {
             get
             {
+                var explicitRoot = Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_REPO_ROOT");
+                if (!string.IsNullOrWhiteSpace(explicitRoot))
+                {
+                    var candidate = Path.GetFullPath(explicitRoot);
+                    if (File.Exists(Path.Combine(candidate, "Unity2Foxglove.sln"))
+                        || Directory.Exists(Path.Combine(candidate, ".git")))
+                        return candidate;
+
+                    throw new DirectoryNotFoundException(
+                        "UNITY2FOXGLOVE_REPO_ROOT does not point at a Unity2Foxglove repository root: "
+                        + explicitRoot);
+                }
+
                 var dir = new DirectoryInfo(AppContext.BaseDirectory);
                 while (dir != null)
                 {
@@ -298,7 +317,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                     dir = dir.Parent;
                 }
 
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                throw new DirectoryNotFoundException(
+                    "Could not locate repository root from " + AppContext.BaseDirectory
+                    + ". Set UNITY2FOXGLOVE_REPO_ROOT when running published test binaries outside the repository tree.");
             }
         }
     }

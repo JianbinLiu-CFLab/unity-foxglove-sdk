@@ -39,9 +39,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("_captureGeneration++", StringComparison.Ordinal)
                   && source.Contains("generation != _captureGeneration", StringComparison.Ordinal),
                 "134-25A-2: experimental OpenH264 probe guards stale readback callbacks by generation");
-            Check(source.Contains("_cleanupWhenReadbacksDrain = _pendingRequests > 0;", StringComparison.Ordinal)
-                  && source.Contains("CompletePendingReadback()", StringComparison.Ordinal),
-                "134-25A-3: experimental OpenH264 probe delays cleanup only for its own pending readbacks");
+            Check(source.Contains("protected override void OnDisable()", StringComparison.Ordinal)
+                  && source.Contains("private void OnDestroy()", StringComparison.Ordinal)
+                  && source.Contains("CleanupResources();", StringComparison.Ordinal)
+                  && !source.Contains("_cleanupWhenReadbacksDrain", StringComparison.Ordinal),
+                "134-25A-3: experimental OpenH264 probe cleans up capture resources without readback-drain waits");
             Check(source.Contains("Range(2, OpenH264ProbeSidecarOptions.MaxDimension)", StringComparison.Ordinal),
                 "134-25A-4: experimental OpenH264 probe exposes bounded width and height in the Inspector");
             Check(source.Contains("TryGetProbeFrameLayout", StringComparison.Ordinal)

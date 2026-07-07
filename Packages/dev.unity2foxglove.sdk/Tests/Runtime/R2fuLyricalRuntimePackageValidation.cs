@@ -71,6 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed += R2fuJazzyRuntimeRefreshValidation.ValidateNativeBridgeLifecycleGuards("162-G");
             Phase162SmokeHelperCapturesZenohRouterFlow();
             Phase162LyricalRuntimeStopsExecutorsBeforeZenohShutdown();
+            Phase162LyricalRuntimeComponentLifecycleIsBounded();
             Phase162PointCloud2UsesSensorDataQos();
             Phase162ValidationRegistryIsWired();
 
@@ -109,8 +110,9 @@ namespace Unity.FoxgloveSDK.Tests
             var asmdef = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef");
             Check(asmdef.Contains("\"Unity2Foxglove.Ros2ForUnity.Runtime\"", StringComparison.Ordinal)
                   && asmdef.Contains("\"WindowsStandalone64\"", StringComparison.Ordinal)
+                  && asmdef.Contains("\"autoReferenced\": false", StringComparison.Ordinal)
                   && !asmdef.Contains("defineConstraints", StringComparison.Ordinal),
-                "146B-A8: Lyrical runtime asmdef is Windows runtime scoped and not define-gated");
+                "146B-A8: Lyrical runtime asmdef is Windows runtime scoped, explicit-reference only, and not define-gated");
         }
 
         private static void LyricalScriptsAreDistroSpecific()
@@ -519,6 +521,31 @@ namespace Unity.FoxgloveSDK.Tests
                       && node.Contains("QOS_POLICY_DURABILITY_VOLATILE", StringComparison.Ordinal),
                     "162-F-runtime: " + package + " CreateSensorPublisher explicitly maps sensor QoS");
             }
+        }
+
+        private static void Phase162LyricalRuntimeComponentLifecycleIsBounded()
+        {
+            var componentSource = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
+            var okMethod = ExtractMethod(componentSource, "public bool Ok()");
+            var startMethod = ExtractMethod(componentSource, "void Start()");
+            var startExecutorMethod = ExtractMethod(componentSource, "private void StartExecutor()");
+            var stopExecutorMethod = ExtractMethod(componentSource, "private void StopExecutor()");
+
+            Check(componentSource.Contains("[DisallowMultipleComponent]", StringComparison.Ordinal),
+                "162-G1: Lyrical ROS2UnityComponent prevents accidental duplicate components");
+            Check(okMethod.Contains("needsConstruct = ros2forUnity == null;", StringComparison.Ordinal)
+                  && okMethod.Contains("if (needsConstruct)", StringComparison.Ordinal)
+                  && okMethod.IndexOf("if (needsConstruct)", StringComparison.Ordinal)
+                     < okMethod.LastIndexOf("lock (mutex)", StringComparison.Ordinal),
+                "162-G2: Lyrical Ok() releases its first mutex section before lazy ROS2 construction");
+            Check(startMethod.Contains("LazyConstruct();", StringComparison.Ordinal)
+                  && startMethod.Contains("StartExecutor();", StringComparison.Ordinal),
+                "162-G3: Lyrical executor starts during Start() instead of waiting only for FixedUpdate");
+            Check(startExecutorMethod.Contains("executorThread.Name = \"ROS2UnityComponent.Executor\";", StringComparison.Ordinal),
+                "162-G4: Lyrical executor thread has a profiler/crash-dump name");
+            Check(stopExecutorMethod.Contains("Idempotent by design", StringComparison.Ordinal)
+                  && stopExecutorMethod.Contains("threadToJoin != null && threadToJoin != Thread.CurrentThread", StringComparison.Ordinal),
+                "162-G5: Lyrical StopExecutor documents and preserves idempotent bounded join semantics");
         }
 
         private static void Phase162ValidationRegistryIsWired()

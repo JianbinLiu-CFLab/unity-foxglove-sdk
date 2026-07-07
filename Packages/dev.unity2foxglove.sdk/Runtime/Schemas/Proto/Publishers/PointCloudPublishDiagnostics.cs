@@ -5,6 +5,7 @@
 // Purpose: Owns point-cloud publish diagnostic counters and log aggregation.
 
 using System;
+using System.Threading;
 using Unity.FoxgloveSDK.Schemas;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
@@ -51,7 +52,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!enabled)
                 return;
 
-            _drops += Math.Max(1, count);
+            Interlocked.Add(ref _drops, Math.Max(1, count));
         }
 
         public void RecordDeskewRateSkip(bool enabled, int count = 1)
@@ -59,7 +60,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!enabled)
                 return;
 
-            _deskewRateSkips += Math.Max(1, count);
+            Interlocked.Add(ref _deskewRateSkips, Math.Max(1, count));
         }
 
         public void RecordDracoRateSkip(bool enabled, int count = 1)
@@ -67,7 +68,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!enabled)
                 return;
 
-            _dracoRateSkips += Math.Max(1, count);
+            Interlocked.Add(ref _dracoRateSkips, Math.Max(1, count));
         }
 
         public void RecordEncodeResult(bool enabled, DracoEncodeResult result)
@@ -94,13 +95,16 @@ namespace Unity.FoxgloveSDK.Components
 
         public void LogIfReady(bool enabled, Action<string, object[]> log)
         {
-            if (!enabled || _frames < DiagnosticsIntervalFrames)
-                return;
             if (log == null)
                 throw new ArgumentNullException(nameof(log));
+            if (!enabled || _frames < DiagnosticsIntervalFrames)
+                return;
 
             var frameDivisor = Math.Max(1, _frames);
             var encodeDivisor = Math.Max(1, _encodeResults);
+            var drops = Interlocked.Exchange(ref _drops, 0);
+            var dracoRateSkips = Interlocked.Exchange(ref _dracoRateSkips, 0);
+            var deskewRateSkips = Interlocked.Exchange(ref _deskewRateSkips, 0);
             log(
                 "[PointCloudDiag] prepared={0} points={1} avgPoints={2:F0} cloneMs avg={3:F2} max={4:F2} encodeMs avg={5:F2} max={6:F2} drop={7} dracoRateSkip={8} deskewRateSkip={9}",
                 new object[]
@@ -112,21 +116,27 @@ namespace Unity.FoxgloveSDK.Components
                     _cloneMsMax,
                     _encodeMsTotal / encodeDivisor,
                     _encodeMsMax,
-                    _drops,
-                    _dracoRateSkips,
-                    _deskewRateSkips
+                    drops,
+                    dracoRateSkips,
+                    deskewRateSkips
                 });
 
-            Reset();
+            Reset(resetConcurrentCounters: false);
         }
 
         public void Reset()
+            => Reset(resetConcurrentCounters: true);
+
+        private void Reset(bool resetConcurrentCounters)
         {
             _frames = 0;
             _preparedPoints = 0;
-            _drops = 0;
-            _dracoRateSkips = 0;
-            _deskewRateSkips = 0;
+            if (resetConcurrentCounters)
+            {
+                Interlocked.Exchange(ref _drops, 0);
+                Interlocked.Exchange(ref _dracoRateSkips, 0);
+                Interlocked.Exchange(ref _deskewRateSkips, 0);
+            }
             _cloneMsTotal = 0d;
             _cloneMsMax = 0d;
             _encodeMsTotal = 0d;

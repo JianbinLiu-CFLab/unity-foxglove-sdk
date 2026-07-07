@@ -172,14 +172,12 @@ namespace Unity.FoxgloveSDK.Components
             string frameId,
             bool useStandardRos2CompressedImage,
             int maxEncodedBytes,
-            Action<double, double> onReadbackCopy,
             Action onEncodeQueueDrop)
         {
             if (frameBytes == null)
                 return false;
 
             EnsureQueues(_maxEncodeQueue, _maxCompletedQueue);
-            onReadbackCopy?.Invoke(readbackLatencyMs, 0);
 
             var request = new JpegEncodeRequest(
                 frameBytes,

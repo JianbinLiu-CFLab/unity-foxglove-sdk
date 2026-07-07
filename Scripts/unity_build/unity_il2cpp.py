@@ -27,7 +27,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -119,8 +119,9 @@ def default_target() -> str:
 def unity_version_key(path: Path) -> Tuple[int, ...]:
     """Extract a comparable Unity version tuple from a Hub editor path."""
     for part in reversed(path.parts):
-        if re.match(r"^\d+\.\d+\.\d+", part):
-            return tuple(int(number) for number in re.findall(r"\d+", part))
+        match = re.match(r"^(\d+)\.(\d+)\.(\d+)(?:[a-z](\d+))?", part)
+        if match:
+            return tuple(int(number) for number in match.groups(default="0"))
     return ()
 
 
@@ -301,7 +302,7 @@ def build_command(args: argparse.Namespace) -> Tuple[List[str], Path, Path, Path
 
 def default_build_dir(root: Path, target: str) -> Path:
     """Default build output directory with platform and timestamp."""
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
     return root / "build" / "Unity" / f"{target}-il2cpp-{stamp}"
 
 
@@ -485,7 +486,7 @@ def main() -> int:
 
     try:
         cmd, project_path, log_path, output_path = build_command(args)
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         print(f"[build_unity_il2cpp] {exc}", file=sys.stderr)
         return EXIT_USAGE_ERROR
 

@@ -52,6 +52,25 @@ class Ros2WindowsEnvTests(unittest.TestCase):
         log_event.assert_called_once()
         self.assertIn("rmw_zenoh_cpp", log_event.call_args.args[1])
 
+    def test_build_ros_env_does_not_inherit_unrelated_secrets(self) -> None:
+        """ROS smoke subprocesses should not receive cloud or CI tokens by default."""
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "FOXGLOVE_DEVICE_TOKEN": "device-token",
+                    "GITHUB_TOKEN": "github-token",
+                    "RMW_IMPLEMENTATION": "rmw_fastrtps_cpp",
+                },
+                clear=False,
+            ):
+                env = ros2env.build_ros_env(ros2_root, ros_distro="lyrical")
+
+        self.assertNotIn("FOXGLOVE_DEVICE_TOKEN", env)
+        self.assertNotIn("GITHUB_TOKEN", env)
+        self.assertEqual("rmw_fastrtps_cpp", env["RMW_IMPLEMENTATION"])
+
     def test_ros2_opt_bin_paths_are_cached_per_root(self) -> None:
         """Repeated env/RViz setup should not rescan the same ROS2 opt tree."""
         with tempfile.TemporaryDirectory() as temp:
@@ -106,6 +125,42 @@ class Ros2WindowsEnvTests(unittest.TestCase):
                 )
 
         self.assertIn(str(vendor_bin), captured_env["PATH"].split(os.pathsep))
+
+    def test_launch_rviz_keeps_stdout_log_handle_with_process(self) -> None:
+        """Manual RViz processes own their redirected log stream for their lifetime."""
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            rviz_exe = ros2_root / "bin" / "rviz2.exe"
+            rviz_exe.parent.mkdir(parents=True)
+            rviz_exe.write_bytes(b"")
+            config = Path(temp) / "view.rviz"
+            config.write_text("Visualization Manager: {}\n", encoding="utf-8")
+            stdout_log = Path(temp) / "logs" / "rviz.log"
+
+            class FakeProcess:
+                """Tiny process double returned by the patched RViz launcher."""
+
+                pid = 1234
+
+                def poll(self):
+                    """Report that the fake RViz process is still running."""
+                    return None
+
+            fake_process = FakeProcess()
+            with mock.patch.object(ros2env.subprocess, "Popen", return_value=fake_process):
+                process = ros2env.launch_rviz(
+                    ros2_root,
+                    config,
+                    {},
+                    "test",
+                    startup_check_seconds=0.0,
+                    window_wait_seconds=0.0,
+                    stdout_log_path=stdout_log,
+                )
+
+            self.assertIs(process, fake_process)
+            self.assertTrue(hasattr(process, "_unity2foxglove_stdout_log"))
+            process._unity2foxglove_stdout_log.close()
 
 
 if __name__ == "__main__":

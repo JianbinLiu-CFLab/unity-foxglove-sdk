@@ -30,6 +30,7 @@
     <Compile Include="../../Runtime/Transport/**/*.cs" />
     <Compile Include="../../Runtime/IO/**/*.cs" />
     <Compile Include="../../Runtime/Ros2Bridge/**/*.cs" />
+    <!-- Runtime/Sensors wildcard is intentionally broad; every Unity-dependent file must stay explicitly excluded here. -->
     <Compile Include="../../Runtime/Sensors/**/*.cs" Exclude="../../Runtime/Sensors/**/VirtualLidar.cs;../../Runtime/Sensors/**/VirtualLidarScanBuffers.cs;../../Runtime/Sensors/**/VirtualLidarScanFramePublisher.cs;../../Runtime/Sensors/**/VirtualLidarScanScheduler.cs;../../Runtime/Sensors/**/VirtualImu.cs;../../Runtime/Sensors/**/SensorUnitProfile.cs;../../Runtime/Sensors/**/LidarUnityNumericsConversions.cs" />
     <Compile Include="../../Runtime/Schemas/MessageDefinitions/*.cs" />
     <Compile Include="../../Runtime/Schemas/Registry/*.cs" />
@@ -38,6 +39,7 @@
     <Compile Include="../../Runtime/Schemas/Imu/*.cs" />
     <Compile Include="../../Runtime/Schemas/MsgPack/FoxgloveMsgPackWriter.cs" />
     <Compile Include="../../Runtime/Schemas/Ros2Msg/**/*.cs" />
+    <!-- Runtime/Schemas/Proto wildcard is intentionally broad; Unity-facing publishers/builders must stay explicitly excluded. -->
     <Compile Include="../../Runtime/Schemas/Proto/**/*.cs" Exclude="../../Runtime/Schemas/Proto/**/*Publisher.cs;../../Runtime/Schemas/Proto/**/Channels/**/*.cs;../../Runtime/Schemas/Proto/**/FoxgloveCameraPublisher.*.cs;../../Runtime/Schemas/Proto/**/FoxglovePointCloudPublisher.*.cs;../../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs;../../Runtime/Schemas/Proto/**/PointCloudTransformFrameBuilder.cs;../../Runtime/Schemas/Proto/**/CameraCaptureResources.cs" />
     <Compile Include="../../Runtime/Schemas/Proto/Builders/ImuMessageBuilder.cs" />
     <Compile Include="../../Runtime/Utilities/*.cs" />
