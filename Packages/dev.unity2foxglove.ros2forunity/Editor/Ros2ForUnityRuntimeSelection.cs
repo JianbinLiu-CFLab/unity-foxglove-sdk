@@ -669,9 +669,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static string GetRelativePath(string fromDirectory, string toPath)
         {
-            var fromUri = new Uri(AppendDirectorySeparator(Path.GetFullPath(fromDirectory)));
-            var toUri = new Uri(Path.GetFullPath(toPath));
-            return Uri.UnescapeDataString(fromUri.MakeRelativeUri(toUri).ToString());
+            var fromFull = TrimDirectorySeparators(Path.GetFullPath(fromDirectory));
+            var toFull = TrimDirectorySeparators(Path.GetFullPath(toPath));
+            var fromRoot = Path.GetPathRoot(fromFull) ?? string.Empty;
+            var toRoot = Path.GetPathRoot(toFull) ?? string.Empty;
+            var comparison = Path.DirectorySeparatorChar == '\\'
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            if (!string.Equals(fromRoot, toRoot, comparison))
+                return toFull;
+
+            var fromParts = SplitPathParts(fromFull.Substring(fromRoot.Length));
+            var toParts = SplitPathParts(toFull.Substring(toRoot.Length));
+            var common = 0;
+            while (common < fromParts.Length
+                   && common < toParts.Length
+                   && string.Equals(fromParts[common], toParts[common], comparison))
+            {
+                common++;
+            }
+
+            var parts = new List<string>();
+            for (var i = common; i < fromParts.Length; i++)
+                parts.Add("..");
+            for (var i = common; i < toParts.Length; i++)
+                parts.Add(toParts[i]);
+
+            return parts.Count == 0 ? "." : string.Join(Path.DirectorySeparatorChar.ToString(), parts);
         }
 
         private static string AppendDirectorySeparator(string path)
@@ -684,6 +709,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 ? path
                 : path + Path.DirectorySeparatorChar;
         }
+
+        private static string TrimDirectorySeparators(string path)
+        {
+            var root = Path.GetPathRoot(path) ?? string.Empty;
+            var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return trimmed.Length < root.Length ? root : trimmed;
+        }
+
+        private static string[] SplitPathParts(string path)
+            => path.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }, StringSplitOptions.RemoveEmptyEntries);
 
         private static string GetCommunicationModeSettingsKey(Ros2ForUnityRuntimeDescriptor runtime)
             => runtime == null || string.IsNullOrWhiteSpace(runtime.PackageName)

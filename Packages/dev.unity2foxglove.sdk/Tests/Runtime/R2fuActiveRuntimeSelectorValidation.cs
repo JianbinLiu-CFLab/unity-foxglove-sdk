@@ -59,6 +59,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("BuildRuntimePackageReference", StringComparison.Ordinal)
                   && source.Contains("GetRelativePath(projectPackagesDirectory, runtimePackageDirectory)", StringComparison.Ordinal),
                 "146A-A2: runtime selector derives manifest file references from the repository Packages directory");
+            Check(source.Contains("SplitPathParts", StringComparison.Ordinal)
+                  && !source.Contains("Uri.UnescapeDataString", StringComparison.Ordinal),
+                "146A-A2b: runtime selector preserves literal percent characters when deriving relative package paths");
             Check(!source.Contains("KnownRuntimes", StringComparison.Ordinal)
                   && !source.Contains("KnownRuntimeDescriptors", StringComparison.Ordinal),
                 "146A-A3: runtime selector no longer hardcodes known runtime descriptors");
@@ -112,8 +115,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
                   && source.Contains("DrawOptionalR2fuRuntimeSelector", StringComparison.Ordinal),
                 "146A-D1: Foxglove Manager Inspector hosts the runtime selector under ROS2 Native");
-            Check(source.Contains("\"Unity2Foxglove.\" + \"Ros2\" + \"For\" + \"Unity.Editor.\"", StringComparison.Ordinal)
-                  && source.Contains("\"Ros2\" + \"For\" + \"UnityRuntimeSelectorInspector", StringComparison.Ordinal)
+            Check(source.Contains("\"Unity2Foxglove.Ros2\" + \"ForUnity.Editor.Ros2\" + \"ForUnityRuntimeSelectorInspector", StringComparison.Ordinal)
+                  && source.Contains("Unity2Foxglove.Ros2\" + \"ForUnity.Editor", StringComparison.Ordinal)
                   && source.Contains("GetMethod", StringComparison.Ordinal),
                 "146A-D2: core SDK discovers the optional selector by reflection");
             Check(source.Contains("TargetInvocationException", StringComparison.Ordinal)
@@ -182,7 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText(RegistryPath);
             var project = ReadRepoText(ProjectPath);
 
-            Check(registry.Contains("Ci(\"--phase146a\", \"Phase 146A\", R2fuActiveRuntimeSelectorValidation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase146a\", \"Phase 146A: validation for the project-level R2FU active runtime selector\", R2fuActiveRuntimeSelectorValidation.Validate", StringComparison.Ordinal),
                 "146A-H1: validation registry wires --phase146a to the runtime selector validation");
             Check(project.Contains("R2fuActiveRuntimeSelectorValidation.cs", StringComparison.Ordinal),
                 "146A-H2: runtime validation project compiles the runtime selector validation");
