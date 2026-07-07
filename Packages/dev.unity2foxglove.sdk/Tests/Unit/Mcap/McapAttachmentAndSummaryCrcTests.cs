@@ -115,12 +115,9 @@ namespace Unity.FoxgloveSDK.UnitTests
             {
                 var cleanReader = new McapReader(cleanMs);
                 var cleanAttachment = cleanReader.ReadAttachmentAt(index.Offset);
-                var prefixSize = 8 + 8
-                    + (4 + Encoding.UTF8.GetByteCount(cleanAttachment.Name))
-                    + (4 + Encoding.UTF8.GetByteCount(cleanAttachment.MediaType))
-                    + 8;
-                var contentStart = (int)index.Offset + 1 + 8;
-                allBytes[contentStart + prefixSize + 1] ^= 0xFF;
+                var payloadOffset = IndexOf(allBytes, cleanAttachment.Data);
+                Assert.True(payloadOffset >= 0, "34A-3 precondition: attachment payload bytes are present in the MCAP file");
+                allBytes[payloadOffset + 1] ^= 0xFF;
             }
 
             using var ms2 = new MemoryStream(allBytes);
@@ -167,9 +164,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var contentStart = (int)index.Offset + 1 + 8;
             var dsOff = contentStart + 8 + 8 + 4 + 1 + 4 + 1;
             var fakeSize = (ulong)100;
-            allBytes[dsOff] = (byte)fakeSize;
-            allBytes[dsOff + 1] = (byte)(fakeSize >> 8);
-            allBytes[dsOff + 7] = (byte)(fakeSize >> 56);
+            WriteU64LE(allBytes, dsOff, fakeSize);
 
             using var ms = new MemoryStream(allBytes);
             var reader = new McapReader(ms);
@@ -212,14 +207,7 @@ namespace Unity.FoxgloveSDK.UnitTests
                     + 4 + Encoding.UTF8.GetByteCount(cleanAtt.MediaType);
 
                 var maxValue = (ulong)int.MaxValue;
-                allBytes[dsOff] = (byte)maxValue;
-                allBytes[dsOff + 1] = (byte)(maxValue >> 8);
-                allBytes[dsOff + 2] = (byte)(maxValue >> 16);
-                allBytes[dsOff + 3] = (byte)(maxValue >> 24);
-                allBytes[dsOff + 4] = (byte)(maxValue >> 32);
-                allBytes[dsOff + 5] = (byte)(maxValue >> 40);
-                allBytes[dsOff + 6] = (byte)(maxValue >> 48);
-                allBytes[dsOff + 7] = (byte)(maxValue >> 56);
+                WriteU64LE(allBytes, dsOff, maxValue);
             }
 
             using var ms2 = new MemoryStream(allBytes);
@@ -353,8 +341,8 @@ namespace Unity.FoxgloveSDK.UnitTests
                     | ((ulong)allBytes[footerIdx + 1 + 8 + 4] << 32) | ((ulong)allBytes[footerIdx + 1 + 8 + 5] << 40)
                     | ((ulong)allBytes[footerIdx + 1 + 8 + 6] << 48) | ((ulong)allBytes[footerIdx + 1 + 8 + 7] << 56)
             };
-            if (footer.SummaryStart > 0)
-                allBytes[(int)footer.SummaryStart + 2] ^= 0xFF;
+            Assert.True(footer.SummaryStart > 0, "34C-2 precondition: SummaryStart must be non-zero for a recording with messages");
+            allBytes[(int)footer.SummaryStart + 2] ^= 0xFF;
 
             ms.Position = 0;
             ms.Write(allBytes, 0, allBytes.Length);
@@ -450,6 +438,30 @@ namespace Unity.FoxgloveSDK.UnitTests
             bytes[offset + 5] = (byte)(value >> 40);
             bytes[offset + 6] = (byte)(value >> 48);
             bytes[offset + 7] = (byte)(value >> 56);
+        }
+
+        private static int IndexOf(byte[] haystack, byte[] needle)
+        {
+            if (haystack == null || needle == null || needle.Length == 0 || needle.Length > haystack.Length)
+                return -1;
+
+            for (var i = 0; i <= haystack.Length - needle.Length; i++)
+            {
+                var matches = true;
+                for (var j = 0; j < needle.Length; j++)
+                {
+                    if (haystack[i + j] != needle[j])
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (matches)
+                    return i;
+            }
+
+            return -1;
         }
 
         private static void WriteString(Stream stream, string value)

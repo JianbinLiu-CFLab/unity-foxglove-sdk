@@ -126,7 +126,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RemoteRangeCopyUsesPooledBuffer()
         {
             var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpRouter.cs");
-            var copy = SourceBetween(router, "private static async Task CopyAndCloseAsync(Stream source, HttpListenerResponse response, long maxBytes)", "private static Task WriteTextAsync");
+            var copy = SourceBetween(router, "private static async Task CopyAndCloseAsync(", "private static Task WriteTextAsync");
             Check(copy.Contains("ArrayPool<byte>.Shared.Rent", StringComparison.Ordinal)
                   && copy.Contains("ArrayPool<byte>.Shared.Return", StringComparison.Ordinal)
                   && !copy.Contains("new byte[81920]", StringComparison.Ordinal),

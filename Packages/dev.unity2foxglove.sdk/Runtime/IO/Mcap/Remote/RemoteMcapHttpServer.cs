@@ -134,7 +134,7 @@ namespace Unity.FoxgloveSDK.IO
 
                 try
                 {
-                    await router.HandleAsync(context).ConfigureAwait(false);
+                    await router.HandleAsync(context, token).ConfigureAwait(false);
                 }
                 catch
                 {

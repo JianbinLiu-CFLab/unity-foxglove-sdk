@@ -10,6 +10,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Unity.FoxgloveSDK.IO
@@ -35,6 +36,12 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Handles one HTTP request and closes its response stream.</summary>
         public Task HandleAsync(HttpListenerContext context)
         {
+            return HandleAsync(context, CancellationToken.None);
+        }
+
+        /// <summary>Handles one HTTP request and closes its response stream.</summary>
+        public Task HandleAsync(HttpListenerContext context, CancellationToken cancellationToken)
+        {
             if (context == null)
                 throw new ArgumentNullException(nameof(context));
 
@@ -46,9 +53,9 @@ namespace Unity.FoxgloveSDK.IO
             if (string.Equals(path, "/v1/manifest", StringComparison.Ordinal))
                 return HandleManifestAsync(context);
             if (string.Equals(path, "/v1/data", StringComparison.Ordinal))
-                return HandleDataAsync(context);
+                return HandleDataAsync(context, cancellationToken);
             if (string.Equals(path, _source.DirectFileRoute, StringComparison.Ordinal))
-                return HandleDirectFileAsync(context);
+                return HandleDirectFileAsync(context, cancellationToken);
 
             return WriteTextAsync(context.Response, HttpStatusCode.NotFound, "Unsupported Remote Data Loader route.");
         }
@@ -66,7 +73,7 @@ namespace Unity.FoxgloveSDK.IO
             return WriteBytesAsync(context.Response, HttpStatusCode.OK, "application/json", bytes);
         }
 
-        private async Task HandleDataAsync(HttpListenerContext context)
+        private async Task HandleDataAsync(HttpListenerContext context, CancellationToken cancellationToken)
         {
             if (!string.Equals(context.Request.HttpMethod, "GET", StringComparison.OrdinalIgnoreCase))
             {
@@ -80,10 +87,6 @@ namespace Unity.FoxgloveSDK.IO
                 await WriteTextAsync(context.Response, HttpStatusCode.BadRequest, problem).ConfigureAwait(false);
                 return;
             }
-
-            var recordingId = context.Request.QueryString["recordingId"];
-            if (!string.IsNullOrEmpty(recordingId))
-                request.SourceId = recordingId;
 
             using (var data = _source.GetDataStream(request))
             {
@@ -99,11 +102,11 @@ namespace Unity.FoxgloveSDK.IO
                 if (data.Length >= 0)
                     response.ContentLength64 = data.Length;
 
-                await CopyAndCloseAsync(data.DataStream, response).ConfigureAwait(false);
+                await CopyAndCloseAsync(data.DataStream, response, cancellationToken).ConfigureAwait(false);
             }
         }
 
-        private async Task HandleDirectFileAsync(HttpListenerContext context)
+        private async Task HandleDirectFileAsync(HttpListenerContext context, CancellationToken cancellationToken)
         {
             var method = context.Request.HttpMethod;
             var isHead = string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase);
@@ -147,13 +150,13 @@ namespace Unity.FoxgloveSDK.IO
                         + "/"
                         + data.Length.ToString(CultureInfo.InvariantCulture));
                     data.DataStream.Seek(start, SeekOrigin.Begin);
-                    await CopyAndCloseAsync(data.DataStream, response, isHead ? 0 : length).ConfigureAwait(false);
+                    await CopyAndCloseAsync(data.DataStream, response, isHead ? 0 : length, cancellationToken).ConfigureAwait(false);
                     return;
                 }
 
                 response.StatusCode = (int)HttpStatusCode.OK;
                 response.ContentLength64 = data.Length;
-                await CopyAndCloseAsync(data.DataStream, response, isHead ? 0 : data.Length).ConfigureAwait(false);
+                await CopyAndCloseAsync(data.DataStream, response, isHead ? 0 : data.Length, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -245,18 +248,33 @@ namespace Unity.FoxgloveSDK.IO
 
         private static async Task CopyAndCloseAsync(Stream source, HttpListenerResponse response)
         {
-            await CopyAndCloseAsync(source, response, -1).ConfigureAwait(false);
+            await CopyAndCloseAsync(source, response, -1, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        private static async Task CopyAndCloseAsync(Stream source, HttpListenerResponse response, CancellationToken cancellationToken)
+        {
+            await CopyAndCloseAsync(source, response, -1, cancellationToken).ConfigureAwait(false);
         }
 
         private static async Task CopyAndCloseAsync(Stream source, HttpListenerResponse response, long maxBytes)
         {
+            await CopyAndCloseAsync(source, response, maxBytes, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        private static async Task CopyAndCloseAsync(
+            Stream source,
+            HttpListenerResponse response,
+            long maxBytes,
+            CancellationToken cancellationToken)
+        {
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (source != null && maxBytes != 0)
                 {
                     if (maxBytes < 0)
                     {
-                        await source.CopyToAsync(response.OutputStream).ConfigureAwait(false);
+                        await source.CopyToAsync(response.OutputStream, 81920, cancellationToken).ConfigureAwait(false);
                     }
                     else
                     {
@@ -266,12 +284,13 @@ namespace Unity.FoxgloveSDK.IO
                             var remaining = maxBytes;
                             while (remaining > 0)
                             {
+                                cancellationToken.ThrowIfCancellationRequested();
                                 var readSize = remaining < buffer.Length ? (int)remaining : buffer.Length;
-                                var read = await source.ReadAsync(buffer, 0, readSize).ConfigureAwait(false);
+                                var read = await source.ReadAsync(buffer, 0, readSize, cancellationToken).ConfigureAwait(false);
                                 if (read <= 0)
                                     break;
 
-                                await response.OutputStream.WriteAsync(buffer, 0, read).ConfigureAwait(false);
+                                await response.OutputStream.WriteAsync(buffer, 0, read, cancellationToken).ConfigureAwait(false);
                                 remaining -= read;
                             }
                         }
