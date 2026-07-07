@@ -268,6 +268,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             private readonly Ros2ForUnityTransformNativeBridge _owner;
             private readonly FoxgloveTransformPublisher _source;
+            private readonly tf2_msgs.msg.TFMessage _tfMessage = CreateTfMessage();
             private ROS2Node _node;
             private IPublisher<tf2_msgs.msg.TFMessage> _publisher;
             private bool _subscribed;
@@ -279,6 +280,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _owner = owner;
                 _source = source;
+            }
+
+            [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+            private static void ResetStatics()
+            {
+                _warnedTimestampClamp = false;
             }
 
             public void Subscribe()
@@ -318,7 +325,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 try
                 {
-                    _publisher.Publish(BuildTfMessage(frame));
+                    PopulateTfMessage(_tfMessage, frame);
+                    _publisher.Publish(_tfMessage);
                     _warnedPublishFailure = false;
                 }
                 catch (Exception ex)
@@ -388,14 +396,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                        && !string.Equals(frame.ParentFrameId, frame.ChildFrameId, StringComparison.Ordinal);
             }
 
-            private static tf2_msgs.msg.TFMessage BuildTfMessage(FrameTransformMessage frame)
+            private static tf2_msgs.msg.TFMessage CreateTfMessage()
             {
-                var timestamp = frame.Timestamp;
-                var sec = timestamp == null ? 0UL : timestamp.Sec;
-                var nsec = timestamp == null ? 0U : timestamp.Nsec;
-                var translation = frame.Translation;
-                var rotation = frame.Rotation;
-
                 return new tf2_msgs.msg.TFMessage
                 {
                     Transforms = new[]
@@ -404,33 +406,38 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         {
                             Header = new std_msgs.msg.Header
                             {
-                                Stamp = new builtin_interfaces.msg.Time
-                                {
-                                    Sec = ClampRosTimeSeconds(sec),
-                                    Nanosec = nsec
-                                },
-                                Frame_id = frame.ParentFrameId
+                                Stamp = new builtin_interfaces.msg.Time()
                             },
-                            Child_frame_id = frame.ChildFrameId,
                             Transform = new geometry_msgs.msg.Transform
                             {
-                                Translation = new geometry_msgs.msg.Vector3
-                                {
-                                    X = translation == null ? 0.0 : translation.X,
-                                    Y = translation == null ? 0.0 : translation.Y,
-                                    Z = translation == null ? 0.0 : translation.Z
-                                },
-                                Rotation = new geometry_msgs.msg.Quaternion
-                                {
-                                    X = rotation == null ? 0.0 : rotation.X,
-                                    Y = rotation == null ? 0.0 : rotation.Y,
-                                    Z = rotation == null ? 0.0 : rotation.Z,
-                                    W = rotation == null ? 1.0 : rotation.W
-                                }
+                                Translation = new geometry_msgs.msg.Vector3(),
+                                Rotation = new geometry_msgs.msg.Quaternion()
                             }
                         }
                     }
                 };
+            }
+
+            private static void PopulateTfMessage(tf2_msgs.msg.TFMessage message, FrameTransformMessage frame)
+            {
+                var timestamp = frame.Timestamp;
+                var sec = timestamp == null ? 0UL : timestamp.Sec;
+                var nsec = timestamp == null ? 0U : timestamp.Nsec;
+                var translation = frame.Translation;
+                var rotation = frame.Rotation;
+
+                var transform = message.Transforms[0];
+                transform.Header.Stamp.Sec = ClampRosTimeSeconds(sec);
+                transform.Header.Stamp.Nanosec = nsec;
+                transform.Header.Frame_id = frame.ParentFrameId;
+                transform.Child_frame_id = frame.ChildFrameId;
+                transform.Transform.Translation.X = translation == null ? 0.0 : translation.X;
+                transform.Transform.Translation.Y = translation == null ? 0.0 : translation.Y;
+                transform.Transform.Translation.Z = translation == null ? 0.0 : translation.Z;
+                transform.Transform.Rotation.X = rotation == null ? 0.0 : rotation.X;
+                transform.Transform.Rotation.Y = rotation == null ? 0.0 : rotation.Y;
+                transform.Transform.Rotation.Z = rotation == null ? 0.0 : rotation.Z;
+                transform.Transform.Rotation.W = rotation == null ? 1.0 : rotation.W;
             }
 
             private static int ClampRosTimeSeconds(ulong seconds)
@@ -468,13 +475,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_node != null && _publisher != null)
                 {
                     try { _node.RemovePublisher<tf2_msgs.msg.TFMessage>(_publisher); }
-                    catch (Exception) { }
+                    catch (Exception ex)
+                    {
+                        if (!_owner.IsShuttingDown)
+                            Debug.LogWarning("[Foxglove][R2FU] Transform publisher cleanup failed: " + ex.Message);
+                    }
                 }
 
                 if (_owner._ros2Unity != null && _node != null)
                 {
                     try { _owner._ros2Unity.RemoveNode(_node); }
-                    catch (Exception) { }
+                    catch (Exception ex)
+                    {
+                        if (!_owner.IsShuttingDown)
+                            Debug.LogWarning("[Foxglove][R2FU] Transform node cleanup failed: " + ex.Message);
+                    }
                 }
 
                 _publisher = null;
