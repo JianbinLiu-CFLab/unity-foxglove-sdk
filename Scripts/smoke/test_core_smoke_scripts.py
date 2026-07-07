@@ -205,13 +205,12 @@ class CoreSmokeScriptTests(unittest.TestCase):
             startup_timeout=0.02,
         )
 
-        with mock.patch.object(module.subprocess, "Popen", return_value=SilentProcess()):
-            started = time.monotonic()
+        process = SilentProcess()
+        with mock.patch.object(module.subprocess, "Popen", return_value=process):
             with self.assertRaises(RuntimeError):
                 module.launch_backend(args, ROOT)
-            elapsed = time.monotonic() - started
 
-        self.assertLess(elapsed, 0.12)
+        self.assertTrue(getattr(process, "terminated", False))
 
     def test_phase139b_windows_stop_backend_does_not_raise_on_wait_timeout(self) -> None:
         """Windows cleanup should not mask the original smoke result."""

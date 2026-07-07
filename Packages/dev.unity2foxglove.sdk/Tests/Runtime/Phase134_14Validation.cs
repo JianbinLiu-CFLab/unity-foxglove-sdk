@@ -102,10 +102,13 @@ namespace Unity.FoxgloveSDK.Tests
             var source = File.ReadAllText(
                 "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs");
 
-            Check(source.Contains("return CreateJson(frame, PointCloudPackedDataBuilder.Build(frame));"),
-                "134-14D-1: CreateJson builds only the packed data needed for JSON output");
-            Check(source.Contains("return CreateProtobuf(frame, PointCloudPackedDataBuilder.Build(frame));"),
-                "134-14D-2: CreateProtobuf builds only the packed data needed for protobuf output");
+            Check(source.Contains("var packed = PointCloudPackedDataBuilder.BuildPooled(frame, layout);")
+                  && source.Contains("return CreateJson(frame, packed);")
+                  && source.Contains("packed.RecycleData();"),
+                "134-14D-1: CreateJson builds and recycles only the packed data needed for JSON output");
+            Check(source.Contains("return CreateProtobuf(frame, packed);")
+                  && source.Contains("packed.RecycleData();"),
+                "134-14D-2: CreateProtobuf builds and recycles only the packed data needed for protobuf output");
             Check(!source.Contains("Build(frame).Json"),
                 "134-14D-3: CreateJson no longer constructs the full point-cloud result");
             Check(!source.Contains("Build(frame).Protobuf"),

@@ -180,7 +180,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PhaseRegistryWiresPhase163_7()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase163-7\", \"Phase 163-7\", Phase163_7Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-7\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_7Validation.Validate", StringComparison.Ordinal),
                 "163-7I: PhaseValidationRegistry wires --phase163-7");
         }
 

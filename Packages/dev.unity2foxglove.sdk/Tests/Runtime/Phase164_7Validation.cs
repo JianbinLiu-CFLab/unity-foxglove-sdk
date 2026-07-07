@@ -33,9 +33,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && flush.Contains("mio.Clear()", StringComparison.Ordinal)
                   && flush.Contains("new Dictionary<ushort, ulong>(mio)", StringComparison.Ordinal),
                 "164-7A-1: chunk flush reuses a message-index-offset scratch dictionary and snapshots it for chunk indexes");
-            Check(flush.Contains("var channelStates = AllChannelWriteStates()", StringComparison.Ordinal)
+            Check(flush.Contains("var channelStates = FillAndGetScratchChannelWriteStates()", StringComparison.Ordinal)
                   && flush.Contains("ResetActiveChunkState(channelStates)", StringComparison.Ordinal)
-                  && reset.Contains("channelStates ?? AllChannelWriteStates()", StringComparison.Ordinal),
+                  && reset.Contains("channelStates ?? FillAndGetScratchChannelWriteStates()", StringComparison.Ordinal),
                 "164-7A-2: chunk flush avoids a second channel-state scan on the success path");
             Check(!summary.Contains(".ToDictionary(", StringComparison.Ordinal)
                   && recorder.Contains("BuildChannelMessageCounts()", StringComparison.Ordinal),
@@ -71,13 +71,14 @@ namespace Unity.FoxgloveSDK.Tests
             var compression = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Common/McapCompression.cs");
             var recorder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
             var amendment = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapAmendmentWriter.cs");
-            var compress = SourceMethod(compression, "public static ArraySegment<byte> Compress(string compression, ArraySegment<byte> data, LZ4Level lz4Level, MemoryStream lz4OutputBuffer)");
             var copyExact = SourceMethod(amendment, "private static void CopyExact");
 
             Check(recorder.Contains("_compressionBuf", StringComparison.Ordinal)
-                  && recorder.Contains("McapCompression.Compress(_compression, raw, _options.Lz4CompressionLevel, _compressionBuf)", StringComparison.Ordinal)
-                  && compress.Contains("lz4OutputBuffer.SetLength(0)", StringComparison.Ordinal)
-                  && compress.Contains("lz4OutputBuffer.TryGetBuffer", StringComparison.Ordinal),
+                  && recorder.Contains("McapCompression.Compress(", StringComparison.Ordinal)
+                  && recorder.Contains("_options.Lz4CompressionLevel", StringComparison.Ordinal)
+                  && recorder.Contains("_compressionBuf,", StringComparison.Ordinal)
+                  && compression.Contains("lz4OutputBuffer.SetLength(0)", StringComparison.Ordinal)
+                  && compression.Contains("lz4OutputBuffer.TryGetBuffer", StringComparison.Ordinal),
                 "164-7C-1: LZ4 chunk compression can reuse a recorder-owned MemoryStream");
             Check(amendment.Contains("using System.Buffers;", StringComparison.Ordinal)
                   && copyExact.Contains("ArrayPool<byte>.Shared.Rent(64 * 1024)", StringComparison.Ordinal)

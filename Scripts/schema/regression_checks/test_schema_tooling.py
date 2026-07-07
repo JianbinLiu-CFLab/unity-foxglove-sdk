@@ -214,6 +214,27 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertIn("warning", stderr.getvalue().lower())
         self.assertIn("source commit", stderr.getvalue().lower())
 
+    def test_schema_catalog_reports_missing_schema_names(self) -> None:
+        """Snapshot validation should name missing and extra .msg files."""
+        module = load_module("schema_catalog_missing_files", "Scripts/schema/generate_ros2_msg_schema_catalog.py")
+
+        files = [Path(name + ".msg") for name in sorted(module.EXPECTED_SCHEMA_NAMES - {"Vector2"})]
+        files.append(Path("Unexpected.msg"))
+
+        with self.assertRaisesRegex(RuntimeError, "Vector2.msg.*Unexpected.msg"):
+            module.validate_schema_files(files, Path("schemas"))
+
+    def test_schema_catalog_rejects_circular_dependencies(self) -> None:
+        """Merged schema generation should fail on message dependency cycles."""
+        module = load_module("schema_catalog_cycle_guard", "Scripts/schema/generate_ros2_msg_schema_catalog.py")
+        sources = {
+            "A": "foxglove_msgs/B child\n",
+            "B": "foxglove_msgs/A parent\n",
+        }
+
+        with self.assertRaisesRegex(ValueError, "Circular ROS 2 .msg dependency"):
+            module.merged_schema(sources["A"], sources, root_name="A")
+
     def test_generators_skip_identical_text_writes(self) -> None:
         """Schema generators should not churn generated file mtimes when text is unchanged."""
         cdr = load_module("cdr_generator_write_cache", "Scripts/schema/generate_ros2_cdr_serializers.py")

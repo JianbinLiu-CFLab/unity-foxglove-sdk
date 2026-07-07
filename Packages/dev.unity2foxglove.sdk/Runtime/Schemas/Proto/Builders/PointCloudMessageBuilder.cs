@@ -74,7 +74,16 @@ namespace Foxglove.Schemas
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            return CreateJson(frame, PointCloudPackedDataBuilder.Build(frame));
+            var layout = PointCloudPackedDataBuilder.BuildLayout(frame);
+            var packed = PointCloudPackedDataBuilder.BuildPooled(frame, layout);
+            try
+            {
+                return CreateJson(frame, packed);
+            }
+            finally
+            {
+                packed.RecycleData();
+            }
         }
 
         internal static PointCloudMessage CreateJson(
@@ -84,7 +93,15 @@ namespace Foxglove.Schemas
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            return CreateJson(frame, PointCloudPackedDataBuilder.Build(frame, layout));
+            var packed = PointCloudPackedDataBuilder.BuildPooled(frame, layout);
+            try
+            {
+                return CreateJson(frame, packed);
+            }
+            finally
+            {
+                packed.RecycleData();
+            }
         }
 
         /// <summary>Create an official protobuf PointCloud message.</summary>
@@ -93,7 +110,16 @@ namespace Foxglove.Schemas
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            return CreateProtobuf(frame, PointCloudPackedDataBuilder.Build(frame));
+            var layout = PointCloudPackedDataBuilder.BuildLayout(frame);
+            var packed = PointCloudPackedDataBuilder.BuildPooled(frame, layout);
+            try
+            {
+                return CreateProtobuf(frame, packed);
+            }
+            finally
+            {
+                packed.RecycleData();
+            }
         }
 
         internal static Foxglove.PointCloud CreateProtobuf(
@@ -103,7 +129,15 @@ namespace Foxglove.Schemas
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            return CreateProtobuf(frame, PointCloudPackedDataBuilder.Build(frame, layout));
+            var packed = PointCloudPackedDataBuilder.BuildPooled(frame, layout);
+            try
+            {
+                return CreateProtobuf(frame, packed);
+            }
+            finally
+            {
+                packed.RecycleData();
+            }
         }
 
         /// <summary>Create and serialize an official protobuf PointCloud payload.</summary>

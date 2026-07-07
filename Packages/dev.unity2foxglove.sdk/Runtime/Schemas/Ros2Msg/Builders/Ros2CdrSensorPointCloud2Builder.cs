@@ -36,8 +36,16 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            var packed = PointCloudPackedDataBuilder.Build(frame);
-            return Serialize(frame, packed);
+            var layout = PointCloudPackedDataBuilder.BuildLayout(frame);
+            var packed = PointCloudPackedDataBuilder.BuildPooled(frame, layout);
+            try
+            {
+                return Serialize(frame, packed);
+            }
+            finally
+            {
+                packed.RecycleData();
+            }
         }
 
         internal static byte[] Serialize(
@@ -47,8 +55,15 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            var packed = PointCloudPackedDataBuilder.Build(frame, layout);
-            return Serialize(frame, packed);
+            var packed = PointCloudPackedDataBuilder.BuildPooled(frame, layout);
+            try
+            {
+                return Serialize(frame, packed);
+            }
+            finally
+            {
+                packed.RecycleData();
+            }
         }
 
         private static byte[] Serialize(PointCloudFrame frame, PointCloudPackedData packed)

@@ -101,6 +101,12 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         public int ValidPointCount { get; }
         internal bool OwnsPooledData { get; }
         internal bool PreferPooledDataRetention { get; }
+
+        internal void RecycleData()
+        {
+            if (OwnsPooledData)
+                PointCloudPackedByteBufferPool.Return(Data, PreferPooledDataRetention);
+        }
     }
 
     /// <summary>Builds the shared packed PointCloud.data layout.</summary>
@@ -130,6 +136,23 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return new PointCloudPackedData(layout.Stride, layout.Fields, data);
         }
 
+        internal static PointCloudPackedData BuildPooled(PointCloudFrame frame, PointCloudLayout layout)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+            if (layout == null)
+                throw new ArgumentNullException(nameof(layout));
+
+            var data = Pack(frame, layout, usePool: true);
+            return new PointCloudPackedData(
+                layout.Stride,
+                layout.Fields,
+                data,
+                ownsPooledData: true,
+                validPointCount: null,
+                preferPooledDataRetention: true);
+        }
+
         internal static PointCloudLayout BuildLayout(PointCloudFrame frame)
         {
             if (frame == null)
@@ -139,29 +162,43 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         }
 
         private static byte[] Pack(PointCloudFrame frame, PointCloudLayout layout)
+            => Pack(frame, layout, usePool: false);
+
+        private static byte[] Pack(PointCloudFrame frame, PointCloudLayout layout, bool usePool)
         {
             var pointCount = frame.GetPointCount();
             var capacity = ValidatePackedDataBudget(pointCount, layout);
-            var data = new byte[capacity];
-            using (var stream = new MemoryStream(data, 0, data.Length, true, true))
-            using (var writer = new BinaryWriter(stream))
+            var data = usePool
+                ? PointCloudPackedByteBufferPool.Rent(capacity)
+                : new byte[capacity];
+            try
             {
-                for (var i = 0; i < pointCount; i++)
+                using (var stream = new MemoryStream(data, 0, capacity, true, true))
+                using (var writer = new BinaryWriter(stream))
                 {
-                    var point = frame.Points[i];
-                    writer.Write(point.X);
-                    writer.Write(point.Y);
-                    writer.Write(point.Z);
+                    for (var i = 0; i < pointCount; i++)
+                    {
+                        var point = frame.Points[i];
+                        writer.Write(point.X);
+                        writer.Write(point.Y);
+                        writer.Write(point.Z);
 
-                    if (layout.HasIntensity) writer.Write(point.HasIntensity ? point.Intensity : 0f);
-                    if (layout.HasReflectivity) writer.Write(point.HasReflectivity ? point.Reflectivity : 0f);
-                    if (layout.HasRing) writer.Write(point.HasRing ? point.Ring : (ushort)0);
-                    if (layout.HasTimeOffset) writer.Write(point.HasTimeOffset ? point.TimeOffsetSeconds : 0f);
-                    if (layout.HasAbsoluteTime)
-                        writer.Write(point.HasTimeOffset ? TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds) : 0u);
+                        if (layout.HasIntensity) writer.Write(point.HasIntensity ? point.Intensity : 0f);
+                        if (layout.HasReflectivity) writer.Write(point.HasReflectivity ? point.Reflectivity : 0f);
+                        if (layout.HasRing) writer.Write(point.HasRing ? point.Ring : (ushort)0);
+                        if (layout.HasTimeOffset) writer.Write(point.HasTimeOffset ? point.TimeOffsetSeconds : 0f);
+                        if (layout.HasAbsoluteTime)
+                            writer.Write(point.HasTimeOffset ? TimeOffsetSecondsToNanoseconds(point.TimeOffsetSeconds) : 0u);
+                    }
+
+                    return data;
                 }
-
-                return data;
+            }
+            catch
+            {
+                if (usePool)
+                    PointCloudPackedByteBufferPool.Return(data);
+                throw;
             }
         }
 
@@ -378,7 +415,6 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                     if (pair.Value.Count == 0)
                     {
                         emptySizeToRemove = pair.Key;
-                        evicted = true;
                         break;
                     }
 

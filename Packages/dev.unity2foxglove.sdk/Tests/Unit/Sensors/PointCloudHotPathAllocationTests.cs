@@ -179,12 +179,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void ManagedPointCloudSerializationRecyclesPooledPackBuffers()
+        {
+            var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
+            var messageBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs");
+            var rosPointCloud = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrPointCloudBuilder.cs");
+            var rosPointCloud2 = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
+
+            Assert.Contains("internal void RecycleData()", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("internal static PointCloudPackedData BuildPooled", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("PointCloudPackedByteBufferPool.Rent(capacity)", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("PointCloudPackedByteBufferPool.Return(data)", packedBuilder, StringComparison.Ordinal);
+            Assert.Contains("packed.RecycleData();", messageBuilder, StringComparison.Ordinal);
+            Assert.Contains("packed.RecycleData();", rosPointCloud, StringComparison.Ordinal);
+            Assert.Contains("packed.RecycleData();", rosPointCloud2, StringComparison.Ordinal);
+            Assert.Contains("return Build(frame, layout);", packedBuilder, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PointCloudPackedByteBufferPoolRemovesEmptyExactSizeBuckets()
         {
             var packedBuilder = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
 
             Assert.Contains("BuffersBySize.Remove(length);", packedBuilder, StringComparison.Ordinal);
             Assert.Contains("BuffersBySize.Remove(emptySizeToRemove.Value);", packedBuilder, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "emptySizeToRemove = pair.Key;\n                        evicted = true;",
+                packedBuilder.Replace("\r\n", "\n", StringComparison.Ordinal));
             Assert.True(
                 packedBuilder.IndexOf("if (RetainedBytes + buffer.Length > MaxRetainedBytes)", StringComparison.Ordinal)
                 < packedBuilder.IndexOf("if (!BuffersBySize.TryGetValue(buffer.Length", StringComparison.Ordinal));

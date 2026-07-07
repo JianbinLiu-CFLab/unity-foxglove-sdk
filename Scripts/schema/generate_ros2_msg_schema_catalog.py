@@ -30,7 +30,6 @@ DEFAULT_OUTPUT = (
     / "Ros2Msg"
     / "FoxgloveRos2MsgSchemaCatalog.cs"
 )
-EXPECTED_FILE_COUNT = 41
 SCHEMA_ENCODING = "ros2msg"
 
 
@@ -98,6 +97,9 @@ CATEGORIES = {
     "VoxelGrid": "grid",
 }
 
+EXPECTED_SCHEMA_NAMES = frozenset(CATEGORIES)
+EXPECTED_FILE_COUNT = len(EXPECTED_SCHEMA_NAMES)
+
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line options for input and output locations."""
@@ -139,37 +141,66 @@ def dependency_content(dep: str, local_sources: dict[str, str]) -> str:
     raise ValueError(f"Unknown ROS 2 .msg dependency: {dep}")
 
 
-def collect_dependencies(root_text: str, local_sources: dict[str, str]) -> list[tuple[str, str]]:
+def collect_dependencies(
+    root_text: str,
+    local_sources: dict[str, str],
+    root_name: str | None = None,
+) -> list[tuple[str, str]]:
     """Collect transitive dependencies in deterministic first-seen order."""
     seen: set[str] = set()
+    visiting: set[str] = set()
     ordered: list[tuple[str, str]] = []
+    if root_name:
+        visiting.add(f"foxglove_msgs/{root_name}")
 
     def visit(text: str) -> None:
         """Visit one message body and recursively collect dependencies."""
         for dep in dependency_tokens(text):
-            content = dependency_content(dep, local_sources)
             if dep in seen:
                 continue
+            if dep in visiting:
+                raise ValueError(f"Circular ROS 2 .msg dependency detected at {dep}")
+            content = dependency_content(dep, local_sources)
             seen.add(dep)
             ordered.append((dep, content))
+            visiting.add(dep)
             visit(content)
+            visiting.remove(dep)
 
     visit(root_text)
     return ordered
 
 
-def merged_schema(root_text: str, local_sources: dict[str, str]) -> str:
+def merged_schema(root_text: str, local_sources: dict[str, str], root_name: str | None = None) -> str:
     """Build Foxglove-style merged .msg text with dependency sections."""
     result = root_text
     if not result.endswith("\n"):
         result += "\n"
-    for dep, content in collect_dependencies(root_text, local_sources):
+    for dep, content in collect_dependencies(root_text, local_sources, root_name=root_name):
         result += "================================================================================\n"
         result += f"MSG: {dep}\n"
         result += content
         if not result.endswith("\n"):
             result += "\n"
     return result
+
+
+def validate_schema_files(files: list[Path], input_dir: Path) -> None:
+    """Validate the source snapshot exactly matches the expected schema names."""
+    actual = {path.stem for path in files}
+    missing = sorted(EXPECTED_SCHEMA_NAMES - actual)
+    extra = sorted(actual - EXPECTED_SCHEMA_NAMES)
+    if missing or extra:
+        details = []
+        if missing:
+            details.append("missing: " + ", ".join(name + ".msg" for name in missing))
+        if extra:
+            details.append("extra: " + ", ".join(name + ".msg" for name in extra))
+        raise RuntimeError(
+            f"Expected {EXPECTED_FILE_COUNT} ROS 2 .msg files in {input_dir}, found {len(files)} ("
+            + "; ".join(details)
+            + ")"
+        )
 
 
 def source_tree_sha(files: list[Path], file_bytes: dict[Path, bytes]) -> str:
@@ -235,10 +266,7 @@ def generate(input_dir: Path, output: Path) -> str:
         raise FileNotFoundError(f"ROS 2 schema input directory not found: {input_dir}")
 
     files = sorted(input_dir.glob("*.msg"), key=lambda path: path.name)
-    if len(files) != EXPECTED_FILE_COUNT:
-        raise RuntimeError(
-            f"Expected {EXPECTED_FILE_COUNT} ROS 2 .msg files in {input_dir}, found {len(files)}"
-        )
+    validate_schema_files(files, input_dir)
 
     file_bytes = {path: path.read_bytes() for path in files}
     local_sources = {path.stem: decode_schema_text(file_bytes[path]) for path in files}
@@ -249,7 +277,7 @@ def generate(input_dir: Path, output: Path) -> str:
     for path in files:
         name = path.stem
         schema_name = f"foxglove_msgs/msg/{name}"
-        content = merged_schema(local_sources[name], local_sources)
+        content = merged_schema(local_sources[name], local_sources, root_name=name)
         source_sha = hashlib.sha256(file_bytes[path]).hexdigest()
         category = CATEGORIES.get(name, "")
         has_publisher = "true" if name in DEDICATED_JSON_OR_PROTOBUF_PUBLISHERS else "false"

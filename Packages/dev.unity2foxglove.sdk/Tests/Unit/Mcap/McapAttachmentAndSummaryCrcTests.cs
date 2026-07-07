@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
@@ -21,6 +22,18 @@ namespace Unity.FoxgloveSDK.UnitTests
     [Trait("Domain", "Mcap")]
     public class McapAttachmentAndSummaryCrcTests
     {
+        [Fact]
+        public void AmendmentWriterAllowsConcurrentReadersAndDisposeSwallowsCloseFailures()
+        {
+            var source = File.ReadAllText(RepoPath("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapAmendmentWriter.cs"))
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("FileMode.Open, FileAccess.Read, FileShare.Read", source, StringComparison.Ordinal);
+            Assert.Matches(
+                new Regex(@"public void Dispose\(\).*?try\s*\{\s*Close\(\);\s*\}\s*catch\s*\{", RegexOptions.Singleline),
+                source);
+        }
+
         [Fact]
         public void AttachmentRoundtrip()
         {
@@ -489,6 +502,24 @@ namespace Unity.FoxgloveSDK.UnitTests
             stream.WriteByte((byte)(value >> 40));
             stream.WriteByte((byte)(value >> 48));
             stream.WriteByte((byte)(value >> 56));
+        }
+
+        private static string RepoPath(string relativePath)
+        {
+            var explicitRoot = Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_REPO_ROOT");
+            if (!string.IsNullOrWhiteSpace(explicitRoot))
+                return Path.Combine(Path.GetFullPath(explicitRoot), relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln")) || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    return Path.Combine(dir.FullName, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+                dir = dir.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root.");
         }
     }
 }
