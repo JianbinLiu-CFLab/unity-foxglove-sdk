@@ -30,12 +30,13 @@ namespace Unity.FoxgloveSDK.Editor
         {
             public FoxRunCanonicalManifest Manifest { get; }
             public FoxRunSchemaInfoWriteResult SchemaInfo { get; }
-            public bool SchemaInfoChanged => SchemaInfo != null && SchemaInfo.AnyChanged;
+            public bool SchemaInfoChanged => SchemaInfo.AnyChanged;
 
             public FoxRunManifestRefreshResult(
                 FoxRunCanonicalManifest manifest,
                 FoxRunSchemaInfoWriteResult schemaInfo)
             {
+                // Refresh results are immutable and never expose null manifest or schema evidence.
                 Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
                 SchemaInfo = schemaInfo ?? throw new ArgumentNullException(nameof(schemaInfo));
             }
@@ -411,6 +412,10 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 catch when (attempt < ReplaceAttempts)
                 {
+                    Debug.LogWarning(
+                        "[FoxrunCodeGenerator] Retrying generated file replace for "
+                        + path
+                        + " after transient IO failure.");
                     System.Threading.Thread.Sleep(ReplaceRetryDelayMilliseconds);
                 }
                 catch

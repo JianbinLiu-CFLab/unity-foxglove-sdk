@@ -232,7 +232,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 FrameStallStageLiveOutputModeWatchersMs = 14d,
                 FrameStallStageRemoteMcapRefreshMs = 15d,
                 FrameStallStageReplayCursorEndpointRefreshMs = 16d,
-                FrameStallStageManagerUpdateMs = 17d,
+                FrameStallStageTotalMs = 17d,
                 PublishCadenceDiagnosticsWasEnabled = true,
                 FrameStallDiagnosticsWasEnabled = true
             };
@@ -255,7 +255,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(0d, state.FrameStallStageLiveOutputModeWatchersMs);
             Assert.Equal(0d, state.FrameStallStageRemoteMcapRefreshMs);
             Assert.Equal(0d, state.FrameStallStageReplayCursorEndpointRefreshMs);
-            Assert.Equal(0d, state.FrameStallStageManagerUpdateMs);
+            Assert.Equal(0d, state.FrameStallStageTotalMs);
             Assert.True(state.PublishCadenceDiagnosticsWasEnabled);
             Assert.True(state.FrameStallDiagnosticsWasEnabled);
             Assert.NotNull(state.PublishCadenceDiagnostics);

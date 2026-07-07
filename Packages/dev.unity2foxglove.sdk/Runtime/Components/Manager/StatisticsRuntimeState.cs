@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.Components
         internal double FrameStallStageLiveOutputModeWatchersMs;
         internal double FrameStallStageRemoteMcapRefreshMs;
         internal double FrameStallStageReplayCursorEndpointRefreshMs;
-        internal double FrameStallStageManagerUpdateMs;
+        internal double FrameStallStageTotalMs;
         internal bool PublishCadenceDiagnosticsWasEnabled;
         internal bool FrameStallDiagnosticsWasEnabled;
 
@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Components
             FrameStallStageLiveOutputModeWatchersMs = 0d;
             FrameStallStageRemoteMcapRefreshMs = 0d;
             FrameStallStageReplayCursorEndpointRefreshMs = 0d;
-            FrameStallStageManagerUpdateMs = 0d;
+            FrameStallStageTotalMs = 0d;
         }
     }
 
