@@ -132,16 +132,21 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxgloveLogSource> _registrationDrainBuffer = new();
         private readonly List<IFoxgloveLogSource> _pendingAdds = new();
         private readonly List<IFoxgloveLogSource> _pendingRemoves = new();
-        private readonly HashSet<string> _warnedSourceFailures = new();
+        private readonly HashSet<IFoxgloveLogSource> _pendingAddSet = new();
+        private readonly HashSet<IFoxgloveLogSource> _pendingRemoveSet = new();
+        private readonly HashSet<SourceFailureKey> _warnedSourceFailures = new();
         private bool _iteratingTimers;
         /// <summary>Countdown until the next Scan for new sources.</summary>
         private float _scanTimer;
+        private float _scanInterval = ScanIntervalSeconds;
+        private float _nextTriggerManagerSearchTime;
         /// <summary>Cooldown between FoxgloveManager search attempts.</summary>
         private float _mgrSearchCooldown;
         /// <summary>Cooldown between fallback FoxgloveManager search attempts.</summary>
         private const float ManagerSearchIntervalSeconds = 3f;
         /// <summary>Fallback scene scan interval used when generated sources did not self-register.</summary>
         private const float ScanIntervalSeconds = 2f;
+        private const float MaxScanIntervalSeconds = 30f;
 
         /// <summary>Process-local FoxRun topic bus. Publish remains Unity main-thread only.</summary>
         public FoxTopicBus TopicBus => _topicBus;
@@ -158,7 +163,11 @@ namespace Unity.FoxgloveSDK.Components
             _sinkRouter.SinkFaulted += OnSinkFaulted;
         }
 
-        /// <summary>Register a generated FoxRun source without waiting for the fallback scene scan.</summary>
+        /// <summary>
+        /// Register a generated FoxRun source without waiting for the fallback scene scan.
+        /// Call from Unity's main thread; the hub may create or touch Unity objects while
+        /// Play Mode is active.
+        /// </summary>
         public static void RegisterSource(IFoxgloveLogSource source)
         {
             if (source == null)
@@ -302,8 +311,11 @@ namespace Unity.FoxgloveSDK.Components
                 _scanTimer -= Time.deltaTime;
                 if (_scanTimer <= 0f)
                 {
-                    _scanTimer = ScanIntervalSeconds;
-                    Scan();
+                    var added = Scan();
+                    _scanInterval = added > 0
+                        ? ScanIntervalSeconds
+                        : Math.Min(_scanInterval * 2f, MaxScanIntervalSeconds);
+                    _scanTimer = _scanInterval;
                 }
             }
 
@@ -414,10 +426,13 @@ namespace Unity.FoxgloveSDK.Components
 
         private void LogSourceFailure(IFoxgloveLogSource source, int topicIndex, string operation, Exception ex)
         {
-            var sourceName = source?.GetType().FullName ?? "<null>";
-            var key = sourceName + ":" + topicIndex + ":" + operation;
+            var sourceType = source?.GetType();
+            var key = new SourceFailureKey(sourceType, topicIndex, operation);
             if (_warnedSourceFailures.Add(key))
+            {
+                var sourceName = sourceType?.FullName ?? "<null>";
                 Debug.LogWarning($"[FoxRun] {operation} failed for {sourceName}[{topicIndex}]: {ex.Message}");
+            }
         }
 
         private void PublishTopicBusSideChannel(
@@ -454,34 +469,37 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Finds every active MonoBehaviour implementing <see cref="IFoxgloveLogSource"/>
         /// and registers new sources in the timer dictionary.
-        /// Runs on a 2-second interval.
+        /// Uses a bounded backoff when no legacy sources are found.
         /// </summary>
-        private void Scan()
+        private int Scan()
         {
+            var added = 0;
             var all = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
             foreach (var mb in all)
             {
                 if (mb is IFoxgloveLogSource src)
-                    AddSource(src);
+                    added += AddSource(src) ? 1 : 0;
             }
+
+            return added;
         }
 
-        private void AddSource(IFoxgloveLogSource source)
+        private bool AddSource(IFoxgloveLogSource source)
         {
             if (_iteratingTimers)
             {
-                if (!_pendingAdds.Contains(source))
+                if (_pendingAddSet.Add(source))
                     _pendingAdds.Add(source);
-                return;
+                return true;
             }
 
-            AddSourceNow(source);
+            return AddSourceNow(source);
         }
 
-        private void AddSourceNow(IFoxgloveLogSource source)
+        private bool AddSourceNow(IFoxgloveLogSource source)
         {
             if (source == null || _timers.ContainsKey(source))
-                return;
+                return false;
             var count = source.FoxgloveLog_TopicCount;
             if (count > 0)
             {
@@ -493,7 +511,10 @@ namespace Unity.FoxgloveSDK.Components
                     new FixedRatePublishState[count],
                     topics);
                 RegisterSourceContracts(source, count);
+                return true;
             }
+
+            return false;
         }
 
         private void RegisterSourceContracts(IFoxgloveLogSource source, int count)
@@ -565,7 +586,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             if (_iteratingTimers)
             {
-                if (!_pendingRemoves.Contains(source))
+                if (_pendingRemoveSet.Add(source))
                     _pendingRemoves.Add(source);
                 return;
             }
@@ -591,6 +612,7 @@ namespace Unity.FoxgloveSDK.Components
                 foreach (var source in _pendingRemoves)
                     RemoveSourceNow(source);
                 _pendingRemoves.Clear();
+                _pendingRemoveSet.Clear();
             }
 
             if (_pendingAdds.Count > 0)
@@ -598,6 +620,7 @@ namespace Unity.FoxgloveSDK.Components
                 foreach (var source in _pendingAdds)
                     AddSourceNow(source);
                 _pendingAdds.Clear();
+                _pendingAddSet.Clear();
             }
         }
 
@@ -626,13 +649,23 @@ namespace Unity.FoxgloveSDK.Components
             if (topicIndex < 0 || topicIndex >= source.FoxgloveLog_TopicCount)
                 return false;
             if (_mgr == null)
-                _mgr = FindFirstObjectByType<FoxgloveManager>();
+                TryRefreshManagerForTrigger();
             if (_mgr == null || !_mgr.IsRunning)
                 return false;
             if (_mgr.SuppressLivePublishersForReplay)
                 return false;
 
             return TryPublishTriggeredTopic(source, topicIndex, _mgr.NowNs, Time.realtimeSinceStartupAsDouble);
+        }
+
+        private void TryRefreshManagerForTrigger()
+        {
+            var now = Time.realtimeSinceStartup;
+            if (now < _nextTriggerManagerSearchTime)
+                return;
+
+            _nextTriggerManagerSearchTime = now + ManagerSearchIntervalSeconds;
+            _mgr = FindFirstObjectByType<FoxgloveManager>();
         }
 
         private static bool IsRecoverableSourceException(Exception ex)
@@ -663,11 +696,48 @@ namespace Unity.FoxgloveSDK.Components
             public FoxgloveLogTopicInfo[] Topics { get; }
         }
 
+        private readonly struct SourceFailureKey : IEquatable<SourceFailureKey>
+        {
+            private readonly Type _sourceType;
+            private readonly int _topicIndex;
+            private readonly string _operation;
+
+            public SourceFailureKey(Type sourceType, int topicIndex, string operation)
+            {
+                _sourceType = sourceType;
+                _topicIndex = topicIndex;
+                _operation = operation ?? string.Empty;
+            }
+
+            public bool Equals(SourceFailureKey other)
+                => _sourceType == other._sourceType
+                   && _topicIndex == other._topicIndex
+                   && string.Equals(_operation, other._operation, StringComparison.Ordinal);
+
+            public override bool Equals(object obj)
+                => obj is SourceFailureKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = _sourceType != null ? _sourceType.GetHashCode() : 0;
+                    hash = (hash * 397) ^ _topicIndex;
+                    hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(_operation);
+                    return hash;
+                }
+            }
+        }
+
         /// <summary>Clears all timers and nulls the singleton reference.</summary>
         private void OnDestroy()
         {
             _sinkRouter.SinkFaulted -= OnSinkFaulted;
             _timers.Clear();
+            _pendingAdds.Clear();
+            _pendingRemoves.Clear();
+            _pendingAddSet.Clear();
+            _pendingRemoveSet.Clear();
             _sinkRouter.Dispose();
             if (_instance == this) _instance = null;
         }

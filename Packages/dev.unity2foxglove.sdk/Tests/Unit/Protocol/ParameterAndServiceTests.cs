@@ -76,14 +76,16 @@ namespace Unity.FoxgloveSDK.UnitTests
                     new ServiceDescriptor
                     {
                         Name = "/svc", Type = "/svc",
-                        Request = new ServiceSchemaDescriptor { SchemaName = "/req", Encoding = "json" },
-                        Response = new ServiceSchemaDescriptor { SchemaName = "/resp", Encoding = "json" }
+                        Request = new ServiceSchemaDescriptor { SchemaName = "/req", Encoding = "jsonschema" },
+                        Response = new ServiceSchemaDescriptor { SchemaName = "/resp", Encoding = "jsonschema" }
                     }
                 }
             };
             var ajson = JsonConvert.SerializeObject(advSvc);
             var aobj = JObject.Parse(ajson);
             Assert.True(aobj["op"]?.ToString() == "advertiseServices", "AdvertiseServices op");
+            Assert.True(aobj["services"]?[0]?["request"]?["encoding"]?.ToString() == "jsonschema", "request encoding");
+            Assert.True(aobj["services"]?[0]?["response"]?["encoding"]?.ToString() == "jsonschema", "response encoding");
 
             var fail = new ServiceCallFailure { ServiceId = 1, CallId = 2, Message = "err" };
             var fjson = JsonConvert.SerializeObject(fail);
@@ -98,14 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var resp = BinaryEncoding.EncodeServerServiceCallResponse(5, 10, "json", payload);
             Assert.True(resp[0] == ServerOpcode.ServiceCallResponse, "Response opcode correct");
 
-            var enc = Encoding.UTF8.GetBytes("json");
-            var req = new byte[1 + 4 + 4 + 4 + enc.Length + payload.Length];
-            req[0] = ClientOpcode.ServiceCallRequest;
-            BinaryEncoding.WriteU32LE(req, 1, 5);
-            BinaryEncoding.WriteU32LE(req, 5, 10);
-            BinaryEncoding.WriteU32LE(req, 9, (uint)enc.Length);
-            Buffer.BlockCopy(enc, 0, req, 13, enc.Length);
-            Buffer.BlockCopy(payload, 0, req, 13 + enc.Length, payload.Length);
+            var req = EncodeClientServiceCallRequest(5, 10, "json", payload);
 
             var decoded = BinaryEncoding.TryDecodeClientServiceCallRequest(req,
                 out var sid, out var cid, out var decEnc, out var pl);
@@ -213,9 +208,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var session = new FoxgloveSession("Test", fake);
             fake.SimulateConnect(1);
 
-            var request = BinaryEncoding.EncodeServerServiceCallResponse(999, 1, "json",
-                Encoding.UTF8.GetBytes("{}"));
-            request[0] = ClientOpcode.ServiceCallRequest;
+            var request = EncodeClientServiceCallRequest(999, 1, "json", Encoding.UTF8.GetBytes("{}"));
 
             fake.SimulateBinary(1, request);
             var sent = fake.SentTexts(1);
@@ -236,8 +229,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             });
             fake.SimulateConnect(1);
 
-            var req = BinaryEncoding.EncodeServerServiceCallResponse(1, 1, "protobuf", new byte[] { 1 });
-            req[0] = ClientOpcode.ServiceCallRequest;
+            var req = EncodeClientServiceCallRequest(1, 1, "protobuf", new byte[] { 1 });
             fake.SimulateBinary(1, req);
             var sent = fake.SentTexts(1);
             Assert.True(sent.Last().Contains("Unsupported encoding"), "Wrong encoding → failure");
@@ -257,8 +249,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             fake.SimulateConnect(1);
 
             var payload = Encoding.UTF8.GetBytes("{}");
-            var frame = BinaryEncoding.EncodeServerServiceCallResponse(1, 1, "json", payload);
-            frame[0] = ClientOpcode.ServiceCallRequest;
+            var frame = EncodeClientServiceCallRequest(1, 1, "json", payload);
             fake.SimulateBinary(1, frame);
 
             session.Services.CompleteResponse(1, 1, "json", Encoding.UTF8.GetBytes("{\"ok\":true}"));
@@ -282,8 +273,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             fake.SimulateConnect(1);
 
             var payload = Encoding.UTF8.GetBytes("{}");
-            var frame = BinaryEncoding.EncodeServerServiceCallResponse(1, 1, "json", payload);
-            frame[0] = ClientOpcode.ServiceCallRequest;
+            var frame = EncodeClientServiceCallRequest(1, 1, "json", payload);
             fake.SimulateBinary(1, frame);
 
             foreach (var call in session.Services.DrainCompleted()) { } // drain nothing
@@ -291,6 +281,24 @@ namespace Unity.FoxgloveSDK.UnitTests
             session.DrainServiceCalls();
             var texts = fake.SentTexts(1);
             Assert.True(texts.Any(t => t.Contains("serviceCallFailure")), "Timeout produces serviceCallFailure");
+        }
+
+        private static byte[] EncodeClientServiceCallRequest(
+            uint serviceId,
+            uint callId,
+            string encoding,
+            byte[] payload)
+        {
+            var encodingBytes = Encoding.UTF8.GetBytes(encoding ?? "");
+            payload ??= Array.Empty<byte>();
+            var frame = new byte[1 + 4 + 4 + 4 + encodingBytes.Length + payload.Length];
+            frame[0] = ClientOpcode.ServiceCallRequest;
+            BinaryEncoding.WriteU32LE(frame, 1, serviceId);
+            BinaryEncoding.WriteU32LE(frame, 5, callId);
+            BinaryEncoding.WriteU32LE(frame, 9, (uint)encodingBytes.Length);
+            Buffer.BlockCopy(encodingBytes, 0, frame, 13, encodingBytes.Length);
+            Buffer.BlockCopy(payload, 0, frame, 13 + encodingBytes.Length, payload.Length);
+            return frame;
         }
 
         private sealed class Phase6FakeTransport : IFoxgloveTransport
