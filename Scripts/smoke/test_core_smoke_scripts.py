@@ -169,6 +169,15 @@ class CoreSmokeScriptTests(unittest.TestCase):
                 with self.assertRaises(module.TopicNotFoundError):
                     asyncio.run(module.wait_for_channel(NeverAdvertisesWebSocket(), "/missing", 0.01))
 
+    def test_tf_websocket_smoke_bounds_checks_time_frames(self) -> None:
+        """Truncated Foxglove time frames should be ignored instead of unpacked."""
+        source = read_source("websocket/tf_websocket_smoke.py")
+        branch_start = source.index("elif isinstance(msg, bytes)")
+        branch_end = source.index("t = struct.unpack", branch_start)
+        branch = source[branch_start:branch_end]
+
+        self.assertIn("len(msg) >= TIME_VALUE_END", branch)
+
     def test_phase139b_launch_backend_enforces_startup_timeout_without_stdout(self) -> None:
         """A silent child process should not block past startup_timeout."""
         module = load_smoke_module("phase139b_under_test", "replay/phase139b_remote_data_loader_acceptance.py")

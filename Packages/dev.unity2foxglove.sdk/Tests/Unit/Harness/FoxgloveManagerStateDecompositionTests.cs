@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Xunit;
@@ -259,6 +261,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(state.PublishCadenceDiagnosticsWasEnabled);
             Assert.True(state.FrameStallDiagnosticsWasEnabled);
             Assert.NotNull(state.PublishCadenceDiagnostics);
+        }
+
+        [Fact]
+        public void PublishCadenceTopicSummaryIsIdempotent()
+        {
+            var diagnostics = new PublishCadenceDiagnostics();
+            diagnostics.Record("/demo", "json", 1.0, 7);
+            diagnostics.Record("/demo", "json", 1.01, 7);
+
+            var topicsField = typeof(PublishCadenceDiagnostics).GetField("_topics", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(topicsField);
+            var topics = topicsField.GetValue(diagnostics);
+            var values = (IEnumerable)topics.GetType().GetProperty("Values").GetValue(topics);
+            object topicStats = null;
+            foreach (var value in values)
+            {
+                topicStats = value;
+                break;
+            }
+
+            Assert.NotNull(topicStats);
+            var buildSummary = topicStats.GetType().GetMethod("BuildSummary", BindingFlags.Instance | BindingFlags.Public);
+            Assert.NotNull(buildSummary);
+
+            var first = (string)buildSummary.Invoke(topicStats, Array.Empty<object>());
+            var second = (string)buildSummary.Invoke(topicStats, Array.Empty<object>());
+
+            Assert.Equal(first, second);
+            Assert.Contains("burstFrames=1", first, StringComparison.Ordinal);
         }
 
         [Fact]

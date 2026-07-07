@@ -157,8 +157,7 @@ namespace Unity.FoxgloveSDK.Components
 
             public string BuildSummary()
             {
-                if (_currentFrameCount > 1)
-                    _burstFrames++;
+                var burstFrames = _burstFrames + (_currentFrameCount > 1 ? 1 : 0);
 
                 var minMs = _intervalCount > 0 ? _minIntervalSec * 1000d : 0d;
                 var maxMs = _intervalCount > 0 ? _maxIntervalSec * 1000d : 0d;
@@ -182,7 +181,7 @@ namespace Unity.FoxgloveSDK.Components
                     maxMs,
                     stdMs,
                     _maxPerFrame,
-                    _burstFrames);
+                    burstFrames);
             }
         }
     }

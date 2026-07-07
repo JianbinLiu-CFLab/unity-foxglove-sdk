@@ -150,6 +150,12 @@ def apply_sync(package_root: Path, imported_root: Path, drift: list[Drift]) -> N
         shutil.copy2(package_file, imported_file)
 
 
+def blocking_drift_after_apply(drift: list[Drift]) -> list[Drift]:
+    """Return drift entries that should still fail apply mode."""
+
+    return [item for item in drift if item.kind != "extra imported"]
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for sample synchronization."""
 
@@ -205,11 +211,16 @@ def main() -> int:
 
     apply_sync(package_root, imported_root, drift)
     post_drift = compare_roots(package_root, imported_root)
-    if post_drift:
-        for item in post_drift:
+    blocking_drift = blocking_drift_after_apply(post_drift)
+    if blocking_drift:
+        for item in blocking_drift:
             print(f"[ros2-samples] remaining {item.kind}: {item.path.as_posix()}")
-        print(f"[ros2-samples] FAIL: {len(post_drift)} drift item(s) remain after apply.", file=sys.stderr)
+        print(f"[ros2-samples] FAIL: {len(blocking_drift)} drift item(s) remain after apply.", file=sys.stderr)
         return EXIT_FAILURE
+
+    extra_imported = [item for item in post_drift if item.kind == "extra imported"]
+    for item in extra_imported:
+        print(f"[ros2-samples] warning: leaving extra imported file in place: {item.path.as_posix()}")
 
     print(f"[ros2-samples] GREEN: synchronized {len(drift)} drift item(s).")
     return EXIT_SUCCESS
