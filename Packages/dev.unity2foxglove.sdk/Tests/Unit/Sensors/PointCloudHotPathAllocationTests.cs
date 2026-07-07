@@ -250,6 +250,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void PointCloud2NativeWorkerDoesNotReportSuccessAfterDeskewFailure()
+        {
+            var worker = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs")
+                .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+            Assert.Contains("success = string.IsNullOrEmpty(error);", worker, StringComparison.Ordinal);
+            Assert.Contains("report the retained native frame payload size rather than forcing CDR build", worker, StringComparison.Ordinal);
+            Assert.Contains("VirtualLidarPointData does not own managed references", worker, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PointCloud2PreferredPooledBuffersCanEvictNoisyExactSizes()
         {
             PointCloudPackedByteBufferPool.ClearCachedBuffers();

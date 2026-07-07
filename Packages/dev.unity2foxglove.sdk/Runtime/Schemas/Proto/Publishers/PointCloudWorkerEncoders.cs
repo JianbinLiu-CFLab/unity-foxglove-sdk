@@ -161,6 +161,8 @@ namespace Unity.FoxgloveSDK.Components
                         bridgePayload = ros2Payload;
                     }
 
+                    // When neither websocket nor bridge publication needs CDR bytes, diagnostics
+                    // report the retained native frame payload size rather than forcing CDR build.
                     payloadBytes = ros2Payload?.Length ?? nativeFrame.Data.Length;
 
                     if (request.HasMotionCompensation)
@@ -233,7 +235,7 @@ namespace Unity.FoxgloveSDK.Components
                         }
                     }
 
-                    success = true;
+                    success = string.IsNullOrEmpty(error);
                 }
                 catch (Exception ex)
                 {
@@ -242,7 +244,11 @@ namespace Unity.FoxgloveSDK.Components
                 finally
                 {
                     if (compensatedScratch != null)
+                    {
+                        // VirtualLidarPointData does not own managed references; clearing the hot
+                        // scratch buffer would add O(point count) work without reducing retention.
                         ArrayPool<VirtualLidarPointData>.Shared.Return(compensatedScratch, clearArray: false);
+                    }
                 }
 
                 if (request.LogPerformanceDiagnostics)

@@ -60,6 +60,41 @@ class McapTimeSyncTests(unittest.TestCase):
 
         self.assertEqual(10_000_000_020, module.parse_timestamp_message(payload))
 
+    def test_flat_timestamp_rejects_malformed_trailing_field(self) -> None:
+        """Flat sec/nsec parsing should not ignore malformed trailing bytes."""
+
+        module = load_module()
+        payload = (
+            field(1, module.WIRE_VARINT, varint(10))
+            + field(2, module.WIRE_VARINT, varint(20))
+            + field(3, module.WIRE_LENGTH_DELIMITED, varint(4) + b"x")
+        )
+
+        self.assertIsNone(module.parse_payload_timestamp_ns(payload))
+
+    def test_validate_topics_preserves_payload_alignment_when_parse_fails(self) -> None:
+        """Failed payload parses must keep payload samples aligned to log_time samples."""
+
+        module = load_module()
+        samples = module.MessageSamples(
+            topic="/pc",
+            log_times_ns=[100, 200, 300],
+            publish_times_ns=[100, 200, 300],
+            payload_times_ns=[100, None, 300],
+        )
+        imu = module.MessageSamples(
+            topic="/imu",
+            log_times_ns=[100, 300],
+            publish_times_ns=[100, 300],
+            payload_times_ns=[100, 300],
+        )
+
+        report = module.validate_topics({"/pc": samples, "/imu": imu}, "/imu", "/pc", skip_frames=0)
+
+        self.assertEqual(3, report["counts"]["pointcloud_messages"])
+        self.assertEqual(2, report["counts"]["pointcloud_payload_parsed"])
+        self.assertEqual(2, report["pointcloud_log_minus_payload_ms"]["count"])
+
 
 if __name__ == "__main__":
     unittest.main()
