@@ -10,6 +10,7 @@ using System.Threading;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 
 /// <summary>
@@ -33,6 +34,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private bool _warnedWaitingForManager;
     private bool _warnedInvalidScale;
     private SynchronizationContext _unityContext;
+    private FoxgloveManager _wiredManager;
+    private FoxgloveRuntime _wiredRuntime;
     private FoxgloveSceneCubePublisher _scenePublisher;
     private GameObject _cachedCube;
 
@@ -50,11 +53,21 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     private bool TryInitializeDemo()
     {
         if (_initialized)
-            return true;
-
-        if (_manager == null) _manager = GetComponent<FoxgloveManager>();
-        if (_manager?.Runtime?.Session == null)
         {
+            if (_wiredRuntime?.Session != null)
+                return true;
+
+            ClearRuntimeWiring();
+        }
+
+        if (_manager == null)
+            _manager = GetComponent<FoxgloveManager>();
+
+        var runtime = _manager?.Runtime;
+        if (runtime?.Session == null)
+        {
+            if (_initialized)
+                ClearRuntimeWiring();
             if (!_warnedWaitingForManager)
             {
                 _warnedWaitingForManager = true;
@@ -64,7 +77,7 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
             return false;
         }
 
-        var rt = _manager.Runtime;
+        var rt = runtime;
 
         rt.RegisterParameter("/cube/color", new JArray(0.0, 1.0, 0.0, 1.0), "number[]", true);
         rt.RegisterParameter("/cube/scale", 1.0, "number", true);
@@ -76,6 +89,8 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
         _manager.GetOrRegisterSchemaChannel("/unity/client_log", FoxgloveSchemaDefinitions.LogSchemaName);
 
         rt.Parameters.OnParameterChanged += OnParameterChanged;
+        _wiredManager = _manager;
+        _wiredRuntime = rt;
 
         var cubeObject = FindCube();
         if (cubeObject != null)
@@ -102,17 +117,27 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     /// </summary>
     private void OnDestroy()
     {
-        var runtime = _manager?.Runtime;
-        if (_manager != null)
-        {
-            _manager.OnClientMessage -= OnClientMessageReceived;
-        }
-        if (runtime != null)
-        {
-            runtime.Parameters.OnParameterChanged -= OnParameterChanged;
-        }
+        ClearRuntimeWiring();
+    }
+
+    private void ClearRuntimeWiring()
+    {
+        if (_wiredRuntime != null)
+            _wiredRuntime.Parameters.OnParameterChanged -= OnParameterChanged;
+
+        if (!ReferenceEquals(_wiredManager, null))
+            _wiredManager.OnClientMessage -= OnClientMessageReceived;
+
         if (_scenePublisher != null)
+        {
             _scenePublisher.OnSceneCubeColorChanged -= OnSceneCubeColorChanged;
+            _scenePublisher = null;
+        }
+
+        _initialized = false;
+        _warnedInvalidScale = false;
+        _wiredManager = null;
+        _wiredRuntime = null;
     }
 
     [FoxService(
@@ -144,10 +169,13 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
     {
         if (!TryInitializeDemo())
             return;
+
+        if (_wiredRuntime?.Session == null)
+            ClearRuntimeWiring();
     }
 
     /// <summary>
-    /// Locates the sample cube GameObject without reaching into unrelated scene objects.
+    /// Locates the cube GameObject by explicit binding or demo object name.
     /// </summary>
     private GameObject FindCube()
     {
@@ -277,7 +305,7 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
                 arr.Count >= 4 ? (float)arr[3].Value<double>() : 1f);
             return true;
         }
-        catch
+        catch (System.Exception)
         {
             return false;
         }
@@ -329,7 +357,7 @@ public partial class FoxgloveDemoSetup : MonoBehaviour
             var text = StrictUtf8.GetString(payload, 0, count);
             return payload.Length > count ? $"utf8:{text}..." : $"utf8:{text}";
         }
-        catch
+        catch (System.Exception)
         {
             var builder = new StringBuilder(count * 3);
             for (var i = 0; i < count; i++)

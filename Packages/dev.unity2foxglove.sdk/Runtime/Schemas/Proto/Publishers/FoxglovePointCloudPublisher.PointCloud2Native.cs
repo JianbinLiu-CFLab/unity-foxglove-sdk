@@ -146,7 +146,7 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
+                Debug.LogException(ex);
             }
         }
 
@@ -230,7 +230,7 @@ namespace Unity.FoxgloveSDK.Components
             }
             catch (Exception ex)
             {
-                Debug.LogWarning("[Foxglove] PointCloud2 native frame subscriber failed: " + ex.Message);
+                Debug.LogException(ex);
             }
             finally
             {

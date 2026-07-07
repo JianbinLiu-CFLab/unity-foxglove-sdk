@@ -199,6 +199,8 @@ namespace Unity.FoxgloveSDK.Tests
                     Ros2BridgeU2R2HealthCodec.WriteHealthPongForTests("wrong"),
                     requestId)),
                 "97D-5: health pong parser rejects wrong request id");
+            Check(Throws<ArgumentException>(() => Ros2BridgeU2R2HealthCodec.WriteHealthPongForTests(null)),
+                "97D-5b: health pong test helper rejects missing request id");
             Check(Throws<ArgumentException>(() => new Ros2BridgeFrame(
                     "/tf",
                     "foxglove_msgs/msg/FrameTransform",

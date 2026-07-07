@@ -85,6 +85,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void MultiWriterRejectsMismatchedContract()
+        {
+            var bus = new FoxTopicBus();
+            var first = new FoxTopicContract("/multi", "foxrun.A", "json", "foxrun.A", "a", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.MultiWriter);
+            var second = new FoxTopicContract("/multi", "foxrun.B", "json", "foxrun.B", "b", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.MultiWriter);
+
+            Assert.True(bus.Register(first, "source-a").Accepted);
+            var result = bus.Register(second, "source-b");
+
+            Assert.False(result.Accepted);
+            Assert.Contains("contract", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void SubscriberExceptionIsBoundedAndDoesNotStopRemainingSubscribers()
         {
             var bus = new FoxTopicBus();
@@ -143,6 +157,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Single(faults);
             Assert.Equal("/health", faults[0].Topic);
             Assert.Contains("incompatible subscriber type", faults[0].Exception.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void UnsubscribeClearsReportedFaultForNewSubscription()
+        {
+            var bus = new FoxTopicBus();
+            var contract = Contract("/health");
+            var faults = new List<FoxTopicSubscriberFault>();
+            Action<FoxTopicEnvelope<int>> throwing = _ => throw new InvalidOperationException("boom");
+            bus.SubscriberFaulted += fault => faults.Add(fault);
+
+            bus.Subscribe("/health", throwing);
+            var payload = 1;
+            bus.Publish(contract, 1UL, in payload, "source-a");
+            Assert.True(bus.Unsubscribe("/health", throwing));
+            bus.Subscribe("/health", throwing);
+            bus.Publish(contract, 2UL, in payload, "source-a");
+
+            Assert.Equal(2, faults.Count);
         }
 
         private static FoxTopicContract Contract(string topic)

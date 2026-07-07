@@ -49,15 +49,23 @@ class PerformanceToolingTests(unittest.TestCase):
             argv = ["run_baseline.py", "--quick", "--output", str(output), "--timeout-minutes", "0"]
             stdout = io.StringIO()
             completed = subprocess.CompletedProcess(args=["dotnet"], returncode=0)
+            run_calls = []
+
+            def fake_run(cmd, **kwargs):
+                run_calls.append(cmd)
+                return completed
+
             with mock.patch.object(module.sys, "argv", argv):
                 with mock.patch.object(module, "_free_disk_bytes", return_value=10 * module.BYTES_PER_GIB):
                     with mock.patch.object(module, "_setup_nuget_cache", return_value={}):
-                        with mock.patch.object(module.subprocess, "run", return_value=completed):
+                        with mock.patch.object(module.subprocess, "run", side_effect=fake_run):
                             with contextlib.redirect_stdout(stdout):
                                 result = module.main()
 
         self.assertEqual(module.EXIT_FAILURE, result)
         self.assertIn("malformed result JSON", stdout.getvalue())
+        self.assertIn("--result-prefix", run_calls[0])
+        self.assertIn(module.RESULT_FILE_PREFIX, run_calls[0])
 
 
 if __name__ == "__main__":

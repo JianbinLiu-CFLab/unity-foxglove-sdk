@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             return WriteRawFrame(header, Array.Empty<byte>());
         }
 
-        public static byte[] WriteHealthPongForTests(
+        internal static byte[] WriteHealthPongForTests(
             string requestId,
             string status = "ok",
             int protocolVersion = ProtocolVersion,
@@ -72,6 +72,9 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             string errorCode = "",
             string message = "")
         {
+            if (string.IsNullOrWhiteSpace(requestId))
+                throw new ArgumentException("Health requestId must be non-empty.", nameof(requestId));
+
             var header = new JObject
             {
                 ["op"] = "health_pong",

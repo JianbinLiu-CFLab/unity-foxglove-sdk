@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Util
         public const int CurrentVersion = 1;
         public const string KindName = "debugOverlay";
 
-        private const int MaxValueDepth = 8;
+        private const int MaxValueDepthInclusive = 8;
         private const string DebugTopicPrefix = "/debug/";
 
         private FoxgloveDebugOverlayEnvelope(
@@ -130,7 +130,7 @@ namespace Unity.FoxgloveSDK.Util
                     source,
                     label,
                     new ReadOnlyDictionary<string, object>(values),
-                    copyValues: false);
+                    copyValues: true);
                 return true;
             }
             catch (Exception ex) when (IsRecoverableEnvelopeException(ex))
@@ -145,15 +145,47 @@ namespace Unity.FoxgloveSDK.Util
             var copy = new SortedDictionary<string, object>(StringComparer.Ordinal);
             foreach (var pair in values)
             {
-                copy[pair.Key] = pair.Value;
+                copy[pair.Key] = CopyValue(pair.Value);
             }
 
             return new ReadOnlyDictionary<string, object>(copy);
         }
 
+        private static object CopyValue(object value)
+        {
+            if (value == null)
+                return null;
+
+            if (value is IReadOnlyDictionary<string, object> readOnlyDictionary)
+            {
+                var copy = new SortedDictionary<string, object>(StringComparer.Ordinal);
+                foreach (var entry in readOnlyDictionary)
+                    copy[entry.Key] = CopyValue(entry.Value);
+                return new ReadOnlyDictionary<string, object>(copy);
+            }
+
+            if (value is IDictionary dictionary)
+            {
+                var copy = new SortedDictionary<string, object>(StringComparer.Ordinal);
+                foreach (DictionaryEntry entry in dictionary)
+                    copy[(string)entry.Key] = CopyValue(entry.Value);
+                return new ReadOnlyDictionary<string, object>(copy);
+            }
+
+            if (value is IEnumerable enumerable && !(value is string))
+            {
+                var copy = new List<object>();
+                foreach (var item in enumerable)
+                    copy.Add(CopyValue(item));
+                return new ReadOnlyCollection<object>(copy);
+            }
+
+            return value;
+        }
+
         private static bool IsSupportedJsonValue(object value, int depth)
         {
-            if (depth > MaxValueDepth)
+            if (depth > MaxValueDepthInclusive)
                 return false;
 
             if (value == null)

@@ -61,6 +61,7 @@ for _ in range(REPO_ROOT_PARENT_DEPTH):
     REPO_ROOT = os.path.dirname(REPO_ROOT)
 PROJECT = "Packages/dev.unity2foxglove.sdk/Tests/Performance/FoxgloveSdk.Performance.csproj"
 OUTPUT_DIR_DEFAULT = "build/performance"
+RESULT_FILE_PREFIX = "phase35_performance"
 
 # Estimated data bounds for full-mode disk-space budget checks.
 FULL_MODE_ESTIMATED_BYTES = 2_000_000_000  # ~2 GB approximate upper bound for 50 topics x 50K msg
@@ -132,7 +133,7 @@ def main() -> int:
     cmd = [
         "dotnet", "run",
         "--project", os.path.join(REPO_ROOT, PROJECT),
-        "--", f"--{mode}", "--output", output_dir
+        "--", f"--{mode}", "--output", output_dir, "--result-prefix", RESULT_FILE_PREFIX
     ]
     print(f"[perf-baseline] Running: {' '.join(cmd)}")
 
@@ -147,7 +148,7 @@ def main() -> int:
 
     # Find and print summary from the latest JSON
     jsons = sorted(
-        [f for f in os.listdir(output_dir) if f.startswith("phase35_performance") and f.endswith(".json")],
+        [f for f in os.listdir(output_dir) if f.startswith(RESULT_FILE_PREFIX) and f.endswith(".json")],
         reverse=True
     )
     if not jsons:
