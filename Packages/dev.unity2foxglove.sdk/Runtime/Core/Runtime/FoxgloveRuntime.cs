@@ -49,7 +49,9 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private bool _protobufSchemasRegistered;
         private bool _ros2MsgSchemasRegistered;
-        private readonly HashSet<string> _replaySuppressionWarnings = new HashSet<string>();
+        private readonly HashSet<ReplaySuppressionWarningKey> _replaySuppressionWarnings =
+            new HashSet<ReplaySuppressionWarningKey>();
+        private readonly string[] _singleParameterBroadcastName = new string[1];
         // Runtime-owned start-time routing policy. Like parameters and services,
         // these survive Stop/Start and are re-applied to the next session; Stop
         // deliberately does not clear them.
@@ -195,7 +197,15 @@ namespace Unity.FoxgloveSDK.Core
         {
             if (!_parameters.TrySetFromClient(name, value))
                 return false;
-            _session?.BroadcastParameterValues(new[] { name });
+            _singleParameterBroadcastName[0] = name;
+            try
+            {
+                _session?.BroadcastParameterValues(_singleParameterBroadcastName);
+            }
+            finally
+            {
+                _singleParameterBroadcastName[0] = null;
+            }
             return true;
         }
 
@@ -334,8 +344,14 @@ namespace Unity.FoxgloveSDK.Core
             var session = _session;
             _session = null;
             session?.SetRecorder(null);
-            session?.Dispose();
-            _recording.DetachFromSession();
+            try
+            {
+                session?.Dispose();
+            }
+            finally
+            {
+                _recording.DetachFromSession();
+            }
         }
 
         // ── Channel API ──
@@ -650,6 +666,7 @@ namespace Unity.FoxgloveSDK.Core
             Stop();
             _parameters.Clear();
             _services.Clear();
+            // The remaining owned helpers are pure managed state and do not implement IDisposable.
             _recording.Dispose();
             _replay.Dispose();
             _transport.Dispose();
@@ -657,9 +674,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void WarnReplaySuppressed(string operation, uint? channelId)
         {
-            var key = channelId.HasValue
-                ? operation + ":" + channelId.Value
-                : operation;
+            var key = new ReplaySuppressionWarningKey(operation, channelId);
             lock (_replaySuppressionWarnings)
             {
                 if (!_replaySuppressionWarnings.Add(key))
@@ -675,6 +690,34 @@ namespace Unity.FoxgloveSDK.Core
         {
             lock (_replaySuppressionWarnings)
                 _replaySuppressionWarnings.Clear();
+        }
+
+        private readonly struct ReplaySuppressionWarningKey : IEquatable<ReplaySuppressionWarningKey>
+        {
+            private readonly string _operation;
+            private readonly uint? _channelId;
+
+            public ReplaySuppressionWarningKey(string operation, uint? channelId)
+            {
+                _operation = operation ?? string.Empty;
+                _channelId = channelId;
+            }
+
+            public bool Equals(ReplaySuppressionWarningKey other)
+                => string.Equals(_operation, other._operation, StringComparison.Ordinal)
+                   && _channelId == other._channelId;
+
+            public override bool Equals(object obj)
+                => obj is ReplaySuppressionWarningKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = StringComparer.Ordinal.GetHashCode(_operation);
+                    return (hash * 397) ^ (_channelId.HasValue ? _channelId.Value.GetHashCode() : 0);
+                }
+            }
         }
 
         /// <summary>

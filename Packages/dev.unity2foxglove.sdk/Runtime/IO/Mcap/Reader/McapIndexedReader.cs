@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -21,7 +22,9 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapFileSummary _summary;
         private readonly bool _ownsStream;
         private readonly McapSequentialReadLimits _sequentialReadLimits;
-        private bool _disposed;
+        private readonly object _chunkIndexCacheGate = new object();
+        private List<McapChunkIndex> _chunkIndexesByDescendingEndTime;
+        private int _disposed;
 
         /// <summary>
         /// Initializes a new indexed reader over a seekable MCAP stream.
@@ -399,8 +402,7 @@ namespace Unity.FoxgloveSDK.IO
             }
             else
             {
-                var orderedChunkIndexes = new List<McapChunkIndex>(chunkIndexes);
-                orderedChunkIndexes.Sort((left, right) => right.MessageEndTime.CompareTo(left.MessageEndTime));
+                var orderedChunkIndexes = GetChunkIndexesByDescendingEndTime(chunkIndexes);
                 var expectedCount = ExpectedLatestIndexedChannelCount(options, selectedChannelIds, orderedChunkIndexes);
                 ReadLatestBeforeIndexed(options, selectedChannelIds, expectedCount, orderedChunkIndexes, latestByChannel);
             }
@@ -516,18 +518,35 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public void Dispose()
         {
-            if (_disposed)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
-            _disposed = true;
             if (_ownsStream)
                 _stream.Dispose();
         }
 
         private void ThrowIfDisposed()
         {
-            if (_disposed)
+            if (Volatile.Read(ref _disposed) != 0)
                 throw new ObjectDisposedException(nameof(McapIndexedReader));
+        }
+
+        private List<McapChunkIndex> GetChunkIndexesByDescendingEndTime(IReadOnlyList<McapChunkIndex> chunkIndexes)
+        {
+            var cached = Volatile.Read(ref _chunkIndexesByDescendingEndTime);
+            if (cached != null)
+                return cached;
+
+            lock (_chunkIndexCacheGate)
+            {
+                if (_chunkIndexesByDescendingEndTime != null)
+                    return _chunkIndexesByDescendingEndTime;
+
+                var ordered = new List<McapChunkIndex>(chunkIndexes);
+                ordered.Sort((left, right) => right.MessageEndTime.CompareTo(left.MessageEndTime));
+                Volatile.Write(ref _chunkIndexesByDescendingEndTime, ordered);
+                return ordered;
+            }
         }
 
         private HashSet<ushort> ResolveSelectedChannelIds(McapReadOptions options)

@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Components
     /// Background JPEG pipeline for owned RGB buffers. Unity API access stays in
     /// the publisher; this type only owns queueing, worker, and generation state.
     /// </summary>
-    internal sealed class CameraJpegPipeline
+    internal sealed class CameraJpegPipeline : IDisposable
     {
         private const int WorkerWaitMs = 50;
 
@@ -30,7 +30,12 @@ namespace Unity.FoxgloveSDK.Components
         private int _encodeCapacity = 1;
         private int _completedCapacity = 1;
         private int _droppedCompletedCount;
+        private int _disposed;
 
+        /// <param name="currentCaptureGeneration">
+        /// Worker-thread-safe generation reader. The delegate must read plain
+        /// managed state via Volatile/Interlocked and must not touch Unity APIs.
+        /// </param>
         public CameraJpegPipeline(Func<int> currentCaptureGeneration, int workerStopWaitMs)
         {
             _currentCaptureGeneration = currentCaptureGeneration ?? throw new ArgumentNullException(nameof(currentCaptureGeneration));
@@ -47,6 +52,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public void Configure(int maxEncodeQueue, int maxCompletedQueue)
         {
+            ThrowIfDisposed();
             _encodeCapacity = Math.Max(1, maxEncodeQueue);
             _completedCapacity = Math.Max(1, maxCompletedQueue);
             EnsureQueues();
@@ -54,6 +60,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public bool Start()
         {
+            ThrowIfDisposed();
             TryJoinOrphanedWorker();
             EnsureQueues();
             if (_worker != null && _worker.IsAlive && !_workerStopping)
@@ -93,9 +100,12 @@ namespace Unity.FoxgloveSDK.Components
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
-            EnsureQueues();
+            ThrowIfDisposed();
             var queue = Volatile.Read(ref _encodeQueue);
-            var dropped = queue != null && queue.Enqueue(request);
+            if (queue == null)
+                throw new InvalidOperationException("JPEG queues must be configured before queueing frames.");
+
+            var dropped = queue.Enqueue(request);
             try
             {
                 _workerSignal?.Set();
@@ -112,6 +122,7 @@ namespace Unity.FoxgloveSDK.Components
             if (publish == null)
                 throw new ArgumentNullException(nameof(publish));
 
+            ThrowIfDisposed();
             droppedCompleted = Interlocked.Exchange(ref _droppedCompletedCount, 0);
             var queue = Volatile.Read(ref _completedQueue);
             if (queue == null)
@@ -130,6 +141,14 @@ namespace Unity.FoxgloveSDK.Components
 
         public bool Stop(bool clearQueues)
         {
+            if (Volatile.Read(ref _disposed) != 0)
+                return true;
+
+            return StopCore(clearQueues);
+        }
+
+        private bool StopCore(bool clearQueues)
+        {
             _workerStopping = true;
             Interlocked.Increment(ref _workerGeneration);
             var signal = _workerSignal;
@@ -145,7 +164,7 @@ namespace Unity.FoxgloveSDK.Components
             if (worker != null && worker.IsAlive && !worker.Join(_workerStopWaitMs))
             {
                 if (clearQueues)
-                    Clear();
+                    ClearCore();
                 _orphanedWorker = worker;
                 _worker = null;
                 if (ReferenceEquals(_workerSignal, signal))
@@ -160,16 +179,36 @@ namespace Unity.FoxgloveSDK.Components
                 _workerSignal = null;
 
             if (clearQueues)
-                Clear();
+                ClearCore();
 
             return true;
         }
 
         public void Clear()
         {
+            ThrowIfDisposed();
+            ClearCore();
+        }
+
+        private void ClearCore()
+        {
             Volatile.Read(ref _encodeQueue)?.Clear();
             Volatile.Read(ref _completedQueue)?.Clear();
             Interlocked.Exchange(ref _droppedCompletedCount, 0);
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
+            StopCore(clearQueues: true);
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                throw new ObjectDisposedException(nameof(CameraJpegPipeline));
         }
 
         private void EnsureQueues()

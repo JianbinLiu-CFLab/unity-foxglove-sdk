@@ -10,7 +10,7 @@ using Stopwatch = System.Diagnostics.Stopwatch;
 
 namespace Unity.FoxgloveSDK.Components
 {
-    internal sealed class CameraJpegPublishPipeline
+    internal sealed class CameraJpegPublishPipeline : IDisposable
     {
         private const int JpegWorkerStopWaitMs = 500;
 
@@ -106,6 +106,12 @@ namespace Unity.FoxgloveSDK.Components
             _warnedWorkerFailure = false;
             _warnedWorkerShutdown = false;
             _diagnostics.ResetCameraState();
+        }
+
+        public void Dispose()
+        {
+            _jpegPipeline?.Dispose();
+            _jpegPipeline = null;
         }
 
         public void RememberReadbackStart(ulong unixNs, long ticks)
