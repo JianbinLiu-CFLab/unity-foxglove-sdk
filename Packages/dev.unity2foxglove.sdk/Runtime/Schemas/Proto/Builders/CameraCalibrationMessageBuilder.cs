@@ -94,7 +94,10 @@ namespace Foxglove.Schemas
             return CreateProtobuf(unixNs, frameId, width, height, distortionModel, d, k, r, p).ToByteArray();
         }
 
-        /// <summary>Create pinhole intrinsics from image dimensions and vertical field of view.</summary>
+        /// <summary>
+        /// Create pinhole intrinsics from image dimensions and vertical field of view.
+        /// Assumes square pixels (<c>fx = fy</c>); use <see cref="CreateJson"/> for explicit matrices.
+        /// </summary>
         public static CameraCalibrationMessage CreateAutoIntrinsics(
             ulong unixNs,
             string frameId,
@@ -116,7 +119,10 @@ namespace Foxglove.Schemas
                 intrinsics.P);
         }
 
-        /// <summary>Create pinhole intrinsics as an official protobuf CameraCalibration message.</summary>
+        /// <summary>
+        /// Create pinhole intrinsics as an official protobuf CameraCalibration message.
+        /// Assumes square pixels (<c>fx = fy</c>); use <see cref="CreateProtobuf"/> for explicit matrices.
+        /// </summary>
         public static Foxglove.CameraCalibration CreateAutoIntrinsicsProtobuf(
             ulong unixNs,
             string frameId,
@@ -143,7 +149,10 @@ namespace Foxglove.Schemas
             uint height,
             double verticalFovDegrees)
         {
-            var fovRad = Math.Max(0.001, verticalFovDegrees) * Math.PI / 180.0;
+            if (verticalFovDegrees <= 0.0 || double.IsNaN(verticalFovDegrees) || double.IsInfinity(verticalFovDegrees))
+                throw new ArgumentOutOfRangeException(nameof(verticalFovDegrees), "Vertical FOV must be positive and finite.");
+
+            var fovRad = verticalFovDegrees * Math.PI / 180.0;
             var fy = height / (2.0 * Math.Tan(fovRad / 2.0));
             var fx = fy;
             var cx = width / 2.0;

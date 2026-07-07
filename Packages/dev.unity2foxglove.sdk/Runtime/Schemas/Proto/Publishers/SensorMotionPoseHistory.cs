@@ -71,7 +71,11 @@ namespace Unity.FoxgloveSDK.Components
             if (_count > 0)
             {
                 var lastIndex = PhysicalIndex(_count - 1);
-                if (unixNs <= _samples[lastIndex].UnixNs)
+                var lastUnixNs = _samples[lastIndex].UnixNs;
+                if (unixNs < lastUnixNs)
+                    return;
+
+                if (unixNs == lastUnixNs)
                 {
                     _samples[lastIndex] = sample;
                     return;
@@ -167,8 +171,10 @@ namespace Unity.FoxgloveSDK.Components
             if (unixNs < samples[0].UnixNs || unixNs > samples[samples.Length - 1].UnixNs)
                 return false;
 
-            if (searchIndex < 0 || searchIndex >= samples.Length)
+            if (searchIndex < 0)
                 searchIndex = 0;
+            if (searchIndex >= samples.Length - 1)
+                searchIndex = samples.Length - 2;
             while (searchIndex > 0 && unixNs < samples[searchIndex].UnixNs)
                 searchIndex--;
 

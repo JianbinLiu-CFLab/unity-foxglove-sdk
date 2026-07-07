@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxTopicSink> _sinks = new List<IFoxTopicSink>();
         private readonly Dictionary<string, FoxTopicContract> _contracts = new Dictionary<string, FoxTopicContract>(StringComparer.Ordinal);
         private readonly HashSet<string> _reportedFaults = new HashSet<string>(StringComparer.Ordinal);
+        private bool _disposed;
 
         /// <summary>Raised once per unique (sink, topic, operation, exception type) failure.</summary>
         public event Action<FoxTopicSinkFault> SinkFaulted;
@@ -60,6 +61,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void AddSink(IFoxTopicSink sink)
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(FoxTopicSinkRouter));
             if (sink == null)
                 throw new ArgumentNullException(nameof(sink));
             if (_sinks.Contains(sink))
@@ -81,11 +84,13 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Remove a sink. Returns whether it was present.</summary>
         public bool RemoveSink(IFoxTopicSink sink)
-            => sink != null && _sinks.Remove(sink);
+            => !_disposed && sink != null && _sinks.Remove(sink);
 
         /// <summary>Remove a previously registered exported contract.</summary>
         public bool Unregister(string topic)
         {
+            if (_disposed)
+                return false;
             if (string.IsNullOrWhiteSpace(topic))
                 return false;
 
@@ -98,6 +103,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void Register(FoxTopicContract contract)
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(FoxTopicSinkRouter));
             if (contract == null)
                 throw new ArgumentNullException(nameof(contract));
             if (contract.Visibility == FoxTopicVisibility.LocalOnly)
@@ -125,6 +132,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(FoxTopicSinkRouter));
             if (contract == null)
                 throw new ArgumentNullException(nameof(contract));
             if (contract.Visibility == FoxTopicVisibility.LocalOnly)
@@ -153,6 +162,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Flush every sink. A failing sink is isolated.</summary>
         public void Flush()
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(FoxTopicSinkRouter));
             for (var i = 0; i < _sinks.Count; i++)
             {
                 var sink = _sinks[i];
@@ -170,6 +181,10 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Dispose every sink and clear the router.</summary>
         public void Dispose()
         {
+            if (_disposed)
+                return;
+            _disposed = true;
+
             for (var i = 0; i < _sinks.Count; i++)
             {
                 try
@@ -186,6 +201,7 @@ namespace Unity.FoxgloveSDK.Components
             _sinks.Clear();
             _contracts.Clear();
             _reportedFaults.Clear();
+            SinkFaulted = null;
         }
 
         private void ReportFault(IFoxTopicSink sink, string topic, string operation, Exception exception)

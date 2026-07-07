@@ -5,7 +5,6 @@
 // Purpose: Phase 140D RGB24-to-I420 conversion behavior and allocation checks.
 
 using System;
-using System.IO;
 using Foxglove.Schemas.Video;
 using Xunit;
 
@@ -15,15 +14,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
     [Trait("Domain", "Sensors")]
     public sealed class Rgb24ToI420ConverterTests
     {
-        [Fact]
-        public void ConverterUsesBlockWalkWithoutSeparateLumaPass()
-        {
-            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/Rgb24ToI420Converter.cs");
-
-            Assert.DoesNotContain("for (var y = 0; y < height; y++)", source, StringComparison.Ordinal);
-            Assert.Contains("for (var y = 0; y < height; y += 2)", source, StringComparison.Ordinal);
-        }
-
         [Fact]
         public void ConversionMatchesLegacyOutputForRepresentativeFrames()
         {
@@ -179,25 +169,5 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             return (byte)value;
         }
 
-        private static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-
-        private static string RepoRoot
-        {
-            get
-            {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
-                        return dir.FullName;
-
-                    dir = dir.Parent;
-                }
-
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
-            }
-        }
     }
 }

@@ -112,7 +112,9 @@ namespace Unity.FoxgloveSDK.Core
                 }
 
                 var staleGraphTopics = new List<(uint channelId, string topic)>();
-                List<AdvertiseChannel> acceptedChannels;
+                List<AdvertiseChannel> acceptedChannels = null;
+                string budgetRejectionReason = null;
+                bool shouldLogBudgetRejection = false;
                 lock (_clientChannelsLock)
                 {
                     var newChannelCount = 0;
@@ -131,28 +133,35 @@ namespace Unity.FoxgloveSDK.Core
 
                     if (clientChannelCount + newChannelCount > MaxClientPublishedChannelsPerClient)
                     {
-                        WarnBudgetRejected(clientId, "client-published channel count exceeds the per-client budget");
-                        return;
+                        budgetRejectionReason = "client-published channel count exceeds the per-client budget";
+                        shouldLogBudgetRejection = TryMarkBudgetRejectedUnderLock(clientId);
                     }
-
-                    if (_clientChannels.Count + newChannelCount > MaxTotalClientPublishedChannels)
+                    else if (_clientChannels.Count + newChannelCount > MaxTotalClientPublishedChannels)
                     {
-                        WarnBudgetRejected(clientId, "client-published channel count exceeds the total budget");
-                        return;
+                        budgetRejectionReason = "client-published channel count exceeds the total budget";
+                        shouldLogBudgetRejection = TryMarkBudgetRejectedUnderLock(clientId);
                     }
-
-                    acceptedChannels = new List<AdvertiseChannel>(deduped.Values);
-                    foreach (var ch in acceptedChannels)
+                    else
                     {
-                        var key = (clientId, ch.Id);
-                        if (_clientChannels.TryGetValue(key, out var previous)
-                            && !string.Equals(previous.Topic, ch.Topic, StringComparison.Ordinal))
+                        acceptedChannels = new List<AdvertiseChannel>(deduped.Values);
+                        foreach (var ch in acceptedChannels)
                         {
-                            staleGraphTopics.Add((ch.Id, previous.Topic));
-                        }
+                            var key = (clientId, ch.Id);
+                            if (_clientChannels.TryGetValue(key, out var previous)
+                                && !string.Equals(previous.Topic, ch.Topic, StringComparison.Ordinal))
+                            {
+                                staleGraphTopics.Add((ch.Id, previous.Topic));
+                            }
 
-                        _clientChannels[key] = ch;
+                            _clientChannels[key] = ch;
+                        }
                     }
+                }
+
+                if (budgetRejectionReason != null)
+                {
+                    LogBudgetRejected(clientId, budgetRejectionReason, shouldLogBudgetRejection);
+                    return;
                 }
 
                 foreach (var (channelId, topic) in staleGraphTopics)
@@ -170,11 +179,25 @@ namespace Unity.FoxgloveSDK.Core
 
         private void WarnBudgetRejected(uint clientId, string reason)
         {
+            bool shouldLog;
             lock (_clientChannelsLock)
             {
-                if (!_budgetWarnedClients.Add(clientId))
-                    return;
+                shouldLog = TryMarkBudgetRejectedUnderLock(clientId);
             }
+
+            LogBudgetRejected(clientId, reason, shouldLog);
+        }
+
+        private bool TryMarkBudgetRejectedUnderLock(uint clientId)
+        {
+            // Caller must hold _clientChannelsLock; the wrapper above covers outside-lock callers.
+            return _budgetWarnedClients.Add(clientId);
+        }
+
+        private void LogBudgetRejected(uint clientId, string reason, bool shouldLog)
+        {
+            if (!shouldLog)
+                return;
 
             _logger.LogWarning(
                 $"Client advertise batch rejected atomically from client {clientId}; no channels from this batch were applied: {reason}");

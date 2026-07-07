@@ -4,6 +4,7 @@
 // Module: Runtime/Sensors/Lidar
 // Purpose: Defines immutable LiDAR model metadata used by scan pattern creation.
 
+using System;
 using System.Numerics;
 
 namespace Unity.FoxgloveSDK.Sensors.Lidar
@@ -14,81 +15,50 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     /// </summary>
     public sealed class LidarModelSpec
     {
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>LiDAR vendor family.</summary>
         public readonly LidarVendor Vendor;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
 
-/// <summary>Public/member behavior description.</summary>
-        public readonly string Model;              // e.g. "OS-1-32", "VLP-16"
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        /// <summary>Human-readable model name, for example <c>OS-1-32</c> or <c>VLP-16</c>.</summary>
+        public readonly string Model;
 
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>Scan pattern family used to build synthetic LiDAR frames.</summary>
         public readonly LidarScanKind Kind;
 
-        // Spinning
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>Vertical channel count for spinning scanners.</summary>
         public readonly int Rings;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
 
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>Horizontal sample count per revolution for spinning scanners.</summary>
         public readonly int Columns;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
 
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>Nominal scan rate in hertz.</summary>
         public readonly double RateHz;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
 
-        public readonly double FovTopDeg, FovBottomDeg;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        /// <summary>Top vertical field-of-view angle in degrees for uniform spinning scan patterns.</summary>
+        public readonly double FovTopDeg;
 
-/// <summary>Public/member behavior description.</summary>
-        public readonly double[] BeamAltitudeAnglesDeg; // null -> uniform distribution
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        /// <summary>Bottom vertical field-of-view angle in degrees for uniform spinning scan patterns.</summary>
+        public readonly double FovBottomDeg;
 
-/// <summary>Public/member behavior description.</summary>
-        public readonly string[] Modes;                  // null or e.g. {"1024x10", "2048x10"}
+        /// <summary>Optional per-ring beam altitude angles in degrees; <c>null</c> means use a uniform vertical distribution.</summary>
+        public readonly double[] BeamAltitudeAnglesDeg;
 
-        // Non-repetitive (Livox)
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        /// <summary>Optional vendor mode names such as <c>1024x10</c> or <c>2048x10</c>.</summary>
+        public readonly string[] Modes;
 
-        public readonly double FovHDeg, FovVDeg;
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        /// <summary>Horizontal field-of-view angle in degrees for non-repetitive scanners.</summary>
+        public readonly double FovHDeg;
 
-/// <summary>Public/member behavior description.</summary>
+        /// <summary>Vertical field-of-view angle in degrees for non-repetitive scanners.</summary>
+        public readonly double FovVDeg;
+
+        /// <summary>Nominal beam count per published frame for non-repetitive scanners.</summary>
         public readonly int BeamsPerFrame;
 
-        // Shared
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
+        /// <summary>Minimum valid return range in meters.</summary>
+        public readonly double MinRangeMeters;
 
-        public readonly double MinRangeMeters, MaxRangeMeters;
+        /// <summary>Maximum valid return range in meters.</summary>
+        public readonly double MaxRangeMeters;
 
         /// <summary>Translation from LiDAR frame to sensor housing frame in meters.</summary>
         public readonly Vector3 LidarToSensorTranslationMeters;
@@ -114,10 +84,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// </summary>
         public readonly Quaternion TIlRotation;
 
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
+        /// <summary>Create immutable LiDAR model metadata for registry and scan-pattern use.</summary>
         public LidarModelSpec(LidarVendor vendor, string model, LidarScanKind kind,
             int rings, int columns, double rateHz, double fovTopDeg, double fovBottomDeg,
             double[] beamAltitudeAnglesDeg, string[] modes,
@@ -127,6 +94,9 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             Vector3? imuToSensorTranslationMeters = null, Quaternion? imuToSensorRotation = null,
             Vector3? tIlTranslationMeters = null, Quaternion? tIlRotation = null)
         {
+            if (kind == LidarScanKind.Spinning && (rings <= 0 || columns <= 0 || rateHz <= 0.0))
+                throw new ArgumentException("Spinning LiDAR requires positive rings, columns, and rateHz.");
+
             Vendor = vendor;
             Model = model;
             Kind = kind;
@@ -150,11 +120,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             TIlRotation = ImuToSensorRotation;
         }
 
-        // Factory helpers
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
+        /// <summary>Create an Ouster-style spinning LiDAR model.</summary>
         public static LidarModelSpec Ouster(string model, int rings, int columns, string[] modes,
             double fovTopDeg, double fovBottomDeg, double[] beamAltDeg = null,
             double minRange = 0.5, double maxRange = 120,
@@ -168,30 +134,26 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 imuToSensorTranslationMeters, imuToSensorRotation,
                 tIlTranslationMeters, tIlRotation);
 
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
+        /// <summary>Create a Velodyne-style spinning LiDAR model using revolutions per minute.</summary>
         public static LidarModelSpec Velodyne(string model, int rings, int columns, double rpm,
             double[] beamAltDeg, double minRange = 0.3, double maxRange = 100)
-            => new(LidarVendor.Velodyne, model, LidarScanKind.Spinning,
+        {
+            if (rpm <= 0.0)
+                throw new ArgumentException("Velodyne LiDAR rpm must be positive.", nameof(rpm));
+
+            return new LidarModelSpec(LidarVendor.Velodyne, model, LidarScanKind.Spinning,
                 rings, columns, rpm / 60.0, 0, 0,
                 beamAltDeg, null, 0, 0, 0, minRange, maxRange);
+        }
 
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
+        /// <summary>Create a RoboSense-style spinning LiDAR model.</summary>
         public static LidarModelSpec RoboSense(string model, int rings, int columns,
             double fovTopDeg, double fovBottomDeg, double minRange = 0.2, double maxRange = 150)
             => new(LidarVendor.RoboSense, model, LidarScanKind.Spinning,
                 rings, columns, 10.0, fovTopDeg, fovBottomDeg,
                 null, null, 0, 0, 0, minRange, maxRange);
 
-        /// <summary>
-        /// Public/member behavior description.
-        /// </summary>
-
+        /// <summary>Create a Livox-style non-repetitive LiDAR model.</summary>
         public static LidarModelSpec Livox(string model, double fovHDeg, double fovVDeg,
             int beamsPerFrame, double minRange = 0.1, double maxRange = 260)
             => new(LidarVendor.Livox, model, LidarScanKind.NonRepetitive,
@@ -199,5 +161,4 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 fovHDeg, fovVDeg, beamsPerFrame, minRange, maxRange);
     }
 }
-
 

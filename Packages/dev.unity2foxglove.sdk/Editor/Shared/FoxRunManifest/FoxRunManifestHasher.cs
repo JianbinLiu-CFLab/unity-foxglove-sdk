@@ -6,19 +6,17 @@
 
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 
 namespace Unity.FoxgloveSDK.Editor
 {
     public static class FoxRunManifestHasher
     {
         private const string LowerHex = "0123456789abcdef";
-        private static readonly ThreadLocal<SHA256> Sha256 = new ThreadLocal<SHA256>(SHA256.Create);
 
         public static string Sha256Hex(string canonicalJson)
         {
             var bytes = Encoding.UTF8.GetBytes(canonicalJson ?? string.Empty);
-            var sha = Sha256.Value;
+            using var sha = SHA256.Create();
             var hash = sha.ComputeHash(bytes);
             var chars = new char[hash.Length * 2];
             for (var i = 0; i < hash.Length; i++)

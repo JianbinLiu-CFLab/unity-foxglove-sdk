@@ -50,6 +50,16 @@ namespace Unity.FoxgloveSDK.Editor
                 supportsRos2: true,
                 "Camera calibration publisher for Unity Camera intrinsics."),
             Concrete(
+                "Unity.FoxgloveSDK.Components.FoxgloveCameraInfoPublisher",
+                "dedicatedPublisher",
+                "/unity/sensor/camera/camera_info",
+                "",
+                Ros2PublisherSchemaNames.SensorCameraInfo,
+                supportsJson: false,
+                supportsProtobuf: false,
+                supportsRos2: true,
+                "Standard ROS2 CameraInfo publisher for SLAM consumers."),
+            Concrete(
                 "Unity.FoxgloveSDK.Components.FoxgloveLaserScanPublisher",
                 "dedicatedPublisher",
                 "/unity/laser_scan",

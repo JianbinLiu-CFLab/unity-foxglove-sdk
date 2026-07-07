@@ -119,6 +119,17 @@ class SampleSyncToolingTests(unittest.TestCase):
 
         self.assertTrue(imported_root.as_posix().endswith("Unity2Foxglove ROS2 For Unity/9.8.7-preview.6"))
 
+    def test_ros2_sample_apply_does_not_fail_on_extra_imported_files(self) -> None:
+        """Apply mode should leave imported-owned extras in place without reporting sync failure."""
+        module = load_module("sync_ros2_samples_apply_under_test", "Scripts/samples/sync_ros2_samples.py")
+
+        drift = [
+            module.Drift("extra imported", Path("local_only.cs")),
+            module.Drift("changed", Path("package_owned.cs")),
+        ]
+
+        self.assertEqual([module.Drift("changed", Path("package_owned.cs"))], module.blocking_drift_after_apply(drift))
+
 
 if __name__ == "__main__":
     unittest.main()

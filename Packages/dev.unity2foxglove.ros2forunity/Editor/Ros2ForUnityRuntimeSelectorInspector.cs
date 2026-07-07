@@ -183,6 +183,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             EditorGUILayout.HelpBox(_pendingResolveMessage, MessageType.Info);
+            _pendingResolveMessage = string.Empty;
         }
 
         private static Ros2ForUnityRuntimeDescriptor[] ToRuntimeArray(

@@ -176,7 +176,7 @@ async def run(args: argparse.Namespace) -> int:
                     payload = msg[MESSAGE_PAYLOAD_START:]
                     details = describe_message_payload(payload, channel.encoding)
                     print(f"Msg #{index}: subId={sub_id} logTime={log_ns} {details}")
-                elif isinstance(msg, bytes) and msg[OPCODE_OFFSET] == TIME_OPCODE:
+                elif isinstance(msg, bytes) and len(msg) >= TIME_VALUE_END and msg[OPCODE_OFFSET] == TIME_OPCODE:
                     t = struct.unpack("<Q", msg[TIME_VALUE_START:TIME_VALUE_END])[STRUCT_UNPACK_VALUE_INDEX]
                     print(f"Time: {t}")
             except asyncio.TimeoutError:

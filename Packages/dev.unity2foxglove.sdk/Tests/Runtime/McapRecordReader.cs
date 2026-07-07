@@ -64,6 +64,8 @@ namespace Unity.FoxgloveSDK.Tests
             if (offset + 8 <= data.Length)
             {
                 hasTrailingMagic = McapBinaryReader.MatchesMagic(data, offset);
+                if (hasTrailingMagic && offset + 8 != data.Length)
+                    throw new InvalidDataException("MCAP test parser found trailing bytes after trailing magic.");
             }
 
             return (hasLeadingMagic, records, hasTrailingMagic);
@@ -159,8 +161,6 @@ namespace Unity.FoxgloveSDK.Tests
 
             var compressedLength = (int)compSize;
             var trailing = remaining - compressedLength;
-            if (trailing < 0)
-                throw new InvalidDataException($"Chunk record compressedLength {compressedLength} exceeds remaining bytes {remaining}.");
             if (trailing > 0)
                 throw new InvalidDataException($"Chunk record has {trailing} trailing byte(s) after declared compressed payload.");
 
@@ -180,8 +180,10 @@ namespace Unity.FoxgloveSDK.Tests
             var recsLen = McapBinaryReader.ReadU32LE(content, ref off);
             if (recsLen % 16 != 0)
                 throw new InvalidDataException($"MessageIndex records length {recsLen} is not a multiple of 16.");
+            if ((ulong)off + recsLen > (ulong)content.Length)
+                throw new InvalidDataException($"MessageIndex records length {recsLen} exceeds remaining payload length {content.Length - off}.");
             var count = recsLen / 16;
-            var entries = new List<(ulong, ulong)>();
+            var entries = new List<(ulong, ulong)>((int)Math.Min(count, 1024));
             for (uint i = 0; i < count; i++)
             {
                 var ts = McapBinaryReader.ReadU64LE(content, ref off);

@@ -99,8 +99,10 @@ namespace Unity.FoxgloveSDK.Components
                     break;
                 case "float":
                 case "double":
+                case "decimal":
                 case "System.Single":
                 case "System.Double":
+                case "System.Decimal":
                 case "float32":
                 case "float64":
                     AppendNullableNumber(sb);

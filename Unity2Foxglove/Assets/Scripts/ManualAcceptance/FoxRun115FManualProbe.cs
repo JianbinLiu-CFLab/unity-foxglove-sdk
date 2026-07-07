@@ -108,6 +108,8 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
         _frameCount++;
         var t = Time.time;
         scalarValue = Mathf.Sin(t);
+        // Manual acceptance intentionally mutates string payloads each frame.
+        // Generated FoxRun publishers must keep their own Update paths allocation-free.
         textValue = "frame " + _frameCount;
         vectorValue = transform.position + new Vector3(Mathf.Sin(t), Mathf.Cos(t), t % 5f);
 

@@ -213,7 +213,13 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => File.ReadAllText(RepoPath(relativePath));
+        {
+            var path = RepoPath(relativePath);
+            if (!File.Exists(path))
+                throw new InvalidOperationException("[FAIL] 171-file: required repository file not found: " + relativePath);
+
+            return File.ReadAllText(path);
+        }
 
         private static string RepoPath(string relativePath)
         {

@@ -114,6 +114,23 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void CompressionRejectsNullUncompressedPayloadWithClearMessage()
+        {
+            var ex = Assert.Throws<InvalidDataException>(() => McapCompression.Decompress("", null, 1, 1024));
+
+            Assert.Contains("null", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void CompressionDocumentsZeroMaxOutputAsUnbounded()
+        {
+            var payload = new byte[] { 1, 2, 3, 4 };
+            var result = McapCompression.Decompress("", payload, payload.Length, maxOutputBytes: 0);
+
+            Assert.Equal(payload, result);
+        }
+
+        [Fact]
         public void CompressionSizeMismatchesThrowInvalidDataException()
         {
             var payload = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };

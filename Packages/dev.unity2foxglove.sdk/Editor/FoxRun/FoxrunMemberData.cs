@@ -92,6 +92,9 @@ namespace Unity.FoxgloveSDK.Editor
             public MemberData(string name, string rawType, string topic, float rate, string schema,
                 int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
             {
+                if (LooksLikeArrayType(rawType))
+                    throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
+
                 MemberName = name;
                 MemberKind = "field";
                 RawTypeName = rawType;
@@ -186,6 +189,15 @@ namespace Unity.FoxgloveSDK.Editor
 
             elementType = null;
             return false;
+        }
+
+        private static bool LooksLikeArrayType(string rawType)
+        {
+            var text = rawType ?? string.Empty;
+            return text.EndsWith("[]", StringComparison.Ordinal)
+                   || text.IndexOf("List<", StringComparison.Ordinal) >= 0
+                   || text.IndexOf("IList<", StringComparison.Ordinal) >= 0
+                   || text.IndexOf("IReadOnlyList<", StringComparison.Ordinal) >= 0;
         }
     }
 }

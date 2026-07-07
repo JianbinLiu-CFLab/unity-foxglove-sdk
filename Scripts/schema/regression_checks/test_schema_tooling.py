@@ -44,6 +44,42 @@ class SchemaToolingTests(unittest.TestCase):
         module = load_module("cdr_generator_under_test", "Scripts/schema/generate_ros2_cdr_serializers.py")
 
         schema = module.Schema(
+            name="QuaternionStamped",
+            schema_name="geometry_msgs/msg/QuaternionStamped",
+            source_file="QuaternionStamped.msg",
+            fields=(
+                module.Field(
+                    ros_type="geometry_msgs/Quaternion",
+                    name="orientation",
+                    base_type="geometry_msgs/Quaternion",
+                    array_kind="scalar",
+                    fixed_length=None,
+                    property_name="Orientation",
+                    property_type="global::Foxglove.Quaternion",
+                ),
+            ),
+        )
+        generated = module.generate_serializers([schema])
+
+        self.assertIn("if (value == null)", generated)
+        self.assertIn("throw new ArgumentNullException(nameof(value));", generated)
+        self.assertIn("var writer = new Ros2CdrWriter(64);", generated)
+        self.assertIn("WriteProtoQuaternion(writer, message.Orientation);", generated)
+        self.assertIn("writer.WriteFloat64(value.W);", generated)
+        for method in ("WriteProtoPoint", "WriteProtoVector3", "WriteProtoQuaternion", "WriteProtoPose"):
+            start = generated.index(f"private static void {method}")
+            end = generated.find("\n        private static", start + 1)
+            body = generated[start:] if end < 0 else generated[start:end]
+            self.assertNotIn("value?.", body)
+            self.assertIn("if (value == null)", body)
+            self.assertIn("throw new ArgumentNullException(nameof(value));", body)
+        self.assertNotIn("value?.W ?? 1.0", generated)
+
+    def test_cdr_generator_byte_array_capacity_is_schema_specific(self) -> None:
+        """Byte-array schemas should retain their bounded writer capacity and data write."""
+        module = load_module("cdr_generator_byte_array_under_test", "Scripts/schema/generate_ros2_cdr_serializers.py")
+
+        schema = module.Schema(
             name="CompressedImage",
             schema_name="foxglove_msgs/msg/CompressedImage",
             source_file="CompressedImage.msg",
@@ -59,20 +95,11 @@ class SchemaToolingTests(unittest.TestCase):
                 ),
             ),
         )
+
         generated = module.generate_serializers([schema])
 
-        self.assertIn("if (value == null)", generated)
-        self.assertIn("throw new ArgumentNullException(nameof(value));", generated)
         self.assertIn("var writer = new Ros2CdrWriter(528);", generated)
         self.assertIn("writer.WriteByteArray(message.Data.Span);", generated)
-        self.assertIn("writer.WriteFloat64(value.W);", generated)
-        for method in ("WriteProtoPoint", "WriteProtoVector3", "WriteProtoQuaternion", "WriteProtoPose"):
-            start = generated.index(f"private static void {method}")
-            end = generated.find("\n        private static", start + 1)
-            body = generated[start:] if end < 0 else generated[start:end]
-            self.assertIn("if (writer == null)", body)
-            self.assertIn("throw new ArgumentNullException(nameof(writer));", body)
-        self.assertNotIn("value?.W ?? 1.0", generated)
 
     def test_cdr_generator_supports_future_geometry_sequences(self) -> None:
         """Repeated Vector3 and Quaternion fields should not fail generation."""

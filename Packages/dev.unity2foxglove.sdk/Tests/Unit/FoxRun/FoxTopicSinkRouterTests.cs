@@ -149,6 +149,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.False(router.HasSinks);
         }
 
+        [Fact]
+        public void DisposePreventsReusingRouter()
+        {
+            var router = new FoxTopicSinkRouter();
+            router.Dispose();
+
+            Assert.Throws<ObjectDisposedException>(() => router.AddSink(new RecordingSink("late", new List<string>())));
+            Assert.False(router.HasSinks);
+            Assert.Equal(0, router.SinkCount);
+        }
+
         private static FoxTopicContract Exported(string topic)
             => new FoxTopicContract(topic, "foxrun.Test", "json", "foxrun.Test", "abc123", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
 

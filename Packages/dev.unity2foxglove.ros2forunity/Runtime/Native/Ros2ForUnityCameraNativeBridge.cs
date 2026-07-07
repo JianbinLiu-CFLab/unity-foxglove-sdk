@@ -202,7 +202,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (_infoBindings.TryGetValue(instanceId, out var existing))
                 {
                     if (existing.Topic == topic)
+                    {
+                        existing.PrewarmPublisher(_ros2Unity);
                         continue;
+                    }
 
                     existing.Dispose();
                     _infoBindings.Remove(instanceId);
@@ -210,6 +213,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var binding = new InfoBinding(this, publisher, topic);
                 binding.Subscribe();
+                binding.PrewarmPublisher(_ros2Unity);
                 _infoBindings.Add(instanceId, binding);
             }
 

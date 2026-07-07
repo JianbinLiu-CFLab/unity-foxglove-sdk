@@ -38,6 +38,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             public override bool IsStillEligible()
                 => IsEligible(_source) && NormalizeTopic(_source.SensorCameraInfoTopic, DefaultCameraInfoTopic) == Topic;
 
+            public void PrewarmPublisher(ROS2UnityComponent ros2Unity)
+            {
+                if (ros2Unity == null || _source == null || Owner.IsShuttingDown)
+                    return;
+
+                if (TryEnsurePublisher(ros2Unity))
+                    PrewarmTfAnchorPublisher();
+            }
+
             public override void Dispose()
             {
                 if (_subscribed && _source != null)
@@ -110,7 +119,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
 
                 ReadyLogged = true;
-                Debug.Log("[Foxglove][R2FU] CameraInfo DDS ready: topic=" + Topic + " tf=" + DescribeTfAnchor() + ".");
+                Debug.LogFormat(
+                    LogType.Log,
+                    LogOption.NoStacktrace,
+                    _source,
+                    "[Foxglove][R2FU] CameraInfo DDS ready: topic={0} tf={1}.",
+                    new object[]
+                    {
+                        Topic,
+                        DescribeTfAnchor()
+                    });
             }
 
             private string DescribeTfAnchor()
@@ -146,12 +164,39 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 try
                 {
-                    _tfAnchorPublisher ??= Node.CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic);
+                    PrewarmTfAnchorPublisher();
+                    if (_tfAnchorPublisher == null)
+                        return;
+
                     _tfAnchorPublisher.Publish(BuildTfAnchorMessage(frame, parentFrame, childFrame));
                 }
                 catch (Exception ex)
                 {
                     RecordPublishFailure("ROS2 Camera TF anchor publish failed for " + childFrame + ": " + ex.Message);
+                }
+            }
+
+            private void PrewarmTfAnchorPublisher()
+            {
+                if (!_source.PublishCameraTfAnchor || Node == null || _tfAnchorPublisher != null)
+                    return;
+
+                var parentFrame = _source.CameraTfParentFrame;
+                var childFrame = _source.CameraTfChildFrame;
+                if (string.IsNullOrWhiteSpace(parentFrame)
+                    || string.IsNullOrWhiteSpace(childFrame)
+                    || string.Equals(parentFrame, childFrame, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                try
+                {
+                    _tfAnchorPublisher = Node.CreatePublisher<tf2_msgs.msg.TFMessage>(TfAnchorTopic);
+                }
+                catch (Exception ex)
+                {
+                    RecordPublishFailure("Unable to create ROS2 Camera TF anchor publisher for " + childFrame + ": " + ex.Message);
                 }
             }
 
@@ -205,13 +250,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (Node != null && _publisher != null)
                 {
                     try { Node.RemovePublisher<sensor_msgs.msg.CameraInfo>(_publisher); }
-                    catch (Exception) { }
+                    catch (Exception ex) { Debug.LogWarning("[Foxglove][R2FU] CameraInfo cleanup failed: " + ex.Message); }
                 }
 
                 if (Node != null && _tfAnchorPublisher != null)
                 {
                     try { Node.RemovePublisher<tf2_msgs.msg.TFMessage>(_tfAnchorPublisher); }
-                    catch (Exception) { }
+                    catch (Exception ex) { Debug.LogWarning("[Foxglove][R2FU] CameraInfo TF cleanup failed: " + ex.Message); }
                 }
 
                 _publisher = null;

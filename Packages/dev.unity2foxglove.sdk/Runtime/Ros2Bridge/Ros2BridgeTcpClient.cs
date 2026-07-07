@@ -65,7 +65,6 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 if (!task.Wait(timeoutMs))
                     throw new TimeoutException("Timed out connecting to ROS 2 bridge sidecar.");
 
-                task.GetAwaiter().GetResult();
                 client.NoDelay = true;
                 client.Client.SendTimeout = timeoutMs;
                 _sendTimeoutMs = timeoutMs;
