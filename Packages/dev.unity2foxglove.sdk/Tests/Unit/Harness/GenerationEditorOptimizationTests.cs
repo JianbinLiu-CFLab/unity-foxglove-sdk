@@ -301,7 +301,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest/Unity2FoxgloveSchemaManifestBuilder.cs");
             var buildFoxRun = TestSources.Slice(source, "private static Unity2FoxgloveFoxRunSummarySection BuildFoxRunSection", "        private static Unity2FoxgloveProtobufRegistrySection BuildProtobufRegistrySection()");
-            var buildSdk = TestSources.Slice(source, "private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()", "        private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()");
+            var buildSdk = TestSources.Slice(source, "private static Unity2FoxgloveSdkTypedPublishersSection BuildSdkTypedPublishersSection()", "        private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> GetSortedSdkTypedPublisherEntries()");
+            var getSorted = TestSources.Slice(source, "private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> GetSortedSdkTypedPublisherEntries()", "        private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()");
             var buildSorted = TestSources.Slice(source, "private static IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry> BuildSortedSdkTypedPublisherEntries()", "        private static void ValidatePublisherCatalog");
 
             Assert.Contains("foreach (var type in types)", buildFoxRun, StringComparison.Ordinal);
@@ -311,9 +312,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.DoesNotContain("private static string Sha256Hex(byte[] bytes)", source, StringComparison.Ordinal);
             Assert.Contains("FoxRunManifestHasher.Sha256Hex", source, StringComparison.Ordinal);
             Assert.Contains("private static readonly Lazy<IReadOnlyList<Unity2FoxgloveSdkTypedPublisherEntry>> SortedSdkTypedPublisherEntries", source, StringComparison.Ordinal);
-            Assert.Contains("var entries = SortedSdkTypedPublisherEntries.Value;", buildSdk, StringComparison.Ordinal);
+            Assert.Contains("var entries = GetSortedSdkTypedPublisherEntries();", buildSdk, StringComparison.Ordinal);
             Assert.Contains("entries.Count", buildSdk, StringComparison.Ordinal);
             Assert.DoesNotContain("OrderBy", buildSdk, StringComparison.Ordinal);
+            Assert.Contains("return SortedSdkTypedPublisherEntries.Value;", getSorted, StringComparison.Ordinal);
             Assert.Contains("ValidatePublisherCatalog(entries)", buildSorted, StringComparison.Ordinal);
         }
 

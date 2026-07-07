@@ -102,6 +102,29 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.Equal(0.5, profile.MinRangeMeters, 9);
         }
 
+        [Fact]
+        public void MetadataJson_BeamAnglesAreConvertedFromDegreesToRadians()
+        {
+            const string json = @"{
+                ""prod_line"": ""OS-1-16"",
+                ""lidar_mode"": ""1024x10"",
+                ""beam_altitude_angles"": [90.0, 0.0],
+                ""beam_azimuth_angles"": [180.0, -90.0],
+                ""data_format"": {
+                    ""pixels_per_column"": 2,
+                    ""columns_per_frame"": 1024,
+                    ""columns_per_packet"": 16
+                }
+            }";
+
+            Assert.True(LidarProfileLoader.TryParseFromJson(json, null, out var profile, out var error), error);
+
+            Assert.Equal(Math.PI / 2.0, profile.BeamAltitudeAngles[0], 9);
+            Assert.Equal(0.0, profile.BeamAltitudeAngles[1], 9);
+            Assert.Equal(Math.PI, profile.BeamAzimuthAngles[0], 9);
+            Assert.Equal(-Math.PI / 2.0, profile.BeamAzimuthAngles[1], 9);
+        }
+
         /// <summary>140-17E-2: metadata JSON min_range_m overrides model default min range.</summary>
         [Fact]
         public void MetadataJson_WithExplicitMinRange_OverridesModelDefault()

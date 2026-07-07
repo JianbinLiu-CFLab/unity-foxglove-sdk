@@ -34,7 +34,10 @@ namespace Unity.FoxgloveSDK.Core
         private FoxgloveParameterStore _parameters;
         private FoxgloveSession _session;
 
-        /// <inheritdoc cref="IRecordingStateReader.IsEnabled"/>
+        /// <summary>
+        /// Indicates whether recording is configured or active. Concurrent enable/disable
+        /// calls can observe a transitional snapshot and must re-check before acting.
+        /// </summary>
         public bool IsEnabled => Volatile.Read(ref _recordingConfiguration) != null || Volatile.Read(ref _recorder) != null;
         /// <inheritdoc cref="IRecordingStateReader.CoordinateMode"/>
         public string CoordinateMode => Volatile.Read(ref _recordingConfiguration)?.CoordinateMode ?? "";
@@ -115,9 +118,9 @@ namespace Unity.FoxgloveSDK.Core
             if (Volatile.Read(ref _recorder) != null)
                 DetachFromSession();
 
-            _parameters = parameters;
             var configuration = Volatile.Read(ref _recordingConfiguration);
             if (configuration == null || configuration.FilePath == null) return;
+            Volatile.Write(ref _parameters, parameters);
 
             FileStream fileStream = null;
             McapRecorder recorder = null;
@@ -156,6 +159,7 @@ namespace Unity.FoxgloveSDK.Core
                 fileStream?.Dispose();
                 Volatile.Write(ref _recorder, null);
                 Volatile.Write(ref _session, null);
+                Volatile.Write(ref _parameters, null);
                 _logger.LogError($"Failed to start MCAP recording: {ex.Message}");
             }
         }
@@ -187,8 +191,8 @@ namespace Unity.FoxgloveSDK.Core
 
             var recorder = Interlocked.Exchange(ref _recorder, null);
 
-            if (_parameters != null) _parameters.OnParameterChanged -= OnParameterChanged;
-            _parameters = null;
+            var parameters = Interlocked.Exchange(ref _parameters, null);
+            if (parameters != null) parameters.OnParameterChanged -= OnParameterChanged;
 
             if (recorder != null)
                 DisposeRecorderBestEffort(recorder);
@@ -239,7 +243,7 @@ namespace Unity.FoxgloveSDK.Core
             public RecordingConfiguration(string filePath, McapWriterOptions writerOptions, string coordinateMode)
             {
                 FilePath = filePath;
-                WriterOptions = McapWriterOptions.Normalize(writerOptions);
+                WriterOptions = writerOptions;
                 CoordinateMode = coordinateMode ?? "";
             }
 
