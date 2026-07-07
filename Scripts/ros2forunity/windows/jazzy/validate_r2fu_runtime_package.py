@@ -388,13 +388,19 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
         "runtimeId": "r2fu-jazzy-win64",
         "artifactName": ARTIFACT_NAME,
         "rosDistro": "jazzy",
-        "rmw": EXPECTED_RMW_IMPLEMENTATION,
+        "defaultRmwImplementation": EXPECTED_RMW_IMPLEMENTATION,
         "platform": "win64",
         "buildType": "standalone",
     }
     for key, value in expected.items():
         add(results, f"runtime inventory {key}", data.get(key) == value, f"expected {value!r}, got {data.get(key)!r}")
 
+    add(
+        results,
+        "runtime inventory supported RMW implementations",
+        data.get("supportedRmwImplementations") == [EXPECTED_RMW_IMPLEMENTATION],
+        f"supportedRmwImplementations={data.get('supportedRmwImplementations')!r}",
+    )
     add(
         results,
         "runtime inventory sha256 matches manifest",

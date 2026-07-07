@@ -4,7 +4,7 @@
 #
 # Purpose: Inspect a ROS2 For Unity standalone runtime artifact and write a compliance inventory.
 # Usage: python Scripts/ros2forunity/windows/humble/inspect_r2fu_runtime_artifact.py
-# Inputs: build/dist/Ros2ForUnity_humble_standalone_windows_x86_64.zip and optional sha256 sidecar.
+# Inputs: r2fu-runtime-artifacts/humble/windows_x86_64/Ros2ForUnity_humble_standalone_windows_x86_64.zip and optional sha256 sidecar.
 # Outputs: Packages/dev.unity2foxglove.ros2forunity/Compliance/r2fu-humble-win64-runtime-inventory.json
 
 """Inspect the local ROS2 For Unity Humble Windows runtime artifact."""
@@ -29,8 +29,20 @@ EXIT_FAILURE = 1
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 if not (ROOT / "Packages").is_dir():
     raise RuntimeError(f"Computed repository root is invalid: {ROOT}")
-DEFAULT_ARTIFACT = ROOT / "build" / "dist" / "Ros2ForUnity_humble_standalone_windows_x86_64.zip"
-DEFAULT_SHA256 = ROOT / "build" / "dist" / "Ros2ForUnity_humble_standalone_windows_x86_64.sha256.txt"
+DEFAULT_ARTIFACT = (
+    ROOT
+    / "r2fu-runtime-artifacts"
+    / "humble"
+    / "windows_x86_64"
+    / "Ros2ForUnity_humble_standalone_windows_x86_64.zip"
+)
+DEFAULT_SHA256 = (
+    ROOT
+    / "r2fu-runtime-artifacts"
+    / "humble"
+    / "windows_x86_64"
+    / "Ros2ForUnity_humble_standalone_windows_x86_64.sha256.txt"
+)
 DEFAULT_OUTPUT = (
     ROOT
     / "Packages"
@@ -123,7 +135,7 @@ def summarize_components(file_names: Iterable[str]) -> list[dict[str, object]]:
     names = list(file_names)
     lower_names = [(name, name.lower()) for name in names]
     component_patterns = [
-        ("RobotecAI ROS2 For Unity", ("ros2forunity/", "ros2forunity/")),
+        ("RobotecAI ROS2 For Unity", ("ros2forunity/",)),
         ("ros2cs", ("ros2cs",)),
         ("ROS2 core native runtime", ("rcl.dll", "rcutils.dll", "rmw_")),
         ("Fast DDS / Fast CDR", ("fastrtps", "fastcdr", "fastdds")),
@@ -197,7 +209,8 @@ def inspect_zip(paths: ArtifactPaths) -> dict[str, object]:
             "basis": "local Humble rebuild from R2FU and ros2cs sources",
         },
         "rosDistro": "humble",
-        "rmw": "rmw_fastrtps_cpp",
+        "defaultRmwImplementation": "rmw_fastrtps_cpp",
+        "supportedRmwImplementations": ["rmw_fastrtps_cpp"],
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",

@@ -303,7 +303,6 @@ class RuntimePackageValidatorTests(unittest.TestCase):
                         "runtimeId": "r2fu-lyrical-win64",
                         "artifactName": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
                         "rosDistro": "lyrical",
-                        "rmw": "rmw_fastrtps_cpp",
                         "defaultRmwImplementation": "rmw_fastrtps_cpp",
                         "platform": "win64",
                         "buildType": "standalone",
