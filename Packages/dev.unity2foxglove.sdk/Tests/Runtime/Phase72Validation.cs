@@ -129,7 +129,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             var update = Slice(source, "private void Update()", "private void Scan()");
-            var addSource = Slice(source, "private void AddSource", "private bool TriggerSource");
+            var addSource = Slice(source, "private bool AddSource", "private bool TriggerSource");
             var triggerSource = Slice(source, "private bool TriggerSource", "/// <summary>Clears all timers");
 
             Check(source.Contains("using Unity.FoxgloveSDK.Util;"),
@@ -150,6 +150,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(update.Contains("nonPositivePublishesEveryFrame: false"),
                 "72C-8: FoxRun keeps explicit non-positive rates disabled instead of every-frame publishers");
             Check(addSource.Contains("new FoxgloveLogSourceState(")
+                  && addSource.Contains("private bool AddSourceNow")
                   && addSource.Contains("new FixedRatePublishState[count]"),
                 "72C-9: FoxRun AddSource initializes scheduler state arrays");
             Check(!triggerSource.Contains("_timers"),
