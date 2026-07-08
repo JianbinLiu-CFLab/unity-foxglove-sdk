@@ -416,9 +416,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && publish.Contains("var subscribers = CopySubscribersForPublish(channelId);", StringComparison.Ordinal)
                   && replay.Contains("var subscribers = CopySubscribersForPublish(channelId);", StringComparison.Ordinal)
                   && copy.Contains("lock (_subscriberScratchLock)", StringComparison.Ordinal)
+                  && copy.Contains("must not synchronously reenter Publish", StringComparison.Ordinal)
                   && !copy.Contains("SendBinary", StringComparison.Ordinal)
                   && !copy.Contains("SendDataBinary", StringComparison.Ordinal),
-                "173-024A: FoxgloveSession only holds subscriber scratch lock while copying subscribers");
+                "173-024A: FoxgloveSession only holds subscriber scratch lock while copying subscribers and documents scratch reentry limits");
             Check(!session.Contains("_singleAdvertiseChannels", StringComparison.Ordinal)
                   && !session.Contains("_singleUnadvertiseChannelIds", StringComparison.Ordinal)
                   && session.Contains("new List<AdvertiseChannel>(1) { channel }", StringComparison.Ordinal)

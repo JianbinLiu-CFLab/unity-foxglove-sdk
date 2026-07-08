@@ -109,6 +109,8 @@ namespace Unity.FoxgloveSDK.Transport
             _listener = null;
             WaitForShutdownTask(_acceptLoopTask, StopAcceptLoopWaitMs);
             _acceptLoopTask = null;
+            // The listener is stopped before waiting for handler idle so no new
+            // accept path can Reset the event after the final handler Set.
             _clientHandlersIdle.Wait(StopClientHandlersWaitMs);
             cts?.Dispose();
         }

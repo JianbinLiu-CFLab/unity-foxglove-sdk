@@ -31,6 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySerializedFieldCoverage();
             VerifyConnectionSecurityAdjacency();
             VerifyMcapWorkflowGrouping();
+            VerifyPlaybackControlBoundsGuards();
             VerifyPreflightModuleBoundary();
             VerifyLayoutHelperExists();
 
@@ -229,6 +230,30 @@ namespace Unity.FoxgloveSDK.Tests
                 "70D-7: replay workflow order is Enable -> Auto Play -> Disable Live Publishers -> File Path -> Preflight");
             Check(section.Contains("DrawStackedPathBrowse(replayPath"),
                 "70D-8: replay file path uses stacked two-control browse layout");
+        }
+
+        private static void VerifyPlaybackControlBoundsGuards()
+        {
+            var setupSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
+            var inspectorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            var docsSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/en/12_Inspector_Reference.md");
+
+            Check(inspectorSource.Contains("[Min(0f)]")
+                  && inspectorSource.Contains("[SerializeField] private float _playbackDurationSeconds"),
+                "70D-9: Playback Duration Seconds has a non-negative Inspector guard");
+            Check(setupSource.Contains("_playbackDurationSeconds <= 0f"),
+                "70D-10: runtime rejects zero and negative playback duration values");
+            Check(setupSource.Contains("float.IsNaN(_playbackDurationSeconds)")
+                  && setupSource.Contains("float.IsInfinity(_playbackDurationSeconds)"),
+                "70D-11: runtime rejects non-finite playback duration values");
+            Check(setupSource.Contains("durationNsDouble > ulong.MaxValue")
+                  && setupSource.Contains("durationNsDouble > ulong.MaxValue - startNs"),
+                "70D-12: runtime rejects playback duration windows that overflow nanoseconds");
+            Check(setupSource.Contains("Playback control disabled because Playback Duration Seconds must be positive")
+                  && setupSource.Contains("Playback control disabled because the computed playback window is too large"),
+                "70D-13: invalid playback bounds are visible warnings, not silent fallbacks");
+            Check(docsSource.Contains("Zero, negative, non-finite, or overflowing values disable playback control with a warning."),
+                "70D-14: Inspector docs describe invalid playback duration fallback behavior");
         }
 
         private static void VerifyPreflightModuleBoundary()

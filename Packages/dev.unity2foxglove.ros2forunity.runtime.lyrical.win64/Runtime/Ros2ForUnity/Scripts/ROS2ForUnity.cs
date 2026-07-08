@@ -31,7 +31,7 @@ namespace ROS2
 /// </summary>
 internal class ROS2ForUnity : IDisposable
 {
-    private static bool isInitialized = false;
+    private static volatile bool isInitialized = false;
     private static readonly object initMutex = new object();
     private static bool shutdownInProgress = false;
     private static int referenceCount = 0;

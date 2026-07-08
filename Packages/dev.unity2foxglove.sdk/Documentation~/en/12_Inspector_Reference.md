@@ -32,7 +32,7 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Asset Roots | Empty | Maps asset URI prefixes to local folders. | Use when Foxglove needs to fetch file-backed assets. | Pointing to machine-specific absolute paths in shared samples. |
 | Enable Playback Control | Disabled | Enables Foxglove playback commands. | Use for replay/time-control workflows. | Expecting it to move Unity objects without a replay source. |
 | Playback Start Offset Seconds | `0` | Start time offset for playback control. | Tune when simulating a time range. | Using negative or confusing offsets without checking timeline. |
-| Playback Duration Seconds | `60` | Playback control time window. | Increase for longer manual replay sessions. | Too short a range makes seeking confusing. |
+| Playback Duration Seconds | `60` | Playback control time window. | Increase for longer manual replay sessions. | Zero, negative, non-finite, or overflowing values disable playback control with a warning. |
 
 ### 3.4 MCAP Recording
 
@@ -61,6 +61,16 @@ Remote MCAP bearer tokens, replay cursor bearer tokens, WSS certificate
 passwords, and shared WebSocket tokens are Inspector fields serialized with the
 scene or prefab. Keep them local-development only and do not commit real
 production credentials.
+
+Non-empty environment variables take priority over Inspector fallback values
+for manager secrets:
+
+| Secret | Environment variable | Inspector fallback |
+|---|---|---|
+| Shared WebSocket token | `FOXGLOVE_SHARED_TOKEN` | `Shared Token` |
+| WSS certificate password | `FOXGLOVE_CERTIFICATE_PASSWORD` | `Certificate Password` |
+| Replay cursor bearer token | `FOXGLOVE_REPLAY_CURSOR_TOKEN` | `Replay Cursor Bridge Token` |
+| Remote MCAP bearer token | `FOXGLOVE_REMOTE_MCAP_TOKEN` | `Remote MCAP Bearer Token` |
 
 ### 3.6 Security / WSS
 

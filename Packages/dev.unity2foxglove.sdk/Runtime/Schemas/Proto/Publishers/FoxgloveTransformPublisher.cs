@@ -48,6 +48,8 @@ namespace Unity.FoxgloveSDK.Components
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/tf";
+            RefreshGameObjectNameCache();
+            InvalidateFrameIdCache();
         }
 
         protected override void OnEnable()

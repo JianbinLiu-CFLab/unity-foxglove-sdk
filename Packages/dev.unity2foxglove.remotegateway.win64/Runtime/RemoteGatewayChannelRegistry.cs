@@ -68,6 +68,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 if (sinkId == 0UL)
                     return false;
 
+                // Keep the native channel handle live until ChannelLog has returned.
                 _logTimeScratch[0] = logTimeNs;
                 var payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
                 var logTimeHandle = GCHandle.Alloc(_logTimeScratch, GCHandleType.Pinned);

@@ -44,6 +44,7 @@ If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.d
 
 - This package is a prototype until fresh-project acceptance passes.
 - The inventory is an engineering inventory generated from the local runtime artifact, not a complete legal audit.
+- The current artifact still carries OpenSSL 1.1.x runtime DLLs through transitive ROS2/DDS closure. They are not used by the default FastRTPS visualization path unless DDS security/TLS features are enabled, but OpenSSL 1.1.x is end-of-life and must be replaced with OpenSSL 3.x in a future Humble artifact rebuild before release-hardening.
 - Public release should refresh transitive license attribution before registry or binary distribution.
 - WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Humble or a real remote Linux topology for final external-graph acceptance.
 

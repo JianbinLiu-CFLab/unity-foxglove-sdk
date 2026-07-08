@@ -45,8 +45,9 @@ namespace Unity.FoxgloveSDK.Tests
                       && ok.Contains("return true;", StringComparison.Ordinal)
                       && ok.Contains("cachedOk = ros2forUnity.Ok();", StringComparison.Ordinal),
                     Label(package, "164-28A-2: ROS2UnityComponent.Ok uses cached runtime state in the steady path"));
-                Check(tick.Contains("cachedOk = true;", StringComparison.Ordinal)
-                      && tick.Contains("cachedOk = false;", StringComparison.Ordinal),
+                Check((tick.Contains("cachedOk = true;", StringComparison.Ordinal)
+                       && tick.Contains("cachedOk = false;", StringComparison.Ordinal))
+                      || tick.Contains("cachedOk = hasSnapshot;", StringComparison.Ordinal),
                     Label(package, "164-28A-3: executor Tick refreshes cached Ok state once per loop"));
                 Check(shutdownMarkers.Contains("cachedOk = false;", StringComparison.Ordinal),
                     Label(package, "164-28A-4: shutdown paths invalidate cached Ok state"));
@@ -88,8 +89,9 @@ namespace Unity.FoxgloveSDK.Tests
                       && ok.Contains("return true;", StringComparison.Ordinal)
                       && ok.Contains("cachedOk = ros2forUnity.Ok();", StringComparison.Ordinal),
                     Label(package, "164-28C-2: ROS2UnityCore.Ok avoids repeated native Ok checks after a cached good tick"));
-                Check(tick.Contains("cachedOk = true;", StringComparison.Ordinal)
-                      && tick.Contains("cachedOk = false;", StringComparison.Ordinal),
+                Check((tick.Contains("cachedOk = true;", StringComparison.Ordinal)
+                       && tick.Contains("cachedOk = false;", StringComparison.Ordinal))
+                      || tick.Contains("cachedOk = hasSnapshot;", StringComparison.Ordinal),
                     Label(package, "164-28C-3: ROS2UnityCore Tick refreshes cached Ok state"));
             }
         }
@@ -139,6 +141,13 @@ namespace Unity.FoxgloveSDK.Tests
                       && source.IndexOf("foreach (Action action in actionsSnapshot)", StringComparison.Ordinal)
                          > source.IndexOf("lock (mutex)", StringComparison.Ordinal),
                     Label(package, "164-28F-1: existing executor snapshot path remains in place"));
+                if (package.Contains("runtime.jazzy", StringComparison.Ordinal))
+                {
+                    var core = Read(package + "/Runtime/Ros2ForUnity/Scripts/ROS2UnityCore.cs");
+                    Check(source.Contains("may run once more", StringComparison.Ordinal)
+                          && core.Contains("may run once more", StringComparison.Ordinal),
+                        Label(package, "164-28F-2: executor snapshot quiescence contract is documented"));
+                }
             }
         }
 

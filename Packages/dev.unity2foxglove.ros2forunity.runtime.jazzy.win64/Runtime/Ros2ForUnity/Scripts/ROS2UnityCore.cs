@@ -147,6 +147,8 @@ namespace ROS2
         /// Works as a simple executor registration analogue. These functions will be called with each Tick()
         /// Actions need to take care of correct call resolution by checking in their body (TODO)
         /// Make sure actions are lightweight (TODO - separate out threads for spinning and executables?)
+        /// Executor ticks run from a versioned snapshot outside the registration lock; after
+        /// UnregisterExecutable returns, an action that was already captured may run once more.
         /// </summary>
         public void RegisterExecutable(Action executable)
         {

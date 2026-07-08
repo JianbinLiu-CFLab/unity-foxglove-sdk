@@ -38,6 +38,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void Ros2RuntimeAssemblyNameIsSharedByDesign()
+        {
+            foreach (var path in new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.HumbleWin64.asmdef",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef"
+            })
+            {
+                var asmdef = TestSources.Text(path);
+                Assert.Contains("\"name\": \"Unity2Foxglove.Ros2ForUnity.Runtime\"", asmdef, StringComparison.Ordinal);
+            }
+
+            foreach (var path in new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/README.md",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/README.md",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/README.md"
+            })
+            {
+                var readme = TestSources.Text(path);
+                Assert.Contains("intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`", readme, StringComparison.Ordinal);
+                Assert.Contains("one-runtime policy and package conflict metadata", readme, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
         public void FoxRunGeneratedLinkXmlIsIgnoredAndDemoLinkCopyIsRemoved()
         {
             var gitignore = TestSources.Text(".gitignore");
@@ -92,6 +119,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("Prefer FOXGLOVE_CERTIFICATE_PASSWORD", manager);
             Assert.Contains("Prefer FOXGLOVE_SHARED_TOKEN", manager);
             Assert.Contains("Prefer FOXGLOVE_REPLAY_CURSOR_TOKEN", manager);
+            Assert.Contains("Prefer FOXGLOVE_REMOTE_MCAP_TOKEN", manager);
+        }
+
+        [Fact]
+        public void ManagerSecretSourcePriorityIsDocumented()
+        {
+            var readme = TestSources.Text("Packages/dev.unity2foxglove.sdk/README.md");
+            var inspector = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Documentation~/en/12_Inspector_Reference.md");
+
+            foreach (var text in new[] { readme, inspector })
+            {
+                Assert.Contains("environment variables take priority", text, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("FOXGLOVE_SHARED_TOKEN", text, StringComparison.Ordinal);
+                Assert.Contains("FOXGLOVE_CERTIFICATE_PASSWORD", text, StringComparison.Ordinal);
+                Assert.Contains("FOXGLOVE_REPLAY_CURSOR_TOKEN", text, StringComparison.Ordinal);
+                Assert.Contains("FOXGLOVE_REMOTE_MCAP_TOKEN", text, StringComparison.Ordinal);
+            }
         }
 
         [Fact]

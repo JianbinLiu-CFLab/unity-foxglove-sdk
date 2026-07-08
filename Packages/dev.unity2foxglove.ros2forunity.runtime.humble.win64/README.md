@@ -22,6 +22,8 @@ Install only one `dev.unity2foxglove.ros2forunity.runtime.*` package in a Unity 
 
 Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the same project. Use either an external asset-folder runtime or this package runtime.
 
+The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime` across all distro runtime packages. The adapter package references that stable assembly name, while the one-runtime policy and package conflict metadata prevent multiple distro runtimes from being active in the same Unity project.
+
 ## Runtime Identity
 
 - ROS distro: Humble
@@ -33,6 +35,10 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 - SHA-256: `2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-humble-win64-runtime-inventory.json`.
+
+## Known Artifact Debt
+
+The current Humble artifact still carries OpenSSL 1.1.x runtime DLLs through its transitive ROS2/DDS closure. Those DLLs are not used by the default FastRTPS visualization path unless DDS security/TLS features are enabled, but OpenSSL 1.1.x is end-of-life. Treat this as an artifact refresh requirement: a future Humble runtime rebuild must move the transitive OpenSSL dependency to OpenSSL 3.x before this package is considered release-hardened.
 
 ## Package Path Patch
 

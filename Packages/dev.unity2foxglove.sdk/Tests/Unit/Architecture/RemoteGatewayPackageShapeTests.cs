@@ -94,11 +94,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.DoesNotContain("DeviceToken", script, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void ChannelRegistryKeepsNativeHandleAliveDuringPublish()
+        {
+            var source = Text(PackageRoot + "/Runtime/RemoteGatewayChannelRegistry.cs");
+            var publish = MethodBody(source, "internal bool Publish");
+
+            Assert.Contains("private readonly object _gate", source, StringComparison.Ordinal);
+            Assert.Contains("private readonly ulong[] _logTimeScratch = new ulong[1];", source, StringComparison.Ordinal);
+            Assert.Contains("lock (_gate)", publish, StringComparison.Ordinal);
+            Assert.Contains("ChannelLog", publish, StringComparison.Ordinal);
+            Assert.Contains("Keep the native channel handle live until ChannelLog has returned.", publish, StringComparison.Ordinal);
+            Assert.True(
+                publish.IndexOf("lock (_gate)", StringComparison.Ordinal)
+                < publish.IndexOf("ChannelLog", StringComparison.Ordinal));
+            Assert.DoesNotContain("new[] { logTimeNs }", publish, StringComparison.Ordinal);
+        }
+
         private static string Text(string relativePath)
             => File.ReadAllText(PathOf(relativePath));
 
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot.Value, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        private static string MethodBody(string source, string signature)
+        {
+            var start = source.IndexOf(signature, StringComparison.Ordinal);
+            Assert.True(start >= 0, "Missing method signature: " + signature);
+            var open = source.IndexOf('{', start);
+            Assert.True(open >= 0, "Missing method body: " + signature);
+
+            var depth = 0;
+            for (var i = open; i < source.Length; i++)
+            {
+                if (source[i] == '{')
+                    depth++;
+                else if (source[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                        return source.Substring(open, i - open + 1);
+                }
+            }
+
+            throw new InvalidOperationException("Unterminated method body: " + signature);
+        }
 
         private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRoot);
 

@@ -56,6 +56,7 @@ namespace Unity.FoxgloveSDK.Components
         private const int MaxRecordingChunkSizeKB = int.MaxValue / 1024;
         public const string SharedTokenEnvironmentVariable = "FOXGLOVE_SHARED_TOKEN";
         public const string CertificatePasswordEnvironmentVariable = "FOXGLOVE_CERTIFICATE_PASSWORD";
+        public const string RemoteMcapFileServerTokenEnvironmentVariable = "FOXGLOVE_REMOTE_MCAP_TOKEN";
         public const string ReplayCursorBridgeTokenEnvironmentVariable = "FOXGLOVE_REPLAY_CURSOR_TOKEN";
 
         [Header("General")]
@@ -134,7 +135,8 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _remoteMcapFileServerHost = "127.0.0.1";
         [SerializeField, Min(1)] private int _remoteMcapFileServerPort = 8891;
         [SerializeField] private string _remoteMcapFileServerSourceId = "local-mcap";
-        [SerializeField] private string _remoteMcapFileServerToken = "";
+        [Tooltip("Optional Remote MCAP bearer token. Prefer FOXGLOVE_REMOTE_MCAP_TOKEN for credentials that must not be serialized into scenes.")]
+        [SerializeField, HideInInspector] private string _remoteMcapFileServerToken = "";
         [Tooltip("Optional loopback endpoint that accepts Foxglove extension timeline cursor updates and applies them to Unity replay on the next runtime tick.")]
         [SerializeField] private bool _enableReplayCursorBridge = false;
         [SerializeField] private string _replayCursorBridgeHost = "127.0.0.1";

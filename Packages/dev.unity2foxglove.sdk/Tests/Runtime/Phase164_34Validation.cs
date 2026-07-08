@@ -41,6 +41,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("_childFrameIdCacheValid", StringComparison.Ordinal)
                   && source.Contains("private string ResolveParentFrameId()", StringComparison.Ordinal),
                 "164-34A-5: transform frame-id sanitization is cached between frame-id changes");
+            Check(source.Contains("private string _cachedGameObjectName;", StringComparison.Ordinal)
+                  && MethodBody(source, "private void Awake()").Contains("RefreshGameObjectNameCache();", StringComparison.Ordinal)
+                  && MethodBody(source, "protected override void OnEnable()").Contains("RefreshGameObjectNameCache();", StringComparison.Ordinal)
+                  && MethodBody(source, "protected override void OnValidate()").Contains("RefreshGameObjectNameCache();", StringComparison.Ordinal),
+                "173-077A: transform publisher refreshes fallback object-name cache at explicit lifecycle points");
+            Check(MethodBody(source, "private string ResolveChildFrameId()").Contains("_cachedGameObjectName", StringComparison.Ordinal)
+                  && !MethodBody(source, "private string ResolveChildFrameId()").Contains("gameObject.name", StringComparison.Ordinal)
+                  && !update.Contains("gameObject.name", StringComparison.Ordinal),
+                "173-077B: transform publisher hot path uses cached object name instead of gameObject.name");
         }
 
         private static void VerifyRigidWorldToLocalUsesClosedFormInverse()

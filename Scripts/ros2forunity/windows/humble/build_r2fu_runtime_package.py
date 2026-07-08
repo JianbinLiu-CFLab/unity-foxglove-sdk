@@ -693,6 +693,10 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-humble-win64-runtime-inventory.json`.
 
+## Known Artifact Debt
+
+The current Humble artifact still carries OpenSSL 1.1.x runtime DLLs through its transitive ROS2/DDS closure. Those DLLs are not used by the default FastRTPS visualization path unless DDS security/TLS features are enabled, but OpenSSL 1.1.x is end-of-life. Treat this as an artifact refresh requirement: a future Humble runtime rebuild must move the transitive OpenSSL dependency to OpenSSL 3.x before this package is considered release-hardened.
+
 ## Package Path Patch
 
 The bundled `ROS2ForUnity.cs` keeps the upstream `Assets/Ros2ForUnity` lookup and adds a package-path fallback so Unity Editor can load this runtime from:
@@ -764,6 +768,7 @@ If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.d
 
 - This package is a prototype until fresh-project acceptance passes.
 - The inventory is an engineering inventory generated from the local runtime artifact, not a complete legal audit.
+- The current artifact still carries OpenSSL 1.1.x runtime DLLs through transitive ROS2/DDS closure. They are not used by the default FastRTPS visualization path unless DDS security/TLS features are enabled, but OpenSSL 1.1.x is end-of-life and must be replaced with OpenSSL 3.x in a future Humble artifact rebuild before release-hardening.
 - Public release should refresh transitive license attribution before registry or binary distribution.
 - WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Humble or a real remote Linux topology for final external-graph acceptance.
 

@@ -88,6 +88,13 @@ paths stay optional and package-isolated.
   valid Foxglove Cloud account plan/device-token path. Cloud live-connection
   validation was not completed for this release because the tested accounts did
   not expose remote access.
+- Playback control now disables itself with a warning when serialized
+  `Playback Duration Seconds` values are zero, negative, non-finite, or too
+  large for the nanosecond playback window. This turns old invalid scene data
+  from a silent broken timeline into an explicit configuration warning.
+- Camera calibration auto-intrinsics now reject zero, negative, NaN, or
+  infinite vertical FOV values instead of silently clamping them into
+  implausibly large focal lengths.
 - Optional ROS2 For Unity runtime packages remain package-based and
   platform/runtime-specific; the core WebSocket, MCAP, FoxRun, and camera paths
   do not require ROS2.
@@ -153,3 +160,7 @@ python Scripts/release/run_ci.py
 python -m unittest Scripts.release.regression_checks.test_release_tooling
 git diff --check
 ```
+
+`Scripts/release/run_ci.py` applies a 600 second timeout to each subprocess by
+default. Set `UNITY2FOXGLOVE_CI_TIMEOUT=<seconds>` on slower machines or when
+debugging timeout behavior.

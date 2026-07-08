@@ -180,6 +180,29 @@ python Scripts/package/validate_source_generator_dll.py
 python Scripts/package/validate_source_generator_dll.py --update
 ```
 
+## Local CI
+
+Entry script:
+
+```text
+Scripts/release/run_ci.py
+```
+
+Purpose:
+
+- Run the local release checks that mirror the GitHub Actions package, docs, analyzer, and test gates.
+- Apply a per-command timeout so a hung child process cannot stall local CI indefinitely.
+
+Basic usage:
+
+```bash
+python Scripts/release/run_ci.py
+python Scripts/release/run_ci.py --only dotnet
+UNITY2FOXGLOVE_CI_TIMEOUT=1200 python Scripts/release/run_ci.py
+```
+
+`UNITY2FOXGLOVE_CI_TIMEOUT` is measured in seconds. It defaults to `600`; increase it on slow machines or set a smaller value when debugging timeout behavior.
+
 ## Schema: ROS 2 .msg Catalog
 
 Entry script:

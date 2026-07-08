@@ -121,8 +121,10 @@ namespace Unity.FoxgloveSDK.Editor
                 DrawProperty("_remoteMcapFileServerPort", "Port");
                 DrawPasswordProperty("_remoteMcapFileServerToken", "Bearer Token");
                 EditorGUILayout.HelpBox(
-                    "Remote MCAP bearer tokens are serialized with the scene or prefab. Use local-development credentials here and avoid committing production secrets.",
-                    MessageType.Warning);
+                    "Prefer FOXGLOVE_REMOTE_MCAP_TOKEN for bearer credentials that must not be serialized into scenes. The Inspector value is a local fallback.",
+                    string.IsNullOrEmpty(GetString("_remoteMcapFileServerToken", ""))
+                        ? MessageType.Info
+                        : MessageType.Warning);
 
                 var remoteUrl = BuildRemoteMcapDirectFileUrl();
                 using (new EditorGUI.DisabledScope(true))

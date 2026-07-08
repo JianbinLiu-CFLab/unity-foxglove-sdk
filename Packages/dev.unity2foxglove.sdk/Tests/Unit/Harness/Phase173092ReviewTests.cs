@@ -28,6 +28,27 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void RuntimeScalableTimeSourcesKeepSharedLockingContract()
+        {
+            foreach (var path in new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/Time/ROS2ScalableTimeSource.cs"
+            })
+            {
+                var source = TestSources.Text(path);
+
+                Assert.Contains("private readonly object mutex = new object();", source, StringComparison.Ordinal);
+                Assert.Contains("private readonly object clockMutex = new object();", source, StringComparison.Ordinal);
+                Assert.Contains("Thread.CurrentThread.ManagedThreadId", source, StringComparison.Ordinal);
+                Assert.DoesNotContain("Thread mainThread", source, StringComparison.Ordinal);
+                Assert.Contains("lock (mutex)", source, StringComparison.Ordinal);
+                Assert.Contains("lock (clockMutex)", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
         public void LyricalRos2csMetadataDescriptionsStayOnLyricalDistro()
         {
             foreach (var path in new[]
