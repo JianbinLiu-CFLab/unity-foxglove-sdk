@@ -126,11 +126,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "141D-5: Roslyn warns for get-only scalar DTO properties");
             run.Check(!HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.tags", "List"),
                 "141D-6: Roslyn does not warn for get-only mutable collection DTO properties");
+            run.Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readOnlyList", "IReadOnlyList"),
+                "141D-7: Roslyn warns for get-only IReadOnlyList DTO properties");
             run.Check(HasDiagnostic(diagnostics, "FOXSERVICE007", "Request.readonlyValue", "int"),
-                "141D-7: Roslyn warns for public readonly DTO fields");
+                "141D-8: Roslyn warns for public readonly DTO fields");
             run.Check(diagnostics.Any(diagnostic => diagnostic.Id == "FOXSERVICE009"
                                                 && diagnostic.GetMessage().Contains("Request.next", StringComparison.Ordinal)),
-                "141D-8: Roslyn reports deep non-recursive DTO graphs as FOXSERVICE009 warning");
+                "141D-9: Roslyn reports deep non-recursive DTO graphs as FOXSERVICE009 warning");
 
             var reflectionOk = Unity.FoxgloveSDK.Editor.FoxServiceDtoReflectionValidator.Validate(
                 typeof(Phase141DReflectionAcceptedRequest),
@@ -149,21 +151,27 @@ namespace Unity.FoxgloveSDK.Tests
             run.Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
                                                   && diagnostic.Path.Contains("readOnlyScalar", StringComparison.Ordinal)),
                 "141D-11: reflection validator reports structured warning diagnostics");
+            run.Check(reflectionBad.Any(diagnostic => diagnostic.Id == "FOXSERVICE007"
+                                                  && diagnostic.Path.Contains("readOnlyList", StringComparison.Ordinal)),
+                "141D-11a: reflection validator warns for get-only IReadOnlyList request DTO properties");
             run.Check(reflectionBad.All(diagnostic => diagnostic.ServiceName == "/phase141d/reflection-bad"
                                                    && diagnostic.Target.Contains("/phase141d/reflection-bad", StringComparison.Ordinal)),
-                "141D-11a: reflection validator preserves service name on returned diagnostics");
+                "141D-11b: reflection validator preserves service name on returned diagnostics");
             run.Check(Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract("System.Collections.Generic.List<T>")
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract(typeof(List<>).FullName)
+                  && !Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract("System.Collections.Generic.IReadOnlyList<T>")
+                  && !Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsMutableCollectionContract("System.Collections.Generic.IReadOnlyList<T>")
+                  && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsListContract("System.Collections.Generic.IReadOnlyList<T>", Unity.FoxgloveSDK.Editor.FoxServiceDtoRules.ResponseSide)
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract("System.Collections.Generic.Dictionary<TKey, TValue>")
                   && Unity.FoxgloveSDK.Editor.FoxServiceDtoTypeNames.IsDictionaryContract(typeof(Dictionary<,>).FullName),
-                "141D-11b: DTO type-name helpers accept Roslyn and reflection generic contract names");
+                "141D-11c: DTO type-name helpers separate mutable request collections from response-only lists");
 
             var reflectionWarningMemo = Unity.FoxgloveSDK.Editor.FoxServiceDtoReflectionValidator.Validate(
                 typeof(Phase141DSharedWarningReferences),
                 Unity.FoxgloveSDK.Editor.FoxServiceDtoSide.Request,
                 "/phase141d/reflection-warning-memo");
             run.Check(reflectionWarningMemo.Count(diagnostic => diagnostic.Id == "FOXSERVICE007") == 1,
-                "141D-11c: reflection validator memoizes warning-only shared DTO types");
+                "141D-11d: reflection validator memoizes warning-only shared DTO types");
         }
 
         private static void VerifyValidationWiringAndReleaseMetadata(ValidationRun run)
@@ -311,7 +319,7 @@ namespace Phase141C
         public TimeSpan Duration { get; set; }
         public NestedPose Pose { get; set; }
         public List<NestedPose> History { get; set; }
-        public IReadOnlyList<int> Samples { get; set; }
+        public List<int> Samples { get; set; }
         public Dictionary<string, NestedPose> NamedPoses { get; set; }
         public int[] Counts { get; set; }
     }
@@ -357,6 +365,7 @@ namespace Phase141D
         public Queue<string> queue { get; set; }
         public Stack<string> stack { get; set; }
         public List<string> tags { get; } = new List<string>();
+        public IReadOnlyList<string> readOnlyList { get { return tags; } }
         public string readOnlyScalar { get { return ""value""; } }
         public readonly int readonlyValue;
     }
@@ -592,6 +601,7 @@ namespace Phase141C
         {
             public IEnumerable<int> sequence { get; set; }
             public string readOnlyScalar { get { return "value"; } }
+            public IReadOnlyList<string> readOnlyList { get { return Array.Empty<string>(); } }
         }
 
         private sealed class Phase141DSharedWarningReferences

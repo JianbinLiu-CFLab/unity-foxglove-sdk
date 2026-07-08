@@ -414,6 +414,57 @@ def write_json(path: Path, data: dict[str, object]) -> None:
     write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
 
 
+def sha512_file(path: Path) -> str:
+    """Return the SHA-512 hex digest for a file."""
+    digest = hashlib.sha512()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def patch_deps_json_sha512(package: Path) -> None:
+    """Populate informational deps.json sha512 fields for packaged DLLs."""
+    plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins"
+    inventory_path = package / "RuntimeSupport" / "r2fu-humble-win64-runtime-inventory.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8")) if inventory_path.exists() else None
+    inventory_by_path = {
+        str(item.get("path", "")): item
+        for item in (inventory or {}).get("files", [])
+        if isinstance(item, dict)
+    }
+
+    inventory_changed = False
+    for deps_path in sorted(plugin_root.glob("*.deps.json")):
+        data = json.loads(deps_path.read_text(encoding="utf-8"))
+        changed = False
+        for library_name, metadata in data.get("libraries", {}).items():
+            if not isinstance(metadata, dict):
+                continue
+
+            dll_path = plugin_root / (library_name.split("/", 1)[0] + ".dll")
+            if not dll_path.exists():
+                continue
+
+            digest = sha512_file(dll_path)
+            if metadata.get("sha512") != digest:
+                metadata["sha512"] = digest
+                changed = True
+
+        if not changed:
+            continue
+
+        write_json(deps_path, data)
+        inventory_item = inventory_by_path.get("Ros2ForUnity/Plugins/" + deps_path.name)
+        if inventory_item is not None:
+            inventory_item["sha256"] = sha256_file(deps_path)
+            inventory_item["size"] = deps_path.stat().st_size
+            inventory_changed = True
+
+    if inventory_changed and inventory_path.exists():
+        write_json(inventory_path, inventory)
+
+
 def runtime_asmdef() -> dict[str, object]:
     """Return the runtime assembly definition used by the packaged R2FU copy."""
     return {
@@ -1152,6 +1203,7 @@ def build_package(paths: BuildPaths) -> RuntimeArtifact:
         apply_local_patch_overlays(paths.package, overlays)
         patch_ros_time_source_contract(paths.package)
         write_package_files(paths, inventory, artifact)
+        patch_deps_json_sha512(paths.package)
         apply_meta_overlays(paths.package, meta_overlays)
         write_generated_metas(paths.package)
         return artifact

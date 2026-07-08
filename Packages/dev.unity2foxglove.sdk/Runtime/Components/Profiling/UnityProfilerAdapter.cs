@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Unity.FoxgloveSDK.Core;
 #if UNITY_2020_3_OR_NEWER
 using Unity.Profiling;
@@ -21,7 +22,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     /// <remarks>
     /// Sample names must be a bounded static set because Unity profiler marker
-    /// names are cached for the process lifetime.
+    /// names are cached for the process lifetime. Scopes returned by
+    /// <see cref="Sample"/> must be disposed on the same thread that created
+    /// them because Unity profiler marker begin/end pairs are thread-affine.
     /// </remarks>
     public sealed class UnityProfilerAdapter : IFoxgloveProfiler
     {
@@ -84,6 +87,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             private readonly UnityProfilerAdapter _owner;
             private ProfilerMarker _marker;
+            private int _threadId;
             private bool _active;
 
             public ProfilerScope(UnityProfilerAdapter owner)
@@ -94,6 +98,7 @@ namespace Unity.FoxgloveSDK.Components
             public void Reset(ProfilerMarker marker)
             {
                 _marker = marker;
+                _threadId = Environment.CurrentManagedThreadId;
                 _active = true;
             }
 
@@ -105,6 +110,9 @@ namespace Unity.FoxgloveSDK.Components
                 }
 
                 _active = false;
+                Debug.Assert(
+                    _threadId == Environment.CurrentManagedThreadId,
+                    "Unity profiler scopes must be disposed on the same thread that created them.");
                 _marker.End();
                 _owner._scopes.Add(this);
             }

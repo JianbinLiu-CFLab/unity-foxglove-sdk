@@ -115,11 +115,28 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoPath(string relativePath)
         {
-            var root = Phase16Validation.FindRepoRoot();
-            if (root == null)
-                throw new DirectoryNotFoundException("Could not find repository root.");
-
+            var root = FindRepoRoot();
             return Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        private static string FindRepoRoot()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null)
+            {
+                if (File.Exists(Path.Combine(
+                        dir.FullName,
+                        "Packages",
+                        "dev.unity2foxglove.sdk",
+                        "Tests",
+                        "Runtime",
+                        "FoxgloveSdk.Tests.csproj")))
+                    return dir.FullName;
+
+                dir = dir.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
         }
 
         private static void Check(bool condition, string label)
