@@ -1061,8 +1061,57 @@ def patch_standalone_environment_isolation(text: str) -> str:
 def patch_ros_time_source_contract(package: Path) -> None:
     """Patch ROS2 time sources for the bool-returning ITimeSource contract."""
     time_dir = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "Time"
+    interface_file = time_dir / "ITimeSource.cs"
+    if interface_file.exists():
+        interface_text = interface_file.read_text(encoding="utf-8")
+        interface_text = interface_text.replace(
+            "/// Interface for acquiring ROS-compatible timestamp fields from a concrete time source.",
+            "/// Interface for acquiring time.",
+            1,
+        )
+        write_text(interface_file, interface_text)
+
     dotnet_time = time_dir / "DotnetTimeSource.cs"
-    write_text(dotnet_time, dotnet_time.read_text(encoding="utf-8"))
+    dotnet_text = dotnet_time.read_text(encoding="utf-8")
+    dotnet_text = dotnet_text.replace(
+        "// Modifications Copyright (c) 2026 Jianbin Liu.\n",
+        "// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.\n",
+        1,
+    )
+    if "Outputs are clamped to the last emitted timestamp" not in dotnet_text:
+        dotnet_text = dotnet_text.replace(
+            "/// DateTime.UtcNow provides the epoch alignment, while Stopwatch improves short-term resolution\n"
+            "/// between periodic wall-clock resynchronizations.\n",
+            "/// DateTime.UtcNow provides the epoch alignment, while Stopwatch improves short-term resolution\n"
+            "/// between periodic wall-clock resynchronizations.\n"
+            "/// Outputs are clamped to the last emitted timestamp so wall-clock corrections cannot move time backward.\n",
+            1,
+        )
+    if "lastEmittedSeconds" not in dotnet_text:
+        dotnet_text = dotnet_text.replace(
+            "    private double systemTimeIntervalStart = 0;\n",
+            "    private double systemTimeIntervalStart = 0;\n"
+            "    private double lastEmittedSeconds = double.NegativeInfinity;\n",
+            1,
+        )
+        dotnet_text = dotnet_text.replace(
+            "            TimeUtils.TimeFromTotalSeconds(systemTimeIntervalStart + timeOffset, out seconds, out nanoseconds);\n",
+            "            var totalSeconds = systemTimeIntervalStart + timeOffset;\n"
+            "            if (totalSeconds < lastEmittedSeconds)\n"
+            "            {\n"
+            "                totalSeconds = lastEmittedSeconds;\n"
+            "            }\n"
+            "            else\n"
+            "            {\n"
+            "                lastEmittedSeconds = totalSeconds;\n"
+            "            }\n"
+            "\n"
+            "            TimeUtils.TimeFromTotalSeconds(totalSeconds, out seconds, out nanoseconds);\n",
+            1,
+        )
+    if MODIFICATIONS_COPYRIGHT not in dotnet_text:
+        raise ValueError("DotnetTimeSource.cs is missing the local modifications copyright line.")
+    write_text(dotnet_time, dotnet_text)
 
     for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
         source = time_dir / name

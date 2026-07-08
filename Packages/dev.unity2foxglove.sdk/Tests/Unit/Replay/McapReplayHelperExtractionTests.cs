@@ -65,6 +65,18 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void PendingQueueReportsEmptyPeekAndPopWithContext()
+        {
+            var queue = new McapReplayPendingQueue();
+
+            var peek = Assert.Throws<System.InvalidOperationException>(() => queue.Peek());
+            Assert.Contains("Peek", peek.Message);
+
+            var pop = Assert.Throws<System.InvalidOperationException>(() => queue.Pop());
+            Assert.Contains("Pop", pop.Message);
+        }
+
+        [Fact]
         public void PendingQueueSortsOnlyActiveMessagesAfterHeadAdvances()
         {
             var queue = new McapReplayPendingQueue();

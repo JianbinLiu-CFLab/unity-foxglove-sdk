@@ -25,6 +25,7 @@ namespace ROS2
 /// <remarks>
 /// DateTime.UtcNow provides the epoch alignment, while Stopwatch improves short-term resolution
 /// between periodic wall-clock resynchronizations.
+/// Outputs are clamped to the last emitted timestamp so wall-clock corrections cannot move time backward.
 /// </remarks>
 public class DotnetTimeSource : ITimeSource
 {
@@ -39,6 +40,7 @@ public class DotnetTimeSource : ITimeSource
     private readonly object mutex = new object();
 
     private double systemTimeIntervalStart = 0;
+    private double lastEmittedSeconds = double.NegativeInfinity;
 
     private double TotalSystemTimeSeconds()
     {
@@ -75,7 +77,17 @@ public class DotnetTimeSource : ITimeSource
                 timeOffset = durationInSeconds;
             }
 
-            TimeUtils.TimeFromTotalSeconds(systemTimeIntervalStart + timeOffset, out seconds, out nanoseconds);
+            var totalSeconds = systemTimeIntervalStart + timeOffset;
+            if (totalSeconds < lastEmittedSeconds)
+            {
+                totalSeconds = lastEmittedSeconds;
+            }
+            else
+            {
+                lastEmittedSeconds = totalSeconds;
+            }
+
+            TimeUtils.TimeFromTotalSeconds(totalSeconds, out seconds, out nanoseconds);
         }
         return true;
     }

@@ -36,6 +36,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+  echo "PORT must be a number between 1 and 65535." >&2
+  exit 2
+fi
+port_number=$((10#$PORT))
+if (( port_number < 1 || port_number > 65535 )); then
+  echo "PORT must be a number between 1 and 65535." >&2
+  exit 2
+fi
+
+case "$PAYLOAD_FORMAT" in
+  cdr-with-encapsulation|raw-cdr)
+    ;;
+  *)
+    echo "PAYLOAD_FORMAT must be one of: cdr-with-encapsulation, raw-cdr." >&2
+    exit 2
+    ;;
+esac
+
 echo "Unity2Foxglove ROS2 Bridge sample preflight"
 echo "ROS_DISTRO=${ROS_DISTRO:-<not sourced>}"
 

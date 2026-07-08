@@ -714,9 +714,30 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
     )
     add(
         results,
+        "DotnetTimeSource clamps backward wall-clock corrections",
+        "lastEmittedSeconds" in dotnet_time
+        and "wall-clock corrections cannot move time backward" in dotnet_time,
+        "DotnetTimeSource.cs",
+    )
+    add(
+        results,
         "DotnetTimeSource uses contributor attribution",
         "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors." in dotnet_time,
         "DotnetTimeSource.cs",
+    )
+    itime_source = read_optional_text(scripts / "Time" / "ITimeSource.cs")
+    add(
+        results,
+        "ITimeSource summary uses stable wording",
+        "Interface for acquiring time" in itime_source,
+        "ITimeSource.cs",
+    )
+    unity_time = read_optional_text(scripts / "Time" / "UnityTimeSource.cs")
+    add(
+        results,
+        "UnityTimeSource reports off-main-thread construction clearly",
+        "must be constructed on the Unity main thread" in unity_time,
+        "UnityTimeSource.cs",
     )
 
     for relative in ("Time/ROS2TimeSource.cs", "Time/ROS2ScalableTimeSource.cs"):

@@ -101,6 +101,15 @@ namespace Unity.FoxgloveSDK.Tests
 
             foreach (var runtimeRoot in RuntimeSourceRoots())
             {
+                var runtimeIface = ReadRuntimeSource(runtimeRoot, Path.Combine("Time", "ITimeSource.cs"));
+                Check(runtimeIface.Contains("Interface for acquiring time", StringComparison.Ordinal),
+                    "134-22-F3b: ITimeSource XML summary is consistent for " + Path.GetFileName(runtimeRoot));
+
+                var dotnet = ReadRuntimeSource(runtimeRoot, Path.Combine("Time", "DotnetTimeSource.cs"));
+                Check(dotnet.Contains("lastEmittedSeconds", StringComparison.Ordinal)
+                      && dotnet.Contains("wall-clock corrections cannot move time backward", StringComparison.Ordinal),
+                    "134-22-F3c: DotnetTimeSource clamps backward wall-clock corrections for " + Path.GetFileName(runtimeRoot));
+
                 var unity = ReadRuntimeSource(runtimeRoot, Path.Combine("Time", "UnityTimeSource.cs"));
                 Check(unity.Contains("must be constructed on the Unity main thread", StringComparison.Ordinal),
                     "134-22-F4: UnityTimeSource constructor reports off-main-thread construction clearly for " + Path.GetFileName(runtimeRoot));
