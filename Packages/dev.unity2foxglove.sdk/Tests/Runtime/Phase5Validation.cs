@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestRuntimeDisposeDisposesTransport();
             TestSessionDisposeUnbindsEvents();
             TestPackageLinkXmlTemplateExists();
-            TestAssetsLinkXmlActiveExists();
+            TestAssetsLinkXmlDuplicateAbsent();
 
             Console.WriteLine($"Phase 5: {_passCount} checks passed.\n");
         }
@@ -208,15 +208,15 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Verifies the active Assets link.xml contains valid preserve rules
-        /// (Unity requires link.xml under Assets).
+        /// Verifies the demo project does not carry a duplicate Assets link.xml;
+        /// the package Runtime/link.xml is the authoritative stripping guard.
         /// </summary>
-        private static void TestAssetsLinkXmlActiveExists()
+        private static void TestAssetsLinkXmlDuplicateAbsent()
         {
             var root = FindRepoRoot();
-            Assert(root != null, "Repo root found for Assets link.xml (active)");
+            Assert(root != null, "Repo root found for duplicate Assets link.xml check");
             var path = Path.Combine(root, "Unity2Foxglove", "Assets", "link.xml");
-            AssertLinkXml(path, "Active Assets link.xml");
+            Assert(!File.Exists(path), $"Duplicate Assets link.xml absent at {path}");
         }
     }
 }

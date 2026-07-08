@@ -61,13 +61,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPhase5UsesDirectLinkXmlPath()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase5Validation.cs");
-            var method = SourceMethod(source, "private static void TestAssetsLinkXmlActiveExists()");
+            var method = SourceMethod(source, "private static void TestAssetsLinkXmlDuplicateAbsent()");
 
             Check(method.Contains("Path.Combine(root, \"Unity2Foxglove\", \"Assets\", \"link.xml\")", StringComparison.Ordinal)
-                  && method.Contains("AssertLinkXml(path, \"Active Assets link.xml\")", StringComparison.Ordinal)
+                  && method.Contains("!File.Exists(path)", StringComparison.Ordinal)
                   && !method.Contains("Directory.GetFiles", StringComparison.Ordinal)
                   && !method.Contains("SearchOption.AllDirectories", StringComparison.Ordinal),
-                "164-45C-1: Phase5 validates the stable Assets link.xml path without recursive scanning");
+                "164-45C-1: Phase5 validates the stable Assets link.xml absence without recursive scanning");
         }
 
         private static void VerifyRegistry()

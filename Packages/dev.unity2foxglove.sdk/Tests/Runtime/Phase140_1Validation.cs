@@ -82,15 +82,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var packageLink = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/link.xml");
-            var activeLink = ReadRepoText("Unity2Foxglove/Assets/link.xml");
 
             Check(!runtime.Contains("method.Invoke", StringComparison.Ordinal)
                   && runtime.Contains("CreateDelegate", StringComparison.Ordinal),
                 "140-1C-1: optional protobuf schema registration avoids MethodInfo.Invoke");
             Check(packageLink.Contains("Unity.FoxgloveSDK.Proto", StringComparison.Ordinal)
-                  && activeLink.Contains("Unity.FoxgloveSDK.Proto", StringComparison.Ordinal)
-                  && activeLink.Contains("Google.Protobuf", StringComparison.Ordinal),
-                "140-1C-2: active Unity link.xml preserves optional protobuf registration dependencies");
+                  && packageLink.Contains("Google.Protobuf", StringComparison.Ordinal),
+                "140-1C-2: package link.xml preserves optional protobuf registration dependencies");
         }
 
         private static void VerifyUnityThreadContractsAreExplicit()
