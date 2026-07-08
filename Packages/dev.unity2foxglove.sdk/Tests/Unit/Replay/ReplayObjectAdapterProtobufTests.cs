@@ -38,6 +38,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.DoesNotContain("Type.GetType(typeName + \", Unity.FoxgloveSDK.Proto\")", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void ReplayProtobufParserReusesInvokeArguments()
+        {
+            var source = File.ReadAllText(PathOf("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayProtobufParser.cs"));
+
+            Assert.Contains("ParseFromArguments = new object[1];", source, StringComparison.Ordinal);
+            Assert.Contains("return binding.Parse(payload);", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("new object[] { payload }", source, StringComparison.Ordinal);
+        }
+
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
 

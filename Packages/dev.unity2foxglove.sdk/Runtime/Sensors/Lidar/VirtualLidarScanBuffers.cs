@@ -55,6 +55,10 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             PointData = new NativeArray<VirtualLidarPointData>(EffectiveRayCount, Allocator.Persistent);
         }
 
+        /// <summary>
+        /// Dispose persistent native buffers. Callers must complete any scheduled scan jobs
+        /// that reference these arrays before invoking this method.
+        /// </summary>
         public void Dispose()
         {
             if (Commands.IsCreated) Commands.Dispose();

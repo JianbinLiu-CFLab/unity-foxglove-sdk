@@ -286,9 +286,8 @@ namespace Unity.FoxgloveSDK.Components
                 var webSocketPublished = 0;
                 var nativeFrameHandler = ImuNativeFrameReady;
 
-                while (_queue.Count > 0)
+                while (_queue.TryDequeue(out var sample))
                 {
-                    var sample = _queue.Dequeue();
                     ImuNativeFrame nativeFrame = null;
                     if (nativeFrameHandler != null)
                     {
