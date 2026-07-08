@@ -53,10 +53,14 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// <summary>Creates a spinning pattern from parsed LidarProfile metadata.</summary>
         public static ILidarScanPattern FromProfile(LidarProfile profile, int columnStep)
         {
+            if (profile == null)
+                throw new ArgumentNullException(nameof(profile));
+            if (!profile.Validate(out var error))
+                throw new ArgumentException("Invalid LiDAR profile: " + error, nameof(profile));
+
             return new SpinningScanPattern(profile.ProductLine, profile.ScanRateHz,
                 profile.MinRangeMeters, profile.ColumnsPerFrame, columnStep,
                 profile.BeamAltitudeAngles, profile.BeamAzimuthAngles);
         }
     }
 }
-

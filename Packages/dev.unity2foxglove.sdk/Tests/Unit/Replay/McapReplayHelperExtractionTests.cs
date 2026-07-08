@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             Assert.Equal(2, McapReplayTickThrottler.CountPrefixPreservingLogTimeGroup(
                 new List<McapMessage> { Message(1), Message(2) },
                 0));
-            Assert.Equal(1, McapReplayTickThrottler.CountPrefixPreservingLogTimeGroup(
+            Assert.Equal(2, McapReplayTickThrottler.CountPrefixPreservingLogTimeGroup(
                 new List<McapMessage> { Message(1), Message(2) },
                 -5));
         }

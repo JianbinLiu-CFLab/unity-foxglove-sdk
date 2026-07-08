@@ -29,6 +29,12 @@ namespace Unity.FoxgloveSDK.Components
             return new UnityEngine.Vector3(-angular.z, angular.x, -angular.y);
         }
 
+        /// <summary>Convert Foxglove angular velocity back to Unity as an axial vector.</summary>
+        public static UnityEngine.Vector3 FoxgloveToUnityAngularVelocity(UnityEngine.Vector3 angular)
+        {
+            return new UnityEngine.Vector3(angular.y, -angular.z, -angular.x);
+        }
+
         /// <summary>Convert Unity rotation to Foxglove.</summary>
         public static UnityEngine.Quaternion UnityToFoxgloveRotation(UnityEngine.Quaternion q)
         {

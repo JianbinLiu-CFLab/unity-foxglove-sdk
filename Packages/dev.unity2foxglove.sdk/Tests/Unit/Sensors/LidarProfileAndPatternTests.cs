@@ -156,5 +156,41 @@ namespace Unity.FoxgloveSDK.UnitTests
             Assert.True(LidarProfileLoader.TryParseFromJson(json, null, out var profile, out var error), error);
             Assert.Equal(0.25, profile.MinRangeMeters, 9);
         }
+
+        [Fact]
+        public void LidarProfileValidateRejectsMissingBeamArrays()
+        {
+            var profile = new LidarProfile
+            {
+                ProductLine = "Custom",
+                LidarMode = "1024x10",
+                PixelsPerColumn = 2,
+                ColumnsPerFrame = 1024,
+                ScanRateHz = 10.0,
+                BeamAltitudeAngles = new[] { 0.0 },
+                BeamAzimuthAngles = null
+            };
+
+            Assert.False(profile.Validate(out var error));
+            Assert.Contains("BeamAltitudeAngles", error);
+        }
+
+        [Fact]
+        public void LidarScanPatternFactoryRejectsInvalidProfilesBeforeScanning()
+        {
+            var profile = new LidarProfile
+            {
+                ProductLine = "Custom",
+                LidarMode = "1024x10",
+                PixelsPerColumn = 2,
+                ColumnsPerFrame = 1024,
+                ScanRateHz = 10.0,
+                BeamAltitudeAngles = new[] { 0.0, 0.1 },
+                BeamAzimuthAngles = new[] { 0.0 }
+            };
+
+            var ex = Assert.Throws<ArgumentException>(() => LidarScanPatternFactory.FromProfile(profile, 1));
+            Assert.Contains("Invalid LiDAR profile", ex.Message);
+        }
     }
 }

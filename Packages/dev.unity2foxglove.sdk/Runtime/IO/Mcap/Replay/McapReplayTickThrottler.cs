@@ -8,6 +8,7 @@ namespace Unity.FoxgloveSDK.IO
 {
     /// <summary>
     /// Applies the per-tick replay message soft cap without splitting log-time groups.
+    /// A budget of zero or less means unlimited for the current tick.
     /// </summary>
     internal static class McapReplayTickThrottler
     {
@@ -18,10 +19,8 @@ namespace Unity.FoxgloveSDK.IO
             if (result == null) throw new ArgumentNullException(nameof(result));
             if (result.Count == 0)
                 return 0;
-            if (maxMessagesPerTick == 0)
+            if (maxMessagesPerTick <= 0)
                 return result.Count;
-            if (maxMessagesPerTick < 0)
-                maxMessagesPerTick = 1;
 
             if (result.Count <= maxMessagesPerTick)
                 return result.Count;

@@ -3,15 +3,12 @@
 
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace Unity.FoxgloveSDK.RemoteGateway.Native
 {
     internal sealed class RemoteGatewayHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
-        private int _released;
-
         internal RemoteGatewayHandle()
             : base(true)
         {
@@ -33,9 +30,6 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
         protected override bool ReleaseHandle()
         {
-            if (Interlocked.Exchange(ref _released, 1) != 0)
-                return true;
-
             var result = RemoteGatewayNativeMethods.GatewayStop(handle);
             handle = IntPtr.Zero;
             return result == RemoteGatewayNativeMethods.FoxgloveError.Ok

@@ -22,6 +22,12 @@ namespace Unity.FoxgloveSDK.Components
     {
         private static FoxgloveManager _manager;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            _manager = null;
+        }
+
         /// <summary>True when R2FU native DDS output is enabled (or no manager exists).</summary>
         public static bool Enabled
         {

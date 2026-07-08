@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="name">Service path, for example <c>/cube/reset_pose</c>.</param>
         public FoxServiceAttribute(string name)
         {
-            Name = name ?? string.Empty;
+            Name = name ?? throw new ArgumentNullException(nameof(name));
         }
 
         /// <summary>Service path advertised to Foxglove clients.</summary>
