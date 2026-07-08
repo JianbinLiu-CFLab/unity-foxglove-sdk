@@ -16,6 +16,7 @@ namespace Unity.FoxgloveSDK.IO
         private bool _isSorted = true;
 
         internal int Count => _messages.Count - _headIndex;
+        internal int DebugHeadIndex => _headIndex;
 
         internal void Clear()
         {

@@ -106,8 +106,6 @@ Full Demo Visualization is the larger importable sample. It mirrors the main use
 - `/cube/reset_pose` can be called from the Service Call panel.
 - The cube can be moved or reset while Foxglove updates.
 
-## 5. Repository Demo Project
-
 ## 5. ROS2 Bridge Sample
 
 ROS2 Bridge Sample is the importable sample for the optional sidecar path. It does not install ROS2, install `foxglove_msgs`, launch external processes, or mutate your shell environment.

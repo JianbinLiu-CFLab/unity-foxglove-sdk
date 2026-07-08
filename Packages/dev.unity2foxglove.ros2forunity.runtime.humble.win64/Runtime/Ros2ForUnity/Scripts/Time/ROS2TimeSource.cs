@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading;
 using UnityEngine;
 
 namespace ROS2
@@ -30,6 +31,7 @@ public class ROS2TimeSource : ITimeSource, IDisposable
 {
   private readonly object clockMutex = new object();
   private ROS2.Clock clock;
+  private int rosUnavailableWarningLogged = 0;
 
   /// <summary>
   /// Acquires the current ROS 2 clock value.
@@ -42,8 +44,15 @@ public class ROS2TimeSource : ITimeSource, IDisposable
     {
       seconds = 0;
       nanoseconds = 0;
-      Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      if (Interlocked.Exchange(ref rosUnavailableWarningLogged, 1) == 0)
+      {
+        Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      }
       return false;
+    }
+    if (Volatile.Read(ref rosUnavailableWarningLogged) != 0)
+    {
+      Interlocked.Exchange(ref rosUnavailableWarningLogged, 0);
     }
 
     double nowSeconds;

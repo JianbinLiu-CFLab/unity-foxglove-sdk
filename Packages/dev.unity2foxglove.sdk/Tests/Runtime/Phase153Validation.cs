@@ -108,7 +108,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Generated FoxRun classes implement contract and local bus side-channel interfaces");
 
             Check(metadata.Contains("Sha256Hex(canonical)", StringComparison.Ordinal)
-                  && metadata.Contains("FoxRunCanonicalTypeNormalizer.NormalizeTypeName", StringComparison.Ordinal)
+                  && emitter.Contains("FoxRunCanonicalTypeNormalizer.NormalizeTypeName", StringComparison.Ordinal)
                   && metadata.Contains("FoxTopicVisibility.Exported", StringComparison.Ordinal)
                   && metadata.Contains("FoxTopicWriterPolicy.SingleWriter", StringComparison.Ordinal),
                 "Generated contracts embed canonical topic shape fingerprints");
