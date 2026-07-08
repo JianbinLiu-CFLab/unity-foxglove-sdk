@@ -169,7 +169,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayContextForwardingSource()
         {
-            var controller = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var controller = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var orchestrator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");

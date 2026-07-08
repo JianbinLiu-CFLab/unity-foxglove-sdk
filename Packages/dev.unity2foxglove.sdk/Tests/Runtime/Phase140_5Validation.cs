@@ -22,9 +22,6 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ReplayContextPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayMessageContext.cs";
 
-        private const string ReplayControllerPath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
-
         private static int _passed;
 
         /// <summary>Runs all Phase 140-5 replay adapter review checks.</summary>
@@ -49,7 +46,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ReplaySessionIdentityUsesControllerSessionId()
         {
             var context = ReadRepoText(ReplayContextPath);
-            var controller = ReadRepoText(ReplayControllerPath);
+            var controller = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var adapter = ReadRepoText(AdapterPath);
 
             Check(context.Contains("public readonly ulong ReplaySessionId;", StringComparison.Ordinal)

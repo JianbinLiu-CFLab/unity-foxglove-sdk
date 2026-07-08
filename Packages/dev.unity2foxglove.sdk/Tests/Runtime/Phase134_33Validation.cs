@@ -122,7 +122,7 @@ namespace Unity.FoxgloveSDK.Tests
             var phase13 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase13Validation.cs");
 
             Check(phase13.Contains("TryReadRepoText(\"Packages/dev.unity2foxglove.sdk/Runtime/Components/Replay/FoxgloveReplayObjectAdapter.cs\"", StringComparison.Ordinal)
-                  && phase13.Contains("TryReadRepoText(\"Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs\"", StringComparison.Ordinal)
+                  && phase13.Contains("PhaseValidationSourceHelpers.ReadReplayControllerSources()", StringComparison.Ordinal)
                   && phase13.Contains("var root = FindRepoRoot();", StringComparison.Ordinal)
                   && !phase13.Contains("File.ReadAllText(\"Packages/dev.unity2foxglove.sdk", StringComparison.Ordinal),
                 "134-33F-1: Phase 13 source inspections are anchored through repository-root helpers");

@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ReplayControllerStateUsesPublishedMemorySemantics()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var source = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(source.Contains("Volatile.Read(ref _replayEnabled)", StringComparison.Ordinal),
                 "140-3B-1: replay enabled state is read through a volatile publication boundary");

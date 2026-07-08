@@ -109,8 +109,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ReplayControllerCallsClockOutsideReplayEngineLock()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
-            var enableCore = Slice(source, "private void EnableCore(", "private void CleanupStartup");
+            var source = PhaseValidationSourceHelpers.ReadReplayControllerSources();
+            var enableCore = Slice(source, "private void EnableCore(", "private static string CreateWarnModeSchemaMismatchMessage");
             var clockIndex = enableCore.IndexOf("_clock?.EnableRange(replayStartTimeNs, replayEndTimeNs);", StringComparison.Ordinal);
             var firstLockIndex = enableCore.IndexOf("lock (_replayEngineLock)", StringComparison.Ordinal);
             var secondLockIndex = enableCore.IndexOf("lock (_replayEngineLock)", firstLockIndex + 1, StringComparison.Ordinal);
@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ReplayControllerAvoidsDeadChannelMapAndLockHeldPreflightIo()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var source = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var enableCore = Slice(source, "private void EnableCore(", "private static string CreateWarnModeSchemaMismatchMessage");
             var validateIndex = enableCore.IndexOf("ValidateReplayFileForLoad(filePath);", StringComparison.Ordinal);
             var firstLockIndex = enableCore.IndexOf("lock (_replayEngineLock)", StringComparison.Ordinal);
@@ -136,7 +136,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ReplayControllerSkipsUnknownTopicExternalCursorMessages()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var source = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var applyTick = Slice(source, "public void ApplyTickToScene(ulong timeNs, bool deferCallbacks)", "/// <summary>");
 
             Check(source.Contains("private bool TryGetReplayTopic(ushort channelId, out string topic)", StringComparison.Ordinal)

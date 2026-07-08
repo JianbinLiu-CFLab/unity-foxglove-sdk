@@ -117,7 +117,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyReplayOptimizationsRemainInPlace()
         {
             var replay = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
-            var controller = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var controller = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var addHistory = SourceMethod(replay, "private static void AddHistoryMessage");
 
             Check(controller.Contains("_replayTickBuffer", StringComparison.Ordinal)

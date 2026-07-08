@@ -152,8 +152,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayCommentGovernance()
         {
-            CheckSummaryBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs",
+            CheckReplayControllerSummaryBefore(
                 "public void Enable(",
                 "115H-E1: replay enable comments distinguish Strict/Warn/Off behavior",
                 "Strict", "Warn", "Off");
@@ -249,6 +248,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckSummaryBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
             Check(DocumentationContainsTerms(relativePath, declaration, requiredTerms), message);
+        }
+
+        private static void CheckReplayControllerSummaryBefore(string declaration, string message, params string[] requiredTerms)
+        {
+            var text = PhaseValidationSourceHelpers.ReadReplayControllerSources();
+            Check(DocumentationContainsTermsInText(text, declaration, requiredTerms), message);
         }
 
         private static bool DocumentationContainsTerms(string relativePath, string declaration, params string[] requiredTerms)

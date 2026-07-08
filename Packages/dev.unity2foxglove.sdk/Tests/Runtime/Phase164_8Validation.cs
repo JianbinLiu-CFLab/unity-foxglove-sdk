@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var session = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
             var queue = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Transport/WebSocket/WsSendQueue.cs");
-            var replay = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replay = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(queue.Contains("Payload = payload ?? Array.Empty<byte>()", StringComparison.Ordinal)
                   && session.Contains("BroadcastReplayBinary(byte[] data)", StringComparison.Ordinal)
