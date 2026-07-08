@@ -17,7 +17,7 @@ namespace ROS2
 {
 
 /// <summary>
-/// Interface for acquiring ROS-compatible timestamp fields from a concrete time source.
+/// Interface for acquiring time.
 /// </summary>
 public interface ITimeSource
 {

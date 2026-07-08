@@ -299,6 +299,39 @@ class SchemaToolingTests(unittest.TestCase):
         self.assertEqual(1, len(failures))
         self.assertIn("stale generated output", failures[0])
 
+    def test_generated_output_validator_uses_current_python_and_timeout(self) -> None:
+        """Generator validation should not depend on a bare python executable or hang forever."""
+        module = load_module("schema_generated_validator_commands", "Scripts/schema/validate_schema_generated_outputs.py")
+        calls: list[list[str]] = []
+
+        def fake_run_generator(command: list[str]) -> None:
+            """Capture generator commands and mirror committed outputs into the temp target."""
+            calls.append(command)
+            output_index = command.index("--output") + 1 if "--output" in command else -1
+            output_dir_index = command.index("--output-dir") + 1 if "--output-dir" in command else -1
+            if output_index > 0:
+                Path(command[output_index]).write_bytes(module.COMMITTED_CATALOG.read_bytes())
+            if output_dir_index > 0:
+                output_dir = Path(command[output_dir_index])
+                output_dir.mkdir(parents=True, exist_ok=True)
+                for name in module.EXPECTED_CDR_SOURCES:
+                    (output_dir / name).write_bytes((module.COMMITTED_CDR_DIR / name).read_bytes())
+
+        with mock.patch.object(module, "run_generator", side_effect=fake_run_generator):
+            failures = module.validate_generated_outputs()
+
+        self.assertEqual([], failures)
+        self.assertEqual(2, len(calls))
+        self.assertTrue(all(command[0] == sys.executable for command in calls))
+        self.assertEqual(120, module.GENERATOR_TIMEOUT_SECONDS)
+
+    def test_generated_output_validator_reports_startup_errors(self) -> None:
+        """Missing generator executables should produce clean failure messages."""
+        module = load_module("schema_generated_validator_oserror", "Scripts/schema/validate_schema_generated_outputs.py")
+
+        with mock.patch.object(module, "validate_generated_outputs", side_effect=FileNotFoundError("missing-python")):
+            self.assertEqual(1, module.main())
+
 
 if __name__ == "__main__":
     unittest.main()

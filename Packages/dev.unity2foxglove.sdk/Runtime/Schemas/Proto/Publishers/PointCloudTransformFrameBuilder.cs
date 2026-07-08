@@ -46,6 +46,9 @@ namespace Unity.FoxgloveSDK.Components
                 for (var i = 0; i < rootTransform.childCount; i++)
                 {
                     var child = rootTransform.GetChild(i);
+                    if (child == null)
+                        continue;
+
                     if (!includeInactiveChildren && !child.gameObject.activeInHierarchy)
                         continue;
 

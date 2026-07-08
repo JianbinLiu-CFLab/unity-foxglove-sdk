@@ -78,6 +78,7 @@ namespace Unity.FoxgloveSDK.Transport
         protected override Stream CreateClientStream(TcpClient tcpClient)
         {
             var sslStream = new SslStream(tcpClient.GetStream(), leaveInnerStreamOpen: false);
+            // Local development certificates are commonly self-signed and have no CRL/OCSP endpoint.
             sslStream.AuthenticateAsServer(
                 _serverCertificate,
                 clientCertificateRequired: false,

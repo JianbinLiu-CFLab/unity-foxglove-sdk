@@ -766,6 +766,13 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         or "stopwatch.Elapsed.TotalSeconds" in dotnet_time,
         "DotnetTimeSource.cs",
     )
+    add(
+        results,
+        "DotnetTimeSource clamps backward wall-clock corrections",
+        "lastEmittedSeconds" in dotnet_time
+        and "wall-clock corrections cannot move time backward" in dotnet_time,
+        "DotnetTimeSource.cs",
+    )
 
     for relative in ("Time/ROS2TimeSource.cs", "Time/ROS2ScalableTimeSource.cs"):
         source = read_optional_text(scripts / relative)

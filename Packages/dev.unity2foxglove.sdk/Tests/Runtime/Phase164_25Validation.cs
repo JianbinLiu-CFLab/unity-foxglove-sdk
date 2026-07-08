@@ -87,8 +87,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyR2fuSelectorReflectionIsCached()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var draw = PhaseValidationSourceHelpers.SourceMethod(source, "private void DrawOptionalR2fuRuntimeSelector");
             var resolve = PhaseValidationSourceHelpers.SourceMethod(source, "private static System.Reflection.MethodInfo ResolveR2fuRuntimeSelectorDrawMethod");
+            var reset = PhaseValidationSourceHelpers.SourceMethod(source, "private static void ResetOptionalR2fuRuntimeSelectorCache");
 
             Check(source.Contains("private static bool _r2fuRuntimeSelectorResolved;", StringComparison.Ordinal)
                   && source.Contains("private static System.Reflection.MethodInfo _r2fuRuntimeSelectorDrawMethod;", StringComparison.Ordinal),
@@ -101,6 +103,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && resolve.Contains("System.Type.GetType", StringComparison.Ordinal)
                   && resolve.Contains("GetMethod", StringComparison.Ordinal),
                 "164-25C-3: R2FU selector resolver performs reflection once and reuses the result");
+            Check(editor.Contains("AssemblyReloadEvents.beforeAssemblyReload += ResetOptionalR2fuRuntimeSelectorCache;", StringComparison.Ordinal)
+                  && reset.Contains("_r2fuRuntimeSelectorResolved = false;", StringComparison.Ordinal)
+                  && reset.Contains("_r2fuRuntimeSelectorDrawMethod = null;", StringComparison.Ordinal),
+                "164-25C-4: R2FU selector reflection cache resets before assembly reload");
         }
 
         private static void VerifyMcapInspectorUsesCachedPropertiesAndUrls()

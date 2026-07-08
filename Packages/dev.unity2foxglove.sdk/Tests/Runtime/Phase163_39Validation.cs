@@ -59,6 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
             var cmake = Read(repoRoot, "Tools/ros2_bridge/unity2foxglove_ros2_bridge/CMakeLists.txt");
 
             Check(test.Contains("#include \"../src/unity2foxglove_ros2_bridge.cpp\"", StringComparison.Ordinal)
+                  && test.Contains("Include the production translation unit directly", StringComparison.Ordinal)
                   && test.Contains("UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING", StringComparison.Ordinal),
                 "163-39B-1: gtest target includes sidecar logic under the testing guard");
             Check(test.Contains("PrependsEncapsulationForBodyOnlyPayload", StringComparison.Ordinal)
@@ -108,7 +109,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(project.Contains("Phase163_39Validation.cs", StringComparison.Ordinal),
                 "163-39E-1: runtime test project compiles Phase163_39Validation");
-            Check(registry.Contains("Ci(\"--phase163-39\", \"Phase 163-39\", Phase163_39Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-39\", \"Phase 163-39: phase163-39 ROS2 bridge sidecar and launch tooling review closure\", Phase163_39Validation.Validate", StringComparison.Ordinal),
                 "163-39E-2: validation registry exposes --phase163-39");
         }
 

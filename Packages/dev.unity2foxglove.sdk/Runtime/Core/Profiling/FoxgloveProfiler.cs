@@ -17,6 +17,10 @@ namespace Unity.FoxgloveSDK.Core
         private static volatile IFoxgloveProfiler _global = NullProfiler.Instance;
         private static object _owner;
 
+        /// <summary>
+        /// Gets or replaces the global profiler. Direct assignment intentionally clears scoped ownership;
+        /// a later <see cref="ResetGlobal(object)"/> from the previous owner will not reset this value.
+        /// </summary>
         public static IFoxgloveProfiler Global
         {
             get => _global;

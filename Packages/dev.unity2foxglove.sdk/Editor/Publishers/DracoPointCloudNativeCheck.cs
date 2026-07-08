@@ -5,6 +5,7 @@
 // Purpose: Bundled native Draco point-cloud plugin validation.
 
 using System;
+using System.Runtime.InteropServices;
 using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas;
 
@@ -71,7 +72,7 @@ namespace Unity.FoxgloveSDK.Editor
                     "",
                     payload.Length);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (IsRecoverableNativeProbeException(ex))
             {
                 return new DracoPointCloudNativeCheckResult(
                     DracoPointCloudNativeStatus.Invalid,
@@ -80,6 +81,12 @@ namespace Unity.FoxgloveSDK.Editor
                     0);
             }
         }
+
+        private static bool IsRecoverableNativeProbeException(Exception ex)
+            => ex is DllNotFoundException
+               || ex is EntryPointNotFoundException
+               || ex is SEHException
+               || ex is InvalidOperationException;
 
         private static PointCloudFrame CreateTinyXyzFrame()
         {

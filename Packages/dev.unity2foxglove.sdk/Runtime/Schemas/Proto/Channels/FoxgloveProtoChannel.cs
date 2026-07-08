@@ -29,11 +29,17 @@ namespace Unity.FoxgloveSDK.Components
         public string SchemaName { get; }
 
         /// <summary>Publish a protobuf sample on this session-bound channel.</summary>
-        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
+        /// <remarks>
+        /// Call from the Unity main thread and recreate the wrapper after restarting the server.
+        /// This overload serializes with <c>ToByteArray()</c>, which allocates once per call.
+        /// </remarks>
         public void Log(T message) => Log(message, _manager.NowNs);
 
         /// <summary>Publish a protobuf sample on this session-bound channel.</summary>
-        /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
+        /// <remarks>
+        /// Call from the Unity main thread and recreate the wrapper after restarting the server.
+        /// This overload serializes with <c>ToByteArray()</c>, which allocates once per call.
+        /// </remarks>
         public void Log(T message, ulong timestampNs)
         {
             if (message == null)

@@ -213,8 +213,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read(relativePath);
             Check(source.Contains("using System.Threading;", StringComparison.Ordinal)
+                  && source.Contains("private readonly object timeSourceGate = new object();", StringComparison.Ordinal)
                   && source.Contains("private int disposed;", StringComparison.Ordinal)
-                  && source.Contains("Volatile.Read(ref _timeSource)", StringComparison.Ordinal)
+                  && source.Contains("lock (timeSourceGate)", StringComparison.Ordinal)
                   && source.Contains("Interlocked.Exchange(ref disposed, 1)", StringComparison.Ordinal)
                   && source.Contains("Interlocked.Exchange(ref _timeSource, null)", StringComparison.Ordinal)
                   && source.Contains("throw new ObjectDisposedException(nameof(ROS2Clock));", StringComparison.Ordinal)

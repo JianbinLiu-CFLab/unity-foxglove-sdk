@@ -80,11 +80,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             get
             {
+                var overrideRoot = Environment.GetEnvironmentVariable("UNITY2FOXGLOVE_REPO_ROOT");
+                if (!string.IsNullOrWhiteSpace(overrideRoot) && LooksLikeRepoRoot(overrideRoot))
+                    return overrideRoot;
+
                 var dir = new DirectoryInfo(AppContext.BaseDirectory);
                 while (dir != null)
                 {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    if (LooksLikeRepoRoot(dir.FullName))
                         return dir.FullName;
 
                     dir = dir.Parent;
@@ -93,5 +96,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
             }
         }
+
+        private static bool LooksLikeRepoRoot(string path)
+            => File.Exists(Path.Combine(path, "README.md"))
+               && Directory.Exists(Path.Combine(path, "Unity2Foxglove"))
+               && File.Exists(Path.Combine(path, "Packages", "dev.unity2foxglove.sdk", "package.json"));
     }
 }

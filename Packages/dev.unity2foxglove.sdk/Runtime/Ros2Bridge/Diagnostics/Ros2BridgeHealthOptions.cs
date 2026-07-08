@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             int sidecarTimeoutMs = 1000,
             string unityVersion = "",
             string sdkVersion = "",
+            Action<Ros2BridgeHealthProgress> progress = null,
             CancellationToken cancellationToken = default)
         {
             LiveMode = liveMode;
@@ -43,6 +44,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             SidecarTimeoutMs = sidecarTimeoutMs < 1 ? 1 : sidecarTimeoutMs;
             UnityVersion = unityVersion ?? string.Empty;
             SdkVersion = sdkVersion ?? string.Empty;
+            Progress = progress;
             CancellationToken = cancellationToken;
         }
 
@@ -56,7 +58,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public string UnityVersion { get; }
         public string SdkVersion { get; }
         public CancellationToken CancellationToken { get; }
-        public Action<Ros2BridgeHealthProgress> Progress { get; set; }
+        public Action<Ros2BridgeHealthProgress> Progress { get; }
 
         public string EffectiveRos2Executable
             => string.IsNullOrWhiteSpace(Ros2ExecutablePath) ? "ros2" : Ros2ExecutablePath;

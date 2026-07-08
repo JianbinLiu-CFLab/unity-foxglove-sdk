@@ -26,10 +26,14 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         internal McapMessage Peek()
-            => _messages[_headIndex];
+        {
+            ThrowIfEmpty(nameof(Peek));
+            return _messages[_headIndex];
+        }
 
         internal McapMessage Pop()
         {
+            ThrowIfEmpty(nameof(Pop));
             var message = _messages[_headIndex++];
             CompactIfUseful();
             return message;
@@ -81,6 +85,12 @@ namespace Unity.FoxgloveSDK.IO
             else
                 _messages.RemoveRange(0, _headIndex);
             _headIndex = 0;
+        }
+
+        private void ThrowIfEmpty(string operation)
+        {
+            if (Count <= 0)
+                throw new InvalidOperationException("McapReplayPendingQueue cannot " + operation + " an empty queue.");
         }
     }
 }

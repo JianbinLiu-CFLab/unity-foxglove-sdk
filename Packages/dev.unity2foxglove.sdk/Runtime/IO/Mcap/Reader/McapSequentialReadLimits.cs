@@ -12,6 +12,8 @@ namespace Unity.FoxgloveSDK.IO
     /// Memory guardrails for unindexed MCAP sequential fallback queries.
     /// Exceeding either guard throws <see cref="InvalidOperationException"/>
     /// before more messages are retained.
+    /// Call <see cref="Validate"/> after customizing mutable fields and before
+    /// passing an instance to an MCAP reader.
     /// </summary>
     public sealed class McapSequentialReadLimits
     {

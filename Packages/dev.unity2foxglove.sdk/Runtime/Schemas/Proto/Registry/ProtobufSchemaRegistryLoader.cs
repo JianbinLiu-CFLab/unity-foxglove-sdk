@@ -39,10 +39,14 @@ namespace Foxglove.Schemas
         }
 
         /// <summary>
-        /// Create a registry from a file path to a compiled FileDescriptorSet binary.
+        /// Create a registry from a standalone/.NET file path to a compiled FileDescriptorSet binary.
+        /// Unity callers should prefer <see cref="FromDefault"/> so runtime schema setup does not depend on file I/O.
         /// </summary>
         public static ProtobufSchemaRegistry FromFile(string path, ISchemaRegistry schemaRegistry)
         {
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Descriptor file path must be non-empty.", nameof(path));
+
             return new ProtobufSchemaRegistry(File.ReadAllBytes(path), schemaRegistry);
         }
 

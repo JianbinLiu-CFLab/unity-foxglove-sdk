@@ -104,6 +104,7 @@ namespace Unity.FoxgloveSDK.Editor
         static FoxgloveManagerEditor()
         {
             AssemblyReloadEvents.beforeAssemblyReload += StopEditorRootCaDistributor;
+            AssemblyReloadEvents.beforeAssemblyReload += ResetOptionalR2fuRuntimeSelectorCache;
             EditorApplication.quitting += StopEditorRootCaDistributor;
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         }

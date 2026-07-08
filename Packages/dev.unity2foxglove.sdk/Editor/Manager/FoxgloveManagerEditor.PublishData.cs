@@ -19,6 +19,12 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _r2fuRuntimeSelectorResolved;
         private static System.Reflection.MethodInfo _r2fuRuntimeSelectorDrawMethod;
 
+        private static void ResetOptionalR2fuRuntimeSelectorCache()
+        {
+            _r2fuRuntimeSelectorResolved = false;
+            _r2fuRuntimeSelectorDrawMethod = null;
+        }
+
         private void DrawPublishDataSection()
         {
             FoxgloveManagerInspectorLayout.Subheader("Output Mode");

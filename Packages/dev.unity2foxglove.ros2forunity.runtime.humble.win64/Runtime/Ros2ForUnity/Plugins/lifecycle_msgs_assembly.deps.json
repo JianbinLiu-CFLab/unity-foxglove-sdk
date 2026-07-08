@@ -29,12 +29,12 @@
     "lifecycle_msgs_assembly/1.0.0": {
       "type": "project",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "6e010e4728478067242920afd72e808d36cacbe6d354d7bd6328f69b53adcc326cc28ffee0f9113d672c5ae11c2f32a3ff61af4702c25c4a0e7a67bbd4337973"
     },
     "ros2cs_common/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "770cd309ef70bad9ab7df0744d42ebbe36401ef739ef4cf49221794a87ea8fcbc2f178accc26dc0fbc87a395bbb21494a1570df71172722b9365c3464243c8de"
     }
   }
 }

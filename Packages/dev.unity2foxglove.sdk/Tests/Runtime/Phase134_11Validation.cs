@@ -42,6 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
             EmptyPackageDescriptorNamesAreMapped();
             ProtobufSetupRejectsNullInputs();
             ProtobufLoaderRejectsNullAssembly();
+            ProtobufLoaderRejectsMissingFilePath();
             ProtoCatalogUsesSharedSchemaNamesAndNullSafeLookup();
             ScenePrimitiveListsAreStronglyTyped();
             SceneCdrBuilderUnsupportedMessageIsGeneric();
@@ -201,6 +202,14 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check(Throws<ArgumentNullException>(() => ProtobufSchemaRegistryLoader.FromEmbeddedResource((Assembly)null, new DefaultSchemaRegistry())),
                 "134-11G-1: protobuf embedded-resource loader rejects null assembly");
+        }
+
+        private static void ProtobufLoaderRejectsMissingFilePath()
+        {
+            Check(Throws<ArgumentException>(() => ProtobufSchemaRegistryLoader.FromFile(null, new DefaultSchemaRegistry())),
+                "134-11G-2: protobuf file loader rejects null paths clearly");
+            Check(Throws<ArgumentException>(() => ProtobufSchemaRegistryLoader.FromFile(" ", new DefaultSchemaRegistry())),
+                "134-11G-3: protobuf file loader rejects blank paths clearly");
         }
 
         private static void ProtoCatalogUsesSharedSchemaNamesAndNullSafeLookup()

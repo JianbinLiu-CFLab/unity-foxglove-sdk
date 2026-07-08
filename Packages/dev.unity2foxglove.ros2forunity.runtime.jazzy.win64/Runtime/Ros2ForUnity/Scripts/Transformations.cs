@@ -35,6 +35,11 @@ public static class Transformations
         new Vector4( 0.0f, 0.0f, 0.0f, 1.0f)
     ).transpose;
 
+    /// <summary>
+    /// Constant ROS-to-Unity coordinate transform matrix, inverse of Unity2RosMatrix.
+    /// </summary>
+    public static readonly Matrix4x4 Ros2UnityMatrix = Unity2RosMatrix.inverse;
+
     public static Vector3 Ros2Unity(this Vector3 vector3)
     {
         return new Vector3(-vector3.y, vector3.z, vector3.x);

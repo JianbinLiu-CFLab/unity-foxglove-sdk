@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Core
 
             try
             {
-                return binding.ParseFrom.Invoke(binding.Parser, new object[] { payload });
+                return binding.Parse(payload);
             }
             catch (TargetInvocationException ex) when (ex.InnerException != null)
             {
@@ -92,10 +92,28 @@ namespace Unity.FoxgloveSDK.Core
             {
                 Parser = parser;
                 ParseFrom = parseFrom;
+                ParseFromArguments = new object[1];
             }
 
             public object Parser { get; }
             public MethodInfo ParseFrom { get; }
+            private object[] ParseFromArguments { get; }
+
+            public object Parse(byte[] payload)
+            {
+                lock (ParseFromArguments)
+                {
+                    try
+                    {
+                        ParseFromArguments[0] = payload;
+                        return ParseFrom.Invoke(Parser, ParseFromArguments);
+                    }
+                    finally
+                    {
+                        ParseFromArguments[0] = null;
+                    }
+                }
+            }
         }
     }
 }

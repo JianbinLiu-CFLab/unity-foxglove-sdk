@@ -241,8 +241,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "97F-1: Manager ROS2 Bridge section owns ROS2 Bridge health drawer");
             Check(drawer.Contains("ROS2 Bridge Health") && drawer.Contains("Check ROS2 Bridge"),
                 "97F-2: Inspector exposes one-click health check");
-            Check(drawer.Contains("Task.Run") && drawer.Contains("Progress = progress"),
+            Check(drawer.Contains("Task.Run") && drawer.Contains("progress: progress =>"),
                 "97F-3: Inspector health check runs command/probe work in background");
+            var options = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Diagnostics/Ros2BridgeHealthOptions.cs");
+            Check(options.Contains("public Action<Ros2BridgeHealthProgress> Progress { get; }", StringComparison.Ordinal)
+                  && !options.Contains("public Action<Ros2BridgeHealthProgress> Progress { get; set; }", StringComparison.Ordinal),
+                "97F-3b: health options keep progress callback immutable after construction");
             Check(drawer.Contains("Choose ros2") && prefs.Contains("EditorPrefs"),
                 "97F-4: Inspector supports ros2 executable override through EditorPrefs");
         }

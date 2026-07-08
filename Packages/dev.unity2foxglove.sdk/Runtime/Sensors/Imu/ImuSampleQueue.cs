@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
             var copyCount = Math.Min(_count, capacity);
             for (var i = 0; i < copyCount; i++)
             {
-                next[i] = Dequeue();
+                TryDequeue(out next[i]);
             }
 
             _items = next;
@@ -89,17 +89,20 @@ namespace Unity.FoxgloveSDK.Components
             _droppedCount++;
         }
 
-        /// <summary>Remove and return the oldest queued sample.</summary>
-        public ImuSample Dequeue()
+        /// <summary>Try to remove and return the oldest queued sample.</summary>
+        public bool TryDequeue(out ImuSample sample)
         {
             if (_count == 0)
-                return default;
+            {
+                sample = default;
+                return false;
+            }
 
             var index = _head;
-            var sample = _items[index];
+            sample = _items[index];
             _head = (_head + 1) % _items.Length;
             _count--;
-            return sample;
+            return true;
         }
     }
 }

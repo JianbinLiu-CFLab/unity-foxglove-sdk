@@ -25,6 +25,7 @@ namespace ROS2
 /// </summary>
 public class ROS2Clock : IDisposable
 {
+    private readonly object timeSourceGate = new object();
     private ITimeSource _timeSource;
     private int disposed;
 
@@ -91,15 +92,18 @@ public class ROS2Clock : IDisposable
 
     private void GetCurrentTime(out int seconds, out uint nanoseconds)
     {
-        var timeSource = Volatile.Read(ref _timeSource);
-        if (Volatile.Read(ref disposed) != 0 || timeSource == null)
+        lock (timeSourceGate)
         {
-            throw new ObjectDisposedException(nameof(ROS2Clock));
-        }
+            var timeSource = _timeSource;
+            if (Volatile.Read(ref disposed) != 0 || timeSource == null)
+            {
+                throw new ObjectDisposedException(nameof(ROS2Clock));
+            }
 
-        if (!timeSource.GetTime(out seconds, out nanoseconds))
-        {
-            throw new InvalidOperationException("Cannot acquire valid ROS2 time from the configured time source.");
+            if (!timeSource.GetTime(out seconds, out nanoseconds))
+            {
+                throw new InvalidOperationException("Cannot acquire valid ROS2 time from the configured time source.");
+            }
         }
     }
 
@@ -113,11 +117,14 @@ public class ROS2Clock : IDisposable
             return;
         }
 
-        var timeSource = Interlocked.Exchange(ref _timeSource, null);
-        IDisposable disposableTimeSource = timeSource as IDisposable;
-        if (disposableTimeSource != null)
+        lock (timeSourceGate)
         {
-            disposableTimeSource.Dispose();
+            var timeSource = Interlocked.Exchange(ref _timeSource, null);
+            IDisposable disposableTimeSource = timeSource as IDisposable;
+            if (disposableTimeSource != null)
+            {
+                disposableTimeSource.Dispose();
+            }
         }
     }
 }

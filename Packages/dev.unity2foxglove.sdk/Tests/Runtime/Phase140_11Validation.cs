@@ -155,7 +155,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDecodedDataLoaderTypes.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpRouter.cs",
                 "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapManifestMapper.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapModels.cs"
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapModels.cs",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/DataLoader/McapFoxgloveProtobufDecoderFactory.cs"
             };
 
             for (var i = 0; i < files.Length; i++)

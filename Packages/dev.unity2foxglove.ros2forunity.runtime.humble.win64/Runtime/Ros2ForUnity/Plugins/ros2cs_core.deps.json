@@ -29,12 +29,12 @@
     "ros2cs_core/1.0.0": {
       "type": "project",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "68ca2074473166e720edef6fa14132afdca60842cb1b7d616b58ecc5eea765c87db99118db5547daf8e2db78dfda352ea6fd942688f6aeca581ae6cca3f73049"
     },
     "ros2cs_common/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "770cd309ef70bad9ab7df0744d42ebbe36401ef739ef4cf49221794a87ea8fcbc2f178accc26dc0fbc87a395bbb21494a1570df71172722b9365c3464243c8de"
     }
   }
 }

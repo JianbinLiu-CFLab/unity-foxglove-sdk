@@ -117,6 +117,9 @@ namespace Unity.FoxgloveSDK.Tests
             var timestamp = JsonConvert.DeserializeObject<DataTimestamp>("{\"sec\":5,\"nsec\":1500000000}");
             Check(timestamp.Sec == 6UL && timestamp.Nsec == 500_000_000U,
                 "134-7E-1: protocol timestamp normalizes inbound nsec overflow");
+            CheckThrows<ArgumentOutOfRangeException>(
+                () => new DataTimestamp { Nsec = 1_000_000_000U, Sec = ulong.MaxValue },
+                "134-7E-1b: protocol timestamp rejects seconds overflow after nsec carry is already set");
             var time = JsonConvert.DeserializeObject<FoxgloveTime>("{\"sec\":5,\"nsec\":2500000000}");
             Check(time.Sec == 7UL && time.Nsec == 500_000_000U,
                 "134-7E-2: foxglove time normalizes inbound nsec overflow");

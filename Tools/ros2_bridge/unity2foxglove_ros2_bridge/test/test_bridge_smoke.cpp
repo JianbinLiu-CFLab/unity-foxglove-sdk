@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+// Include the production translation unit directly to exercise internal parser helpers.
 #define UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
 #include "../src/unity2foxglove_ros2_bridge.cpp"
 

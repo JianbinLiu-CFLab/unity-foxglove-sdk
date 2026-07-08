@@ -68,6 +68,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Contains("readonly struct CameraTimingSnapshot", sharedSnapshot, StringComparison.Ordinal);
             Assert.Contains("internal static class CameraTimingDiagnostics", sharedSnapshot, StringComparison.Ordinal);
             Assert.Contains("CameraTimingSnapshot.NoFrame", sharedSnapshot, StringComparison.Ordinal);
+            Assert.Contains("#if UNITY_2019_1_OR_NEWER", sharedSnapshot, StringComparison.Ordinal);
+            Assert.Contains("[UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]", sharedSnapshot, StringComparison.Ordinal);
+            Assert.Contains("private static void ResetStaticState()", sharedSnapshot, StringComparison.Ordinal);
+            Assert.Contains("=> Reset();", sharedSnapshot, StringComparison.Ordinal);
             Assert.Contains("CameraTimingDiagnostics.LastSnapshotOrDefault", managerDiagnostics, StringComparison.Ordinal);
             Assert.DoesNotContain("CameraPublishDiagnostics", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("CameraTimingDiagnostics.Publish", cameraDiagnostics, StringComparison.Ordinal);

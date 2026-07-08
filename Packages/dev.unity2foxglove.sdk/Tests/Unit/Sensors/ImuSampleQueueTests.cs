@@ -27,8 +27,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.Equal(2, queue.Count);
             Assert.Equal(1, queue.DroppedCount);
-            Assert.Equal(2UL, queue.Dequeue().TimestampNs);
-            Assert.Equal(3UL, queue.Dequeue().TimestampNs);
+            Assert.True(queue.TryDequeue(out var first));
+            Assert.True(queue.TryDequeue(out var second));
+            Assert.Equal(2UL, first.TimestampNs);
+            Assert.Equal(3UL, second.TimestampNs);
             Assert.Equal(0, queue.Count);
         }
 
@@ -66,8 +68,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             queue.Resize(2, 2);
 
             Assert.Equal(2, queue.Count);
-            Assert.Equal(10UL, queue.Dequeue().TimestampNs);
-            Assert.Equal(20UL, queue.Dequeue().TimestampNs);
+            Assert.True(queue.TryDequeue(out var first));
+            Assert.True(queue.TryDequeue(out var second));
+            Assert.Equal(10UL, first.TimestampNs);
+            Assert.Equal(20UL, second.TimestampNs);
         }
 
         [Fact]
@@ -81,17 +85,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             queue.Enqueue(Sample(3));
 
             Assert.Equal(2, queue.Count);
-            Assert.Equal(2UL, queue.Dequeue().TimestampNs);
-            Assert.Equal(3UL, queue.Dequeue().TimestampNs);
+            Assert.True(queue.TryDequeue(out var first));
+            Assert.True(queue.TryDequeue(out var second));
+            Assert.Equal(2UL, first.TimestampNs);
+            Assert.Equal(3UL, second.TimestampNs);
         }
 
         [Fact]
-        public void DequeueOnEmptyQueueReturnsDefaultSample()
+        public void TryDequeueOnEmptyQueueReturnsFalse()
         {
             var queue = new ImuSampleQueue();
 
-            var sample = queue.Dequeue();
+            var dequeued = queue.TryDequeue(out var sample);
 
+            Assert.False(dequeued);
             Assert.Equal(0UL, sample.TimestampNs);
             Assert.Equal(0, queue.Count);
             Assert.Equal(0, queue.DroppedCount);
@@ -110,8 +117,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
 
             Assert.Equal(2, queue.Count);
             Assert.Equal(1, queue.DroppedCount);
-            Assert.Equal(20UL, queue.Dequeue().TimestampNs);
-            Assert.Equal(30UL, queue.Dequeue().TimestampNs);
+            Assert.True(queue.TryDequeue(out var first));
+            Assert.True(queue.TryDequeue(out var second));
+            Assert.Equal(20UL, first.TimestampNs);
+            Assert.Equal(30UL, second.TimestampNs);
         }
 
         private static ImuSample Sample(ulong timestampNs)

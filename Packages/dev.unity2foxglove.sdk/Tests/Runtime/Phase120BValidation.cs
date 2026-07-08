@@ -57,6 +57,13 @@ namespace Unity.FoxgloveSDK.Tests
             var defaults = McapSequentialReadLimits.Default;
             Check(defaults.MaxMessages == 100000, "120B-A1: sequential fallback default message limit is bounded");
             Check(defaults.MaxPayloadBytes == 256L * 1024L * 1024L, "120B-A2: sequential fallback default payload limit is bounded");
+            Check(ThrowsWith<ArgumentOutOfRangeException>(() =>
+                {
+                    var invalid = McapSequentialReadLimits.Default;
+                    invalid.MaxMessages = -1;
+                    invalid.Validate();
+                }, "MaxMessages"),
+                "120B-A2b: sequential fallback validates customized negative limits before scans");
 
             using (var direct = CreateDirectFixture())
             using (var reader = new McapIndexedReader(direct, leaveOpen: true))

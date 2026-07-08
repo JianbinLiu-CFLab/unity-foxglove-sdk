@@ -114,14 +114,12 @@ namespace Unity.FoxgloveSDK.Editor
                 commandTimeoutMs: Math.Max(1000, timeout),
                 sidecarTimeoutMs: Math.Max(1000, timeout),
                 unityVersion: Application.unityVersion,
-                cancellationToken: cancellation.Token)
-            {
-                Progress = progress =>
+                progress: progress =>
                 {
                     lock (_gate)
                         _progress = progress;
-                }
-            };
+                },
+                cancellationToken: cancellation.Token);
 
             _task = Task.Run(() => new Ros2BridgeHealthRunner().Run(options));
         }
