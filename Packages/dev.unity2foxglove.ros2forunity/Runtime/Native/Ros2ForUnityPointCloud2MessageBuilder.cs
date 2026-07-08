@@ -21,6 +21,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private const byte PointFieldFloat32 = 7;
         private const byte PointFieldFloat64 = 8;
 
+        private static sensor_msgs.msg.PointField[] s_cachedFields;
+
         public static sensor_msgs.msg.PointCloud2 Build(PointCloud2NativeFrame frame)
         {
             if (frame == null)
@@ -46,6 +48,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private static sensor_msgs.msg.PointField[] CreateFields(
             System.Collections.Generic.IReadOnlyList<PointCloudPackedField> packedFields)
         {
+            if (FieldsMatch(s_cachedFields, packedFields))
+                return s_cachedFields;
+
             var fields = new sensor_msgs.msg.PointField[packedFields.Count];
             for (var i = 0; i < packedFields.Count; i++)
             {
@@ -59,7 +64,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 };
             }
 
+            s_cachedFields = fields;
             return fields;
+        }
+
+        private static bool FieldsMatch(
+            sensor_msgs.msg.PointField[] cachedFields,
+            System.Collections.Generic.IReadOnlyList<PointCloudPackedField> packedFields)
+        {
+            if (cachedFields == null || cachedFields.Length != packedFields.Count)
+                return false;
+
+            for (var i = 0; i < cachedFields.Length; i++)
+            {
+                var cached = cachedFields[i];
+                var field = packedFields[i];
+                if (!string.Equals(cached.Name, field.Name, StringComparison.Ordinal)
+                    || cached.Offset != field.Offset
+                    || cached.Datatype != MapDatatype(field.Type)
+                    || cached.Count != 1u)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static byte MapDatatype(PointCloudPackedNumericType type)

@@ -39,6 +39,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   // 2. While timeScale is unchanged, forward ROS/system time directly.
   // 3. After the first timeScale change, use Unity scaled time plus a one-time ROS offset forever.
   private double lastReadingSecs;
+  private double lastTimeScale;
   private ROS2.Clock clock;
   private double rosUnityTimeOffset = 0;
   private double initialTimeScale = 0;
@@ -51,7 +52,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   public ROS2ScalableTimeSource()
   {
     mainThreadId = Thread.CurrentThread.ManagedThreadId;
-    UpdateUnityTimeSnapshot();
+    RefreshUnityTimeCache();
   }
 
   /// <summary>
@@ -79,7 +80,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     bool isMainThread = mainThreadId == Thread.CurrentThread.ManagedThreadId;
     if (isMainThread)
     {
-      UpdateUnityTimeSnapshot();
+      RefreshUnityTimeCache();
     }
 
     double readingSecs;
@@ -136,17 +137,27 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     }
   }
 
+  private void RefreshUnityTimeCache()
+  {
+    UpdateUnityTimeSnapshot();
+  }
+
   private void UpdateUnityTimeSnapshot()
   {
+    var readingSecs = Time.timeAsDouble;
+    var timeScale = Time.timeScale;
     lock (mutex)
     {
+      lastReadingSecs = readingSecs;
+      lastTimeScale = timeScale;
+
       if (!initialTimeScaleAcquired)
       {
         initialTimeScaleAcquired = true;
-        initialTimeScale = Time.timeScale;
+        initialTimeScale = lastTimeScale;
       }
 
-      if (initialTimeScale != Time.timeScale)
+      if (initialTimeScale != lastTimeScale)
       {
         // Once scaling has changed, keep using the adjusted timeline to avoid jumping back to system time.
         timeScaleChanged = true;
@@ -156,8 +167,6 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
           Debug.Log("ROS2ScalableTimeSource switched to Unity-scaled time after Time.timeScale changed.");
         }
       }
-
-      lastReadingSecs = Time.timeAsDouble;
     }
   }
 

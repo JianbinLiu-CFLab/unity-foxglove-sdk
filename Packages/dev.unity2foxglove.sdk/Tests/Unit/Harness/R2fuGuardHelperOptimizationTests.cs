@@ -93,8 +93,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 var dir = new DirectoryInfo(AppContext.BaseDirectory);
                 while (dir != null)
                 {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    if (File.Exists(Path.Combine(dir.FullName, "README.md"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "Unity2Foxglove"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "Packages")))
                         return dir.FullName;
 
                     dir = dir.Parent;

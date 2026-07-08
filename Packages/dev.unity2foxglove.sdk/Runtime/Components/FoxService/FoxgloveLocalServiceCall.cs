@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.Components
     public enum FoxgloveLocalServiceCallStatus
     {
         Succeeded,
+        CompletedButSlow,
         MissingService,
         HandlerFailed,
         TimedOut
@@ -44,8 +45,8 @@ namespace Unity.FoxgloveSDK.Components
         /// Invoke a generated service handler on the caller thread.
         /// </summary>
         /// <remarks>
-        /// The timeout is reported after the synchronous handler returns; it is not
-        /// a preemptive cancellation mechanism.
+        /// The timeout is evaluated after the synchronous handler returns; it is a
+        /// slow-call threshold, not a preemptive cancellation mechanism.
         /// </remarks>
         public static FoxgloveLocalServiceCallResult Invoke(
             FoxgloveGeneratedServiceDescriptor descriptor,
@@ -83,9 +84,9 @@ namespace Unity.FoxgloveSDK.Components
             if (timeout > TimeSpan.Zero && stopwatch.Elapsed > timeout)
             {
                 return new FoxgloveLocalServiceCallResult(
-                    FoxgloveLocalServiceCallStatus.TimedOut,
-                    null,
-                    "Service handler exceeded the local call timeout.",
+                    FoxgloveLocalServiceCallStatus.CompletedButSlow,
+                    response ?? JValue.CreateNull(),
+                    "Service handler completed after the local call timeout threshold.",
                     stopwatch.Elapsed);
             }
 
