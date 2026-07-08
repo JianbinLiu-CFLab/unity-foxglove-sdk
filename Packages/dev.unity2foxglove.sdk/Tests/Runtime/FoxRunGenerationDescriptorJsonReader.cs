@@ -20,13 +20,15 @@ namespace Unity.FoxgloveSDK.Tests
             var types = new List<FoxRunGenerationType>();
             foreach (var typeToken in root["types"] as JArray ?? new JArray())
             {
-                var type = (JObject)typeToken;
+                var type = typeToken as JObject
+                    ?? throw new InvalidOperationException("FoxRun generation descriptor 'types' entries must be JSON objects.");
                 var ns = StringValue(type, "namespace");
                 var className = StringValue(type, "className");
                 var members = new List<FoxRunGenerationMember>();
                 foreach (var memberToken in type["members"] as JArray ?? new JArray())
                 {
-                    var member = (JObject)memberToken;
+                    var member = memberToken as JObject
+                        ?? throw new InvalidOperationException("FoxRun generation descriptor 'members' entries must be JSON objects.");
                     members.Add(new FoxRunGenerationMember(
                         ns,
                         className,

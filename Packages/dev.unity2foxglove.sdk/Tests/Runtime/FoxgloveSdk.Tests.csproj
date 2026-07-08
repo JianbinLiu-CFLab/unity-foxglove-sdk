@@ -261,6 +261,7 @@
     <Compile Include="Phase164_55Validation.cs" />
     <Compile Include="Phase164_56Validation.cs" />
     <Compile Include="Phase164_57Validation.cs" />
+    <Compile Include="TestRepoRootLocator.cs" />
     <Compile Include="ValidationRegistryDescriptiveNamesValidation.cs" />
     <Compile Include="ValidationNamingGuardsValidation.cs" />
     <Compile Include="R2fuNativeBridgeHotPathLifecycleValidation.cs" />

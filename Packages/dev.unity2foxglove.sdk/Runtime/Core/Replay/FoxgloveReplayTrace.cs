@@ -24,6 +24,16 @@ namespace Unity.FoxgloveSDK.Core
         private static long _ordinal;
         private static int _lines;
 
+#if UNITY_5_3_OR_NEWER
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+#endif
+        private static void ResetForSubsystemRegistration()
+        {
+            Volatile.Write(ref _enabled, 0);
+            Interlocked.Exchange(ref _ordinal, 0);
+            Interlocked.Exchange(ref _lines, 0);
+        }
+
         internal static void ResetBudget()
         {
             Interlocked.Exchange(ref _lines, 0);

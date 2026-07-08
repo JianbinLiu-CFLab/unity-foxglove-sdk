@@ -63,10 +63,27 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
-            if (IsUnderSpecialFolder(fullRoot, Environment.SpecialFolder.ProgramFiles)
-                || IsUnderSpecialFolder(fullRoot, Environment.SpecialFolder.ProgramFilesX86))
+            foreach (var protectedFolder in new[]
             {
-                reason = "Choose a per-user folder instead of Program Files.";
+                Environment.SpecialFolder.ProgramFiles,
+                Environment.SpecialFolder.ProgramFilesX86,
+                Environment.SpecialFolder.Windows,
+                Environment.SpecialFolder.System,
+                Environment.SpecialFolder.SystemX86,
+                Environment.SpecialFolder.CommonApplicationData
+            })
+            {
+                if (IsUnderSpecialFolder(fullRoot, protectedFolder))
+                {
+                    reason = "Choose a per-user folder instead of protected system or application folders.";
+                    return false;
+                }
+            }
+
+            var editorRoot = Path.GetDirectoryName(EditorApplication.applicationPath);
+            if (IsSameOrChild(fullRoot, editorRoot))
+            {
+                reason = "Choose a per-user folder outside the Unity Editor installation.";
                 return false;
             }
 

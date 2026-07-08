@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            var root = Phase16Validation.FindRepoRoot()
+            var root = TestRepoRootLocator.FindRepoRoot()
                 ?? throw new InvalidOperationException("Could not find repository root.");
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         }
