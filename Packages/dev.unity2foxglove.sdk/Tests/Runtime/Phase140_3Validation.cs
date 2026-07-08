@@ -408,13 +408,17 @@ namespace Unity.FoxgloveSDK.Tests
             Check(dispose.Contains("Volatile.Write(ref _recorder, null)", StringComparison.Ordinal)
                   && dispose.Contains("Volatile.Write(ref _mirrorSink, null)", StringComparison.Ordinal),
                 "173-024C: disposed sessions release recorder and mirror sink references");
-            Check(broadcast.Contains("subscribedClientIds = GetParamSubscribersForChanged", StringComparison.Ordinal)
-                  && broadcast.IndexOf("foreach (var cid in subscribedClientIds)", StringComparison.Ordinal)
-                  > broadcast.LastIndexOf("finally", StringComparison.Ordinal),
-                "173-024D: parameter broadcasts release scratch locks before transport sends");
-            Check(session.Contains("s_jsonPublishStream", StringComparison.Ordinal)
-                  && session.Contains("stream.SetLength(0);", StringComparison.Ordinal),
-                "173-024E: PublishJson reuses a thread-local payload stream");
+              Check(broadcast.Contains("subscribedClientIds = GetParamSubscribersForChanged", StringComparison.Ordinal)
+                    && broadcast.IndexOf("foreach (var cid in subscribedClientIds)", StringComparison.Ordinal)
+                    > broadcast.LastIndexOf("finally", StringComparison.Ordinal),
+                  "173-024D: parameter broadcasts release scratch locks before transport sends");
+              Check(broadcast.Contains("names = new List<string>(_parameterBroadcastNames)", StringComparison.Ordinal)
+                    && broadcast.IndexOf("JsonConvert.SerializeObject", StringComparison.Ordinal) > broadcast.LastIndexOf("finally", StringComparison.Ordinal)
+                    && broadcast.IndexOf("GetParamSubscribersForChanged", StringComparison.Ordinal) > broadcast.LastIndexOf("finally", StringComparison.Ordinal),
+                  "173-082A: parameter broadcasts copy scratch names before serialization and subscriber lookup");
+              Check(session.Contains("s_jsonPublishStream", StringComparison.Ordinal)
+                    && session.Contains("stream.SetLength(0);", StringComparison.Ordinal),
+                  "173-024E: PublishJson reuses a thread-local payload stream");
         }
 
         private static ReplayMessageContext NewTestContext(string topic, string message = "phase140_3")

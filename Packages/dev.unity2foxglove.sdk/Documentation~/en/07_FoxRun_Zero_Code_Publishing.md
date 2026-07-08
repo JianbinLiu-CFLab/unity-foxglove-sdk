@@ -146,7 +146,7 @@ If one grouped topic contains any `OnTrigger` member, that topic is trigger-only
 
 Generated trigger methods are main-thread-oriented. They may read Unity-owned fields, properties, transforms, or objects. Unity callbacks such as `Update`, `OnEnable`, or collision callbacks can call them directly. Background packet, network, or worker callbacks should marshal to the Unity main thread before calling generated trigger methods.
 
-Phase 53 does not add an event queue, dispatcher, automatic event subscription, UnityEvent parsing, collision snapshot generation, or event-argument serialization.
+The FoxRun trigger mode does not add an event queue, dispatcher, automatic event subscription, UnityEvent parsing, collision snapshot generation, or event-argument serialization.
 
 ## 9. IL2CPP Notes
 

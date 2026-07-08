@@ -232,6 +232,10 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             {
                 if (item.Kind == RemoteGatewayEventKind.ConnectionStatusChanged)
                     _connectionStatus = item.ConnectionStatus.ToString();
+                // V1 is outbound-only. Subscription, parameter, client publish,
+                // and connection-graph callbacks are drained so the bounded
+                // native callback queue stays healthy, but they intentionally
+                // do not mutate Unity state until those capabilities are enabled.
             }
         }
 

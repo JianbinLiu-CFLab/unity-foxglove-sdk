@@ -115,8 +115,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void BroadcastParameterValues(IEnumerable<string> parameterNames)
         {
-            string broadcastJson;
-            List<uint> subscribedClientIds;
+            List<string> names;
             lock (_parameterBroadcastScratchLock)
             {
                 _parameterBroadcastSeen.Clear();
@@ -135,12 +134,7 @@ namespace Unity.FoxgloveSDK.Core
                     if (_parameterBroadcastNames.Count == 0)
                         return;
 
-                    var parameters = _parameters.GetWireParameters(_parameterBroadcastNames);
-                    if (parameters.Count == 0)
-                        return;
-
-                    broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
-                    subscribedClientIds = GetParamSubscribersForChanged(_parameterBroadcastNames, null);
+                    names = new List<string>(_parameterBroadcastNames);
                 }
                 finally
                 {
@@ -149,6 +143,12 @@ namespace Unity.FoxgloveSDK.Core
                 }
             }
 
+            var parameters = _parameters.GetWireParameters(names);
+            if (parameters.Count == 0)
+                return;
+
+            var broadcastJson = JsonConvert.SerializeObject(new ParameterValues { Parameters = parameters });
+            var subscribedClientIds = GetParamSubscribersForChanged(names, null);
             foreach (var cid in subscribedClientIds)
                 _transport.SendText(cid, broadcastJson);
         }

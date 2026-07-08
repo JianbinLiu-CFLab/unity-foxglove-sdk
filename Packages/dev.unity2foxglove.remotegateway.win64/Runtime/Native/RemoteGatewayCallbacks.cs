@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using AOT;
 
 namespace Unity.FoxgloveSDK.RemoteGateway.Native
@@ -24,7 +25,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
         private readonly RemoteGatewayEventQueue _queue;
         private GCHandle _selfHandle;
-        private bool _disposed;
+        private int _disposed;
 
         internal RemoteGatewayCallbacks(RemoteGatewayEventQueue queue)
         {
@@ -56,20 +57,20 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
         public void Dispose()
         {
-            if (_disposed)
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
                 return;
 
             // The owner must call blocking GatewayStop first. Native callbacks
             // receive this GCHandle as their context and may still be in flight
-            // until the gateway has fully stopped.
-            _disposed = true;
-            if (_selfHandle.IsAllocated)
-                _selfHandle.Free();
+            // until the gateway has fully stopped. Keep the handle allocated
+            // after disposal so a late native callback can still resolve the
+            // managed object and fail closed instead of dereferencing a freed
+            // GCHandle context during Editor reload or process shutdown.
         }
 
         private void Enqueue(RemoteGatewayEvent item)
         {
-            if (!_disposed)
+            if (Volatile.Read(ref _disposed) == 0)
                 _queue.TryEnqueue(item);
         }
 
@@ -124,6 +125,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             IntPtr parameterNames,
             UIntPtr parameterNameCount)
         {
+            // V1 advertises outbound-only capabilities. Parameter requests are
+            // surfaced as diagnostics only; request payloads are intentionally
+            // not decoded until remote parameter support is enabled.
             EnqueueClientChannelEvent(context, RemoteGatewayEventKind.ParametersRequested, clientId);
             return IntPtr.Zero;
         }
@@ -135,6 +139,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
             IntPtr requestId,
             IntPtr parameters)
         {
+            // V1 advertises outbound-only capabilities. Parameter mutations are
+            // surfaced as diagnostics only; request payloads are intentionally
+            // not decoded until remote parameter support is enabled.
             EnqueueClientChannelEvent(context, RemoteGatewayEventKind.ParametersSetRequested, clientId);
             return IntPtr.Zero;
         }
@@ -183,7 +190,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway.Native
 
         private void ThrowIfDisposed()
         {
-            if (_disposed)
+            if (Volatile.Read(ref _disposed) != 0)
                 throw new ObjectDisposedException(nameof(RemoteGatewayCallbacks));
         }
     }
