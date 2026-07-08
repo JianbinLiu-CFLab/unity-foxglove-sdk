@@ -103,6 +103,25 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             self.assertEqual(self.builder.sha256_file(deps), patched_inventory["files"][0]["sha256"])
             self.assertEqual(deps.stat().st_size, patched_inventory["files"][0]["size"])
 
+    def test_validate_ros2cs_metadata_descriptions_rejects_cross_distro_desc(self) -> None:
+        """Generated lyrical runtime metadata must not keep another distro in desc."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            metadata_files = (
+                package / "Runtime" / "Ros2ForUnity" / "metadata_ros2cs.xml",
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
+            )
+            for path in metadata_files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "<ros2cs><ros2>lyrical</ros2><version><desc>v0.6.0-jazzy-preview</desc></version></ros2cs>",
+                    encoding="utf-8",
+                )
+
+            with self.assertRaises(ValueError):
+                self.builder.validate_ros2cs_metadata_descriptions(package)
+
     def test_patch_ros2_for_unity_requires_copyright_replacement(self) -> None:
         """Patch generation fails when the expected copyright line is absent."""
         with tempfile.TemporaryDirectory() as temp:

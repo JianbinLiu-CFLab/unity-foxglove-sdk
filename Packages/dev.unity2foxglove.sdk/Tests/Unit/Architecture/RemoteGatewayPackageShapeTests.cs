@@ -62,7 +62,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Equal("windows-x64", root.GetProperty("platform").GetString());
             Assert.Contains("remote-access", root.GetProperty("features").GetString(), StringComparison.Ordinal);
             Assert.Contains("crt-static", root.GetProperty("rustflags").GetString(), StringComparison.Ordinal);
-            Assert.Equal(64, root.GetProperty("sha256").GetString().Length);
+            Assert.Matches("^[0-9a-f]{64}$", root.GetProperty("sha256").GetString());
             Assert.True(root.GetProperty("sizeBytes").GetInt64() > 40_000_000);
         }
 
@@ -109,7 +109,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             {
                 if (File.Exists(Path.Combine(dir.FullName, "README.md"))
                     && Directory.Exists(Path.Combine(dir.FullName, "Unity2Foxglove"))
-                    && Directory.Exists(Path.Combine(dir.FullName, "Packages")))
+                    && Directory.Exists(Path.Combine(dir.FullName, "Packages"))
+                    && File.Exists(Path.Combine(dir.FullName, "Packages", "dev.unity2foxglove.sdk", "package.json")))
                     return dir.FullName;
 
                 dir = dir.Parent;

@@ -391,6 +391,28 @@ def check_required_files(results: list[CheckResult]) -> None:
         add(results, f"required file: {path.name}", path.exists(), rel(path))
 
 
+def check_ros2cs_metadata_descriptions(results: list[CheckResult]) -> None:
+    """Validate ros2cs metadata provenance text matches the package distro."""
+    for path in (
+        RUNTIME_ROOT / "metadata_ros2cs.xml",
+        RUNTIME_ROOT / "Plugins" / "metadata_ros2cs.xml",
+        PLUGIN_ROOT / "metadata_ros2cs.xml",
+    ):
+        text = read_optional_text(path)
+        add(
+            results,
+            f"{rel(path)} declares lyrical ros2cs distro",
+            "<ros2>lyrical</ros2>" in text,
+            rel(path),
+        )
+        add(
+            results,
+            f"{rel(path)} desc does not name another distro",
+            not any(distro in text for distro in ("humble", "jazzy")),
+            rel(path),
+        )
+
+
 def check_runtime_manifest(results: list[CheckResult]) -> None:
     """Validate the runtime support manifest."""
     data = load_json(MANIFEST, results, "runtime manifest parses")
@@ -1020,6 +1042,7 @@ def check_generator_alignment(results: list[CheckResult]) -> None:
         "patch_ros_time_source_contract",
         "LEAKY_UPSTREAM_EXAMPLES",
         "runtime_asmdef",
+        "validate_ros2cs_metadata_descriptions",
         "make_writable",
         "windows_long_path",
         "PackageInfo.FindForAssetPath",
@@ -1127,6 +1150,7 @@ def run_checks(release_gate: bool = False, skip_dll_hash: bool = False) -> list[
     results: list[CheckResult] = []
     check_package_metadata(results)
     check_required_files(results)
+    check_ros2cs_metadata_descriptions(results)
     check_runtime_manifest(results)
     check_inventory(results, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
     check_runtime_files(results)

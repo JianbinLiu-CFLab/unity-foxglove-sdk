@@ -1343,6 +1343,23 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifac
     )
 
 
+def validate_ros2cs_metadata_descriptions(package: Path) -> None:
+    """Reject ros2cs metadata whose human-readable desc names another distro."""
+    metadata_files = (
+        package / "Runtime" / "Ros2ForUnity" / "metadata_ros2cs.xml",
+        package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
+        package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
+    )
+    other_distros = ("humble", "jazzy")
+    for path in metadata_files:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "<ros2>lyrical</ros2>" not in text:
+            raise ValueError(f"Unexpected ros2cs distro in {path}: expected lyrical")
+        for distro in other_distros:
+            if distro in text:
+                raise ValueError(f"Unexpected {distro!r} text in lyrical ros2cs metadata: {path}")
+
+
 def build_package(paths: BuildPaths) -> None:
     """Build the runtime package from the runtime artifact."""
     inventory, artifact = require_inputs(paths)
@@ -1358,6 +1375,7 @@ def build_package(paths: BuildPaths) -> None:
         patch_component_main_thread_prewarm(paths.package)
         patch_ros_time_source_contract(paths.package)
         patch_zenoh_router_config_notes(paths.package)
+        validate_ros2cs_metadata_descriptions(paths.package)
         write_package_files(paths, inventory, artifact)
         patch_deps_json_sha512(paths.package)
         apply_meta_overlays(paths.package, meta_overlays)

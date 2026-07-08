@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.Editor
         /// Emits per-member trigger methods and a <c>FoxRun_TriggerAll</c> method
         /// that fire FoxgloveLogHub triggers for all OnTrigger-mode topics.
         /// </summary>
-        internal static void EmitTriggers(StringBuilder sb, IReadOnlyList<TriggerMember> triggerMembers, IReadOnlyList<string> topics, Dictionary<string, int> topicModes, string pad)
+        internal static void EmitTriggers(StringBuilder sb, IReadOnlyList<TriggerMember> triggerMembers, IReadOnlyList<string> topics, IReadOnlyDictionary<string, int> topicModes, string pad)
         {
             if (triggerMembers.Count == 0)
                 return;

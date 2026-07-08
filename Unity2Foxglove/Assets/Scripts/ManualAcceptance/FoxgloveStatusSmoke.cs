@@ -71,6 +71,11 @@ public class FoxgloveStatusSmoke : MonoBehaviour
             ClearStatus();
     }
 
+    private void OnDisable()
+    {
+        StopAutoClearRoutine();
+    }
+
     private static bool WasKeyPressed(KeyCode legacyKey)
     {
 #if ENABLE_INPUT_SYSTEM
@@ -99,8 +104,7 @@ public class FoxgloveStatusSmoke : MonoBehaviour
         manager.PublishWarningStatus(StatusMessage, StatusId);
         Debug.Log("[FoxgloveStatusSmoke] Published status. It will auto-clear soon.");
 
-        if (autoClearRoutine != null)
-            StopCoroutine(autoClearRoutine);
+        StopAutoClearRoutine();
         autoClearRoutine = StartCoroutine(AutoClearStatus());
     }
 
@@ -121,5 +125,14 @@ public class FoxgloveStatusSmoke : MonoBehaviour
     {
         manager.RemoveStatus(StatusId);
         Debug.Log("[FoxgloveStatusSmoke] Requested status removal.");
+    }
+
+    private void StopAutoClearRoutine()
+    {
+        if (autoClearRoutine == null)
+            return;
+
+        StopCoroutine(autoClearRoutine);
+        autoClearRoutine = null;
     }
 }

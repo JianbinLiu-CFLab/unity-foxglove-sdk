@@ -2518,9 +2518,9 @@
     {
       "path": "Ros2ForUnity/Plugins/Windows/x86_64/metadata_ros2cs.xml",
       "category": "metadata_files",
-      "size": 94969,
+      "size": 94899,
       "compressedSize": 5230,
-      "sha256": "e5004cfd39a62e63b94b2d978e2d350a422947ec5be4ffdf986026b7fe5216e8"
+      "sha256": "b5f0b445a4c73885bb01d13c325a4bd6764d36ec508ce80fb00a086d3680b449"
     },
     {
       "path": "Ros2ForUnity/Plugins/Windows/x86_64/msvcp140.dll",
@@ -7726,9 +7726,9 @@
     {
       "path": "Ros2ForUnity/Plugins/metadata_ros2cs.xml",
       "category": "metadata_files",
-      "size": 94969,
+      "size": 94899,
       "compressedSize": 5230,
-      "sha256": "e5004cfd39a62e63b94b2d978e2d350a422947ec5be4ffdf986026b7fe5216e8"
+      "sha256": "b5f0b445a4c73885bb01d13c325a4bd6764d36ec508ce80fb00a086d3680b449"
     },
     {
       "path": "Ros2ForUnity/Plugins/nav_msgs_assembly.deps.json",
@@ -8272,9 +8272,9 @@
     {
       "path": "Ros2ForUnity/metadata_ros2cs.xml",
       "category": "metadata_files",
-      "size": 323,
+      "size": 326,
       "compressedSize": 211,
-      "sha256": "79f588da3b80c345db9adbc5ac8eb24093fa9e57f2e84498e0ba80c5fd7c6e34"
+      "sha256": "74488b3d2989f97d0b3b8319b9e6a2f0de703ed1c7895607f6d90dbe268cff9d"
     },
     {
       "path": "StreamingAssets/Ros2ForUnity/share/ament_index/resource_index/package_run_dependencies/ament_index_cpp",
