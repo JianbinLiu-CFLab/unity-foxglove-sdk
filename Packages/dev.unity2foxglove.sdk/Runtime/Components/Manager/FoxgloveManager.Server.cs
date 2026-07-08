@@ -327,13 +327,14 @@ namespace Unity.FoxgloveSDK.Components
             var path = _enableReplay && !string.IsNullOrWhiteSpace(_replayFilePath)
                 ? ResolveReplayFilePathCached()
                 : null;
+            var token = ResolveRemoteMcapFileServerToken();
             if (_remoteMcapFileServerConfigKnown
                 && _remoteMcapFileServerKnownEnabled == _enableRemoteMcapFileServer
                 && string.Equals(_remoteMcapFileServerKnownHost, _remoteMcapFileServerHost, System.StringComparison.Ordinal)
                 && _remoteMcapFileServerKnownPort == _remoteMcapFileServerPort
                 && string.Equals(_remoteMcapFileServerKnownPath, path, System.StringComparison.Ordinal)
                 && string.Equals(_remoteMcapFileServerKnownSourceId, _remoteMcapFileServerSourceId, System.StringComparison.Ordinal)
-                && string.Equals(_remoteMcapFileServerKnownToken, _remoteMcapFileServerToken, System.StringComparison.Ordinal))
+                && string.Equals(_remoteMcapFileServerKnownToken, token, System.StringComparison.Ordinal))
             {
                 return;
             }
@@ -362,7 +363,7 @@ namespace Unity.FoxgloveSDK.Components
                 Port = _remoteMcapFileServerPort,
                 McapPath = resolvedPath,
                 SourceId = string.IsNullOrWhiteSpace(_remoteMcapFileServerSourceId) ? "local-mcap" : _remoteMcapFileServerSourceId.Trim(),
-                RequiredBearerToken = string.IsNullOrWhiteSpace(_remoteMcapFileServerToken) ? string.Empty : _remoteMcapFileServerToken.Trim(),
+                RequiredBearerToken = ResolveRemoteMcapFileServerToken(),
                 ManifestName = Path.GetFileName(resolvedPath)
             };
         }
@@ -395,7 +396,7 @@ namespace Unity.FoxgloveSDK.Components
             _remoteMcapFileServerKnownPort = _remoteMcapFileServerPort;
             _remoteMcapFileServerKnownPath = resolvedPath;
             _remoteMcapFileServerKnownSourceId = _remoteMcapFileServerSourceId;
-            _remoteMcapFileServerKnownToken = _remoteMcapFileServerToken;
+            _remoteMcapFileServerKnownToken = ResolveRemoteMcapFileServerToken();
         }
 
         private void ClearRemoteMcapFileServerConfig()
@@ -529,6 +530,9 @@ namespace Unity.FoxgloveSDK.Components
 
         private string ResolveCertificatePassword()
             => ResolveSecretValue(CertificatePasswordEnvironmentVariable, _certificatePassword);
+
+        private string ResolveRemoteMcapFileServerToken()
+            => ResolveSecretValue(RemoteMcapFileServerTokenEnvironmentVariable, _remoteMcapFileServerToken).Trim();
 
         private string ResolveReplayCursorBridgeToken()
             => ResolveSecretValue(ReplayCursorBridgeTokenEnvironmentVariable, _replayCursorBridgeToken);

@@ -43,7 +43,7 @@ namespace ROS2
         private int collectionVersion = 0;
         private int snapshotVersion = -1;
         private volatile bool quitting = false;
-        private bool cachedOk = false;
+        private volatile bool cachedOk = false;
         private bool disposed = false;
         private Thread executorThread;
         private int interval = 2;  // Spinning / executor interval in ms
@@ -147,6 +147,8 @@ namespace ROS2
         /// Works as a simple executor registration analogue. These functions will be called with each Tick()
         /// Actions need to take care of correct call resolution by checking in their body (TODO)
         /// Make sure actions are lightweight (TODO - separate out threads for spinning and executables?)
+        /// Executor ticks run from a versioned snapshot outside the registration lock; after
+        /// UnregisterExecutable returns, an action that was already captured may run once more.
         /// </summary>
         public void RegisterExecutable(Action executable)
         {

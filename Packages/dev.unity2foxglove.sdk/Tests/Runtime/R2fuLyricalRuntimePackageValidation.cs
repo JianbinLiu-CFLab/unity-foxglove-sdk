@@ -425,6 +425,7 @@ namespace Unity.FoxgloveSDK.Tests
             var componentSource = ReadRepoText(RuntimePackage + "/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
 
             Check(runtimeSource.Contains("shutdownInProgress", StringComparison.Ordinal)
+                  && runtimeSource.Contains("private static volatile bool isInitialized = false;", StringComparison.Ordinal)
                   && runtimeSource.Contains("TryBeginShutdownLocked()", StringComparison.Ordinal)
                   && runtimeSource.Contains("CompleteShutdownShared()", StringComparison.Ordinal),
                 "162-E5: Lyrical ROS2 context shutdown is serialized across editor reload/play-mode exits");

@@ -120,14 +120,16 @@ namespace Unity.FoxgloveSDK.Tests
             var stopServer = SourceMethod(server, "private void StopServer(bool restoreLivePublishers)");
             var refresh = SourceMethod(server, "private void RefreshRemoteMcapFileServerIfNeeded()");
 
-            Check(manager.Contains("[SerializeField] private string _remoteMcapFileServerToken = \"\";", StringComparison.Ordinal)
+            Check(manager.Contains("public const string RemoteMcapFileServerTokenEnvironmentVariable = \"FOXGLOVE_REMOTE_MCAP_TOKEN\";", StringComparison.Ordinal)
+                  && manager.Contains("[SerializeField, HideInInspector] private string _remoteMcapFileServerToken = \"\";", StringComparison.Ordinal)
                   && editor.Contains("_remoteMcapFileServerTokenProperty", StringComparison.Ordinal)
                   && mcapEditor.Contains("DrawPasswordProperty(\"_remoteMcapFileServerToken\", \"Bearer Token\")", StringComparison.Ordinal),
-                "164-2D2-1: Remote MCAP bearer token is serialized and drawn as a password field");
-            Check(server.Contains("RequiredBearerToken = string.IsNullOrWhiteSpace(_remoteMcapFileServerToken) ? string.Empty : _remoteMcapFileServerToken.Trim()", StringComparison.Ordinal)
-                  && refresh.Contains("string.Equals(_remoteMcapFileServerKnownToken, _remoteMcapFileServerToken, System.StringComparison.Ordinal)", StringComparison.Ordinal)
-                  && server.Contains("_remoteMcapFileServerKnownToken = _remoteMcapFileServerToken;", StringComparison.Ordinal),
-                "164-2D2-2: Remote MCAP bearer token participates in server options and refresh cache");
+                "164-2D2-1: Remote MCAP bearer token is env-first and drawn as a password field");
+            Check(server.Contains("RequiredBearerToken = ResolveRemoteMcapFileServerToken()", StringComparison.Ordinal)
+                  && refresh.Contains("var token = ResolveRemoteMcapFileServerToken();", StringComparison.Ordinal)
+                  && refresh.Contains("string.Equals(_remoteMcapFileServerKnownToken, token, System.StringComparison.Ordinal)", StringComparison.Ordinal)
+                  && server.Contains("_remoteMcapFileServerKnownToken = ResolveRemoteMcapFileServerToken();", StringComparison.Ordinal),
+                "164-2D2-2: resolved Remote MCAP bearer token participates in server options and refresh cache");
             Check(stopServer.Contains("DetachRuntimeForwarders(_runtime?.Session);", StringComparison.Ordinal)
                   && stopServer.IndexOf("DetachRuntimeForwarders(_runtime?.Session);", StringComparison.Ordinal)
                      < stopServer.IndexOf("if (_runtime?.Session == null)", StringComparison.Ordinal),
