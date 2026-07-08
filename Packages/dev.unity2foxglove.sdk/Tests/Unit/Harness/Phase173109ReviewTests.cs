@@ -38,6 +38,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void Ros2RuntimeAssemblyNameIsSharedByDesign()
+        {
+            foreach (var path in new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.HumbleWin64.asmdef",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.JazzyWin64.asmdef",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/Unity2Foxglove.Ros2ForUnity.Runtime.LyricalWin64.asmdef"
+            })
+            {
+                var asmdef = TestSources.Text(path);
+                Assert.Contains("\"name\": \"Unity2Foxglove.Ros2ForUnity.Runtime\"", asmdef, StringComparison.Ordinal);
+            }
+
+            foreach (var path in new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/README.md",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/README.md",
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/README.md"
+            })
+            {
+                var readme = TestSources.Text(path);
+                Assert.Contains("intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`", readme, StringComparison.Ordinal);
+                Assert.Contains("one-runtime policy and package conflict metadata", readme, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
         public void FoxRunGeneratedLinkXmlIsIgnoredAndDemoLinkCopyIsRemoved()
         {
             var gitignore = TestSources.Text(".gitignore");
