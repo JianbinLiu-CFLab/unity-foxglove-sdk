@@ -84,6 +84,104 @@ class ValidatePackageTests(unittest.TestCase):
         version_result = next(item for item in results if item.name == "package version")
         self.assertFalse(version_result.ok)
 
+    def test_dependent_package_version_pin_must_match_sdk(self) -> None:
+        """Optional packages in the repo should depend on the current SDK version."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            gateway = root / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+            gateway.mkdir(parents=True)
+            (gateway / "package.json").write_text(
+                '{"dependencies":{"dev.unity2foxglove.sdk":"1.9.5"}}',
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = gateway
+            results = []
+            self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("1.9.5", results[-1].detail)
+        self.assertIn("1.9.6", results[-1].detail)
+
+    def test_dependent_package_version_pin_accepts_current_sdk(self) -> None:
+        """The remote gateway package can be validated independently of install order."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            gateway = root / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+            gateway.mkdir(parents=True)
+            (gateway / "package.json").write_text(
+                '{"dependencies":{"dev.unity2foxglove.sdk":"1.9.6"}}',
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = gateway
+            results = []
+            self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
+
+        self.assertTrue(results[-1].ok)
+
+    def test_optional_package_boundaries_reject_remote_gateway_publish_sentinel(self) -> None:
+        """Preview native packages should not carry stale publish-blocker sentinel text."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            gateway = root / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+            gateway.mkdir(parents=True)
+            (gateway / "THIRD_PARTY_NOTICES.md").write_text(
+                "Before publishing this package, regenerate notices.\n",
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = gateway
+            self.validator.ROS2_RUNTIME_PACKAGES = ()
+            self.validator.UNITY_DEMO_ASSETS = root / "Assets"
+            results = []
+            self.validator.check_optional_package_boundaries(results)
+
+        self.assertFalse(results[0].ok)
+
+    def test_optional_package_boundaries_require_ros2_runtime_conflicts(self) -> None:
+        """Sibling ROS2 runtime packages share one assembly name and must declare conflicts."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            humble = root / "Packages" / "humble"
+            jazzy = root / "Packages" / "jazzy"
+            humble.mkdir(parents=True)
+            jazzy.mkdir(parents=True)
+            (humble / "package.json").write_text(
+                '{"name":"humble","unity2foxgloveConflicts":["jazzy"]}',
+                encoding="utf-8",
+            )
+            (jazzy / "package.json").write_text(
+                '{"name":"jazzy"}',
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = root / "missing"
+            self.validator.ROS2_RUNTIME_PACKAGES = (humble, jazzy)
+            self.validator.UNITY_DEMO_ASSETS = root / "Assets"
+            results = []
+            self.validator.check_optional_package_boundaries(results)
+
+        conflict_result = next(item for item in results if item.name == "ROS2 runtime package conflict metadata")
+        self.assertFalse(conflict_result.ok)
+
+    def test_optional_package_boundaries_reject_duplicate_demo_link_xml(self) -> None:
+        """The demo project should rely on the package link.xml instead of a copied asset."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            assets = root / "Assets"
+            assets.mkdir()
+            (assets / "link.xml").write_text("<linker />", encoding="utf-8")
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = root / "missing"
+            self.validator.ROS2_RUNTIME_PACKAGES = ()
+            self.validator.UNITY_DEMO_ASSETS = assets
+            results = []
+            self.validator.check_optional_package_boundaries(results)
+
+        link_result = next(item for item in results if item.name == "demo project avoids duplicate package link.xml")
+        self.assertFalse(link_result.ok)
+
     def test_third_party_notice_requirements_cover_runtime_plugin_dlls(self) -> None:
         """Runtime plugin DLLs should be gated by explicit third-party notice tokens."""
         requirement_paths = {
@@ -141,6 +239,35 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertFalse(results[-1].ok)
         self.assertIn("local Windows path", results[-1].detail)
         self.assertIn("to-do marker", results[-1].detail)
+
+    def test_manual_phase_service_guard_ignores_commented_demo(self) -> None:
+        """Commented manual smoke services remain inert and allowed."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            demo = root / "FoxRun"
+            demo.mkdir()
+            source = demo / "FoxService141DManualSmoke.cs"
+            source.write_text('//[FoxService("/phase141d/manual_dto")]\n', encoding="utf-8")
+
+            results = []
+            self.validator.check_manual_phase_service_guards(results, list(demo.rglob("*.cs")))
+
+        self.assertTrue(results[-1].ok)
+
+    def test_manual_phase_service_guard_rejects_active_demo(self) -> None:
+        """Phase-only manual services should not be accidentally committed active."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            demo = root / "FoxRun"
+            demo.mkdir()
+            source = demo / "FoxService141DManualSmoke.cs"
+            source.write_text('[FoxService("/phase141d/manual_dto")]\n', encoding="utf-8")
+
+            results = []
+            self.validator.check_manual_phase_service_guards(results, list(demo.rglob("*.cs")))
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("FoxService141DManualSmoke.cs:1", results[-1].detail)
 
     def test_validation_naming_allows_legacy_phase_files(self) -> None:
         """Existing Phase-prefixed validation files remain grandfathered."""

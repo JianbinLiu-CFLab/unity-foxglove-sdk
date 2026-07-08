@@ -13,6 +13,8 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>
     /// Shared pool for full-revolution LiDAR point snapshots that leave the main
     /// thread and are owned by background point-cloud encode requests.
+    /// Returned arrays are not cleared for performance; callers must treat the
+    /// separately supplied point count as the only valid readable range.
     /// </summary>
     internal static class VirtualLidarPointSnapshotPool
     {

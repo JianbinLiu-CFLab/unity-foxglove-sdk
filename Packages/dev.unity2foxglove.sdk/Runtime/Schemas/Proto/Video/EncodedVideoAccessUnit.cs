@@ -22,6 +22,11 @@ namespace Foxglove.Schemas.Video
         public ulong TimestampNs { get; }
     }
 
+    /// <summary>
+    /// Encoder-thread-owned input frame. Kept separate from
+    /// <see cref="EncodedVideoAccessUnit"/> so input ownership and encoded
+    /// output ownership can evolve independently.
+    /// </summary>
     internal readonly struct QueuedVideoFrame
     {
         public QueuedVideoFrame(byte[] data, ulong timestampNs)

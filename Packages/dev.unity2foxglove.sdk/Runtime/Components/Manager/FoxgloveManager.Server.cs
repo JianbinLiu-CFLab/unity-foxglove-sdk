@@ -182,6 +182,12 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
+            if (!ManagerConfigValidator.IsSupportedBindHost(_host))
+            {
+                Debug.LogError($"[Foxglove] Unsupported bind host '{_host}'. Use an IP address, localhost, 0.0.0.0, *, or ::.");
+                return false;
+            }
+
             if (_rootCaDistributorEnabled && !ManagerConfigValidator.IsValidTcpPort(_rootCaDistributorPort))
             {
                 Debug.LogError($"[Foxglove] Root CA distributor port must be between 1 and 65535. Current value: {_rootCaDistributorPort}");

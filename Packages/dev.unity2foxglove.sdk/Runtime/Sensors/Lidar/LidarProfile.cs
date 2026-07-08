@@ -40,5 +40,36 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
 
         /// <summary>Azimuth angle per ring, in radians. Same length as altitude.</summary>
         public double[] BeamAzimuthAngles;
+
+        /// <summary>Validates profile invariants before scan pattern creation.</summary>
+        public bool Validate(out string error)
+        {
+            if (PixelsPerColumn <= 0)
+            {
+                error = "LiDAR profile PixelsPerColumn must be positive.";
+                return false;
+            }
+
+            if (ColumnsPerFrame <= 0)
+            {
+                error = "LiDAR profile ColumnsPerFrame must be positive.";
+                return false;
+            }
+
+            if (BeamAltitudeAngles == null || BeamAltitudeAngles.Length != PixelsPerColumn)
+            {
+                error = "LiDAR profile BeamAltitudeAngles length must match PixelsPerColumn.";
+                return false;
+            }
+
+            if (BeamAzimuthAngles == null || BeamAzimuthAngles.Length != PixelsPerColumn)
+            {
+                error = "LiDAR profile BeamAzimuthAngles length must match PixelsPerColumn.";
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
     }
 }

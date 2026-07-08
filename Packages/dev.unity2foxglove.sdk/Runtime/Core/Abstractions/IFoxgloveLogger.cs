@@ -21,7 +21,10 @@ namespace Unity.FoxgloveSDK.Core
     /// <summary>Default logger that writes to Console.Error.</summary>
     public class ConsoleLogger : IFoxgloveLogger
     {
-        public void LogWarning(string message) => Console.Error.WriteLine($"[Foxglove][Warning] {message}");
-        public void LogError(string message) => Console.Error.WriteLine($"[Foxglove][Error] {message}");
+        private const string WarningPrefix = "[Foxglove][Warning] ";
+        private const string ErrorPrefix = "[Foxglove][Error] ";
+
+        public void LogWarning(string message) => Console.Error.WriteLine(string.Concat(WarningPrefix, message));
+        public void LogError(string message) => Console.Error.WriteLine(string.Concat(ErrorPrefix, message));
     }
 }

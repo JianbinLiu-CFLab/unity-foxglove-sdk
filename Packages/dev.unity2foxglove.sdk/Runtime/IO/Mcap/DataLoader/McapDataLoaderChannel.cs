@@ -6,7 +6,11 @@
 
 namespace Unity.FoxgloveSDK.IO
 {
-    /// <summary>Channel summary exposed by local MCAP DataLoader initialization.</summary>
+    /// <summary>
+    /// Channel summary exposed by local MCAP DataLoader initialization.
+    /// Instances are mutable DTO snapshots; callers should not mutate returned
+    /// instances before passing them to other consumers.
+    /// </summary>
     public sealed class McapDataLoaderChannel
     {
         /// <summary>MCAP channel ID.</summary>

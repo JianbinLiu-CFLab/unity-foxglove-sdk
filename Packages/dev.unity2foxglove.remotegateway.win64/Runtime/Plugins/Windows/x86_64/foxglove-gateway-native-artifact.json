@@ -9,7 +9,7 @@
   "cflags": "/MT",
   "environment": {
     "AWS_LC_SYS_PREBUILT_NASM": "1",
-    "CARGO_TARGET_DIR": "C:\\u2fg171target"
+    "CARGO_TARGET_DIR": "<build-local>"
   },
   "sha256": "53baa160a0bcb0d77132b75a74154a318ce5aba279fae0413ace7f9cd9677814",
   "sizeBytes": 40777216,

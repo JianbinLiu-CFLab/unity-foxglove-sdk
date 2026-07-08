@@ -35,9 +35,17 @@ EMPTY_RESULT_NAME_WIDTH = 0
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
+REMOTE_GATEWAY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+ROS2_RUNTIME_PACKAGES = (
+    ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+    ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+    ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+)
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
+UNITY_DEMO_SCRIPTS = ROOT / "Unity2Foxglove" / "Assets" / "Scripts"
+UNITY_DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
 
 EXPECTED_SAMPLES = {
     "Basic Visualization": "Samples~/BasicVisualization",
@@ -261,6 +269,87 @@ def check_package_identity(results: list[CheckResult], data: dict) -> None:
         add(results, f"sample path exists: {display_name}", (PACKAGE / actual_path).exists(), rel(PACKAGE / str(actual_path)))
 
 
+def check_dependent_package_versions(results: list[CheckResult], sdk_data: dict) -> None:
+    """Ensure optional repository packages depend on the current SDK package version."""
+    sdk_version = sdk_data.get("version")
+    if not isinstance(sdk_version, str) or VERSION_RE.match(sdk_version) is None:
+        add(results, "dependent package SDK version pins", False, f"invalid SDK version={sdk_version!r}")
+        return
+
+    gateway_manifest = REMOTE_GATEWAY_PACKAGE / "package.json"
+    if not gateway_manifest.exists():
+        add(results, "dependent package SDK version pins", True, "remote gateway package not present")
+        return
+
+    try:
+        gateway_data = json.loads(gateway_manifest.read_text(encoding="utf-8"))
+    except Exception as exc:
+        add(results, "dependent package SDK version pins", False, f"{rel(gateway_manifest)}: {exc}")
+        return
+
+    dependency = (
+        gateway_data.get("dependencies", {})
+        .get("dev.unity2foxglove.sdk")
+    )
+    add(
+        results,
+        "dependent package SDK version pins",
+        dependency == sdk_version,
+        f"remote gateway depends on {dependency!r}, SDK version is {sdk_version!r}",
+    )
+
+
+def check_optional_package_boundaries(results: list[CheckResult]) -> None:
+    """Validate optional package release boundaries that public package checks can see."""
+    notice_path = REMOTE_GATEWAY_PACKAGE / "THIRD_PARTY_NOTICES.md"
+    if notice_path.exists():
+        notice = notice_path.read_text(encoding="utf-8", errors="replace")
+        add(
+            results,
+            "remote gateway notice publish sentinel",
+            "Before publishing this package" not in notice,
+            rel(notice_path),
+        )
+
+    runtime_manifests = [path / "package.json" for path in ROS2_RUNTIME_PACKAGES if (path / "package.json").exists()]
+    runtime_names: list[str] = []
+    runtime_data: list[tuple[Path, dict]] = []
+    for manifest in runtime_manifests:
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except Exception as exc:
+            add(results, "ROS2 runtime package conflict metadata", False, f"{rel(manifest)}: {exc}")
+            return
+        name = data.get("name")
+        if isinstance(name, str):
+            runtime_names.append(name)
+        runtime_data.append((manifest, data))
+
+    offenders: list[str] = []
+    for manifest, data in runtime_data:
+        name = data.get("name")
+        expected = sorted(item for item in runtime_names if item != name)
+        actual = data.get("unity2foxgloveConflicts")
+        actual_conflicts = sorted(actual) if isinstance(actual, list) else []
+        if actual_conflicts != expected:
+            offenders.append(f"{rel(manifest)} expected conflicts {expected!r}")
+
+    add(
+        results,
+        "ROS2 runtime package conflict metadata",
+        not offenders,
+        "; ".join(offenders) if offenders else "all runtime packages declare sibling conflicts",
+    )
+
+    demo_link = UNITY_DEMO_ASSETS / "link.xml"
+    add(
+        results,
+        "demo project avoids duplicate package link.xml",
+        not demo_link.exists(),
+        rel(demo_link) if demo_link.exists() else "package Runtime/link.xml is authoritative",
+    )
+
+
 def check_required_files(results: list[CheckResult]) -> None:
     """Validate release-critical files that must be present in the package."""
     required = [
@@ -403,6 +492,28 @@ def check_package_build_artifacts(results: list[CheckResult], package_entries: l
     )
 
 
+def check_manual_phase_service_guards(results: list[CheckResult], demo_entries: list[Path] | None = None) -> None:
+    """Reject active phase-only FoxService demo endpoints in committed Unity project scripts."""
+    demo_entries = demo_entries if demo_entries is not None else list(UNITY_DEMO_SCRIPTS.rglob("*.cs"))
+    offenders: list[str] = []
+    for path in demo_entries:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            stripped = line.lstrip()
+            if stripped.startswith("//"):
+                continue
+            if '[FoxService("/phase141d/' in stripped:
+                offenders.append(f"{rel(path)}:{line_number}")
+    add(
+        results,
+        "manual phase FoxService demos stay disabled",
+        not offenders,
+        "; ".join(offenders[:MAX_REPORTED_OFFENDERS]) if offenders else "no active phase-only FoxService demos",
+    )
+
+
 def check_validation_naming(results: list[CheckResult], package_files: list[Path] | None = None) -> None:
     """Reject new Phase-number-prefixed runtime validation source filenames."""
     runtime_tests = PACKAGE / "Tests" / "Runtime"
@@ -513,12 +624,15 @@ def main() -> int:
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
+        check_dependent_package_versions(results, data)
+    check_optional_package_boundaries(results)
     check_required_files(results)
     check_sample_meta(results, samples_files)
     check_sample_boundaries(results)
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
     check_package_build_artifacts(results, package_entries)
+    check_manual_phase_service_guards(results)
     check_validation_naming(results, package_files)
     check_google_protobuf_collision(results)
     check_third_party_notices(results)

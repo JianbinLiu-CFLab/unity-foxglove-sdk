@@ -8,12 +8,12 @@ namespace Unity.FoxgloveSDK.IO
 {
     internal sealed class McapTrailerInfo
     {
-        public ulong FooterOffset;
-        public ulong SummaryStart;
-        public ulong SummaryOffsetStart;
-        public uint SummaryCrc;
-        public ulong DataEndOffset;
-        public ulong DataEndEndOffset;
-        public uint DataSectionCrc;
+        internal ulong FooterOffset;
+        internal ulong SummaryStart;
+        internal ulong SummaryOffsetStart;
+        internal uint SummaryCrc;
+        internal ulong DataEndOffset;
+        internal ulong DataEndEndOffset;
+        internal uint DataSectionCrc;
     }
 }

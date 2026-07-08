@@ -20,6 +20,7 @@ public sealed class Ros2BridgeSamplePointCloud : MonoBehaviour
         _points = new Transform[_pointCount];
         for (var i = 0; i < _points.Length; ++i)
         {
+            // Startup-only hierarchy names keep the sample easy to inspect in the Editor.
             var point = new GameObject("Point " + i.ToString("000"));
             point.transform.SetParent(transform, false);
             _points[i] = point.transform;
@@ -28,7 +29,7 @@ public sealed class Ros2BridgeSamplePointCloud : MonoBehaviour
 
     private void Update()
     {
-        if (_points == null || _points.Length == 0)
+        if (_points.Length == 0)
             return;
 
         var t = Time.time;

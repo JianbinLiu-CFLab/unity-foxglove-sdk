@@ -208,15 +208,14 @@ namespace Unity.FoxgloveSDK.IO
             ThrowIfLazyEnumerationActive();
             Initialize();
 
-            query = query ?? new McapDataLoaderBackfillQuery();
-            if (!QueryCanMatch(query.ChannelIds, query.Topics))
+            if (!QueryCanMatch(query?.ChannelIds, query?.Topics))
                 return Array.Empty<McapDataLoaderMessage>();
 
             var selected = _reader.ReadLatestBefore(new McapReadOptions
             {
-                EndTimeNs = query.TimeNs,
-                ChannelIds = CopyUShorts(query.ChannelIds),
-                Topics = CopyStrings(query.Topics)
+                EndTimeNs = query?.TimeNs ?? ulong.MaxValue,
+                ChannelIds = CopyUShorts(query?.ChannelIds),
+                Topics = CopyStrings(query?.Topics)
             });
             var result = new List<McapDataLoaderMessage>(selected.Count);
             for (var i = 0; i < selected.Count; i++)
@@ -750,10 +749,10 @@ namespace Unity.FoxgloveSDK.IO
                 () => ((IEnumerable<McapDecodedMessage>)Array.Empty<McapDecodedMessage>()).GetEnumerator());
 
         private static List<ushort> CopyUShorts(List<ushort> source)
-            => source == null || source.Count == 0 ? new List<ushort>(0) : new List<ushort>(source);
+            => source == null || source.Count == 0 ? null : new List<ushort>(source);
 
         private static List<string> CopyStrings(List<string> source)
-            => source == null || source.Count == 0 ? new List<string>(0) : new List<string>(source);
+            => source == null || source.Count == 0 ? null : new List<string>(source);
 
         private void BeginLazyEnumeration()
         {

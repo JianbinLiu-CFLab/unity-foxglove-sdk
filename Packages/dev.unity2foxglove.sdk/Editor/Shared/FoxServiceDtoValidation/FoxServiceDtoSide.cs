@@ -4,6 +4,8 @@
 // Module: Editor/Shared/FoxServiceDtoValidation
 // Purpose: Shared side labels for declarative FoxService DTO validation.
 
+using System;
+
 namespace Unity.FoxgloveSDK.Editor
 {
     public enum FoxServiceDtoSide
@@ -15,8 +17,11 @@ namespace Unity.FoxgloveSDK.Editor
     public static class FoxServiceDtoSideExtensions
     {
         public static string ToRuleSide(this FoxServiceDtoSide side)
-            => side == FoxServiceDtoSide.Request
-                ? FoxServiceDtoRules.RequestSide
-                : FoxServiceDtoRules.ResponseSide;
+            => side switch
+            {
+                FoxServiceDtoSide.Request => FoxServiceDtoRules.RequestSide,
+                FoxServiceDtoSide.Response => FoxServiceDtoRules.ResponseSide,
+                _ => throw new ArgumentOutOfRangeException(nameof(side), side, "Unsupported FoxService DTO side.")
+            };
     }
 }

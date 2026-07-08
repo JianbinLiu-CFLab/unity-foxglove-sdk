@@ -153,6 +153,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Additional Inspector-configured browser origins for CSWSH protection.</summary>
         [Tooltip("Additional browser origins for custom/private WebSocket clients. Full page URLs are accepted and normalized. Foxglove Desktop and non-browser clients do not send Origin and are always allowed.")]
         [SerializeField] private System.Collections.Generic.List<string> _allowedBrowserOrigins = new();
+        [Tooltip("Optional WSS certificate path. Avoid committing machine-local or private certificate paths in shared scenes.")]
         [SerializeField] private string _certificatePfxPath = "";
         [Tooltip("Optional PFX password. Prefer FOXGLOVE_CERTIFICATE_PASSWORD for credentials that must not be serialized into scenes.")]
         [SerializeField, HideInInspector] private string _certificatePassword = "";

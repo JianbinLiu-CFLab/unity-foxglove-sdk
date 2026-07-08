@@ -69,7 +69,8 @@ namespace Unity.FoxgloveSDK.IO
         public const ulong ReplayChannelIdBase = 0x80000000UL;
         /// <summary>
         /// Best-effort maximum number of messages emitted per Tick call.
-        /// Set to <c>0</c> to preserve the legacy unlimited-per-tick behavior.
+        /// Set to <c>0</c> or a negative value to preserve the legacy
+        /// unlimited-per-tick behavior.
         /// A single log-time group may exceed this soft cap so logically
         /// simultaneous scene and transform messages are not split across ticks;
         /// pathological files with very large same-timestamp groups can therefore
@@ -80,7 +81,7 @@ namespace Unity.FoxgloveSDK.IO
         public int MaxMessagesPerTick
         {
             get => _maxMessagesPerTick;
-            set => _maxMessagesPerTick = value < 0 ? 1 : value;
+            set => _maxMessagesPerTick = value < 0 ? 0 : value;
         }
 
         /// <summary>

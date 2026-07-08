@@ -8,7 +8,11 @@ using System;
 
 namespace Unity.FoxgloveSDK.IO
 {
-    /// <summary>Schema summary and raw schema payload exposed by local MCAP initialization.</summary>
+    /// <summary>
+    /// Schema summary and raw schema payload exposed by local MCAP initialization.
+    /// Instances are mutable DTO snapshots; callers should not mutate returned
+    /// instances or the <see cref="Data"/> buffer before sharing them.
+    /// </summary>
     public sealed class McapDataLoaderSchema
     {
         /// <summary>MCAP schema ID.</summary>

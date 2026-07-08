@@ -40,6 +40,22 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             Assert.Null(staticProperty);
         }
 
+        [Fact]
+        public void ResolveHandlesNullTypeWithoutThrowing()
+        {
+            var first = ReplayPropertyCache.Resolve(
+                null,
+                nameof(PropertyFixture.Value),
+                BindingFlags.Public | BindingFlags.Instance);
+            var second = ReplayPropertyCache.Resolve(
+                null,
+                nameof(PropertyFixture.Value),
+                BindingFlags.Public | BindingFlags.Instance);
+
+            Assert.Null(first);
+            Assert.Null(second);
+        }
+
         private sealed class PropertyFixture
         {
             public int Value { get; set; }

@@ -235,6 +235,12 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                 BeamAzimuthAngles = azimuth
             };
 
+            if (!profile.Validate(out error))
+            {
+                profile = null;
+                return false;
+            }
+
             return true;
         }
 

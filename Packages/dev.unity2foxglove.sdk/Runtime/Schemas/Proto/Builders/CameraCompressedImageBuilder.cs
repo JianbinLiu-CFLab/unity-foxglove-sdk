@@ -24,7 +24,7 @@ namespace Foxglove.Schemas
             {
                 Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs),
                 FrameId = frameId ?? "",
-                Data = ByteString.CopyFrom(encodedBytes ?? new byte[0]),
+                Data = ByteString.CopyFrom(encodedBytes ?? System.Array.Empty<byte>()),
                 Format = format ?? ""
             };
         }

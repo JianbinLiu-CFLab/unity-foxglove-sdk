@@ -21,7 +21,7 @@ async function runCsharp(mode: string, filePath: string): Promise<string> {
     maxBuffer: 64 * 1024 * 1024,
   });
   if (stderr.trim().length > 0) {
-    process.stderr.write(stderr);
+    throw new Error(`C# MCAP conformance runner wrote to stderr:\n${stderr}`);
   }
   return stdout;
 }
