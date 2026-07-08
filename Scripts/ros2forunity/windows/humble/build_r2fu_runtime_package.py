@@ -1066,6 +1066,59 @@ def patch_ros_time_source_contract(package: Path) -> None:
                 1,
             )
 
+        if name == "ROS2ScalableTimeSource.cs":
+            if "rosUnavailableWarningLogged" not in text:
+                text = text.replace(
+                    "  private bool timeScaleChangeLogged = false;\n",
+                    "  private bool timeScaleChangeLogged = false;\n"
+                    "  private int rosUnavailableWarningLogged = 0;\n",
+                    1,
+                )
+                text = text.replace(
+                    '      Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");\n'
+                    "      return false;\n",
+                    "      if (Interlocked.Exchange(ref rosUnavailableWarningLogged, 1) == 0)\n"
+                    "      {\n"
+                    '        Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");\n'
+                    "      }\n"
+                    "      return false;\n",
+                    1,
+                )
+            text = text.replace(
+                "      lock (mutex)\n"
+                "      {\n"
+                "        readingSecs = lastReadingSecs;\n"
+                "        if (!rosUnityTimeOffsetAcquired)\n"
+                "        {\n"
+                "          rosUnityTimeOffsetAcquired = true;\n"
+                "          rosUnityTimeOffset = GetRosNowSeconds() - readingSecs;\n"
+                "        }\n"
+                "        adjustedTime = readingSecs + rosUnityTimeOffset;\n"
+                "      }\n",
+                "      bool needsOffset;\n"
+                "      lock (mutex)\n"
+                "      {\n"
+                "        readingSecs = lastReadingSecs;\n"
+                "        needsOffset = !rosUnityTimeOffsetAcquired;\n"
+                "        adjustedTime = readingSecs + rosUnityTimeOffset;\n"
+                "      }\n"
+                "      if (needsOffset)\n"
+                "      {\n"
+                "        var rosNowSecs = GetRosNowSeconds();\n"
+                "        lock (mutex)\n"
+                "        {\n"
+                "          readingSecs = lastReadingSecs;\n"
+                "          if (!rosUnityTimeOffsetAcquired)\n"
+                "          {\n"
+                "            rosUnityTimeOffset = rosNowSecs - readingSecs;\n"
+                "            rosUnityTimeOffsetAcquired = true;\n"
+                "          }\n"
+                "          adjustedTime = readingSecs + rosUnityTimeOffset;\n"
+                "        }\n"
+                "      }\n",
+                1,
+            )
+
         if "return false;" not in text or "return true;" not in text:
             raise ValueError(f"{name} time-source bool contract patch did not apply.")
         write_text(source, text)
