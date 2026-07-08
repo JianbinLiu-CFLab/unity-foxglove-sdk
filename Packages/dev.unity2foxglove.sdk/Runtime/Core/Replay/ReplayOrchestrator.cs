@@ -4,6 +4,7 @@
 // Module: Runtime/Core/Replay
 
 using System;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -87,6 +88,11 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Attach(ReplayController replay, FoxgloveSession session)
         {
+            if (replay == null)
+                throw new ArgumentNullException(nameof(replay));
+            if (_replayForwarder != null || _replayContextForwarder != null || _replayBatchForwarder != null)
+                throw new InvalidOperationException("ReplayOrchestrator is already attached. Detach before attaching again.");
+
             replay.RegisterChannels(session);
             Action<string, byte[]> replayForwarder = SafeInvokeReplayMessage;
             Action<ReplayMessageContext> replayContextForwarder = SafeInvokeReplayMessageContext;
@@ -120,7 +126,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void SafeInvokeReplayMessage(string topic, byte[] data)
         {
-            var handlers = _replayMessageHandlers;
+            var handlers = Volatile.Read(ref _replayMessageHandlers);
             foreach (var handler in handlers)
             {
                 try { handler(topic, data); }
@@ -130,7 +136,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void SafeInvokeReplayMessageContext(ReplayMessageContext context)
         {
-            var handlers = _replayMessageContextHandlers;
+            var handlers = Volatile.Read(ref _replayMessageContextHandlers);
             foreach (var handler in handlers)
             {
                 try { handler(context); }
@@ -140,7 +146,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void SafeInvokeReplayBatchCompleted(ReplayBatchContext context)
         {
-            var handlers = _replayBatchCompletedHandlers;
+            var handlers = Volatile.Read(ref _replayBatchCompletedHandlers);
             foreach (var handler in handlers)
             {
                 try { handler(context); }

@@ -70,6 +70,8 @@ namespace Unity.FoxgloveSDK.IO
     /// <summary>Raw message plus decoded payload and any structured decode problems.</summary>
     public sealed class McapDecodedMessage
     {
+        private List<McapDecodeProblem> _problems;
+
         /// <summary>Original raw DataLoader message. This object is never modified by decoders.</summary>
         public McapDataLoaderMessage Raw;
 
@@ -77,7 +79,11 @@ namespace Unity.FoxgloveSDK.IO
         public McapDecodedPayload Payload;
 
         /// <summary>Structured diagnostics emitted while decoding this message.</summary>
-        public List<McapDecodeProblem> Problems = new List<McapDecodeProblem>();
+        public List<McapDecodeProblem> Problems
+        {
+            get => _problems ?? (_problems = new List<McapDecodeProblem>());
+            set => _problems = value;
+        }
 
         /// <summary>True when a higher-level payload was decoded without problems.</summary>
         public bool IsDecoded =>
@@ -85,7 +91,7 @@ namespace Unity.FoxgloveSDK.IO
             Payload.Kind != McapDecodedPayloadKind.Raw &&
             Payload.Kind != McapDecodedPayloadKind.Unsupported &&
             Payload.Kind != McapDecodedPayloadKind.Failed &&
-            Problems.Count == 0;
+            (_problems == null || _problems.Count == 0);
 
         /// <summary>
         /// True when a higher-level payload is available even if warnings were attached,

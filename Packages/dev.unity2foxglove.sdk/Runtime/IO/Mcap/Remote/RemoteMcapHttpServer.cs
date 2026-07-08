@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.IO
         private static readonly TimeSpan DisposeWaitTimeout = TimeSpan.FromMilliseconds(50);
 
         private readonly HttpListener _listener;
-        private readonly CancellationTokenSource _stop = new CancellationTokenSource();
+        private readonly CancellationTokenSource _stop;
         private readonly Task _loop;
         private bool _disposed;
 
@@ -47,10 +47,24 @@ namespace Unity.FoxgloveSDK.IO
                 options.DirectFileRoute);
             var router = new RemoteMcapHttpRouter(source);
 
-            _listener = new HttpListener();
-            _listener.Prefixes.Add(BaseUrl + "/");
-            _listener.Start();
-            _loop = Task.Run(() => ListenLoopAsync(router, _stop.Token));
+            var stop = new CancellationTokenSource();
+            HttpListener listener = null;
+            try
+            {
+                listener = new HttpListener();
+                listener.Prefixes.Add(BaseUrl + "/");
+                listener.Start();
+
+                _stop = stop;
+                _listener = listener;
+                _loop = Task.Run(() => ListenLoopAsync(router, _stop.Token));
+            }
+            catch
+            {
+                stop.Dispose();
+                try { listener?.Close(); } catch { /* best effort after failed start */ }
+                throw;
+            }
         }
 
         /// <summary>Options used to start this server.</summary>
@@ -68,7 +82,11 @@ namespace Unity.FoxgloveSDK.IO
             return new RemoteMcapHttpServer(options);
         }
 
-        /// <summary>Returns whether a TCP listener appears to be accepting connections at the base URL.</summary>
+        /// <summary>
+        /// Returns whether a TCP listener appears to be accepting connections at
+        /// the base URL. This synchronous probe can block for up to 500 ms; do
+        /// not call it from Unity frame-critical paths.
+        /// </summary>
         public static bool IsListening(string baseUrl)
         {
             if (string.IsNullOrEmpty(baseUrl))
@@ -81,6 +99,32 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var connect = client.ConnectAsync(uri.Host, uri.Port);
                     return connect.Wait(StartupProbeTimeout) && client.Connected;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Asynchronously probes whether a TCP listener appears to be accepting connections at the base URL.</summary>
+        public static async Task<bool> IsListeningAsync(string baseUrl, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(baseUrl))
+                return false;
+
+            try
+            {
+                var uri = new Uri(baseUrl, UriKind.Absolute);
+                using (var client = new TcpClient())
+                {
+                    var connect = client.ConnectAsync(uri.Host, uri.Port);
+                    var timeout = Task.Delay(StartupProbeTimeout, cancellationToken);
+                    if (await Task.WhenAny(connect, timeout).ConfigureAwait(false) != connect)
+                        return false;
+
+                    await connect.ConfigureAwait(false);
+                    return client.Connected;
                 }
             }
             catch

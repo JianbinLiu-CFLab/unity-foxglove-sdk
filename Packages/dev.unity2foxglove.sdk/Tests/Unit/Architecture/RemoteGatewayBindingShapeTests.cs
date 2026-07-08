@@ -114,6 +114,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("TryEnqueue", source, StringComparison.Ordinal);
             Assert.Contains("DropOldest", source, StringComparison.Ordinal);
             Assert.Contains("DroppedCount", source, StringComparison.Ordinal);
+            Assert.Contains("return !droppedOldest;", source, StringComparison.Ordinal);
             Assert.Contains("internal static RemoteGatewayEvent ConnectionStatusChanged", source, StringComparison.Ordinal);
             Assert.DoesNotContain("internal static RemoteGatewayEvent ConnectionStatus(", source, StringComparison.Ordinal);
             Assert.DoesNotContain(".Wait(", source, StringComparison.Ordinal);

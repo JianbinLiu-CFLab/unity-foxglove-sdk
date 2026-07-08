@@ -365,6 +365,19 @@ namespace Unity.FoxgloveSDK.Tests
             orchestrator.OnReplayMessageContext += onContext2;
             orchestrator.Attach(controller, null);
 
+            var doubleAttachRejected = false;
+            try
+            {
+                orchestrator.Attach(controller, null);
+            }
+            catch (InvalidOperationException)
+            {
+                doubleAttachRejected = true;
+            }
+
+            Check(doubleAttachRejected,
+                "OPT-3: orchestrator rejects double attach before overwriting subscribed delegates");
+
             controller.FireContextForTests(NewTestContext("/phase140_3/orchestrated-1"));
             Check(contexts.Count == 2 && contexts[0] == "context-1" && contexts[1] == "context-2",
                 "OPT-3: orchestrator forwards replay context to both listeners after multi-subscribe");
@@ -380,6 +393,12 @@ namespace Unity.FoxgloveSDK.Tests
             controller.FireContextForTests(NewTestContext("/phase140_3/orchestrated-3"));
             Check(contexts.Count == 0,
                 "OPT-3: orchestrator detach stops forwarding context callbacks");
+
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayOrchestrator.cs");
+            Check(source.Contains("Volatile.Read(ref _replayMessageHandlers)", StringComparison.Ordinal)
+                  && source.Contains("Volatile.Read(ref _replayMessageContextHandlers)", StringComparison.Ordinal)
+                  && source.Contains("Volatile.Read(ref _replayBatchCompletedHandlers)", StringComparison.Ordinal),
+                "OPT-3: orchestrator reads cached handler arrays with thread-visible snapshots");
         }
 
         private static void VerifyPhase173_024SessionLockBoundaries()
