@@ -18,9 +18,6 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase142Validation
     {
-        private const string SourceGeneratorPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs";
-
         private static int _passCount;
 
         /// <summary>
@@ -217,7 +214,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyConditionDiagnosticIdsReservedBy141A()
         {
-            var generatorSource = File.ReadAllText(RepoPath(SourceGeneratorPath));
+            var generatorSource = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             Check(generatorSource.Contains("\"FOXRUN015\"", StringComparison.Ordinal),
                 "142-37: FOXRUN015 condition diagnostic descriptor is present");
             Check(generatorSource.Contains("\"FOXRUN016\"", StringComparison.Ordinal),
@@ -226,7 +223,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyInventoryBackwardCompatible()
         {
-            var generatorSource = File.ReadAllText(RepoPath(SourceGeneratorPath));
+            var generatorSource = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
 
             var expected = new Dictionary<string, (string title, string severity)>
             {

@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(validator.Contains("Error(\"FOXRUN008\"", StringComparison.Ordinal),
                 "134-17-D1: invalid topic diagnostic is modeled as an error");
 
-            var sourceGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             Check(sourceGenerator.Contains("\"FOXRUN008\", \"FoxRun topic must be absolute\"", StringComparison.Ordinal)
                   && sourceGenerator.Contains("DiagnosticSeverity.Error", StringComparison.Ordinal),
                 "134-17-D2: Roslyn FOXRUN008 descriptor uses error severity");

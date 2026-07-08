@@ -199,7 +199,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "141C-18: Player fallback validates service DTOs before source emission");
             run.Check(playerValidator.Contains("FoxServiceDtoReflectionValidator", StringComparison.Ordinal),
                 "141D-13: Player fallback uses structured reflection DTO validator");
-            var generatorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generatorSource = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var reflectionValidator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxServiceDtoReflectionValidator.cs");
             run.Check(generatorSource.Contains("validatedTypes", StringComparison.Ordinal)
                   && reflectionValidator.Contains("validatedTypes", StringComparison.Ordinal),

@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxRunTypeAndPolicyHardening()
         {
             var model = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
-            var sourceGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
 
             Check(!model.Contains("var sourceType = IsArray", StringComparison.Ordinal)
                   && !model.Contains(": RawObservedTypeName;", StringComparison.Ordinal),
@@ -207,7 +207,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNestedObjectFailFast()
         {
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            var sourceGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var codeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
 
             Check(validator.Contains("Error(\"FOXRUN006\"", StringComparison.Ordinal)

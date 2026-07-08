@@ -55,7 +55,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var codegen = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
             var memberData = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunMemberData.cs");
             var scanner = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
-            var generator = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generator = TestSources.SourceGeneratorSources();
             var build = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunBuildPreprocess.cs");
             var hook = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs");
             var methodComment = TestSources.Slice(codegen, "/// Refresh canonical FoxRun manifest artifacts", "public static FoxRunCanonicalManifest GenerateManifestFilesOnly()");

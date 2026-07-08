@@ -128,7 +128,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "115E-B4: source-generator and runtime tests explicitly link shared descriptor sources");
             Check(ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs")
                       .Contains("FoxRunReflectionGenerationModelLowerer.Lower", StringComparison.Ordinal)
-                  && ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs")
+                  && PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources()
                       .Contains("FoxRunRoslynGenerationModelLowerer.Lower", StringComparison.Ordinal),
                 "115E-B5: Roslyn and build-time hosts lower into FoxRunGenerationModel before emission");
             Check(ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs")

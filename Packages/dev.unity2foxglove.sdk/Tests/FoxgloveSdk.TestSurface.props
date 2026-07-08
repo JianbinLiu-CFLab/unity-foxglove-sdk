@@ -56,8 +56,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSchema/**/*.cs" LinkBase="Shared/FoxServiceSchema" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceDtoValidation/**/*.cs" LinkBase="Shared/FoxServiceDtoValidation" />
-    <Compile Include="$(MSBuildThisFileDirectory)../Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs" Link="SourceGenerators/FoxgloveLogSourceGenerator.cs" />
-    <Compile Include="$(MSBuildThisFileDirectory)../Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs" Link="SourceGenerators/FoxRunRoslynGenerationModelLowerer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/SourceGenerators/src/**/*.cs" LinkBase="SourceGenerators" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />

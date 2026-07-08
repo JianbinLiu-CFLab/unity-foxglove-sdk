@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyGeneratedAggregationPublishPath()
         {
-            var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
 

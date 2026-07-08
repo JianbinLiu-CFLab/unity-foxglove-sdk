@@ -593,7 +593,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyFoxRunMixedPolicyDiagnostic()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var source = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             Check(source.Contains("FOXRUN005") && source.Contains("Mixed") && source.Contains("PublishMode"),
                 "51D-2: source generator reports mixed same-topic publish policy diagnostics");
         }

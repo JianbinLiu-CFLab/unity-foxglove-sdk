@@ -190,7 +190,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDiagnosticsInventory()
         {
-            var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
             var shipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
 
