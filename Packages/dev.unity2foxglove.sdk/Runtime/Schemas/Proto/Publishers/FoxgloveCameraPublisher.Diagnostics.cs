@@ -98,6 +98,8 @@ namespace Unity.FoxgloveSDK.Components
             if (profile.IsVideo)
                 EnsureVideoPublishPipeline();
 
+            WarnIfCameraHealthLimitsInvalid(profile);
+
             var videoPipeline = _videoPublishPipeline;
             var result = CameraPipelineHealthPolicy.Evaluate(new CameraPipelineHealthInput
             {
@@ -120,6 +122,25 @@ namespace Unity.FoxgloveSDK.Components
 
             _diagnostics.RecordHealthSkip(result.SkipReason);
             return false;
+        }
+
+        private void WarnIfCameraHealthLimitsInvalid(CameraVideoOutputProfile profile)
+        {
+            var invalid = _maxPendingReadbacks <= 0
+                          || (!profile.IsVideo && (_maxJpegEncodeQueue <= 0 || _maxCompletedJpegQueue <= 0))
+                          || (profile.IsVideo && _videoMaxOutputQueue <= 0);
+            if (!invalid)
+            {
+                _cameraHealthLimitWarningIssued = false;
+                return;
+            }
+
+            if (_cameraHealthLimitWarningIssued)
+                return;
+
+            _cameraHealthLimitWarningIssued = true;
+            Debug.LogWarning(
+                "[Foxglove] Camera health queue limits must be positive; using minimum value 1 for capture admission.");
         }
 
         /// <summary>

@@ -32,6 +32,7 @@ public class ROS2TimeSource : ITimeSource, IDisposable
   private readonly object clockMutex = new object();
   private ROS2.Clock clock;
   private int rosUnavailableWarningLogged = 0;
+  private int disposed = 0;
 
   /// <summary>
   /// Acquires the current ROS 2 clock value.
@@ -39,6 +40,13 @@ public class ROS2TimeSource : ITimeSource, IDisposable
   /// <returns>False when ROS 2 is not initialized or has already shut down; otherwise true.</returns>
   public bool GetTime(out int seconds, out uint nanoseconds)
   {
+    if (Volatile.Read(ref disposed) != 0)
+    {
+      seconds = 0;
+      nanoseconds = 0;
+      return false;
+    }
+
     // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.
     if (!ROS2.Ros2cs.Ok())
     {
@@ -58,6 +66,13 @@ public class ROS2TimeSource : ITimeSource, IDisposable
     double nowSeconds;
     lock (clockMutex)
     {
+      if (Volatile.Read(ref disposed) != 0)
+      {
+        seconds = 0;
+        nanoseconds = 0;
+        return false;
+      }
+
       if (clock == null)
       { // Create clock which uses system time by default (unless use_sim_time is set in ros2)
         clock = new ROS2.Clock();
@@ -74,6 +89,11 @@ public class ROS2TimeSource : ITimeSource, IDisposable
   /// </summary>
   public void Dispose()
   {
+    if (Interlocked.Exchange(ref disposed, 1) != 0)
+    {
+      return;
+    }
+
     lock (clockMutex)
     {
       if (clock != null)

@@ -112,6 +112,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private string _sensorCameraRawImageTopic = "/unity/sensor/camera/image";
 
         private bool _rawBandwidthWarningIssued;
+        private bool _cameraHealthLimitWarningIssued;
 
         private readonly CameraOutputModeRuntimeLock _outputModeRuntimeLock = new CameraOutputModeRuntimeLock();
 

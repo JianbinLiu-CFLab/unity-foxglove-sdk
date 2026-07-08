@@ -5,6 +5,7 @@
 // Purpose: SDK-style channel facade factories and channel-id publish helpers.
 
 using System;
+using System.Threading;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
@@ -119,7 +120,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ValidateChannelSessionGeneration(ulong generation)
         {
-            if (generation != _connectionState.ChannelSessionGeneration)
+            if (generation != Volatile.Read(ref _connectionState.ChannelSessionGeneration))
             {
                 throw new InvalidOperationException(
                     "Foxglove channel belongs to an old session. Re-create the channel after restarting the server.");

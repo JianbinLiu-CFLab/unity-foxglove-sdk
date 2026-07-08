@@ -19,6 +19,10 @@ namespace Unity.FoxgloveSDK.UnitTests
     [Trait("Domain", "Lidar")]
     public class LidarProfileAndPatternTests
     {
+        private const double RosetteAzimuthFrequencyRatio = 3.2;
+        private const double RosettePositiveAzimuthProbeFrequency = 7.0;
+        private const double RosettePositiveElevationProbeFrequency = 11.0;
+
         /// <summary>140-17D: Rosette positive elevation points upward in the y-up sensor frame.</summary>
         [Fact]
         public void Rosette_PositiveElevation_PointsUpInYUpSensorFrame()
@@ -29,8 +33,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             var foundPositiveElevation = false;
             for (var i = 0; i < beams; i++)
             {
-                var tau = (double)i / beams * 2.0 * Math.PI * 3.2;
-                if (Math.Sin(11.0 * tau) <= 0.9)
+                // Mirrors RosetteScanPattern's internal frequency ratios so the test probes a
+                // high-elevation beam deterministically instead of relying on a random sample.
+                var tau = (double)i / beams * 2.0 * Math.PI * RosetteAzimuthFrequencyRatio;
+                if (Math.Sin(RosettePositiveElevationProbeFrequency * tau) <= 0.9)
                     continue;
 
                 foundPositiveElevation = true;
@@ -69,8 +75,10 @@ namespace Unity.FoxgloveSDK.UnitTests
             var foundPositiveAzimuth = false;
             for (var i = 0; i < beams; i++)
             {
-                var tau = (double)i / beams * 2.0 * Math.PI * 3.2;
-                if (Math.Sin(7.0 * tau) <= 0.9)
+                // Mirrors RosetteScanPattern's azimuth probe frequency so this test fails with
+                // a meaningful direction assertion if the pattern ratios are intentionally changed.
+                var tau = (double)i / beams * 2.0 * Math.PI * RosetteAzimuthFrequencyRatio;
+                if (Math.Sin(RosettePositiveAzimuthProbeFrequency * tau) <= 0.9)
                     continue;
 
                 foundPositiveAzimuth = true;
