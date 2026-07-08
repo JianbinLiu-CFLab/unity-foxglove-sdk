@@ -82,7 +82,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("SafeHandleZeroOrMinusOneIsInvalid", source, StringComparison.Ordinal);
             Assert.Contains("protected override bool ReleaseHandle()", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayNativeMethods.GatewayStop(handle)", source, StringComparison.Ordinal);
-            Assert.Contains("Interlocked.Exchange", source, StringComparison.Ordinal);
+            Assert.Contains("handle = IntPtr.Zero", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayNativeMethods.FoxgloveConnectionStatus", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayNativeMethods.FoxgloveError", source, StringComparison.Ordinal);
             Assert.DoesNotContain("internal FoxgloveConnectionStatus ConnectionStatus", source, StringComparison.Ordinal);

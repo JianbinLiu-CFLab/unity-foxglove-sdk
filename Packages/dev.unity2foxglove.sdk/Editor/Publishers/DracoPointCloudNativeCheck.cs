@@ -6,8 +6,8 @@
 
 using System;
 using System.Runtime.InteropServices;
-using Foxglove.Schemas.PointCloud;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Schemas.PointCloud;
 
 namespace Unity.FoxgloveSDK.Editor
 {
