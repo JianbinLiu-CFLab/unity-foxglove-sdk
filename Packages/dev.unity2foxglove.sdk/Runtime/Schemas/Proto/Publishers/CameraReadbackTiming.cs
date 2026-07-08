@@ -30,7 +30,8 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            var slot = _nextSlot++ % _requestKeys.Length;
+            var slot = _nextSlot;
+            _nextSlot = (_nextSlot + 1) % _requestKeys.Length;
             _requestKeys[slot] = unixNs;
             _requestTicks[slot] = ticks;
         }

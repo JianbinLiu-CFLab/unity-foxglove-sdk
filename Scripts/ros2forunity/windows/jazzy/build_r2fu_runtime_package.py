@@ -1326,6 +1326,71 @@ def patch_ros_time_source_contract(package: Path) -> None:
         )
     write_text(dotnet_time, dotnet_text)
 
+    time_utils = time_dir / "TimeUtils.cs"
+    time_utils_text = time_utils.read_text(encoding="utf-8")
+    if "Double.IsNaN(secondsIn)" not in time_utils_text:
+        time_utils_text = time_utils_text.replace(
+            "internal static class TimeUtils\n"
+            "{\n"
+            "  public static void TimeFromTotalSeconds(in double secondsIn, out int seconds, out uint nanoseconds)\n"
+            "  {\n"
+            "    seconds = (int)Math.Floor(secondsIn);\n"
+            "    double fractionalSeconds = secondsIn - seconds;\n"
+            "    long normalizedNanoseconds = (long)Math.Floor(fractionalSeconds * 1000000000.0);\n"
+            "    if (normalizedNanoseconds >= 1000000000L)\n"
+            "    {\n"
+            "      seconds++;\n"
+            "      normalizedNanoseconds -= 1000000000L;\n"
+            "    }\n"
+            "    else if (normalizedNanoseconds < 0)\n"
+            "    {\n"
+            "      seconds--;\n"
+            "      normalizedNanoseconds += 1000000000L;\n"
+            "    }\n"
+            "    nanoseconds = (uint)normalizedNanoseconds;\n"
+            "  }\n"
+            "}\n",
+            "internal static class TimeUtils\n"
+            "{\n"
+            "  private const double NanosecondsPerSecondDouble = 1_000_000_000.0;\n"
+            "  private const long NanosecondsPerSecond = 1_000_000_000L;\n"
+            "\n"
+            "  public static void TimeFromTotalSeconds(in double secondsIn, out int seconds, out uint nanoseconds)\n"
+            "  {\n"
+            "    if (Double.IsNaN(secondsIn) || Double.IsInfinity(secondsIn))\n"
+            "    {\n"
+            "      throw new ArgumentOutOfRangeException(nameof(secondsIn), \"ROS time cannot be NaN or infinity\");\n"
+            "    }\n"
+            "\n"
+            "    double wholeSeconds = Math.Floor(secondsIn);\n"
+            "    double fractionalSeconds = secondsIn - wholeSeconds;\n"
+            "    long normalizedNanoseconds = (long)Math.Floor(fractionalSeconds * NanosecondsPerSecondDouble);\n"
+            "    if (normalizedNanoseconds >= NanosecondsPerSecond)\n"
+            "    {\n"
+            "      wholeSeconds += 1.0;\n"
+            "      normalizedNanoseconds -= NanosecondsPerSecond;\n"
+            "    }\n"
+            "    else if (normalizedNanoseconds < 0)\n"
+            "    {\n"
+            "      wholeSeconds -= 1.0;\n"
+            "      normalizedNanoseconds += NanosecondsPerSecond;\n"
+            "    }\n"
+            "\n"
+            "    if (wholeSeconds < Int32.MinValue || wholeSeconds > Int32.MaxValue)\n"
+            "    {\n"
+            "      throw new OverflowException(\"ROS time seconds exceed Int32 range\");\n"
+            "    }\n"
+            "\n"
+            "    seconds = (int)wholeSeconds;\n"
+            "    nanoseconds = (uint)normalizedNanoseconds;\n"
+            "  }\n"
+            "}\n",
+            1,
+        )
+    if "Double.IsNaN(secondsIn)" not in time_utils_text or "Int32.MaxValue" not in time_utils_text:
+        raise ValueError("TimeUtils.cs is missing hardened seconds validation guards.")
+    write_text(time_utils, time_utils_text)
+
     for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
         source = time_dir / name
         text = source.read_text(encoding="utf-8")
@@ -1351,6 +1416,66 @@ def patch_ros_time_source_contract(package: Path) -> None:
                 "  public bool GetTime(out int seconds, out uint nanoseconds)\n  {\n",
                 "  public bool GetTime(out int seconds, out uint nanoseconds)\n  {\n"
                 "    // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.\n",
+                1,
+            )
+
+        if name == "ROS2TimeSource.cs" and "private readonly object clockMutex = new object();" not in text:
+            text = text.replace(
+                "  private ROS2.Clock clock;\n",
+                "  private readonly object clockMutex = new object();\n"
+                "  private ROS2.Clock clock;\n",
+                1,
+            )
+            text = text.replace(
+                "    if (clock == null)\n"
+                "    { // Create clock which uses system time by default (unless use_sim_time is set in ros2)\n"
+                "      if (Volatile.Read(ref disposed) != 0)\n"
+                "      {\n"
+                "        seconds = 0;\n"
+                "        nanoseconds = 0;\n"
+                "        return false;\n"
+                "      }\n"
+                "      clock = new ROS2.Clock();\n"
+                "    }\n"
+                "  \n"
+                "    TimeUtils.TimeFromTotalSeconds(clock.Now.Seconds, out seconds, out nanoseconds);\n",
+                "    double nowSeconds;\n"
+                "    lock (clockMutex)\n"
+                "    {\n"
+                "      if (Volatile.Read(ref disposed) != 0)\n"
+                "      {\n"
+                "        seconds = 0;\n"
+                "        nanoseconds = 0;\n"
+                "        return false;\n"
+                "      }\n"
+                "\n"
+                "      if (clock == null)\n"
+                "      { // Create clock which uses system time by default (unless use_sim_time is set in ros2)\n"
+                "        clock = new ROS2.Clock();\n"
+                "      }\n"
+                "\n"
+                "      nowSeconds = clock.Now.Seconds;\n"
+                "    }\n"
+                "  \n"
+                "    TimeUtils.TimeFromTotalSeconds(nowSeconds, out seconds, out nanoseconds);\n",
+                1,
+            )
+            text = text.replace(
+                "    // U2F-LOCAL-PATCH: avoid native cleanup from the finalizer thread.\n"
+                "    if (clock != null)\n"
+                "    {\n"
+                "      clock.Dispose();\n"
+                "      clock = null;\n"
+                "    }\n",
+                "    // U2F-LOCAL-PATCH: avoid native cleanup from the finalizer thread.\n"
+                "    lock (clockMutex)\n"
+                "    {\n"
+                "      if (clock != null)\n"
+                "      {\n"
+                "        clock.Dispose();\n"
+                "        clock = null;\n"
+                "      }\n"
+                "    }\n",
                 1,
             )
 

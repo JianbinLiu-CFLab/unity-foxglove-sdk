@@ -795,6 +795,13 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
             "bool-returning ITimeSource contract" in source,
             relative,
         )
+        add(
+            results,
+            f"{relative} locks lazy ROS clock access",
+            "private readonly object clockMutex = new object();" in source
+            and "lock (clockMutex)" in source,
+            relative,
+        )
 
     scalable_time = read_optional_text(scripts / "Time" / "ROS2ScalableTimeSource.cs")
     add(
@@ -842,6 +849,20 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         "TimeUtils.cs",
     )
     add(results, "TimeUtils does not cast modulo directly", "(uint)(nanosec % 1e9)" not in time_utils and "(uint)(nanosec % 1000000000)" not in time_utils, "TimeUtils.cs")
+    add(
+        results,
+        "TimeUtils rejects NaN and infinity",
+        "Double.IsNaN(secondsIn)" in time_utils and "Double.IsInfinity(secondsIn)" in time_utils,
+        "TimeUtils.cs",
+    )
+    add(
+        results,
+        "TimeUtils guards Int32 seconds range",
+        "Int32.MinValue" in time_utils
+        and "Int32.MaxValue" in time_utils
+        and "ROS time seconds exceed Int32 range" in time_utils,
+        "TimeUtils.cs",
+    )
 
     sensor = read_optional_text(scripts / "Sensor.cs")
     add(results, "Sensor uses short-circuit publisher guard", "publisher != null && publishing" in sensor, "Sensor.cs")

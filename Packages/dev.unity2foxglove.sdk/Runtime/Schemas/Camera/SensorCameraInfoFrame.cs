@@ -25,6 +25,11 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
             IReadOnlyList<double> r,
             IReadOnlyList<double> p)
         {
+            if (width == 0)
+                throw new ArgumentOutOfRangeException(nameof(width), "width must be positive.");
+            if (height == 0)
+                throw new ArgumentOutOfRangeException(nameof(height), "height must be positive.");
+
             UnixNs = unixNs;
             FrameId = frameId ?? string.Empty;
             Width = width;

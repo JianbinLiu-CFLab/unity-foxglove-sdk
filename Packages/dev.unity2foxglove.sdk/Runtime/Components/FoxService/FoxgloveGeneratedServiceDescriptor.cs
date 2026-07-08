@@ -52,6 +52,12 @@ namespace Unity.FoxgloveSDK.Components
         public string ResponseSchemaName { get; }
         public string RequestSchema { get; }
         public string ResponseSchema { get; }
+
+        /// <summary>
+        /// Generated service handler. Implementations must return a non-null
+        /// response token; thrown exceptions are converted by the service dispatch
+        /// layer into structured service failures.
+        /// </summary>
         public Func<JToken, JToken> Handler { get; }
     }
 }
