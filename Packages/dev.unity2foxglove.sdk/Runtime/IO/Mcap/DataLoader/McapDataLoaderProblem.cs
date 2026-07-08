@@ -23,16 +23,16 @@ namespace Unity.FoxgloveSDK.IO
     public sealed class McapDataLoaderProblem
     {
         /// <summary>Severity assigned by the local DataLoader facade.</summary>
-        public McapDataLoaderProblemSeverity Severity;
+        public McapDataLoaderProblemSeverity Severity { get; }
 
         /// <summary>Human-readable diagnostic message.</summary>
-        public string Message;
+        public string Message { get; }
 
         /// <summary>Optional caller-facing remediation hint.</summary>
-        public string Tip;
+        public string Tip { get; }
 
         /// <summary>Stable diagnostic code for tests and UI grouping.</summary>
-        public string Code;
+        public string Code { get; }
 
         /// <summary>Creates an empty informational diagnostic.</summary>
         public McapDataLoaderProblem()

@@ -4,7 +4,6 @@
 // Module: Tests/Unit
 // Purpose: OpenH264 helper protocol timestamp behavior.
 
-using System.Collections.Concurrent;
 using System.Reflection;
 using Foxglove.Schemas.Video;
 using Xunit;
@@ -19,8 +18,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         public void EmptyAccessUnitIsRejectedWithoutConsumingTimestamp()
         {
             var sidecar = new OpenH264EncoderSidecar();
-            PendingTimestamps(sidecar).Enqueue(100UL);
-            PendingTimestamps(sidecar).Enqueue(200UL);
+            sidecar.EnqueueTimestampForTests(100UL);
+            sidecar.EnqueueTimestampForTests(200UL);
 
             Assert.Throws<System.ArgumentException>(() => sidecar.AcceptHelperAccessUnit(System.Array.Empty<byte>()));
             sidecar.AcceptHelperAccessUnit(new byte[] { 1, 2, 3 });
@@ -35,8 +34,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         public void SkipSentinelConsumesOnlySkippedTimestamp()
         {
             var sidecar = new OpenH264EncoderSidecar();
-            PendingTimestamps(sidecar).Enqueue(100UL);
-            PendingTimestamps(sidecar).Enqueue(200UL);
+            sidecar.EnqueueTimestampForTests(100UL);
+            sidecar.EnqueueTimestampForTests(200UL);
 
             sidecar.AcceptHelperSkippedAccessUnit();
             sidecar.AcceptHelperAccessUnit(new byte[] { 4, 5, 6 });
@@ -53,11 +52,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         public void FullOutputQueueConsumesDroppedTimestamp()
         {
             var sidecar = new OpenH264EncoderSidecar();
-            var pending = PendingTimestamps(sidecar);
 
             for (var i = 1; i <= 5; i++)
             {
-                pending.Enqueue((ulong)i * 100UL);
+                sidecar.EnqueueTimestampForTests((ulong)i * 100UL);
                 sidecar.AcceptHelperAccessUnit(new[] { (byte)i });
             }
 
@@ -71,7 +69,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 Assert.Equal((ulong)i * 100UL, queued.TimestampNs);
             }
 
-            pending.Enqueue(600UL);
+            sidecar.EnqueueTimestampForTests(600UL);
             sidecar.AcceptHelperAccessUnit(new byte[] { 6 });
 
             Assert.True(sidecar.TryDequeueEncodedAccessUnit(out var accessUnit));
@@ -138,13 +136,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             AssertPositiveVideoOptions(mediaFoundation);
         }
 
-        private static ConcurrentQueue<ulong> PendingTimestamps(OpenH264EncoderSidecar sidecar)
+        [Fact]
+        public void CameraVideoSidecarOptionsFactoryRoundsHalfFrameRatesAwayFromZero()
         {
-            var field = typeof(OpenH264EncoderSidecar).GetField(
-                "_encodedFrameTimestamps",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(field);
-            return (ConcurrentQueue<ulong>)field.GetValue(sidecar);
+            Assert.Equal(31, CameraVideoSidecarConfigFactory.ResolveFrameRate(30.5f));
+        }
+
+        [Fact]
+        public void OpenH264TimestampTestSeamAvoidsPrivateFieldReflection()
+        {
+            var sidecar = new OpenH264EncoderSidecar();
+
+            sidecar.EnqueueTimestampForTests(123UL);
+
+            Assert.Equal(1, sidecar.PendingTimestampCountForTests);
         }
 
         private static string QuoteArgument(string value)

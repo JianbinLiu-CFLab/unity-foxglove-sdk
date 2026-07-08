@@ -4,3 +4,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Unity.FoxgloveSDK.Sensors")]
+[assembly: InternalsVisibleTo("FoxgloveSdk.UnitTests")]

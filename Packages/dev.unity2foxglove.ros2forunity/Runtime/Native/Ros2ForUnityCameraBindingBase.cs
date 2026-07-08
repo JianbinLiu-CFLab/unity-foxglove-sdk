@@ -48,7 +48,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (Owner._ros2Unity != null && Node != null)
                 {
                     try { Owner._ros2Unity.RemoveNode(Node); }
-                    catch (Exception) { }
+                    catch (Exception ex)
+                    {
+                        RecordPublishFailure("ROS2 Camera node cleanup failed for " + Topic + ": " + ex.Message);
+                    }
                 }
 
                 Node = null;

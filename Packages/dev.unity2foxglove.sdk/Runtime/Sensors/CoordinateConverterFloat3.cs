@@ -35,7 +35,9 @@ namespace Unity.FoxgloveSDK.Sensors
                 new float4(matrix.m03, matrix.m13, matrix.m23, matrix.m33));
         }
 
-        /// <summary>Create a world-to-local matrix for a rigid Unity transform with unit scale.</summary>
+        /// <summary>
+        /// Create a world-to-local matrix for a rigid Unity transform whose scale has already been validated as unit scale.
+        /// </summary>
         public static float4x4 RigidWorldToLocal(Vector3 position, Quaternion rotation)
         {
             // Unit-scale rigid inverse: avoid building and inverting a full TRS matrix
@@ -46,6 +48,26 @@ namespace Unity.FoxgloveSDK.Sensors
                 new float3(inversePosition.x, inversePosition.y, inversePosition.z),
                 new quaternion(inverseRotation.x, inverseRotation.y, inverseRotation.z, inverseRotation.w),
                 new float3(1f, 1f, 1f));
+        }
+
+        /// <summary>Create a world-to-local matrix for a rigid Unity transform and assert that its scale is unit scale.</summary>
+        public static float4x4 RigidWorldToLocal(Transform transform)
+        {
+            if (transform == null)
+                throw new System.ArgumentNullException(nameof(transform));
+
+            UnityEngine.Debug.Assert(
+                IsUnitScale(transform.lossyScale),
+                "CoordinateConverterFloat3.RigidWorldToLocal requires a rigid transform with unit scale.");
+            return RigidWorldToLocal(transform.position, transform.rotation);
+        }
+
+        private static bool IsUnitScale(Vector3 scale)
+        {
+            const float Epsilon = 1e-4f;
+            return Mathf.Abs(scale.x - 1f) <= Epsilon
+                   && Mathf.Abs(scale.y - 1f) <= Epsilon
+                   && Mathf.Abs(scale.z - 1f) <= Epsilon;
         }
     }
 }

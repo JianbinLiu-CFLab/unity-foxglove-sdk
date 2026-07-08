@@ -47,7 +47,7 @@ namespace Foxglove.Schemas.Video
         public static int ResolveFrameRate(float effectivePublishRateHz)
         {
             if (effectivePublishRateHz > 0f && effectivePublishRateHz < MaxResolvedFrameRateExclusive)
-                return Math.Max(1, (int)Math.Round(effectivePublishRateHz, MidpointRounding.ToEven));
+                return Math.Max(1, (int)Math.Round(effectivePublishRateHz, MidpointRounding.AwayFromZero));
 
             return DefaultFrameRate;
         }
