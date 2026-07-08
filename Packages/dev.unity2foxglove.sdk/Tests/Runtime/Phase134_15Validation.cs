@@ -50,6 +50,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(Throws<ArgumentOutOfRangeException>(() => new Ros2CdrReader(new byte[] { 0x00, 0x01, 0x00, 0x00 })
                     .ReadFloat64Fixed(-1)),
                 "134-15A-2: fixed float64 arrays reject negative lengths");
+
+            var testReader = File.ReadAllText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Ros2CdrTestReader.cs");
+            var fixedReader = Slice(testReader, "public double[] ReadFloat64Fixed(int length)", "        private void Align");
+            Check(!fixedReader.Contains("Align(8);", StringComparison.Ordinal)
+                  && fixedReader.Contains("values[i] = ReadFloat64();", StringComparison.Ordinal),
+                "134-15A-3: test CDR fixed float64 reader relies on element self-alignment");
         }
 
         private static void CompressedBuildersRejectMissingRequiredPayloadFields()
@@ -207,6 +213,16 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 return ex;
             }
+        }
+
+        private static string Slice(string source, string startToken, string endToken)
+        {
+            var start = source.IndexOf(startToken, StringComparison.Ordinal);
+            if (start < 0)
+                return string.Empty;
+
+            var end = source.IndexOf(endToken, start + startToken.Length, StringComparison.Ordinal);
+            return end < 0 ? source.Substring(start) : source.Substring(start, end - start);
         }
 
         private static void Check(bool condition, string label)

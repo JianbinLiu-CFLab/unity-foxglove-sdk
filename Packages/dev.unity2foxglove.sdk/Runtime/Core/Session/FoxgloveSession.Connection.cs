@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Core
                 if (graphChanged)
                     _graph.BroadcastUpdate();
             }
-            catch (Exception ex) { _logger.LogWarning($"subscribe error: {ex.Message}"); }
+            catch (Exception ex) { _logger.LogWarning("subscribe error: " + ex); }
         }
 
         private void WarnSubscriptionBudgetRejected(uint clientId, string error)
@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.Core
                 if (graphChanged)
                     _graph.BroadcastUpdate();
             }
-            catch (Exception ex) { _logger.LogWarning($"unsubscribe error: {ex.Message}"); }
+            catch (Exception ex) { _logger.LogWarning("unsubscribe error: " + ex); }
         }
 
         // ── ConnectionGraph ──

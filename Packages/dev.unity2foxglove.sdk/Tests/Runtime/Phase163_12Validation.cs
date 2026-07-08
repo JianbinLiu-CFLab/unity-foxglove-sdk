@@ -94,7 +94,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("mode != previousMode", StringComparison.Ordinal)
                   && source.Contains("shouldSave = true;", StringComparison.Ordinal),
                 "163-12E-1: schema evidence settings save identity mode independently");
-            Check(source.Contains("TryNormalizeAssetsRoot(root, out var normalized, out var error)", StringComparison.Ordinal)
+            Check(source.Contains("TryNormalizeAssetsRootCached(root, out var normalized, out var error)", StringComparison.Ordinal)
+                  && source.Contains("private static bool TryNormalizeAssetsRootCached", StringComparison.Ordinal)
                   && source.Contains("EditorGUILayout.HelpBox(error, MessageType.Error);", StringComparison.Ordinal),
                 "163-12E-2: schema evidence settings still reject invalid evidence roots");
         }

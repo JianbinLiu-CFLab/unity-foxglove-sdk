@@ -241,6 +241,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(settings.Contains("SyncSerializedManager", StringComparison.Ordinal)
                   && settings.Contains("SyncOpenSceneManagers", StringComparison.Ordinal)
                   && settings.Contains("SyncManagersInScene", StringComparison.Ordinal)
+                  && settings.Contains("using (var serialized = new SerializedObject(manager))", StringComparison.Ordinal)
                   && settings.Contains("SaveAndSync", StringComparison.Ordinal)
                   && hook.Contains("SyncOpenSceneManagers", StringComparison.Ordinal)
                   && build.Contains("IProcessSceneWithReport", StringComparison.Ordinal)

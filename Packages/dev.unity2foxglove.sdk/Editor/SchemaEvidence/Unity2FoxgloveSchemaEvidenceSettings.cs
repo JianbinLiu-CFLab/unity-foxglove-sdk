@@ -23,6 +23,13 @@ namespace Unity.FoxgloveSDK.Editor
         [SerializeField] private SchemaIdentityMode _defaultIdentityMode = SchemaIdentityMode.Off;
         [SerializeField] private string _currentEvidenceRoot = Unity2FoxgloveSchemaEvidencePaths.DefaultCurrentEvidenceRoot;
 
+        private static string s_lastValidatedRoot;
+        private static bool s_lastRootValid;
+        private static string s_lastNormalizedRoot;
+        private static string s_lastRootError;
+        private static string s_resolvedRootCacheKey;
+        private static string s_resolvedRootCacheValue;
+
         public static SchemaIdentityMode DefaultIdentityMode
         {
             get => instance._defaultIdentityMode;
@@ -102,13 +109,15 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void SyncManager(Unity.FoxgloveSDK.Components.FoxgloveManager manager)
         {
-            var serialized = new SerializedObject(manager);
-            if (!SyncSerializedManager(serialized))
-                return;
+            using (var serialized = new SerializedObject(manager))
+            {
+                if (!SyncSerializedManager(serialized))
+                    return;
 
-            Undo.RecordObject(manager, "Sync Unity2Foxglove Schema Evidence Settings");
-            serialized.ApplyModifiedProperties();
-            EditorUtility.SetDirty(manager);
+                Undo.RecordObject(manager, "Sync Unity2Foxglove Schema Evidence Settings");
+                serialized.ApplyModifiedProperties();
+                EditorUtility.SetDirty(manager);
+            }
         }
 
         [SettingsProvider]
@@ -138,7 +147,7 @@ namespace Unity.FoxgloveSDK.Editor
                 shouldSave = true;
             }
 
-            if (!Unity2FoxgloveSchemaEvidencePaths.TryNormalizeAssetsRoot(root, out var normalized, out var error))
+            if (!TryNormalizeAssetsRootCached(root, out var normalized, out var error))
             {
                 EditorGUILayout.HelpBox(error, MessageType.Error);
             }
@@ -153,7 +162,7 @@ namespace Unity.FoxgloveSDK.Editor
                 SaveAndSync();
 
             EditorGUILayout.Space();
-            var resolvedRoot = Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot();
+            var resolvedRoot = ResolveCurrentEvidenceRootCached();
             EditorGUILayout.LabelField("Resolved Current Evidence Root", resolvedRoot);
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -177,6 +186,31 @@ namespace Unity.FoxgloveSDK.Editor
         {
             instance.Save(true);
             SyncOpenSceneManagers();
+        }
+
+        private static bool TryNormalizeAssetsRootCached(string root, out string normalized, out string error)
+        {
+            if (!string.Equals(root, s_lastValidatedRoot, System.StringComparison.Ordinal))
+            {
+                s_lastValidatedRoot = root;
+                s_lastRootValid = Unity2FoxgloveSchemaEvidencePaths.TryNormalizeAssetsRoot(root, out s_lastNormalizedRoot, out s_lastRootError);
+            }
+
+            normalized = s_lastNormalizedRoot;
+            error = s_lastRootError;
+            return s_lastRootValid;
+        }
+
+        private static string ResolveCurrentEvidenceRootCached()
+        {
+            var key = CurrentEvidenceRoot;
+            if (!string.Equals(key, s_resolvedRootCacheKey, System.StringComparison.Ordinal))
+            {
+                s_resolvedRootCacheKey = key;
+                s_resolvedRootCacheValue = Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot();
+            }
+
+            return s_resolvedRootCacheValue;
         }
     }
 }

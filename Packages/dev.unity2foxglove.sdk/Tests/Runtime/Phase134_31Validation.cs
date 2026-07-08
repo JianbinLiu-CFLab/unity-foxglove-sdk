@@ -89,6 +89,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && program.Contains("GitCommitTimeoutMs", StringComparison.Ordinal)
                   && program.Contains("startedAtUtc = DateTime.UtcNow.ToString(\"o\", CultureInfo.InvariantCulture)", StringComparison.Ordinal),
                 "134-31C-3: performance baseline shares result prefix and records true start time");
+            Check(source.Contains("from __future__ import annotations", StringComparison.Ordinal)
+                  && source.Contains("def _resolve_output(args_output: str | None) -> str:", StringComparison.Ordinal)
+                  && source.Contains("def _setup_nuget_cache() -> dict[str, str]:", StringComparison.Ordinal),
+                "134-31C-4: performance baseline defers modern type-hint evaluation for older Python runtimes");
         }
 
         private static void VerifyArchitectureAnalyzer()

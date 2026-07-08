@@ -148,6 +148,13 @@ namespace Unity.FoxgloveSDK.Tests
                         "Bounded profiler marker exists: " + marker);
                 }
             }
+
+            var pointCloud2 = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Builders/Ros2CdrSensorPointCloud2Builder.cs");
+            var serialize = ExtractMethod(pointCloud2, "public static byte[] Serialize(");
+            Check(pointCloud2.Contains("static Ros2CdrSensorPointCloud2Builder()", StringComparison.Ordinal)
+                  && pointCloud2.Contains("EnsureLittleEndianRuntime();", StringComparison.Ordinal)
+                  && !serialize.Contains("EnsureLittleEndianRuntime();", StringComparison.Ordinal),
+                "PointCloud2 CDR endian guard runs once from the static constructor");
         }
 
         private static void VerifyPhase151CManualAcceptanceShape()
@@ -168,6 +175,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && !script.Contains("BeginSample($", StringComparison.Ordinal)
                   && !script.Contains("Sample($", StringComparison.Ordinal),
                 "Phase151 manual acceptance script exposes stable Inspector state and no dynamic marker names");
+        }
+
+        private static string ExtractMethod(string source, string startToken)
+        {
+            var start = source.IndexOf(startToken, StringComparison.Ordinal);
+            if (start < 0)
+                return string.Empty;
+
+            var nextMember = source.IndexOf("\n        private static", start + startToken.Length, StringComparison.Ordinal);
+            return nextMember < 0 ? source.Substring(start) : source.Substring(start, nextMember - start);
         }
 
         private static string ReadRepoText(string relativePath)
