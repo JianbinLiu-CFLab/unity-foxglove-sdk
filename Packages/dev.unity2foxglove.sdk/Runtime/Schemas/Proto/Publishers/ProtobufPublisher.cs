@@ -18,6 +18,8 @@ namespace Foxglove.Components
     /// <typeparam name="T">Protobuf message type implementing IMessage.</typeparam>
     public abstract class ProtobufPublisher<T> : FoxglovePublisherBase where T : class, IMessage, new()
     {
+        private string _cachedSchemaName;
+
         /// <summary>Typed protobuf publishers do not emit JSON payloads.</summary>
         public override bool SupportsJsonEncoding => false;
         /// <summary>Typed protobuf publishers emit binary protobuf payloads.</summary>
@@ -34,12 +36,17 @@ namespace Foxglove.Components
         {
             get
             {
+                if (_cachedSchemaName != null)
+                    return _cachedSchemaName;
+
                 var full = typeof(T).FullName;
                 // Convert leading C# namespace segment to lowercase proto package.
                 // e.g. "Foxglove.FrameTransform" -> "foxglove.FrameTransform"
                 var dot = full.IndexOf('.');
-                if (dot < 0) return full.ToLowerInvariant();
-                return full.Substring(0, dot).ToLowerInvariant() + full.Substring(dot);
+                _cachedSchemaName = dot < 0
+                    ? full.ToLowerInvariant()
+                    : full.Substring(0, dot).ToLowerInvariant() + full.Substring(dot);
+                return _cachedSchemaName;
             }
         }
 

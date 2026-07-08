@@ -9,7 +9,7 @@
     "maxAllocatedBytesTotal": 1099511627776.0,
     "maxGen0Collections": 1000,
     "maxGen1Collections": 100,
-    "maxGen2Collections": 1000
+    "maxGen2Collections": 10
   },
   "scenarios": {
     "CameraBackpressurePolicyMicro": {
@@ -38,7 +38,7 @@
         "maxAllocatedBytesTotal": 1099511627776.0,
         "maxGen0Collections": 10000,
         "maxGen1Collections": 1000,
-        "maxGen2Collections": 1000
+        "maxGen2Collections": 50
       },
       "scenarios": {
         "CameraBackpressurePolicyMicro": {
