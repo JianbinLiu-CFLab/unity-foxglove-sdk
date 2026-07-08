@@ -32,7 +32,7 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Asset Roots | Empty | Maps asset URI prefixes to local folders. | Use when Foxglove needs to fetch file-backed assets. | Pointing to machine-specific absolute paths in shared samples. |
 | Enable Playback Control | Disabled | Enables Foxglove playback commands. | Use for replay/time-control workflows. | Expecting it to move Unity objects without a replay source. |
 | Playback Start Offset Seconds | `0` | Start time offset for playback control. | Tune when simulating a time range. | Using negative or confusing offsets without checking timeline. |
-| Playback Duration Seconds | `60` | Playback control time window. | Increase for longer manual replay sessions. | Too short a range makes seeking confusing. |
+| Playback Duration Seconds | `60` | Playback control time window. | Increase for longer manual replay sessions. | Zero, negative, non-finite, or overflowing values disable playback control with a warning. |
 
 ### 3.4 MCAP Recording
 
