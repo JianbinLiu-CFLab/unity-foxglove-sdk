@@ -506,6 +506,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && builder.Contains("AddPoint(", StringComparison.Ordinal)
                   && builder.Contains("CoordinateConverter.UnityToFoxglovePosition", StringComparison.Ordinal),
                 "138Q-12A: point-cloud transform fallback frame builder lives in a focused helper");
+            Check(builder.IndexOf("if (child == null)", StringComparison.Ordinal)
+                  < builder.IndexOf("child.gameObject.activeInHierarchy", StringComparison.Ordinal),
+                "138Q-12A2: transform fallback null-checks children before active-state access");
             Check(pointcloud.Contains("TransformPointCloudSource _transformPointCloudSource", StringComparison.Ordinal)
                   && pointcloud.Contains("_transformPointCloudSource.CreateFrameFromTransforms(", StringComparison.Ordinal)
                   && !pointcloud.Contains("private PointCloudFrame CreateFrameFromTransforms", StringComparison.Ordinal)

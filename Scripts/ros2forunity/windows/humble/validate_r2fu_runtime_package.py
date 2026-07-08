@@ -712,6 +712,12 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
         or "stopwatch.Elapsed.TotalSeconds" in dotnet_time,
         "DotnetTimeSource.cs",
     )
+    add(
+        results,
+        "DotnetTimeSource uses contributor attribution",
+        "Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors." in dotnet_time,
+        "DotnetTimeSource.cs",
+    )
 
     for relative in ("Time/ROS2TimeSource.cs", "Time/ROS2ScalableTimeSource.cs"):
         source = read_optional_text(scripts / relative)

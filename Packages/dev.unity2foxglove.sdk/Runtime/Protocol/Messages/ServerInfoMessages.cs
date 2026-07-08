@@ -70,7 +70,13 @@ namespace Unity.FoxgloveSDK.Protocol
 
                 return _rawSec + _nsecCarry;
             }
-            set => _rawSec = value;
+            set
+            {
+                if (value > ulong.MaxValue - _nsecCarry)
+                    throw new ArgumentOutOfRangeException(nameof(value), "Seconds overflow timestamp seconds.");
+
+                _rawSec = value;
+            }
         }
 
         /// <summary>Sub-second nanoseconds component. Values above one second are normalized into <see cref="Sec"/>.</summary>
