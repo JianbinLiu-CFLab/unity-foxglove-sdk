@@ -3,6 +3,7 @@
 
 using System;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.IO;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -57,6 +58,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("System.Array.Empty<byte>()", camera);
             Assert.DoesNotContain("_points == null", sample);
             Assert.Contains("input ownership and encoded", accessUnit);
+        }
+
+        [Fact]
+        public void ReplayTickBudgetTreatsNegativeValuesAsUnlimited()
+        {
+            var engine = new McapReplayEngine { MaxMessagesPerTick = -1 };
+
+            Assert.Equal(0, engine.MaxMessagesPerTick);
         }
     }
 }

@@ -88,8 +88,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(engine.MaxMessagesPerTick == 0,
                 "134-10D-1: replay tick budget preserves zero as unlimited");
             engine.MaxMessagesPerTick = -10;
-            Check(engine.MaxMessagesPerTick == 1,
-                "134-10D-2: replay tick budget still clamps negative values to one");
+            Check(engine.MaxMessagesPerTick == 0,
+                "134-10D-2: replay tick budget treats negative values as unlimited");
 
             var messages = new List<McapMessage>
             {
@@ -98,8 +98,8 @@ namespace Unity.FoxgloveSDK.Tests
             };
             Check(McapReplayEngine.CountTickResultPrefixPreservingLogTimeGroup(messages, 0) == 2,
                 "134-10D-3: replay tick cap helper treats zero as unlimited");
-            Check(McapReplayEngine.CountTickResultPrefixPreservingLogTimeGroup(messages, -1) == 1,
-                "134-10D-4: replay tick cap helper clamps negative values to one");
+            Check(McapReplayEngine.CountTickResultPrefixPreservingLogTimeGroup(messages, -1) == 2,
+                "134-10D-4: replay tick cap helper treats negative values as unlimited");
         }
 
         private static void ReplayChunkCrcPolicyUsesWithWarningByDefault()

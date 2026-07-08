@@ -163,6 +163,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool TryDecompressBZip2(string compressedPath, string outputPath, out string error)
         {
+            error = "";
             // The official Cisco asset is .bz2. We intentionally do not bundle
             // SharpZipLib or another MIT BZip2 decompressor here; if that changes,
             // update THIRD_PARTY_NOTICES before shipping.
