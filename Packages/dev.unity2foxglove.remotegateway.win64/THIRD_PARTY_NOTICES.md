@@ -20,7 +20,8 @@ Key upstream components observed in the cargo dependency closure:
 - Rustls / Reqwest / Tokio family crates: MIT, Apache-2.0, or compatible
   dual-license expressions as reported by cargo metadata
 
-Before publishing this package, regenerate the inventory from the exact native
-artifact build, resolve packages with missing cargo license metadata, and copy
-the required upstream notice text for Foxglove SDK, LiveKit/WebRTC, AWS-LC, and
-transitive crates into this file.
+Preview redistribution boundary: this package is not release-ready for native
+artifact redistribution until the inventory is regenerated from the exact build,
+packages with missing cargo license metadata are resolved, and the required
+upstream notice text for Foxglove SDK, LiveKit/WebRTC, AWS-LC, and transitive
+crates is copied into this file.

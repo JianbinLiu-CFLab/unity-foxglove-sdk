@@ -14,10 +14,10 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>Inclusive lookup timestamp in nanoseconds.</summary>
         public ulong TimeNs = ulong.MaxValue;
 
-        /// <summary>Optional channel ID filter; empty means all channels.</summary>
-        public List<ushort> ChannelIds = new List<ushort>();
+        /// <summary>Optional channel ID filter; null or empty means all channels.</summary>
+        public List<ushort> ChannelIds;
 
-        /// <summary>Optional topic filter; empty means all topics.</summary>
-        public List<string> Topics = new List<string>();
+        /// <summary>Optional topic filter; null or empty means all topics.</summary>
+        public List<string> Topics;
     }
 }

@@ -11,6 +11,9 @@ namespace Unity.FoxgloveSDK.Editor
     /// </summary>
     public static class FoxRunGenerationDescriptorConstants
     {
+        // Integer schema version embedded in descriptor JSON and recorded MCAP
+        // metadata. Bump this together with GeneratorVersion for incompatible
+        // descriptor-shape changes.
         public const int DescriptorVersion = 1;
         // Descriptor/generator format version, not the package release version.
         // Bump when descriptor JSON changes in a backward-incompatible way.

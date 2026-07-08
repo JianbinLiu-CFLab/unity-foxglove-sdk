@@ -36,10 +36,16 @@ EMPTY_RESULT_NAME_WIDTH = 0
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 REMOTE_GATEWAY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+ROS2_RUNTIME_PACKAGES = (
+    ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+    ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+    ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+)
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
 UNITY_DEMO_SCRIPTS = ROOT / "Unity2Foxglove" / "Assets" / "Scripts"
+UNITY_DEMO_ASSETS = ROOT / "Unity2Foxglove" / "Assets"
 
 EXPECTED_SAMPLES = {
     "Basic Visualization": "Samples~/BasicVisualization",
@@ -290,6 +296,57 @@ def check_dependent_package_versions(results: list[CheckResult], sdk_data: dict)
         "dependent package SDK version pins",
         dependency == sdk_version,
         f"remote gateway depends on {dependency!r}, SDK version is {sdk_version!r}",
+    )
+
+
+def check_optional_package_boundaries(results: list[CheckResult]) -> None:
+    """Validate optional package release boundaries that public package checks can see."""
+    notice_path = REMOTE_GATEWAY_PACKAGE / "THIRD_PARTY_NOTICES.md"
+    if notice_path.exists():
+        notice = notice_path.read_text(encoding="utf-8", errors="replace")
+        add(
+            results,
+            "remote gateway notice publish sentinel",
+            "Before publishing this package" not in notice,
+            rel(notice_path),
+        )
+
+    runtime_manifests = [path / "package.json" for path in ROS2_RUNTIME_PACKAGES if (path / "package.json").exists()]
+    runtime_names: list[str] = []
+    runtime_data: list[tuple[Path, dict]] = []
+    for manifest in runtime_manifests:
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except Exception as exc:
+            add(results, "ROS2 runtime package conflict metadata", False, f"{rel(manifest)}: {exc}")
+            return
+        name = data.get("name")
+        if isinstance(name, str):
+            runtime_names.append(name)
+        runtime_data.append((manifest, data))
+
+    offenders: list[str] = []
+    for manifest, data in runtime_data:
+        name = data.get("name")
+        expected = sorted(item for item in runtime_names if item != name)
+        actual = data.get("unity2foxgloveConflicts")
+        actual_conflicts = sorted(actual) if isinstance(actual, list) else []
+        if actual_conflicts != expected:
+            offenders.append(f"{rel(manifest)} expected conflicts {expected!r}")
+
+    add(
+        results,
+        "ROS2 runtime package conflict metadata",
+        not offenders,
+        "; ".join(offenders) if offenders else "all runtime packages declare sibling conflicts",
+    )
+
+    demo_link = UNITY_DEMO_ASSETS / "link.xml"
+    add(
+        results,
+        "demo project avoids duplicate package link.xml",
+        not demo_link.exists(),
+        rel(demo_link) if demo_link.exists() else "package Runtime/link.xml is authoritative",
     )
 
 
@@ -568,6 +625,7 @@ def main() -> int:
     if data:
         check_package_identity(results, data)
         check_dependent_package_versions(results, data)
+    check_optional_package_boundaries(results)
     check_required_files(results)
     check_sample_meta(results, samples_files)
     check_sample_boundaries(results)

@@ -14,7 +14,9 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     public class UnityLogger : IFoxgloveLogger
     {
-        public void LogWarning(string message) => Debug.LogWarning($"[Foxglove] {message}");
-        public void LogError(string message) => Debug.LogError($"[Foxglove] {message}");
+        private const string Prefix = "[Foxglove] ";
+
+        public void LogWarning(string message) => Debug.LogWarning(string.Concat(Prefix, message));
+        public void LogError(string message) => Debug.LogError(string.Concat(Prefix, message));
     }
 }

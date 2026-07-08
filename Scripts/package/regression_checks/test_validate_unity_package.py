@@ -120,6 +120,68 @@ class ValidatePackageTests(unittest.TestCase):
 
         self.assertTrue(results[-1].ok)
 
+    def test_optional_package_boundaries_reject_remote_gateway_publish_sentinel(self) -> None:
+        """Preview native packages should not carry stale publish-blocker sentinel text."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            gateway = root / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+            gateway.mkdir(parents=True)
+            (gateway / "THIRD_PARTY_NOTICES.md").write_text(
+                "Before publishing this package, regenerate notices.\n",
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = gateway
+            self.validator.ROS2_RUNTIME_PACKAGES = ()
+            self.validator.UNITY_DEMO_ASSETS = root / "Assets"
+            results = []
+            self.validator.check_optional_package_boundaries(results)
+
+        self.assertFalse(results[0].ok)
+
+    def test_optional_package_boundaries_require_ros2_runtime_conflicts(self) -> None:
+        """Sibling ROS2 runtime packages share one assembly name and must declare conflicts."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            humble = root / "Packages" / "humble"
+            jazzy = root / "Packages" / "jazzy"
+            humble.mkdir(parents=True)
+            jazzy.mkdir(parents=True)
+            (humble / "package.json").write_text(
+                '{"name":"humble","unity2foxgloveConflicts":["jazzy"]}',
+                encoding="utf-8",
+            )
+            (jazzy / "package.json").write_text(
+                '{"name":"jazzy"}',
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = root / "missing"
+            self.validator.ROS2_RUNTIME_PACKAGES = (humble, jazzy)
+            self.validator.UNITY_DEMO_ASSETS = root / "Assets"
+            results = []
+            self.validator.check_optional_package_boundaries(results)
+
+        conflict_result = next(item for item in results if item.name == "ROS2 runtime package conflict metadata")
+        self.assertFalse(conflict_result.ok)
+
+    def test_optional_package_boundaries_reject_duplicate_demo_link_xml(self) -> None:
+        """The demo project should rely on the package link.xml instead of a copied asset."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            assets = root / "Assets"
+            assets.mkdir()
+            (assets / "link.xml").write_text("<linker />", encoding="utf-8")
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = root / "missing"
+            self.validator.ROS2_RUNTIME_PACKAGES = ()
+            self.validator.UNITY_DEMO_ASSETS = assets
+            results = []
+            self.validator.check_optional_package_boundaries(results)
+
+        link_result = next(item for item in results if item.name == "demo project avoids duplicate package link.xml")
+        self.assertFalse(link_result.ok)
+
     def test_third_party_notice_requirements_cover_runtime_plugin_dlls(self) -> None:
         """Runtime plugin DLLs should be gated by explicit third-party notice tokens."""
         requirement_paths = {

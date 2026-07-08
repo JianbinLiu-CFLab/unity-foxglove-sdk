@@ -8,8 +8,11 @@ namespace Unity.FoxgloveSDK.Tests
 {
     internal enum ValidationCategory
     {
+        /// <summary>No Unity Editor, network, hardware, or machine-local files required.</summary>
         CiSafe,
+        /// <summary>Requires local artifacts, installed tools, generated files, or Editor/player evidence.</summary>
         LocalEvidence,
+        /// <summary>Requires human observation, interactive Unity/Foxglove use, hardware, or external apps.</summary>
         ManualSmoke
     }
 }
