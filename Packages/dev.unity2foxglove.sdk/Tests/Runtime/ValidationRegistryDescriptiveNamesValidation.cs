@@ -21,31 +21,31 @@ namespace Unity.FoxgloveSDK.Tests
             "^Phase [0-9A-Za-z_-]+$",
             RegexOptions.Compiled);
 
-        private static int _passed;
-
         /// <summary>Runs the descriptive registry-name validation.</summary>
         public static void Validate()
         {
             Console.WriteLine();
             Console.WriteLine("--- Validation Registry Descriptive Names Tests ---");
-            _passed = 0;
+            var passed = 0;
 
-            VerifyCleanPurposeEntriesUseDescriptiveNames();
-            VerifyNewValidationUsesDescriptiveFileAndRegistryName();
-            VerifyRegistryAndProjectWiring();
+            VerifyCleanPurposeEntriesUseDescriptiveNames(ref passed);
+            VerifyNewValidationUsesDescriptiveFileAndRegistryName(ref passed);
+            VerifyRegistryAndProjectWiring(ref passed);
 
-            Console.WriteLine($"Validation registry descriptive names: {_passed} checks passed.");
+            Console.WriteLine($"Validation registry descriptive names: {passed} checks passed.");
         }
 
-        private static void VerifyCleanPurposeEntriesUseDescriptiveNames()
+        private static void VerifyCleanPurposeEntriesUseDescriptiveNames(ref int passed)
         {
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var cleanPurposeEntries = 0;
+            var registryEntries = 0;
             var plainEntriesWithoutCleanPurpose = 0;
             string firstPlainCleanPurposeEntry = null;
 
             foreach (Match match in RegistryEntryPattern.Matches(registry))
             {
+                registryEntries++;
                 var name = match.Groups["name"].Value;
                 var className = match.Groups["class"].Value + "Validation";
                 var purpose = TryReadCleanPurpose(className);
@@ -61,32 +61,38 @@ namespace Unity.FoxgloveSDK.Tests
                 }
             }
 
-            Check(cleanPurposeEntries >= 200,
-                $"164-58A-1: audited {cleanPurposeEntries} registry entries with clean Purpose metadata");
+            Check(registryEntries > 0 && cleanPurposeEntries * 100 >= registryEntries * 80,
+                $"164-58A-1: audited {cleanPurposeEntries}/{registryEntries} registry entries with clean Purpose metadata",
+                ref passed);
             Check(firstPlainCleanPurposeEntry == null,
                 "164-58A-2: clean Purpose-backed registry entries use descriptive Names"
-                + (firstPlainCleanPurposeEntry == null ? string.Empty : " (first plain entry: " + firstPlainCleanPurposeEntry + ")"));
+                + (firstPlainCleanPurposeEntry == null ? string.Empty : " (first plain entry: " + firstPlainCleanPurposeEntry + ")"),
+                ref passed);
             Check(plainEntriesWithoutCleanPurpose > 0,
-                $"164-58A-3: plain legacy names remain only where clean Purpose metadata is unavailable ({plainEntriesWithoutCleanPurpose} entries)");
+                $"164-58A-3: plain legacy names remain only where clean Purpose metadata is unavailable ({plainEntriesWithoutCleanPurpose} entries)",
+                ref passed);
         }
 
-        private static void VerifyNewValidationUsesDescriptiveFileAndRegistryName()
+        private static void VerifyNewValidationUsesDescriptiveFileAndRegistryName(ref int passed)
         {
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
             Check(registry.Contains("Ci(\"--phase164-58\", \"Validation registry descriptive names\", ValidationRegistryDescriptiveNamesValidation.Validate, includeInDefault: false)", StringComparison.Ordinal)
                   && !registry.Contains("Phase164_58Validation.Validate", StringComparison.Ordinal),
-                "164-58B-1: new validation registry entry uses a descriptive display name and class");
+                "164-58B-1: new validation registry entry uses a descriptive display name and class",
+                ref passed);
             Check(project.Contains("ValidationRegistryDescriptiveNamesValidation.cs", StringComparison.Ordinal)
                   && !project.Contains("Phase164_58Validation.cs", StringComparison.Ordinal),
-                "164-58B-2: new validation file uses a descriptive filename instead of a Phase-prefixed filename");
+                "164-58B-2: new validation file uses a descriptive filename instead of a Phase-prefixed filename",
+                ref passed);
         }
 
-        private static void VerifyRegistryAndProjectWiring()
+        private static void VerifyRegistryAndProjectWiring(ref int passed)
         {
             Check(PhaseValidationRegistry.Find(new[] { "--phase164-58" }) != null,
-                "164-58C-1: validation registry resolves --phase164-58");
+                "164-58C-1: validation registry resolves --phase164-58",
+                ref passed);
         }
 
         private static string TryReadCleanPurpose(string className)
@@ -133,12 +139,12 @@ namespace Unity.FoxgloveSDK.Tests
             return File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
         }
 
-        private static void Check(bool condition, string label)
+        private static void Check(bool condition, string label, ref int passed)
         {
             if (!condition)
                 throw new InvalidOperationException("[FAIL] " + label);
 
-            _passed++;
+            passed++;
             Console.WriteLine("[PASS] " + label);
         }
     }

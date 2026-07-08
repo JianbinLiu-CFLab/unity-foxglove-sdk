@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.Editor
     internal static class Unity2FoxgloveSchemaEvidencePaths
     {
         internal const string DefaultCurrentEvidenceRoot = "Assets/Generated";
-        private static readonly string CachedProjectRoot = ResolveProjectRoot();
+        private static readonly Lazy<string> CachedProjectRoot = new Lazy<string>(ResolveProjectRoot);
         private static string _cachedEvidenceRootInput;
         private static string _cachedEvidenceRootProjectRelative;
         private static bool _cachedEvidenceRootProjectRelativeValid;
@@ -130,7 +130,7 @@ namespace Unity.FoxgloveSDK.Editor
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         }
 
-        private static string ProjectRoot => CachedProjectRoot;
+        private static string ProjectRoot => CachedProjectRoot.Value;
 
         private static string ResolveProjectRoot()
         {

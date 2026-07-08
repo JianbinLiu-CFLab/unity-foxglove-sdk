@@ -27,7 +27,8 @@ PACKAGE_PLUGIN_RELATIVE = (
 PACKAGE_PLUGIN_DIR = (
     ROOT / PACKAGE_PLUGIN_RELATIVE
 )
-APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib", "foxglove.pdb")
+APPROVED_ARTIFACTS = ("foxglove.dll", "foxglove.dll.lib")
+PDB_ARTIFACT = "foxglove.pdb"
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +48,11 @@ def parse_args() -> argparse.Namespace:
         "--copy-to-package",
         action="store_true",
         help="Copy approved artifacts and the generated manifest into the optional package plugin folder.",
+    )
+    parser.add_argument(
+        "--include-pdb",
+        action="store_true",
+        help="Also copy foxglove.pdb for local symbol debugging. Off by default because PDBs can expose build-machine paths.",
     )
     return parser.parse_args()
 
@@ -92,11 +98,25 @@ def build_environment(args: argparse.Namespace) -> dict[str, str]:
     return env
 
 
-def write_manifest(target_dir: Path, env: dict[str, str]) -> Path:
+def selected_artifacts(include_pdb: bool) -> tuple[str, ...]:
+    """Return the reviewed artifact list for this invocation."""
+    return APPROVED_ARTIFACTS + ((PDB_ARTIFACT,) if include_pdb else ())
+
+
+def write_manifest(target_dir: Path, env: dict[str, str], artifact_names: tuple[str, ...]) -> Path:
     """Write reviewed native artifact metadata into the staging directory."""
     dll = target_dir / "release" / "foxglove.dll"
     if not dll.exists():
         raise FileNotFoundError(dll)
+    artifacts = {}
+    for name in artifact_names:
+        artifact = target_dir / "release" / name
+        if not artifact.exists():
+            continue
+        artifacts[name] = {
+            "sha256": sha256(artifact),
+            "sizeBytes": artifact.stat().st_size,
+        }
 
     manifest = {
         "artifact": "foxglove.dll",
@@ -111,6 +131,7 @@ def write_manifest(target_dir: Path, env: dict[str, str]) -> Path:
         },
         "sha256": sha256(dll),
         "sizeBytes": dll.stat().st_size,
+        "artifacts": artifacts,
     }
 
     STAGING.mkdir(parents=True, exist_ok=True)
@@ -119,10 +140,10 @@ def write_manifest(target_dir: Path, env: dict[str, str]) -> Path:
     return manifest_path
 
 
-def copy_approved_artifacts(target_dir: Path, manifest_path: Path) -> None:
+def copy_approved_artifacts(target_dir: Path, manifest_path: Path, artifact_names: tuple[str, ...]) -> None:
     """Copy only the approved DLL-side artifacts into the optional package."""
     PACKAGE_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
-    for name in APPROVED_ARTIFACTS:
+    for name in artifact_names:
         source = target_dir / "release" / name
         if source.exists():
             shutil.copy2(source, PACKAGE_PLUGIN_DIR / name)
@@ -134,13 +155,14 @@ def main() -> int:
     args = parse_args()
     target_dir = Path(args.target_dir)
     env = build_environment(args)
+    artifact_names = selected_artifacts(args.include_pdb)
 
     run(["cargo", "build", "--release", "--features", "remote-access"], cwd=CRATE, env=env)
-    manifest_path = write_manifest(target_dir, env)
+    manifest_path = write_manifest(target_dir, env, artifact_names)
     print(f"Wrote {manifest_path.relative_to(ROOT)}")
 
     if args.copy_to_package:
-        copy_approved_artifacts(target_dir, manifest_path)
+        copy_approved_artifacts(target_dir, manifest_path, artifact_names)
         print(f"Copied approved artifacts to {PACKAGE_PLUGIN_DIR.relative_to(ROOT)}")
     else:
         print("Package copy skipped; pass --copy-to-package after reviewing artifacts.")

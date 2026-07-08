@@ -5,6 +5,7 @@
 // Purpose: Draco POINT_CLOUD probe encoder helper.
 
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -51,6 +52,13 @@ void WriteUint32(uint32_t value) {
 
 bool EncodePointCloud(const std::vector<float>& xyz, uint32_t point_count,
                       draco::EncoderBuffer* buffer) {
+  for (size_t i = 0; i < xyz.size(); ++i) {
+    if (!std::isfinite(xyz[i])) {
+      std::cerr << "non-finite XYZ value at float index " << i << std::endl;
+      return false;
+    }
+  }
+
   draco::PointCloud cloud;
   cloud.set_num_points(point_count);
 

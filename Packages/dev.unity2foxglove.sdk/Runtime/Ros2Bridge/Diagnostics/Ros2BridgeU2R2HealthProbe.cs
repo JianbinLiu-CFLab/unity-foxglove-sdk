@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
     /// <summary>Loopback U2R2 health probe used by the ROS2 Bridge Inspector diagnostics.</summary>
     public sealed class Ros2BridgeU2R2HealthProbe : IRos2BridgeHealthProbe
     {
+        private const string RequestIdPrefix = "u2r2-health-";
+
         public Ros2BridgeProbeResult Ping(string host, int port, int timeoutMs)
             => Ping(host, port, timeoutMs, CancellationToken.None);
 
@@ -39,7 +41,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 client.ReceiveTimeout = Math.Max(1, timeoutMs);
                 client.SendTimeout = Math.Max(1, timeoutMs);
 
-                var requestId = "phase97-" + Guid.NewGuid().ToString("N");
+                var requestId = RequestIdPrefix + Guid.NewGuid().ToString("N");
                 var request = Ros2BridgeU2R2HealthCodec.WriteHealthPing(requestId);
                 var stream = client.GetStream();
                 cancellationToken.ThrowIfCancellationRequested();
@@ -76,16 +78,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private static bool WaitOrCancel(System.Threading.Tasks.Task task, int timeoutMs, CancellationToken cancellationToken)
         {
-            var deadline = Stopwatch.StartNew();
-            while (deadline.ElapsedMilliseconds < timeoutMs)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                    cancellationToken.ThrowIfCancellationRequested();
-                if (task.Wait(Math.Min(50, timeoutMs)))
-                    return true;
-            }
-
-            return task.IsCompleted;
+            return task.Wait(timeoutMs, cancellationToken) || task.IsCompleted;
         }
 
         private static byte[] ReadU2R2Header(Stream stream, CancellationToken cancellationToken)

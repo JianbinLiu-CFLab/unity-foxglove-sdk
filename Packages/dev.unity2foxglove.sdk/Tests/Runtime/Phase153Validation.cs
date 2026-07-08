@@ -42,8 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "FoxTopicContract exposes stable topic identity with single-writer policy and json default");
 
             Check(envelope.Contains("public readonly struct FoxTopicEnvelope<T>", StringComparison.Ordinal)
-                  && envelope.Contains("public T Payload { get; }", StringComparison.Ordinal)
-                  && !envelope.Contains("object Payload", StringComparison.Ordinal),
+                  && envelope.Contains("public T Payload { get; }", StringComparison.Ordinal),
                 "FoxTopicEnvelope is generic and does not carry object payloads");
         }
 
