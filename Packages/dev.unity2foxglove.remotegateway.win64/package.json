@@ -14,7 +14,7 @@
     "win64"
   ],
   "dependencies": {
-    "dev.unity2foxglove.sdk": "1.9.4"
+    "dev.unity2foxglove.sdk": "1.9.6"
   },
   "author": {
     "name": "Unity2Foxglove"

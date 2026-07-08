@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.Schemas
         [JsonProperty("timestamp")] public FoxgloveTime Timestamp { get; set; }
         /// <summary>Frame of reference for the image.</summary>
         [JsonProperty("frame_id")] public string FrameId { get; set; }
-        /// <summary>Base64-encoded compressed image data.</summary>
+        /// <summary>Base64-encoded compressed image data. Use Convert.ToBase64String(bytes) before assigning.</summary>
         [JsonProperty("data")] public string Data { get; set; }
         /// <summary>Image format: "jpeg", "png", "webp", or "avif".</summary>
         [JsonProperty("format")] public string Format { get; set; }

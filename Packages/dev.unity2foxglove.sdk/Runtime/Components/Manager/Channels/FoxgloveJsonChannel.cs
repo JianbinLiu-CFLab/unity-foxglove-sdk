@@ -4,6 +4,8 @@
 // Module: Runtime/Components/Manager
 // Purpose: SDK-style JSON channel wrapper.
 
+using System;
+
 namespace Unity.FoxgloveSDK.Components
 {
     public sealed class FoxgloveJsonChannel
@@ -13,6 +15,9 @@ namespace Unity.FoxgloveSDK.Components
 
         internal FoxgloveJsonChannel(FoxgloveManager manager, ulong generation, uint channelId, string topic, string schemaName)
         {
+            if (manager == null)
+                throw new ArgumentNullException(nameof(manager));
+
             _manager = manager;
             _generation = generation;
             ChannelId = channelId;
@@ -26,10 +31,12 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Publish a JSON-serialized sample on this session-bound channel.</summary>
         /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
+        /// <exception cref="InvalidOperationException">Thrown when this channel belongs to an old server session.</exception>
         public void Log(object message) => Log(message, _manager.NowNs);
 
         /// <summary>Publish a JSON-serialized sample on this session-bound channel.</summary>
         /// <remarks>Call from the Unity main thread and recreate the wrapper after restarting the server.</remarks>
+        /// <exception cref="InvalidOperationException">Thrown when this channel belongs to an old server session.</exception>
         public void Log(object message, ulong timestampNs)
             => _manager.PublishJsonChannel(_generation, ChannelId, Topic, message, timestampNs);
     }

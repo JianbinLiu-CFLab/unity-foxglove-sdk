@@ -8,6 +8,7 @@ namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
     /// Thread-safe rate gate for Foxglove time broadcasts.
+    /// Safe to call concurrently; at most one caller per rate interval receives true.
     /// </summary>
     internal sealed class SessionTimeBroadcaster
     {

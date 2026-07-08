@@ -84,6 +84,42 @@ class ValidatePackageTests(unittest.TestCase):
         version_result = next(item for item in results if item.name == "package version")
         self.assertFalse(version_result.ok)
 
+    def test_dependent_package_version_pin_must_match_sdk(self) -> None:
+        """Optional packages in the repo should depend on the current SDK version."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            gateway = root / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+            gateway.mkdir(parents=True)
+            (gateway / "package.json").write_text(
+                '{"dependencies":{"dev.unity2foxglove.sdk":"1.9.5"}}',
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = gateway
+            results = []
+            self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("1.9.5", results[-1].detail)
+        self.assertIn("1.9.6", results[-1].detail)
+
+    def test_dependent_package_version_pin_accepts_current_sdk(self) -> None:
+        """The remote gateway package can be validated independently of install order."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            gateway = root / "Packages" / "dev.unity2foxglove.remotegateway.win64"
+            gateway.mkdir(parents=True)
+            (gateway / "package.json").write_text(
+                '{"dependencies":{"dev.unity2foxglove.sdk":"1.9.6"}}',
+                encoding="utf-8",
+            )
+
+            self.validator.REMOTE_GATEWAY_PACKAGE = gateway
+            results = []
+            self.validator.check_dependent_package_versions(results, {"version": "1.9.6"})
+
+        self.assertTrue(results[-1].ok)
+
     def test_third_party_notice_requirements_cover_runtime_plugin_dlls(self) -> None:
         """Runtime plugin DLLs should be gated by explicit third-party notice tokens."""
         requirement_paths = {

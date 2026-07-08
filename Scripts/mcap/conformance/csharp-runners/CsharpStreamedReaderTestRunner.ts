@@ -22,6 +22,7 @@ async function runCsharp(mode: string, filePath: string): Promise<string> {
   });
   if (stderr.trim().length > 0) {
     process.stderr.write(stderr);
+    throw new Error(`C# streamed reader runner wrote to stderr: ${stderr.trim()}`);
   }
   return stdout;
 }

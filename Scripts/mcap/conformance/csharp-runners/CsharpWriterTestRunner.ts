@@ -33,6 +33,11 @@ export default class CsharpWriterTestRunner extends WriteTestRunner {
       encoding: "buffer",
       maxBuffer: 64 * 1024 * 1024,
     });
+    const stderr = result.stderr as Buffer;
+    if (stderr.length > 0) {
+      process.stderr.write(stderr);
+      throw new Error(`C# writer runner wrote to stderr: ${stderr.toString("utf8").trim()}`);
+    }
     return new Uint8Array(result.stdout as Buffer);
   }
 }

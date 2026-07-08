@@ -35,6 +35,7 @@ EMPTY_RESULT_NAME_WIDTH = 0
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
+REMOTE_GATEWAY_PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.remotegateway.win64"
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
@@ -260,6 +261,36 @@ def check_package_identity(results: list[CheckResult], data: dict) -> None:
         actual_path = match.get("path")
         add(results, f"sample path: {display_name}", actual_path == sample_path, f"expected {sample_path!r}, got {actual_path!r}")
         add(results, f"sample path exists: {display_name}", (PACKAGE / actual_path).exists(), rel(PACKAGE / str(actual_path)))
+
+
+def check_dependent_package_versions(results: list[CheckResult], sdk_data: dict) -> None:
+    """Ensure optional repository packages depend on the current SDK package version."""
+    sdk_version = sdk_data.get("version")
+    if not isinstance(sdk_version, str) or VERSION_RE.match(sdk_version) is None:
+        add(results, "dependent package SDK version pins", False, f"invalid SDK version={sdk_version!r}")
+        return
+
+    gateway_manifest = REMOTE_GATEWAY_PACKAGE / "package.json"
+    if not gateway_manifest.exists():
+        add(results, "dependent package SDK version pins", True, "remote gateway package not present")
+        return
+
+    try:
+        gateway_data = json.loads(gateway_manifest.read_text(encoding="utf-8"))
+    except Exception as exc:
+        add(results, "dependent package SDK version pins", False, f"{rel(gateway_manifest)}: {exc}")
+        return
+
+    dependency = (
+        gateway_data.get("dependencies", {})
+        .get("dev.unity2foxglove.sdk")
+    )
+    add(
+        results,
+        "dependent package SDK version pins",
+        dependency == sdk_version,
+        f"remote gateway depends on {dependency!r}, SDK version is {sdk_version!r}",
+    )
 
 
 def check_required_files(results: list[CheckResult]) -> None:
@@ -536,6 +567,7 @@ def main() -> int:
     data = load_package_json(results)
     if data:
         check_package_identity(results, data)
+        check_dependent_package_versions(results, data)
     check_required_files(results)
     check_sample_meta(results, samples_files)
     check_sample_boundaries(results)

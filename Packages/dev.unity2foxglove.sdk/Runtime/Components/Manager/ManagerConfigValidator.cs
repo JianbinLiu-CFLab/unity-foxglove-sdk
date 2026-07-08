@@ -25,5 +25,18 @@ namespace Unity.FoxgloveSDK.Components
 
         internal static int ClampAtLeastOne(int value)
             => value < 1 ? 1 : value;
+
+        internal static bool IsSupportedBindHost(string host)
+        {
+            try
+            {
+                Unity.FoxgloveSDK.Transport.TransportHostResolver.ResolveBindAddress(host);
+                return true;
+            }
+            catch (System.FormatException)
+            {
+                return false;
+            }
+        }
     }
 }
