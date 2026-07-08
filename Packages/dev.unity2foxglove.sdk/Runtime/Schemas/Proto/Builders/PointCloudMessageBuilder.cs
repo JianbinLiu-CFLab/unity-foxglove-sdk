@@ -68,7 +68,10 @@ namespace Foxglove.Schemas
             return new PointCloudBuildResult(json, proto, packed.Data);
         }
 
-        /// <summary>Create a JSON PointCloud DTO.</summary>
+        /// <summary>
+        /// Create a JSON PointCloud DTO. If both JSON and protobuf forms are needed,
+        /// call <see cref="Build(PointCloudFrame)"/> to share one packed-data scan.
+        /// </summary>
         public static PointCloudMessage CreateJson(PointCloudFrame frame)
         {
             if (frame == null)
@@ -104,7 +107,11 @@ namespace Foxglove.Schemas
             }
         }
 
-        /// <summary>Create an official protobuf PointCloud message.</summary>
+        /// <summary>
+        /// Create an official protobuf PointCloud message. If both JSON and protobuf
+        /// forms are needed, call <see cref="Build(PointCloudFrame)"/> to share one
+        /// packed-data scan.
+        /// </summary>
         public static Foxglove.PointCloud CreateProtobuf(PointCloudFrame frame)
         {
             if (frame == null)

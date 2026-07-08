@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.Core
     /// Context interface that decouples FoxgloveSession from FoxgloveRuntime.
     /// Exposes playback control, replay, and asset root state needed by
     /// session-level protocol handlers.
+    /// Implementations are queried from transport threads and must keep these
+    /// members Unity-API-free and internally synchronized.
     /// </summary>
     public interface IRuntimeContext
     {

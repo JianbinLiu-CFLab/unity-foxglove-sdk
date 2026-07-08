@@ -210,6 +210,27 @@ namespace Unity.FoxgloveSDK.Core
                 return playbackClock.ToState(didSeek, requestId);
         }
 
+        /// <summary>Read whether playback is enabled under the playback-control lock.</summary>
+        public bool IsPlaybackEnabled(PlaybackClock playbackClock)
+        {
+            lock (_playbackControlLock)
+                return playbackClock.PlaybackEnabled;
+        }
+
+        /// <summary>Read the playback range start under the playback-control lock.</summary>
+        public ulong GetPlaybackStartNs(PlaybackClock playbackClock)
+        {
+            lock (_playbackControlLock)
+                return playbackClock.StartNs;
+        }
+
+        /// <summary>Read the playback range end under the playback-control lock.</summary>
+        public ulong GetPlaybackEndNs(PlaybackClock playbackClock)
+        {
+            lock (_playbackControlLock)
+                return playbackClock.EndNs;
+        }
+
         /// <summary>
         /// Seek the replay controller to the given timestamp, queueing both a
         /// scene snapshot and a panel snapshot.

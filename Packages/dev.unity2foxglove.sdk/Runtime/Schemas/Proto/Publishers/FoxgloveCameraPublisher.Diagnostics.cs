@@ -98,6 +98,7 @@ namespace Unity.FoxgloveSDK.Components
             if (profile.IsVideo)
                 EnsureVideoPublishPipeline();
 
+            var videoPipeline = _videoPublishPipeline;
             var result = CameraPipelineHealthPolicy.Evaluate(new CameraPipelineHealthInput
             {
                 Mode = _cameraHealthMode,
@@ -107,8 +108,8 @@ namespace Unity.FoxgloveSDK.Components
                 MaxEncodeQueueDepth = profile.IsVideo ? 1 : _maxJpegEncodeQueue,
                 CompletedQueueDepth = profile.IsVideo ? 0 : _jpegPublishPipeline.CompletedQueueDepth,
                 MaxCompletedQueueDepth = profile.IsVideo ? 1 : _maxCompletedJpegQueue,
-                VideoOutputQueueDepth = profile.IsVideo ? _videoPublishPipeline.OutputQueueDepth : 0,
-                MaxVideoOutputQueueDepth = profile.IsVideo ? _videoPublishPipeline.MaxOutputQueue : 1,
+                VideoOutputQueueDepth = profile.IsVideo ? videoPipeline?.OutputQueueDepth ?? 0 : 0,
+                MaxVideoOutputQueueDepth = profile.IsVideo ? videoPipeline?.MaxOutputQueue ?? 1 : 1,
                 Width = _width,
                 Height = _height,
                 MaxPixelsPerFrame = _maxPixelsPerFrame,

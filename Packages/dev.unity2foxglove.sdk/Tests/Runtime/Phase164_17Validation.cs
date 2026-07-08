@@ -42,9 +42,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && prepare.Contains("PointCloudQoS.BuildUniformSampleIndices(pointCount, pointBudget, _uniformSampleIndices);", StringComparison.Ordinal)
                   && prepare.Contains("PointCloudQoS.BuildUniformSampleIndices(_voxelSampleIndices.Count, pointBudget, _uniformSampleIndices);", StringComparison.Ordinal),
                 "164-17B-2: QoS reducer reuses uniform sample index storage");
-            Check(prepare.Contains("copy.Points.Capacity = Math.Min(pointCount, pointBudget);", StringComparison.Ordinal)
-                  && prepare.Contains("copy.Points.Capacity = Math.Min(_voxelSampleIndices.Count, pointBudget);", StringComparison.Ordinal),
-                "164-17B-3: QoS reducer pre-sizes copied point lists");
+            Check(prepare.Contains("copy.Points.Capacity = Math.Min(_voxelSampleIndices.Count, pointBudget);", StringComparison.Ordinal)
+                  && prepare.Contains("copy.Points.Capacity = Math.Min(pointCount, pointBudget);", StringComparison.Ordinal)
+                  && prepare.Contains("copy.Points.Capacity = count;", StringComparison.Ordinal)
+                  && !prepare.Contains("copy.Points.Capacity = Math.Min(pointCount, pointBudget);\r\n\r\n            if (useVoxelGrid)", StringComparison.Ordinal)
+                  && !prepare.Contains("copy.Points.Capacity = Math.Min(pointCount, pointBudget);\n\n            if (useVoxelGrid)", StringComparison.Ordinal),
+                "164-17B-3: QoS reducer pre-sizes copied point lists after the final sampling path is known");
             Check(prepare.Contains("packedLayout = sourceLayout;", StringComparison.Ordinal)
                   && !prepare.Contains("packedLayout = PointCloudPackedDataBuilder.BuildLayout(copy);", StringComparison.Ordinal),
                 "164-17B-4: QoS reducer reuses the source layout for sampled copies");

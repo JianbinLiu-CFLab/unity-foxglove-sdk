@@ -215,6 +215,8 @@ Den Cube im Play Mode bewegen oder rotieren. Im Foxglove 3D panel sollte sich de
 
 ## 10. Nächste Schritte
 
+Hinweis: Die folgenden vertiefenden Seiten sind derzeit nur auf Englisch verfuegbar.
+
 - Für Panels und Layouts siehe [Foxglove Desktop Operation (English)](../en/04_Foxglove_Desktop_Operation.md).
 - Für ein minimales Package Sample siehe [Basic Visualization (English)](../en/05_Verifying_Basic_Visualization.md).
 - Für Component-Felder siehe [Inspector Reference (English)](../en/12_Inspector_Reference.md).

@@ -15,6 +15,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
     [Trait("Domain", "Architecture")]
     public sealed class GeneratedProtoScriptMetaTests
     {
+        private const int ExpectedGeneratedProtoScriptMetaCount = 47;
+
         [Fact]
         public void GeneratedProtoScriptsHaveUnityMonoImporterMetas()
         {
@@ -23,13 +25,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToArray();
 
-            Assert.True(metas.Length >= 47, "Expected descriptor and generated message script metas.");
+            Assert.Equal(ExpectedGeneratedProtoScriptMetaCount, metas.Length);
             foreach (var metaPath in metas)
             {
-                var meta = File.ReadAllText(metaPath);
+                var meta = Text(Relative(metaPath));
                 Assert.True(HasValidUnityGuid(meta), Relative(metaPath) + " should have a valid Unity GUID.");
                 Assert.Contains("MonoImporter:", meta, StringComparison.Ordinal);
                 Assert.True(meta.EndsWith("\n", StringComparison.Ordinal), Relative(metaPath) + " should end with a newline for Unity YAML import.");
+            }
+        }
+
+        [Fact]
+        public void ReviewedRuntimeAndDemoScriptsHaveUnityMonoImporterMetas()
+        {
+            var metas = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs.meta",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs.meta",
+                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemaRegistry.cs.meta",
+                "Unity2Foxglove/Assets/Editor/FoxgloveBuild.cs.meta"
+            };
+
+            foreach (var metaPath in metas)
+            {
+                var meta = Text(metaPath);
+                Assert.True(HasValidUnityGuid(meta), metaPath + " should have a valid Unity GUID.");
+                Assert.Contains("MonoImporter:", meta, StringComparison.Ordinal);
             }
         }
 
@@ -110,7 +131,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
 
         private static string Text(string relativePath)
-            => File.ReadAllText(PathOf(relativePath));
+        {
+            var path = PathOf(relativePath);
+            Assert.True(File.Exists(path), relativePath + " not found.");
+            return File.ReadAllText(path);
+        }
 
         private static string Relative(string absolutePath)
             => Path.GetRelativePath(RepoRoot, absolutePath).Replace(Path.DirectorySeparatorChar, '/');

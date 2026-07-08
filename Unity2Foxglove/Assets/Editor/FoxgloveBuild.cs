@@ -3,7 +3,7 @@
 //
 // Module: Demo/Editor
 // Purpose: Unity menu item and batchmode entry point for IL2CPP builds
-// of the demo project. Invoked by Scripts/build_unity_il2cpp.py.
+// of the demo project. Invoked by Scripts/unity_build/unity_il2cpp.py.
 
 using System.IO;
 using UnityEditor;
@@ -144,9 +144,11 @@ public static class FoxgloveBuild
 
     private static void ValidateScenesExist(string[] scenes)
     {
+        var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
         foreach (var scene in scenes)
         {
-            if (!File.Exists(scene))
+            var scenePath = Path.GetFullPath(Path.Combine(projectRoot, scene));
+            if (!File.Exists(scenePath))
                 throw new FileNotFoundException("Missing Unity build scene: " + scene, scene);
         }
     }

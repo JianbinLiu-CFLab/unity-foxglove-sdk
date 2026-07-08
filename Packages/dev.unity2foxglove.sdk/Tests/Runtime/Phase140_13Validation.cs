@@ -56,9 +56,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemaRegistry.cs");
 
-            Check(source.Contains("ordered.Add(fileName);", StringComparison.Ordinal)
+            Check(source.Contains("ordered.Add(frame.FileName);", StringComparison.Ordinal)
+                  && source.Contains("var stack = new Stack<DependencyFrame>();", StringComparison.Ordinal)
                   && !source.Contains("neededFiles.OrderBy", StringComparison.Ordinal),
-                "140-13B-1: protobuf descriptor subsets keep deterministic dependency-first ordering");
+                "140-13B-1: protobuf descriptor subsets keep deterministic dependency-first ordering with explicit DFS stack");
         }
 
         private static void LegacyVideoRenderTextureIsDestroyed()
@@ -75,7 +76,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("_sampleTimestampOrder", StringComparison.Ordinal)
                   && source.Contains("EvictOldestSampleTimestamp", StringComparison.Ordinal)
-                  && source.Contains("_sampleTimestampOrder.Enqueue(sampleTime)", StringComparison.Ordinal),
+                  && source.Contains("_sampleTimestampNodesByTime", StringComparison.Ordinal)
+                  && source.Contains("_sampleTimestampOrder.AddLast(sampleTime)", StringComparison.Ordinal)
+                  && source.Contains("_sampleTimestampOrder.RemoveFirst()", StringComparison.Ordinal),
                 "140-13D-1: Media Foundation timestamp map evicts oldest samples instead of bulk clearing");
         }
 
@@ -122,11 +125,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/PointCloud/PointCloudPackedDataBuilder.cs");
             var pack = SourceBetween(source, "private static byte[] Pack", "internal static uint TimeOffsetSecondsToNanoseconds");
+            var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Builders/PointCloudMessageBuilder.cs");
 
             Check(pack.Contains("new byte[capacity]", StringComparison.Ordinal)
-                  && pack.Contains("new MemoryStream(data, 0, data.Length, true, true)", StringComparison.Ordinal)
+                  && pack.Contains("new MemoryStream(data, 0, capacity, true, true)", StringComparison.Ordinal)
                   && !pack.Contains("ToArray()", StringComparison.Ordinal),
                 "140-13H-2: point-cloud packed data writes into its final byte array without MemoryStream copy");
+            Check(builder.Contains("call <see cref=\"Build(PointCloudFrame)\"/> to share one", StringComparison.Ordinal)
+                  && builder.Contains("packed-data scan", StringComparison.Ordinal),
+                "140-13H-2B: point-cloud single-format helpers document the shared-build path");
         }
 
         private static void LaserScanProtobufAvoidsListMaterialization()

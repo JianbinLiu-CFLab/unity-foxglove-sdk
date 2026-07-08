@@ -57,8 +57,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && renderIndex >= 0
                   && healthIndex > rateIndex
                   && healthIndex < renderIndex
-                  && diagnostics.Contains("CameraPipelineHealthPolicy.Evaluate", StringComparison.Ordinal),
-                "172-2: shared camera health admission runs after cadence and before Camera.Render");
+                  && diagnostics.Contains("CameraPipelineHealthPolicy.Evaluate", StringComparison.Ordinal)
+                  && diagnostics.Contains("var videoPipeline = _videoPublishPipeline;", StringComparison.Ordinal)
+                  && diagnostics.Contains("videoPipeline?.OutputQueueDepth ?? 0", StringComparison.Ordinal)
+                  && diagnostics.Contains("videoPipeline?.MaxOutputQueue ?? 1", StringComparison.Ordinal),
+                "172-2: shared camera health admission runs after cadence and before Camera.Render with null-safe video pressure reads");
 
             Check(publisher.Contains("private CameraPipelineHealthMode _cameraHealthMode = CameraPipelineHealthMode.Balanced;", StringComparison.Ordinal),
                 "172-3: camera health mode defaults to balanced");

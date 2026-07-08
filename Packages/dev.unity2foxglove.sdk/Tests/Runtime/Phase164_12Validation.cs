@@ -36,11 +36,12 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Registry/ProtobufSchemaRegistry.cs");
             var registerAll = PhaseValidationSourceHelpers.SourceMethod(source, "public void RegisterAll");
 
-            Check(registerAll.Contains("RawContent = kv.Value", StringComparison.Ordinal)
+            Check(registerAll.Contains("RawContent = kv.Value.Bytes", StringComparison.Ordinal)
+                  && registerAll.Contains("Content = kv.Value.Base64", StringComparison.Ordinal)
                   && !registerAll.Contains("RawContent = (byte[])kv.Value.Clone()", StringComparison.Ordinal),
-                "164-12B-1: RegisterAll lets DefaultSchemaRegistry perform the single defensive RawContent clone");
+                "164-12B-1: RegisterAll lets DefaultSchemaRegistry perform the single defensive RawContent clone while reusing cached base64");
             Check(source.Contains("public byte[] GetFileDescriptorSet(string schemaName)", StringComparison.Ordinal)
-                  && source.Contains("(byte[])bytes.Clone()", StringComparison.Ordinal),
+                  && source.Contains("(byte[])entry.Bytes.Clone()", StringComparison.Ordinal),
                 "164-12B-2: public descriptor lookup keeps ownership-safe byte[] clone semantics");
         }
 
