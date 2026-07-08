@@ -62,9 +62,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void Update()
         {
-            if (_manager == null)
-                ResolveManager();
-            if (_manager == null) return;
+            if (!EnsureManagerAvailable()) return;
             if (!_publishOnEnable) return;
             if (_manager.Runtime?.ReplayEnabled == true) return;
 

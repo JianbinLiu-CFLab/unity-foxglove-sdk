@@ -33,7 +33,7 @@
     },
     {
       "displayName": "Virtual LiDAR Maze Demo",
-      "description": "Drop Phase138MazeDemoBootstrap onto an empty GameObject and press Play. Procedurally builds a maze and a WASD-driven vehicle with a Virtual LiDAR streaming to Foxglove via /unity/point_cloud.",
+      "description": "Procedurally builds a maze and a WASD-driven vehicle with a Virtual LiDAR streaming to Foxglove via /unity/point_cloud.",
       "path": "Samples~/Virtual LiDAR Maze Demo"
     }
   ]

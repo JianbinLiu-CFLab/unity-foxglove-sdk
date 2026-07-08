@@ -24,7 +24,7 @@ namespace Foxglove.Schemas
     /// </summary>
     public class ProtobufSchemaRegistry
     {
-        private readonly Dictionary<string, byte[]> _descriptors = new();
+        private readonly Dictionary<string, DescriptorEntry> _descriptors = new();
         private readonly ISchemaRegistry _schemaRegistry;
 
         /// <summary>Schema encoding identifier for protobuf FileDescriptorSet channel schema bytes.</summary>
@@ -59,7 +59,7 @@ namespace Foxglove.Schemas
         /// </summary>
         public byte[] GetFileDescriptorSet(string schemaName)
         {
-            return _descriptors.TryGetValue(schemaName, out var bytes) ? (byte[])bytes.Clone() : null;
+            return _descriptors.TryGetValue(schemaName, out var entry) ? (byte[])entry.Bytes.Clone() : null;
         }
 
         /// <summary>
@@ -74,8 +74,8 @@ namespace Foxglove.Schemas
                 {
                     Name = kv.Key,
                     Encoding = SchemaEncoding,
-                    Content = Convert.ToBase64String(kv.Value),
-                    RawContent = kv.Value
+                    Content = kv.Value.Base64,
+                    RawContent = kv.Value.Bytes
                 });
             }
         }
@@ -92,12 +92,14 @@ namespace Foxglove.Schemas
 
         // Helpers
 
-        private static byte[] ReadAllBytes(Stream stream)
+        private static byte[] ReadAllBytes(Stream fileDescriptorSetStream)
         {
-            if (stream is MemoryStream ms)
+            if (fileDescriptorSetStream == null)
+                throw new ArgumentNullException(nameof(fileDescriptorSetStream));
+            if (fileDescriptorSetStream is MemoryStream ms)
                 return ms.ToArray();
             using var mem = new MemoryStream();
-            stream.CopyTo(mem);
+            fileDescriptorSetStream.CopyTo(mem);
             return mem.ToArray();
         }
 
@@ -142,7 +144,7 @@ namespace Foxglove.Schemas
                     var fullName = string.IsNullOrEmpty(file.Package)
                         ? msg.Name
                         : $"{file.Package}.{msg.Name}";
-                    _descriptors[fullName] = subsetBytes;
+                    _descriptors[fullName] = new DescriptorEntry(subsetBytes);
                 }
             }
         }
@@ -152,18 +154,52 @@ namespace Foxglove.Schemas
             HashSet<string> visited,
             List<string> ordered)
         {
-            if (!visited.Add(fileName))
-                return;
+            var stack = new Stack<DependencyFrame>();
+            stack.Push(new DependencyFrame(fileName, postOrder: false));
 
-            if (!fileMap.TryGetValue(fileName, out var file))
-                return;
-
-            foreach (var dep in file.Dependency)
+            while (stack.Count > 0)
             {
-                CollectDependencies(dep, fileMap, visited, ordered);
+                var frame = stack.Pop();
+                if (frame.PostOrder)
+                {
+                    ordered.Add(frame.FileName);
+                    continue;
+                }
+
+                if (!visited.Add(frame.FileName))
+                    continue;
+
+                if (!fileMap.TryGetValue(frame.FileName, out var file))
+                    continue;
+
+                stack.Push(new DependencyFrame(frame.FileName, postOrder: true));
+                for (var i = file.Dependency.Count - 1; i >= 0; i--)
+                    stack.Push(new DependencyFrame(file.Dependency[i], postOrder: false));
+            }
+        }
+
+        private sealed class DescriptorEntry
+        {
+            public DescriptorEntry(byte[] bytes)
+            {
+                Bytes = bytes ?? throw new ArgumentNullException(nameof(bytes));
+                Base64 = Convert.ToBase64String(bytes);
             }
 
-            ordered.Add(fileName);
+            public byte[] Bytes { get; }
+            public string Base64 { get; }
+        }
+
+        private readonly struct DependencyFrame
+        {
+            public DependencyFrame(string fileName, bool postOrder)
+            {
+                FileName = fileName;
+                PostOrder = postOrder;
+            }
+
+            public string FileName { get; }
+            public bool PostOrder { get; }
         }
     }
 }

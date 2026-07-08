@@ -29,21 +29,20 @@ namespace Unity.FoxgloveSDK.Tests
             var resolveProperty = PhaseValidationSourceHelpers.SourceMethod(source, "private static PropertyInfo ResolveProperty");
             var resolveMethods = PhaseValidationSourceHelpers.SourceMethod(source, "private static MethodInfo[] ResolveMethods");
 
-            Check(source.Contains("private static readonly Dictionary<string, Type> MonoSecurityTypeCache", StringComparison.Ordinal)
-                  && source.Contains("private static readonly Dictionary<string, PropertyInfo> PropertyCache", StringComparison.Ordinal)
-                  && source.Contains("private static readonly Dictionary<string, MethodInfo[]> MethodCache", StringComparison.Ordinal),
+            Check(source.Contains("private static readonly ConcurrentDictionary<string, Type> MonoSecurityTypeCache", StringComparison.Ordinal)
+                  && source.Contains("private static readonly ConcurrentDictionary<string, PropertyInfo> PropertyCache", StringComparison.Ordinal)
+                  && source.Contains("private static readonly ConcurrentDictionary<string, MethodInfo[]> MethodCache", StringComparison.Ordinal),
                 "164-26A-1: local certificate generator owns bounded static caches for Mono.Security reflection lookups");
-            Check(requireType.Contains("MonoSecurityTypeCache.TryGetValue(fullName, out var cachedType)", StringComparison.Ordinal)
-                  && requireType.Contains("MonoSecurityTypeCache[fullName] = type;", StringComparison.Ordinal),
+            Check(requireType.Contains("MonoSecurityTypeCache.GetOrAdd(fullName, ResolveMonoSecurityType)", StringComparison.Ordinal),
                 "164-26A-2: Mono.Security type lookup is cached after the first assembly scan");
             Check(invoke.Contains("ResolveMethods(type, name, BindingFlags.Public | BindingFlags.Instance)", StringComparison.Ordinal)
                   && invokeStatic.Contains("ResolveMethods(type, name, BindingFlags.Public | BindingFlags.Static)", StringComparison.Ordinal)
-                  && resolveMethods.Contains("MethodCache.TryGetValue(key, out var cached)", StringComparison.Ordinal)
+                  && resolveMethods.Contains("MethodCache.GetOrAdd(key", StringComparison.Ordinal)
                   && !invoke.Contains("GetMethods()", StringComparison.Ordinal)
                   && !invokeStatic.Contains("GetMethods", StringComparison.Ordinal),
                 "164-26A-3: certificate invocation helpers reuse cached method candidate lists");
-            Check(resolveProperty.Contains("PropertyCache.TryGetValue(key, out var cached)", StringComparison.Ordinal)
-                  && resolveProperty.Contains("PropertyCache[key] = property;", StringComparison.Ordinal),
+            Check(resolveProperty.Contains("PropertyCache.GetOrAdd(key", StringComparison.Ordinal)
+                  && resolveProperty.Contains("type.GetProperty(name)", StringComparison.Ordinal),
                 "164-26A-4: certificate property reflection lookups are cached");
         }
 
@@ -51,17 +50,17 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var selection = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
             var guard = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
-            var onPlayMode = PhaseValidationSourceHelpers.SourceMethod(guard, "private static void OnPlayModeStateChanged");
+            var onExitingEditMode = PhaseValidationSourceHelpers.SourceMethod(guard, "private static void OnExitingEditMode");
 
             Check(selection.Contains("public static bool IsEditorRestartRequired(Ros2ForUnityRuntimeSelectionStatus status)", StringComparison.Ordinal)
                   && selection.Contains("public static void BindActiveRuntimeForPlayMode(Ros2ForUnityRuntimeSelectionStatus status)", StringComparison.Ordinal),
                 "164-26B-1: R2FU runtime selection exposes status-snapshot overloads for restart and play binding checks");
-            Check(onPlayMode.Contains("var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);", StringComparison.Ordinal)
-                  && onPlayMode.Contains("GetRuntimePackageRequiringEditorRestart(status)", StringComparison.Ordinal)
-                  && onPlayMode.Contains("GetCommunicationModeRequiringEditorRestart(status)", StringComparison.Ordinal)
-                  && onPlayMode.Contains("BindActiveRuntimeForPlayMode(status)", StringComparison.Ordinal)
-                  && !onPlayMode.Contains("GetRuntimePackageRequiringEditorRestart(projectDirectory)", StringComparison.Ordinal)
-                  && !onPlayMode.Contains("GetCommunicationModeRequiringEditorRestart(projectDirectory)", StringComparison.Ordinal),
+            Check(onExitingEditMode.Contains("var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);", StringComparison.Ordinal)
+                  && onExitingEditMode.Contains("GetRuntimePackageRequiringEditorRestart(status)", StringComparison.Ordinal)
+                  && onExitingEditMode.Contains("GetCommunicationModeRequiringEditorRestart(status)", StringComparison.Ordinal)
+                  && onExitingEditMode.Contains("BindActiveRuntimeForPlayMode(status)", StringComparison.Ordinal)
+                  && !onExitingEditMode.Contains("GetRuntimePackageRequiringEditorRestart(projectDirectory)", StringComparison.Ordinal)
+                  && !onExitingEditMode.Contains("GetCommunicationModeRequiringEditorRestart(projectDirectory)", StringComparison.Ordinal),
                 "164-26B-2: R2FU Play Mode guard performs one package status scan per ExitingEditMode callback");
         }
 
@@ -77,6 +76,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-26C-1: schema evidence path normalization is cached and explicitly invalidated");
             Check(settings.Contains("Unity2FoxgloveSchemaEvidencePaths.InvalidateCurrentEvidenceRootCache();", StringComparison.Ordinal),
                 "164-26C-2: schema evidence settings invalidate path cache when the configured root changes");
+            Check(settings.Contains("TryNormalizeAssetsRootCached(root", StringComparison.Ordinal)
+                  && settings.Contains("ResolveCurrentEvidenceRootCached()", StringComparison.Ordinal),
+                "164-26C-2B: schema evidence settings cache repaint-time normalization and resolved root labels");
             Check(syncOpen.Contains("for (var i = 0; i < SceneManager.sceneCount; i++)", StringComparison.Ordinal)
                   && syncOpen.Contains("SyncManagersInScene(SceneManager.GetSceneAt(i));", StringComparison.Ordinal)
                   && !settings.Contains("Resources.FindObjectsOfTypeAll", StringComparison.Ordinal),

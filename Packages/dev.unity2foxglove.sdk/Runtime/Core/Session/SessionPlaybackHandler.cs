@@ -103,11 +103,14 @@ namespace Unity.FoxgloveSDK.Core
                 if (request.HasSeek)
                     FoxgloveReplayTrace.ResetBudget();
 
-                if (FoxgloveReplayTrace.TryEvent(
-                    "CONTROL",
-                    $"client={request.ClientId} command={request.Command} speed={request.Speed} hasSeek={request.HasSeek} seek={request.SeekNs} requestId={request.RequestId}",
-                    out var controlTrace))
-                    _logger.LogWarning(controlTrace);
+                if (FoxgloveReplayTrace.Enabled)
+                {
+                    if (FoxgloveReplayTrace.TryEvent(
+                        "CONTROL",
+                        $"client={request.ClientId} command={request.Command} speed={request.Speed} hasSeek={request.HasSeek} seek={request.SeekNs} requestId={request.RequestId}",
+                        out var controlTrace))
+                        _logger.LogWarning(controlTrace);
+                }
 
                 var state = runtime.ApplyPlaybackControl(
                     request.Command, request.Speed, request.HasSeek, request.SeekNs, request.RequestId);
@@ -115,11 +118,14 @@ namespace Unity.FoxgloveSDK.Core
                     _clearQueuedDataAfterSeek();
 
                 SendPlaybackState(request.ClientId, state);
-                if (FoxgloveReplayTrace.TryEvent(
-                    "STATE",
-                    $"targetClient={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
-                    out var stateTrace))
-                    _logger.LogWarning(stateTrace);
+                if (FoxgloveReplayTrace.Enabled)
+                {
+                    if (FoxgloveReplayTrace.TryEvent(
+                        "STATE",
+                        $"targetClient={request.ClientId} status={state.Status} time={state.CurrentTimeNs} speed={state.Speed} didSeek={state.DidSeek} requestId={state.RequestId}",
+                        out var stateTrace))
+                        _logger.LogWarning(stateTrace);
+                }
             }
         }
 

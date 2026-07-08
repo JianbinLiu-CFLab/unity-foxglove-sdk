@@ -23,6 +23,9 @@ namespace Unity.FoxgloveSDK.Tests
             var clientPublish = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionClientPublishHandler.cs");
             var graph = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionGraphHandler.cs");
             var playback = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs");
+            var runtimeContext = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/IRuntimeContext.cs");
+            var runtime = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var tickCoordinator = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             var services = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Services.cs");
             var timeBroadcaster = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionTimeBroadcaster.cs");
             var status = Read(root, "Packages/dev.unity2foxglove.sdk/Runtime/Protocol/Messages/StatusMessages.cs");
@@ -50,6 +53,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && playback.Contains("SendPlaybackState(request.ClientId, request.DisabledFallbackState)", StringComparison.Ordinal)
                   && phase54.Contains("FoxgloveSession.MaxPendingPlaybackControls + 5", StringComparison.Ordinal),
                 "163-3F: playback queue overflow reconciles dropped requests with targeted state responses");
+            Check(playback.Contains("if (FoxgloveReplayTrace.Enabled)", StringComparison.Ordinal)
+                  && playback.IndexOf("if (FoxgloveReplayTrace.Enabled)", StringComparison.Ordinal)
+                  < playback.IndexOf("$\"client={request.ClientId}", StringComparison.Ordinal),
+                "163-3F-1: playback trace strings are gated before interpolation");
+            Check(runtimeContext.Contains("queried from transport threads", StringComparison.Ordinal)
+                  && runtime.Contains("PlaybackEnabled => _tickCoordinator.IsPlaybackEnabled(_playbackClock)", StringComparison.Ordinal)
+                  && runtime.Contains("GetPlaybackStartNs() => _tickCoordinator.GetPlaybackStartNs(_playbackClock)", StringComparison.Ordinal)
+                  && runtime.Contains("GetPlaybackEndNs() => _tickCoordinator.GetPlaybackEndNs(_playbackClock)", StringComparison.Ordinal)
+                  && tickCoordinator.Contains("public bool IsPlaybackEnabled(PlaybackClock playbackClock)", StringComparison.Ordinal)
+                  && tickCoordinator.Contains("lock (_playbackControlLock)", StringComparison.Ordinal),
+                "163-3F-2: runtime playback state reads are documented and synchronized for transport-thread use");
             Check(session.Contains("TryDecodeClientMessageData(data, out var chId, out var payload)", StringComparison.Ordinal)
                   && connection.Contains("HandleClientBinaryPublish(uint clientId, uint channelId, byte[] payload)", StringComparison.Ordinal)
                   && clientPublish.Contains("public void RouteBinary(uint clientId, uint chId, byte[] payload)", StringComparison.Ordinal)
@@ -73,7 +87,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(registry.Contains("Ci(\"--phase163-3\", \"Phase 163-3: phase163-3 review regression checks for session protocol and client routing\", Phase163_3Validation.Validate", StringComparison.Ordinal),
                 "163-3L: PhaseValidationRegistry wires --phase163-3");
 
-            Console.WriteLine("Phase 163-3: 12 checks passed.");
+            Console.WriteLine("Phase 163-3: 14 checks passed.");
             Console.WriteLine();
         }
 

@@ -30,6 +30,11 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
         private const byte PointFieldFloat32 = 7;
         private const byte PointFieldFloat64 = 8;
 
+        static Ros2CdrSensorPointCloud2Builder()
+        {
+            EnsureLittleEndianRuntime();
+        }
+
         /// <summary>Serialize a managed point-cloud frame as an unorganized PointCloud2 payload.</summary>
         public static byte[] Serialize(PointCloudFrame frame)
         {
@@ -94,7 +99,6 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
             fields ??= Array.Empty<PointCloudPackedField>();
             data ??= Array.Empty<byte>();
             ValidateLayout(height, width, pointStep, data);
-            EnsureLittleEndianRuntime();
 
             FoxgloveProfiler.Global.BeginSample("CdrBuild.PointCloud2");
             try

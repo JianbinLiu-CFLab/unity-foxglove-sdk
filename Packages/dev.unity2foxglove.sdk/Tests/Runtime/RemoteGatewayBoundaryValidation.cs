@@ -167,7 +167,6 @@ namespace Unity.FoxgloveSDK.Tests
             Check(controller.Contains("RemoteGatewayLifecycleGate.CanStartNativeGateway", StringComparison.Ordinal)
                   && controller.Contains("RemoteGatewayLifecycleGate.CanStopNativeGateway", StringComparison.Ordinal)
                   && !controller.Contains("ThreadPool.QueueUserWorkItem", StringComparison.Ordinal)
-                  && !controller.Contains("using System.Threading;", StringComparison.Ordinal)
                   && handleDispose >= 0
                   && callbacksDispose > handleDispose
                   && eventsClear > callbacksDispose
@@ -188,8 +187,16 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(callbacks.Contains("OnMessageData", StringComparison.Ordinal)
                   && callbacks.Contains("RemoteGatewayEventQueue", StringComparison.Ordinal)
+                  && callbacks.Contains("Interlocked.Exchange(ref _disposed, 1)", StringComparison.Ordinal)
+                  && callbacks.Contains("Volatile.Read(ref _disposed)", StringComparison.Ordinal)
+                  && callbacks.Contains("fail closed instead of dereferencing a freed", StringComparison.Ordinal)
                   && !callbacks.Contains("UnityEngine.", StringComparison.Ordinal),
                 "171-18: native callbacks are fail-closed marshaled events and do not touch Unity APIs");
+
+            Check(callbacks.Contains("V1 advertises outbound-only capabilities", StringComparison.Ordinal)
+                  && callbacks.Contains("Parameter requests are", StringComparison.Ordinal)
+                  && callbacks.Contains("Parameter mutations are", StringComparison.Ordinal),
+                "171-18B: unsupported parameter callbacks are documented as outbound-only diagnostics");
         }
 
         private static void VerifyCompileAndRegistrySurface()

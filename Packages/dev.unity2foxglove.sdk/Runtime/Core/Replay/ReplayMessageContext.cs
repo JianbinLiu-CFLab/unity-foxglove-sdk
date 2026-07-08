@@ -8,6 +8,7 @@ namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>
     /// Immutable source context for one replayed MCAP message.
+    /// Payload references are shared across replay handlers and must be treated as read-only.
     /// </summary>
     public readonly struct ReplayMessageContext
     {
@@ -19,6 +20,7 @@ namespace Unity.FoxgloveSDK.Core
         public readonly ulong LogTimeNs;
         public readonly ulong ReplayStartTimeNs;
         public readonly ulong ReplaySessionId;
+        /// <summary>Replayed payload bytes. Treat as read-only; do not mutate this array.</summary>
         public readonly byte[] Payload;
 
         public ReplayMessageContext(

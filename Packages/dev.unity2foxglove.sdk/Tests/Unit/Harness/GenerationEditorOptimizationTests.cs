@@ -336,8 +336,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("private static string ProjectRoot => CachedProjectRoot;", paths, StringComparison.Ordinal);
             Assert.DoesNotContain("Application.dataPath", projectRoot, StringComparison.Ordinal);
             Assert.DoesNotContain("Directory.GetParent", projectRoot, StringComparison.Ordinal);
-            Assert.Contains("var resolvedRoot = Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot();", drawSettings, StringComparison.Ordinal);
-            Assert.Equal(1, TestSources.Count(drawSettings, "ResolveCurrentEvidenceRoot()"));
+            Assert.Contains("var resolvedRoot = ResolveCurrentEvidenceRootCached();", drawSettings, StringComparison.Ordinal);
+            Assert.Contains("TryNormalizeAssetsRootCached(root", drawSettings, StringComparison.Ordinal);
+            Assert.Contains("private static string s_resolvedRootCacheKey;", settings, StringComparison.Ordinal);
+            Assert.Contains("private static bool TryNormalizeAssetsRootCached", settings, StringComparison.Ordinal);
+            Assert.Equal(1, TestSources.Count(settings, "Unity2FoxgloveSchemaEvidencePaths.ResolveCurrentEvidenceRoot()"));
             Assert.Contains("Directory.CreateDirectory(resolvedRoot)", drawSettings, StringComparison.Ordinal);
             Assert.Contains("EditorUtility.RevealInFinder(resolvedRoot)", drawSettings, StringComparison.Ordinal);
         }

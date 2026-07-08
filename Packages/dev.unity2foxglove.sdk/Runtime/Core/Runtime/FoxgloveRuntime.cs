@@ -538,11 +538,11 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Enable the playback clock range from start to end nanoseconds.</summary>
         public void EnablePlaybackControl(ulong startNs, ulong endNs) => _playbackClock.EnableRange(startNs, endNs);
         /// <summary>Whether playback control is enabled.</summary>
-        public bool PlaybackEnabled => _playbackClock.PlaybackEnabled;
+        public bool PlaybackEnabled => _tickCoordinator.IsPlaybackEnabled(_playbackClock);
         /// <summary>Get the playback start time in nanoseconds.</summary>
-        public ulong GetPlaybackStartNs() => _playbackClock.StartNs;
+        public ulong GetPlaybackStartNs() => _tickCoordinator.GetPlaybackStartNs(_playbackClock);
         /// <summary>Get the playback end time in nanoseconds.</summary>
-        public ulong GetPlaybackEndNs() => _playbackClock.EndNs;
+        public ulong GetPlaybackEndNs() => _tickCoordinator.GetPlaybackEndNs(_playbackClock);
 
         /// <summary>Apply a playback command to the clock.</summary>
         public void ApplyPlaybackCommand(byte cmd, float speed, bool hasSeek, ulong seekNs)

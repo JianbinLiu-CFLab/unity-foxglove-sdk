@@ -15,6 +15,8 @@ Usage:
   python Scripts/performance/run_baseline.py --quick --output build/performance/
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os

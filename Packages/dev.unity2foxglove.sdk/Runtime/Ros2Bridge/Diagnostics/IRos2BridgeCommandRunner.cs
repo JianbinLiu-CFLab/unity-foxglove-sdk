@@ -79,6 +79,17 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
             var stdout = new StringBuilder();
             var stderr = new StringBuilder();
+            if (!ProcessLaunchSupported)
+            {
+                return new Ros2BridgeCommandResult(
+                    -1,
+                    string.Empty,
+                    string.Empty,
+                    timedOut: false,
+                    error: "Process-based ROS2 bridge diagnostics are only supported in the Unity Editor or desktop standalone players.",
+                    durationMs: stopwatch.ElapsedMilliseconds);
+            }
+
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
@@ -114,7 +125,6 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                     {
                         process.Kill();
                         process.WaitForExit(Math.Max(1, timeoutMs));
-                        process.WaitForExit();
                     }
                     catch
                     {
@@ -173,5 +183,11 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
             return process.HasExited;
         }
+
+#if UNITY_EDITOR || UNITY_STANDALONE_WIN || UNITY_STANDALONE_LINUX || UNITY_STANDALONE_OSX || !UNITY_5_3_OR_NEWER
+        private static bool ProcessLaunchSupported => true;
+#else
+        private static bool ProcessLaunchSupported => false;
+#endif
     }
 }

@@ -43,10 +43,12 @@ namespace Unity.FoxgloveSDK.Editor
                 return "FoxRunSource";
 
             var sb = new StringBuilder(value.Length + 1);
+            // File stems are not C# identifiers, so leading digits remain valid
+            // and intentionally differ from SanitizeIdentifier's underscore prefix.
             foreach (var ch in value)
                 sb.Append(IsIdentifierPart(ch) ? ch : '_');
 
-            return sb.Length == 0 ? "FoxRunSource" : sb.ToString();
+            return sb.ToString();
         }
 
         /// <summary>

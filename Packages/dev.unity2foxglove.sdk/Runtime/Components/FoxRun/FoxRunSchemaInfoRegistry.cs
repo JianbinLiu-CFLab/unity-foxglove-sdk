@@ -133,13 +133,19 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (Sync)
             {
-                if (!GeneratedSchemaCache.TryGetValue(key, out var schema))
-                {
-                    schema = FoxRunJsonSchemaBuilder.Build(contract);
-                    GeneratedSchemaCache[key] = schema;
-                }
+                if (GeneratedSchemaCache.TryGetValue(key, out var schema))
+                    return schema;
+            }
 
-                return schema;
+            var built = FoxRunJsonSchemaBuilder.Build(contract);
+
+            lock (Sync)
+            {
+                if (GeneratedSchemaCache.TryGetValue(key, out var schema))
+                    return schema;
+
+                GeneratedSchemaCache[key] = built;
+                return built;
             }
         }
 

@@ -189,6 +189,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-5C-2: schema registry test clear hook is no longer public runtime API");
             Check(!RuntimeOrEditorCodeCallsClearForTests(),
                 "134-5C-3: no runtime/editor code depends on the internal schema registry test clear hook");
+            var getOrBuild = Slice(registry, "private static string GetOrBuildGeneratedSchema", "        private static bool IsGeneratedAggregateContract");
+            Check(getOrBuild.Contains("var built = FoxRunJsonSchemaBuilder.Build(contract);", StringComparison.Ordinal)
+                  && getOrBuild.IndexOf("var built = FoxRunJsonSchemaBuilder.Build(contract);", StringComparison.Ordinal)
+                  > getOrBuild.IndexOf("lock (Sync)", StringComparison.Ordinal)
+                  && getOrBuild.Contains("GeneratedSchemaCache[key] = built", StringComparison.Ordinal),
+                "134-5C-3B: generated schema JSON is built outside the registry lock");
 
             var first = CreateManifest("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
             var same = CreateManifest(first.GlobalManifestHash);

@@ -30,6 +30,14 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private double _cyOverride;
         [SerializeField] private string _distortionModel = "plumb_bob";
 
+        private const double MainCameraResolveRetrySeconds = 1.0;
+        private static readonly double[] NoDistortion = Array.Empty<double>();
+        private readonly double[] _k = new double[9];
+        private readonly double[] _r = new double[9];
+        private readonly double[] _p = new double[12];
+        private Camera _cachedMainCamera;
+        private double _nextMainCameraResolveTime;
+
         protected override string SchemaName => FoxgloveSchemaDefinitions.CameraCalibrationSchemaName;
         public override bool SupportsProtobufEncoding => true;
         public override bool SupportsRos2Encoding => true;
@@ -38,6 +46,19 @@ namespace Unity.FoxgloveSDK.Components
         private void Awake()
         {
             if (string.IsNullOrEmpty(_topic)) _topic = "/unity/camera/calibration";
+        }
+
+        protected override void OnEnable()
+        {
+            base.OnEnable();
+            _cachedMainCamera = _sourceCamera != null ? _sourceCamera : Camera.main;
+            _nextMainCameraResolveTime = Time.realtimeSinceStartupAsDouble + MainCameraResolveRetrySeconds;
+        }
+
+        protected override void OnDisable()
+        {
+            base.OnDisable();
+            _cachedMainCamera = null;
         }
 
         private void Update()
@@ -110,7 +131,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private CameraCalibrationMessage BuildCalibration(ulong unixNs)
         {
-            var cam = _autoFromCamera ? (_sourceCamera != null ? _sourceCamera : Camera.main) : null;
+            var cam = ResolveSourceCamera();
             var width = _widthOverride != 0 ? _widthOverride : ResolveWidth(cam);
             var height = _heightOverride != 0 ? _heightOverride : ResolveHeight(cam);
 
@@ -126,16 +147,74 @@ namespace Unity.FoxgloveSDK.Components
             cx = _cxOverride != 0 ? _cxOverride : cx;
             cy = _cyOverride != 0 ? _cyOverride : cy;
 
+            WriteMatrices(fx, fy, cx, cy);
+
             return CameraCalibrationMessageBuilder.CreateJson(
                 unixNs,
                 SanitizeFrameId(_frameId, "camera"),
                 width,
                 height,
                 _distortionModel,
-                Array.Empty<double>(),
-                new[] { fx, 0, cx, 0, fy, cy, 0, 0, 1 },
-                new[] { 1.0, 0, 0, 0, 1, 0, 0, 0, 1 },
-                new[] { fx, 0, cx, 0, 0, fy, cy, 0, 0, 0, 1, 0 });
+                NoDistortion,
+                _k,
+                _r,
+                _p);
+        }
+
+        private Camera ResolveSourceCamera()
+        {
+            if (!_autoFromCamera)
+                return null;
+
+            if (_sourceCamera != null)
+                return _sourceCamera;
+
+            if (_cachedMainCamera != null)
+                return _cachedMainCamera;
+
+            var now = Time.realtimeSinceStartupAsDouble;
+            if (now < _nextMainCameraResolveTime)
+                return null;
+
+            _cachedMainCamera = Camera.main;
+            _nextMainCameraResolveTime = now + MainCameraResolveRetrySeconds;
+            return _cachedMainCamera;
+        }
+
+        private void WriteMatrices(double fx, double fy, double cx, double cy)
+        {
+            _k[0] = fx;
+            _k[1] = 0;
+            _k[2] = cx;
+            _k[3] = 0;
+            _k[4] = fy;
+            _k[5] = cy;
+            _k[6] = 0;
+            _k[7] = 0;
+            _k[8] = 1;
+
+            _r[0] = 1.0;
+            _r[1] = 0;
+            _r[2] = 0;
+            _r[3] = 0;
+            _r[4] = 1;
+            _r[5] = 0;
+            _r[6] = 0;
+            _r[7] = 0;
+            _r[8] = 1;
+
+            _p[0] = fx;
+            _p[1] = 0;
+            _p[2] = cx;
+            _p[3] = 0;
+            _p[4] = 0;
+            _p[5] = fy;
+            _p[6] = cy;
+            _p[7] = 0;
+            _p[8] = 0;
+            _p[9] = 0;
+            _p[10] = 1;
+            _p[11] = 0;
         }
 
         private static uint ResolveWidth(Camera cam)

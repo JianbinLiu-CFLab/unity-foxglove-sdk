@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Samples.LidarMaze.EditorTools
         /// <summary>
         /// Rebuilds the preconfigured maze/vehicle demo scene from Unity's Foxglove menu.
         /// </summary>
-        [MenuItem("Foxglove/Phase138/Build Maze Demo Scene")]
+        [MenuItem("Foxglove/LiDAR Maze Demo/Build Scene")]
         public static void BuildScene()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)

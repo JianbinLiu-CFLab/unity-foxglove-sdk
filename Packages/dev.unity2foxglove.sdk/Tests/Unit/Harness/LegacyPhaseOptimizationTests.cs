@@ -352,6 +352,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("sampleList[2] = (float)(_frameCount % 16777216L);", probe, StringComparison.Ordinal);
             Assert.Contains("public long fixedCounter;", trigger, StringComparison.Ordinal);
             Assert.DoesNotContain("public int fixedCounter;", trigger, StringComparison.Ordinal);
+            Assert.Contains("private static void LogTriggerResult", trigger, StringComparison.Ordinal);
+            Assert.DoesNotContain("Debug.Log($\"[FoxRunTriggerSmoke]", trigger, StringComparison.Ordinal);
 
             var isAvailableIndex = context.IndexOf("public bool IsAvailable", StringComparison.Ordinal);
             var tryEnsureIndex = context.IndexOf("public bool TryEnsureReady()", StringComparison.Ordinal);

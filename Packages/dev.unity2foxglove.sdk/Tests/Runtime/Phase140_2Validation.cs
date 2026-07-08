@@ -58,6 +58,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(connection.Contains("Volatile.Read(ref _runtime)?.RequestReplaySubscriberBackfill()", StringComparison.Ordinal)
                   && !connection.Contains("_runtime?.RequestReplaySubscriberBackfill()", StringComparison.Ordinal),
                 "140-2A-3: subscribe backfill request uses the volatile runtime publication contract");
+            Check(connection.Contains("\"subscribe error: \" + ex", StringComparison.Ordinal)
+                  && connection.Contains("\"unsubscribe error: \" + ex", StringComparison.Ordinal)
+                  && !connection.Contains("subscribe error: {ex.Message}", StringComparison.Ordinal)
+                  && !connection.Contains("unsubscribe error: {ex.Message}", StringComparison.Ordinal),
+                "140-2A-4: subscribe/unsubscribe exception logs preserve type and stack trace");
         }
 
         private static void VerifyBroadcastTimeUsesInterlockedThrottle()

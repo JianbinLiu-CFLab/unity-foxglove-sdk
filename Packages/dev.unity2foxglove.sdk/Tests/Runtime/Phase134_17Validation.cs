@@ -101,6 +101,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && constants.Contains("not the package", StringComparison.OrdinalIgnoreCase)
                   && constants.Contains("backward-incompatible", StringComparison.OrdinalIgnoreCase),
                 "134-17-D6: generator version constant documents descriptor-format policy");
+
+            var identifiers = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/IdentifierUtils.cs");
+            Check(identifiers.Contains("File stems are not C# identifiers", StringComparison.Ordinal)
+                  && identifiers.Contains("return sb.ToString();", StringComparison.Ordinal)
+                  && !identifiers.Contains("sb.Length == 0 ? \"FoxRunSource\"", StringComparison.Ordinal),
+                "134-17-D7: file-stem sanitization documents leading-digit behavior and has no dead fallback");
         }
 
         private static void VerifyTypeNormalizationHardening()
@@ -116,6 +122,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(FoxRunCanonicalTypeNormalizer.NormalizeTypeName("Nullable<int>") == "int32",
                 "134-17-E3: short Nullable<T> syntax unwraps to canonical type");
+
+            Check(FoxRunCanonicalTypeNormalizer.NormalizeTypeName("System.Nullable`1[[System.Int32]]") == "int32",
+                "134-17-E3B: CLR Nullable<T> syntax without assembly qualification unwraps to canonical type");
+
+            var normalizerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunCanonicalTypeNormalizer.cs");
+            Check(normalizerSource.Contains("first comma separates the inner type name", StringComparison.Ordinal)
+                  && normalizerSource.Contains("without an assembly-qualified inner type", StringComparison.Ordinal),
+                "134-17-E3C: CLR Nullable<T> first-comma parsing documents its value-type assumption");
 
             var modelSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
             Check(!modelSource.Contains("FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(rawTypeName),", StringComparison.Ordinal),

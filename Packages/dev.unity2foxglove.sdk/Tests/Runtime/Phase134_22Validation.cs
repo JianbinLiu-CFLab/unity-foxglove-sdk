@@ -99,9 +99,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(iface.Contains("Interface for acquiring time", StringComparison.Ordinal),
                 "134-22-F3: ITimeSource XML summary typo is fixed");
 
-            var unity = ReadRuntimeSource(Path.Combine("Time", "UnityTimeSource.cs"));
-            Check(unity.Contains("must be constructed on the Unity main thread", StringComparison.Ordinal),
-                "134-22-F4: UnityTimeSource constructor reports off-main-thread construction clearly");
+            foreach (var runtimeRoot in RuntimeSourceRoots())
+            {
+                var unity = ReadRuntimeSource(runtimeRoot, Path.Combine("Time", "UnityTimeSource.cs"));
+                Check(unity.Contains("must be constructed on the Unity main thread", StringComparison.Ordinal),
+                    "134-22-F4: UnityTimeSource constructor reports off-main-thread construction clearly for " + Path.GetFileName(runtimeRoot));
+            }
         }
 
         private static void VerifyLifecycleAndDisposeShape()
@@ -125,10 +128,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && core.Contains("threadToStart.Start();", StringComparison.Ordinal),
                 "134-22-G5: ROS2UnityCore starts executor thread after releasing constructor lock");
 
-            var node = ReadRuntimeSource("ROS2Node.cs");
-            Check(node.Contains("Failed to remove ROS2 node", StringComparison.Ordinal)
-                  && node.Contains("Debug.LogWarning", StringComparison.Ordinal),
-                "134-22-G6: ROS2Node.Dispose reports native removal failures");
+            foreach (var runtimeRoot in RuntimeSourceRoots())
+            {
+                var node = ReadRuntimeSource(runtimeRoot, "ROS2Node.cs");
+                Check(node.Contains("private readonly object mutex", StringComparison.Ordinal)
+                      && node.Contains("private volatile bool disposed", StringComparison.Ordinal)
+                      && node.Contains("internal bool IsDisposed", StringComparison.Ordinal)
+                      && node.Contains("internal bool TryUpdateROSTimestamp", StringComparison.Ordinal)
+                      && node.Contains("nodeToDispose = node", StringComparison.Ordinal)
+                      && node.Contains("clockToDispose = clock", StringComparison.Ordinal),
+                    "134-22-G6: ROS2Node.Dispose is lock-protected and idempotent for " + Path.GetFileName(runtimeRoot));
+            }
         }
 
         private static void VerifyExecutorTimeoutCleanup(string fileName, string typeName)
@@ -168,6 +178,22 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new FileNotFoundException("Missing bundled Jazzy runtime wrapper source: " + fileName, path);
             return File.ReadAllText(path);
         }
+
+        private static string ReadRuntimeSource(string runtimeRoot, string fileName)
+        {
+            var path = Path.Combine(RepoRoot, runtimeRoot.Replace('/', Path.DirectorySeparatorChar), fileName);
+            if (!File.Exists(path))
+                throw new FileNotFoundException("Missing bundled runtime wrapper source: " + fileName, path);
+            return File.ReadAllText(path);
+        }
+
+        private static string[] RuntimeSourceRoots()
+            => new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts",
+                RuntimeRoot,
+                "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts"
+            };
 
         private static string ReadRuntimeAsmdef()
         {

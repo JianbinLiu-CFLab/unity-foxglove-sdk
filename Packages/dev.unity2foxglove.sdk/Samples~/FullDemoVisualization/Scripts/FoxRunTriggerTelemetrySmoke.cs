@@ -105,7 +105,7 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
         triggerCounter++;
         var ok = FoxRun_Trigger_triggerCounter();
         lastTriggerResult = $"single={ok}, count={triggerCounter}";
-        Debug.Log($"[FoxRunTriggerSmoke] TriggerCounterEvent returned {ok}");
+        LogTriggerResult($"[FoxRunTriggerSmoke] TriggerCounterEvent returned {ok}");
     }
 
     [ContextMenu("FoxRun Trigger Grouped State")]
@@ -114,7 +114,7 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
         eventName = "group-" + triggerCounter;
         var ok = FoxRun_Trigger_eventName();
         lastTriggerResult = $"grouped={ok}, event={eventName}";
-        Debug.Log($"[FoxRunTriggerSmoke] TriggerGroupedState returned {ok}");
+        LogTriggerResult($"[FoxRunTriggerSmoke] TriggerGroupedState returned {ok}");
     }
 
     [ContextMenu("FoxRun Trigger All")]
@@ -124,6 +124,13 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
         eventName = "all-" + triggerCounter;
         var ok = FoxRun_TriggerAll();
         lastTriggerResult = $"all={ok}, count={triggerCounter}";
-        Debug.Log($"[FoxRunTriggerSmoke] TriggerAll returned {ok}");
+        LogTriggerResult($"[FoxRunTriggerSmoke] TriggerAll returned {ok}");
+    }
+
+    [System.Diagnostics.Conditional("UNITY_EDITOR")]
+    [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
+    private static void LogTriggerResult(string message)
+    {
+        Debug.Log(message);
     }
 }

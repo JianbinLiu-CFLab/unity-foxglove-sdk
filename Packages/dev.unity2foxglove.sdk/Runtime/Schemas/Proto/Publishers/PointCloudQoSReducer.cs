@@ -101,7 +101,6 @@ namespace Unity.FoxgloveSDK.Components
                 FrameId = string.IsNullOrEmpty(frame.FrameId) ? frameId : frame.FrameId,
                 EmitAbsoluteTimeNs = frame.EmitAbsoluteTimeNs
             };
-            copy.Points.Capacity = Math.Min(pointCount, pointBudget);
 
             if (useVoxelGrid)
             {
@@ -121,18 +120,21 @@ namespace Unity.FoxgloveSDK.Components
             }
             else if (pointCount <= pointBudget && !forceUniformFallback)
             {
+                copy.Points.Capacity = Math.Min(pointCount, pointBudget);
                 for (var i = 0; i < pointCount; i++)
                     copy.Points.Add(frame.Points[i]);
             }
             else if (samplingMode == PointCloudSamplingMode.FirstPoints)
             {
                 var count = Math.Min(pointCount, pointBudget);
+                copy.Points.Capacity = count;
                 for (var i = 0; i < count; i++)
                     copy.Points.Add(frame.Points[i]);
             }
             else
             {
                 PointCloudQoS.BuildUniformSampleIndices(pointCount, pointBudget, _uniformSampleIndices);
+                copy.Points.Capacity = Math.Min(_uniformSampleIndices.Count, pointBudget);
                 foreach (var index in _uniformSampleIndices)
                     copy.Points.Add(frame.Points[index]);
             }

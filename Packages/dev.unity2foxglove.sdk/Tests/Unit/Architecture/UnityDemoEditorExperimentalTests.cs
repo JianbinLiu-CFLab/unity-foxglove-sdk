@@ -71,7 +71,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
 
             Assert.Contains("args[i + 1].StartsWith(\"-\"", getValue);
             Assert.Contains("ValidateScenesExist", build);
-            Assert.Contains("File.Exists(scene)", build);
+            Assert.Contains("Path.Combine(Application.dataPath, \"..\")", build);
+            Assert.Contains("File.Exists(scenePath)", build);
             Assert.Contains("Missing Unity build scene", build);
         }
 

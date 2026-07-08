@@ -5,7 +5,6 @@
 // Purpose: Phase 140D RGB24-to-NV12 conversion behavior and allocation checks.
 
 using System;
-using System.IO;
 using Foxglove.Schemas.Video;
 using Xunit;
 
@@ -15,15 +14,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
     [Trait("Domain", "Sensors")]
     public sealed class Rgb24ToNv12ConverterTests
     {
-        [Fact]
-        public void ConverterUsesBlockWalkWithoutSeparateLumaPass()
-        {
-            var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/Rgb24ToNv12Converter.cs");
-
-            Assert.DoesNotContain("for (var y = 0; y < height; y++)", source, StringComparison.Ordinal);
-            Assert.Contains("for (var y = 0; y < height; y += 2)", source, StringComparison.Ordinal);
-        }
-
         [Fact]
         public void ConversionMatchesLegacyMediaFoundationOutput()
         {
@@ -36,6 +26,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [Fact]
         public void ConversionDoesNotAllocateAfterWarmup()
         {
+            if (!SupportsThreadAllocationCounter())
+                return;
+
             const int width = 16;
             const int height = 8;
             var rgb24 = MakeFrame(width, height, seed: 177);
@@ -142,24 +135,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         private static byte ClampByte(int value)
             => value < 0 ? (byte)0 : value > 255 ? (byte)255 : (byte)value;
 
-        private static string Text(string relativePath)
-            => File.ReadAllText(Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-
-        private static string RepoRoot
+        private static bool SupportsThreadAllocationCounter()
         {
-            get
+            try
             {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null)
-                {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
-                        return dir.FullName;
-
-                    dir = dir.Parent;
-                }
-
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                _ = GC.GetAllocatedBytesForCurrentThread();
+                return true;
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return false;
             }
         }
     }

@@ -190,6 +190,11 @@ namespace Unity.FoxgloveSDK.Tests
             var triggerSmoke = ReadRepoFile(SamplesRoot + "/FullDemoVisualization/Scripts/FoxRunTriggerTelemetrySmoke.cs");
             Check(triggerSmoke.Contains("public long fixedCounter;", StringComparison.Ordinal),
                 "134-23-F9: FoxRun trigger telemetry heartbeat counter is long-running safe");
+            Check(triggerSmoke.Contains("[System.Diagnostics.Conditional(\"UNITY_EDITOR\")]", StringComparison.Ordinal)
+                  && triggerSmoke.Contains("[System.Diagnostics.Conditional(\"DEVELOPMENT_BUILD\")]", StringComparison.Ordinal)
+                  && triggerSmoke.Contains("private static void LogTriggerResult", StringComparison.Ordinal)
+                  && !triggerSmoke.Contains("Debug.Log($\"[FoxRunTriggerSmoke]", StringComparison.Ordinal),
+                "134-23-F15: FoxRun trigger sample logs are editor/development-only");
         }
 
         private static void VerifySampleDeclaration(JArray samples, string displayName, string expectedPath)

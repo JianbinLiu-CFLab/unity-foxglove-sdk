@@ -149,6 +149,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (typeName.StartsWith(genericPrefix, StringComparison.Ordinal))
             {
                 var start = genericPrefix.Length;
+                // Nullable<T> is constrained to a value type, so the CLR
+                // reflection name's first comma separates the inner type name
+                // from its assembly qualification. The "]]" fallback covers
+                // source strings without an assembly-qualified inner type.
                 var comma = typeName.IndexOf(',', start);
                 var end = comma >= 0 ? comma : typeName.IndexOf("]]", start, StringComparison.Ordinal);
                 if (end > start)

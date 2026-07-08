@@ -125,6 +125,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var queuedBytes = typeof(WsSendQueue).GetField(
                 "_queuedBytes",
                 BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(queuedBytes);
             queuedBytes.SetValue(q, int.MaxValue);
 
             var result = q.Enqueue(D(1));

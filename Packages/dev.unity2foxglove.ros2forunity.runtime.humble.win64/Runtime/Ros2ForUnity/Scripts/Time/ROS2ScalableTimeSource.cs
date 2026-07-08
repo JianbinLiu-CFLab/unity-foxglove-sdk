@@ -46,6 +46,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   private bool initialTimeScaleAcquired = false;
   private bool timeScaleChanged = false;
   private bool timeScaleChangeLogged = false;
+  private int rosUnavailableWarningLogged = 0;
 
   public ROS2ScalableTimeSource()
   {
@@ -64,7 +65,10 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     {
       seconds = 0;
       nanoseconds = 0;
-      Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      if (Interlocked.Exchange(ref rosUnavailableWarningLogged, 1) == 0)
+      {
+        Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      }
       return false;
     }
 
@@ -90,15 +94,26 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     else
     {
       double adjustedTime;
+      bool needsOffset;
       lock (mutex)
       {
         readingSecs = lastReadingSecs;
-        if (!rosUnityTimeOffsetAcquired)
-        {
-          rosUnityTimeOffsetAcquired = true;
-          rosUnityTimeOffset = GetRosNowSeconds() - readingSecs;
-        }
+        needsOffset = !rosUnityTimeOffsetAcquired;
         adjustedTime = readingSecs + rosUnityTimeOffset;
+      }
+      if (needsOffset)
+      {
+        var rosNowSecs = GetRosNowSeconds();
+        lock (mutex)
+        {
+          readingSecs = lastReadingSecs;
+          if (!rosUnityTimeOffsetAcquired)
+          {
+            rosUnityTimeOffset = rosNowSecs - readingSecs;
+            rosUnityTimeOffsetAcquired = true;
+          }
+          adjustedTime = readingSecs + rosUnityTimeOffset;
+        }
       }
       TimeUtils.TimeFromTotalSeconds(adjustedTime, out seconds, out nanoseconds);
     }

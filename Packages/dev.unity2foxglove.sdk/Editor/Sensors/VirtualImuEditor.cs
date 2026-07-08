@@ -25,7 +25,38 @@ namespace Unity.FoxgloveSDK.Editor
 
         private const int CovarianceMatrixSize = 3;
         private const int CovarianceElementCount = CovarianceMatrixSize * CovarianceMatrixSize;
-        private static bool _showAdvancedImuModel;
+        private static readonly GUIContent ManagerLabel = new GUIContent("Manager");
+        private static readonly GUIContent RigidbodyLabel = new GUIContent("Rigidbody");
+        private static readonly GUIContent TopicLabel = new GUIContent("Topic");
+        private static readonly GUIContent FrameIdLabel = new GUIContent("Frame Id");
+        private static readonly GUIContent PublishRateSourceLabel = new GUIContent("Publish Rate Source");
+        private static readonly GUIContent SampleRateLabel = new GUIContent("Sample Rate Hz");
+        private static readonly GUIContent WebSocketSamplesLabel = new GUIContent("WebSocket Max Samples / Frame");
+        private static readonly GUIContent PublishOrientationLabel = new GUIContent("Publish Orientation");
+        private static readonly GUIContent PhysicsRateOverrideLabel = new GUIContent("Override Unity Physics Rate Hz");
+
+        private bool _showAdvancedImuModel;
+        private SerializedProperty _scriptProperty;
+        private SerializedProperty _managerProperty;
+        private SerializedProperty _rigidbodyProperty;
+        private SerializedProperty _topicProperty;
+        private SerializedProperty _frameIdProperty;
+        private SerializedProperty _publishRateSourceProperty;
+        private SerializedProperty _targetRateHzProperty;
+        private SerializedProperty _maxWebSocketSamplesPerFrameProperty;
+        private SerializedProperty _includeOrientationProperty;
+        private SerializedProperty _orientationCovarianceProperty;
+        private SerializedProperty _angularVelocityCovarianceProperty;
+        private SerializedProperty _linearAccelerationCovarianceProperty;
+        private SerializedProperty _globalPhysicsRateHzOverrideProperty;
+        private readonly SerializedProperty[] _orientationCovarianceElements = new SerializedProperty[CovarianceElementCount];
+        private readonly SerializedProperty[] _angularVelocityCovarianceElements = new SerializedProperty[CovarianceElementCount];
+        private readonly SerializedProperty[] _linearAccelerationCovarianceElements = new SerializedProperty[CovarianceElementCount];
+
+        private void OnEnable()
+        {
+            CacheProperties();
+        }
 
         /// <summary>
         /// Draws VirtualImu settings with the same rate-source mental model used
@@ -47,7 +78,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("m_Script"));
+                if (_scriptProperty != null)
+                    EditorGUILayout.PropertyField(_scriptProperty);
             }
         }
 
@@ -55,43 +87,33 @@ namespace Unity.FoxgloveSDK.Editor
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("IMU Output", EditorStyles.boldLabel);
-            DrawProperty("_manager", "Manager");
-            DrawProperty("_rigidbody", "Rigidbody");
-            DrawProperty("_topic", "Topic");
-            DrawProperty("_frameId", "Frame Id");
+            DrawProperty(_managerProperty, ManagerLabel);
+            DrawProperty(_rigidbodyProperty, RigidbodyLabel);
+            DrawProperty(_topicProperty, TopicLabel);
+            DrawProperty(_frameIdProperty, FrameIdLabel);
         }
 
         private void DrawPublishRateSection()
         {
-            var source = serializedObject.FindProperty("_publishRateSource");
-            var targetRateHz = serializedObject.FindProperty("_targetRateHz");
-            var maxWebSocketSamplesPerFrame = serializedObject.FindProperty("_maxWebSocketSamplesPerFrame");
-
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Publish Rate", EditorStyles.boldLabel);
 
-            if (source != null)
+            if (_publishRateSourceProperty != null)
             {
-                source.enumValueIndex = EditorGUILayout.Popup(
-                    "Publish Rate Source",
-                    source.enumValueIndex,
+                _publishRateSourceProperty.enumValueIndex = EditorGUILayout.Popup(
+                    PublishRateSourceLabel,
+                    _publishRateSourceProperty.enumValueIndex,
                     PublishRateSourceLabels);
             }
 
-            var usesLocalRate = source == null
-                                || source.enumValueIndex == (int)PublisherRateSource.OverrideLocal;
+            var usesLocalRate = _publishRateSourceProperty == null
+                                || _publishRateSourceProperty.enumValueIndex == (int)PublisherRateSource.OverrideLocal;
             using (new EditorGUI.DisabledScope(!usesLocalRate))
             {
-                if (targetRateHz != null)
-                    EditorGUILayout.PropertyField(targetRateHz, new GUIContent("Sample Rate Hz"));
+                DrawProperty(_targetRateHzProperty, SampleRateLabel);
             }
 
-            if (maxWebSocketSamplesPerFrame != null)
-            {
-                EditorGUILayout.PropertyField(
-                    maxWebSocketSamplesPerFrame,
-                    new GUIContent("WebSocket Max Samples / Frame"));
-            }
+            DrawProperty(_maxWebSocketSamplesPerFrameProperty, WebSocketSamplesLabel);
 
             EditorGUILayout.HelpBox(
                 "Set WebSocket Max Samples / Frame high enough for the sample rate and lowest expected Game view FPS. Example: 640Hz needs at least 16 at 40 FPS, or 32 at 20 FPS. 0 disables the WebSocket cap.",
@@ -105,33 +127,34 @@ namespace Unity.FoxgloveSDK.Editor
             if (!_showAdvancedImuModel)
                 return;
 
-            DrawProperty("_includeOrientation", "Publish Orientation");
-            DrawCovarianceMatrix("_imuOrientationCovariance", "Orientation Covariance");
-            DrawCovarianceMatrix("_imuAngularVelocityCovariance", "Angular Velocity Covariance");
-            DrawCovarianceMatrix("_imuLinearAccelerationCovariance", "Linear Acceleration Covariance");
+            DrawProperty(_includeOrientationProperty, PublishOrientationLabel);
+            DrawCovarianceMatrix(_orientationCovarianceProperty, _orientationCovarianceElements, "Orientation Covariance");
+            DrawCovarianceMatrix(_angularVelocityCovarianceProperty, _angularVelocityCovarianceElements, "Angular Velocity Covariance");
+            DrawCovarianceMatrix(_linearAccelerationCovarianceProperty, _linearAccelerationCovarianceElements, "Linear Acceleration Covariance");
 
             EditorGUILayout.Space();
-            DrawProperty("_globalPhysicsRateHzOverride", "Override Unity Physics Rate Hz");
+            DrawProperty(_globalPhysicsRateHzOverrideProperty, PhysicsRateOverrideLabel);
             EditorGUILayout.HelpBox(
                 "Leave at 0 for normal use. A positive value changes Unity Time.fixedDeltaTime globally and can affect physics, vehicle control, and performance.",
                 MessageType.Warning);
         }
 
-        private void DrawProperty(string propertyName, string label)
+        private static void DrawProperty(SerializedProperty property, GUIContent label)
         {
-            var property = serializedObject.FindProperty(propertyName);
             if (property != null)
-                EditorGUILayout.PropertyField(property, new GUIContent(label));
+                EditorGUILayout.PropertyField(property, label);
         }
 
-        private void DrawCovarianceMatrix(string propertyName, string label)
+        private void DrawCovarianceMatrix(SerializedProperty property, SerializedProperty[] elements, string label)
         {
-            var property = serializedObject.FindProperty(propertyName);
             if (property == null)
                 return;
 
             if (!property.isArray || property.arraySize != CovarianceElementCount)
+            {
                 property.arraySize = CovarianceElementCount;
+                CacheCovarianceElements(property, elements);
+            }
 
             EditorGUILayout.Space(2f);
             EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
@@ -151,7 +174,13 @@ namespace Unity.FoxgloveSDK.Editor
                 for (var column = 0; column < CovarianceMatrixSize; column++)
                 {
                     var index = row * CovarianceMatrixSize + column;
-                    var element = property.GetArrayElementAtIndex(index);
+                    var element = elements[index];
+                    if (element == null)
+                    {
+                        CacheCovarianceElements(property, elements);
+                        element = elements[index];
+                    }
+
                     var cellRect = new Rect(
                         matrixRect.x + column * (cellWidth + spacing),
                         matrixRect.y,
@@ -162,6 +191,35 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             EditorGUI.indentLevel--;
+        }
+
+        private void CacheProperties()
+        {
+            _scriptProperty = serializedObject.FindProperty("m_Script");
+            _managerProperty = serializedObject.FindProperty("_manager");
+            _rigidbodyProperty = serializedObject.FindProperty("_rigidbody");
+            _topicProperty = serializedObject.FindProperty("_topic");
+            _frameIdProperty = serializedObject.FindProperty("_frameId");
+            _publishRateSourceProperty = serializedObject.FindProperty("_publishRateSource");
+            _targetRateHzProperty = serializedObject.FindProperty("_targetRateHz");
+            _maxWebSocketSamplesPerFrameProperty = serializedObject.FindProperty("_maxWebSocketSamplesPerFrame");
+            _includeOrientationProperty = serializedObject.FindProperty("_includeOrientation");
+            _orientationCovarianceProperty = serializedObject.FindProperty("_imuOrientationCovariance");
+            _angularVelocityCovarianceProperty = serializedObject.FindProperty("_imuAngularVelocityCovariance");
+            _linearAccelerationCovarianceProperty = serializedObject.FindProperty("_imuLinearAccelerationCovariance");
+            _globalPhysicsRateHzOverrideProperty = serializedObject.FindProperty("_globalPhysicsRateHzOverride");
+
+            CacheCovarianceElements(_orientationCovarianceProperty, _orientationCovarianceElements);
+            CacheCovarianceElements(_angularVelocityCovarianceProperty, _angularVelocityCovarianceElements);
+            CacheCovarianceElements(_linearAccelerationCovarianceProperty, _linearAccelerationCovarianceElements);
+        }
+
+        private static void CacheCovarianceElements(SerializedProperty property, SerializedProperty[] elements)
+        {
+            for (var i = 0; i < elements.Length; i++)
+                elements[i] = property != null && property.isArray && i < property.arraySize
+                    ? property.GetArrayElementAtIndex(i)
+                    : null;
         }
     }
 }

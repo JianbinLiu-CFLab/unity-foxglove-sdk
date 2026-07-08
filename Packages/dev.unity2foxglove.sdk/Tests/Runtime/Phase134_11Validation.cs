@@ -5,6 +5,7 @@
 // Purpose: Phase 134-11 regression coverage for schema descriptor immutability.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -33,6 +34,9 @@ namespace Unity.FoxgloveSDK.Tests
 
             ProtobufDescriptorLookupReturnsCopies();
             RegisteredProtobufRawContentReturnsCopies();
+            ProtobufStreamConstructorRejectsNullStream();
+            ProtobufRegisterAllReusesCachedBase64Content();
+            ProtobufRegistryHandlesDeepDependencyChainsIteratively();
             DefaultRegistryClonesRawContentOnRegister();
             DefaultRegistryCloneHelperDocumentsRawContentScope();
             EmptyPackageDescriptorNamesAreMapped();
@@ -83,6 +87,60 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-11B-4: mutating returned RawContent does not corrupt schema registry state");
             Check(!ReferenceEquals(first.RawContent, second.RawContent),
                 "134-11B-5: schema lookups return distinct RawContent arrays");
+        }
+
+        private static void ProtobufStreamConstructorRejectsNullStream()
+        {
+            try
+            {
+                _ = new ProtobufSchemaRegistry((Stream)null, new DefaultSchemaRegistry());
+            }
+            catch (ArgumentNullException ex) when (ex.ParamName == "fileDescriptorSetStream")
+            {
+                Pass("134-11B-6: protobuf stream constructor rejects null streams with a named argument");
+                return;
+            }
+
+            throw new Exception("[FAIL] 134-11B-6: protobuf stream constructor rejects null streams with a named argument");
+        }
+
+        private static void ProtobufRegisterAllReusesCachedBase64Content()
+        {
+            var descriptorSet = CreateSingleMessageDescriptorSet("phase134_cached.proto", "phase134", "CachedBase64");
+            var capture = new CaptureSchemaRegistry();
+            var registry = new ProtobufSchemaRegistry(descriptorSet.ToByteArray(), capture);
+
+            registry.RegisterAll();
+            registry.RegisterAll();
+
+            Check(capture.Entries.Count == 2
+                  && ReferenceEquals(capture.Entries[0].Content, capture.Entries[1].Content),
+                "134-11B-7: protobuf RegisterAll reuses cached base64 schema strings");
+        }
+
+        private static void ProtobufRegistryHandlesDeepDependencyChainsIteratively()
+        {
+            const int Depth = 500;
+            var descriptorSet = new FileDescriptorSet();
+            for (var i = 0; i < Depth; i++)
+            {
+                var file = new FileDescriptorProto
+                {
+                    Name = "phase134_deep_" + i + ".proto",
+                    Package = "phase134"
+                };
+                if (i == 0)
+                    file.MessageType.Add(new DescriptorProto { Name = "DeepRoot" });
+                if (i + 1 < Depth)
+                    file.Dependency.Add("phase134_deep_" + (i + 1) + ".proto");
+                descriptorSet.File.Add(file);
+            }
+
+            var registry = new ProtobufSchemaRegistry(descriptorSet.ToByteArray(), new DefaultSchemaRegistry());
+            var bytes = registry.GetFileDescriptorSet("phase134.DeepRoot");
+
+            Check(bytes != null && bytes.Length > 0,
+                "134-11B-8: protobuf dependency collection handles deep chains without recursive stack growth");
         }
 
         private static void DefaultRegistryClonesRawContentOnRegister()
@@ -202,6 +260,38 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-11K-1: FoxgloveTimeUtil anchors wall clock at tick precision instead of millisecond precision");
         }
 
+        private static FileDescriptorSet CreateSingleMessageDescriptorSet(
+            string fileName,
+            string packageName,
+            string messageName)
+        {
+            var descriptorSet = new FileDescriptorSet();
+            var file = new FileDescriptorProto
+            {
+                Name = fileName,
+                Package = packageName
+            };
+            file.MessageType.Add(new DescriptorProto { Name = messageName });
+            descriptorSet.File.Add(file);
+            return descriptorSet;
+        }
+
+        private sealed class CaptureSchemaRegistry : ISchemaRegistry
+        {
+            public readonly List<SchemaEntry> Entries = new List<SchemaEntry>();
+
+            public bool TryGetSchema(string name, out SchemaEntry entry)
+            {
+                entry = default;
+                return false;
+            }
+
+            public void Register(SchemaEntry entry)
+            {
+                Entries.Add(entry);
+            }
+        }
+
         private static bool Throws<T>(Action action) where T : Exception
         {
             try
@@ -220,6 +310,11 @@ namespace Unity.FoxgloveSDK.Tests
             if (!condition)
                 throw new Exception("[FAIL] " + label);
 
+            Pass(label);
+        }
+
+        private static void Pass(string label)
+        {
             _passed++;
             Console.WriteLine("[PASS] " + label);
         }

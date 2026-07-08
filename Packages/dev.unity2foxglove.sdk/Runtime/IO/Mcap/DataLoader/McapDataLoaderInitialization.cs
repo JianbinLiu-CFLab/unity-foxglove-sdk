@@ -8,13 +8,16 @@ using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.IO
 {
-    /// <summary>Summary returned after opening and indexing one local MCAP file.</summary>
+    /// <summary>
+    /// Summary returned after opening and indexing one local MCAP file.
+    /// Schema entries retain copies of MCAP schema bytes; release this object when initialization details are no longer needed.
+    /// </summary>
     public sealed class McapDataLoaderInitialization
     {
         /// <summary>Channels declared in the MCAP summary.</summary>
         public List<McapDataLoaderChannel> Channels = new List<McapDataLoaderChannel>();
 
-        /// <summary>Schemas declared in the MCAP summary.</summary>
+        /// <summary>Schemas declared in the MCAP summary. Each schema may retain a byte-array copy of its MCAP schema data.</summary>
         public List<McapDataLoaderSchema> Schemas = new List<McapDataLoaderSchema>();
 
         /// <summary>Inclusive log-time range reported by summary statistics or chunk indexes.</summary>

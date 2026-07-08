@@ -14,7 +14,6 @@
 // limitations under the License.
 
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace ROS2
@@ -27,24 +26,57 @@ namespace ROS2
 /// </summary>
 public class ROS2Node : IDisposable
 {
+    private const string DefaultNodeName = "unity_ros2_node"; // Fallback only; callers creating multiple nodes should pass unique names.
+
     internal INode node;
-    public ROS2Clock clock;
-    public string name;
+    /// <summary>
+    /// ROS clock owned by this node and disposed together with it.
+    /// </summary>
+    public ROS2Clock clock { get; private set; }
+
+    /// <summary>
+    /// ROS node name used when the underlying ros2cs node was created.
+    /// </summary>
+    public string name { get; }
+    private readonly object mutex = new object();
+    private volatile bool disposed;
+
+    /// <summary>
+    /// Returns whether this facade has disposed its underlying ros2cs node.
+    /// </summary>
+    internal bool IsDisposed
+    {
+        get { return disposed; }
+    }
 
     // Use ROS2UnityComponent to create a node
-    internal ROS2Node(string unityROS2NodeName = "unity_ros2_node")
+    internal ROS2Node(string unityROS2NodeName = DefaultNodeName)
     {
         name = unityROS2NodeName;
         node = Ros2cs.CreateNode(name);
         clock = new ROS2Clock();
     }
 
-    private static void ThrowIfUninitialized(string callContext)
+    private void ThrowIfUninitializedLocked(string callContext)
     {
-        if (!Ros2cs.Ok())
+        if (disposed || node == null || !Ros2cs.Ok())
         {
             throw new InvalidOperationException("Ros2 For Unity is not initialized, can't " + callContext);
         }
+    }
+
+    // Captures a live node under mutex, then executes ros2cs work outside the lock.
+    // This keeps Dispose from being blocked by long native create/remove calls.
+    private TResult WithLiveNode<TResult>(string callContext, Func<INode, TResult> action)
+    {
+        INode liveNode;
+        lock (mutex)
+        {
+            ThrowIfUninitializedLocked(callContext);
+            liveNode = node;
+        }
+
+        return action(liveNode);
     }
 
     /// <summary>
@@ -54,13 +86,17 @@ public class ROS2Node : IDisposable
     /// <param name="topicName">topic that will be used for publishing</param>
     public Publisher<T> CreateSensorPublisher<T>(string topicName) where T : Message, new()
     {
-        QualityOfServiceProfile sensorProfile = new QualityOfServiceProfile(QosPresetProfile.SENSOR_DATA);
-        sensorProfile.SetPolicies(
-            HistoryPolicy.QOS_POLICY_HISTORY_KEEP_LAST,
-            1,
-            ReliabilityPolicy.QOS_POLICY_RELIABILITY_BEST_EFFORT,
-            DurabilityPolicy.QOS_POLICY_DURABILITY_VOLATILE);
-        return CreatePublisher<T>(topicName, sensorProfile);
+        // ros2cs copies QoS settings during publisher creation; set the sensor-data policies
+        // explicitly because some Windows runtime builds do not map the SENSOR_DATA preset.
+        using (QualityOfServiceProfile sensorProfile = new QualityOfServiceProfile(QosPresetProfile.SENSOR_DATA))
+        {
+            sensorProfile.SetPolicies(
+                HistoryPolicy.QOS_POLICY_HISTORY_KEEP_LAST,
+                1,
+                ReliabilityPolicy.QOS_POLICY_RELIABILITY_BEST_EFFORT,
+                DurabilityPolicy.QOS_POLICY_DURABILITY_VOLATILE);
+            return CreatePublisher<T>(topicName, sensorProfile);
+        }
     }
 
     /// <summary>
@@ -71,8 +107,16 @@ public class ROS2Node : IDisposable
     /// <param name="qos">QoS for publishing. If no QoS is selected, it will default to reliable, keep 10 last</param>
     public Publisher<T> CreatePublisher<T>(string topicName, QualityOfServiceProfile qos = null) where T : Message, new()
     {
-        ThrowIfUninitialized("create publisher");
-        return node.CreatePublisher<T>(topicName, qos);
+        if (qos != null)
+        {
+            return WithLiveNode("create publisher", liveNode => liveNode.CreatePublisher<T>(topicName, qos));
+        }
+
+        using (QualityOfServiceProfile defaultQos = new QualityOfServiceProfile(QosPresetProfile.DEFAULT))
+        {
+            // ros2cs CreatePublisher expects an explicit QoS profile; the default profile is copied during creation.
+            return WithLiveNode("create publisher", liveNode => liveNode.CreatePublisher<T>(topicName, defaultQos));
+        }
     }
 
     /// <summary>
@@ -84,12 +128,16 @@ public class ROS2Node : IDisposable
     public Subscription<T> CreateSubscription<T>(string topicName, Action<T> callback,
         QualityOfServiceProfile qos = null) where T : Message, new()
     {
-        if (qos == null)
+        if (qos != null)
         {
-            qos = new QualityOfServiceProfile(QosPresetProfile.DEFAULT);
+            return WithLiveNode("create subscription", liveNode => liveNode.CreateSubscription<T>(topicName, callback, qos));
         }
-        ThrowIfUninitialized("create subscription");
-        return node.CreateSubscription<T>(topicName, callback, qos);
+
+        using (QualityOfServiceProfile defaultQos = new QualityOfServiceProfile(QosPresetProfile.DEFAULT))
+        {
+            // ros2cs CreateSubscription expects an explicit QoS profile; the default profile is copied during creation.
+            return WithLiveNode("create subscription", liveNode => liveNode.CreateSubscription<T>(topicName, callback, defaultQos));
+        }
     }
 
 
@@ -98,10 +146,20 @@ public class ROS2Node : IDisposable
     /// </summary>
     /// <returns>The whether subscription was found (e. g. false if removed earlier elsewhere) </returns>
     /// <param name="subscription">subscrition to remove, returned from CreateSubscription</param>
+    public bool RemoveSubscription(ISubscriptionBase subscription)
+    {
+        if (disposed)
+            return false;
+
+        return WithLiveNode("remove subscription", liveNode => liveNode.RemoveSubscription(subscription));
+    }
+
+    /// <summary>
+    /// Backward-compatibility overload; <typeparamref name="T"/> is unused and delegates to the non-generic overload.
+    /// </summary>
     public bool RemoveSubscription<T>(ISubscriptionBase subscription)
     {
-        ThrowIfUninitialized("remove subscription");
-        return node.RemoveSubscription(subscription);
+        return RemoveSubscription(subscription);
     }
 
     /// <summary>
@@ -109,10 +167,20 @@ public class ROS2Node : IDisposable
     /// </summary>
     /// <returns>The whether publisher was found (e. g. false if removed earlier elsewhere) </returns>
     /// <param name="publisher">publisher to remove, returned from CreatePublisher or CreateSensorPublisher</param>
+    public bool RemovePublisher(IPublisherBase publisher)
+    {
+        if (disposed)
+            return false;
+
+        return WithLiveNode("remove publisher", liveNode => liveNode.RemovePublisher(publisher));
+    }
+
+    /// <summary>
+    /// Backward-compatibility overload; <typeparamref name="T"/> is unused and delegates to the non-generic overload.
+    /// </summary>
     public bool RemovePublisher<T>(IPublisherBase publisher)
     {
-        ThrowIfUninitialized("remove publisher");
-        return node.RemovePublisher(publisher);
+        return RemovePublisher(publisher);
     }
 
     /// <inheritdoc cref="INode.CreateService"/>
@@ -120,15 +188,22 @@ public class ROS2Node : IDisposable
         where I : Message, new()
         where O : Message, new()
     {
-        ThrowIfUninitialized("create service");
-        return node.CreateService<I, O>(topic, callback, qos);
+        if (qos != null)
+            return WithLiveNode("create service", liveNode => liveNode.CreateService<I, O>(topic, callback, qos));
+
+        using (QualityOfServiceProfile defaultQos = new QualityOfServiceProfile(QosPresetProfile.DEFAULT))
+        {
+            return WithLiveNode("create service", liveNode => liveNode.CreateService<I, O>(topic, callback, defaultQos));
+        }
     }
 
     /// <inheritdoc cref="INode.RemoveService"/>
     public bool RemoveService(IServiceBase service)
     {
-        ThrowIfUninitialized("remove service");
-        return node.RemoveService(service);
+        if (disposed)
+            return false;
+
+        return WithLiveNode("remove service", liveNode => liveNode.RemoveService(service));
     }
 
     /// <inheritdoc cref="INode.CreateClient"/>
@@ -136,30 +211,50 @@ public class ROS2Node : IDisposable
         where I : Message, new()
         where O : Message, new()
     {
-        ThrowIfUninitialized(callContext: "create client");
-        return node.CreateClient<I, O>(topic, qos);
+        if (qos != null)
+            return WithLiveNode("create client", liveNode => liveNode.CreateClient<I, O>(topic, qos));
+
+        using (QualityOfServiceProfile defaultQos = new QualityOfServiceProfile(QosPresetProfile.DEFAULT))
+        {
+            return WithLiveNode("create client", liveNode => liveNode.CreateClient<I, O>(topic, defaultQos));
+        }
     }
 
     /// <inheritdoc cref="INode.RemoveClient"/>
     public bool RemoveClient(IClientBase client)
     {
-        ThrowIfUninitialized(callContext: "remove client");
-        return node.RemoveClient(client);
+        if (disposed)
+            return false;
+
+        return WithLiveNode("remove client", liveNode => liveNode.RemoveClient(client));
     }
 
+    /// <summary>
+    /// Releases the underlying ros2cs node and this node's owned ROS clock.
+    /// </summary>
     public void Dispose()
     {
         // U2F-LOCAL-PATCH: release native node/clock deterministically on Unity teardown.
-        clock?.Dispose();
-        clock = null;
+        INode nodeToDispose = null;
+        ROS2Clock clockToDispose = null;
+        lock (mutex)
+        {
+            if (disposed)
+            {
+                return;
+            }
 
-        if (node == null)
-            return;
+            disposed = true;
+            nodeToDispose = node;
+            clockToDispose = clock;
+            node = null;
+            clock = null;
+        }
 
         try
         {
-            if (Ros2cs.Ok())
-                Ros2cs.RemoveNode(node);
+            if (nodeToDispose != null && Ros2cs.Ok())
+                Ros2cs.RemoveNode(nodeToDispose);
         }
         catch (Exception exception)
         {
@@ -167,7 +262,54 @@ public class ROS2Node : IDisposable
         }
         finally
         {
-            node = null;
+            if (clockToDispose != null)
+            {
+                try
+                {
+                    clockToDispose.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning("Failed to dispose ROS2 clock for node '" + name + "': " + exception.Message);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Attempts to stamp a header message with current ROS time.
+    /// Returns false without throwing if the node or clock has already been disposed.
+    /// </summary>
+    internal bool TryUpdateROSTimestamp(ref MessageWithHeader message)
+    {
+        if (disposed)
+        {
+            return false;
+        }
+
+        ROS2Clock clockToUse = null;
+        lock (mutex)
+        {
+            if (disposed || clock == null)
+            {
+                return false;
+            }
+
+            clockToUse = clock;
+        }
+
+        try
+        {
+            clockToUse.UpdateROSTimestamp(ref message);
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
         }
     }
 }

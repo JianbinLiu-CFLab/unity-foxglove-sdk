@@ -91,6 +91,10 @@ namespace Unity.FoxgloveSDK.Tests
             var build = ReadRepoText("Unity2Foxglove/Assets/Editor/FoxgloveBuild.cs");
             Check(build.Contains("!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir)", StringComparison.Ordinal),
                 "134-25C-1: Unity IL2CPP build helper handles bare output filenames without creating a null directory");
+            Check(build.Contains("Invoked by Scripts/unity_build/unity_il2cpp.py", StringComparison.Ordinal)
+                  && build.Contains("Path.GetFullPath(Path.Combine(Application.dataPath, \"..\"))", StringComparison.Ordinal)
+                  && build.Contains("File.Exists(scenePath)", StringComparison.Ordinal),
+                "134-25C-2: Unity IL2CPP build helper documents the canonical script path and validates scenes from the project root");
         }
 
         private static string ReadRepoText(string relativePath)
