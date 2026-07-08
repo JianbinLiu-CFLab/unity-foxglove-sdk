@@ -305,6 +305,7 @@ class SchemaToolingTests(unittest.TestCase):
         calls: list[list[str]] = []
 
         def fake_run_generator(command: list[str]) -> None:
+            """Capture generator commands and mirror committed outputs into the temp target."""
             calls.append(command)
             output_index = command.index("--output") + 1 if "--output" in command else -1
             output_dir_index = command.index("--output-dir") + 1 if "--output-dir" in command else -1
