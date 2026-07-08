@@ -21,7 +21,11 @@ namespace Unity.FoxgloveSDK.Transport
         /// <summary>Path to a PFX file containing the server certificate and private key.</summary>
         public string CertificatePfxPath { get; set; } = string.Empty;
 
-        /// <summary>Optional PFX password.</summary>
+        /// <summary>
+        /// Optional PFX password. This local-development option stores the
+        /// password as a managed string, so it may remain in memory until the
+        /// options object and string are collected.
+        /// </summary>
         public string CertificatePassword { get; set; } = string.Empty;
 
         /// <summary>Load and validate the configured PFX certificate.</summary>

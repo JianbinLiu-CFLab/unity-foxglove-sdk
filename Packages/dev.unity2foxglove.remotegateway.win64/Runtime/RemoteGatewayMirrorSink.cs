@@ -15,7 +15,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private long _mirroredMessageCount;
         private long _droppedMessageCount;
         private long _channelRegistrationFailureCount;
-        private bool _disposed;
+        private int _disposed;
 
         internal RemoteGatewayMirrorSink(RemoteGatewayChannelRegistry channels)
         {
@@ -58,10 +58,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         public void Dispose()
         {
-            if (_disposed)
+            if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0)
                 return;
 
-            _disposed = true;
             Disable();
             _channels.Dispose();
         }

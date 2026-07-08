@@ -50,11 +50,14 @@ namespace Unity.FoxgloveSDK.Components
             PolicyHash = policyHash ?? string.Empty;
             Mode = mode ?? string.Empty;
             FlowMode = string.IsNullOrWhiteSpace(flowMode) ? "PublishOnly" : flowMode;
-            RateHz = rateHz;
+            RateHz = NormalizeRateHz(rateHz);
             ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
             ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);
             Fields = new List<FoxRunSchemaFieldInfo>(fields ?? Array.Empty<FoxRunSchemaFieldInfo>()).AsReadOnly();
         }
+
+        private static float NormalizeRateHz(float value)
+            => float.IsNaN(value) || float.IsInfinity(value) || value < 0f ? 0f : value;
 
         private static float NormalizeNonNegative(float value)
             => float.IsNaN(value) || value < 0f ? 0f : value;

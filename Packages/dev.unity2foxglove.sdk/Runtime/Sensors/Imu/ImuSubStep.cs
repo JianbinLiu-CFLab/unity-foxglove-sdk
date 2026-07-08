@@ -56,10 +56,17 @@ namespace Unity.FoxgloveSDK.Sensors.Imu
                 return epochUnixNs;
 
             var maxDelta = ulong.MaxValue - epochUnixNs;
-            if (nanosFromEpoch >= maxDelta)
+            // ulong.MaxValue is not exactly representable as double; keep the
+            // double comparison as an early saturating guard, then validate the
+            // converted delta against the exact integer limit before adding.
+            if (nanosFromEpoch >= (double)maxDelta)
                 return ulong.MaxValue;
 
-            return epochUnixNs + (ulong)nanosFromEpoch;
+            var delta = (ulong)nanosFromEpoch;
+            if (delta > maxDelta)
+                return ulong.MaxValue;
+
+            return epochUnixNs + delta;
         }
 
         public static int ComputeQueueCapacity(int targetRateHz, int minSamples, int maxSamples)

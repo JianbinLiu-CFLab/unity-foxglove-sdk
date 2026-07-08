@@ -222,7 +222,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyContractPolicyNormalization()
         {
             var source = ReadRepoText(SchemaContractInfoPath);
-            Check(source.Contains("NormalizeNonNegative(changeEpsilon)", StringComparison.Ordinal)
+            Check(source.Contains("NormalizeRateHz(rateHz)", StringComparison.Ordinal)
+                  && source.Contains("NormalizeNonNegative(changeEpsilon)", StringComparison.Ordinal)
                   && source.Contains("NormalizeNonNegative(forceIntervalSeconds)", StringComparison.Ordinal),
                 "134-5D-1: FoxRun contract policy metadata normalizes non-negative values");
 
@@ -241,6 +242,22 @@ namespace Unity.FoxgloveSDK.Tests
                 Array.Empty<FoxRunSchemaFieldInfo>());
             Check(contract.ChangeEpsilon == 0f && contract.ForceIntervalSeconds == 0f,
                 "134-5D-2: FoxRun contract policy constructor clamps negative and NaN values");
+
+            var invalidRateContract = new FoxRunSchemaContractInfo(
+                "Type",
+                "/topic",
+                "schema",
+                "json",
+                "contract",
+                "binding",
+                "policy",
+                "FixedRate",
+                float.NaN,
+                0f,
+                0f,
+                Array.Empty<FoxRunSchemaFieldInfo>());
+            Check(invalidRateContract.RateHz == 0f,
+                "134-5D-3: FoxRun contract policy constructor clamps NaN rate");
         }
 
         private static FoxRunSchemaManifestInfo CreateManifest(string hash)
