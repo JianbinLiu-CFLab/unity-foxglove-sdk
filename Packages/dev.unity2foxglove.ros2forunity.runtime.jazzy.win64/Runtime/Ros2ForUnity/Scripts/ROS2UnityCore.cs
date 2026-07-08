@@ -43,7 +43,7 @@ namespace ROS2
         private int collectionVersion = 0;
         private int snapshotVersion = -1;
         private volatile bool quitting = false;
-        private volatile bool cachedOk = false;
+        private bool cachedOk = false;
         private bool disposed = false;
         private Thread executorThread;
         private int interval = 2;  // Spinning / executor interval in ms
