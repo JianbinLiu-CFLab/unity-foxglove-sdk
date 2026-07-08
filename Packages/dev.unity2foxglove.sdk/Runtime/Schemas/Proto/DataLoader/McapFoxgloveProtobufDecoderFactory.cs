@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.IO
 
             public McapDecodedPayload Decode(McapDataLoaderMessage message)
             {
-                var raw = message?.Data ?? new byte[0];
+                var raw = message?.Data ?? Array.Empty<byte>();
                 var parsed = _parser.ParseFrom(raw);
                 return new McapDecodedPayload
                 {

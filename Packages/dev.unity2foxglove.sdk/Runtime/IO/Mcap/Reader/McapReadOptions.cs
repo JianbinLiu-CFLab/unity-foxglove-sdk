@@ -70,6 +70,8 @@ namespace Unity.FoxgloveSDK.IO
         /// <summary>
         /// When true, EndTimeNs is exclusive. The default keeps the historical
         /// inclusive upper bound used by Unity replay/DataLoader paths.
+        /// New direct MCAP integrations that require spec-style exclusive end
+        /// bounds should set this to true explicitly.
         /// </summary>
         public bool UseOfficialEndTimeSemantics = false;
 

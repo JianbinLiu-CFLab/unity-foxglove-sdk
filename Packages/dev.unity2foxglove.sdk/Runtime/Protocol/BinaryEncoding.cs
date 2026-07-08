@@ -294,7 +294,6 @@ namespace Unity.FoxgloveSDK.Protocol
             hasSeek = data[6] != 0;
             seekTimeNs = ReadU64LE(data, 7);
             var idLen = ReadU32LE(data, 15);
-            if (idLen > int.MaxValue) return false;
             if (idLen > MaxPlaybackRequestIdBytes) return false;
             var idLenInt = (int)idLen;
             if (idLenInt > data.Length - 19) return false;

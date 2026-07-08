@@ -83,6 +83,12 @@ namespace Unity.FoxgloveSDK.Components
         public static CameraTimingSnapshot LastSnapshotOrDefault
             => s_lastSnapshot;
 
+#if UNITY_2019_1_OR_NEWER
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+            => Reset();
+#endif
+
         public static void Publish(CameraTimingSnapshot snapshot)
             => s_lastSnapshot = snapshot;
 
