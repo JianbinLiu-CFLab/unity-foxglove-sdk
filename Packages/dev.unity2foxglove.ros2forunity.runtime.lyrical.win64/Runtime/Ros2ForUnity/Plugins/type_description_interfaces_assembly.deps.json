@@ -47,22 +47,22 @@
     "type_description_interfaces_assembly/1.0.0": {
       "type": "project",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "72481e50d7ec0f8defde565e39c581ca78cb0d5c7410d0c29df283b1db7555205a64dd036d0ee57dc0e21c3fff76d98395beb55f826431b8ec6664b71086f148"
     },
     "builtin_interfaces_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "aabc692f994f8e07061cdca2e92a2d37ca9b283644e3a31ed8e9a234938ce1e40e6ac7ce46cd8003fac6c9ee595292fb809c7a5479d5da22ee8efe6b550d63ce"
     },
     "ros2cs_common/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "0cd69dbe351d81ac1bdc9d17a1a73e26d666580f7a11900dcb261f03417864f38539204321844679123ba1aeeee9dddf60213f9cc4de2861ad65de46e3a3d16b"
     },
     "service_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "d4625fa7ba78dfed1a0e0189e31a891bda5f8a42cebd055063740c54814fa8346a095112e3d225100ada8af1eb8a5f2dbf9b2c4a52ab5b5171ccc552839dea45"
     }
   }
 }

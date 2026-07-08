@@ -21,7 +21,6 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private const string DeviceTokenEnvironmentVariable = "FOXGLOVE_DEVICE_TOKEN";
         private const string EditorUserSettingsTokenKey = "Unity2Foxglove.RemoteGateway.DeviceToken";
         private const int DefaultEventQueueCapacity = 1024;
-        private const int MissingManagerRetryFrames = 60;
 
         [Header("Remote Gateway")]
         [Tooltip("Default off. When enabled in Play Mode, publishes Unity scene data to Foxglove Cloud through the official Foxglove Remote Access Gateway.")]
@@ -29,10 +28,6 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         [SerializeField] private FoxgloveManager _manager;
         [SerializeField] private string _deviceName = "Unity2Foxglove";
         [SerializeField, Min(1)] private int _eventQueueCapacity = DefaultEventQueueCapacity;
-
-        [Header("Token Fallback")]
-        [Tooltip("Prefer FOXGLOVE_DEVICE_TOKEN or EditorUserSettings. A token in a scene can end up in git.")]
-        [SerializeField] private string _deviceToken;
 
         private readonly List<RemoteGatewayEvent> _drainScratch = new List<RemoteGatewayEvent>();
         private RemoteGatewayEventQueue _events;
@@ -42,10 +37,9 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         private IntPtr _context;
         private string _connectionStatus = "Shutdown";
         private bool _warnedMissingToken;
-        private bool _warnedSerializedToken;
         private bool _warnedMissingManager;
         private bool _starting;
-        private int _missingManagerRetryFramesRemaining;
+        private bool _managerLookupAttempted;
 
         public bool EnableRemoteGateway
         {
@@ -64,7 +58,6 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         private void OnEnable()
         {
-            _missingManagerRetryFramesRemaining = 0;
             EnsureManager();
         }
 
@@ -251,17 +244,6 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 return token;
 #endif
 
-            if (!string.IsNullOrWhiteSpace(_deviceToken))
-            {
-                if (!_warnedSerializedToken)
-                {
-                    _warnedSerializedToken = true;
-                    Debug.LogWarning("[Foxglove] Remote gateway is using a serialized token fallback. A token in a scene can end up in git.");
-                }
-
-                return _deviceToken;
-            }
-
             return string.Empty;
         }
 
@@ -270,21 +252,18 @@ namespace Unity.FoxgloveSDK.RemoteGateway
             if (_manager != null)
                 return true;
 
+            if (_managerLookupAttempted)
+                return false;
+
+            _managerLookupAttempted = true;
             _manager = GetComponent<FoxgloveManager>();
             if (_manager != null)
                 return true;
-
-            if (_missingManagerRetryFramesRemaining > 0)
-            {
-                _missingManagerRetryFramesRemaining--;
-                return false;
-            }
 
             _manager = FindObjectOfType<FoxgloveManager>();
             if (_manager != null)
                 return true;
 
-            _missingManagerRetryFramesRemaining = MissingManagerRetryFrames;
             if (!_warnedMissingManager)
             {
                 _warnedMissingManager = true;

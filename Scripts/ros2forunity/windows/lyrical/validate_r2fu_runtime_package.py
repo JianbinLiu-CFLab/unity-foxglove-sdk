@@ -762,6 +762,26 @@ def check_runtime_files(results: list[CheckResult]) -> None:
     add(results, "leaky upstream examples pruned", not leaky_examples, ", ".join(leaky_examples))
 
 
+def check_managed_deps_consistency(results: list[CheckResult]) -> None:
+    """Validate known managed .deps.json dependency corrections."""
+    managed_plugin_root = RUNTIME_ROOT / "Plugins"
+    for name in ("stereo_msgs_assembly", "visualization_msgs_assembly"):
+        path = managed_plugin_root / f"{name}.deps.json"
+        data = load_json(path, results, f"{name}.deps.json parses")
+        target = data.get("targets", {}).get(".NETStandard,Version=v2.0/", {})
+        entry = target.get(f"{name}/1.0.0", {})
+        dependencies = entry.get("dependencies", {})
+        libraries = data.get("libraries", {})
+        add(
+            results,
+            f"{name}.deps.json does not declare spurious service_msgs dependency",
+            "service_msgs_assembly" not in dependencies
+            and "service_msgs_assembly/0.0.0.0" not in target
+            and "service_msgs_assembly/0.0.0.0" not in libraries,
+            rel(path),
+        )
+
+
 def check_package_path_patch(results: list[CheckResult]) -> None:
     """Validate the ROS2ForUnity.cs package path patch."""
     source = RUNTIME_ROOT / "Scripts" / "ROS2ForUnity.cs"
@@ -1154,6 +1174,7 @@ def run_checks(release_gate: bool = False, skip_dll_hash: bool = False) -> list[
     check_runtime_manifest(results)
     check_inventory(results, release_gate=release_gate, skip_dll_hash=skip_dll_hash)
     check_runtime_files(results)
+    check_managed_deps_consistency(results)
     check_package_path_patch(results)
     check_runtime_asmdef(results)
     check_runtime_source_patches(results)

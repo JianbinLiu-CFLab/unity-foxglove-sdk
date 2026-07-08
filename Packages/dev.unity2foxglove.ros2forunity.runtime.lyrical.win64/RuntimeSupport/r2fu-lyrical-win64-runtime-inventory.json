@@ -7628,9 +7628,9 @@
     {
       "path": "Ros2ForUnity/Plugins/action_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2136,
+      "size": 2696,
       "compressedSize": 389,
-      "sha256": "c90a0d8dc1870738947242b24f817deb03846df7458243e694e553dd0311dd92"
+      "sha256": "0377a22910dd9064f3341118ecfccd001b018227ad90867e9da17536dbfd925a"
     },
     {
       "path": "Ros2ForUnity/Plugins/action_msgs_assembly.dll",
@@ -7642,9 +7642,9 @@
     {
       "path": "Ros2ForUnity/Plugins/builtin_interfaces_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 914,
+      "size": 1132,
       "compressedSize": 305,
-      "sha256": "e890b76030ae282b599031fae96c247252bfe822b24a95f8a7c4332de60ae796"
+      "sha256": "e4de64daf23a02bcd3884e79ff83f566a211243b8994f6f3aa09970df3484a42"
     },
     {
       "path": "Ros2ForUnity/Plugins/builtin_interfaces_assembly.dll",
@@ -7656,9 +7656,9 @@
     {
       "path": "Ros2ForUnity/Plugins/composition_interfaces_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2137,
+      "size": 2697,
       "compressedSize": 377,
-      "sha256": "1ca87d848c940ec72ae2ceabd5b964414b6756ef2922abf0ec240a0b5124a58b"
+      "sha256": "7684758d00aa8c9f11095ade3cb41c44e00f2e9e4f51fdcbbc67d438ec7f9265"
     },
     {
       "path": "Ros2ForUnity/Plugins/composition_interfaces_assembly.dll",
@@ -7670,9 +7670,9 @@
     {
       "path": "Ros2ForUnity/Plugins/diagnostic_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2092,
+      "size": 2652,
       "compressedSize": 381,
-      "sha256": "859cbf515fa32e73e3227aaee6fb81b2b80a03177a88a475a55149eb9f86b9aa"
+      "sha256": "741bc24fc5273369ebbe2cb17564ff1a48b1998155be2249e229b5d455cad9ea"
     },
     {
       "path": "Ros2ForUnity/Plugins/diagnostic_msgs_assembly.dll",
@@ -7684,9 +7684,9 @@
     {
       "path": "Ros2ForUnity/Plugins/example_interfaces_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2546,
+      "size": 3220,
       "compressedSize": 414,
-      "sha256": "79b8ab6983f7c3a7461dafd530b8f7f015eff2f7d3d6f803a71eea59a6fd482d"
+      "sha256": "7b1b79d83abb53a560c3726d43013458068348d451a6087b42887704ba3dc9b2"
     },
     {
       "path": "Ros2ForUnity/Plugins/example_interfaces_assembly.dll",
@@ -7698,9 +7698,9 @@
     {
       "path": "Ros2ForUnity/Plugins/geometry_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1693,
+      "size": 2139,
       "compressedSize": 362,
-      "sha256": "5d8358d44311833aa952a9ab5381e27fceae4901c49d2e1d78f78d22a6f54952"
+      "sha256": "de171586a40b0cce1c1b0b450a6f94162dfce71fac17f5799fdcf38fed2dd5ea"
     },
     {
       "path": "Ros2ForUnity/Plugins/geometry_msgs_assembly.dll",
@@ -7712,9 +7712,9 @@
     {
       "path": "Ros2ForUnity/Plugins/lifecycle_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1712,
+      "size": 2158,
       "compressedSize": 362,
-      "sha256": "2bf8806559b76cb47a979e001c71390d43808c0df0280624644d048ecad8366e"
+      "sha256": "3a1cbcf631cb7dd191735d7beeb8964cd4663d5570e372af58f24bd9f4adcb6e"
     },
     {
       "path": "Ros2ForUnity/Plugins/lifecycle_msgs_assembly.dll",
@@ -7733,9 +7733,9 @@
     {
       "path": "Ros2ForUnity/Plugins/nav_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2468,
+      "size": 3142,
       "compressedSize": 401,
-      "sha256": "e1b6caa847b86882f9b3464b797dcc9e825be895feb6b6971d61b20a2f10d93c"
+      "sha256": "01a898414ea720ef45dada768ade90d6c3cd2fe3641ff9ea77b50050fcbf25e6"
     },
     {
       "path": "Ros2ForUnity/Plugins/nav_msgs_assembly.dll",
@@ -7747,9 +7747,9 @@
     {
       "path": "Ros2ForUnity/Plugins/rcl_interfaces_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1712,
+      "size": 2158,
       "compressedSize": 356,
-      "sha256": "8ccf98c321ce58eeeb492c81abbdf381da99befabaa08ad976f6282132101e0f"
+      "sha256": "7ba077d55af2633a0124b6e6b4553fafefc51e6412666018dd3fd303ac37842c"
     },
     {
       "path": "Ros2ForUnity/Plugins/rcl_interfaces_assembly.dll",
@@ -7761,9 +7761,9 @@
     {
       "path": "Ros2ForUnity/Plugins/ros2cs_common.deps.json",
       "category": "metadata_files",
-      "size": 473,
+      "size": 579,
       "compressedSize": 210,
-      "sha256": "6487e0c4d8158fa2a916a6e82381b827b65f3df0484443ef0421df245a87e83e"
+      "sha256": "54160b1f97bab1474a36758f5e365c4b403e507e87955946cabb2f33a2539077"
     },
     {
       "path": "Ros2ForUnity/Plugins/ros2cs_common.dll",
@@ -7775,9 +7775,9 @@
     {
       "path": "Ros2ForUnity/Plugins/ros2cs_core.deps.json",
       "category": "metadata_files",
-      "size": 866,
+      "size": 1084,
       "compressedSize": 290,
-      "sha256": "8a4717114e0cece1c4f988b985d7a7b102b5f211111cb4c6cee47807177db47d"
+      "sha256": "cef4d51f617ec2721e3d4ef3c3240742b3b9b5a56bd7abb1ba7bad28efdd8a8f"
     },
     {
       "path": "Ros2ForUnity/Plugins/ros2cs_core.dll",
@@ -7789,9 +7789,9 @@
     {
       "path": "Ros2ForUnity/Plugins/rosgraph_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2110,
+      "size": 2670,
       "compressedSize": 379,
-      "sha256": "abd58e44f6183eb2ba47868ca2406f186405faf92a0e0cded09490c38d5e8b29"
+      "sha256": "f4817195ace17bffd3d8fc341ae8f9babbef3cc6b1980d8917b66ef8885944ae"
     },
     {
       "path": "Ros2ForUnity/Plugins/rosgraph_msgs_assembly.dll",
@@ -7803,9 +7803,9 @@
     {
       "path": "Ros2ForUnity/Plugins/sensor_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2477,
+      "size": 3151,
       "compressedSize": 403,
-      "sha256": "000a9f6fd6179547ad067dcdf6ebc4793d35b26ba1f062200a9053bf7cca9ce2"
+      "sha256": "5386757eb657521cc378bd09953435cb489e278398fb76c744631886b38e6cf4"
     },
     {
       "path": "Ros2ForUnity/Plugins/sensor_msgs_assembly.dll",
@@ -7817,9 +7817,9 @@
     {
       "path": "Ros2ForUnity/Plugins/service_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1313,
+      "size": 1645,
       "compressedSize": 334,
-      "sha256": "f62e58d69651b91761ba992ef4a5f7e0fa8927fa05c223a86bcd6a5877215a60"
+      "sha256": "f7895a78a781564d54e9cb02e56f9c8e069d259b21b013e0bd22bba27b5a6f03"
     },
     {
       "path": "Ros2ForUnity/Plugins/service_msgs_assembly.dll",
@@ -7831,9 +7831,9 @@
     {
       "path": "Ros2ForUnity/Plugins/shape_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2028,
+      "size": 2589,
       "compressedSize": 377,
-      "sha256": "5f6e3935410f8a3e7aa42fc6437ecfc43d5d35478cd87e027e3ebc4c69fd7420"
+      "sha256": "b4f26c83ca6d74a4792d0a76b147eeae768920f421fce3f176babe64c64c9349"
     },
     {
       "path": "Ros2ForUnity/Plugins/shape_msgs_assembly.dll",
@@ -7845,9 +7845,9 @@
     {
       "path": "Ros2ForUnity/Plugins/statistics_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1322,
+      "size": 1654,
       "compressedSize": 338,
-      "sha256": "290ef37a82f17749dcb054f7c6308be78eb72931f103fb0612780ffeb5f83460"
+      "sha256": "d1e73c587bb4b5573102141ef652c41428bd2b42b073622a6abb176006d8e535"
     },
     {
       "path": "Ros2ForUnity/Plugins/statistics_msgs_assembly.dll",
@@ -7859,9 +7859,9 @@
     {
       "path": "Ros2ForUnity/Plugins/std_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1301,
+      "size": 1633,
       "compressedSize": 335,
-      "sha256": "07bfd5bbbfda7bdaf57d0131cb077346c946898127a9f1374832468ac23a5804"
+      "sha256": "11b9e6b758e01a52eb00224db44acaaeaefd65146462825d0357ed3855030063"
     },
     {
       "path": "Ros2ForUnity/Plugins/std_msgs_assembly.dll",
@@ -7873,9 +7873,9 @@
     {
       "path": "Ros2ForUnity/Plugins/std_srvs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1694,
+      "size": 2140,
       "compressedSize": 359,
-      "sha256": "ebaa3cd522c4c3236457f8816d7c0bacf3caf5f977e7c36552ec95cba4c5bc38"
+      "sha256": "22019ac343bd141b7f471e90afba4222c6365049a1f1d63fcc5bc2d4f8e990e2"
     },
     {
       "path": "Ros2ForUnity/Plugins/std_srvs_assembly.dll",
@@ -7887,9 +7887,9 @@
     {
       "path": "Ros2ForUnity/Plugins/stereo_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2866,
+      "size": 3147,
       "compressedSize": 423,
-      "sha256": "23adf715daa46817574396deccfc9ea089da5844029c8c3dcb6c8eb3d4541908"
+      "sha256": "0e94448c1b7687ee4d7563a265744911de1b9a5031765241b95dbd5f0b6fd993"
     },
     {
       "path": "Ros2ForUnity/Plugins/stereo_msgs_assembly.dll",
@@ -7901,9 +7901,9 @@
     {
       "path": "Ros2ForUnity/Plugins/test_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2519,
+      "size": 3193,
       "compressedSize": 408,
-      "sha256": "80cd73ac44cc248b184f2ce4450bf066f2c8f8364774cbd7b765d7f6d8a6c93e"
+      "sha256": "dcc7ba885b01ab8063a7c6b4b246d063fdbca4fba811a3e9b9a5e1abc1fa60c8"
     },
     {
       "path": "Ros2ForUnity/Plugins/test_msgs_assembly.dll",
@@ -7915,9 +7915,9 @@
     {
       "path": "Ros2ForUnity/Plugins/tf2_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 3290,
+      "size": 4192,
       "compressedSize": 450,
-      "sha256": "f0222f7bb24920d6b53692b711d7c2e778f6b3197ae07546ebe9ab92e4b0e510"
+      "sha256": "17af850dd149bb0d656ee68e22bdc1ca20df08bf97db7e6dab752f8bcc8cbe57"
     },
     {
       "path": "Ros2ForUnity/Plugins/tf2_msgs_assembly.dll",
@@ -7929,9 +7929,9 @@
     {
       "path": "Ros2ForUnity/Plugins/trajectory_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2096,
+      "size": 2656,
       "compressedSize": 384,
-      "sha256": "49db3ececc7a31fb0d56367dc60eb187c9f6602f4265c0e784d16140fcd3815e"
+      "sha256": "f2be060be07faedbcf165776a14378d162c7fb62029dae81774b48f4eda8edfd"
     },
     {
       "path": "Ros2ForUnity/Plugins/trajectory_msgs_assembly.dll",
@@ -7943,9 +7943,9 @@
     {
       "path": "Ros2ForUnity/Plugins/type_description_interfaces_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 1751,
+      "size": 2197,
       "compressedSize": 362,
-      "sha256": "6f2ef98a6cadf8da74049703075fce70d60e2c0164bbaafff3b6abd97825937e"
+      "sha256": "8b0c2d57a28a749c3aa6ff20a35f6c05fff3cd2f21ec02e3bae4a054d90beee7"
     },
     {
       "path": "Ros2ForUnity/Plugins/type_description_interfaces_assembly.dll",
@@ -7957,9 +7957,9 @@
     {
       "path": "Ros2ForUnity/Plugins/unique_identifier_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 926,
+      "size": 1144,
       "compressedSize": 309,
-      "sha256": "5451a287927f22e368a41cd99882be49b958f2558011b2117ee6dcb6411ae4a1"
+      "sha256": "7696292f0480c085806aace2138342e12f10ebe3d90fd0075d2664117075d137"
     },
     {
       "path": "Ros2ForUnity/Plugins/unique_identifier_msgs_assembly.dll",
@@ -7971,9 +7971,9 @@
     {
       "path": "Ros2ForUnity/Plugins/visualization_msgs_assembly.deps.json",
       "category": "generated_message_assemblies",
-      "size": 2887,
+      "size": 3168,
       "compressedSize": 427,
-      "sha256": "c0010763766d2b68a69f43a0ba4f90f6cac30876f1d4dceb147b2b62817b3098"
+      "sha256": "d82e540ada61820c8668e32f6ef1c26cb2dc17eaacac83726edf204e55921580"
     },
     {
       "path": "Ros2ForUnity/Plugins/visualization_msgs_assembly.dll",

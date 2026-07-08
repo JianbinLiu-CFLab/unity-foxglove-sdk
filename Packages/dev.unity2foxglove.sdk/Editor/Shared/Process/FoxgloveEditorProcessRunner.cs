@@ -6,6 +6,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -28,6 +29,9 @@ namespace Unity.FoxgloveSDK.Editor
 
     public static class FoxgloveEditorProcessRunner
     {
+        private static readonly MethodInfo KillProcessTreeMethod =
+            typeof(Process).GetMethod("Kill", new[] { typeof(bool) });
+
         public static FoxgloveEditorProcessResult Run(ProcessStartInfo startInfo, int timeoutMs)
         {
             if (startInfo == null)
@@ -78,8 +82,9 @@ namespace Unity.FoxgloveSDK.Editor
                 else
                     Task.WaitAll(new Task[] { stdout, stderr }, timeoutMs);
             }
-            catch
+            catch (Exception ex)
             {
+                LogWarning("Failed to drain process output streams: " + ex.Message);
             }
         }
 
@@ -89,8 +94,9 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 return task.IsCompleted ? task.Result ?? "" : "";
             }
-            catch
+            catch (Exception ex)
             {
+                LogWarning("Failed to read process output stream: " + ex.Message);
                 return "";
             }
         }
@@ -100,11 +106,26 @@ namespace Unity.FoxgloveSDK.Editor
             try
             {
                 if (process != null && !process.HasExited)
-                    process.Kill();
+                {
+                    if (KillProcessTreeMethod != null)
+                        KillProcessTreeMethod.Invoke(process, new object[] { true });
+                    else
+                        process.Kill();
+                }
             }
-            catch
+            catch (Exception ex)
             {
+                LogWarning("Failed to kill timed-out process: " + ex.Message);
             }
+        }
+
+        private static void LogWarning(string message)
+        {
+#if UNITY_5_3_OR_NEWER
+            UnityEngine.Debug.LogWarning("[Foxglove] " + message);
+#else
+            Debug.WriteLine("[Foxglove] " + message);
+#endif
         }
     }
 }
