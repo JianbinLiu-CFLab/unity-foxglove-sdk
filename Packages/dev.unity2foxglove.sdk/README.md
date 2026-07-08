@@ -57,6 +57,16 @@ WebSocket tokens, replay cursor bearer tokens, and Remote MCAP bearer tokens
 are serialized into Unity scenes or prefabs. Use them for local development and
 manual acceptance only, and avoid committing real production secrets.
 
+For these manager secrets, non-empty environment variables take priority over
+Inspector fallback values:
+
+| Secret | Environment variable | Inspector fallback |
+|---|---|---|
+| Shared WebSocket token | `FOXGLOVE_SHARED_TOKEN` | `Shared Token` |
+| WSS certificate password | `FOXGLOVE_CERTIFICATE_PASSWORD` | `Certificate Password` |
+| Replay cursor bearer token | `FOXGLOVE_REPLAY_CURSOR_TOKEN` | `Replay Cursor Bridge Token` |
+| Remote MCAP bearer token | `FOXGLOVE_REMOTE_MCAP_TOKEN` | `Remote MCAP Bearer Token` |
+
 ## Full documentation
 
 See [Documentation~/README.md](Documentation~/README.md).

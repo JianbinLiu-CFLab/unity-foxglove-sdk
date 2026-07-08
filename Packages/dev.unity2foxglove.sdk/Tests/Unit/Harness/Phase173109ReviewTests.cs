@@ -92,6 +92,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("Prefer FOXGLOVE_CERTIFICATE_PASSWORD", manager);
             Assert.Contains("Prefer FOXGLOVE_SHARED_TOKEN", manager);
             Assert.Contains("Prefer FOXGLOVE_REPLAY_CURSOR_TOKEN", manager);
+            Assert.Contains("Prefer FOXGLOVE_REMOTE_MCAP_TOKEN", manager);
+        }
+
+        [Fact]
+        public void ManagerSecretSourcePriorityIsDocumented()
+        {
+            var readme = TestSources.Text("Packages/dev.unity2foxglove.sdk/README.md");
+            var inspector = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Documentation~/en/12_Inspector_Reference.md");
+
+            foreach (var text in new[] { readme, inspector })
+            {
+                Assert.Contains("environment variables take priority", text, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("FOXGLOVE_SHARED_TOKEN", text, StringComparison.Ordinal);
+                Assert.Contains("FOXGLOVE_CERTIFICATE_PASSWORD", text, StringComparison.Ordinal);
+                Assert.Contains("FOXGLOVE_REPLAY_CURSOR_TOKEN", text, StringComparison.Ordinal);
+                Assert.Contains("FOXGLOVE_REMOTE_MCAP_TOKEN", text, StringComparison.Ordinal);
+            }
         }
 
         [Fact]

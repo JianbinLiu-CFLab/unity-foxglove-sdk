@@ -123,6 +123,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void SpikeDracoSidecarIsObsoleteAndNotUsedByProductionPublishers()
+        {
+            var sidecar = Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/PointCloud/DracoPointCloudEncoderSidecar.cs");
+            var publishers = string.Concat(
+                Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.cs"),
+                Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/FoxglovePointCloudPublisher.Draco.cs"),
+                Text("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Publishers/PointCloudWorkerEncoders.cs"));
+
+            Assert.Contains("[Obsolete(\"DracoPointCloudEncoderSidecar is spike-only. Use DracoPointCloudNativeEncoder for production.\", false)]", sidecar, StringComparison.Ordinal);
+            Assert.DoesNotContain("DracoPointCloudEncoderSidecar", publishers, StringComparison.Ordinal);
+            Assert.Contains("DracoPointCloudNativeEncoder", publishers, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void NativeDracoRateGateThrottlesTenHzInputAndResetsOnBackwardClockJump()
         {
             const ulong tenHzStepNs = 100_000_000UL;

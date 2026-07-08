@@ -62,6 +62,16 @@ passwords, and shared WebSocket tokens are Inspector fields serialized with the
 scene or prefab. Keep them local-development only and do not commit real
 production credentials.
 
+Non-empty environment variables take priority over Inspector fallback values
+for manager secrets:
+
+| Secret | Environment variable | Inspector fallback |
+|---|---|---|
+| Shared WebSocket token | `FOXGLOVE_SHARED_TOKEN` | `Shared Token` |
+| WSS certificate password | `FOXGLOVE_CERTIFICATE_PASSWORD` | `Certificate Password` |
+| Replay cursor bearer token | `FOXGLOVE_REPLAY_CURSOR_TOKEN` | `Replay Cursor Bridge Token` |
+| Remote MCAP bearer token | `FOXGLOVE_REMOTE_MCAP_TOKEN` | `Remote MCAP Bearer Token` |
+
 ### 3.6 Security / WSS
 
 | Field | Default | What it does | When to change it | Common mistakes |
