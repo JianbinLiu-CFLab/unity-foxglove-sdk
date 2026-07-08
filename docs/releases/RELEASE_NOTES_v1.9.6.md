@@ -92,6 +92,9 @@ paths stay optional and package-isolated.
   `Playback Duration Seconds` values are zero, negative, non-finite, or too
   large for the nanosecond playback window. This turns old invalid scene data
   from a silent broken timeline into an explicit configuration warning.
+- Camera calibration auto-intrinsics now reject zero, negative, NaN, or
+  infinite vertical FOV values instead of silently clamping them into
+  implausibly large focal lengths.
 - Optional ROS2 For Unity runtime packages remain package-based and
   platform/runtime-specific; the core WebSocket, MCAP, FoxRun, and camera paths
   do not require ROS2.

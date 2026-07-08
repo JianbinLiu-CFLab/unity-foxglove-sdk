@@ -21,7 +21,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         [InlineData(0.0)]
         [InlineData(-1.0)]
         [InlineData(-180.0)]
+        [InlineData(double.NaN)]
         [InlineData(double.NegativeInfinity)]
+        [InlineData(double.PositiveInfinity)]
         public void AutoIntrinsicsRejectsInvalidVerticalFov(double verticalFovDegrees)
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
@@ -49,6 +51,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(2, history.Count);
             Assert.Equal(200UL, snapshot[1].UnixNs);
             Assert.True(history.Covers(100UL, 200UL));
+        }
+
+        [Fact]
+        public void PoseHistoryReplacesEqualTimestampWithoutGrowingBuffer()
+        {
+            var history = new SensorMotionPoseHistory(capacity: 4, maxAgeNs: 10_000_000_000UL);
+            history.Add(100UL, new Vector3(0f, 0f, 0f), Quaternion.Identity);
+            history.Add(200UL, new Vector3(2f, 0f, 0f), Quaternion.Identity);
+            history.Add(200UL, new Vector3(7f, 0f, 0f), Quaternion.Identity);
+            history.Add(300UL, new Vector3(3f, 0f, 0f), Quaternion.Identity);
+
+            var snapshot = history.Snapshot();
+
+            Assert.Equal(3, history.Count);
+            Assert.Equal(200UL, snapshot[1].UnixNs);
+            Assert.Equal(7f, snapshot[1].Translation.X);
+            Assert.True(history.Covers(100UL, 300UL));
         }
 
         [Fact]
