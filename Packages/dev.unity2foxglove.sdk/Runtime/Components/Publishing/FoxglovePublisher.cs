@@ -10,6 +10,7 @@ using System;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
+using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -20,6 +21,7 @@ namespace Unity.FoxgloveSDK.Components
     public abstract class FoxglovePublisher<TMessage> : FoxglovePublisherBase where TMessage : class, new()
     {
         private string _cachedSchemaName;
+        private bool _warnedMissingMsgPackPayload;
 
         protected override string SchemaName
         {
@@ -58,7 +60,16 @@ namespace Unity.FoxgloveSDK.Components
             {
                 var payload = CreateMsgPackPayload(message);
                 if (payload != null)
+                {
+                    _warnedMissingMsgPackPayload = false;
                     PublishMsgPack(payload, unixNs, resolution);
+                }
+                else if (!_warnedMissingMsgPackPayload)
+                {
+                    Debug.LogWarning(
+                        $"[Foxglove] {GetType().Name} selected MsgPack encoding but did not provide a MessagePack payload; skipping publish.");
+                    _warnedMissingMsgPackPayload = true;
+                }
                 return;
             }
 

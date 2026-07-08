@@ -25,6 +25,7 @@ namespace ROS2
 /// </summary>
 public class ROS2TimeSource : ITimeSource, IDisposable
 {
+  private readonly object clockMutex = new object();
   private ROS2.Clock clock;
   private int rosUnavailableWarningLogged = 0;
   private int disposed = 0;
@@ -54,18 +55,25 @@ public class ROS2TimeSource : ITimeSource, IDisposable
       Interlocked.Exchange(ref rosUnavailableWarningLogged, 0);
     }
 
-    if (clock == null)
-    { // Create clock which uses system time by default (unless use_sim_time is set in ros2)
+    double nowSeconds;
+    lock (clockMutex)
+    {
       if (Volatile.Read(ref disposed) != 0)
       {
         seconds = 0;
         nanoseconds = 0;
         return false;
       }
-      clock = new ROS2.Clock();
+
+      if (clock == null)
+      { // Create clock which uses system time by default (unless use_sim_time is set in ros2)
+        clock = new ROS2.Clock();
+      }
+
+      nowSeconds = clock.Now.Seconds;
     }
   
-    TimeUtils.TimeFromTotalSeconds(clock.Now.Seconds, out seconds, out nanoseconds);
+    TimeUtils.TimeFromTotalSeconds(nowSeconds, out seconds, out nanoseconds);
     return true;
   }
 
@@ -77,10 +85,13 @@ public class ROS2TimeSource : ITimeSource, IDisposable
     }
 
     // U2F-LOCAL-PATCH: avoid native cleanup from the finalizer thread.
-    if (clock != null)
+    lock (clockMutex)
     {
-      clock.Dispose();
-      clock = null;
+      if (clock != null)
+      {
+        clock.Dispose();
+        clock = null;
+      }
     }
   }
 }

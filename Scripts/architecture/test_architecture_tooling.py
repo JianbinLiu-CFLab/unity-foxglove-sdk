@@ -29,6 +29,9 @@ def load_module(name: str, relative: str):
     sys.path.insert(0, str(path.parent))
     try:
         spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(spec.name, None)
+        raise
     finally:
         sys.path[:] = original_path
     return module

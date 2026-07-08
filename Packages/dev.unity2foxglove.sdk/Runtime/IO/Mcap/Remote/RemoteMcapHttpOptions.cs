@@ -17,7 +17,11 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         public string Host = "127.0.0.1";
 
-        /// <summary>TCP port used by the embedded HTTP listener.</summary>
+        /// <summary>
+        /// TCP port used by the embedded HTTP listener. Must be set to a value in
+        /// [1, 65535] before starting the server; there is no safe default because
+        /// callers must choose a port that matches their local workflow.
+        /// </summary>
         public int Port;
 
         /// <summary>Absolute or caller-resolved path to the MCAP file served by this backend.</summary>

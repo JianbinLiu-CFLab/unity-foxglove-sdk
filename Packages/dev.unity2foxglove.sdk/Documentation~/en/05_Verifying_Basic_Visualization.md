@@ -47,9 +47,11 @@ Open:
 
 1. Open the sample scene.
 2. Press **Play**.
-3. Confirm the Unity Console shows a WebSocket server on `ws://127.0.0.1:8765`.
+3. Confirm the Unity Console shows a WebSocket server on `ws://127.0.0.1:<configured port>`.
 4. Open Foxglove Desktop.
-5. Connect to `ws://127.0.0.1:8765`.
+5. Connect to `ws://127.0.0.1:<configured port>`.
+
+The default port is `8765`. Check the `FoxgloveManager` Inspector if you changed it.
 
 ## 6. Import the Simple Layout
 

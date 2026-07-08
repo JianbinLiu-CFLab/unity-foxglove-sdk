@@ -65,7 +65,7 @@ namespace Unity.FoxgloveSDK.Performance
                     maxAllocatedBytesPerMessage = 64 * 1024 * 1024,
                     maxGen0Collections = isFull ? 10000 : 1000,
                     maxGen1Collections = isFull ? 1000 : 100,
-                    maxGen2Collections = 1000
+                    maxGen2Collections = isFull ? 50 : 10
                 },
                 scenarios = new Dictionary<string, PerformanceScenarioThreshold>
                 {

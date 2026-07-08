@@ -66,6 +66,7 @@ namespace Foxglove.Schemas.Video
         public long DroppedOutputFrames => Interlocked.Read(ref _droppedOutputFrames);
         public int OutputQueueDepth => Volatile.Read(ref _outputCount);
         public int MaxOutputQueue => Volatile.Read(ref _maxOutputQueue);
+        internal int PendingTimestampCountForTests => _encodedFrameTimestamps.Count;
         public string LastDiagnosticLine
         {
             get => Volatile.Read(ref _lastDiagnosticLine);
@@ -451,6 +452,11 @@ namespace Foxglove.Schemas.Video
             _encodedFrameTimestamps.TryDequeue(out _);
             Interlocked.Increment(ref _skippedAccessUnits);
             LastDiagnosticLine = "OpenH264 helper skipped an access unit.";
+        }
+
+        internal void EnqueueTimestampForTests(ulong timestampNs)
+        {
+            _encodedFrameTimestamps.Enqueue(timestampNs);
         }
 
         private static async Task<LengthReadResult> ReadLittleEndianLength(Stream stream, byte[] header, CancellationToken token)

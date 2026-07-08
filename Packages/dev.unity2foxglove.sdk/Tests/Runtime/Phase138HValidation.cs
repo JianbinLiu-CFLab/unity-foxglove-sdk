@@ -162,9 +162,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "138H-19: SensorUnitProfile owns profile selection, publisher reference, and unit extrinsics");
             Check(lidarSource.Contains("GetComponentInParent<SensorUnitProfile>()") &&
                   lidarSource.Contains("CreateScanPattern(_columnStep)") &&
-                  !lidarEditorSource.Contains("Profile Source") &&
+                  lidarEditorSource.Contains("Sensor Unit Profile") &&
+                  lidarEditorSource.Contains("Profile Source") &&
+                  lidarEditorSource.Contains("T_IL Override") &&
                   !lidarEditorSource.Contains("IMU -> Sensor Extrinsic"),
-                "138H-20: VirtualLidar consumes SensorUnitProfile and no longer exposes shared profile/extrinsic UI");
+                "138H-20: VirtualLidar consumes SensorUnitProfile while exposing explicit LiDAR profile and T_IL override UI");
             Check(!lidarSource.Contains("ApplyEffectiveTIlToImuMount") &&
                   !lidarSource.Contains("FindGeneratedImuMount"),
                 "138H-21: VirtualLidar does not mutate scene hierarchy to apply T_IL");

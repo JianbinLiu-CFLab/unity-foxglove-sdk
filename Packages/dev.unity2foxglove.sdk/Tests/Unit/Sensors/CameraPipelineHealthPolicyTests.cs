@@ -220,14 +220,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 var dir = new DirectoryInfo(AppContext.BaseDirectory);
                 while (dir != null)
                 {
-                    if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    if (File.Exists(Path.Combine(dir.FullName, "README.md"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "Unity2Foxglove"))
+                        && Directory.Exists(Path.Combine(dir.FullName, "Packages")))
                         return dir.FullName;
 
                     dir = dir.Parent;
                 }
 
-                Assert.Fail("Could not locate repository root for camera health source-shape tests from " + AppContext.BaseDirectory);
+                Assert.Fail(
+                    "Could not locate repository root for camera health source-shape tests from "
+                    + AppContext.BaseDirectory
+                    + ". Expected README.md, Unity2Foxglove/, and Packages/.");
                 return string.Empty;
             }
         }

@@ -47,6 +47,38 @@ def field(number: int, wire_type: int, payload: bytes) -> bytes:
 class McapTimeSyncTests(unittest.TestCase):
     """Regression coverage for timestamp extraction edge cases."""
 
+    def test_flat_timestamp_reads_sec_and_nsec(self) -> None:
+        """A plain sec/nsec protobuf payload should parse to nanoseconds."""
+
+        module = load_module()
+        payload = field(1, module.WIRE_VARINT, varint(10)) + field(2, module.WIRE_VARINT, varint(20))
+
+        self.assertEqual(10_000_000_020, module.parse_payload_timestamp_ns(payload))
+
+    def test_flat_timestamp_reads_reverse_field_order(self) -> None:
+        """The parser should not depend on sec appearing before nsec."""
+
+        module = load_module()
+        payload = field(2, module.WIRE_VARINT, varint(20)) + field(1, module.WIRE_VARINT, varint(10))
+
+        self.assertEqual(10_000_000_020, module.parse_payload_timestamp_ns(payload))
+
+    def test_flat_timestamp_requires_both_sec_and_nsec(self) -> None:
+        """Partial timestamp payloads are not valid timestamps."""
+
+        module = load_module()
+
+        self.assertIsNone(module.parse_payload_timestamp_ns(b""))
+        self.assertIsNone(module.parse_payload_timestamp_ns(field(1, module.WIRE_VARINT, varint(10))))
+        self.assertIsNone(module.parse_payload_timestamp_ns(field(2, module.WIRE_VARINT, varint(20))))
+
+    def test_malformed_varint_returns_none(self) -> None:
+        """Malformed protobuf varints should fail closed."""
+
+        module = load_module()
+
+        self.assertIsNone(module.parse_payload_timestamp_ns(b"\x08\x80"))
+
     def test_nested_timestamp_does_not_overwrite_outer_sec_nsec(self) -> None:
         """Unrelated nested timestamps should not replace the outer timestamp."""
 

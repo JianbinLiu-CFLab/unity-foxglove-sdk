@@ -538,6 +538,14 @@ namespace Unity.FoxgloveSDK.Editor
 
             var secureIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.SecureWebSocket), (int)FoxgloveTransportMode.SecureWebSocket);
             var webSocketIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.WebSocket), (int)FoxgloveTransportMode.WebSocket);
+            var noneIndex = EnumIndex(prop, nameof(FoxgloveTransportMode.None), (int)FoxgloveTransportMode.None);
+            if (GetBool("_foxgloveOutputEnabled") && prop.enumValueIndex == noneIndex)
+            {
+                EditorGUILayout.HelpBox(
+                    "Transport mode is serialized as None while Foxglove WebSocket output is enabled. Select Web Socket or Secure Web Socket.",
+                    MessageType.Warning);
+            }
+
             var current = prop.enumValueIndex == secureIndex
                 ? FoxgloveTransportMode.SecureWebSocket
                 : FoxgloveTransportMode.WebSocket;

@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var update = PhaseValidationSourceHelpers.SourceMethod(source, "private void Update");
-            var whileIndex = update.IndexOf("while (_queue.Count > 0)", StringComparison.Ordinal);
+            var whileIndex = update.IndexOf("while (_queue.TryDequeue(out var sample))", StringComparison.Ordinal);
             var handlerIndex = update.IndexOf("var nativeFrameHandler = ImuNativeFrameReady;", StringComparison.Ordinal);
 
             Check(handlerIndex >= 0 && whileIndex >= 0 && handlerIndex < whileIndex,

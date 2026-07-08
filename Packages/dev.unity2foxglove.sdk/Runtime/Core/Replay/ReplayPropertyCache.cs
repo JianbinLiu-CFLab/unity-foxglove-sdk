@@ -14,6 +14,14 @@ namespace Unity.FoxgloveSDK.Core
     {
         private static readonly ConcurrentDictionary<PropertyCacheKey, PropertyInfo> Cache = new();
 
+#if UNITY_5_3_OR_NEWER
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+#endif
+        private static void ResetForSubsystemRegistration()
+        {
+            Cache.Clear();
+        }
+
         internal static PropertyInfo Resolve(Type type, string propertyName, BindingFlags bindingFlags)
         {
             var key = new PropertyCacheKey(type, propertyName, bindingFlags);

@@ -34,7 +34,9 @@ namespace Foxglove.Schemas
             {
                 Timestamp = FoxgloveProtoBuilderUtil.ToTimestamp(unixNs),
                 FrameId = frameId ?? "",
-                Data = ByteString.CopyFrom(h264AccessUnit ?? new byte[0]),
+                Data = h264AccessUnit == null || h264AccessUnit.Length == 0
+                    ? ByteString.Empty
+                    : ByteString.CopyFrom(h264AccessUnit),
                 Format = string.IsNullOrEmpty(format) ? H264Format : format
             };
         }

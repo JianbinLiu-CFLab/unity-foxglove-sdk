@@ -89,6 +89,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             => Assert.Equal(expected, TopicNameNormalizer.NormalizeRosStyleTopic(topic));
 
         [Fact]
+        public void TopicNameNormalizerReturnsWellFormedRosTopicWithoutAllocating()
+        {
+            const string topic = "/unity/camera";
+
+            Assert.Same(topic, TopicNameNormalizer.NormalizeRosStyleTopic(topic));
+        }
+
+        [Fact]
         public void WarningDebouncerUpdatesAtomicCooldownOncePerWindow()
         {
             long lastTicks = 0;

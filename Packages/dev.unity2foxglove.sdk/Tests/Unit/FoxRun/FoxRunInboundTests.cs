@@ -173,7 +173,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [InlineData("::1")]
         public void InboundAuthorizationAllowsEnabledLoopback(string host)
         {
-            Assert.True(FoxRunInboundAuthorization.IsAuthorized(
+            Assert.True(FoxRunInboundAuthorization.IsRemoteInboundPolicyMet(
                 true,
                 host,
                 false,
@@ -185,13 +185,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void InboundAuthorizationFailsClosedForRemoteWithoutExplicitTokenPolicy()
         {
-            Assert.False(FoxRunInboundAuthorization.IsAuthorized(
+            Assert.False(FoxRunInboundAuthorization.IsRemoteInboundPolicyMet(
                 true,
                 "0.0.0.0",
                 false,
                 "secret",
                 out var noOptIn));
-            Assert.False(FoxRunInboundAuthorization.IsAuthorized(
+            Assert.False(FoxRunInboundAuthorization.IsRemoteInboundPolicyMet(
                 true,
                 "0.0.0.0",
                 true,
@@ -199,6 +199,28 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 out var noToken));
             Assert.Contains("explicitly enabled", noOptIn, StringComparison.Ordinal);
             Assert.Contains("shared token", noToken, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void InboundAuthorizationRequiresMatchingRemoteTokenWhenTokenIsAvailable()
+        {
+            Assert.False(FoxRunInboundAuthorization.IsAuthorized(
+                true,
+                "0.0.0.0",
+                true,
+                "secret",
+                "wrong",
+                out var mismatch));
+            Assert.True(FoxRunInboundAuthorization.IsAuthorized(
+                true,
+                "0.0.0.0",
+                true,
+                "secret",
+                "secret",
+                out var diagnostic));
+
+            Assert.Contains("token", mismatch, StringComparison.OrdinalIgnoreCase);
+            Assert.Empty(diagnostic);
         }
 
         [Fact]

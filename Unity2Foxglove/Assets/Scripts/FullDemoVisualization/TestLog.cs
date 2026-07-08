@@ -13,7 +13,8 @@ using Unity.FoxgloveSDK.Components;
 /// </summary>
 public partial class TestLog : MonoBehaviour
 {
-    private Transform _trackedCube;
+    [SerializeField] private Transform _trackedCube;
+    private bool _warnedMissingTrackedCube;
 
     // Minimal form uses only a topic path.
     // Publishes at the default fixed rate and uses the field value as payload.
@@ -48,8 +49,16 @@ public partial class TestLog : MonoBehaviour
 
     void Awake()
     {
+        if (_trackedCube != null)
+            return;
+
         var cube = GameObject.Find("Cube");
         _trackedCube = cube != null ? cube.transform : transform;
+        if (cube == null && !_warnedMissingTrackedCube)
+        {
+            Debug.LogWarning("TestLog tracked cube is not assigned and no active GameObject named 'Cube' was found; publishing this transform instead.");
+            _warnedMissingTrackedCube = true;
+        }
     }
 
     /// <summary>

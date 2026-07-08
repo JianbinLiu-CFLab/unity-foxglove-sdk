@@ -15,10 +15,19 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
     public sealed class SensorRawImageFrame
     {
         public SensorRawImageFrame(ulong unixNs, string frameId, int width, int height, byte[] data, string encoding = "rgb8")
-            : this(unixNs, frameId, width, height, data, encoding, 0)
+            : this(unixNs, frameId, width, height, data, encoding, false)
         {
         }
 
+        public SensorRawImageFrame(ulong unixNs, string frameId, int width, int height, byte[] data, string encoding, bool isBigendian)
+            : this(unixNs, frameId, width, height, data, encoding, isBigendian ? (int?)1 : 0)
+        {
+        }
+
+        /// <summary>
+        /// Creates an RGB image frame. Prefer the bool isBigendian overload for new code;
+        /// this integer form is kept for source compatibility with early native adapters.
+        /// </summary>
         public SensorRawImageFrame(ulong unixNs, string frameId, int width, int height, byte[] data, string encoding = "rgb8", int? isBigendian = null)
         {
             if (width <= 0)

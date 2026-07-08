@@ -44,6 +44,10 @@ namespace Foxglove.Schemas
         /// Creates a JSON schema identity pose with zero position and identity
         /// orientation.
         /// </summary>
+        /// <remarks>
+        /// Returns a fresh mutable object because Foxglove visual message DTOs are
+        /// mutable and callers may adjust pose fields after requesting defaults.
+        /// </remarks>
         public static FoxglovePose JsonIdentityPose()
         {
             return new FoxglovePose
@@ -57,6 +61,10 @@ namespace Foxglove.Schemas
         /// Creates a protobuf identity pose with zero position and identity
         /// orientation.
         /// </summary>
+        /// <remarks>
+        /// Returns a fresh mutable protobuf message because callers may adjust pose
+        /// fields before publishing; do not replace with a shared cached instance.
+        /// </remarks>
         public static Foxglove.Pose ProtoIdentityPose()
         {
             return new Foxglove.Pose

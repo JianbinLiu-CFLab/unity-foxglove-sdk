@@ -24,21 +24,36 @@ namespace ROS2
 /// </summary>
 internal static class TimeUtils
 {
+  private const double NanosecondsPerSecondDouble = 1_000_000_000.0;
+  private const long NanosecondsPerSecond = 1_000_000_000L;
+
   public static void TimeFromTotalSeconds(in double secondsIn, out int seconds, out uint nanoseconds)
   {
-    seconds = (int)Math.Floor(secondsIn);
-    double fractionalSeconds = secondsIn - seconds;
-    long normalizedNanoseconds = (long)Math.Floor(fractionalSeconds * 1000000000.0);
-    if (normalizedNanoseconds >= 1000000000L)
+    if (Double.IsNaN(secondsIn) || Double.IsInfinity(secondsIn))
     {
-      seconds++;
-      normalizedNanoseconds -= 1000000000L;
+      throw new ArgumentOutOfRangeException(nameof(secondsIn), "ROS time cannot be NaN or infinity");
+    }
+
+    double wholeSeconds = Math.Floor(secondsIn);
+    double fractionalSeconds = secondsIn - wholeSeconds;
+    long normalizedNanoseconds = (long)Math.Floor(fractionalSeconds * NanosecondsPerSecondDouble);
+    if (normalizedNanoseconds >= NanosecondsPerSecond)
+    {
+      wholeSeconds += 1.0;
+      normalizedNanoseconds -= NanosecondsPerSecond;
     }
     else if (normalizedNanoseconds < 0)
     {
-      seconds--;
-      normalizedNanoseconds += 1000000000L;
+      wholeSeconds -= 1.0;
+      normalizedNanoseconds += NanosecondsPerSecond;
     }
+
+    if (wholeSeconds < Int32.MinValue || wholeSeconds > Int32.MaxValue)
+    {
+      throw new OverflowException("ROS time seconds exceed Int32 range");
+    }
+
+    seconds = (int)wholeSeconds;
     nanoseconds = (uint)normalizedNanoseconds;
   }
 }

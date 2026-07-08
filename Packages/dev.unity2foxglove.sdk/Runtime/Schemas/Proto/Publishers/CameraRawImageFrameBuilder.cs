@@ -26,8 +26,10 @@ namespace Unity.FoxgloveSDK.Components
             if (rgb24Readback == null)
                 throw new ArgumentNullException(nameof(rgb24Readback));
 
-            var data = new byte[Math.Max(1, width) * Math.Max(1, height) * 3];
-            CopyRgb24Rows(rgb24Readback, data, Math.Max(1, width), Math.Max(1, height), flipVertical);
+            var safeWidth = Math.Max(1, width);
+            var safeHeight = Math.Max(1, height);
+            var data = new byte[CheckedRgb24ByteLength(safeWidth, safeHeight)];
+            CopyRgb24Rows(rgb24Readback, data, safeWidth, safeHeight, flipVertical);
             return new SensorRawImageFrame(unixNs, frameId, width, height, data, "rgb8");
         }
 
@@ -47,17 +49,29 @@ namespace Unity.FoxgloveSDK.Components
 
             // AsyncGPUReadback RGB24 buffers are expected to be tightly packed;
             // use a platform-specific stride path if Unity exposes padded rows.
-            var expectedLength = width * height * 3;
+            var expectedLength = CheckedRgb24ByteLength(width, height);
             if (source.Length != expectedLength || destination.Length != expectedLength)
                 throw new ArgumentException("RGB24 row buffers must match width * height * 3 bytes.");
+            var rowStride = checked(width * 3);
 
             for (var y = 0; y < height; y++)
             {
                 var sourceY = flipVertical ? (height - 1 - y) : y;
-                var sourceOffset = sourceY * width * 3;
-                var destinationOffset = y * width * 3;
-                Array.Copy(source, sourceOffset, destination, destinationOffset, width * 3);
+                var sourceOffset = sourceY * rowStride;
+                var destinationOffset = y * rowStride;
+                Array.Copy(source, sourceOffset, destination, destinationOffset, rowStride);
             }
+        }
+
+        private static int CheckedRgb24ByteLength(int width, int height)
+        {
+            var byteLength = (long)width * height * 3L;
+            if (byteLength > int.MaxValue)
+                throw new ArgumentOutOfRangeException(
+                    nameof(width) + " / " + nameof(height),
+                    "RGB24 frame dimensions exceed the maximum managed byte-array length.");
+
+            return (int)byteLength;
         }
     }
 }

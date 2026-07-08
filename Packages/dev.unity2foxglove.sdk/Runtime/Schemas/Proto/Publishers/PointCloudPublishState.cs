@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.Components
         private bool _preparedPublishWebSocket;
         private bool _preparedPublishBridge;
         private int _hasSourceDrivenFrames;
-        private bool _warnedTransformFallbackSuppressed;
+        private int _warnedTransformFallbackSuppressed;
 
         public void MarkSourceDriven()
         {
@@ -27,20 +27,14 @@ namespace Unity.FoxgloveSDK.Components
         public void ResetSourceDriven()
         {
             Interlocked.Exchange(ref _hasSourceDrivenFrames, 0);
-            _warnedTransformFallbackSuppressed = false;
+            Interlocked.Exchange(ref _warnedTransformFallbackSuppressed, 0);
         }
 
         public bool ShouldSuppressTransformFallback(bool suppressAfterSourceFrames)
             => suppressAfterSourceFrames && Volatile.Read(ref _hasSourceDrivenFrames) != 0;
 
         public bool ShouldLogTransformFallbackSuppressedWarning()
-        {
-            if (_warnedTransformFallbackSuppressed)
-                return false;
-
-            _warnedTransformFallbackSuppressed = true;
-            return true;
-        }
+            => Interlocked.Exchange(ref _warnedTransformFallbackSuppressed, 1) == 0;
 
         public void SetPreparedDemand(bool publishWebSocket, bool publishBridge)
         {

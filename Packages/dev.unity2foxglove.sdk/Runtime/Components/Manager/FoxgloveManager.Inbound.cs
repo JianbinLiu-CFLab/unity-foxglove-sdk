@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             get
             {
-                return FoxRunInboundAuthorization.IsAuthorized(
+                return FoxRunInboundAuthorization.IsRemoteInboundPolicyMet(
                     _enableFoxRunInbound,
                     _host,
                     _allowRemoteFoxRunInboundWithSharedToken,
@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             get
             {
-                FoxRunInboundAuthorization.IsAuthorized(
+                FoxRunInboundAuthorization.IsRemoteInboundPolicyMet(
                     _enableFoxRunInbound,
                     _host,
                     _allowRemoteFoxRunInboundWithSharedToken,
