@@ -363,7 +363,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !externalAdvance.Contains("QueueReplaySceneSnapshot", StringComparison.Ordinal),
                 "139D-7C: runtime tick treats normal external cursors as scene-only smooth replay advances, not WebSocket snapshots");
 
-            var replayController = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replayController = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var sceneOnlyAdvance = ExtractMethodBody(replayController, "public void ApplyTickToScene(ulong timeNs, bool deferCallbacks)");
             Check(sceneOnlyAdvance.Contains("_replayEngine.Tick(timeNs, _replayTickBuffer)", StringComparison.Ordinal)
                   && sceneOnlyAdvance.Contains("ForwardReplayMessageToScene", StringComparison.Ordinal)

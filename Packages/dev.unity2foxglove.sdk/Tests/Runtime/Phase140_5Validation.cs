@@ -22,8 +22,8 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ReplayContextPath =
             "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayMessageContext.cs";
 
-        private const string ReplayControllerPath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
+        private const string ProtobufParserPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayProtobufParser.cs";
 
         private static int _passed;
 
@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ReplaySessionIdentityUsesControllerSessionId()
         {
             var context = ReadRepoText(ReplayContextPath);
-            var controller = ReadRepoText(ReplayControllerPath);
+            var controller = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var adapter = ReadRepoText(AdapterPath);
 
             Check(context.Contains("public readonly ulong ReplaySessionId;", StringComparison.Ordinal)
@@ -118,14 +118,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ReplayAdapterCachesReflectionAndPreservesParseStacks()
         {
-            var source = ReadRepoText(AdapterPath);
+            var adapter = ReadRepoText(AdapterPath);
+            var parser = ReadRepoText(ProtobufParserPath);
 
-            Check(source.Contains("ProtobufParserCache", StringComparison.Ordinal)
-                  && source.Contains("ResolveProtobufParser", StringComparison.Ordinal)
-                  && source.Contains("ReplayPropertyCache.Resolve", StringComparison.Ordinal),
+            Check(adapter.Contains("ReplayProtobufParser.Parse(typeName, payload)", StringComparison.Ordinal)
+                  && parser.Contains("ProtobufParserCache", StringComparison.Ordinal)
+                  && parser.Contains("ResolveParser", StringComparison.Ordinal)
+                  && parser.Contains("ReplayPropertyCache.Resolve", StringComparison.Ordinal),
                 "140-5E-1: replay adapter caches protobuf parser and property reflection lookups");
-            Check(source.Contains("ExceptionDispatchInfo.Capture(ex.InnerException).Throw();", StringComparison.Ordinal)
-                  && source.Contains("FormatReplayException(ex)", StringComparison.Ordinal),
+            Check(parser.Contains("ExceptionDispatchInfo.Capture(ex.InnerException).Throw();", StringComparison.Ordinal)
+                  && adapter.Contains("FormatReplayException(ex)", StringComparison.Ordinal),
                 "140-5E-2: replay adapter preserves protobuf parse stacks and logs full replay exceptions");
         }
 

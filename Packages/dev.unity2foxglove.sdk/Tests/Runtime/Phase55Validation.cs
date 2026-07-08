@@ -105,8 +105,8 @@ namespace Unity.FoxgloveSDK.Tests
                 File.Delete(tmp);
             }
 
-            var replayController = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
-            Check(replayController.Contains("History(fromNs, clampedTo, _panelHistoryBuffer, ScrubHistoryMaxMessagesPerRequest"),
+            var replayController = PhaseValidationSourceHelpers.ReadReplayControllerSources();
+            Check(replayController.Contains("History(fromNs, clampedTo, _panelHistory.Buffer, ScrubHistoryMaxMessagesPerRequest"),
                 "55B-4: ReplayController pushes the panel history cap into the engine query");
         }
 

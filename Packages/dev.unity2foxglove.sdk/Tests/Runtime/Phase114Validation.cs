@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string MetadataRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs";
         private const string RecordingControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs";
         private const string ReplayControllerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs";
+        private const string ReplayFileValidatorPath = "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayFileValidator.cs";
         private const string ReplayEnginePath = "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs";
         private const string ManagerRuntimePath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
         private const string ManagerServerPath = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";
@@ -274,6 +275,8 @@ namespace Unity.FoxgloveSDK.Tests
                 MetadataRuntimePath + ".meta",
                 RecordingControllerPath,
                 ReplayControllerPath,
+                ReplayFileValidatorPath,
+                ReplayFileValidatorPath + ".meta",
                 ReplayEnginePath,
                 ManagerRuntimePath,
                 ManagerServerPath,
@@ -296,7 +299,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && recording.Contains("foxglove.parameters.snapshot", StringComparison.Ordinal),
                 "114-F3: recording path writes FoxRun schema metadata alongside existing parameter snapshot metadata");
 
-            var replay = ReadRepoText(ReplayControllerPath);
+            var replay = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var loadIndex = replay.IndexOf("_replayEngine.Load(filePath)", StringComparison.Ordinal);
             var guardIndex = replay.IndexOf("ReplaySchemaGuard.Evaluate(_replayEngine)", StringComparison.Ordinal);
             var playIndex = replay.IndexOf("_replayEngine.Play()", StringComparison.Ordinal);
@@ -305,11 +308,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(replay.Contains("throw new InvalidDataException(schemaGuard.Message)", StringComparison.Ordinal),
                 "114-F5: replay guard blocks mismatch by failing replay load");
 
-            var validateStart = replay.IndexOf("private static void ValidateReplayFileForLoad", StringComparison.Ordinal);
-            var validateEnd = replay.IndexOf("private static void ReadExactReplayMagic", StringComparison.Ordinal);
+            var replayFileValidator = ReadRepoText(ReplayFileValidatorPath);
+            var validateStart = replayFileValidator.IndexOf("internal static void ValidateReplayFileForLoad", StringComparison.Ordinal);
+            var validateEnd = replayFileValidator.IndexOf("private static void ReadExactReplayMagic", StringComparison.Ordinal);
             var foundValidateBody = validateStart >= 0 && validateEnd > validateStart;
-            var validateBody = foundValidateBody ? replay.Substring(validateStart, validateEnd - validateStart) : string.Empty;
-            Check(foundValidateBody
+            var validateBody = foundValidateBody ? replayFileValidator.Substring(validateStart, validateEnd - validateStart) : string.Empty;
+            Check(replay.Contains("ReplayFileValidator.ValidateReplayFileForLoad(filePath)", StringComparison.Ordinal)
+                  && foundValidateBody
                   && !validateBody.Contains("FoxRun", StringComparison.Ordinal)
                   && !validateBody.Contains(FoxRunSchemaMcapMetadata.MetadataName, StringComparison.Ordinal),
                 "114-F6: file-shape validation remains free of FoxRun schema metadata policy");

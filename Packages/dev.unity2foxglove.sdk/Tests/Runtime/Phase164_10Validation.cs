@@ -117,8 +117,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyReplayOptimizationsRemainInPlace()
         {
             var replay = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
-            var controller = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
-            var addHistory = SourceMethod(replay, "private static void AddHistoryMessage");
+            var pendingQueue = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayPendingQueue.cs");
+            var controller = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(controller.Contains("_replayTickBuffer", StringComparison.Ordinal)
                   && controller.Contains("_replayEngine.Tick(nowNs, _replayTickBuffer)", StringComparison.Ordinal),
@@ -126,9 +126,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(replay.Contains("_snapshotLatestByChannel", StringComparison.Ordinal)
                   && replay.Contains("var latestByChannel = _snapshotLatestByChannel", StringComparison.Ordinal),
                 "164-10E-2: replay snapshots reuse the latest-by-channel dictionary");
-            Check(addHistory.Contains("historyHeadIndex", StringComparison.Ordinal)
-                  && !addHistory.Contains("RemoveAt(0)", StringComparison.Ordinal),
-                "164-10E-3: replay history avoids front RemoveAt shifts");
+            Check(replay.Contains("private readonly McapReplayPendingQueue _pending = new()", StringComparison.Ordinal)
+                  && pendingQueue.Contains("private int _headIndex", StringComparison.Ordinal)
+                  && !pendingQueue.Contains("RemoveAt(0)", StringComparison.Ordinal)
+                  && !replay.Contains("private static void AddHistoryMessage", StringComparison.Ordinal),
+                "164-10E-3: replay pending queue avoids front RemoveAt shifts");
         }
 
         private static void VerifyRegistry()

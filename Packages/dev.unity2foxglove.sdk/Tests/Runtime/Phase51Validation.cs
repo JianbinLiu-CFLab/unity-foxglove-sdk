@@ -448,7 +448,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("Tick(ulong nowNs, List<McapMessage>") && source.Contains("result.Clear()"),
                 "51C-1: McapReplayEngine supports caller-owned Tick buffer reuse");
 
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             Check(replaySource.Contains("_replayTickBuffer") && replaySource.Contains(".Tick(nowNs, _replayTickBuffer)"),
                 "51C-2: ReplayController reuses a replay tick message buffer");
         }

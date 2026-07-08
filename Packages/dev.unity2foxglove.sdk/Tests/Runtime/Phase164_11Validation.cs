@@ -74,8 +74,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayControllerChannelContextCache()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var source = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             var publishMessages = PhaseValidationSourceHelpers.SourceMethod(source, "private void PublishMessages");
+            var tryGetReplayTopic = PhaseValidationSourceHelpers.SourceMethod(source, "private bool TryGetReplayTopic");
             var createContext = PhaseValidationSourceHelpers.SourceMethod(source, "private ReplayMessageContext CreateReplayMessageContext");
             var channelContext = PhaseValidationSourceHelpers.SourceMethod(source, "private readonly struct ReplayChannelContext");
 
@@ -83,8 +84,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("_channelContextMap = new Dictionary<ushort, ReplayChannelContext>()", StringComparison.Ordinal)
                   && source.Contains("_channelContextMap[c.Id] = new ReplayChannelContext(c, s)", StringComparison.Ordinal),
                 "164-11C-1: replay enable builds a combined channel/schema context cache");
-            Check(publishMessages.Contains("_channelContextMap.TryGetValue(msg.ChannelId, out var replayContext)", StringComparison.Ordinal)
-                  && publishMessages.Contains("topic = replayContext.Topic", StringComparison.Ordinal),
+            Check(publishMessages.Contains("TryGetReplayTopic(msg.ChannelId, out var topic)", StringComparison.Ordinal)
+                  && tryGetReplayTopic.Contains("_channelContextMap.TryGetValue(channelId, out var replayContext)", StringComparison.Ordinal)
+                  && tryGetReplayTopic.Contains("topic = replayContext.Topic", StringComparison.Ordinal),
                 "164-11C-2: replay publish hot path reads topic from the combined context cache");
             Check(createContext.Contains("_channelContextMap.TryGetValue(message.ChannelId, out channelContext)", StringComparison.Ordinal)
                   && !createContext.Contains("_channelMap?.TryGetValue", StringComparison.Ordinal)

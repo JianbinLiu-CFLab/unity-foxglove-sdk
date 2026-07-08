@@ -298,7 +298,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && gitignore.Contains("!Unity2Foxglove/Assets/Scripts/Generated/TestLog_FoxRun.g.cs", StringComparison.Ordinal),
                 "115-F5: generated aggregate artifacts are ignored without breaking FoxRun whitelist behavior");
 
-            var replay = ReadRepoText(ReplayControllerPath);
+            var replay = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             foreach (var token in new[] { "Unity2FoxgloveSchemaManifest", "schema-manifest", "sdkSchemaManifestHash" })
             {
                 Check(!replay.Contains(token, StringComparison.Ordinal),

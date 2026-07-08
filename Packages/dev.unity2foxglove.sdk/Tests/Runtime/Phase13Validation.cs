@@ -580,8 +580,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         static void TestReplayControllerSerializesReplayCursorAccess()
         {
-            if (!TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs", out var source))
-                return;
+            var source = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Assert(source.Contains("private readonly object _replayEngineLock", StringComparison.Ordinal),
                 "Replay controller has a dedicated replay cursor synchronization lock");
@@ -594,9 +593,10 @@ namespace Unity.FoxgloveSDK.Tests
             if (!TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Connection.cs", out var sessionSource)
                 || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionPlaybackHandler.cs", out var playbackHandlerSource)
                 || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs", out var runtimeSource)
-                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs", out var tickSource)
-                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs", out var replaySource))
+                || !TryReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs", out var tickSource))
                 return;
+
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Assert(playbackHandlerSource.Contains("_pendingPlaybackControls.Enqueue", StringComparison.Ordinal)
                 && playbackHandlerSource.Contains("public void Drain()", StringComparison.Ordinal)

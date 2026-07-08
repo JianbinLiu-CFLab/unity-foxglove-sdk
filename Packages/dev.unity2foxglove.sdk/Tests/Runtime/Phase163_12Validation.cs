@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-12C-1: schema guard marks mismatches as strict-mode blocking-capable");
 
             var guardSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs");
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             Check(guardSource.Contains("not an unconditional replay-stop signal for warn mode", StringComparison.Ordinal)
                   && replaySource.Contains("schemaGuard.IsBlocking && identityMode == SchemaIdentityMode.Strict", StringComparison.Ordinal),
                 "163-12C-2: schema guard documents policy-scoped blocking and replay enforces strict mode");

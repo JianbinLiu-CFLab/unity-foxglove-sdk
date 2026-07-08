@@ -264,7 +264,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Check(RepoFileExists(path), "115B-D1: required source file exists: " + path);
             }
 
-            var replay = ReadRepoText(ReplayControllerPath);
+            var replay = PhaseValidationSourceHelpers.ReadReplayControllerSources();
             Check(replay.Contains("identityMode = SchemaIdentityMode.Strict", StringComparison.Ordinal)
                   && replay.Contains("SchemaIdentityMode.Off", StringComparison.Ordinal)
                   && replay.Contains("SchemaIdentityMode.Warn", StringComparison.Ordinal)

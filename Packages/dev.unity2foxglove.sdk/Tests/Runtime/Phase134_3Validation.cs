@@ -102,7 +102,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyReplayDispatchLeavesPlaybackLockBeforeUserCallbacks()
         {
             var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(runtimeSource.Contains("replay.ApplySnapshotToScene(sceneSnapshotTimeNs, deferCallbacks: true)", StringComparison.Ordinal)
                   && runtimeSource.Contains("replay.Tick(session, playbackClock.NowNs, deferCallbacks: true)", StringComparison.Ordinal)
@@ -143,7 +143,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayCallbackQueueIsBounded()
         {
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(replaySource.Contains("MaxPendingReplayCallbacks", StringComparison.Ordinal)
                   && replaySource.Contains("MaxPendingReplayCallbackPayloadBytes", StringComparison.Ordinal)
@@ -156,7 +156,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayTestHooksUseQueuedDrainPath()
         {
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(replaySource.Contains("FireForTests(string topic, byte[] data)", StringComparison.Ordinal)
                   && replaySource.Contains("FireContextForTests(ReplayMessageContext context)", StringComparison.Ordinal)
@@ -179,7 +179,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReplayEngineGetterUsesLock()
         {
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(replaySource.Contains("public McapReplayEngine Engine", StringComparison.Ordinal)
                   && replaySource.Contains("lock (_replayEngineLock)", StringComparison.Ordinal)
@@ -265,7 +265,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRecordingReplaySourceCleanups()
         {
             var recordingSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Recording/RecordingController.cs");
-            var replaySource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayController.cs");
+            var replaySource = PhaseValidationSourceHelpers.ReadReplayControllerSources();
 
             Check(!recordingSource.Contains("_recordingCompression", StringComparison.Ordinal)
                   && !recordingSource.Contains("_recordingChunkSize", StringComparison.Ordinal),
