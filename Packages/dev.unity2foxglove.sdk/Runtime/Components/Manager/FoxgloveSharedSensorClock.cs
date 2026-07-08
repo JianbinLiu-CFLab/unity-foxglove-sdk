@@ -34,7 +34,15 @@ namespace Unity.FoxgloveSDK.Components
             if (deltaSeconds <= 0d)
                 return _epochUnixNs;
 
-            return checked(_epochUnixNs + (ulong)System.Math.Round(deltaSeconds * NanosPerSecond));
+            var deltaNs = System.Math.Round(deltaSeconds * NanosPerSecond);
+            if (double.IsNaN(deltaNs) || double.IsInfinity(deltaNs) || deltaNs < 0d || deltaNs > ulong.MaxValue)
+                return ulong.MaxValue;
+
+            var remaining = ulong.MaxValue - _epochUnixNs;
+            if (deltaNs > remaining)
+                return ulong.MaxValue;
+
+            return _epochUnixNs + (ulong)deltaNs;
         }
 
         /// <summary>Clears the epoch so the next sample re-anchors the clock.</summary>

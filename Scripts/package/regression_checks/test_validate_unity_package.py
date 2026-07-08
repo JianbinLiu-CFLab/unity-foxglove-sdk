@@ -142,6 +142,35 @@ class ValidatePackageTests(unittest.TestCase):
         self.assertIn("local Windows path", results[-1].detail)
         self.assertIn("to-do marker", results[-1].detail)
 
+    def test_manual_phase_service_guard_ignores_commented_demo(self) -> None:
+        """Commented manual smoke services remain inert and allowed."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            demo = root / "FoxRun"
+            demo.mkdir()
+            source = demo / "FoxService141DManualSmoke.cs"
+            source.write_text('//[FoxService("/phase141d/manual_dto")]\n', encoding="utf-8")
+
+            results = []
+            self.validator.check_manual_phase_service_guards(results, list(demo.rglob("*.cs")))
+
+        self.assertTrue(results[-1].ok)
+
+    def test_manual_phase_service_guard_rejects_active_demo(self) -> None:
+        """Phase-only manual services should not be accidentally committed active."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            demo = root / "FoxRun"
+            demo.mkdir()
+            source = demo / "FoxService141DManualSmoke.cs"
+            source.write_text('[FoxService("/phase141d/manual_dto")]\n', encoding="utf-8")
+
+            results = []
+            self.validator.check_manual_phase_service_guards(results, list(demo.rglob("*.cs")))
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("FoxService141DManualSmoke.cs:1", results[-1].detail)
+
     def test_validation_naming_allows_legacy_phase_files(self) -> None:
         """Existing Phase-prefixed validation files remain grandfathered."""
         with tempfile.TemporaryDirectory() as temp:

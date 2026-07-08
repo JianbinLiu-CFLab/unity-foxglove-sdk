@@ -36,6 +36,7 @@ namespace Unity.FoxgloveSDK.Editor
         private const string LocalRootCaPageUrl = "http://127.0.0.1:8766/";
         private const string CertificateBackendEditorPrefKey = "Unity2Foxglove.LocalDevCertificate.Backend";
         private const string OpenSslPathEditorPrefKey = "Unity2Foxglove.LocalDevCertificate.OpenSslPath";
+        private const string InspectorFoldoutSessionPrefix = "Unity2Foxglove.FoxgloveManagerEditor.Foldout.";
         private static readonly string[] TransportModeLabels =
         {
             "Web Socket",
@@ -112,6 +113,7 @@ namespace Unity.FoxgloveSDK.Editor
         private void OnEnable()
         {
             CacheSerializedProperties();
+            LoadInspectorFoldoutState();
             InvalidateUrlCaches();
         }
 
@@ -177,15 +179,15 @@ namespace Unity.FoxgloveSDK.Editor
             DrawCompactStatus();
             EnsureSecureSettingsVisible();
 
-            DrawSection("Connection & Security", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
-            DrawSection("Publish Data", ref _publishDataExpanded, DrawPublishDataSection);
+            DrawSection("Connection & Security", "ConnectionSecurity", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
+            DrawSection("Publish Data", "PublishData", ref _publishDataExpanded, DrawPublishDataSection);
             DrawRecordingReplayWarning();
-            DrawSection("MCAP Record & Replay", ref _mcapExpanded, DrawMcapSection);
-            DrawSection("FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
+            DrawSection("MCAP Record & Replay", "Mcap", ref _mcapExpanded, DrawMcapSection);
+            DrawSection("FoxServices", "FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
             var ros2BridgeProp = FindCachedProperty("_ros2BridgeEnabled");
             if (ros2BridgeProp != null && ros2BridgeProp.boolValue)
-                DrawSection("ROS2 Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
-            DrawSection("Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
+                DrawSection("ROS2 Bridge", "Ros2Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
+            DrawSection("Diagnostics", "Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
 
             serializedObject.ApplyModifiedProperties();
         }
@@ -252,18 +254,36 @@ namespace Unity.FoxgloveSDK.Editor
         private void EnsureSecureSettingsVisible()
         {
             if (IsSecureMode() && string.IsNullOrWhiteSpace(GetString("_certificatePfxPath", "")))
+            {
                 _connectionSecurityExpanded = true;
+                SessionState.SetBool(InspectorFoldoutKey("ConnectionSecurity"), true);
+            }
         }
 
-        private static void DrawSection(string title, ref bool expanded, System.Action drawContents)
+        private static void DrawSection(string title, string sessionStateName, ref bool expanded, System.Action drawContents)
         {
-            if (!FoxgloveManagerInspectorLayout.WorkflowSection(title, ref expanded))
+            if (!FoxgloveManagerInspectorLayout.WorkflowSection(title, InspectorFoldoutKey(sessionStateName), ref expanded))
                 return;
 
             EditorGUI.indentLevel++;
             drawContents();
             EditorGUI.indentLevel--;
         }
+
+        private void LoadInspectorFoldoutState()
+        {
+            _connectionSecurityExpanded = SessionState.GetBool(InspectorFoldoutKey("ConnectionSecurity"), false);
+            _publishDataExpanded = SessionState.GetBool(InspectorFoldoutKey("PublishData"), false);
+            _ros2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("Ros2Bridge"), false);
+            _mcapExpanded = SessionState.GetBool(InspectorFoldoutKey("Mcap"), false);
+            _foxServicesExpanded = SessionState.GetBool(InspectorFoldoutKey("FoxServices"), false);
+            _schemaEvidenceAdvancedExpanded = SessionState.GetBool(InspectorFoldoutKey("SchemaEvidenceAdvanced"), false);
+            _remoteFileAccessExpanded = SessionState.GetBool(InspectorFoldoutKey("RemoteFileAccess"), true);
+            _diagnosticsExpanded = SessionState.GetBool(InspectorFoldoutKey("Diagnostics"), false);
+        }
+
+        private static string InspectorFoldoutKey(string name)
+            => InspectorFoldoutSessionPrefix + name;
 
         private void DrawConnectionSecuritySection()
         {

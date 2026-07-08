@@ -38,6 +38,7 @@ PACKAGE = ROOT / "Packages" / "dev.unity2foxglove.sdk"
 SAMPLES = PACKAGE / "Samples~"
 DOCS = PACKAGE / "Documentation~"
 THIRD_PARTY_NOTICES = ROOT / "THIRD_PARTY_NOTICES.md"
+UNITY_DEMO_SCRIPTS = ROOT / "Unity2Foxglove" / "Assets" / "Scripts"
 
 EXPECTED_SAMPLES = {
     "Basic Visualization": "Samples~/BasicVisualization",
@@ -403,6 +404,28 @@ def check_package_build_artifacts(results: list[CheckResult], package_entries: l
     )
 
 
+def check_manual_phase_service_guards(results: list[CheckResult], demo_entries: list[Path] | None = None) -> None:
+    """Reject active phase-only FoxService demo endpoints in committed Unity project scripts."""
+    demo_entries = demo_entries if demo_entries is not None else list(UNITY_DEMO_SCRIPTS.rglob("*.cs"))
+    offenders: list[str] = []
+    for path in demo_entries:
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            stripped = line.lstrip()
+            if stripped.startswith("//"):
+                continue
+            if '[FoxService("/phase141d/' in stripped:
+                offenders.append(f"{rel(path)}:{line_number}")
+    add(
+        results,
+        "manual phase FoxService demos stay disabled",
+        not offenders,
+        "; ".join(offenders[:MAX_REPORTED_OFFENDERS]) if offenders else "no active phase-only FoxService demos",
+    )
+
+
 def check_validation_naming(results: list[CheckResult], package_files: list[Path] | None = None) -> None:
     """Reject new Phase-number-prefixed runtime validation source filenames."""
     runtime_tests = PACKAGE / "Tests" / "Runtime"
@@ -519,6 +542,7 @@ def main() -> int:
     check_forbidden_public_content(results, samples_files, docs_files)
     check_forbidden_sample_artifacts(results, samples_entries)
     check_package_build_artifacts(results, package_entries)
+    check_manual_phase_service_guards(results)
     check_validation_naming(results, package_files)
     check_google_protobuf_collision(results)
     check_third_party_notices(results)

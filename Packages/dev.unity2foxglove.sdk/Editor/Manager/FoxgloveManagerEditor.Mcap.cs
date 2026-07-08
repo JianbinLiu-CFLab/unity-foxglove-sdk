@@ -103,7 +103,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawRemoteFileAccessSection(SerializedProperty replayPath)
         {
-            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Foxglove Timeline Replay", ref _remoteFileAccessExpanded))
+            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection(
+                    "Foxglove Timeline Replay",
+                    InspectorFoldoutKey("RemoteFileAccess"),
+                    ref _remoteFileAccessExpanded))
                 return;
 
             EditorGUI.indentLevel++;
@@ -168,7 +171,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawSchemaEvidenceSection()
         {
-            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection("Schema Evidence (Advanced)", ref _schemaEvidenceAdvancedExpanded))
+            if (!FoxgloveManagerInspectorLayout.WorkflowSubsection(
+                    "Schema Evidence (Advanced)",
+                    InspectorFoldoutKey("SchemaEvidenceAdvanced"),
+                    ref _schemaEvidenceAdvancedExpanded))
                 return;
 
             EditorGUI.indentLevel++;

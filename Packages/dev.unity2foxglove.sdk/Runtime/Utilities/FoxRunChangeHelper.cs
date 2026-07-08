@@ -25,6 +25,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (float.IsNaN(current) || float.IsNaN(last))
                 return !(float.IsNaN(current) && float.IsNaN(last));
+            if (epsilon < 0f)
+                epsilon = 0f;
             return Math.Abs(current - last) > epsilon;
         }
 
@@ -37,6 +39,8 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (double.IsNaN(current) || double.IsNaN(last))
                 return !(double.IsNaN(current) && double.IsNaN(last));
+            if (epsilon < 0d)
+                epsilon = 0d;
             return Math.Abs(current - last) > epsilon;
         }
     }
