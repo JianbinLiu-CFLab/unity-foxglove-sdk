@@ -18,6 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CATALOG_SCRIPT = REPO_ROOT / "Scripts/schema/generate_ros2_msg_schema_catalog.py"
 CDR_SCRIPT = REPO_ROOT / "Scripts/schema/generate_ros2_cdr_serializers.py"
+GENERATOR_TIMEOUT_SECONDS = 120
 COMMITTED_CATALOG = (
     REPO_ROOT
     / "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/FoxgloveRos2MsgSchemaCatalog.cs"
@@ -45,7 +46,7 @@ def rel(path: Path) -> str:
 
 def run_generator(command: list[str]) -> None:
     """Run one generator command, surfacing failures as subprocess exceptions."""
-    subprocess.run(command, cwd=REPO_ROOT, check=True)
+    subprocess.run(command, cwd=REPO_ROOT, check=True, timeout=GENERATOR_TIMEOUT_SECONDS)
 
 
 def compare_file(committed: Path, fresh: Path, failures: list[str]) -> None:
@@ -73,8 +74,8 @@ def validate_generated_outputs() -> list[str]:
         fresh_catalog = temp_root / "FoxgloveRos2MsgSchemaCatalog.cs"
         fresh_cdr = temp_root / "Generated"
 
-        run_generator(["python", str(CATALOG_SCRIPT), "--output", str(fresh_catalog)])
-        run_generator(["python", str(CDR_SCRIPT), "--output-dir", str(fresh_cdr)])
+        run_generator([sys.executable, str(CATALOG_SCRIPT), "--output", str(fresh_catalog)])
+        run_generator([sys.executable, str(CDR_SCRIPT), "--output-dir", str(fresh_cdr)])
 
         compare_file(COMMITTED_CATALOG, fresh_catalog, failures)
         for name in EXPECTED_CDR_SOURCES:
@@ -87,8 +88,14 @@ def main() -> int:
     """Run validation and return a process exit code."""
     try:
         failures = validate_generated_outputs()
+    except subprocess.TimeoutExpired as exc:
+        print(f"[FAIL] Schema generator command timed out after {exc.timeout} seconds: {exc.cmd}", file=sys.stderr)
+        return 1
     except subprocess.CalledProcessError as exc:
         print(f"[FAIL] Schema generator command failed with exit code {exc.returncode}: {exc.cmd}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"[FAIL] Schema generator command could not be started: {exc}", file=sys.stderr)
         return 1
 
     if failures:

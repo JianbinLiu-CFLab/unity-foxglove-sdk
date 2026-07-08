@@ -14,10 +14,19 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         /// <summary>Whether the sink currently has an active transport connection.</summary>
         bool IsConnected { get; }
 
-        /// <summary>Connect or enable delivery for the configured endpoint.</summary>
+        /// <summary>
+        /// Connect or enable delivery for the configured endpoint.
+        /// Implementations may use a constructor-configured transport timeout for the
+        /// actual connection attempt; <paramref name="timeoutMs"/> must be positive and
+        /// is the per-call deadline only for direct transports.
+        /// </summary>
         void Connect(string host, int port, int timeoutMs);
 
-        /// <summary>Send or enqueue an already-serialized bridge frame.</summary>
+        /// <summary>
+        /// Send or enqueue an already-serialized bridge frame.
+        /// Implementations that enqueue to a worker may validate <paramref name="timeoutMs"/>
+        /// while using their configured worker send timeout for the actual socket write.
+        /// </summary>
         void Send(Ros2BridgeFrame frame, int timeoutMs);
 
         /// <summary>Disconnect or disable delivery.</summary>
