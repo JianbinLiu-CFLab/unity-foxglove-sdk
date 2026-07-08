@@ -857,6 +857,18 @@ def check_public_docs(results: list[CheckResult], manifest: dict) -> None:
         "WSL2 NAT" in readme and "diagnostic-only" in readme and "Windows Defender Firewall" in readme,
         "README.md",
     )
+    add(
+        results,
+        "README documents OpenSSL 1.1.x artifact debt",
+        "OpenSSL 1.1.x" in readme and "OpenSSL 3.x" in readme and "artifact refresh requirement" in readme,
+        "README.md",
+    )
+    add(
+        results,
+        "THIRD_PARTY_NOTICES documents OpenSSL 1.1.x artifact debt",
+        "OpenSSL 1.1.x" in notices and "OpenSSL 3.x" in notices and "release-hardening" in notices,
+        "THIRD_PARTY_NOTICES.md",
+    )
 
 
 def check_package_boundaries(results: list[CheckResult]) -> None:

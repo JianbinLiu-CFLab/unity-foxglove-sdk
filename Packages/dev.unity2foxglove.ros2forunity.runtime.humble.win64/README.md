@@ -34,6 +34,10 @@ Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-humble-win64-runtime-inventory.json`.
 
+## Known Artifact Debt
+
+The current Humble artifact still carries OpenSSL 1.1.x runtime DLLs through its transitive ROS2/DDS closure. Those DLLs are not used by the default FastRTPS visualization path unless DDS security/TLS features are enabled, but OpenSSL 1.1.x is end-of-life. Treat this as an artifact refresh requirement: a future Humble runtime rebuild must move the transitive OpenSSL dependency to OpenSSL 3.x before this package is considered release-hardened.
+
 ## Package Path Patch
 
 The bundled `ROS2ForUnity.cs` keeps the upstream `Assets/Ros2ForUnity` lookup and adds a package-path fallback so Unity Editor can load this runtime from:
