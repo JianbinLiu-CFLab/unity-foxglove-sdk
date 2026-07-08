@@ -29,7 +29,12 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxServiceSchemaModel AdditionalProperties { get; }
 
         public static FoxServiceSchemaModel Scalar(string jsonType)
-            => new FoxServiceSchemaModel(jsonType, Array.Empty<FoxServiceSchemaProperty>(), null, null);
+        {
+            if (string.IsNullOrWhiteSpace(jsonType))
+                throw new ArgumentException("FoxServiceSchemaModel.JsonType must be non-empty.", nameof(jsonType));
+
+            return new FoxServiceSchemaModel(jsonType, Array.Empty<FoxServiceSchemaProperty>(), null, null);
+        }
 
         public static FoxServiceSchemaModel Object(IReadOnlyList<FoxServiceSchemaProperty> properties)
             => new FoxServiceSchemaModel("object", properties, null, null);

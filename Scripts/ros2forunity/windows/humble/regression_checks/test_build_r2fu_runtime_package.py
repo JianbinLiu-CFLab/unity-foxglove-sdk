@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,9 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[5]
+assert (ROOT / "Packages" / "dev.unity2foxglove.sdk" / "package.json").exists(), (
+    f"Repo root resolution failed: {ROOT}"
+)
 BUILDER_PATH = ROOT / "Scripts" / "ros2forunity" / "windows" / "humble" / "build_r2fu_runtime_package.py"
 
 
@@ -67,6 +71,36 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             target = package / "Runtime" / "Ros2ForUnity" / "Scripts" / "ROS2ForUnity.cs"
             self.assertEqual("ok", target.read_text(encoding="utf-8"))
+
+    def test_patch_deps_json_sha512_updates_inventory_hash(self) -> None:
+        """Generated deps.json files should carry integrity hints and matching inventory hashes."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins"
+            support = package / "RuntimeSupport"
+            plugin_root.mkdir(parents=True)
+            support.mkdir(parents=True)
+            (plugin_root / "example.dll").write_bytes(b"example")
+            (plugin_root / "dependency.dll").write_bytes(b"dependency")
+            deps = plugin_root / "example.deps.json"
+            deps.write_text(
+                json.dumps({"libraries": {"example/1.0.0": {"sha512": ""}, "dependency/0.0.0": {"sha512": ""}}}),
+                encoding="utf-8",
+            )
+            inventory = support / "r2fu-humble-win64-runtime-inventory.json"
+            inventory.write_text(
+                json.dumps({"files": [{"path": "Ros2ForUnity/Plugins/example.deps.json", "sha256": "", "size": 0}]}),
+                encoding="utf-8",
+            )
+
+            self.builder.patch_deps_json_sha512(package)
+
+            patched = json.loads(deps.read_text(encoding="utf-8"))
+            self.assertEqual(128, len(patched["libraries"]["example/1.0.0"]["sha512"]))
+            self.assertEqual(128, len(patched["libraries"]["dependency/0.0.0"]["sha512"]))
+            patched_inventory = json.loads(inventory.read_text(encoding="utf-8"))
+            self.assertEqual(self.builder.sha256_file(deps), patched_inventory["files"][0]["sha256"])
+            self.assertEqual(deps.stat().st_size, patched_inventory["files"][0]["size"])
 
     def test_patch_ros2_for_unity_requires_copyright_replacement(self) -> None:
         """Patch generation fails when the expected copyright line is absent."""

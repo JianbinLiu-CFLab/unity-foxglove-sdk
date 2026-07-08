@@ -24,7 +24,8 @@ def load_validator_module():
     """Load the runtime package validator module under test."""
     spec = importlib.util.spec_from_file_location("validate_r2fu_runtime_package", VALIDATOR_PATH)
     module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
+    if spec.loader is None:
+        raise RuntimeError(f"Cannot load validator module: {VALIDATOR_PATH}")
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
@@ -63,6 +64,7 @@ class RuntimePackageValidatorTests(unittest.TestCase):
             manifest.write_text(f'{{"artifactSha256":"{artifact_sha}"}}', encoding="utf-8")
 
             self.validator.PACKAGE = package
+            self.validator.MANIFEST = manifest
             self.validator.PUBLIC_DOCS = (readme, notices, package_json, manifest)
             results = []
 
@@ -70,6 +72,42 @@ class RuntimePackageValidatorTests(unittest.TestCase):
 
         failed = [result.name for result in results if not result.ok]
         self.assertIn("README documents artifact SHA-256", failed)
+
+    def test_managed_deps_reject_spurious_service_msgs_for_visualization_packets(self) -> None:
+        """Known no-service message packages should not carry service_msgs dependencies."""
+        with tempfile.TemporaryDirectory() as temp:
+            runtime_root = Path(temp) / "Runtime" / "Ros2ForUnity"
+            plugin_root = runtime_root / "Plugins"
+            plugin_root.mkdir(parents=True)
+            for name in ("stereo_msgs_assembly", "visualization_msgs_assembly"):
+                (plugin_root / f"{name}.deps.json").write_text(
+                    json.dumps(
+                        {
+                            "targets": {
+                                ".NETStandard,Version=v2.0/": {
+                                    f"{name}/1.0.0": {
+                                        "dependencies": {
+                                            "service_msgs_assembly": "0.0.0.0",
+                                        },
+                                    },
+                                    "service_msgs_assembly/0.0.0.0": {},
+                                },
+                            },
+                            "libraries": {
+                                "service_msgs_assembly/0.0.0.0": {},
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            self.validator.RUNTIME_ROOT = runtime_root
+            results = []
+
+            self.validator.check_managed_deps_consistency(results)
+
+        failed = [result.name for result in results if not result.ok]
+        self.assertEqual(2, len([name for name in failed if "spurious service_msgs" in name]))
 
     def test_runtime_source_declares_rmw_guard(self) -> None:
         """ROS2ForUnity startup path declares and enforces supported RMWs."""
@@ -107,6 +145,32 @@ class RuntimePackageValidatorTests(unittest.TestCase):
 
         by_name = {result.name: result for result in results}
         self.assertFalse(by_name["package declares no external dependencies"].ok)
+
+    def test_ros2cs_metadata_descriptions_reject_cross_distro_desc(self) -> None:
+        """Lyrical metadata validation rejects desc values that name another distro."""
+        with tempfile.TemporaryDirectory() as temp:
+            runtime_root = Path(temp) / "Runtime" / "Ros2ForUnity"
+            plugin_root = runtime_root / "Plugins" / "Windows" / "x86_64"
+            metadata_files = (
+                runtime_root / "metadata_ros2cs.xml",
+                runtime_root / "Plugins" / "metadata_ros2cs.xml",
+                plugin_root / "metadata_ros2cs.xml",
+            )
+            for path in metadata_files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "<ros2cs><ros2>lyrical</ros2><version><desc>v0.6.0-jazzy-preview</desc></version></ros2cs>",
+                    encoding="utf-8",
+                )
+
+            self.validator.RUNTIME_ROOT = runtime_root
+            self.validator.PLUGIN_ROOT = plugin_root
+            results = []
+
+            self.validator.check_ros2cs_metadata_descriptions(results)
+
+        failed = [result.name for result in results if not result.ok]
+        self.assertEqual(3, len([name for name in failed if "desc does not name another distro" in name]))
 
     def test_public_docs_must_explain_facade_independent_runtime(self) -> None:
         """Runtime docs must make the no-facade-dependency package role explicit."""

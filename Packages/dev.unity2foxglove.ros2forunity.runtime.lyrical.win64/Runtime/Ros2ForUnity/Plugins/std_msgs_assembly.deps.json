@@ -38,17 +38,17 @@
     "std_msgs_assembly/1.0.0": {
       "type": "project",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "5c9c8ebe9aa8ed88b4e100d31d61fd24ce67fc37b7b89101a7e02967434d4f992754c1349ecf6691a02fd4e111588cfdae06737114f1aa4d0c0f7eb6d2fcd53d"
     },
     "builtin_interfaces_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "aabc692f994f8e07061cdca2e92a2d37ca9b283644e3a31ed8e9a234938ce1e40e6ac7ce46cd8003fac6c9ee595292fb809c7a5479d5da22ee8efe6b550d63ce"
     },
     "ros2cs_common/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "0cd69dbe351d81ac1bdc9d17a1a73e26d666580f7a11900dcb261f03417864f38539204321844679123ba1aeeee9dddf60213f9cc4de2861ad65de46e3a3d16b"
     }
   }
 }

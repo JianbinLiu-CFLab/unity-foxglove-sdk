@@ -21,28 +21,44 @@ namespace ROS2
 {
 
 /// <summary>
-/// ros2 time source (system time by default).
+/// ROS-aligned time source that preserves ROS/system time until Unity timeScale changes.
 /// </summary>
+/// <remarks>
+/// Before the first timeScale change, timestamps come directly from the ROS 2 clock. After timeScale
+/// changes once, the source permanently switches to Unity scaled time plus the ROS-time offset captured
+/// at that transition, avoiding timeline jumps while respecting Unity time scaling.
+/// </remarks>
 public class ROS2ScalableTimeSource : ITimeSource, IDisposable
 {
-  private Thread mainThread;
+  private readonly object mutex = new object();
+  private readonly object clockMutex = new object();
+  private int mainThreadId;
+
+  // State machine:
+  // 1. Capture the first observed Unity timeScale (Unity defaults to 1.0, but projects may change it early).
+  // 2. While timeScale is unchanged, forward ROS/system time directly.
+  // 3. After the first timeScale change, use Unity scaled time plus a one-time ROS offset forever.
   private double lastReadingSecs;
   private double lastTimeScale;
   private ROS2.Clock clock;
-  private readonly object _lock = new object();
-  private double initialTime = 0;
+  private double rosUnityTimeOffset = 0;
   private double initialTimeScale = 0;
-  private bool initialTimeAcquired = false;
+  private bool rosUnityTimeOffsetAcquired = false;
   private bool initialTimeScaleAcquired = false;
   private bool timeScaleChanged = false;
+  private bool timeScaleChangeLogged = false;
   private int rosUnavailableWarningLogged = 0;
 
   public ROS2ScalableTimeSource()
   {
-    mainThread = Thread.CurrentThread;
+    mainThreadId = Thread.CurrentThread.ManagedThreadId;
     RefreshUnityTimeCache();
   }
 
+  /// <summary>
+  /// Acquires ROS-aligned time, switching to Unity-scaled time only after Time.timeScale changes.
+  /// </summary>
+  /// <returns>False when ROS 2 is not initialized; otherwise true.</returns>
   public bool GetTime(out int seconds, out uint nanoseconds)
   {
     // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.
@@ -61,65 +77,109 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
       Interlocked.Exchange(ref rosUnavailableWarningLogged, 0);
     }
 
-    if (clock == null)
-    { // Create clock which uses system time by default (unless use_sim_time is set in ros2)
-      clock = new ROS2.Clock();
-    }
-
-    if (mainThread.Equals(Thread.CurrentThread))
+    bool isMainThread = mainThreadId == Thread.CurrentThread.ManagedThreadId;
+    if (isMainThread)
     {
       RefreshUnityTimeCache();
     }
 
-    if (!initialTimeScaleAcquired)
+    double readingSecs;
+    bool scaleChangedAtRead;
+    lock (mutex)
     {
-      initialTimeScaleAcquired = true;
-      initialTimeScale = lastTimeScale;
+      readingSecs = lastReadingSecs;
+      scaleChangedAtRead = timeScaleChanged;
     }
 
-    if (initialTimeScale != lastTimeScale)
+    if (!scaleChangedAtRead)
     {
-      timeScaleChanged = true;
-    }
-
-    if (initialTimeScale == 1.0 && !timeScaleChanged)
-    {
-      TimeUtils.TimeFromTotalSeconds(clock.Now.Seconds, out seconds, out nanoseconds);
+      // Until Unity timeScale changes, preserve the default ROS/system clock behavior.
+      TimeUtils.TimeFromTotalSeconds(GetRosNowSeconds(), out seconds, out nanoseconds);
     }
     else
     {
-      // U2F-LOCAL-PATCH: double-checked lock — write initialTime BEFORE flipping the
-      // acquired flag, and publish the flag via Volatile.Write so readers that exit
-      // the outer check via Volatile.Read see a fully-initialized initialTime.
-      if (!Volatile.Read(ref initialTimeAcquired))
+      double adjustedTime;
+      bool needsOffset;
+      lock (mutex)
       {
-        lock (_lock)
+        readingSecs = lastReadingSecs;
+        needsOffset = !rosUnityTimeOffsetAcquired;
+        adjustedTime = readingSecs + rosUnityTimeOffset;
+      }
+      if (needsOffset)
+      {
+        var rosNowSecs = GetRosNowSeconds();
+        lock (mutex)
         {
-          if (!initialTimeAcquired)
+          readingSecs = lastReadingSecs;
+          if (!rosUnityTimeOffsetAcquired)
           {
-            initialTime = clock.Now.Seconds - lastReadingSecs;
-            Volatile.Write(ref initialTimeAcquired, true);
+            rosUnityTimeOffset = rosNowSecs - readingSecs;
+            rosUnityTimeOffsetAcquired = true;
           }
+          adjustedTime = readingSecs + rosUnityTimeOffset;
         }
       }
-      TimeUtils.TimeFromTotalSeconds(lastReadingSecs + initialTime, out seconds, out nanoseconds);
+      TimeUtils.TimeFromTotalSeconds(adjustedTime, out seconds, out nanoseconds);
     }
     return true;
   }
 
+  private double GetRosNowSeconds()
+  {
+    lock (clockMutex)
+    {
+      if (clock == null)
+      { // Create clock which uses system time by default (unless use_sim_time is set in ros2)
+        clock = new ROS2.Clock();
+      }
+      return clock.Now.Seconds;
+    }
+  }
+
   private void RefreshUnityTimeCache()
   {
-    lastReadingSecs = Time.timeAsDouble;
-    lastTimeScale = Time.timeScale;
+    UpdateUnityTimeSnapshot();
+  }
+
+  private void UpdateUnityTimeSnapshot()
+  {
+    var readingSecs = Time.timeAsDouble;
+    var timeScale = Time.timeScale;
+    lock (mutex)
+    {
+      lastReadingSecs = readingSecs;
+      lastTimeScale = timeScale;
+
+      if (!initialTimeScaleAcquired)
+      {
+        initialTimeScaleAcquired = true;
+        initialTimeScale = lastTimeScale;
+      }
+
+      if (initialTimeScale != lastTimeScale)
+      {
+        // Once scaling has changed, keep using the adjusted timeline to avoid jumping back to system time.
+        timeScaleChanged = true;
+        if (!timeScaleChangeLogged)
+        {
+          timeScaleChangeLogged = true;
+          Debug.Log("ROS2ScalableTimeSource switched to Unity-scaled time after Time.timeScale changed.");
+        }
+      }
+    }
   }
 
   public void Dispose()
   {
     // U2F-LOCAL-PATCH: avoid native cleanup from the finalizer thread.
-    if (clock != null)
+    lock (clockMutex)
     {
-      clock.Dispose();
-      clock = null;
+      if (clock != null)
+      {
+        clock.Dispose();
+        clock = null;
+      }
     }
   }
 }

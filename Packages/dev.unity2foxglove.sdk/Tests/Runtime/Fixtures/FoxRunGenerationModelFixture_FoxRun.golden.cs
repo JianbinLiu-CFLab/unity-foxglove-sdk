@@ -383,7 +383,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     changed = !__hasLast_6;
                     if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.x, __last_6_0.x, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.y, __last_6_0.y, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.z, __last_6_0.z, 0.00100000005f);
                     return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_6, changed, __lastPublishSec_6, 0f);
-                default: return true;
+                default: return false;
             }
         }
 
@@ -417,6 +417,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     __hasLast_6 = true;
                     __lastPublishSec_6 = nowSec;
                     break;
+                default: break;
             }
         }
     }

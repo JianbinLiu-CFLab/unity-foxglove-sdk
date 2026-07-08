@@ -5,6 +5,7 @@
 // Purpose: Classifies replay channels by the kind of scene behavior their messages can drive.
 
 using System;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Unity.FoxgloveSDK.Core
@@ -66,7 +67,7 @@ namespace Unity.FoxgloveSDK.Core
             {
                 return ClassifyJsonObject(JObject.Parse(json));
             }
-            catch
+            catch (JsonException)
             {
                 return ReplayChannelBehavior.NonPose;
             }

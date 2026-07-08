@@ -43,17 +43,19 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxService
         }
 
         [Fact]
-        public void InvokeReportsElapsedTimeoutWithoutMovingUnityWorkToWorkerThread()
+        public void InvokeReturnsSlowHandlerResponseWithoutMovingUnityWorkToWorkerThread()
         {
             var descriptor = Descriptor(_ =>
             {
                 Thread.Sleep(20);
-                return new JObject();
+                return new JObject { ["applied"] = true };
             });
 
             var result = FoxgloveLocalServiceCall.Invoke(descriptor, new JObject(), TimeSpan.FromMilliseconds(1));
 
-            Assert.Equal(FoxgloveLocalServiceCallStatus.TimedOut, result.Status);
+            Assert.Equal(FoxgloveLocalServiceCallStatus.CompletedButSlow, result.Status);
+            Assert.True(result.Response["applied"].Value<bool>());
+            Assert.Contains("completed after", result.Error, StringComparison.Ordinal);
         }
 
         [Fact]

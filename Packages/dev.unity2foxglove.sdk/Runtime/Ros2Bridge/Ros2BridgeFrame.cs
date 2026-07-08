@@ -43,7 +43,17 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             ulong sequence,
             byte[] payload,
             Ros2BridgeQosProfile? qos = null)
-            => new Ros2BridgeFrame(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: false);
+            => new Ros2BridgeFrame(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: false, validateSchema: false);
+
+        internal static Ros2BridgeFrame CreateValidated(
+            string topic,
+            string schemaName,
+            string encoding,
+            ulong logTimeNs,
+            ulong sequence,
+            byte[] payload,
+            Ros2BridgeQosProfile? qos = null)
+            => new Ros2BridgeFrame(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: true, validateSchema: false);
 
         private Ros2BridgeFrame(
             string topic,
@@ -54,6 +64,20 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             byte[] payload,
             Ros2BridgeQosProfile? qos,
             bool clonePayload)
+            : this(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload, validateSchema: true)
+        {
+        }
+
+        private Ros2BridgeFrame(
+            string topic,
+            string schemaName,
+            string encoding,
+            ulong logTimeNs,
+            ulong sequence,
+            byte[] payload,
+            Ros2BridgeQosProfile? qos,
+            bool clonePayload,
+            bool validateSchema)
         {
             if (string.IsNullOrWhiteSpace(topic) || !topic.StartsWith("/", StringComparison.Ordinal))
                 throw new ArgumentException("ROS 2 bridge topic must be non-empty and start with '/'.", nameof(topic));
@@ -63,7 +87,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 throw new ArgumentException("ROS 2 bridge topic contains invalid ROS 2 characters.", nameof(topic));
             if (string.IsNullOrWhiteSpace(schemaName))
                 throw new ArgumentException("ROS 2 bridge schemaName must be non-empty.", nameof(schemaName));
-            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
+            if (validateSchema && !FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
                 throw new ArgumentException("ROS 2 bridge schemaName must exist in the bundled ros2msg catalog: " + schemaName, nameof(schemaName));
             if (!string.Equals(encoding, CdrEncoding, StringComparison.Ordinal))
                 throw new ArgumentException("ROS 2 bridge encoding must be exactly 'cdr'.", nameof(encoding));

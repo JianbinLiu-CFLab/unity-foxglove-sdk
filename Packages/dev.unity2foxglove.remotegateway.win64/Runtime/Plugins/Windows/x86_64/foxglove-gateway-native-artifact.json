@@ -11,7 +11,7 @@
     "AWS_LC_SYS_PREBUILT_NASM": "1",
     "CARGO_TARGET_DIR": "C:\\u2fg171target"
   },
-  "sha256": "53BAA160A0BCB0D77132B75A74154A318CE5ABA279FAE0413ACE7F9CD9677814",
+  "sha256": "53baa160a0bcb0d77132b75a74154a318ce5aba279fae0413ace7f9cd9677814",
   "sizeBytes": 40777216,
   "sideDependencies": [
     "kernel32.dll",

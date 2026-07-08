@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase16Validation
     {
-        private static readonly Lazy<string> RepoRoot = new Lazy<string>(FindRepoRootCore);
+        private static readonly Lazy<string> RepoRoot = new Lazy<string>(TestRepoRootLocator.FindRepoRoot);
         private static readonly Regex PackageVersionRegex = new Regex(@"^\d+\.\d+\.\d+$", RegexOptions.Compiled);
 
         /// <summary>
@@ -598,23 +598,6 @@ namespace Unity.FoxgloveSDK.Tests
         /// <returns>The value produced by the validation helper.</returns>
         internal static string FindRepoRoot()
             => RepoRoot.Value;
-
-        private static string FindRepoRootCore()
-        {
-            var dir = AppDomain.CurrentDomain.BaseDirectory;
-            while (dir != null)
-            {
-                if (File.Exists(Path.Combine(dir, "README.md"))
-                    && Directory.Exists(Path.Combine(dir, "Unity2Foxglove"))
-                    && Directory.Exists(Path.Combine(dir, "Packages"))
-                    && File.Exists(Path.Combine(dir, "Packages", "dev.unity2foxglove.sdk", "package.json")))
-                    return dir;
-                var parent = Directory.GetParent(dir);
-                if (parent == null) break;
-                dir = parent.FullName;
-            }
-            return null;
-        }
 
         static void Assert(bool condition, string description)
         {

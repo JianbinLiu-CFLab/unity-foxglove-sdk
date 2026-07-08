@@ -31,6 +31,8 @@ public class PointCloudSmokeSource : MonoBehaviour
     [SerializeField, Min(0f)] private float _sourceHz = 10f;
 
     private float _nextFrameTime;
+    private readonly PointCloudFrame[] _frameBuffers = { new PointCloudFrame(), new PointCloudFrame() };
+    private int _nextFrameBufferIndex;
 
     private void Reset()
     {
@@ -95,11 +97,12 @@ public class PointCloudSmokeSource : MonoBehaviour
         var xOrigin = (columns - 1) * 0.5f;
         var yOrigin = (rows - 1) * 0.5f;
 
-        var frame = new PointCloudFrame
-        {
-            FrameId = string.IsNullOrEmpty(_frameId) ? "unity_world" : _frameId
-        };
-        frame.Points.Capacity = count;
+        var frame = _frameBuffers[_nextFrameBufferIndex];
+        _nextFrameBufferIndex = (_nextFrameBufferIndex + 1) % _frameBuffers.Length;
+        frame.FrameId = string.IsNullOrEmpty(_frameId) ? "unity_world" : _frameId;
+        frame.Points.Clear();
+        if (frame.Points.Capacity < count)
+            frame.Points.Capacity = count;
 
         for (var index = 0; index < count; index++)
         {

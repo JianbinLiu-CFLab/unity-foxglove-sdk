@@ -13,6 +13,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     internal static class Ros2ForUnityImuMessageBuilder
     {
+        // R2FU generated messages are reference types; keep this builder
+        // allocation-visible until publisher copy/retain semantics are proven.
         public static sensor_msgs.msg.Imu Build(
             ImuNativeFrame frame,
             IReadOnlyList<double> orientationCovariance,

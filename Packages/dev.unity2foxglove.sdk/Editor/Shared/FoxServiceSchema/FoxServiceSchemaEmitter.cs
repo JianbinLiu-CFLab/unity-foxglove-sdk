@@ -20,6 +20,9 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void WriteSchema(StringBuilder sb, FoxServiceSchemaModel schema)
         {
+            if (string.IsNullOrWhiteSpace(schema.JsonType))
+                throw new ArgumentException("FoxServiceSchemaModel.JsonType must be non-empty.", nameof(schema));
+
             sb.Append('{');
             WriteJsonProperty(sb, "type", schema.JsonType);
 

@@ -789,6 +789,39 @@ def check_runtime_source_patches(results: list[CheckResult]) -> None:
             relative,
         )
 
+    scalable_time = read_optional_text(scripts / "Time" / "ROS2ScalableTimeSource.cs")
+    add(
+        results,
+        "ROS2ScalableTimeSource locks Unity time snapshot state",
+        "private readonly object mutex = new object();" in scalable_time
+        and "lock (mutex)" in scalable_time
+        and "UpdateUnityTimeSnapshot()" in scalable_time,
+        "Time/ROS2ScalableTimeSource.cs",
+    )
+    add(
+        results,
+        "ROS2ScalableTimeSource locks lazy ROS clock creation",
+        "private readonly object clockMutex = new object();" in scalable_time
+        and "lock (clockMutex)" in scalable_time
+        and "private double GetRosNowSeconds()" in scalable_time,
+        "Time/ROS2ScalableTimeSource.cs",
+    )
+    add(
+        results,
+        "ROS2ScalableTimeSource uses ManagedThreadId main-thread guard",
+        "private int mainThreadId;" in scalable_time
+        and "Thread.CurrentThread.ManagedThreadId" in scalable_time
+        and "Thread mainThread" not in scalable_time,
+        "Time/ROS2ScalableTimeSource.cs",
+    )
+    add(
+        results,
+        "ROS2ScalableTimeSource deduplicates timeScale change log",
+        "private bool timeScaleChangeLogged" in scalable_time
+        and "if (!timeScaleChangeLogged)" in scalable_time,
+        "Time/ROS2ScalableTimeSource.cs",
+    )
+
     time_utils = read_optional_text(scripts / "Time" / "TimeUtils.cs")
     add(
         results,

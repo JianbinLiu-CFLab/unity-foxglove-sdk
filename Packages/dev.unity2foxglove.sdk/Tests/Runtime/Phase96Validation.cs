@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "96D-2: Manager exposes topic and QoS resolvers");
             Check(publishing.Contains("effectiveTopic") && publishing.Contains("Ros2BridgeQosProfile"),
                 "96D-3: Manager bridge publish path resolves effective topic and QoS");
-            Check(publishing.Contains("new Ros2BridgeFrame(") && publishing.Contains("effectiveTopic") && publishing.Contains("qos"),
+            Check(publishing.Contains("Ros2BridgeFrame.CreateValidated(") && publishing.Contains("effectiveTopic") && publishing.Contains("qos"),
                 "96D-4: Manager enqueues QoS-profiled bridge frames");
             Check(publisherBase.Contains("_ros2BridgeTopicOverride") && publisherBase.Contains("EffectiveRos2BridgeTopic"),
                 "96D-5: Publisher base exposes bridge topic override and effective topic");

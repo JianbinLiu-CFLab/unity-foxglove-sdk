@@ -184,7 +184,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("[SerializeField] private bool _enableRemoteGateway;", source, StringComparison.Ordinal);
             Assert.Contains("FOXGLOVE_DEVICE_TOKEN", source, StringComparison.Ordinal);
             Assert.Contains("EditorUserSettings", source, StringComparison.Ordinal);
-            Assert.Contains("token in a scene", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("[SerializeField] private string _deviceToken", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("_deviceToken", source, StringComparison.Ordinal);
             Assert.Contains("Foxglove Cloud", source, StringComparison.Ordinal);
             Assert.Contains("SetMirrorSink", source, StringComparison.Ordinal);
             Assert.Contains("RemoteGatewayLifecycleGate.CanStartNativeGateway", source, StringComparison.Ordinal);

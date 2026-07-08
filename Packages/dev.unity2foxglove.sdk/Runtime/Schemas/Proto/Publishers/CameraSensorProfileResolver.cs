@@ -38,6 +38,10 @@ namespace Unity.FoxgloveSDK.Components
                 : (string.IsNullOrWhiteSpace(fallbackTopic) ? DefaultCompressedImageTopic : fallbackTopic);
         }
 
+        /// <summary>
+        /// Resolves the compressed image topic kept for the canonical camera publisher alias.
+        /// Use <see cref="ResolveRawImageTopic"/> when a raw sensor_msgs/Image topic is required.
+        /// </summary>
         public static string ResolveImageTopic(object sensorUnitProfile, string fallbackTopic)
             => ResolveCompressedImageTopic(sensorUnitProfile, fallbackTopic);
 

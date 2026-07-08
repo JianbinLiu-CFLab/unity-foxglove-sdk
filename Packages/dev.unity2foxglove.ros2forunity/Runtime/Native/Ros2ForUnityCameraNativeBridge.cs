@@ -117,6 +117,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void RefreshBindings()
         {
+            // Intentional low-frequency scan: this hidden bridge binds product
+            // publishers that may be created dynamically, and the 0.5s throttle
+            // keeps FindObjectsByType allocations out of frame-hot paths.
             var cameraPublishers = FindObjectsByType<FoxgloveCameraPublisher>(
                 FindObjectsInactive.Exclude,
                 FindObjectsSortMode.None);

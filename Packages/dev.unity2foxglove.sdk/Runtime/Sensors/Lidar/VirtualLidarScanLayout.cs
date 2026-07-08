@@ -41,10 +41,22 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         public int[] RayColumns { get; }
         public int[][] ColumnRays { get; }
 
+        /// <summary>
+        /// Builds a layout for a scan pattern. A null pattern returns an empty
+        /// non-null layout so callers can safely inspect array properties.
+        /// </summary>
         public static VirtualLidarScanLayout Build(ILidarScanPattern scanPattern, int maxRaysPerScan)
         {
             if (scanPattern == null)
-                return default;
+                return new VirtualLidarScanLayout(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    Array.Empty<int>(),
+                    Array.Empty<int[]>());
 
             var rawRayCount = Math.Max(1, scanPattern.RayCount);
             var budget = maxRaysPerScan <= 0 ? rawRayCount : Math.Min(rawRayCount, maxRaysPerScan);
@@ -66,8 +78,6 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
                     index = rawRayCount - 1;
 
                 var column = index % rawColumns;
-                if (column < 0 || column >= rawColumns)
-                    column = 0;
 
                 rayColumns[k] = column;
                 if (column >= scanColumnCount)

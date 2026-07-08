@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}                return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(" +
                     $"{TopicMetadataEmitter.PublishModeLiteral(mode)}, nowSec, __hasLast_{i}, changed, __lastPublishSec_{i}, {TypeExprEmitter.FloatLiteral(forceInt < 0 ? 0 : forceInt)});");
             }
-            sb.AppendLine($"{pad}            default: return true;");
+            sb.AppendLine($"{pad}            default: return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
             sb.AppendLine();
@@ -95,6 +95,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}                __lastPublishSec_{i} = nowSec;");
                 sb.AppendLine($"{pad}                break;");
             }
+            sb.AppendLine($"{pad}            default: break;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
         }

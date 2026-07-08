@@ -37,7 +37,6 @@ namespace Unity.FoxgloveSDK.Editor
         {
             "System.Collections.Generic.List<T>",
             "System.Collections.Generic.IList<T>",
-            "System.Collections.Generic.IReadOnlyList<T>",
             "System.Collections.Generic.HashSet<T>",
             "System.Collections.Generic.ICollection<T>",
             "System.Collections.Generic.Queue<T>",
@@ -47,6 +46,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static readonly HashSet<string> ResponseOnlyListTypeNames = new HashSet<string>(StringComparer.Ordinal)
         {
+            "System.Collections.Generic.IReadOnlyList<T>",
             "System.Collections.Generic.IReadOnlyCollection<T>",
         };
 

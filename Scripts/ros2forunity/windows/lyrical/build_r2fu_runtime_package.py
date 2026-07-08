@@ -441,6 +441,57 @@ def write_json(path: Path, data: dict[str, object]) -> None:
     write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
 
 
+def sha512_file(path: Path) -> str:
+    """Return the SHA-512 hex digest for a file."""
+    digest = hashlib.sha512()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def patch_deps_json_sha512(package: Path) -> None:
+    """Populate informational deps.json sha512 fields for packaged DLLs."""
+    plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins"
+    inventory_path = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
+    inventory = json.loads(inventory_path.read_text(encoding="utf-8")) if inventory_path.exists() else None
+    inventory_by_path = {
+        str(item.get("path", "")): item
+        for item in (inventory or {}).get("files", [])
+        if isinstance(item, dict)
+    }
+
+    inventory_changed = False
+    for deps_path in sorted(plugin_root.glob("*.deps.json")):
+        data = json.loads(deps_path.read_text(encoding="utf-8"))
+        changed = False
+        for library_name, metadata in data.get("libraries", {}).items():
+            if not isinstance(metadata, dict):
+                continue
+
+            dll_path = plugin_root / (library_name.split("/", 1)[0] + ".dll")
+            if not dll_path.exists():
+                continue
+
+            digest = sha512_file(dll_path)
+            if metadata.get("sha512") != digest:
+                metadata["sha512"] = digest
+                changed = True
+
+        if not changed:
+            continue
+
+        write_json(deps_path, data)
+        inventory_item = inventory_by_path.get("Ros2ForUnity/Plugins/" + deps_path.name)
+        if inventory_item is not None:
+            inventory_item["sha256"] = sha256_file(deps_path)
+            inventory_item["size"] = deps_path.stat().st_size
+            inventory_changed = True
+
+    if inventory_changed and inventory_path.exists():
+        write_json(inventory_path, inventory)
+
+
 def runtime_asmdef() -> dict[str, object]:
     """Return the runtime assembly definition used by the packaged R2FU copy."""
     return {
@@ -1292,6 +1343,23 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifac
     )
 
 
+def validate_ros2cs_metadata_descriptions(package: Path) -> None:
+    """Reject ros2cs metadata whose human-readable desc names another distro."""
+    metadata_files = (
+        package / "Runtime" / "Ros2ForUnity" / "metadata_ros2cs.xml",
+        package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
+        package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
+    )
+    other_distros = ("humble", "jazzy")
+    for path in metadata_files:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "<ros2>lyrical</ros2>" not in text:
+            raise ValueError(f"Unexpected ros2cs distro in {path}: expected lyrical")
+        for distro in other_distros:
+            if distro in text:
+                raise ValueError(f"Unexpected {distro!r} text in lyrical ros2cs metadata: {path}")
+
+
 def build_package(paths: BuildPaths) -> None:
     """Build the runtime package from the runtime artifact."""
     inventory, artifact = require_inputs(paths)
@@ -1307,7 +1375,9 @@ def build_package(paths: BuildPaths) -> None:
         patch_component_main_thread_prewarm(paths.package)
         patch_ros_time_source_contract(paths.package)
         patch_zenoh_router_config_notes(paths.package)
+        validate_ros2cs_metadata_descriptions(paths.package)
         write_package_files(paths, inventory, artifact)
+        patch_deps_json_sha512(paths.package)
         apply_meta_overlays(paths.package, meta_overlays)
         write_generated_metas(paths.package)
     except Exception:

@@ -649,7 +649,7 @@ namespace Unity.FoxgloveSDK.Components
 
             Ros2CdrPayloadValidator.Validate(payload);
 
-            var frame = new Ros2BridgeFrame(
+            var frame = Ros2BridgeFrame.CreateValidated(
                 effectiveTopic,
                 schemaName,
                 CdrEncoding,
