@@ -91,6 +91,35 @@ namespace Unity.FoxgloveSDK.Tests
             return source.ToString();
         }
 
+        public static string ReadFoxgloveLogSourceGeneratorSources()
+        {
+            var root = FindRequiredRepoRoot();
+
+            var dir = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Editor",
+                "SourceGenerators",
+                "src");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("Source generator src directory was not found.");
+
+            var files = Directory.GetFiles(dir, "*.cs", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            var source = new StringBuilder();
+            foreach (var file in files)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(file));
+            }
+
+            return source.ToString();
+        }
+
         public static bool SourceMethodContains(string source, string methodName, string needle)
             => SourceMethod(source, methodName).Contains(needle, StringComparison.Ordinal);
 

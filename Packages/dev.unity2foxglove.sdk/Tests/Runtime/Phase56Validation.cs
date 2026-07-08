@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(FoxgloveSourceEmitter.GeneratedSourceName("Robotics.Sim", "Telemetry") == "Robotics_Sim_Telemetry_FoxRun.g.cs",
                 "56A-2: generated names include namespace identity for collision avoidance");
 
-            var roslynGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var roslynGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var buildTimeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
 
             Check(roslynGenerator.Contains("FoxgloveSourceEmitter.GeneratedSourceName(ns, className)"),

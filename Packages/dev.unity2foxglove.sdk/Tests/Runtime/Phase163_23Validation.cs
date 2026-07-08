@@ -49,7 +49,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ConditionDiagnosticsUseStableIds()
         {
-            var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
             var invalidUnless = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
             {
@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void DescriptorCarrierChunksLargeJson()
         {
-            var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
 
             Check(generator.Contains("if (escaped.Length > 60000)", StringComparison.Ordinal)
                   && generator.Contains("ChunkedDescriptorCarrierSource(escaped)", StringComparison.Ordinal),
@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void UnknownGeneratorDiagnosticsFailClosed()
         {
-            var generator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
 
             Check(generator.Contains("UnknownFoxRunDiagnostic(string id)", StringComparison.Ordinal)
                   && generator.Contains("UnknownFoxServiceDiagnostic(string id)", StringComparison.Ordinal),

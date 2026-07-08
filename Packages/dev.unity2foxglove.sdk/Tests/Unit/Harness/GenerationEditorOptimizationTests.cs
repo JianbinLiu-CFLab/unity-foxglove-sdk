@@ -195,10 +195,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void RoslynGeneratorHotPathsAvoidPerCandidateLinq()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var models = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Models.cs");
             var hasFoxRunAttr = TestSources.Slice(source, "private static bool HasFoxRunAttr", "private static MemberData ExtractMember");
             var extractMember = TestSources.Slice(source, "private static MemberData ExtractMember", "private static bool TryReadFloatConstant");
             var generate = TestSources.Slice(source, "private static void Generate", "private static void EmitClass");
-            var toRoslynMembers = TestSources.Slice(source, "public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers", "        }\r\n\r\n        /// <summary>\r\n        /// Immutable tuple");
+            var toRoslynMembers = TestSources.Slice(models, "public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers", "    internal sealed class TopicEntry");
 
             Assert.Contains("AttrAttributeName", hasFoxRunAttr, StringComparison.Ordinal);
             Assert.Contains("AttrQualifiedNameSuffix", hasFoxRunAttr, StringComparison.Ordinal);
@@ -219,11 +220,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void RoslynGeneratorReviewFixesStayPinned()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var descriptor = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxRunDescriptorCarrierEmitter.cs");
             var generate = TestSources.Slice(source, "private static void Generate", "private static string DiagnosticDeclaringType");
             var services = TestSources.Slice(source, "private static void GenerateServices", "        /// <summary>\r\n        /// Emits the generated partial class");
             var locationFor = TestSources.ExtractMethod(source, "private static Location LocationFor");
-            var chunkedDescriptor = TestSources.ExtractMethod(source, "private static string ChunkedDescriptorCarrierSource");
-            var escape = TestSources.ExtractMethod(source, "private static string EscapeStringLiteral");
+            var chunkedDescriptor = TestSources.ExtractMethod(descriptor, "public static string ChunkedDescriptorCarrierSource");
+            var escape = TestSources.ExtractMethod(descriptor, "public static string EscapeStringLiteral");
 
             Assert.Contains("catch (Exception ex) when (ex is OverflowException || ex is InvalidCastException || ex is FormatException)", source, StringComparison.Ordinal);
             Assert.Contains("roslynMemberCapacity", generate, StringComparison.Ordinal);

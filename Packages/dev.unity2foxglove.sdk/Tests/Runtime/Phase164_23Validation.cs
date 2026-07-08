@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRoslynCandidateScanIsSinglePass()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var source = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var isCandidate = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool IsCandidate");
             var hasFoxRunAttr = PhaseValidationSourceHelpers.SourceMethod(source, "private static bool HasFoxRunAttr");
 

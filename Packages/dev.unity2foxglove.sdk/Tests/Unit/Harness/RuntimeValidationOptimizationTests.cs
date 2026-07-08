@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -304,6 +305,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var path = Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
             Assert.True(File.Exists(path), "Source file not found: " + relativePath + " (" + path + ")");
             return File.ReadAllText(path);
+        }
+
+        public static string SourceGeneratorSources()
+        {
+            var dir = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Editor",
+                "SourceGenerators",
+                "src");
+            Assert.True(Directory.Exists(dir), "Source generator src directory not found: " + dir);
+
+            var files = Directory.GetFiles(dir, "*.cs", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
         public static void AssertConsolePhaseRemoved(string validationFile, string flag, string entryPoint)

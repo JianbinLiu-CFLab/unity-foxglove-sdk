@@ -198,7 +198,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySharedDiagnosticsMapStrictly()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs");
+            var source = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             Check(source.Contains("case \"FOXRUN011\": return MissingClassName;", StringComparison.Ordinal)
                   && source.Contains("case \"FOXRUN012\": return MissingMemberName;", StringComparison.Ordinal)
                   && source.Contains("case \"FOXRUN013\": return InvalidPublishMode;", StringComparison.Ordinal),
