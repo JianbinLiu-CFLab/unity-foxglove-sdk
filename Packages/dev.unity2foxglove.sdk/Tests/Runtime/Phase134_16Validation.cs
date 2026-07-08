@@ -111,8 +111,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("process.Kill()", StringComparison.Ordinal)
                   && source.Contains("process.WaitForExit(Math.Max(1, timeoutMs))", StringComparison.Ordinal)
-                  && source.Contains("process.WaitForExit();", StringComparison.Ordinal),
-                "134-16E-1: timed-out ROS2 CLI commands wait for process exit after kill before reading buffered output");
+                  && !source.Contains("process.Kill();\r\n                        process.WaitForExit(Math.Max(1, timeoutMs));\r\n                        process.WaitForExit();", StringComparison.Ordinal)
+                  && !source.Contains("process.Kill();\n                        process.WaitForExit(Math.Max(1, timeoutMs));\n                        process.WaitForExit();", StringComparison.Ordinal)
+                  && source.Contains("ProcessLaunchSupported", StringComparison.Ordinal),
+                "134-16E-1: timed-out ROS2 CLI commands use bounded post-kill waits and fail closed on non-desktop platforms");
         }
 
         private static void HealthRunnerAvoidsHardcodedCatalogCountAndSupportsCancellation()

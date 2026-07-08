@@ -14,7 +14,10 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
-    /// <summary>Owns connection graph topology, subscribers, broadcasts, and MCAP graph metadata.</summary>
+    /// <summary>
+    /// Owns connection graph topology, subscribers, broadcasts, and MCAP graph metadata.
+    /// The underlying registry owns its topology lock; this type serializes broadcast scratch reuse.
+    /// </summary>
     internal sealed class SessionGraphHandler
     {
         /// <summary>Publisher ID string used for Unity-originated graph entries.</summary>
@@ -132,11 +135,11 @@ namespace Unity.FoxgloveSDK.Core
 
         public void BroadcastUpdate()
         {
-            var hasDirtyRecorder = Volatile.Read(ref _dirty) == 1 && _recorderProvider() != null;
             string json;
             lock (_subscriberScratchLock)
             {
                 _graph.CopySubscribersTo(_subscriberScratch);
+                var hasDirtyRecorder = Volatile.Read(ref _dirty) == 1 && _recorderProvider() != null;
                 if (_subscriberScratch.Count == 0 && !hasDirtyRecorder)
                     return;
 

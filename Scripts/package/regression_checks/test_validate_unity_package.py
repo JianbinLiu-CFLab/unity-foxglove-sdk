@@ -150,12 +150,33 @@ class ValidatePackageTests(unittest.TestCase):
             runtime.mkdir(parents=True)
             legacy = runtime / "Phase164_57Validation.cs"
             legacy.write_text("// legacy validation\n", encoding="utf-8")
+            legacy_variant = runtime / "Phase164_57FooValidation.cs"
+            legacy_variant.write_text("// legacy validation variant\n", encoding="utf-8")
 
             self.validator.PACKAGE = root
             results = []
             self.validator.check_validation_naming(results)
 
         self.assertTrue(results[-1].ok)
+
+    def test_validation_naming_rejects_exact_cutoff_phase_files(self) -> None:
+        """The exact cutoff phase/index should not slip through an off-by-one gap."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            runtime = root / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            cutoff = runtime / "Phase164_58Validation.cs"
+            cutoff.write_text("// cutoff validation\n", encoding="utf-8")
+            cutoff_variant = runtime / "Phase164_58FooValidation.cs"
+            cutoff_variant.write_text("// cutoff validation variant\n", encoding="utf-8")
+
+            self.validator.PACKAGE = root
+            results = []
+            self.validator.check_validation_naming(results)
+
+        self.assertFalse(results[-1].ok)
+        self.assertIn("Phase164_58Validation.cs", results[-1].detail)
+        self.assertIn("Phase164_58FooValidation.cs", results[-1].detail)
 
     def test_validation_naming_rejects_new_phase_files(self) -> None:
         """New validations should use descriptive filenames instead of Phase numbers."""

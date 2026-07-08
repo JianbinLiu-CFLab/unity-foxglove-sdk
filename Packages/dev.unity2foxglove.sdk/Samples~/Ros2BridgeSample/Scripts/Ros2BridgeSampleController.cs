@@ -16,8 +16,10 @@ public sealed class Ros2BridgeSampleController : MonoBehaviour
     [SerializeField] private float _motionRadius = 1.25f;
     [SerializeField] private float _motionSpeed = 0.6f;
     [SerializeField] private bool _showStatusOverlay = true;
+    [SerializeField] private float _statusRefreshSeconds = 0.25f;
 
     private string _status = "ROS2 Bridge sample";
+    private float _statusRefreshTimer;
     private bool _lastRos2BridgeEnabled;
     private bool _lastConnected;
     private long _lastSentFrames;
@@ -44,8 +46,13 @@ public sealed class Ros2BridgeSampleController : MonoBehaviour
 
         if (_manager != null)
         {
-            var stats = _manager.GetRos2BridgeStatsSnapshot();
-            UpdateStatusIfChanged(stats, _manager.Ros2BridgeEnabled);
+            _statusRefreshTimer -= Time.deltaTime;
+            if (_statusRefreshTimer <= 0f)
+            {
+                _statusRefreshTimer = Mathf.Max(0.05f, _statusRefreshSeconds);
+                var stats = _manager.GetRos2BridgeStatsSnapshot();
+                UpdateStatusIfChanged(stats, _manager.Ros2BridgeEnabled);
+            }
         }
     }
 

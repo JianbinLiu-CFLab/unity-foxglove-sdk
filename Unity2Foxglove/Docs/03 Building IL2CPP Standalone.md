@@ -1,16 +1,16 @@
-# 1. IL2CPP Build Guide
+# IL2CPP Build Guide
 
 This document covers how to build the Unity2Foxglove Demo project as an IL2CPP standalone player and verify the SDK's behavior in an IL2CPP environment.
 
-## 1.1 Purpose
+## 1. Purpose
 
 Use this guide to build the demo project as an IL2CPP Player and verify Player-only behavior.
 
-## 1.2 Application
+## 2. Application
 
 Read this when testing source-generation fallback, Newtonsoft/link.xml preservation, compression DLL loading, or standalone Player connectivity.
 
-## 1. Why IL2CPP builds matter
+## 3. Why IL2CPP builds matter
 
 The Unity Editor runs C# code using Mono JIT. However, many advanced features (such as the `[FoxRun]` Source Generator) may behave differently under IL2CPP AOT compilation. IL2CPP builds are used to verify:
 
@@ -18,9 +18,9 @@ The Unity Editor runs C# code using Mono JIT. However, many advanced features (s
 - WebSocket, serialization, and other runtime features work correctly under IL2CPP
 - The published Player can be correctly connected and data-interacted by Foxglove Desktop
 
-## 2. Prerequisites
+## 4. Prerequisites
 
-### 2.1 Unity installation
+### 4.1 Unity installation
 
 1. **Unity 6000.0 LTSC or later** is installed
 2. The **Build Support** module for the target platform is installed, especially **Windows IL2CPP** (or Linux IL2CPP, macOS IL2CPP)
@@ -30,12 +30,12 @@ The Unity Editor runs C# code using Mono JIT. However, many advanced features (s
 
 3. Unity Editor is closed (running the Editor simultaneously with a batchmode build may cause Library file conflicts)
 
-### 2.2 Python environment
+### 4.2 Python environment
 
 - **Python 3.8 or later** (required for command-line build script)
 - Verify installation: `python --version`
 
-## 3. Basic build command
+## 5. Basic build command
 
 Run from the repository root:
 
@@ -60,9 +60,9 @@ The build script automatically:
 4. Configures IL2CPP scripting backend and Medium-level managed code stripping
 5. Prints key lines from the Unity log in real time (e.g., `[FoxrunBuildPreprocess]`, `[FoxgloveBuild]`, compilation errors, etc.)
 
-## 4. Optional parameters
+## 6. Optional parameters
 
-### 4.1 --unity: specify Unity path
+### 6.1 --unity: specify Unity path
 
 If the script does not auto-find Unity, pass the path to your local Unity Editor executable.
 Replace `<path-to-your-Unity.exe>` with the Unity version installed on your machine.
@@ -84,7 +84,7 @@ For example, a typical Unity Hub installation on Windows may look like:
 $env:UNITY_EXE = "C:\Program Files\Unity\Hub\Editor\<unity-version>\Editor\Unity.exe"
 ```
 
-### 4.2 --output-dir / --build-dir: specify output directory
+### 6.2 --output-dir / --build-dir: specify output directory
 
 Custom build output directory (default: `build/Unity/<target>-il2cpp-<timestamp>/`):
 
@@ -92,7 +92,7 @@ Custom build output directory (default: `build/Unity/<target>-il2cpp-<timestamp>
 python Scripts/build_tools/unity_il2cpp.py --target win64 --build-dir build\Unity\my-custom-build
 ```
 
-### 4.3 --output: specify Player output path
+### 6.3 --output: specify Player output path
 
 Precisely control the Player executable location:
 
@@ -100,13 +100,13 @@ Precisely control the Player executable location:
 python Scripts/build_tools/unity_il2cpp.py --target win64 --output build\Unity\manual\WindowsIL2CPP\FoxgloveDemo.exe
 ```
 
-### 4.4 --log: specify build log path
+### 6.4 --log: specify build log path
 
 ```powershell
 python Scripts/build_tools/unity_il2cpp.py --target win64 --log build\Unity\custom-build.log
 ```
 
-### 4.5 --dry-run: trial run (check parameters only, do not start Unity)
+### 6.5 --dry-run: trial run (check parameters only, do not start Unity)
 
 Verify paths and parameters before a real build:
 
@@ -124,14 +124,14 @@ Example output:
 [build_unity_il2cpp] Dry run only; Unity was not started.
 ```
 
-### 4.6 --progress-interval: adjust progress heartbeat frequency
+### 6.6 --progress-interval: adjust progress heartbeat frequency
 
 ```powershell
 # Print build progress every 30 seconds (default 15 seconds)
 python Scripts/build_tools/unity_il2cpp.py --target win64 --progress-interval 30
 ```
 
-## 5. Build output structure
+## 7. Build output structure
 
 ```mermaid
 flowchart TD
@@ -153,7 +153,7 @@ flowchart TD
   PlayerDir --> Runtime
 ```
 
-## 6. Verifying the build log
+## 8. Verifying the build log
 
 After building, check `build.log` (or terminal output) for these key markers:
 
@@ -169,7 +169,7 @@ Build succeeded: build/Unity/WindowsIL2CPP/FoxgloveDemo.exe
 
 If `[FoxrunBuildPreprocess]` is missing, FoxRun log topics may not be generated correctly. Check whether `Unity2Foxglove/Assets/Scripts/Generated/*_FoxRun.g.cs` files exist.
 
-## 7. Running the IL2CPP Player
+## 9. Running the IL2CPP Player
 
 1. Navigate to the build output directory and run `FoxgloveDemo.exe` (Windows) or the corresponding platform executable
 2. After the Player starts, the WebSocket server starts at `ws://127.0.0.1:8765`
@@ -179,7 +179,7 @@ If `[FoxrunBuildPreprocess]` is missing, FoxRun log topics may not be generated 
 3. Open Foxglove Desktop and connect to `ws://127.0.0.1:8765`
 4. Import the layout file to confirm all panels display correctly
 
-## 8. IL2CPP Player verification checklist
+## 10. IL2CPP Player verification checklist
 
 Verify each item according to the manual acceptance steps in **[04 Troubleshooting](04%20Troubleshooting.md)** and the SDK package documentation under `Packages/dev.unity2foxglove.sdk/Documentation~/`, with special attention to:
 
@@ -192,7 +192,7 @@ Verify each item according to the manual acceptance steps in **[04 Troubleshooti
 - [ ] FoxRun: `/debug/position` and `/debug/health` topics exist and have data
   - **This is the most important verification point**: confirms `*_FoxRun.g.cs` fallback source files work correctly under IL2CPP
 
-## 9. Recording test results
+## 11. Recording test results
 
 It is recommended to record the following information for traceability:
 
@@ -206,17 +206,17 @@ It is recommended to record the following information for traceability:
 | FoxRun /debug/* topics | Pass / Fail |
 | All manual acceptance items | Passed count / Total count |
 
-## 10. Cross-platform notes
+## 12. Cross-platform notes
 
 - Building for **Linux/macOS** targets requires the corresponding Unity Build Support modules
 - **macOS Player** is best built on a macOS host; Windows hosts may not produce signable macOS apps
-- IL2CPP builds take a long time (typically 10-30 minutes); run `--dry-run` first to confirm parameters
+- IL2CPP build time varies by machine, Unity version, and project size; run `--dry-run` first to confirm parameters
 - Best to **close the Unity Editor** before building to avoid Library directory and script compilation state conflicts
 - If the build fails, prioritize checking `build.log` for `[FoxrunBuildPreprocess]`, `error CS`, `Tundra build failed`, etc.
 
-## 11. Troubleshooting
+## 13. Troubleshooting
 
-### 11.1 Unity not found
+### 13.1 Unity not found
 
 ```text
 Unity executable was not found. Pass --unity or set UNITY_EXE/UNITY_PATH.
@@ -224,15 +224,15 @@ Unity executable was not found. Pass --unity or set UNITY_EXE/UNITY_PATH.
 
 **Resolution**: use the `--unity` parameter to specify the path, or set the `UNITY_EXE` environment variable.
 
-### 11.2 Build error: "IL2CPP module not installed"
+### 13.2 Build error: "IL2CPP module not installed"
 
 **Resolution**: in Unity Hub, install the "Windows Build Support (IL2CPP)" module for the Unity version.
 
-### 11.3 No [FoxrunBuildPreprocess] in build log
+### 13.3 No [FoxrunBuildPreprocess] in build log
 
 **Resolution**: check whether `.cs` files exist under `Unity2Foxglove/Assets/Scripts/Generated/`. If they do not exist, first open the project in the Unity Editor and compile once to ensure the Source Generator triggers.
 
-### 11.4 Foxglove connection fails after Player starts
+### 13.4 Foxglove connection fails after Player starts
 
 - Confirm port 8765 is not occupied (`netstat -ano | findstr 8765`)
 - Confirm the firewall does not block the Player's network connection

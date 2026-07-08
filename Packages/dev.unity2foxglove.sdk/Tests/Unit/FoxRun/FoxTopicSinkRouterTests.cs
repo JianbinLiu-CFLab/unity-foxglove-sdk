@@ -72,6 +72,48 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FailingRegisterSinkIsIsolatedAndReportedOnce()
+        {
+            var router = new FoxTopicSinkRouter();
+            var faults = new List<FoxTopicSinkFault>();
+            router.SinkFaulted += fault => faults.Add(fault);
+            var bad = new ThrowingRegisterSink("bad");
+            var good = new RecordingSink("good", new List<string>());
+            router.AddSink(bad);
+            router.AddSink(good);
+
+            var contract = Exported("/telemetry");
+            router.Register(contract);
+            router.Register(contract);
+
+            Assert.Equal(2, good.Registered.Count);
+            Assert.Single(faults);
+            Assert.Equal("bad", faults[0].SinkName);
+            Assert.Equal("/telemetry", faults[0].Topic);
+            Assert.Equal("register", faults[0].Operation);
+        }
+
+        [Fact]
+        public void AddSinkWithThrowingRegisterIsolatesAndContinues()
+        {
+            var router = new FoxTopicSinkRouter();
+            var faults = new List<FoxTopicSinkFault>();
+            router.SinkFaulted += fault => faults.Add(fault);
+            var contract = Exported("/telemetry");
+            router.Register(contract);
+
+            var bad = new ThrowingRegisterSink("bad");
+            var good = new RecordingSink("good", new List<string>());
+            router.AddSink(bad);
+            router.AddSink(good);
+
+            Assert.Single(good.Registered);
+            Assert.Single(faults);
+            Assert.Equal("bad", faults[0].SinkName);
+            Assert.Equal("register", faults[0].Operation);
+        }
+
+        [Fact]
         public void EverySinkSharesOneSerializedPayloadBuffer()
         {
             var router = new FoxTopicSinkRouter();
@@ -203,6 +245,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public void Register(FoxTopicContract contract) { }
             public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
                 => throw new InvalidOperationException("boom");
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class ThrowingRegisterSink : IFoxTopicSink
+        {
+            public ThrowingRegisterSink(string name) => Name = name;
+
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+
+            public void Register(FoxTopicContract contract)
+                => throw new InvalidOperationException("register boom");
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
             public void Flush() { }
             public void Dispose() { }
         }

@@ -7,11 +7,11 @@ shared `map -> base_link -> os_sensor -> os_lidar/os_imu/os_camera` frame tree.
 
 1. Import this sample into your Unity project.
 2. Open or create the scene you want to build into.
-3. Choose **Foxglove > Phase138 > Build Maze Demo Scene**.
+3. Choose **Foxglove > LiDAR Maze Demo > Build Scene**.
 4. Press Play and drive with **WASD**.
 
-Alternatively, add `Phase138MazeDemoBootstrap` to an empty GameObject and press
-Play to build the same scene at runtime.
+Alternatively, add the maze demo bootstrap component to an empty GameObject and
+press Play to build the same scene at runtime.
 
 ## Product ROS2 Native Path
 

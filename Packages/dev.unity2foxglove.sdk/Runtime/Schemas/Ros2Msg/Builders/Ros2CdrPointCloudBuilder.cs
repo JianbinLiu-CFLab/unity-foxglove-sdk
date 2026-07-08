@@ -5,6 +5,7 @@
 // Purpose: ROS 2 CDR smoke builder for foxglove_msgs/msg/PointCloud.
 
 using System;
+using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Schemas;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 
@@ -53,21 +54,29 @@ namespace Unity.FoxgloveSDK.Schemas.Ros2Msg
 
         private static byte[] Serialize(PointCloudFrame frame, PointCloudPackedData packed)
         {
-            var writer = new Ros2CdrWriter(160 + packed.Data.Length + (packed.Fields.Count * 32));
-            Ros2CdrGeometryWriter.WriteTime(writer, frame.UnixNs);
-            writer.WriteString(frame.FrameId);
-            Ros2CdrGeometryWriter.WriteIdentityPose(writer);
-            writer.WriteUInt32(packed.PointStride);
-            writer.WriteSequenceLength(packed.Fields.Count);
-            for (var i = 0; i < packed.Fields.Count; i++)
+            FoxgloveProfiler.Global.BeginSample("CdrBuild.PointCloud");
+            try
             {
-                var field = packed.Fields[i];
-                writer.WriteString(field.Name);
-                writer.WriteUInt32(field.Offset);
-                writer.WriteUInt8(MapDatatype(field.Type));
+                var writer = new Ros2CdrWriter(160 + packed.Data.Length + (packed.Fields.Count * 32));
+                Ros2CdrGeometryWriter.WriteTime(writer, frame.UnixNs);
+                writer.WriteString(frame.FrameId);
+                Ros2CdrGeometryWriter.WriteIdentityPose(writer);
+                writer.WriteUInt32(packed.PointStride);
+                writer.WriteSequenceLength(packed.Fields.Count);
+                for (var i = 0; i < packed.Fields.Count; i++)
+                {
+                    var field = packed.Fields[i];
+                    writer.WriteString(field.Name);
+                    writer.WriteUInt32(field.Offset);
+                    writer.WriteUInt8(MapDatatype(field.Type));
+                }
+                writer.WriteByteArray(packed.Data);
+                return writer.ToArray();
             }
-            writer.WriteByteArray(packed.Data);
-            return writer.ToArray();
+            finally
+            {
+                FoxgloveProfiler.Global.EndSample();
+            }
         }
 
         private static byte MapDatatype(PointCloudPackedNumericType type)

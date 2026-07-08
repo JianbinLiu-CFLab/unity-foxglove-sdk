@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly FoxRunInputRouter _router = new();
         private readonly HashSet<IFoxgloveInputSource> _sources = new();
         private readonly List<IFoxgloveInputSource> _stale = new();
+        private readonly List<IFoxgloveInputSource> _scanSources = new();
         private readonly HashSet<string> _warned = new(StringComparer.Ordinal);
         private float _managerSearchCooldown;
         private float _scanTimer;
@@ -98,23 +99,32 @@ namespace Unity.FoxgloveSDK.Components
         private void Scan()
         {
             var behaviours = FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
-            Array.Sort(behaviours, CompareInputSourceOrder);
+            _scanSources.Clear();
             foreach (var behaviour in behaviours)
             {
-                if (behaviour is IFoxgloveInputSource source && _sources.Add(source))
+                if (behaviour is IFoxgloveInputSource source)
+                    _scanSources.Add(source);
+            }
+
+            _scanSources.Sort(CompareInputSourceOrder);
+            foreach (var source in _scanSources)
+            {
+                if (_sources.Add(source))
                     _router.Register(source);
             }
         }
 
-        private static int CompareInputSourceOrder(MonoBehaviour left, MonoBehaviour right)
+        private static int CompareInputSourceOrder(IFoxgloveInputSource left, IFoxgloveInputSource right)
         {
+            var leftBehaviour = left as MonoBehaviour;
+            var rightBehaviour = right as MonoBehaviour;
             var typeOrder = string.CompareOrdinal(
-                left != null ? left.GetType().FullName : string.Empty,
-                right != null ? right.GetType().FullName : string.Empty);
+                leftBehaviour != null ? leftBehaviour.GetType().FullName : string.Empty,
+                rightBehaviour != null ? rightBehaviour.GetType().FullName : string.Empty);
             if (typeOrder != 0)
                 return typeOrder;
-            return (left != null ? left.GetInstanceID() : 0)
-                .CompareTo(right != null ? right.GetInstanceID() : 0);
+            return (leftBehaviour != null ? leftBehaviour.GetInstanceID() : 0)
+                .CompareTo(rightBehaviour != null ? rightBehaviour.GetInstanceID() : 0);
         }
 
         private void RemoveStaleSources()
@@ -133,6 +143,7 @@ namespace Unity.FoxgloveSDK.Components
                 _router.Unregister(source);
                 _sources.Remove(source);
             }
+            _scanSources.Clear();
         }
 
         private void OnClientMessage(uint clientId, uint channelId, string topic, byte[] payload)

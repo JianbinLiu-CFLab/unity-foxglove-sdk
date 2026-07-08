@@ -86,6 +86,9 @@ C:\ros2_lyrical\ros2-windows
 Run from this directory:
 
 ```powershell
+if (Test-Path .\ros2_humble)  { Remove-Item .\ros2_humble  -Force }
+if (Test-Path .\ros2_jazzy)   { Remove-Item .\ros2_jazzy   -Force }
+if (Test-Path .\ros2_lyrical) { Remove-Item .\ros2_lyrical -Force }
 New-Item -ItemType Junction -Path .\ros2_humble  -Target C:\ros2_humble\ros2-windows
 New-Item -ItemType Junction -Path .\ros2_jazzy   -Target C:\ros2_jazzy\ros2-windows
 New-Item -ItemType Junction -Path .\ros2_lyrical -Target C:\ros2_lyrical\ros2-windows

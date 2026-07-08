@@ -20,6 +20,10 @@ namespace Unity.FoxgloveSDK.Components
     public partial class FoxglovePointCloudPublisher
     {
 
+        /// <summary>
+        /// Queue a VirtualLidar-owned point snapshot for Draco encoding.
+        /// The caller transfers ownership of <paramref name="points"/> and must not mutate or return it after this call.
+        /// </summary>
         internal bool TryQueueVirtualLidarDracoFrame(
             VirtualLidarPointData[] points,
             int pointCount,
@@ -116,7 +120,8 @@ namespace Unity.FoxgloveSDK.Components
                 publishBridge = ShouldPrepareRos2BridgePayload();
             }
 
-            // No main-thread clone. VirtualLidar allocates a fresh PointCloudFrame for every
+            // No main-thread clone. Callers must transfer ownership of the frame before queueing.
+            // VirtualLidar allocates a fresh PointCloudFrame for every
             // scan (StartNewScan) and never mutates a frame after handing it to SetFrame, so
             // the background worker can read this frame directly. Cloning 262144 points on the
             // Update thread was the dominant per-frame main-thread spike that stalled the loop.

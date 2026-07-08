@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.Schemas
     /// <summary>
     /// Official foxglove JSON Schema constants and registration.
     /// Source: foxglove-sdk main@b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+    /// First access decodes the embedded schema strings once; avoid first-touching this type from tight frame-critical code.
     /// Schema content stored as base64-encoded C# constants — no runtime file I/O.
     /// </summary>
     public static class FoxgloveSchemaDefinitions
