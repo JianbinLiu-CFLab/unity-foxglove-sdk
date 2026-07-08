@@ -141,7 +141,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     dir = dir.Parent;
                 }
 
-                Assert.True(false, "Could not locate repository root from " + AppContext.BaseDirectory);
+                Assert.Fail("Could not locate repository root from " + AppContext.BaseDirectory);
                 return string.Empty;
             }
         }

@@ -155,11 +155,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PointCloudProfilesFallbackForUnknownModes()
         {
-            var profile = PointCloudOutputProfile.ForMode((PointCloudOutputMode)999);
-            Check(profile.Mode == PointCloudOutputMode.Raw
-                  && profile.SchemaName == PointCloudOutputModeDefaults.RawSchema
-                  && profile.DefaultTopic == PointCloudOutputModeDefaults.RawTopic,
-                "134-14F-1: unknown serialized point-cloud output modes fall back to Raw for scene compatibility");
+            CheckThrows<ArgumentOutOfRangeException>(
+                () => PointCloudOutputProfile.ForMode((PointCloudOutputMode)999),
+                "134-14F-1: unknown serialized point-cloud output modes fail closed instead of falling back to Raw");
         }
 
         private static void LegacyCompressedPointCloudPublisherIsMarkedObsolete()

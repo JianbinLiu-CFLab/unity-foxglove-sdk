@@ -135,8 +135,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!category.Contains("OptionalTooling", StringComparison.Ordinal),
                 "134-32G-2: unused OptionalTooling validation category is removed");
             Check(skeleton.Contains("internal static class SkeletonValidation", StringComparison.Ordinal)
-                  && skeleton.Contains("_passCount = 0;", StringComparison.Ordinal),
-                "134-32G-3: skeleton validation is internal and resets pass state per run");
+                  && !skeleton.Contains("static int _passCount", StringComparison.Ordinal)
+                  && skeleton.Contains("var passCount = 0;", StringComparison.Ordinal),
+                "134-32G-3: skeleton validation is internal and keeps pass state local per run");
         }
 
         private static void VerifyProtoSampleFactoryContracts()
