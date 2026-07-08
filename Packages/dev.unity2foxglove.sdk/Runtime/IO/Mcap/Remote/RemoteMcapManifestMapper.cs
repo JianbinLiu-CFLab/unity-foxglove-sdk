@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.IO
             var ordered = schemas == null
                 ? new List<McapDataLoaderSchema>()
                 : new List<McapDataLoaderSchema>(schemas);
-            ordered.Sort((left, right) => left.SchemaId.CompareTo(right.SchemaId));
+            ordered.Sort(CompareSchemas);
             for (var i = 0; i < ordered.Count; i++)
             {
                 var schema = ordered[i];
@@ -127,5 +127,8 @@ namespace Unity.FoxgloveSDK.IO
 
             return (left?.ChannelId ?? 0).CompareTo(right?.ChannelId ?? 0);
         }
+
+        private static int CompareSchemas(McapDataLoaderSchema left, McapDataLoaderSchema right)
+            => (left?.SchemaId ?? 0).CompareTo(right?.SchemaId ?? 0);
     }
 }

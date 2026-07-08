@@ -64,37 +64,40 @@ namespace Unity.FoxgloveSDK.IO
 
         internal static IEnumerable<McapMessage> EnumerateMessages(byte[] uncompressedRecords, ushort? filterChannelId = null)
         {
-            var off = 0;
-            while (off < uncompressedRecords.Length)
+            foreach (var record in EnumerateRawRecords(uncompressedRecords))
             {
-                if (uncompressedRecords.Length - off < McapWriter.RecordHeaderLength)
-                    throw new InvalidDataException("Chunk inner record is truncated.");
-
-                var opcode = uncompressedRecords[off++];
-                if (opcode == 0x00)
-                    throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
-
-                var len = McapBinaryReader.ReadU64LE(uncompressedRecords, ref off);
-                if (len > int.MaxValue)
-                    throw new InvalidDataException("Chunk inner record length exceeds int.MaxValue.");
-                var recordLength = (int)len;
-                if (recordLength < 0 || recordLength > uncompressedRecords.Length - off)
-                    throw new InvalidDataException("Chunk inner record content is truncated.");
-
-                if (opcode == McapWriter.OpcodeMessage)
+                if (record.Opcode == McapWriter.OpcodeMessage)
                 {
-                    var msg = McapRecordDecoder.DecodeMessage(uncompressedRecords, off, recordLength);
+                    var msg = McapRecordDecoder.DecodeMessage(uncompressedRecords, record.Offset, record.Length);
                     if (!filterChannelId.HasValue || msg.ChannelId == filterChannelId.Value)
                         yield return msg;
                 }
-
-                off += recordLength;
             }
         }
 
         internal static IEnumerable<McapPrivateRecord> EnumeratePrivateRecords(
             byte[] uncompressedRecords,
             ulong chunkStartOffset)
+        {
+            foreach (var record in EnumerateRawRecords(uncompressedRecords))
+            {
+                if (McapWriter.IsPrivateOpcode(record.Opcode))
+                {
+                    var data = new byte[record.Length];
+                    if (record.Length > 0)
+                        Buffer.BlockCopy(uncompressedRecords, record.Offset, data, 0, record.Length);
+                    yield return new McapPrivateRecord
+                    {
+                        Opcode = record.Opcode,
+                        Data = data,
+                        Offset = chunkStartOffset,
+                        InChunk = true
+                    };
+                }
+            }
+        }
+
+        private static IEnumerable<RawChunkRecord> EnumerateRawRecords(byte[] uncompressedRecords)
         {
             var off = 0;
             while (off < uncompressedRecords.Length)
@@ -113,22 +116,24 @@ namespace Unity.FoxgloveSDK.IO
                 if (recordLength < 0 || recordLength > uncompressedRecords.Length - off)
                     throw new InvalidDataException("Chunk inner record content is truncated.");
 
-                if (McapWriter.IsPrivateOpcode(opcode))
-                {
-                    var data = new byte[recordLength];
-                    if (recordLength > 0)
-                        Buffer.BlockCopy(uncompressedRecords, off, data, 0, recordLength);
-                    yield return new McapPrivateRecord
-                    {
-                        Opcode = opcode,
-                        Data = data,
-                        Offset = chunkStartOffset,
-                        InChunk = true
-                    };
-                }
+                yield return new RawChunkRecord(opcode, off, recordLength);
 
                 off += recordLength;
             }
+        }
+
+        private readonly struct RawChunkRecord
+        {
+            public RawChunkRecord(byte opcode, int offset, int length)
+            {
+                Opcode = opcode;
+                Offset = offset;
+                Length = length;
+            }
+
+            public byte Opcode { get; }
+            public int Offset { get; }
+            public int Length { get; }
         }
     }
 }

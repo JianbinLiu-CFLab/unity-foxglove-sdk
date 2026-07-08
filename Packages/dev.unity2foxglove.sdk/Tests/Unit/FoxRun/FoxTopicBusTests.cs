@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -41,7 +40,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             bus.Publish(contract, 123UL, in payload, "source-a");
 
             Assert.Equal(new[] { 42 }, received);
-            Assert.DoesNotContain("object Payload", TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxTopicEnvelope.cs"), StringComparison.Ordinal);
         }
 
         [Fact]

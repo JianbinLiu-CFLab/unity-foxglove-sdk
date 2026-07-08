@@ -27,6 +27,9 @@ namespace Unity.FoxgloveSDK.Transport
 
         private string _sharedToken = string.Empty;
         private byte[] _sharedTokenBytes = Array.Empty<byte>();
+        private static readonly Regex TokenRedactRegex = new Regex(
+            "([?&]token=)[^&#]*",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         /// <summary>Maximum active WebSocket clients accepted by the managed backend.</summary>
         public int MaxClients { get; set; } = DefaultMaxClients;
@@ -121,11 +124,7 @@ namespace Unity.FoxgloveSDK.Transport
             if (string.IsNullOrEmpty(url))
                 return url;
 
-            return Regex.Replace(
-                url,
-                "([?&]token=)[^&#]*",
-                "$1REDACTED",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return TokenRedactRegex.Replace(url, "$1REDACTED");
         }
 
         /// <summary>Compare UTF-8 strings without early exit on the first differing byte.</summary>

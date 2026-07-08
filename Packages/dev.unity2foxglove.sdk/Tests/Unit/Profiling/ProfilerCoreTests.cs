@@ -11,11 +11,14 @@ using Xunit;
 
 namespace FoxgloveSdk.UnitTests.Profiling
 {
+    [Collection("ProfilerCoreTests")]
     public sealed class ProfilerCoreTests
     {
         [Fact]
         public void GlobalProfilerDefaultsToNullProfiler()
         {
+            FoxgloveProfiler.ResetGlobal();
+
             Assert.Same(NullProfiler.Instance, FoxgloveProfiler.Global);
         }
 
@@ -95,6 +98,7 @@ namespace FoxgloveSdk.UnitTests.Profiling
         [Fact]
         public void NullProfilerHotLoopDoesNotAllocate()
         {
+            FoxgloveProfiler.ResetGlobal();
             NullProfiler.Instance.Sample("phase151.warmup").Dispose();
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -155,5 +159,10 @@ namespace FoxgloveSdk.UnitTests.Profiling
             {
             }
         }
+    }
+
+    [CollectionDefinition("ProfilerCoreTests", DisableParallelization = true)]
+    public sealed class ProfilerCoreTestCollection
+    {
     }
 }

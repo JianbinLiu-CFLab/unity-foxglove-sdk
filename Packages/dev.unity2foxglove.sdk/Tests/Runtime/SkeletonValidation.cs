@@ -14,13 +14,11 @@ namespace Unity.FoxgloveSDK.Tests
 {
     internal static class SkeletonValidation
     {
-        private static int _passCount;
-
-        private static void Assert(bool condition, string label)
+        private static void Assert(bool condition, string label, ref int passCount)
         {
             if (condition)
             {
-                _passCount++;
+                passCount++;
                 Console.WriteLine($"[PASS] {label}");
             }
             else
@@ -29,9 +27,9 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
-        private static void AssertEqual<T>(T expected, T actual, string label) where T : IEquatable<T>
+        private static void AssertEqual<T>(T expected, T actual, string label, ref int passCount) where T : IEquatable<T>
         {
-            Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})");
+            Assert(expected.Equals(actual), $"{label} (expected={expected}, actual={actual})", ref passCount);
         }
 
         /// <summary>
@@ -41,18 +39,18 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         public static void Validate()
         {
-            _passCount = 0;
+            var passCount = 0;
 
             // 1. Can create a runtime with defaults
             using var runtime = new FoxgloveRuntime();
-            Assert(runtime != null, "FoxgloveRuntime created");
+            Assert(runtime != null, "FoxgloveRuntime created", ref passCount);
 
             // 2. Can create with custom transport / clock / schemas
             var transport = new ManagedWsBackend();
             var clock = new SystemClock();
             var schemas = new DefaultSchemaRegistry();
             using var customRuntime = new FoxgloveRuntime(transport, clock, schemas);
-            Assert(customRuntime != null, "FoxgloveRuntime created with custom deps");
+            Assert(customRuntime != null, "FoxgloveRuntime created with custom deps", ref passCount);
 
             // 3. Schema registry
             schemas.Register(new SchemaEntry
@@ -61,7 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Encoding = "jsonschema",
                 Content = "{}"
             });
-            Assert(schemas.TryGetSchema("foxglove.FrameTransform", out _), "Schema registered and found");
+            Assert(schemas.TryGetSchema("foxglove.FrameTransform", out _), "Schema registered and found", ref passCount);
 
             // 4. ChannelRegistry
             var channels = new ChannelRegistry();
@@ -72,7 +70,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Encoding = "json",
                 SchemaName = "foxglove.PoseInFrame"
             });
-            AssertEqual(1, channels.Count, "Channel registered");
+            AssertEqual(1, channels.Count, "Channel registered", ref passCount);
 
             // 5. SubscriptionRegistry — two clients, same channel
             var subs = new SubscriptionRegistry();
@@ -80,20 +78,20 @@ namespace Unity.FoxgloveSDK.Tests
             subs.AddSubscription(clientId: 2, subscriptionId: 200, channelId: 1);
             int count = 0;
             foreach (var _ in subs.GetSubscribersForChannel(1)) count++;
-            AssertEqual(2, count, "Two subscribers for channel 1");
+            AssertEqual(2, count, "Two subscribers for channel 1", ref passCount);
 
             // 6a. Server→client MessageData roundtrip
             var payload = System.Text.Encoding.UTF8.GetBytes("{\"test\":true}");
             var frame = BinaryEncoding.EncodeServerMessageData(
                 subscriptionId: 100, logTimeNs: 0x1122334455667788UL, payload: payload);
-            Assert(frame.Length == 1 + 4 + 8 + payload.Length, "Server MessageData frame size");
-            Assert(frame[0] == ServerOpcode.MessageData, "Server MessageData opcode");
+            Assert(frame.Length == 1 + 4 + 8 + payload.Length, "Server MessageData frame size", ref passCount);
+            Assert(frame[0] == ServerOpcode.MessageData, "Server MessageData opcode", ref passCount);
             bool decoded = BinaryEncoding.TryDecodeServerMessageData(frame,
                 out uint subId, out ulong time, out byte[] decodedPayload);
-            Assert(decoded, "Server MessageData decode returned true");
-            AssertEqual(100u, subId, "Server MessageData subscriptionId");
-            AssertEqual(0x1122334455667788UL, time, "Server MessageData logTime");
-            Assert((int)payload.Length == decodedPayload.Length, "Server MessageData payload length");
+            Assert(decoded, "Server MessageData decode returned true", ref passCount);
+            AssertEqual(100u, subId, "Server MessageData subscriptionId", ref passCount);
+            AssertEqual(0x1122334455667788UL, time, "Server MessageData logTime", ref passCount);
+            Assert((int)payload.Length == decodedPayload.Length, "Server MessageData payload length", ref passCount);
 
             // 6b. Client→server MessageData roundtrip (no logTime)
             var clientPayload = System.Text.Encoding.UTF8.GetBytes("client-data");
@@ -103,9 +101,9 @@ namespace Unity.FoxgloveSDK.Tests
             Buffer.BlockCopy(clientPayload, 0, clientFrame, 5, clientPayload.Length);
             bool clientDecoded = BinaryEncoding.TryDecodeClientMessageData(
                 clientFrame, out uint channelId, out byte[] cPayload);
-            Assert(clientDecoded, "Client MessageData decode returned true");
-            AssertEqual(42u, channelId, "Client MessageData channelId");
-            Assert(clientPayload.Length == cPayload.Length, "Client MessageData payload length");
+            Assert(clientDecoded, "Client MessageData decode returned true", ref passCount);
+            AssertEqual(42u, channelId, "Client MessageData channelId", ref passCount);
+            Assert(clientPayload.Length == cPayload.Length, "Client MessageData payload length", ref passCount);
 
             // 7. ServerInfo JSON wire format (snapshot test for capability casing)
             var info = new ServerInfo
@@ -116,18 +114,18 @@ namespace Unity.FoxgloveSDK.Tests
             };
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(info);
             // Verify wire-format: "op" is "serverInfo", capabilities are lowerCamelCase
-            Assert(json.Contains("\"op\":\"serverInfo\""), "ServerInfo JSON contains op=serverInfo");
+            Assert(json.Contains("\"op\":\"serverInfo\""), "ServerInfo JSON contains op=serverInfo", ref passCount);
             Assert(json.Contains("\"time\"") && json.Contains("\"clientPublish\""),
-                "Capabilities serialized as lowerCamelCase");
+                "Capabilities serialized as lowerCamelCase", ref passCount);
             // Full roundtrip
             var parsed = Newtonsoft.Json.JsonConvert.DeserializeObject<ServerInfo>(json);
-            Assert(parsed != null && parsed.Name == "Test", "ServerInfo JSON deserialize roundtrip");
+            Assert(parsed != null && parsed.Name == "Test", "ServerInfo JSON deserialize roundtrip", ref passCount);
 
             // 8. IFoxgloveTransport has SendText (added per Phase 0 review)
             var hasSendText = typeof(IFoxgloveTransport).GetMethod("SendText") != null;
-            Assert(hasSendText, "IFoxgloveTransport has SendText(uint, string)");
+            Assert(hasSendText, "IFoxgloveTransport has SendText(uint, string)", ref passCount);
 
-            Console.WriteLine($"\nAll {_passCount} checks passed.");
+            Console.WriteLine($"\nAll {passCount} checks passed.");
         }
     }
 }

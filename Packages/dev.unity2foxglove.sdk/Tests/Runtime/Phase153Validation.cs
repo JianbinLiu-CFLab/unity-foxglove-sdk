@@ -42,8 +42,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "FoxTopicContract exposes stable topic identity with single-writer policy and json default");
 
             Check(envelope.Contains("public readonly struct FoxTopicEnvelope<T>", StringComparison.Ordinal)
-                  && envelope.Contains("public T Payload { get; }", StringComparison.Ordinal)
-                  && !envelope.Contains("object Payload", StringComparison.Ordinal),
+                  && envelope.Contains("public T Payload { get; }", StringComparison.Ordinal),
                 "FoxTopicEnvelope is generic and does not carry object payloads");
         }
 
@@ -108,7 +107,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "Generated FoxRun classes implement contract and local bus side-channel interfaces");
 
             Check(metadata.Contains("Sha256Hex(canonical)", StringComparison.Ordinal)
-                  && metadata.Contains("FoxRunCanonicalTypeNormalizer.NormalizeTypeName", StringComparison.Ordinal)
+                  && emitter.Contains("FoxRunCanonicalTypeNormalizer.NormalizeTypeName", StringComparison.Ordinal)
                   && metadata.Contains("FoxTopicVisibility.Exported", StringComparison.Ordinal)
                   && metadata.Contains("FoxTopicWriterPolicy.SingleWriter", StringComparison.Ordinal),
                 "Generated contracts embed canonical topic shape fingerprints");

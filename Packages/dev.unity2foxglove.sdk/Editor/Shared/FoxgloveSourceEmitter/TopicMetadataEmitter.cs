@@ -19,6 +19,8 @@ namespace Unity.FoxgloveSDK.Editor
     internal static class TopicMetadataEmitter
     {
         private static readonly object Sha256Gate = new();
+        // Process-lifetime generator helper: keep one SHA256 instance to support
+        // Unity profiles that do not expose the newer SHA256.HashData API.
         private static readonly SHA256 SharedSha256 = SHA256.Create();
 
         /// <summary>

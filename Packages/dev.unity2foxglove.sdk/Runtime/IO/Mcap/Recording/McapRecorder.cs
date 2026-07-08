@@ -339,7 +339,8 @@ namespace Unity.FoxgloveSDK.IO
         // Lifecycle
         /// <summary>
         /// Finalize the MCAP file: flush the last chunk, write summary groups,
-        /// footer, and magic suffix.
+        /// footer, and magic suffix. Calling <see cref="Dispose"/> after a
+        /// successful close is safe and does not write additional MCAP bytes.
         /// </summary>
         public void Close()
         {

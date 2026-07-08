@@ -14,6 +14,7 @@ namespace Unity.FoxgloveSDK.IO
     public static class RemoteMcapOfficialManifestSerializer
     {
         private const ulong NanosecondsPerSecond = 1_000_000_000UL;
+        private const ulong MaxDateTimeOffsetUnixSeconds = 253_402_300_799UL;
         private const string NanosecondFractionFormat = "D9";
 
         /// <summary>Serializes a remote MCAP manifest to the official Foxglove Remote Data Loader JSON shape.</summary>
@@ -119,8 +120,12 @@ namespace Unity.FoxgloveSDK.IO
         {
             var seconds = unixNanoseconds / NanosecondsPerSecond;
             var nanoseconds = unixNanoseconds % NanosecondsPerSecond;
-            if (seconds > long.MaxValue)
-                throw new ArgumentOutOfRangeException(nameof(unixNanoseconds), "Timestamp seconds exceed Int64 range.");
+            if (seconds > MaxDateTimeOffsetUnixSeconds)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(unixNanoseconds),
+                    "Timestamp seconds exceed DateTimeOffset's supported Unix time range.");
+            }
 
             var value = DateTimeOffset.FromUnixTimeSeconds((long)seconds)
                 .UtcDateTime

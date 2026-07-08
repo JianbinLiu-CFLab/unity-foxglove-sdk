@@ -19,8 +19,6 @@ public class MouseDragCube : MonoBehaviour
     [SerializeField] private float _rotateSpeed = 3f;
     [SerializeField] private float _panSpeed = 0.01f;
     [SerializeField] private float _scaleSpeed = 0.5f;
-    [SerializeField] private float _minScale = FoxgloveDemoSetup.ScaleMinimum;
-    [SerializeField] private float _maxScale = FoxgloveDemoSetup.ScaleMaximum;
     [SerializeField] private FoxgloveDemoSetup _demo;
 
     private Camera _camera;
@@ -93,7 +91,10 @@ public class MouseDragCube : MonoBehaviour
 
         if (scroll != 0)
         {
-            var s = Mathf.Clamp(transform.localScale.x + scroll * _scaleSpeed, _minScale, _maxScale);
+            var s = Mathf.Clamp(
+                transform.localScale.x + scroll * _scaleSpeed,
+                FoxgloveDemoSetup.ScaleMinimum,
+                FoxgloveDemoSetup.ScaleMaximum);
             transform.localScale = new Vector3(s, s, s);
 
             // Sync to Foxglove parameter

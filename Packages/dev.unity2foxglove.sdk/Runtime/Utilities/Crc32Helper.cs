@@ -37,6 +37,7 @@ namespace Unity.FoxgloveSDK.Util
         /// </summary>
         public static uint Compute(byte[] data)
         {
+            if (data == null) throw new ArgumentNullException(nameof(data));
             return Compute(new ReadOnlySpan<byte>(data));
         }
 

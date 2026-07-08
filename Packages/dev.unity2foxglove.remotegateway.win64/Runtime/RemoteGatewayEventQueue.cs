@@ -95,11 +95,15 @@ namespace Unity.FoxgloveSDK.RemoteGateway
         {
             lock (_gate)
             {
+                var droppedOldest = false;
                 if (_events.Count >= _capacity)
+                {
                     DropOldest();
+                    droppedOldest = true;
+                }
 
                 _events.Enqueue(item);
-                return true;
+                return !droppedOldest;
             }
         }
 

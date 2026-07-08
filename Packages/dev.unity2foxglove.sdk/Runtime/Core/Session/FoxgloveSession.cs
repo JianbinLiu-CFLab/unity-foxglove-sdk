@@ -187,6 +187,7 @@ namespace Unity.FoxgloveSDK.Core
                 (clientId, chId, topic, payload) => OnClientMessage?.Invoke(clientId, chId, topic, payload));
             _assets = new SessionAssetHandler(() => Volatile.Read(ref _runtime), _transport);
 
+            _channels.ChannelOverwritten += OnChannelOverwritten;
             _transport.OnClientConnected += OnClientConnected;
             _transport.OnClientDisconnected += OnClientDisconnected;
             _transport.OnTextReceived += OnClientText;
@@ -223,6 +224,7 @@ namespace Unity.FoxgloveSDK.Core
             _transport.OnClientDisconnected -= OnClientDisconnected;
             _transport.OnTextReceived -= OnClientText;
             _transport.OnBinaryReceived -= OnClientBinary;
+            _channels.ChannelOverwritten -= OnChannelOverwritten;
             Volatile.Write(ref _recorder, null);
             Volatile.Write(ref _mirrorSink, null);
             OnClientMessage = null;
@@ -900,6 +902,14 @@ namespace Unity.FoxgloveSDK.Core
 
             _graph.RemoveClient(clientId);
             _graph.BroadcastUpdate();
+        }
+
+        private void OnChannelOverwritten(AdvertiseChannel previous, AdvertiseChannel replacement)
+        {
+            _logger.LogWarning(
+                $"Channel id {replacement?.Id ?? previous?.Id ?? 0} overwritten: " +
+                $"'{previous?.Topic ?? string.Empty}'/{previous?.SchemaName ?? string.Empty} -> " +
+                $"'{replacement?.Topic ?? string.Empty}'/{replacement?.SchemaName ?? string.Empty}.");
         }
 
         /// <summary>

@@ -147,7 +147,7 @@ namespace Foxglove.Schemas
         {
             var result = new Dictionary<Type, FoxgloveProtoSchemaCatalogEntry>(EntriesArray.Length);
             foreach (var entry in EntriesArray)
-                result.Add(entry.ClrType, entry);
+                result[entry.ClrType] = entry;
             return result;
         }
     }

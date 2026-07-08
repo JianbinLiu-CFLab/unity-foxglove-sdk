@@ -35,6 +35,7 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
   private bool initialTimeAcquired = false;
   private bool initialTimeScaleAcquired = false;
   private bool timeScaleChanged = false;
+  private int rosUnavailableWarningLogged = 0;
 
   public ROS2ScalableTimeSource()
   {
@@ -49,8 +50,15 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
     {
       seconds = 0;
       nanoseconds = 0;
-      Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      if (Interlocked.Exchange(ref rosUnavailableWarningLogged, 1) == 0)
+      {
+        Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      }
       return false;
+    }
+    if (Volatile.Read(ref rosUnavailableWarningLogged) != 0)
+    {
+      Interlocked.Exchange(ref rosUnavailableWarningLogged, 0);
     }
 
     if (clock == null)

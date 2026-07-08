@@ -332,8 +332,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var settings = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SchemaEvidence/Unity2FoxgloveSchemaEvidenceSettings.cs");
             var drawSettings = TestSources.Slice(settings, "private static void DrawSettings()", "        private static void SaveAndSync()");
 
-            Assert.Contains("private static readonly string CachedProjectRoot = ResolveProjectRoot();", paths, StringComparison.Ordinal);
-            Assert.Contains("private static string ProjectRoot => CachedProjectRoot;", paths, StringComparison.Ordinal);
+            Assert.Contains("private static readonly Lazy<string> CachedProjectRoot = new Lazy<string>(ResolveProjectRoot);", paths, StringComparison.Ordinal);
+            Assert.Contains("private static string ProjectRoot => CachedProjectRoot.Value;", paths, StringComparison.Ordinal);
             Assert.DoesNotContain("Application.dataPath", projectRoot, StringComparison.Ordinal);
             Assert.DoesNotContain("Directory.GetParent", projectRoot, StringComparison.Ordinal);
             Assert.Contains("var resolvedRoot = ResolveCurrentEvidenceRootCached();", drawSettings, StringComparison.Ordinal);

@@ -89,7 +89,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         private static string Text(string relativePath)
-            => File.ReadAllText(PathOf(relativePath));
+        {
+            var path = PathOf(relativePath);
+            Assert.True(File.Exists(path), relativePath + " should exist at " + path);
+            return File.ReadAllText(path);
+        }
 
         private static string PathOf(string relativePath)
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
@@ -137,7 +141,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     dir = dir.Parent;
                 }
 
-                throw new DirectoryNotFoundException("Could not locate repository root from " + AppContext.BaseDirectory);
+                Assert.Fail("Could not locate repository root from " + AppContext.BaseDirectory);
+                return string.Empty;
             }
         }
     }

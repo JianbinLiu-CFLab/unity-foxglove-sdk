@@ -15,7 +15,6 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
     {
         private const int LogIntervalTicks = 60;
 
-        private int _ticks;
         private int _scans;
         private long _rays;
         private long _validPoints;
@@ -54,7 +53,6 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             if (!enabled)
                 return false;
 
-            _ticks++;
             _scans++;
             _rays += Math.Max(0, rayCount);
             _validPoints += Math.Max(0, validPointCount);
@@ -67,7 +65,7 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
             if (profileInvalidation)
                 _profileInvalidations++;
 
-            if (_ticks < LogIntervalTicks)
+            if (_scans < LogIntervalTicks)
                 return false;
 
             var divisor = Math.Max(1, _scans);
@@ -90,7 +88,6 @@ namespace Unity.FoxgloveSDK.Sensors.Lidar
         /// <summary>Resets all accumulated interval counters.</summary>
         public void Reset()
         {
-            _ticks = 0;
             _scans = 0;
             _rays = 0;
             _validPoints = 0;

@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Schemas.PointCloud
 {
@@ -75,7 +76,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         private readonly bool _ownsPooledData;
         private readonly bool _preferPooledDataRetention;
-        private bool _dataRecycled;
+        private int _dataRecycled;
 
         /// <summary>Frame timestamp, in Unix nanoseconds.</summary>
         public ulong UnixNs { get; }
@@ -118,10 +119,12 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
         internal void RecycleData()
         {
-            if (!_ownsPooledData || _dataRecycled)
+            if (!_ownsPooledData)
                 return;
 
-            _dataRecycled = true;
+            if (Interlocked.Exchange(ref _dataRecycled, 1) != 0)
+                return;
+
             PointCloudPackedByteBufferPool.Return(Data, _preferPooledDataRetention);
         }
     }

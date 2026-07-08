@@ -4,6 +4,7 @@
 // Module: Runtime/Schemas/Proto/Publishers
 // Purpose: Point-cloud output mode and profile metadata for point-cloud publishers.
 
+using System;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Components
@@ -90,7 +91,6 @@ namespace Unity.FoxgloveSDK.Components
                         supportsProtobuf: false);
 
                 case PointCloudOutputMode.Raw:
-                default:
                     return new PointCloudOutputProfile(
                         PointCloudOutputMode.Raw,
                         "Raw",
@@ -99,6 +99,9 @@ namespace Unity.FoxgloveSDK.Components
                         Ros2PublisherSchemaNames.PointCloud,
                         supportsJson: true,
                         supportsProtobuf: true);
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unknown point-cloud output mode.");
             }
         }
     }

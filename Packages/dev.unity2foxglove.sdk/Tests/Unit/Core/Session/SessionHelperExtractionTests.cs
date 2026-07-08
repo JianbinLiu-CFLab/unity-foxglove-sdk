@@ -29,21 +29,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
         {
             var broadcaster = new SessionTimeBroadcaster();
             var startTicks = TimeSpan.TicksPerSecond * 100L;
+            var defaultRateWindowTicks = TimeSpan.TicksPerSecond / 10;
 
             Assert.True(broadcaster.TryReserveBroadcast(startTicks, 0f));
-            Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, 0f));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks - 1, 0f));
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks, 0f));
 
             broadcaster.Reset();
             Assert.True(broadcaster.TryReserveBroadcast(startTicks, -1f));
-            Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, -1f));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks - 1, -1f));
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks, -1f));
 
             broadcaster.Reset();
             Assert.True(broadcaster.TryReserveBroadcast(startTicks, float.NaN));
-            Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, float.NaN));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks - 1, float.NaN));
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks, float.NaN));
 
             broadcaster.Reset();
             Assert.True(broadcaster.TryReserveBroadcast(startTicks, float.PositiveInfinity));
-            Assert.False(broadcaster.TryReserveBroadcast(startTicks + TimeSpan.TicksPerSecond / 10 - 1, float.PositiveInfinity));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks - 1, float.PositiveInfinity));
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks, float.PositiveInfinity));
+
+            broadcaster.Reset();
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks, float.NegativeInfinity));
+            Assert.False(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks - 1, float.NegativeInfinity));
+            Assert.True(broadcaster.TryReserveBroadcast(startTicks + defaultRateWindowTicks, float.NegativeInfinity));
         }
 
         [Fact]

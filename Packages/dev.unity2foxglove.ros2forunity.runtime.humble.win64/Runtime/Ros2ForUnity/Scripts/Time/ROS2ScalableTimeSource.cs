@@ -71,6 +71,10 @@ public class ROS2ScalableTimeSource : ITimeSource, IDisposable
       }
       return false;
     }
+    if (Volatile.Read(ref rosUnavailableWarningLogged) != 0)
+    {
+      Interlocked.Exchange(ref rosUnavailableWarningLogged, 0);
+    }
 
     bool isMainThread = mainThreadId == Thread.CurrentThread.ManagedThreadId;
     if (isMainThread)

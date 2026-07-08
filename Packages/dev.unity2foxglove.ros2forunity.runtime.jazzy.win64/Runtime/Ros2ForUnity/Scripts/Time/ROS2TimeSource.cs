@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading;
 using UnityEngine;
 
 namespace ROS2
@@ -25,20 +26,42 @@ namespace ROS2
 public class ROS2TimeSource : ITimeSource, IDisposable
 {
   private ROS2.Clock clock;
+  private int rosUnavailableWarningLogged = 0;
+  private int disposed = 0;
 
   public bool GetTime(out int seconds, out uint nanoseconds)
   {
+    if (Volatile.Read(ref disposed) != 0)
+    {
+      seconds = 0;
+      nanoseconds = 0;
+      return false;
+    }
+
     // U2F-LOCAL-PATCH: match newer ros2cs bool-returning ITimeSource contract.
     if (!ROS2.Ros2cs.Ok())
     {
       seconds = 0;
       nanoseconds = 0;
-      Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      if (Interlocked.Exchange(ref rosUnavailableWarningLogged, 1) == 0)
+      {
+        Debug.LogWarning("Cannot acquire valid ros time, ros either not initialized or shut down already");
+      }
       return false;
+    }
+    if (Volatile.Read(ref rosUnavailableWarningLogged) != 0)
+    {
+      Interlocked.Exchange(ref rosUnavailableWarningLogged, 0);
     }
 
     if (clock == null)
     { // Create clock which uses system time by default (unless use_sim_time is set in ros2)
+      if (Volatile.Read(ref disposed) != 0)
+      {
+        seconds = 0;
+        nanoseconds = 0;
+        return false;
+      }
       clock = new ROS2.Clock();
     }
   
@@ -48,6 +71,11 @@ public class ROS2TimeSource : ITimeSource, IDisposable
 
   public void Dispose()
   {
+    if (Interlocked.Exchange(ref disposed, 1) != 0)
+    {
+      return;
+    }
+
     // U2F-LOCAL-PATCH: avoid native cleanup from the finalizer thread.
     if (clock != null)
     {

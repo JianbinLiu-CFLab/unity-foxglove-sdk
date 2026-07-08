@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
-using System.Reflection;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
 
@@ -109,12 +108,12 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 Assert.Equal((ulong)i, queue.Pop().LogTime);
 
             Assert.Equal(41, queue.Count);
-            Assert.True(ReadHeadIndex(queue) > 0);
+            Assert.True(queue.DebugHeadIndex > 0);
 
             Assert.Equal(39UL, queue.Pop().LogTime);
 
             Assert.Equal(40, queue.Count);
-            Assert.Equal(0, ReadHeadIndex(queue));
+            Assert.Equal(0, queue.DebugHeadIndex);
             Assert.Equal(40UL, queue.Pop().LogTime);
         }
 
@@ -139,13 +138,5 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             return a.PublishTime.CompareTo(b.PublishTime);
         }
 
-        private static int ReadHeadIndex(McapReplayPendingQueue queue)
-        {
-            var field = typeof(McapReplayPendingQueue).GetField(
-                "_headIndex",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(field);
-            return (int)field.GetValue(queue);
-        }
     }
 }
