@@ -155,7 +155,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void DiagnosticsInspectorUsesTypedStatsOnly()
         {
             var diagnostics = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
-            var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editor = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
 
             Check(diagnostics.Contains("GetTransportStatsForRepaint()", StringComparison.Ordinal)
                   && editor.Contains("manager.GetTransportStatsSnapshot()", StringComparison.Ordinal)
@@ -184,13 +184,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ManagerInspectorLabelsTokenAndSecretSerialization()
         {
-            var inspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var inspector = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
 
             Check(inspector.Contains("Copy Web URL (with token)", StringComparison.Ordinal)
                   && inspector.Contains("shared token query parameter", StringComparison.Ordinal),
                 "163-26J-1: manager Inspector labels clipboard URL copies that include the shared token");
-            Check(inspector.Contains("Certificate passwords and shared tokens are serialized", StringComparison.Ordinal)
-                  && inspector.Contains("avoid committing production secrets", StringComparison.Ordinal),
+            Check(inspector.Contains("Certificate passwords and shared tokens entered here are serialized", StringComparison.Ordinal)
+                  && inspector.Contains("credentials that must not be committed", StringComparison.Ordinal),
                 "163-26J-2: manager Inspector warns that certificate passwords and shared tokens serialize into assets");
         }
 

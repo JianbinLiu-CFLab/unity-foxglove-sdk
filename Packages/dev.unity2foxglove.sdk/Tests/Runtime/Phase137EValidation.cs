@@ -24,6 +24,9 @@ namespace Unity.FoxgloveSDK.Tests
             "FoxgloveManagerEditor.Mcap.cs",
             "FoxgloveManagerEditor.Ros2Bridge.cs",
             "FoxgloveManagerEditor.Diagnostics.cs",
+            "FoxgloveManagerEditor.Security.cs",
+            "FoxgloveManagerEditor.Helpers.cs",
+            "FoxgloveManagerEditor.FoxServices.cs",
         };
 
         private static readonly string[] FoldoutStatics =
@@ -48,6 +51,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             VerifyFilesExist();
             VerifyPartialDeclarations();
+            VerifyPartialUsingDependencies();
             VerifyCustomEditorOnlyOnMain();
             VerifyFoldoutStaticCounts();
             VerifySectionMethodCounts();
@@ -71,6 +75,19 @@ namespace Unity.FoxgloveSDK.Tests
                     "137E-2: partial class declaration in " + f);
                 Check(content.Contains("namespace Unity.FoxgloveSDK.Editor", StringComparison.Ordinal),
                     "137E-3: namespace in " + f);
+            }
+        }
+
+        private static void VerifyPartialUsingDependencies()
+        {
+            foreach (var f in PartialFiles)
+            {
+                var content = File.ReadAllText(Path.Combine(Dir, f));
+                if (!content.Contains("FoxgloveTransportMode", StringComparison.Ordinal))
+                    continue;
+
+                Check(content.Contains("using Unity.FoxgloveSDK.Transport;", StringComparison.Ordinal),
+                    "137E-3b: " + f + " imports transport namespace for FoxgloveTransportMode");
             }
         }
 
@@ -107,6 +124,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "DrawMcapSection",
                 "DrawDiagnosticsSection",
                 "DrawRos2BridgeSection",
+                "DrawFoxServicesSection",
             };
             foreach (var m in methods)
             {

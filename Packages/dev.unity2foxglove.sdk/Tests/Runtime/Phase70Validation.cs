@@ -127,10 +127,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifySerializedFieldCoverage()
         {
-            var mainSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var publishDataSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
-            var mcapSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
-            var source = mainSource + "\n" + publishDataSource + "\n" + mcapSource;
+            var source = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var fields = new[]
             {
                 "_serverName",
@@ -173,21 +170,27 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyConnectionSecurityAdjacency()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var section = Slice(source, "private void DrawConnectionSecuritySection()", "private void DrawSecureWebSocketSection");
+            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
+            var section = PhaseValidationSourceHelpers.SourceMethod(source, "private void DrawConnectionSecuritySection");
             Check(section.Contains("DrawTransportModeProperty"),
                 "70C-1: Connection & Security contains transport mode");
             Check(section.Contains("DisabledScope(!GetBool(\"_foxgloveOutputEnabled\"))")
                   && !section.Contains("DisabledScope(true))\r\n                DrawProperty(\"_transportMode\")")
                   && !section.Contains("DisabledScope(true))\n                DrawProperty(\"_transportMode\")"),
                 "70C-1b: transport mode remains editable when Foxglove WebSocket output is enabled");
-            var transportDrawer = Slice(source, "private void DrawTransportModeProperty()", "private void DrawFloatProperty");
+            var transportDrawer = PhaseValidationSourceHelpers.SourceMethod(source, "private void DrawTransportModeProperty");
             Check(transportDrawer.Contains("\"Web Socket\"")
                   && transportDrawer.Contains("\"Secure Web Socket\"")
                   && !transportDrawer.Contains("\"None\""),
                 "70C-1c: transport mode Inspector hides the internal None sentinel");
-            Check(section.Contains("_certificatePfxPath") || section.Contains("DrawSecureWebSocketFields"),
+            var secureFields = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private void DrawSecureWebSocketFields");
+            Check(section.Contains("_certificatePfxPath")
+                  || section.Contains("DrawSecureWebSocketFields")
+                  || secureFields.Contains("_certificatePfxPath"),
                 "70C-2: Connection & Security contains WSS certificate path");
-            Check(section.Contains("_sharedToken") || section.Contains("DrawSecureWebSocketFields"),
+            Check(section.Contains("_sharedToken")
+                  || section.Contains("DrawSecureWebSocketFields")
+                  || secureFields.Contains("_sharedToken"),
                 "70C-3: Connection & Security contains shared token");
             Check(section.Contains("_allowedBrowserOrigins"),
                 "70C-4: Connection & Security contains browser Origin settings");
@@ -195,10 +198,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "70C-5: Connection & Security owns WSS security rendering");
             Check(source.Contains("_connectionSecurityExpanded = true"),
                 "70C-6: Connection & Security is expanded by default");
-            var secureAutoExpand = Slice(source, "private void EnsureSecureSettingsVisible()", "private static void DrawSection");
+            var secureAutoExpand = PhaseValidationSourceHelpers.SourceMethod(source, "private void EnsureSecureSettingsVisible");
             Check(secureAutoExpand.Contains("_connectionSecurityExpanded = true"),
                 "70C-7: secure settings auto-expand Connection & Security");
-            var certificateButtons = Slice(source, "private void DrawCertificateUtilityButtons", "private static void DrawStackedPathBrowse");
+            var certificateButtons = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private void DrawCertificateUtilityButtons");
             Check(CountOccurrences(certificateButtons, "new EditorGUILayout.HorizontalScope()") >= 2,
                 "70C-8: certificate utility actions are split into rows with at most two buttons");
         }

@@ -128,6 +128,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManagerInspectorServiceStatusSurface()
         {
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             Check(editor.Contains("FoxServices", StringComparison.Ordinal)
                   && editor.Contains("DrawFoxServicesSection", StringComparison.Ordinal),
                 "141E-10: FoxgloveManager Inspector includes a FoxServices section");
@@ -138,13 +139,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && foxServicesIndex > mcapIndex
                   && diagnosticsIndex > foxServicesIndex,
                 "141E-10a: FoxServices Inspector section sits between MCAP and Diagnostics");
-            Check(editor.Contains("GetRegisteredServiceSnapshots", StringComparison.Ordinal)
-                  && editor.Contains("EditorGUIUtility.systemCopyBuffer", StringComparison.Ordinal),
+            Check(editorSources.Contains("GetRegisteredServiceSnapshots", StringComparison.Ordinal)
+                  && editorSources.Contains("EditorGUIUtility.systemCopyBuffer", StringComparison.Ordinal),
                 "141E-11: FoxServices Inspector section reads snapshots and supports copy workflow");
-            Check(editor.Contains("\" | Source: \"", StringComparison.Ordinal)
-                  && editor.Contains("\" | Request: \"", StringComparison.Ordinal)
-                  && editor.Contains("\" | Response: \"", StringComparison.Ordinal)
-                  && editor.Contains("\" | Service Id: \"", StringComparison.Ordinal),
+            Check(editorSources.Contains("\" | Source: \"", StringComparison.Ordinal)
+                  && editorSources.Contains("\" | Request: \"", StringComparison.Ordinal)
+                  && editorSources.Contains("\" | Response: \"", StringComparison.Ordinal)
+                  && editorSources.Contains("\" | Service Id: \"", StringComparison.Ordinal),
                 "141E-11a: Copy Service List includes service metadata, not just names");
         }
 
