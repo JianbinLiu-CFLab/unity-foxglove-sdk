@@ -145,8 +145,10 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Verifies explicit unsubscribe drops stale queued data for that client
-        /// without clearing other clients' data queues.
+        /// Verifies explicit unsubscribe drops queued data for that client
+        /// without clearing other clients' data queues. The client-scoped clear
+        /// also drops queued frames for still-subscribed channels; the final
+        /// publish proves those remaining subscriptions continue to route.
         /// </summary>
         private static void VerifyUnsubscribeClearsOnlyThatClientsDataQueue()
         {
@@ -160,12 +162,21 @@ namespace Unity.FoxgloveSDK.Tests
                 SchemaName = "",
                 Schema = ""
             });
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 81,
+                Topic = "/phase138-c2/still-subscribed",
+                Encoding = "json",
+                SchemaName = "",
+                Schema = ""
+            });
 
             transport.Text(44, JsonConvert.SerializeObject(new SubscribeMessage
             {
                 Subscriptions = new List<Subscription>
                 {
-                    new Subscription { Id = 0, ChannelId = 80 }
+                    new Subscription { Id = 0, ChannelId = 80 },
+                    new Subscription { Id = 2, ChannelId = 81 }
                 }
             }));
             transport.Text(55, JsonConvert.SerializeObject(new SubscribeMessage
@@ -177,6 +188,7 @@ namespace Unity.FoxgloveSDK.Tests
             }));
 
             session.PublishReplay(80, OkPayload, 4, "phase138-c2", "/phase138-c2/unsub-queue");
+            session.PublishReplay(81, OkPayload, 5, "phase138-c2", "/phase138-c2/still-subscribed");
             transport.Text(44, JsonConvert.SerializeObject(new UnsubscribeMessage
             {
                 SubscriptionIds = new List<uint> { 0 }
@@ -190,6 +202,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "138C2-8: unsubscribed client's stale data frame is dropped");
             Check(transport.BinariesFor(55).Count == 1,
                 "138C2-9: another client's queued data frame is preserved");
+
+            session.PublishReplay(81, OkPayload, 6, "phase138-c2", "/phase138-c2/still-subscribed");
+            var laterFrames = transport.BinariesFor(44);
+            var laterFrameOk = laterFrames.Count == 1
+                && BinaryEncoding.TryDecodeServerMessageData(laterFrames[0], out var laterSubscriptionId, out _, out _)
+                && laterSubscriptionId == 2;
+            Check(laterFrameOk,
+                "138C2-10: still-subscribed channel routes future data after client queue clear");
         }
 
         /// <summary>

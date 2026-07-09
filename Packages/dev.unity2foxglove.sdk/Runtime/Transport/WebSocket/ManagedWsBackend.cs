@@ -203,7 +203,12 @@ namespace Unity.FoxgloveSDK.Transport
                 conn.ClearDataFrames();
         }
 
-        /// <summary>Drop queued data frames for one connected client while preserving protocol control frames.</summary>
+        /// <summary>
+        /// Drop queued data frames for one connected client while preserving
+        /// protocol control frames. The clear is client-scoped, not
+        /// channel-scoped, because queued data frames do not retain a channel
+        /// index.
+        /// </summary>
         public void ClearDataQueue(uint clientId)
         {
             if (_clients.TryGetValue(clientId, out var conn))
