@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var channels = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
             var clientEvents = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
-            var publishing = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var publishing = TestSources.ManagerPublishingSources();
             var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var status = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Status.cs");
             var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
@@ -297,7 +297,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var channels = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Channels.cs");
-            var publishing = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var publishing = TestSources.ManagerPublishingSources();
             var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
             var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ConnectionRuntimeState.cs");
             var stateMeta = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ConnectionRuntimeState.cs.meta");

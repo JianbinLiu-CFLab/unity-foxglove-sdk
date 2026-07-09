@@ -340,6 +340,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
+        public static string ManagerPublishingSources()
+        {
+            var dir = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Components",
+                "Manager");
+            Assert.True(Directory.Exists(dir), "Manager directory not found: " + dir);
+
+            var files = Directory.GetFiles(dir, "FoxgloveManager.Publishing*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
+        }
+
         public static void AssertConsolePhaseRemoved(string validationFile, string flag, string entryPoint)
         {
             Assert.DoesNotContain(validationFile, Runtime("FoxgloveSdk.Tests.csproj"), StringComparison.Ordinal);

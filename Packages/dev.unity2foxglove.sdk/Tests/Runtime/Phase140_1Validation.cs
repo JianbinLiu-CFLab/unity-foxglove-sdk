@@ -223,7 +223,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyOpt2QosAfterEarlyExitGuards()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var source = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
             var body = ExtractMethodBody(source, "public bool TryPrepareRos2BridgePublish(");
             Check(!string.IsNullOrEmpty(body), "OPT-2: TryPrepareRos2BridgePublish method body found");
 

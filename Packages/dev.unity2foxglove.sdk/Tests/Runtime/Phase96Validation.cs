@@ -149,7 +149,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRuntimeSourceIntegration()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var publishing = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
             var publisherBase = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
             var wrapper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Ros2Msg/Generated/Ros2BridgePublisher.cs");
 
