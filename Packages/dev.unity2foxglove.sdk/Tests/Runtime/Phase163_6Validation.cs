@@ -135,8 +135,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-6D-1: playback request decoder rejects oversized uint request ids before casting");
 
             var binaryEncoding = Read("Packages/dev.unity2foxglove.sdk/Runtime/Protocol/BinaryEncoding.cs");
-            Check(!binaryEncoding.Contains("idLen > int.MaxValue", StringComparison.Ordinal)
-                  && binaryEncoding.Contains("if (idLen > MaxPlaybackRequestIdBytes) return false;", StringComparison.Ordinal),
+            var cappedLengthGuardIndex = binaryEncoding.IndexOf(
+                "if (idLen > MaxPlaybackRequestIdBytes) return false;",
+                StringComparison.Ordinal);
+            var lengthCastIndex = binaryEncoding.IndexOf("var idLenInt = (int)idLen;", StringComparison.Ordinal);
+            Check(binaryEncoding.Contains("if (idLen > int.MaxValue) return false;", StringComparison.Ordinal)
+                  && cappedLengthGuardIndex >= 0
+                  && cappedLengthGuardIndex < lengthCastIndex,
                 "163-6D-2: playback request id cap is checked before the uint-to-int cast");
         }
 
@@ -161,8 +166,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RuntimeReplaySuppressionIsDiagnosed()
         {
-            var runtime = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-            Check(runtime.Contains("private readonly HashSet<string> _replaySuppressionWarnings", StringComparison.Ordinal)
+            var runtime = PhaseValidationSourceHelpers.ReadFoxgloveRuntimeSources();
+            Check(runtime.Contains("private readonly HashSet<ReplaySuppressionWarningKey> _replaySuppressionWarnings", StringComparison.Ordinal)
                   && runtime.Contains("WarnReplaySuppressed(nameof(RegisterChannel)", StringComparison.Ordinal)
                   && runtime.Contains("WarnReplaySuppressed(nameof(PublishJson)", StringComparison.Ordinal)
                   && runtime.Contains("Replay is enabled; ignoring live", StringComparison.Ordinal),
@@ -171,7 +176,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void OptionalProtobufSchemaShapeFailuresAreDiagnosed()
         {
-            var runtime = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var runtime = PhaseValidationSourceHelpers.ReadFoxgloveRuntimeSources();
             Check(runtime.Contains("RegisterSchemas was missing", StringComparison.Ordinal)
                   && runtime.Contains("incompatible signature", StringComparison.Ordinal)
                   && runtime.Contains("type == null) return", StringComparison.Ordinal),
@@ -205,7 +210,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PhaseRegistryWiresPhase163_6()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase163-6\", \"Phase 163-6\", Phase163_6Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-6\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_6Validation.Validate", StringComparison.Ordinal),
                 "163-6L: PhaseValidationRegistry wires --phase163-6");
         }
 

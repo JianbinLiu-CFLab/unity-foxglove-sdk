@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyProtobufRegistrationCatchLogsWarning()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var source = PhaseValidationSourceHelpers.ReadFoxgloveRuntimeSources();
             Check(source.Contains("catch (Exception ex)") && source.Contains("_logger.LogWarning")
                   && source.Contains("protobuf", StringComparison.OrdinalIgnoreCase),
                 "51A-9: protobuf registration failures are logged as non-fatal warnings");
