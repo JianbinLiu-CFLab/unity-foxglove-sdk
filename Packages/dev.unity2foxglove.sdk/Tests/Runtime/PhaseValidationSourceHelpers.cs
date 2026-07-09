@@ -150,6 +150,34 @@ namespace Unity.FoxgloveSDK.Tests
             return source.ToString();
         }
 
+        public static string ReadFoxgloveManagerEditorSources()
+        {
+            var root = FindRequiredRepoRoot();
+
+            var dir = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Editor",
+                "Manager");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("FoxgloveManagerEditor directory was not found.");
+
+            var files = Directory.GetFiles(dir, "FoxgloveManagerEditor*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            var source = new StringBuilder();
+            foreach (var file in files)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(file));
+            }
+
+            return source.ToString();
+        }
+
         public static bool SourceMethodContains(string source, string methodName, string needle)
             => SourceMethod(source, methodName).Contains(needle, StringComparison.Ordinal);
 

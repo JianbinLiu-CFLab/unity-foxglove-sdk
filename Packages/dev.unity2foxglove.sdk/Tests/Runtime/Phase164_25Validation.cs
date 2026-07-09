@@ -59,12 +59,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManagerEditorCachesRuntimeSnapshotsPerRepaint()
         {
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var diagnostics = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Diagnostics.cs");
             var compactStatus = PhaseValidationSourceHelpers.SourceMethod(editor, "private void DrawCompactStatus");
-            var services = PhaseValidationSourceHelpers.SourceMethod(editor, "private void DrawFoxServicesSection");
-            var refreshStats = PhaseValidationSourceHelpers.SourceMethod(editor, "private void RefreshTransportStatsForRepaint");
-            var getStats = PhaseValidationSourceHelpers.SourceMethod(editor, "private TransportStatsSnapshot GetTransportStatsForRepaint");
-            var getServices = PhaseValidationSourceHelpers.SourceMethod(editor, "private System.Collections.Generic.IReadOnlyList<Components.FoxgloveRegisteredServiceSnapshot> GetServiceSnapshotsForRepaint");
+            var services = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private void DrawFoxServicesSection");
+            var refreshStats = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private void RefreshTransportStatsForRepaint");
+            var getStats = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private TransportStatsSnapshot GetTransportStatsForRepaint");
+            var getServices = PhaseValidationSourceHelpers.SourceMethod(editorSources, "private System.Collections.Generic.IReadOnlyList<Components.FoxgloveRegisteredServiceSnapshot> GetServiceSnapshotsForRepaint");
             var drawHealth = PhaseValidationSourceHelpers.SourceMethod(diagnostics, "private void DrawTransportHealth");
 
             Check(refreshStats.Contains("_transportStatsFrame = Time.frameCount;", StringComparison.Ordinal)

@@ -300,7 +300,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void ManagerEditorAndCameraInfoCachesStayHoisted()
         {
             var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
-            var transport = TestSources.Slice(manager, "private void DrawTransportModeProperty()", "private void DrawFloatProperty");
+            var transport = TestSources.ExtractMethod(manager, "private void DrawTransportModeProperty");
             var mcap = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
             var replayAutoPlay = TestSources.Slice(mcap, "private void DrawReplayAutoPlayControl()", "private void DrawRemoteFileAccessSection");
             var cameraInfo = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraInfoPublisherEditor.cs");

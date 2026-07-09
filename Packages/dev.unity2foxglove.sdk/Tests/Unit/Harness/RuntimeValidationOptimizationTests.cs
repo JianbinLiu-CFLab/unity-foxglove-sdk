@@ -324,6 +324,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
 
+        public static string ManagerEditorSources()
+        {
+            var dir = Path.Combine(
+                RepoRoot,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Editor",
+                "Manager");
+            Assert.True(Directory.Exists(dir), "Manager editor directory not found: " + dir);
+
+            var files = Directory.GetFiles(dir, "FoxgloveManagerEditor*.cs")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
+        }
+
         public static void AssertConsolePhaseRemoved(string validationFile, string flag, string entryPoint)
         {
             Assert.DoesNotContain(validationFile, Runtime("FoxgloveSdk.Tests.csproj"), StringComparison.Ordinal);

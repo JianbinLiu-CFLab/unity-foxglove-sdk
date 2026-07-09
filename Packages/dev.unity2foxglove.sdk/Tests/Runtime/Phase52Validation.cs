@@ -594,7 +594,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var managerSource = ReadManagerSource();
             var runtimeSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-            var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorMainSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSource = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var certGeneratorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Certificates/FoxgloveLocalDevCertificateGenerator.cs");
             var demoSource = ReadRepoText("Unity2Foxglove/Assets/Scripts/FullDemoVisualization/FoxgloveDemoSetup.cs");
 
@@ -635,9 +636,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(editorSource.Contains("Generate Local Dev Certificate")
                   && editorSource.Contains("GenerateLocalDevCertificate"),
                 "52C-1i: Inspector exposes one-click local dev certificate generation");
-            var drawFieldsIndex = editorSource.IndexOf("DrawSecureWebSocketFields(isSecure);", StringComparison.Ordinal);
-            var generateButtonIndex = editorSource.IndexOf("GUILayout.Button(\"Generate Local Dev Certificate\")", StringComparison.Ordinal);
-            Check(drawFieldsIndex >= 0 && generateButtonIndex > drawFieldsIndex,
+            var connectionSection = PhaseValidationSourceHelpers.SourceMethod(editorMainSource, "private void DrawConnectionSecuritySection");
+            var secureToolsSection = PhaseValidationSourceHelpers.SourceMethod(editorSource, "private void DrawSecureWebSocketSection");
+            var drawFieldsIndex = connectionSection.IndexOf("DrawSecureWebSocketFields(isSecure);", StringComparison.Ordinal);
+            var secureToolsIndex = connectionSection.IndexOf("DrawSecureWebSocketSection(isSecure);", StringComparison.Ordinal);
+            var generateButtonIndex = secureToolsSection.IndexOf("GUILayout.Button(\"Generate Local Dev Certificate\")", StringComparison.Ordinal);
+            Check(drawFieldsIndex >= 0 && secureToolsIndex > drawFieldsIndex && generateButtonIndex >= 0,
                 "52C-1i1: certificate generator button remains enabled before SecureWebSocket mode is selected");
             Check(editorSource.Contains("FoxgloveAppUrl.BuildHostedWebSocketUrl")
                   && editorSource.Contains("Copy Web URL")
