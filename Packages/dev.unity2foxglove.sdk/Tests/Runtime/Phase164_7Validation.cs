@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRecorderChunkFlushReusesScratchState()
         {
-            var recorder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var flush = SourceMethod(recorder, "void FlushChunk()");
             var reset = SourceMethod(recorder, "private void ResetActiveChunkState");
             var summary = SourceMethod(recorder, "private McapFileSummary BuildFinalSummary");
@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyCompressionAndAmendmentBuffersAreReusable()
         {
             var compression = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Common/McapCompression.cs");
-            var recorder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var amendment = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapAmendmentWriter.cs");
             var copyExact = SourceMethod(amendment, "private static void CopyExact");
 

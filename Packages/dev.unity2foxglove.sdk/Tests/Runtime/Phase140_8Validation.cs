@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(McapRecorder.DefaultChunkSizeBytes == McapWriterOptions.DefaultChunkSizeBytes,
                 "140-8E-1: recorder legacy default chunk size stays aligned with writer options");
 
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             Check(source.Contains(
                     "public const int DefaultChunkSizeBytes = McapWriterOptions.DefaultChunkSizeBytes;",
                     StringComparison.Ordinal),
@@ -144,8 +144,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SummaryCrcUsesIncrementalSegments()
         {
-            var recorderSource = ReadRepoText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var recorderSource = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var conformanceSource = ReadRepoText(
                 "Packages/dev.unity2foxglove.sdk/Tests/McapConformance/McapConformanceWriter.cs");
             foreach (var source in new[] { recorderSource, conformanceSource })
@@ -158,8 +157,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RecorderReusesChannelScratchAndTopicSignature()
         {
-            var source = ReadRepoText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             Check(source.Contains("private readonly HashSet<ushort> _seenChannelIds = new();", StringComparison.Ordinal)
                   && source.Contains("private readonly List<ChannelWriteState> _allChannelWriteStates = new();", StringComparison.Ordinal)
                   && !source.Contains("var seen = new HashSet<ushort>();", StringComparison.Ordinal),
@@ -171,8 +169,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RecorderResourceAndScratchGuards()
         {
-            var source = ReadRepoText(
-                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
 
             Check(source.Contains("private readonly MemoryStream _chunkBuf;", StringComparison.Ordinal),
                 "173-025A: recorder chunk buffer ownership is readonly");

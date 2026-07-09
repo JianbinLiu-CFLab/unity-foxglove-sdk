@@ -39,7 +39,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyChunkMessageHeaderSingleWrite()
         {
-            var recorder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
             var writeMessage = SourceMethod(recorder, "private void WriteMessageToChannelWriteState");
 
@@ -59,7 +59,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyCompressionStateReuse()
         {
-            var recorder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var compression = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Common/McapCompression.cs");
             var flush = SourceMethod(recorder, "void FlushChunk()");
             var compress = SourceMethod(compression, "internal static ArraySegment<byte> Compress");

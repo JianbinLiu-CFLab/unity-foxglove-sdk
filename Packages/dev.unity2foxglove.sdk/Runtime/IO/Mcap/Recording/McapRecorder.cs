@@ -10,8 +10,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Util;
@@ -24,7 +22,7 @@ namespace Unity.FoxgloveSDK.IO
     /// Manages chunk lifecycle, schema/channel deduplication, metadata
     /// indexes, and final summary/statistics output on close.
     /// </summary>
-    public class McapRecorder : IDisposable
+    public partial class McapRecorder : IDisposable
     {
         private readonly McapWriter _w;
         private readonly IFoxgloveLogger _log;
@@ -49,8 +47,6 @@ namespace Unity.FoxgloveSDK.IO
         private readonly MemoryStream _compressionBuf = new();
         private readonly byte[] _messageRecordHeader = new byte[McapWriter.RecordHeaderLength + 2 + 4 + 8 + 8];
         private readonly object _lock = new object();
-        private static readonly object Sha256Gate = new object();
-        private static readonly SHA256 SharedSha256 = SHA256.Create();
         private Compressor _zstdCompressor;
         private byte[] _zstdCompressionBuffer;
         private ushort _nextSid = 1, _nextCid = 1;
@@ -671,93 +667,6 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         void Fail(string msg) { _recordingFailed = true; _log.LogError($"MCAP: {msg}"); }
 
-        /// <summary>
-        /// Compute the Base64 SHA-256 hash of a string.
-        /// </summary>
-        static string Sha256(string c)
-        {
-            var bytes = Encoding.UTF8.GetBytes(c);
-            lock (Sha256Gate)
-                return Convert.ToBase64String(SharedSha256.ComputeHash(bytes));
-        }
-
-        // Schema management
-        ushort GetOrCreateSchema(string sName, string sEnc, string sContent)
-        {
-            if (string.IsNullOrEmpty(sName) && string.IsNullOrEmpty(sEnc) && string.IsNullOrEmpty(sContent))
-                return 0;
-
-            var hash = Sha256(sContent ?? "");
-            var key = (sName ?? "", sEnc ?? "", hash);
-            if (_sKey.TryGetValue(key, out var sid))
-                return sid;
-
-            byte[] schemaData;
-            try
-            {
-                schemaData = sEnc == "protobuf"
-                    ? Convert.FromBase64String(sContent ?? "")
-                    : Encoding.UTF8.GetBytes(sContent ?? "");
-            }
-            catch (FormatException ex)
-            {
-                Fail("Invalid protobuf schema content: " + ex.Message);
-                return 0;
-            }
-
-            if (_nextSid == 0) { Fail("Schema ID overflow"); return 0; }
-            sid = _nextSid++;
-            _sKey[key] = sid;
-            _w.WriteSchema(sid, key.Item1, key.Item2, schemaData);
-            _schemas.Add(new SchemaRecordState { Id = sid, Name = key.Item1, Encoding = key.Item2, Data = schemaData });
-            return sid;
-        }
-
-        /// <summary>
-        /// Immutable signature combining encoding, schema name, schema encoding,
-        /// and content hash. Used to detect incompatible topic schema conflicts.
-        /// </summary>
-        struct TopicSignature : IEquatable<TopicSignature>
-        {
-            /// <summary>Message encoding (e.g. "json", "protobuf").</summary>
-            public string Encoding;
-            /// <summary>Schema name.</summary>
-            public string SchemaName;
-            /// <summary>Schema encoding (e.g. "jsonschema").</summary>
-            public string SchemaEncoding;
-            /// <summary>Hex-encoded SHA-256 hash of schema content.</summary>
-            public string Hash;
-
-            public bool Equals(TopicSignature other) =>
-                Encoding == other.Encoding &&
-                SchemaName == other.SchemaName &&
-                SchemaEncoding == other.SchemaEncoding &&
-                Hash == other.Hash;
-
-            public override bool Equals(object obj) =>
-                obj is TopicSignature other && Equals(other);
-
-            public override int GetHashCode() =>
-                HashCode.Combine(Encoding, SchemaName, SchemaEncoding, Hash);
-        }
-
-        /// <summary>
-        /// Compute a hex-encoded SHA-256 hash from schema name, encoding, and
-        /// content, separated by null characters.
-        /// </summary>
-        static string ComputeSchemaHash(string schemaContent, string schemaName, string schemaEncoding)
-        {
-            // For schemaless channels, the signature components are all empty.
-            // We treat empty schemaContent as an empty hash.
-            var content = schemaContent ?? "";
-            if (content.Length == 0) return "";
-            var input = Encoding.UTF8.GetBytes(schemaName + "\0" + schemaEncoding + "\0" + content);
-            byte[] bytes;
-            lock (Sha256Gate)
-                bytes = SharedSha256.ComputeHash(input);
-            return BitConverter.ToString(bytes).Replace("-", "");
-        }
-
         private Dictionary<ushort, ulong> BuildChannelMessageCounts()
         {
             var channelStates = FillAndGetScratchChannelWriteStates();
@@ -783,156 +692,5 @@ namespace Unity.FoxgloveSDK.IO
 
         private static Dictionary<string, string> CreateEmptyChannelMetadata() => new Dictionary<string, string>();
 
-        /// <summary>
-        /// Normalize an encoding string to a default of "json" when empty or null.
-        /// </summary>
-        static string NormalizeMessageEncoding(string enc) =>
-            string.IsNullOrEmpty(enc) ? "json" : enc;
-
-        static TopicSignature CreateTopicSignature(string enc, string sName, string sEnc, string sContent) =>
-            new()
-            {
-                Encoding = NormalizeMessageEncoding(enc),
-                SchemaName = sName ?? "",
-                SchemaEncoding = sEnc ?? "",
-                Hash = ComputeSchemaHash(sContent, sName, sEnc)
-            };
-
-        // Channel routing
-        bool TryReuseExistingTopicChannel(
-            string topic,
-            TopicSignature incoming,
-            string sContent,
-            out ChannelWriteState state)
-        {
-            state = null;
-            if (string.IsNullOrEmpty(topic)) return false;
-            if (!_topicChannelWriteState.TryGetValue(topic, out var existingState)) return false;
-            if (!_topicSignatures.TryGetValue(topic, out var existing)) return false;
-
-            if (!string.IsNullOrEmpty(incoming.SchemaName) &&
-                string.IsNullOrEmpty(sContent) &&
-                existing.Encoding == incoming.Encoding &&
-                existing.SchemaName == incoming.SchemaName &&
-                (string.IsNullOrEmpty(incoming.SchemaEncoding) || existing.SchemaEncoding == incoming.SchemaEncoding) &&
-                !string.IsNullOrEmpty(existing.Hash))
-            {
-                state = existingState;
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Check whether an incoming topic signature conflicts with a previously
-        /// recorded signature for the same topic.
-        /// </summary>
-        bool WouldMixTopicSignature(string topic, TopicSignature signature)
-        {
-            if (string.IsNullOrEmpty(topic)) return false;
-            return _topicSignatures.TryGetValue(topic, out var existing) && !existing.Equals(signature);
-        }
-
-        /// <summary>
-        /// Persist the topic signature on first use so future channels for the
-        /// same topic can be validated for compatibility.
-        /// </summary>
-        void RecordTopicSignature(string topic, TopicSignature signature)
-        {
-            if (string.IsNullOrEmpty(topic)) return;
-            if (_topicSignatures.ContainsKey(topic)) return;
-            _topicSignatures[topic] = signature;
-        }
-
-        // Nested state types
-
-        /// <summary>
-        /// Per-channel write accumulator tracking MCAP channel ID, sequence
-        /// number, durable message count, and pending index entries for the current chunk.
-        /// </summary>
-        class ChannelWriteState
-        {
-            /// <summary>MCAP channel ID.</summary>
-            public ushort McapId;
-            /// <summary>Topic name.</summary>
-            public string Topic;
-            /// <summary>Per-channel MCAP message sequence number. Wrap-around is allowed by MCAP.</summary>
-            public uint Seq;
-            /// <summary>Total messages recorded for statistics; kept separate from wrapping Seq.</summary>
-            public ulong MsgCount;
-            /// <summary>Pending (log-time, chunk-offset) entries for the chunk message index.</summary>
-            public List<(ulong LogTime, ulong Offset)> Pending = new();
-        }
-
-        /// <summary>
-        /// Schema record captured for the summary section.
-        /// </summary>
-        struct SchemaRecordState
-        {
-            /// <summary>Schema ID.</summary>
-            public ushort Id;
-            /// <summary>Schema name.</summary>
-            public string Name;
-            /// <summary>Schema encoding (e.g. "jsonschema", "protobuf").</summary>
-            public string Encoding;
-            /// <summary>Raw schema content bytes.</summary>
-            public byte[] Data;
-        }
-
-        /// <summary>
-        /// Channel record captured for the summary section.
-        /// </summary>
-        struct ChannelRecordState
-        {
-            /// <summary>Channel ID.</summary>
-            public ushort Id;
-            /// <summary>Referenced schema ID.</summary>
-            public ushort SchemaId;
-            /// <summary>Topic name.</summary>
-            public string Topic;
-            /// <summary>Message encoding string.</summary>
-            public string Encoding;
-            /// <summary>Optional metadata key-value pairs.</summary>
-            public Dictionary<string, string> Metadata;
-        }
-
-        /// <summary>
-        /// Chunk index entry backed up for the summary section.
-        /// </summary>
-        struct ChunkIndexState
-        {
-            /// <summary>Earliest log time in the chunk.</summary>
-            public ulong StartTime;
-            /// <summary>Latest log time in the chunk.</summary>
-            public ulong EndTime;
-            /// <summary>File offset of the chunk record.</summary>
-            public ulong Offset;
-            /// <summary>Chunk record length in bytes.</summary>
-            public ulong Length;
-            /// <summary>Total size of the message index records following the chunk.</summary>
-            public ulong MessageIndexLength;
-            /// <summary>Compressed chunk data size in bytes.</summary>
-            public ulong CompressedSize;
-            /// <summary>Uncompressed chunk data size in bytes.</summary>
-            public ulong UncompressedSize;
-            /// <summary>Compression algorithm name (empty for none).</summary>
-            public string Compression;
-            /// <summary>Per-channel offset map into the message index records.</summary>
-            public Dictionary<ushort, ulong> MessageIndexOffsets;
-        }
-
-        /// <summary>
-        /// Metadata index entry backed up for the summary section.
-        /// </summary>
-        struct MetadataIndexState
-        {
-            /// <summary>File offset of the metadata record.</summary>
-            public ulong Offset;
-            /// <summary>Metadata record byte length.</summary>
-            public ulong Length;
-            /// <summary>Metadata name.</summary>
-            public string Name;
-        }
     }
 }

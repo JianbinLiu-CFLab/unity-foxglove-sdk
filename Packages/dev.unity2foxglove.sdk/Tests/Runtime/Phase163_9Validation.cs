@@ -129,7 +129,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SourceKeepsPartialFlushRecoveryBoundedToSeekableStreams()
         {
-            var recorder = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var writer = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
 
             Check(recorder.Contains("TryRecoverAfterFailedFinalChunkFlush", StringComparison.Ordinal)
@@ -143,7 +143,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PhaseRegistryWiresPhase163_9()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase163-9\", \"Phase 163-9\", Phase163_9Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-9\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_9Validation.Validate", StringComparison.Ordinal),
                 "163-9G: PhaseValidationRegistry wires --phase163-9");
         }
 
