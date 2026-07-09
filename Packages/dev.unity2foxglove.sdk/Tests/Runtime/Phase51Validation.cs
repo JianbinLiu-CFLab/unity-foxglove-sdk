@@ -520,14 +520,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyMcapRecorderAvoidsChunkToArrayCopy()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             Check(!source.Contains("_chunkBuf.ToArray()") && source.Contains("TryGetBuffer"),
                 "51C-3: McapRecorder FlushChunk avoids the raw chunk ToArray copy");
         }
 
         private static void VerifyMcapRecorderAllChannelWriteStatesTracksSeenInline()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var method = ExtractMethodBody(source, "List<ChannelWriteState> FillAndGetScratchChannelWriteStates");
             Check(method.Contains("if (_seenChannelIds.Add(m.McapId))")
                   && method.Contains("_allChannelWriteStates.Add(m)")

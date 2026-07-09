@@ -121,7 +121,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyMcapHardening()
         {
             var writer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
-            var recorder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var chunkReader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapChunkReader.cs");
             Check(writer.Contains("private bool _disposed") && writer.Contains("if (_disposed)"),
                 "86D-1: McapWriter Dispose is idempotent");

@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void McapRecorderCloseFinalizationIsTerminal()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var close = Slice(source, "public void Close()", "private McapFileSummary BuildFinalSummary");
 
             Check(close.Contains("finally", StringComparison.Ordinal)
@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void McapRecorderDroppedFinalChunkRecoveryKeepsIndexesWithoutStatistics()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var recovery = Slice(source, "private void WriteRecoverableTrailerAfterDroppedFinalChunk()", "/// <summary>");
 
             Check(source.Contains("BuildFinalSummary(bool includeStatistics)", StringComparison.Ordinal)
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void ChannelWriteStateScratchBufferDocumentsLockOwnership()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs");
+            var source = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             Check(source.Contains("Caller must hold _lock", StringComparison.Ordinal)
                   && source.Contains("must not be retained after the locked operation finishes", StringComparison.Ordinal),
                 "163-7G: reused channel-write-state scratch list documents its lock ownership contract");
