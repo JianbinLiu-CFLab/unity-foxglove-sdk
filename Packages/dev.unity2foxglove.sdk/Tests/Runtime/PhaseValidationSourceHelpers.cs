@@ -150,6 +150,41 @@ namespace Unity.FoxgloveSDK.Tests
             return source.ToString();
         }
 
+        public static string ReadMcapDataLoaderSources()
+        {
+            var root = FindRequiredRepoRoot();
+
+            var dir = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "IO",
+                "Mcap",
+                "DataLoader");
+            if (!Directory.Exists(dir))
+                throw new DirectoryNotFoundException("MCAP DataLoader directory was not found.");
+
+            var main = Path.Combine(dir, "McapDataLoader.cs");
+            if (!File.Exists(main))
+                throw new FileNotFoundException("Missing MCAP DataLoader facade.", main);
+
+            var files = new[] { main }
+                .Concat(Directory.GetFiles(dir, "McapDataLoader.*.cs")
+                    .OrderBy(path => path, StringComparer.Ordinal))
+                .ToArray();
+
+            var source = new StringBuilder();
+            foreach (var file in files)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(File.ReadAllText(file));
+            }
+
+            return source.ToString();
+        }
+
         public static string ReadFoxgloveLogSourceGeneratorSources()
         {
             var root = FindRequiredRepoRoot();

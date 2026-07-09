@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void SchemaReferenceValidationReusesSchemaMap()
         {
-            var loader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            var loader = PhaseValidationSourceHelpers.ReadMcapDataLoaderSources();
             var validation = SourceBetween(loader, "private void AddSchemaReferenceProblems", "private void AddFoxRunSchemaMetadataProblems");
             Check(validation.Contains("_schemaMap.ContainsKey(channel.SchemaId)", StringComparison.Ordinal)
                   && !validation.Contains("new HashSet<ushort>", StringComparison.Ordinal),

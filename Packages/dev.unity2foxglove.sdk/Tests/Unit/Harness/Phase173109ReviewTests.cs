@@ -88,6 +88,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void McapDataLoaderPartitionKeepsFacadeAndMovedHelpersVisible()
+        {
+            var main = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            var initialization = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.InitializationBuilder.cs");
+            var diagnostics = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.Diagnostics.cs");
+            var sourceHelpers = TestSources.Runtime("PhaseValidationSourceHelpers.cs");
+
+            Assert.Contains("public sealed partial class McapDataLoader", main, StringComparison.Ordinal);
+            Assert.Contains("public McapDataLoaderInitialization Initialize()", main, StringComparison.Ordinal);
+            Assert.Contains("private static void BuildChannelAndQueryMaps(", main, StringComparison.Ordinal);
+            Assert.Contains("private static List<ushort> CopyUShorts(List<ushort> source)", main, StringComparison.Ordinal);
+            Assert.Contains("private static List<string> CopyStrings(List<string> source)", main, StringComparison.Ordinal);
+            Assert.Contains("public IEnumerable<McapDataLoaderMessage> CreateLazyIterator(", main, StringComparison.Ordinal);
+            Assert.Contains("public IEnumerable<McapDecodedMessage> CreateDecodedIterator(", main, StringComparison.Ordinal);
+            Assert.Contains("public bool TryDecodeMessage(", main, StringComparison.Ordinal);
+
+            foreach (var method in new[]
+            {
+                "AddSchemas",
+                "AddChannels",
+                "AddTimeRange",
+                "AddMetadataIndexes",
+                "AddAttachmentIndexes",
+                "AddSummaryCounts"
+            })
+            {
+                Assert.Contains(method, initialization, StringComparison.Ordinal);
+            }
+
+            Assert.Contains("internal static class McapDataLoaderInitializationBuilder", initialization, StringComparison.Ordinal);
+            Assert.Contains("private void AddSequentialFallbackProblems", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("private void AddSchemaReferenceProblems", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("private void AddFoxRunSchemaMetadataProblems", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("private McapMetadataIndex FindMetadataIndex", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("ReadMcapDataLoaderSources", sourceHelpers, StringComparison.Ordinal);
+            Assert.Contains("\"McapDataLoader.cs\"", sourceHelpers, StringComparison.Ordinal);
+            Assert.Contains("\"McapDataLoader.*.cs\"", sourceHelpers, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"McapDataLoader*.cs\"", sourceHelpers, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void LoggerPrefixesAvoidInterpolationSyntax()
         {
             var unityLogger = TestSources.Text(
