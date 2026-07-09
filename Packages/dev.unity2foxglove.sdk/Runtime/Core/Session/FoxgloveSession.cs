@@ -56,6 +56,10 @@ namespace Unity.FoxgloveSDK.Core
         [ThreadStatic]
         private static List<(uint clientId, uint subscriptionId)> s_publishSubscriberScratch;
         [ThreadStatic]
+        private static List<AdvertiseChannel> s_singleAdvertiseChannels;
+        [ThreadStatic]
+        private static List<uint> s_singleUnadvertiseChannelIds;
+        [ThreadStatic]
         private static MemoryStream s_jsonPublishStream;
         /// <summary>Optional logger for diagnostics and warnings.</summary>
         private readonly IFoxgloveLogger _logger;
@@ -337,18 +341,32 @@ namespace Unity.FoxgloveSDK.Core
 
         private string SerializeSingleAdvertise(AdvertiseChannel channel)
         {
-            return JsonConvert.SerializeObject(new Advertise
+            var channels = s_singleAdvertiseChannels ??= new List<AdvertiseChannel>(1);
+            channels.Clear();
+            channels.Add(channel);
+            try
             {
-                Channels = new List<AdvertiseChannel>(1) { channel }
-            });
+                return JsonConvert.SerializeObject(new Advertise { Channels = channels });
+            }
+            finally
+            {
+                channels.Clear();
+            }
         }
 
         private string SerializeSingleUnadvertise(uint channelId)
         {
-            return JsonConvert.SerializeObject(new Unadvertise
+            var channelIds = s_singleUnadvertiseChannelIds ??= new List<uint>(1);
+            channelIds.Clear();
+            channelIds.Add(channelId);
+            try
             {
-                ChannelIds = new List<uint>(1) { channelId }
-            });
+                return JsonConvert.SerializeObject(new Unadvertise { ChannelIds = channelIds });
+            }
+            finally
+            {
+                channelIds.Clear();
+            }
         }
 
         /// <summary>
