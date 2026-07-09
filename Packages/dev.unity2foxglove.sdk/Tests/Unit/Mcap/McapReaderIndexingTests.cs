@@ -324,6 +324,108 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void IndexedReaderHelperLazyOptionsCopyMutableFiltersAndRejectSortedOrders()
+        {
+            var topics = new List<string> { "/phase174/a" };
+            var channelIds = new List<ushort> { 7 };
+            var source = new McapReadOptions
+            {
+                Topics = topics,
+                ChannelIds = channelIds,
+                StartTimeNs = 10,
+                EndTimeNs = 20,
+                MaxMessages = 3,
+                Order = McapReadOrder.FileOrder,
+                AllowLinearFallback = false,
+                UseOfficialEndTimeSemantics = true,
+                ValidateCrcs = false,
+                ChunkUncompressedSizeLimit = 123
+            };
+
+            var copy = McapIndexedReaderHelpers.CreateLazyReadOptions(source);
+            topics.Add("/phase174/mutated");
+            channelIds.Add(9);
+
+            Assert.NotSame(source, copy);
+            Assert.NotSame(source.Topics, copy.Topics);
+            Assert.NotSame(source.ChannelIds, copy.ChannelIds);
+            Assert.Equal(new[] { "/phase174/a" }, copy.Topics);
+            Assert.Equal(new ushort[] { 7 }, copy.ChannelIds);
+            Assert.Equal(10UL, copy.StartTimeNs);
+            Assert.Equal(20UL, copy.EndTimeNs);
+            Assert.Equal(3, copy.MaxMessages);
+            Assert.Equal(McapReadOrder.FileOrder, copy.Order);
+            Assert.False(copy.AllowLinearFallback);
+            Assert.True(copy.UseOfficialEndTimeSemantics);
+            Assert.False(copy.ValidateCrcs);
+            Assert.Equal(123UL, copy.ChunkUncompressedSizeLimit);
+
+            Assert.Throws<NotSupportedException>(() =>
+                McapIndexedReaderHelpers.CreateLazyReadOptions(new McapReadOptions
+                {
+                    Order = McapReadOrder.LogTimeAscending
+                }));
+        }
+
+        [Fact]
+        public void IndexedReaderHelperOrderingAndLimitMatchReaderModes()
+        {
+            var fileOrder = new List<McapMessage>
+            {
+                Message(channelId: 1, sequence: 1, logTime: 30),
+                Message(channelId: 1, sequence: 2, logTime: 10),
+                Message(channelId: 1, sequence: 3, logTime: 20)
+            };
+            McapIndexedReaderHelpers.ApplyOrderingAndLimit(fileOrder, new McapReadOptions
+            {
+                Order = McapReadOrder.FileOrder,
+                MaxMessages = 2
+            });
+            Assert.Equal(new uint[] { 1, 2 }, new[] { fileOrder[0].Sequence, fileOrder[1].Sequence });
+
+            var ascending = new List<McapMessage>
+            {
+                Message(channelId: 1, sequence: 1, logTime: 30),
+                Message(channelId: 1, sequence: 2, logTime: 10),
+                Message(channelId: 1, sequence: 3, logTime: 20)
+            };
+            McapIndexedReaderHelpers.ApplyOrderingAndLimit(ascending, new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeAscending,
+                MaxMessages = 2
+            });
+            Assert.Equal(new uint[] { 3, 1 }, new[] { ascending[0].Sequence, ascending[1].Sequence });
+
+            var descending = new List<McapMessage>
+            {
+                Message(channelId: 1, sequence: 1, logTime: 30),
+                Message(channelId: 1, sequence: 2, logTime: 10),
+                Message(channelId: 1, sequence: 3, logTime: 20)
+            };
+            McapIndexedReaderHelpers.ApplyOrderingAndLimit(descending, new McapReadOptions
+            {
+                Order = McapReadOrder.LogTimeDescending,
+                MaxMessages = 2
+            });
+            Assert.Equal(new uint[] { 1, 3 }, new[] { descending[0].Sequence, descending[1].Sequence });
+        }
+
+        [Fact]
+        public void IndexedReaderHelperLatestOutputSortsByChannel()
+        {
+            var latest = new List<McapMessage>
+            {
+                Message(channelId: 9, sequence: 1, logTime: 30),
+                Message(channelId: 2, sequence: 2, logTime: 30),
+                Message(channelId: 5, sequence: 3, logTime: 30)
+            };
+
+            latest.Sort(McapIndexedReaderHelpers.CompareLatestOutput);
+
+            Assert.Equal(new ushort[] { 2, 5, 9 }, new[] { latest[0].ChannelId, latest[1].ChannelId, latest[2].ChannelId });
+        }
+
+        [Fact]
         public void MalformedMetadataMapLengthThrowsInvalidData()
         {
             var content = new MemoryStream();
@@ -484,6 +586,18 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
 
             return stream.ToArray();
+        }
+
+        private static McapMessage Message(ushort channelId, uint sequence, ulong logTime)
+        {
+            return new McapMessage
+            {
+                ChannelId = channelId,
+                Sequence = sequence,
+                LogTime = logTime,
+                PublishTime = logTime,
+                Data = Array.Empty<byte>()
+            };
         }
 
         private static MemoryStream CreateChunkMcap(out ulong chunkStart, out ulong chunkLength)
