@@ -160,18 +160,19 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static ProcessStartInfo CreateStderrFloodStartInfo()
         {
-            var payload = new string('x', 640);
+            const int lineCount = 32;
+            var payload = new string('x', 4096);
 
             if (IsWindows)
             {
                 return new ProcessStartInfo(
                     "cmd.exe",
-                    $"/c for /L %i in (1,1,200) do @echo stderr-line-{payload} 1>&2");
+                    $"/c for /L %i in (1,1,{lineCount}) do @echo stderr-line-{payload} 1>&2");
             }
 
             return new ProcessStartInfo(
                 "/bin/sh",
-                $"-c \"i=0; while [ $i -lt 200 ]; do echo stderr-line-{payload} >&2; i=$((i+1)); done\"");
+                $"-c \"i=0; while [ $i -lt {lineCount} ]; do echo stderr-line-{payload} >&2; i=$((i+1)); done\"");
         }
 
         private static ProcessStartInfo CreateSlowProcessStartInfo()
