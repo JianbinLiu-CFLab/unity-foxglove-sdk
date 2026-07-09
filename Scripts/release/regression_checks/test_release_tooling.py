@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -348,6 +349,35 @@ class RunCiTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as context:
                     self.run_ci.run(["tool"], "fatal-timeout", fatal=True)
         self.assertEqual(124, context.exception.code)
+
+    def test_default_ci_builds_independent_subcommand_jobs(self) -> None:
+        """Default local CI should fan out independent suites through self-subcommands."""
+        args = types.SimpleNamespace(skip_analyzer=False)
+
+        jobs = self.run_ci.build_default_ci_jobs(args)
+
+        self.assertEqual(["analyzer", "dotnet", "packages", "boundary"], [job.name for job in jobs])
+        for job in jobs:
+            self.assertEqual(sys.executable, job.command[0])
+            self.assertEqual(str(RUN_CI_PATH), job.command[1])
+            self.assertEqual(["--only", job.name], job.command[2:])
+
+    def test_main_dispatches_default_ci_through_parallel_jobs(self) -> None:
+        """Without --only, CI should use the parallel job runner and aggregate job results."""
+        observed: dict[str, object] = {}
+
+        def fake_run_ci_jobs(jobs, max_workers):
+            """Capture default CI jobs without executing subprocesses."""
+            observed["names"] = [job.name for job in jobs]
+            observed["max_workers"] = max_workers
+            return {job.name: True for job in jobs}
+
+        with mock.patch.object(self.run_ci, "run_ci_jobs", side_effect=fake_run_ci_jobs):
+            with mock.patch.object(sys, "argv", ["run_ci.py", "--jobs", "2"]):
+                self.assertEqual(0, self.run_ci.main())
+
+        self.assertEqual(["analyzer", "dotnet", "packages", "boundary"], observed["names"])
+        self.assertEqual(2, observed["max_workers"])
 
 
 class UnityIl2CppBuildTests(unittest.TestCase):
