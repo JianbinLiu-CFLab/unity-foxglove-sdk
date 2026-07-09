@@ -15,7 +15,6 @@ using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.Schemas;
-using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 using static Unity.FoxgloveSDK.Transport.TransportStatsSnapshot;
 
 namespace Unity.FoxgloveSDK.Core
@@ -35,7 +34,7 @@ namespace Unity.FoxgloveSDK.Core
     /// <para>Call <c>Tick</c> periodically (every frame from Unity) to
     /// drain service calls, tick replay, and broadcast time.</para>
     /// </summary>
-    public class FoxgloveRuntime : IDisposable, IRuntimeContext
+    public partial class FoxgloveRuntime : IDisposable, IRuntimeContext
     {
         /// <summary>
         /// Active session; null before Start or after Stop. Runtime lifecycle APIs
@@ -49,8 +48,6 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveLogger _logger;
         private bool _protobufSchemasRegistered;
         private bool _ros2MsgSchemasRegistered;
-        private readonly HashSet<ReplaySuppressionWarningKey> _replaySuppressionWarnings =
-            new HashSet<ReplaySuppressionWarningKey>();
         private readonly string[] _singleParameterBroadcastName = new string[1];
         // Runtime-owned start-time routing policy. Like parameters and services,
         // these survive Stop/Start and are re-applied to the next session; Stop
@@ -672,115 +669,5 @@ namespace Unity.FoxgloveSDK.Core
             _transport.Dispose();
         }
 
-        private void WarnReplaySuppressed(string operation, uint? channelId)
-        {
-            var key = new ReplaySuppressionWarningKey(operation, channelId);
-            lock (_replaySuppressionWarnings)
-            {
-                if (!_replaySuppressionWarnings.Add(key))
-                    return;
-            }
-
-            var channelSuffix = channelId.HasValue ? $" for channel {channelId.Value}" : string.Empty;
-            _logger.LogWarning(
-                $"Replay is enabled; ignoring live {operation}{channelSuffix}. Disable replay before publishing live data.");
-        }
-
-        private void ClearReplaySuppressionWarnings()
-        {
-            lock (_replaySuppressionWarnings)
-                _replaySuppressionWarnings.Clear();
-        }
-
-        private readonly struct ReplaySuppressionWarningKey : IEquatable<ReplaySuppressionWarningKey>
-        {
-            private readonly string _operation;
-            private readonly uint? _channelId;
-
-            public ReplaySuppressionWarningKey(string operation, uint? channelId)
-            {
-                _operation = operation ?? string.Empty;
-                _channelId = channelId;
-            }
-
-            public bool Equals(ReplaySuppressionWarningKey other)
-                => string.Equals(_operation, other._operation, StringComparison.Ordinal)
-                   && _channelId == other._channelId;
-
-            public override bool Equals(object obj)
-                => obj is ReplaySuppressionWarningKey other && Equals(other);
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    var hash = StringComparer.Ordinal.GetHashCode(_operation);
-                    return (hash * 397) ^ (_channelId.HasValue ? _channelId.Value.GetHashCode() : 0);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Try to load protobuf schema registration from the optional Proto assembly.
-        /// If the assembly is present, registers all 46 official Foxglove protobuf schemas.
-        /// This is a no-op if the proto assembly is not available.
-        /// </summary>
-        private void TryRegisterProtobufSchemas()
-        {
-            try
-            {
-                var type = Type.GetType(
-                    "Foxglove.Schemas.ProtobufSchemasSetup, Unity.FoxgloveSDK.Proto");
-                if (type == null) return;
-
-                var method = type.GetMethod("RegisterSchemas",
-                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                if (method == null)
-                {
-                    _logger.LogWarning(
-                        "Optional protobuf schema registration type was found, but RegisterSchemas was missing; continuing without protobuf support.");
-                    return;
-                }
-
-                var register = (Action<ISchemaRegistry>)Delegate.CreateDelegate(
-                    typeof(Action<ISchemaRegistry>),
-                    method,
-                    throwOnBindFailure: false);
-                if (register == null)
-                {
-                    _logger.LogWarning(
-                        "Optional protobuf schema registration method has an incompatible signature; continuing without protobuf support.");
-                    return;
-                }
-
-                register(_schemaRegistry);
-                _protobufSchemasRegistered = true;
-            }
-            catch (Exception ex)
-            {
-                // Protobuf support is optional. Keep startup non-fatal, but emit
-                // one diagnostic so real schema-registration failures are visible.
-                _logger.LogWarning($"Optional protobuf schema registration failed; continuing without protobuf support: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Register bundled ROS 2 .msg schemas. If registration succeeds,
-        /// sessions advertise CDR support for explicit ros2msg channels.
-        /// </summary>
-        private void TryRegisterRos2MsgSchemas()
-        {
-            try
-            {
-                Ros2MsgSchemasSetup.RegisterSchemas(_schemaRegistry);
-                _ros2MsgSchemasRegistered = true;
-            }
-            catch (Exception ex)
-            {
-                // ROS 2 .msg schema support is optional. Keep startup non-fatal,
-                // but emit one diagnostic so real registration failures are visible.
-                _logger.LogWarning($"Optional ROS 2 .msg schema registration failed; continuing without CDR support: {ex.Message}");
-            }
-        }
     }
 }

@@ -166,7 +166,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RuntimeReplaySuppressionIsDiagnosed()
         {
-            var runtime = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var runtime = PhaseValidationSourceHelpers.ReadFoxgloveRuntimeSources();
             Check(runtime.Contains("private readonly HashSet<ReplaySuppressionWarningKey> _replaySuppressionWarnings", StringComparison.Ordinal)
                   && runtime.Contains("WarnReplaySuppressed(nameof(RegisterChannel)", StringComparison.Ordinal)
                   && runtime.Contains("WarnReplaySuppressed(nameof(PublishJson)", StringComparison.Ordinal)
@@ -176,7 +176,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void OptionalProtobufSchemaShapeFailuresAreDiagnosed()
         {
-            var runtime = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var runtime = PhaseValidationSourceHelpers.ReadFoxgloveRuntimeSources();
             Check(runtime.Contains("RegisterSchemas was missing", StringComparison.Ordinal)
                   && runtime.Contains("incompatible signature", StringComparison.Ordinal)
                   && runtime.Contains("type == null) return", StringComparison.Ordinal),
