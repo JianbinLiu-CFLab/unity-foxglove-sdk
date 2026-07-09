@@ -1279,7 +1279,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// <summary>
     /// Fake transport for Phase 13 that tracks <c>IsRunning</c> state.
     /// </summary>
-    class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
+    class Phase13FakeTransport : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
     {
         private readonly object _gate = new object();
         public readonly List<string> SentText = new List<string>();
@@ -1384,6 +1384,7 @@ namespace Unity.FoxgloveSDK.Tests
             OnClientConnected?.Invoke(clientId);
         }
         public void ClearDataQueues() { lock (_gate) ClearDataQueuesCount++; }
+        public void ClearDataQueue(uint clientId) { ClearBinary(clientId); }
         public TransportStatsSnapshot GetStatsSnapshot()
         {
             if (!StatsSupported)

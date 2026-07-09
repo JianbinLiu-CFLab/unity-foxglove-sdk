@@ -439,7 +439,7 @@ namespace Unity.FoxgloveSDK.Tests
             public void AdvanceNs(ulong deltaNs) => NowNs += deltaNs;
         }
 
-        private sealed class Phase134_3Transport : IFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
+        private sealed class Phase134_3Transport : IFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider
         {
             public bool IsRunning { get; private set; }
             public event Action<uint> OnClientConnected;
@@ -487,6 +487,11 @@ namespace Unity.FoxgloveSDK.Tests
             /// Validation method for ClearDataQueues.
             /// </summary>
             public void ClearDataQueues() { }
+            /// <summary>
+            /// Validation method for ClearDataQueue.
+            /// </summary>
+            /// <param name="clientId">Foxglove client identifier used by the transport stub.</param>
+            public void ClearDataQueue(uint clientId) { }
 
             /// <summary>
             /// Validation method for GetStatsSnapshot.

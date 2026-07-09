@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyZeroSubscriptionIdRoutesNormally();
             VerifyDuplicateSubscribeDeduplicates();
             VerifyUnsubscribeFullyRemovesSubscriber();
+            VerifyUnsubscribeClearsOnlyThatClientsDataQueue();
 
             Console.WriteLine($"Phase 138C2: {_passed} checks passed.");
             Console.WriteLine();
@@ -144,6 +145,74 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
+        /// Verifies explicit unsubscribe drops queued data for that client
+        /// without clearing other clients' data queues. The client-scoped clear
+        /// also drops queued frames for still-subscribed channels; the final
+        /// publish proves those remaining subscriptions continue to route.
+        /// </summary>
+        private static void VerifyUnsubscribeClearsOnlyThatClientsDataQueue()
+        {
+            var transport = new Phase138C2FakeTransport();
+            using var session = new FoxgloveSession("phase138-c2-unsub-queue", transport);
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 80,
+                Topic = "/phase138-c2/unsub-queue",
+                Encoding = "json",
+                SchemaName = "",
+                Schema = ""
+            });
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 81,
+                Topic = "/phase138-c2/still-subscribed",
+                Encoding = "json",
+                SchemaName = "",
+                Schema = ""
+            });
+
+            transport.Text(44, JsonConvert.SerializeObject(new SubscribeMessage
+            {
+                Subscriptions = new List<Subscription>
+                {
+                    new Subscription { Id = 0, ChannelId = 80 },
+                    new Subscription { Id = 2, ChannelId = 81 }
+                }
+            }));
+            transport.Text(55, JsonConvert.SerializeObject(new SubscribeMessage
+            {
+                Subscriptions = new List<Subscription>
+                {
+                    new Subscription { Id = 1, ChannelId = 80 }
+                }
+            }));
+
+            session.PublishReplay(80, OkPayload, 4, "phase138-c2", "/phase138-c2/unsub-queue");
+            session.PublishReplay(81, OkPayload, 5, "phase138-c2", "/phase138-c2/still-subscribed");
+            transport.Text(44, JsonConvert.SerializeObject(new UnsubscribeMessage
+            {
+                SubscriptionIds = new List<uint> { 0 }
+            }));
+
+            Check(transport.ClearDataQueueClientIds.Count == 1 && transport.ClearDataQueueClientIds[0] == 44,
+                "138C2-6: unsubscribe clears queued data for the unsubscribing client");
+            Check(transport.ClearDataQueuesCount == 0,
+                "138C2-7: unsubscribe does not clear all clients' data queues");
+            Check(transport.BinariesFor(44).Count == 0,
+                "138C2-8: unsubscribed client's stale data frame is dropped");
+            Check(transport.BinariesFor(55).Count == 1,
+                "138C2-9: another client's queued data frame is preserved");
+
+            session.PublishReplay(81, OkPayload, 6, "phase138-c2", "/phase138-c2/still-subscribed");
+            var laterFrames = transport.BinariesFor(44);
+            var laterFrameOk = laterFrames.Count == 1
+                && BinaryEncoding.TryDecodeServerMessageData(laterFrames[0], out var laterSubscriptionId, out _, out _)
+                && laterSubscriptionId == 2;
+            Check(laterFrameOk,
+                "138C2-10: still-subscribed channel routes future data after client queue clear");
+        }
+
+        /// <summary>
         /// Tracks and throws if a validation check fails.
         /// </summary>
         /// <param name="condition">Whether the check passed.</param>
@@ -159,7 +228,7 @@ namespace Unity.FoxgloveSDK.Tests
         /// <summary>
         /// Lightweight transport stub used by validation tests.
         /// </summary>
-        private sealed class Phase138C2FakeTransport : IFoxgloveTransport
+        private sealed class Phase138C2FakeTransport : IFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport
         {
             private readonly Dictionary<uint, List<string>> _texts = new();
             private readonly Dictionary<uint, List<byte[]>> _binaries = new();
@@ -177,6 +246,10 @@ namespace Unity.FoxgloveSDK.Tests
             public event Action<uint, string> OnTextReceived;
             /// <summary>Binary message received event.</summary>
             public event Action<uint, byte[]> OnBinaryReceived;
+
+            public int ClearDataQueuesCount { get; private set; }
+
+            public List<uint> ClearDataQueueClientIds { get; } = new List<uint>();
 
             /// <summary>
             /// Starts the transport.
@@ -230,6 +303,18 @@ namespace Unity.FoxgloveSDK.Tests
             /// </summary>
             public IReadOnlyList<string> TextsFor(uint clientId)
                 => _texts.TryGetValue(clientId, out var list) ? list : Array.Empty<string>();
+
+            public void ClearDataQueues()
+            {
+                ClearDataQueuesCount++;
+                _binaries.Clear();
+            }
+
+            public void ClearDataQueue(uint clientId)
+            {
+                ClearDataQueueClientIds.Add(clientId);
+                _binaries.Remove(clientId);
+            }
 
             /// <summary>
             /// Injects a text message event for test transport interaction.

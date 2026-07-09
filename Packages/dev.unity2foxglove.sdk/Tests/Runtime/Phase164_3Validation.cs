@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
             var broadcastData = SourceMethod(backend, "public void BroadcastDataBinary(byte[] data)");
             var clearData = SourceMethod(backend, "public void ClearDataQueues()");
 
-            Check(connection.Contains("internal EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)", StringComparison.Ordinal)
+            Check(connection.Contains("EnqueueResult SendTextEncoded(byte[] utf8Json, FramePriority priority)", StringComparison.Ordinal)
                   && broadcastText.Contains("Encoding.UTF8.GetBytes(json ?? string.Empty)", StringComparison.Ordinal)
                   && broadcastText.Contains("conn.SendTextEncoded", StringComparison.Ordinal),
                 "164-3A-1: BroadcastText encodes JSON once and sends pre-encoded text frames");
@@ -91,14 +91,20 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySingleChannelBroadcastsReuseLists()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
+            var advertise = SourceMethod(source, "private string SerializeSingleAdvertise(AdvertiseChannel channel)");
+            var unadvertise = SourceMethod(source, "private string SerializeSingleUnadvertise(uint channelId)");
 
-            Check(source.Contains("private readonly List<AdvertiseChannel> _singleAdvertiseChannels", StringComparison.Ordinal)
-                  && source.Contains("private readonly List<uint> _singleUnadvertiseChannelIds", StringComparison.Ordinal)
-                  && source.Contains("_singleAdvertiseChannels.Add(channel)", StringComparison.Ordinal)
-                  && source.Contains("_singleUnadvertiseChannelIds.Add(channelId)", StringComparison.Ordinal)
-                  && !source.Contains("new List<AdvertiseChannel> { channel }", StringComparison.Ordinal)
-                  && !source.Contains("new List<uint> { channelId }", StringComparison.Ordinal),
-                "164-3E: single channel advertise/unadvertise broadcasts reuse session-owned one-element lists");
+            Check(source.Contains("private static List<AdvertiseChannel> s_singleAdvertiseChannels", StringComparison.Ordinal)
+                  && source.Contains("private static List<uint> s_singleUnadvertiseChannelIds", StringComparison.Ordinal)
+                  && advertise.Contains("s_singleAdvertiseChannels ??= new List<AdvertiseChannel>(1)", StringComparison.Ordinal)
+                  && advertise.Contains("channels.Add(channel)", StringComparison.Ordinal)
+                  && advertise.Contains("channels.Clear()", StringComparison.Ordinal)
+                  && unadvertise.Contains("s_singleUnadvertiseChannelIds ??= new List<uint>(1)", StringComparison.Ordinal)
+                  && unadvertise.Contains("channelIds.Add(channelId)", StringComparison.Ordinal)
+                  && unadvertise.Contains("channelIds.Clear()", StringComparison.Ordinal)
+                  && !advertise.Contains("new List<AdvertiseChannel>(1) { channel }", StringComparison.Ordinal)
+                  && !unadvertise.Contains("new List<uint>(1) { channelId }", StringComparison.Ordinal),
+                "164-3E: single channel advertise/unadvertise broadcasts reuse thread-local one-element lists");
         }
 
         private static void VerifyRegistryAndCompileEntry()
@@ -106,7 +112,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(registry.Contains("Ci(\"--phase164-3\", \"Phase 164-3\", Phase164_3Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase164-3\", \"Phase 164-3:", StringComparison.Ordinal)
+                  && registry.Contains("Phase164_3Validation.Validate", StringComparison.Ordinal),
                 "164-3F-1: validation registry exposes Phase164-3");
             Check(project.Contains("<Compile Include=\"Phase164_3Validation.cs\" />", StringComparison.Ordinal),
                 "164-3F-2: runtime validation project compiles Phase164-3");

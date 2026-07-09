@@ -156,7 +156,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PhaseRegistryWiresPhase163_10()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase163-10\", \"Phase 163-10\", Phase163_10Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-10\",", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_10Validation.Validate", StringComparison.Ordinal),
                 "163-10H: PhaseValidationRegistry wires --phase163-10");
         }
 

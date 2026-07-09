@@ -167,8 +167,9 @@ namespace Unity.FoxgloveSDK.Tests
                     stream.ResetSeekToStartCount();
                     Check(indexed.ReadMessages().Count == 3
                           && indexed.ReadLatestBefore(new McapReadOptions { EndTimeNs = 30 }).Count == 1
-                          && stream.SeekToStartCount == 2,
-                        "123-D3: non-index linear fallback rescans each query instead of retaining a reader-wide cache");
+                          && stream.SeekToStartCount == 1
+                          && stream.SeekFromBeginCount >= 2,
+                        "123-D3: non-index linear fallback rescans each query without a redundant latest-before rewind");
                 }
 
                 Check(!stream.CanRead, "123-D3b: CountingSeekStream forwards owned-stream disposal");
@@ -349,6 +350,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             public int SeekToStartCount { get; private set; }
+            public int SeekFromBeginCount { get; private set; }
 
             /// <summary>
             /// Validation method for ResetSeekToStartCount.
@@ -356,6 +358,7 @@ namespace Unity.FoxgloveSDK.Tests
             public void ResetSeekToStartCount()
             {
                 SeekToStartCount = 0;
+                SeekFromBeginCount = 0;
             }
 
             public override bool CanRead => _inner.CanRead;
@@ -388,6 +391,8 @@ namespace Unity.FoxgloveSDK.Tests
             /// <returns>The value produced by the validation helper.</returns>
             public override long Seek(long offset, SeekOrigin origin)
             {
+                if (origin == SeekOrigin.Begin)
+                    SeekFromBeginCount++;
                 if (offset == 0 && origin == SeekOrigin.Begin)
                     SeekToStartCount++;
                 return _inner.Seek(offset, origin);

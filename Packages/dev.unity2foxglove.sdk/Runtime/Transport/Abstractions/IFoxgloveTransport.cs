@@ -68,4 +68,17 @@ namespace Unity.FoxgloveSDK.Transport
     {
         void ClearDataQueues();
     }
+
+    /// <summary>
+    /// Optional transport extension for clearing queued data frames for a
+    /// single client while preserving other clients and protocol control frames.
+    /// Because queued data frames are not channel-indexed, a client-scoped clear
+    /// drops all queued data frames for that client, including frames for still
+    /// subscribed channels. This is acceptable within data-frame QoS: future
+    /// publishes for remaining subscriptions are still delivered normally.
+    /// </summary>
+    internal interface IClientDataQueueResettableFoxgloveTransport
+    {
+        void ClearDataQueue(uint clientId);
+    }
 }
