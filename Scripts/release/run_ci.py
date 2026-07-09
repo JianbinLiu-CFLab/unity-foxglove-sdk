@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 import os
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -36,6 +38,27 @@ SOURCE_GENERATOR_PROJ = (
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
+DEFAULT_JOB_TIMEOUT_SECONDS = 1800
+DEFAULT_PARALLEL_JOBS = 2
+
+
+@dataclass(frozen=True)
+class CiJob:
+    """One isolated CI suite executed through a self-subcommand."""
+
+    name: str
+    command: list[str]
+
+
+@dataclass(frozen=True)
+class CiJobResult:
+    """Captured result for one parallel CI suite."""
+
+    name: str
+    ok: bool
+    returncode: int
+    elapsed_seconds: float
+    log_path: Path
 
 
 def command_timeout_seconds() -> int:
@@ -53,6 +76,40 @@ def command_timeout_seconds() -> int:
             )
         )
         return DEFAULT_COMMAND_TIMEOUT_SECONDS
+
+
+def job_timeout_seconds() -> int:
+    """Return the per-suite CI timeout in seconds."""
+    raw = os.environ.get("UNITY2FOXGLOVE_CI_JOB_TIMEOUT", "").strip()
+    if not raw:
+        return DEFAULT_JOB_TIMEOUT_SECONDS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        print(
+            red(
+                f"{FAIL} invalid UNITY2FOXGLOVE_CI_JOB_TIMEOUT={raw!r}; "
+                f"using {DEFAULT_JOB_TIMEOUT_SECONDS}s"
+            )
+        )
+        return DEFAULT_JOB_TIMEOUT_SECONDS
+
+
+def default_parallel_jobs() -> int:
+    """Return the default top-level local CI parallelism."""
+    raw = os.environ.get("UNITY2FOXGLOVE_CI_JOBS", "").strip()
+    if not raw:
+        return DEFAULT_PARALLEL_JOBS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        print(
+            red(
+                f"{FAIL} invalid UNITY2FOXGLOVE_CI_JOBS={raw!r}; "
+                f"using {DEFAULT_PARALLEL_JOBS}"
+            )
+        )
+        return DEFAULT_PARALLEL_JOBS
 
 
 def _msbuild_dir(path: Path) -> str:
@@ -174,6 +231,101 @@ def run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
     return ordered_results
 
 
+def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
+    """Build independent self-subcommands for the default local CI run."""
+    script = str(Path(__file__).resolve())
+    jobs: list[CiJob] = []
+    if not args.skip_analyzer:
+        jobs.append(CiJob("analyzer", [sys.executable, script, "--only", "analyzer"]))
+    jobs.extend(
+        [
+            CiJob("dotnet", [sys.executable, script, "--only", "dotnet"]),
+            CiJob("packages", [sys.executable, script, "--only", "packages"]),
+            CiJob("boundary", [sys.executable, script, "--only", "boundary"]),
+        ]
+    )
+    return jobs
+
+
+def _job_log_tail(log_path: Path, *, max_chars: int = 8000) -> str:
+    """Return the tail of a job log for concise failure diagnostics."""
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"<failed to read {log_path}: {exc}>"
+    if len(text) <= max_chars:
+        return text
+    return "... <log truncated to tail> ...\n" + text[-max_chars:]
+
+
+def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
+    """Run one CI suite as a captured self-subcommand."""
+    log_path = log_dir / f"{job.name}.log"
+    env = os.environ.copy()
+    env["UNITY2FOXGLOVE_CI_RUN_ID"] = RUN_ID
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    start = time.monotonic()
+    try:
+        result = subprocess.run(
+            job.command,
+            cwd=REPO_ROOT,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            errors="replace",
+            timeout=job_timeout_seconds(),
+        )
+        elapsed = time.monotonic() - start
+        log_path.write_text(result.stdout or "", encoding="utf-8")
+        return CiJobResult(job.name, result.returncode == 0, result.returncode, elapsed, log_path)
+    except subprocess.TimeoutExpired as ex:
+        elapsed = time.monotonic() - start
+        stdout = ex.stdout.decode(errors="replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
+        timeout_message = (
+            f"\n{FAIL} {job.name} timed out after {job_timeout_seconds()}s "
+            f"({elapsed:.1f}s elapsed)\n"
+        )
+        log_path.write_text(stdout + timeout_message, encoding="utf-8")
+        return CiJobResult(job.name, False, 124, elapsed, log_path)
+
+
+def run_ci_jobs(jobs: list[CiJob], max_workers: int) -> dict[str, bool]:
+    """Run top-level CI suites in parallel through captured self-subcommands."""
+    if not jobs:
+        return {}
+
+    worker_count = max(1, min(max_workers, len(jobs)))
+    log_dir = CI_ROOT / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"\n{cyan('--- local CI jobs (parallel) ---')}")
+    print(f"Run id: {RUN_ID}")
+    print(f"Logs: {log_dir}")
+    print(f"Workers: {worker_count}")
+    for job in jobs:
+        print(f"  - {job.name}: {' '.join(job.command)}")
+
+    results_by_name: dict[str, CiJobResult] = {}
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {executor.submit(_run_ci_job, job, log_dir): job.name for job in jobs}
+        for future in as_completed(futures):
+            result = future.result()
+            results_by_name[result.name] = result
+            status = PASS if result.ok else FAIL
+            colour = green if result.ok else red
+            print(
+                colour(
+                    f"{status} {result.name} "
+                    f"({result.elapsed_seconds:.1f}s, log: {result.log_path})"
+                )
+            )
+            if not result.ok:
+                print(_job_log_tail(result.log_path), file=sys.stderr)
+
+    return {job.name: results_by_name[job.name].ok for job in jobs}
+
+
 def restore_with_ignoring_failed_sources(
     project: str,
     label: str,
@@ -263,10 +415,31 @@ def main() -> int:
         type=str,
         help="Run only one suite: dotnet, packages, boundary, analyzer",
     )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=default_parallel_jobs(),
+        help="Top-level parallel job count for default CI runs.",
+    )
     args = parser.parse_args()
 
     results: dict[str, bool] = {}
     all_pass = True
+
+    if args.only is None:
+        results.update(run_ci_jobs(build_default_ci_jobs(args), args.jobs))
+
+        print(f"\n{'=' * 60}")
+        for name, ok in results.items():
+            print(f"  {green(PASS) if ok else red(FAIL)} {name}")
+
+        if all(results.values()):
+            print(f"\n{green('All CI checks passed.')}")
+            return 0
+
+        failed = [n for n, ok in results.items() if not ok]
+        print(f"\n{red('Failed: ' + ', '.join(failed))}")
+        return 1
 
     # --- analyzer build + freshness ---
     if args.only in (None, "analyzer"):
