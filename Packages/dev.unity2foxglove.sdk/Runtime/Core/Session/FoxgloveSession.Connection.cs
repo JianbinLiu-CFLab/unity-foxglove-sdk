@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Core
 {
@@ -94,6 +95,9 @@ namespace Unity.FoxgloveSDK.Core
                 if (msg?.SubscriptionIds != null)
                 {
                     var removed = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
+                    if (removed.Count > 0 && _transport is IClientDataQueueResettableFoxgloveTransport resettable)
+                        resettable.ClearDataQueue(clientId);
+
                     foreach (var (subId, chId) in removed)
                     {
                         var ch = _channels.Get(chId);

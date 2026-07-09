@@ -68,4 +68,13 @@ namespace Unity.FoxgloveSDK.Transport
     {
         void ClearDataQueues();
     }
+
+    /// <summary>
+    /// Optional transport extension for clearing stale queued data frames for a
+    /// single client while preserving other clients and protocol control frames.
+    /// </summary>
+    internal interface IClientDataQueueResettableFoxgloveTransport
+    {
+        void ClearDataQueue(uint clientId);
+    }
 }

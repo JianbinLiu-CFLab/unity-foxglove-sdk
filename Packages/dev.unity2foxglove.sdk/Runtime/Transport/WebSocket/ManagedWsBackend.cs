@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// Pure C# WebSocket server backend using TcpListener + manual WebSocket protocol.
     /// No http.sys dependency; works on all platforms without admin rights.
     /// </summary>
-    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
+    public class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
         private const int StopAcceptLoopWaitMs = 500;
@@ -200,6 +200,13 @@ namespace Unity.FoxgloveSDK.Transport
         public void ClearDataQueues()
         {
             foreach (var (_, conn) in _clients)
+                conn.ClearDataFrames();
+        }
+
+        /// <summary>Drop queued data frames for one connected client while preserving protocol control frames.</summary>
+        public void ClearDataQueue(uint clientId)
+        {
+            if (_clients.TryGetValue(clientId, out var conn))
                 conn.ClearDataFrames();
         }
 
