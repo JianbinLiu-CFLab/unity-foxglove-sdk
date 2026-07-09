@@ -176,7 +176,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRos2BridgeWarningThrottling()
         {
             var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
-            var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var publishing = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
 
             Check(warningState.Contains("LastRos2BridgePublishWarningKey", StringComparison.Ordinal)
                   && warningState.Contains("LastRos2BridgePublishWarningTicks", StringComparison.Ordinal)

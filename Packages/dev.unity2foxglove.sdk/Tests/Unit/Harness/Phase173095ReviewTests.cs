@@ -86,12 +86,29 @@ namespace Unity.FoxgloveSDK.UnitTests
         public void Ros2BridgeFrameHasValidatedInternalPath()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeFrame.cs");
-            var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var manager = TestSources.ManagerPublishingSources();
 
             Assert.Contains("internal static Ros2BridgeFrame CreateValidated", source, StringComparison.Ordinal);
             Assert.Contains("validateSchema: false", source, StringComparison.Ordinal);
             Assert.Contains("if (validateSchema && !FoxgloveRos2MsgSchemaCatalog.TryGet", source, StringComparison.Ordinal);
             Assert.Contains("Ros2BridgeFrame.CreateValidated", manager, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Ros2BridgePublishingLivesInDedicatedPartial()
+        {
+            var bridge = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.Ros2Bridge.cs");
+            var main = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+
+            Assert.Contains("TryPrepareRos2BridgePublish", bridge, StringComparison.Ordinal);
+            Assert.Contains("PublishRos2BridgeCdr", bridge, StringComparison.Ordinal);
+            Assert.Contains("WarnRos2BridgePublishSkipped", bridge, StringComparison.Ordinal);
+            Assert.Contains("Ros2BridgeFrame.CreateValidated", bridge, StringComparison.Ordinal);
+            Assert.Contains("TryPrepareRos2Publish", main, StringComparison.Ordinal);
+            Assert.Contains("TryGetOrRegisterRos2MsgSchemaChannel", main, StringComparison.Ordinal);
+            Assert.Contains("PublishRos2", main, StringComparison.Ordinal);
+            Assert.Contains("PublishRos2Marker", main, StringComparison.Ordinal);
+            Assert.DoesNotContain("TryPrepareRos2Publish", bridge, StringComparison.Ordinal);
         }
 
         [Fact]

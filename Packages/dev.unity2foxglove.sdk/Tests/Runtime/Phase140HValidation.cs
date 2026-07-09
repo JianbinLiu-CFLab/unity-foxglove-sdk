@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void PublishBoundaryRecordsJsonProtobufAndRos2()
         {
-            var publishing = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.cs");
+            var publishing = PhaseValidationSourceHelpers.ReadFoxgloveManagerPublishingSources();
             Check(MethodContains(publishing, "public void PublishJson", "_runtime.PublishJson(channelId, message, logTimeNs);")
                   && MethodContains(publishing, "public void PublishJson", "RecordPublishCadence(topic, JsonEncoding);"),
                 "140H-2A: JSON publish path records cadence after successful publish");
