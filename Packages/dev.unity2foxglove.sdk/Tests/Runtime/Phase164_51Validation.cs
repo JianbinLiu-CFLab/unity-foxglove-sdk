@@ -12,7 +12,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifyDataLoaderBuildsChannelIndexesInOnePass();
-            VerifyDataLoaderReusesInternalEmptyFilters();
+            VerifyDataLoaderUsesNullFilterSentinels();
             VerifyDecodedIteratorUsesCachedRegistry();
             VerifyR2fuRuntimeSelectionCachesPackageScans();
             VerifyRegistry();
@@ -41,18 +41,19 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-51A-3: combined builder populates all channel indexes in one loop");
         }
 
-        private static void VerifyDataLoaderReusesInternalEmptyFilters()
+        private static void VerifyDataLoaderUsesNullFilterSentinels()
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            var backfill = SourceMethod(source, "public IReadOnlyList<McapDataLoaderMessage> GetBackfill(");
             var copyUShorts = SourceMethod(source, "private static List<ushort> CopyUShorts(List<ushort> source)");
             var copyStrings = SourceMethod(source, "private static List<string> CopyStrings(List<string> source)");
 
-            Check(source.Contains("private static readonly List<ushort> EmptyChannelIds = new List<ushort>(0);", StringComparison.Ordinal)
-                  && source.Contains("private static readonly List<string> EmptyTopics = new List<string>(0);", StringComparison.Ordinal),
-                "164-51B-1: DataLoader owns reusable empty filter lists");
-            Check(copyUShorts.Contains("source == null || source.Count == 0 ? EmptyChannelIds : new List<ushort>(source)", StringComparison.Ordinal)
-                  && copyStrings.Contains("source == null || source.Count == 0 ? EmptyTopics : new List<string>(source)", StringComparison.Ordinal),
-                "164-51B-2: empty DataLoader filters avoid per-query empty List allocations");
+            Check(backfill.Contains("EndTimeNs = query?.TimeNs ?? ulong.MaxValue", StringComparison.Ordinal)
+                  && !backfill.Contains("query = query ?? new McapDataLoaderBackfillQuery", StringComparison.Ordinal),
+                "164-51B-1: DataLoader backfill keeps null query as the no-filter sentinel");
+            Check(copyUShorts.Contains("source == null || source.Count == 0 ? null : new List<ushort>(source)", StringComparison.Ordinal)
+                  && copyStrings.Contains("source == null || source.Count == 0 ? null : new List<string>(source)", StringComparison.Ordinal),
+                "164-51B-2: empty DataLoader filters use null sentinels without empty List allocations");
         }
 
         private static void VerifyDecodedIteratorUsesCachedRegistry()

@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.IO
 {
@@ -17,7 +16,7 @@ namespace Unity.FoxgloveSDK.IO
     /// Local file-backed DataLoader-shaped facade for summary, query, and
     /// backfill access over one indexed MCAP file.
     /// </summary>
-    public sealed class McapDataLoader : IDisposable
+    public sealed partial class McapDataLoader : IDisposable
     {
         private readonly McapIndexedReader _reader;
         private readonly McapSequentialReadLimits _sequentialReadLimits;
@@ -91,12 +90,12 @@ namespace Unity.FoxgloveSDK.IO
             _schemaMap = BuildSchemaMap(_reader.Schemas);
             BuildChannelAndQueryMaps(_reader.Channels, out _channelMap, out _topicChannelMap, out _knownChannelIds);
             _initialization = new McapDataLoaderInitialization();
-            AddSchemas(_initialization, _reader.Schemas);
-            AddChannels(_initialization, _reader.Channels, _reader.Summary?.Statistics);
-            AddTimeRange(_initialization, _reader.Summary);
-            AddMetadataIndexes(_initialization, _reader.MetadataIndexes);
-            AddAttachmentIndexes(_initialization, _reader.AttachmentIndexes);
-            AddSummaryCounts(_initialization, _reader.Summary?.Statistics);
+            McapDataLoaderInitializationBuilder.AddSchemas(_initialization, _reader.Schemas);
+            McapDataLoaderInitializationBuilder.AddChannels(_initialization, _reader.Channels, _reader.Summary?.Statistics);
+            McapDataLoaderInitializationBuilder.AddTimeRange(_initialization, _reader.Summary);
+            McapDataLoaderInitializationBuilder.AddMetadataIndexes(_initialization, _reader.MetadataIndexes);
+            McapDataLoaderInitializationBuilder.AddAttachmentIndexes(_initialization, _reader.AttachmentIndexes);
+            McapDataLoaderInitializationBuilder.AddSummaryCounts(_initialization, _reader.Summary?.Statistics);
             AddSequentialFallbackProblems(_initialization);
             AddSchemaReferenceProblems(_initialization);
             AddFoxRunSchemaMetadataProblems(_initialization);
@@ -334,297 +333,6 @@ namespace Unity.FoxgloveSDK.IO
             }
 
             return false;
-        }
-
-        private static void AddSchemas(
-            McapDataLoaderInitialization initialization,
-            IReadOnlyList<McapSchema> schemas)
-        {
-            if (schemas == null)
-                return;
-
-            for (var i = 0; i < schemas.Count; i++)
-            {
-                var schema = schemas[i];
-                if (schema == null)
-                    continue;
-
-                initialization.Schemas.Add(new McapDataLoaderSchema
-                {
-                    SchemaId = schema.Id,
-                    Name = schema.Name ?? string.Empty,
-                    Encoding = schema.Encoding ?? string.Empty,
-                    Data = schema.Data ?? Array.Empty<byte>()
-                });
-            }
-        }
-
-        private static void AddChannels(
-            McapDataLoaderInitialization initialization,
-            IReadOnlyList<McapChannel> channels,
-            McapStatistics statistics)
-        {
-            if (channels == null)
-                return;
-
-            for (var i = 0; i < channels.Count; i++)
-            {
-                var channel = channels[i];
-                if (channel == null)
-                    continue;
-
-                var dto = new McapDataLoaderChannel
-                {
-                    ChannelId = channel.Id,
-                    SchemaId = channel.SchemaId,
-                    Topic = channel.Topic ?? string.Empty,
-                    MessageEncoding = channel.MessageEncoding ?? string.Empty
-                };
-
-                if (statistics?.ChannelMessageCounts != null &&
-                    statistics.ChannelMessageCounts.TryGetValue(channel.Id, out var count))
-                {
-                    dto.HasMessageCount = true;
-                    dto.MessageCount = count;
-                }
-
-                initialization.Channels.Add(dto);
-            }
-        }
-
-        private static void AddTimeRange(
-            McapDataLoaderInitialization initialization,
-            McapFileSummary summary)
-        {
-            if (summary?.Statistics != null && summary.Statistics.MessageCount > 0)
-            {
-                initialization.TimeRange.HasRange = true;
-                initialization.TimeRange.StartTimeNs = summary.Statistics.MessageStartTime;
-                initialization.TimeRange.EndTimeNs = summary.Statistics.MessageEndTime;
-                return;
-            }
-
-            if (summary?.ChunkIndexes == null || summary.ChunkIndexes.Count == 0)
-                return;
-
-            var hasRange = false;
-            var start = ulong.MaxValue;
-            var end = 0UL;
-            for (var i = 0; i < summary.ChunkIndexes.Count; i++)
-            {
-                var chunk = summary.ChunkIndexes[i];
-                if (chunk == null)
-                    continue;
-
-                hasRange = true;
-                if (chunk.MessageStartTime < start)
-                    start = chunk.MessageStartTime;
-                if (chunk.MessageEndTime > end)
-                    end = chunk.MessageEndTime;
-            }
-
-            if (!hasRange)
-                return;
-
-            initialization.TimeRange.HasRange = true;
-            initialization.TimeRange.StartTimeNs = start;
-            initialization.TimeRange.EndTimeNs = end;
-        }
-
-        private static void AddMetadataIndexes(
-            McapDataLoaderInitialization initialization,
-            IReadOnlyList<McapMetadataIndex> metadataIndexes)
-        {
-            if (metadataIndexes == null)
-                return;
-
-            for (var i = 0; i < metadataIndexes.Count; i++)
-            {
-                var index = metadataIndexes[i];
-                if (index == null)
-                    continue;
-
-                initialization.MetadataIndexes.Add(new McapDataLoaderMetadataIndex
-                {
-                    Name = index.Name ?? string.Empty,
-                    Offset = index.Offset,
-                    Length = index.Length
-                });
-            }
-        }
-
-        private static void AddAttachmentIndexes(
-            McapDataLoaderInitialization initialization,
-            IReadOnlyList<McapAttachmentIndex> attachmentIndexes)
-        {
-            if (attachmentIndexes == null)
-                return;
-
-            for (var i = 0; i < attachmentIndexes.Count; i++)
-            {
-                var index = attachmentIndexes[i];
-                if (index == null)
-                    continue;
-
-                initialization.AttachmentIndexes.Add(new McapDataLoaderAttachmentIndex
-                {
-                    Name = index.Name ?? string.Empty,
-                    MediaType = index.MediaType ?? string.Empty,
-                    Offset = index.Offset,
-                    Length = index.Length,
-                    LogTime = index.LogTime,
-                    CreateTime = index.CreateTime,
-                    DataSize = index.DataSize
-                });
-            }
-        }
-
-        private static void AddSummaryCounts(
-            McapDataLoaderInitialization initialization,
-            McapStatistics statistics)
-        {
-            if (statistics == null)
-                return;
-
-            initialization.HasTotalMessageCount = true;
-            initialization.TotalMessageCount = statistics.MessageCount;
-        }
-
-        private void AddSequentialFallbackProblems(McapDataLoaderInitialization initialization)
-        {
-            var chunkIndexes = _reader.Summary?.ChunkIndexes;
-            if (chunkIndexes != null && chunkIndexes.Count > 0)
-                return;
-
-            initialization.Problems.Add(new McapDataLoaderProblem(
-                McapDataLoaderProblemSeverity.Warning,
-                "MCAP file has no chunk indexes; queries will use bounded sequential fallback.",
-                "UnindexedSequentialFallback",
-                "Large unindexed files may require adding MCAP chunk indexes or increasing explicit fallback limits."));
-
-            if (_sourceLengthBytes >= 0 &&
-                _sequentialReadLimits.MaxPayloadBytes > 0 &&
-                _sourceLengthBytes > _sequentialReadLimits.MaxPayloadBytes)
-            {
-                initialization.Problems.Add(new McapDataLoaderProblem(
-                    McapDataLoaderProblemSeverity.Warning,
-                    "MCAP file size exceeds the sequential fallback payload limit.",
-                    "UnindexedFileExceedsSequentialPayloadLimit",
-                    "Queries may fail with MaxPayloadBytes unless the file is indexed or the limit is explicitly raised."));
-            }
-
-            var messageCount = _reader.Summary?.Statistics?.MessageCount ?? 0UL;
-            if (_sequentialReadLimits.MaxMessages > 0 &&
-                messageCount > (ulong)_sequentialReadLimits.MaxMessages)
-            {
-                initialization.Problems.Add(new McapDataLoaderProblem(
-                    McapDataLoaderProblemSeverity.Warning,
-                    "MCAP message count exceeds the sequential fallback message limit.",
-                    "UnindexedFileExceedsSequentialMessageLimit",
-                    "Queries may fail with MaxMessages unless the file is indexed or the limit is explicitly raised."));
-            }
-        }
-
-        private void AddSchemaReferenceProblems(McapDataLoaderInitialization initialization)
-        {
-            for (var i = 0; i < initialization.Channels.Count; i++)
-            {
-                var channel = initialization.Channels[i];
-                if (channel.SchemaId != 0 && !_schemaMap.ContainsKey(channel.SchemaId))
-                {
-                    initialization.Problems.Add(new McapDataLoaderProblem(
-                        McapDataLoaderProblemSeverity.Warning,
-                        "MCAP channel references a schema ID that is not present in the summary.",
-                        "UnknownSchemaId",
-                        "The raw message payload is still available; typed decoding may not be possible."));
-                }
-            }
-        }
-
-        private void AddFoxRunSchemaMetadataProblems(McapDataLoaderInitialization initialization)
-        {
-            var metadataIndex = FindMetadataIndex(FoxRunSchemaMcapMetadata.MetadataName);
-            if (metadataIndex == null)
-            {
-                initialization.Problems.Add(new McapDataLoaderProblem(
-                    McapDataLoaderProblemSeverity.Warning,
-                    "Recorded MCAP does not contain FoxRun schema metadata; local raw loading will continue.",
-                    "FoxRunSchemaMetadataMissing"));
-                return;
-            }
-
-            var metadata = _reader.ReadMetadata(metadataIndex);
-            if (metadata?.Metadata == null || !metadata.Metadata.TryGetValue("value", out var value))
-            {
-                initialization.Problems.Add(new McapDataLoaderProblem(
-                    McapDataLoaderProblemSeverity.Warning,
-                    "Recorded FoxRun schema metadata is missing its value entry; local raw loading will continue.",
-                    "FoxRunSchemaMetadataMalformed"));
-                return;
-            }
-
-            var result = FoxRunSchemaMcapMetadata.EvaluateRecordedJson(value, FoxRunSchemaInfoRegistry.Current);
-            initialization.Problems.Add(ToProblem(result));
-        }
-
-        private McapMetadataIndex FindMetadataIndex(string name)
-        {
-            var indexes = _reader.MetadataIndexes;
-            if (indexes == null || string.IsNullOrEmpty(name))
-                return null;
-
-            for (var i = 0; i < indexes.Count; i++)
-            {
-                var index = indexes[i];
-                if (index != null && string.Equals(index.Name, name, StringComparison.Ordinal))
-                    return index;
-            }
-
-            return null;
-        }
-
-        private static McapDataLoaderProblem ToProblem(FoxRunReplaySchemaGuardResult result)
-        {
-            if (result == null)
-                return new McapDataLoaderProblem(
-                    McapDataLoaderProblemSeverity.Warning,
-                    "Recorded MCAP does not contain usable FoxRun schema metadata; local raw loading will continue.",
-                    "FoxRunSchemaMetadataMissing");
-
-            switch (result.State)
-            {
-                case FoxRunReplaySchemaGuardState.Match:
-                    return new McapDataLoaderProblem(
-                        McapDataLoaderProblemSeverity.Info,
-                        "Recorded FoxRun schema metadata matches the current runtime manifest hash.",
-                        "FoxRunSchemaMetadataMatch");
-                case FoxRunReplaySchemaGuardState.MissingRecorded:
-                    return new McapDataLoaderProblem(
-                        McapDataLoaderProblemSeverity.Warning,
-                        "Recorded MCAP does not contain FoxRun schema metadata; local raw loading will continue.",
-                        "FoxRunSchemaMetadataMissing");
-                case FoxRunReplaySchemaGuardState.MissingCurrent:
-                    return new McapDataLoaderProblem(
-                        McapDataLoaderProblemSeverity.Warning,
-                        "Current runtime does not expose generated FoxRun schema info; local raw loading will continue.",
-                        "FoxRunSchemaMetadataMissingCurrent");
-                case FoxRunReplaySchemaGuardState.MalformedRecorded:
-                    return new McapDataLoaderProblem(
-                        McapDataLoaderProblemSeverity.Warning,
-                        "Recorded FoxRun schema metadata is malformed; local raw loading will continue.",
-                        "FoxRunSchemaMetadataMalformed");
-                case FoxRunReplaySchemaGuardState.Mismatch:
-                    return new McapDataLoaderProblem(
-                        McapDataLoaderProblemSeverity.Error,
-                        "Recorded FoxRun schema metadata does not match the current runtime manifest; local raw loading will continue.",
-                        "FoxRunSchemaMetadataMismatch",
-                        "Replay may still be blocked by Phase 114 strict schema identity policy.");
-                default:
-                    return new McapDataLoaderProblem(
-                        McapDataLoaderProblemSeverity.Warning,
-                        result.Message ?? string.Empty,
-                        "FoxRunSchemaMetadataUnknown");
-            }
         }
 
         private McapDataLoaderMessage ToDataLoaderMessage(McapMessage message)

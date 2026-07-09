@@ -251,7 +251,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(project.Contains("Phase120BValidation.cs", StringComparison.Ordinal),
                 "120B-H2: runtime test project compiles Phase120BValidation");
 
-            var dataLoader = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
+            var dataLoader = PhaseValidationSourceHelpers.ReadMcapDataLoaderSources();
             Check(dataLoader.Contains("UnindexedSequentialFallback", StringComparison.Ordinal)
                   && dataLoader.Contains("ReadLatestBefore", StringComparison.Ordinal),
                 "120B-H3: public DataLoader source exposes fallback diagnostics and latest-at backfill");
