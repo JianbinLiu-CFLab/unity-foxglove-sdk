@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly List<IFoxgloveServiceSource> _pendingDrainBuffer = new();
         private readonly List<IFoxgloveServiceSource> _staleSources = new();
+        private readonly List<IFoxgloveServiceSource> _temporarilyUnavailableSources = new();
         private readonly Dictionary<IFoxgloveServiceSource, List<uint>> _serviceIdsBySource = new();
         private readonly Dictionary<IFoxgloveServiceSource, List<FoxgloveGeneratedServiceDescriptor>> _descriptorsBySource = new();
         private readonly Dictionary<string, IFoxgloveServiceSource> _ownersByServiceName = new();
@@ -147,8 +148,43 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             foreach (var source in _staleSources)
+            {
                 UnregisterSourceNow(source);
+                TrackTemporarilyUnavailableSource(source);
+            }
             _staleSources.Clear();
+        }
+
+        private void TrackTemporarilyUnavailableSource(IFoxgloveServiceSource source)
+        {
+            if (source is MonoBehaviour behaviour
+                && behaviour != null
+                && !_temporarilyUnavailableSources.Contains(source))
+                _temporarilyUnavailableSources.Add(source);
+        }
+
+        private void ReregisterReenabledSources()
+        {
+            for (var i = _temporarilyUnavailableSources.Count - 1; i >= 0; i--)
+            {
+                var source = _temporarilyUnavailableSources[i];
+                if (source is not MonoBehaviour behaviour || behaviour == null)
+                {
+                    _temporarilyUnavailableSources.RemoveAt(i);
+                    continue;
+                }
+
+                if (!behaviour.isActiveAndEnabled)
+                    continue;
+
+                _temporarilyUnavailableSources.RemoveAt(i);
+                RegisterSourceNow(source);
+            }
+        }
+
+        private void RemoveTemporarilyUnavailableSource(IFoxgloveServiceSource source)
+        {
+            _temporarilyUnavailableSources.Remove(source);
         }
 
         private void UnregisterSourceNow(IFoxgloveServiceSource source)

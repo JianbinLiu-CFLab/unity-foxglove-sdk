@@ -59,7 +59,11 @@ namespace Unity.FoxgloveSDK.Components
                 PendingRegistrations.Remove(source);
             }
 
-            _instance?.UnregisterSourceNow(source);
+            if (_instance == null)
+                return;
+
+            _instance.RemoveTemporarilyUnavailableSource(source);
+            _instance.UnregisterSourceNow(source);
         }
 
         public static bool TryGetActive(out FoxgloveServiceHub hub)
@@ -136,6 +140,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _managerWasRunning = true;
+            ReregisterReenabledSources();
 
             if (_enableFallbackSceneScan)
             {
