@@ -82,27 +82,41 @@ namespace Unity.FoxgloveSDK.Components
 
                 foreach (var contract in type.Contracts)
                 {
-                    if (contract == null
-                        || !string.Equals(contract.Encoding, "json", StringComparison.Ordinal)
-                        || string.IsNullOrWhiteSpace(contract.SchemaName)
-                        || !IsGeneratedAggregateContract(contract))
+                    if (contract == null || string.IsNullOrWhiteSpace(contract.SchemaName))
                     {
                         continue;
                     }
 
                     try
                     {
-                        registry.Register(new SchemaEntry
+                        if (string.Equals(contract.Encoding, "json", StringComparison.Ordinal))
                         {
-                            Name = contract.SchemaName,
-                            Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
-                            Content = GetOrBuildGeneratedSchema(contract)
-                        });
+                            if (!IsGeneratedAggregateContract(contract))
+                                continue;
+
+                            registry.Register(new SchemaEntry
+                            {
+                                Name = contract.SchemaName,
+                                Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
+                                Content = GetOrBuildGeneratedSchema(contract)
+                            });
+                        }
+                        else if (string.Equals(contract.Encoding, "protobuf", StringComparison.Ordinal)
+                                 && contract.ProtobufDescriptorSet.Length > 0)
+                        {
+                            registry.Register(new SchemaEntry
+                            {
+                                Name = contract.SchemaName,
+                                Encoding = "protobuf",
+                                Content = Convert.ToBase64String(contract.ProtobufDescriptorSet),
+                                RawContent = contract.ProtobufDescriptorSet
+                            });
+                        }
                     }
                     catch (Exception ex) when (IsRecoverableSchemaException(ex))
                     {
                         var message =
-                            "Failed to register generated FoxRun JSON schema for topic '"
+                            "Failed to register generated FoxRun " + (contract.Encoding ?? string.Empty) + " schema for topic '"
                             + (contract.Topic ?? string.Empty)
                             + "' and schema '"
                             + (contract.SchemaName ?? string.Empty)

@@ -296,7 +296,105 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "array");
             sb.Append(field.Array ? "true" : "false");
+            if (field.ProtobufFieldNumber > 0)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "protobufFieldNumber");
+                sb.Append(field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
+            }
+            if (field.ProtobufTypeShape != null)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "protobufShape");
+                WriteProtobufTypeShape(sb, field.ProtobufTypeShape);
+            }
             sb.Append('}');
+        }
+
+        private static void WriteProtobufTypeShape(StringBuilder sb, FoxRunProtobufTypeShape shape)
+        {
+            sb.Append('{');
+            AppendPropertyName(sb, "kind");
+            AppendString(sb, shape.Kind.ToString());
+            sb.Append(',');
+            AppendPropertyName(sb, "typeName");
+            AppendString(sb, shape.TypeName);
+            if (!string.IsNullOrEmpty(shape.CanonicalType))
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "canonicalType");
+                AppendString(sb, shape.CanonicalType);
+            }
+            if (shape.Fields.Count > 0)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "fields");
+                WriteProtobufTypeFields(sb, shape.Fields);
+            }
+            if (shape.EnumValues.Count > 0)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "enumValues");
+                WriteProtobufEnumValues(sb, shape.EnumValues);
+            }
+            sb.Append('}');
+        }
+
+        private static void WriteProtobufTypeFields(StringBuilder sb, IReadOnlyList<FoxRunProtobufTypeField> fields)
+        {
+            var ordered = new List<FoxRunProtobufTypeField>(fields ?? Array.Empty<FoxRunProtobufTypeField>());
+            ordered.Sort((left, right) => string.Compare(left.MemberName, right.MemberName, StringComparison.Ordinal));
+            sb.Append('[');
+            for (var index = 0; index < ordered.Count; index++)
+            {
+                if (index > 0)
+                    sb.Append(',');
+                var field = ordered[index];
+                sb.Append('{');
+                AppendPropertyName(sb, "jsonName");
+                AppendString(sb, field.JsonName);
+                sb.Append(',');
+                AppendPropertyName(sb, "memberName");
+                AppendString(sb, field.MemberName);
+                sb.Append(',');
+                AppendPropertyName(sb, "repeated");
+                sb.Append(field.Repeated ? "true" : "false");
+                if (field.ProtobufFieldNumber > 0)
+                {
+                    sb.Append(',');
+                    AppendPropertyName(sb, "protobufFieldNumber");
+                    sb.Append(field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
+                }
+                sb.Append(',');
+                AppendPropertyName(sb, "shape");
+                WriteProtobufTypeShape(sb, field.TypeShape);
+                sb.Append('}');
+            }
+            sb.Append(']');
+        }
+
+        private static void WriteProtobufEnumValues(StringBuilder sb, IReadOnlyList<FoxRunProtobufEnumValue> values)
+        {
+            var ordered = new List<FoxRunProtobufEnumValue>(values ?? Array.Empty<FoxRunProtobufEnumValue>());
+            ordered.Sort((left, right) =>
+            {
+                var byNumber = left.Number.CompareTo(right.Number);
+                return byNumber != 0 ? byNumber : string.Compare(left.Name, right.Name, StringComparison.Ordinal);
+            });
+            sb.Append('[');
+            for (var index = 0; index < ordered.Count; index++)
+            {
+                if (index > 0)
+                    sb.Append(',');
+                sb.Append('{');
+                AppendPropertyName(sb, "name");
+                AppendString(sb, ordered[index].Name);
+                sb.Append(',');
+                AppendPropertyName(sb, "number");
+                sb.Append(ordered[index].Number.ToString(CultureInfo.InvariantCulture));
+                sb.Append('}');
+            }
+            sb.Append(']');
         }
 
         private static void WritePolicy(StringBuilder sb, FoxRunManifestPolicy policy)

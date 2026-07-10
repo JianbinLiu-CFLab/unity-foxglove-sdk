@@ -26,6 +26,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FoxRunWirePolicyDefaultsToInheritAcrossRegularAndAggregateDeclarations()
+        {
+            var assembly = typeof(FoxRunAttribute).Assembly;
+            var encodingType = assembly.GetType("Unity.FoxgloveSDK.Components.FoxRunWireEncoding");
+
+            Assert.NotNull(encodingType);
+            Assert.True(encodingType.IsEnum);
+            var inherit = Enum.Parse(encodingType, "Inherit");
+
+            var regularEncoding = typeof(FoxRunAttribute).GetProperty("Encoding");
+            var regularFieldNumber = typeof(FoxRunAttribute).GetProperty("ProtobufFieldNumber");
+            var aggregateEncoding = typeof(FoxRunMessageAttribute).GetProperty("Encoding");
+            var aggregateFieldNumber = typeof(FoxRunFieldAttribute).GetProperty("ProtobufFieldNumber");
+
+            Assert.NotNull(regularEncoding);
+            Assert.NotNull(regularFieldNumber);
+            Assert.NotNull(aggregateEncoding);
+            Assert.NotNull(aggregateFieldNumber);
+            Assert.Equal(inherit, regularEncoding.GetValue(new FoxRunAttribute("/phase175/regular")));
+            Assert.Equal(0, regularFieldNumber.GetValue(new FoxRunAttribute("/phase175/regular")));
+            Assert.Equal(inherit, aggregateEncoding.GetValue(new FoxRunMessageAttribute("/phase175/aggregate")));
+            Assert.Equal(0, aggregateFieldNumber.GetValue(new FoxRunFieldAttribute()));
+        }
+
+        [Fact]
         public void SubscribeOnlyMembersStayOutOfGeneratedPublishDispatch()
         {
             var type = new FoxRunGenerationType(
@@ -252,6 +277,123 @@ namespace Demo
         }
 
         [Fact]
+        public void RoslynGeneratorPreservesDeclaredWireEncodingAndFieldNumberInDescriptor()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class WireState
+    {
+        [FoxRun(""/phase175/wire_state"", Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 17)]
+        private int _count;
+    }
+}");
+            var descriptor = result.Results
+                .Single()
+                .GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+
+            Assert.Contains("\\\"encoding\\\":\\\"protobuf\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"protobufFieldNumber\\\":17", descriptor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsInvalidDeclaredWireEncoding()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class WireState
+    {
+        [FoxRun(""/phase175/wire_state"", Encoding = (FoxRunWireEncoding)99)]
+        private int _count;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN030");
+        }
+
+        [Fact]
+        public void RoslynGeneratorPreservesAggregateInheritedWirePolicyAndFieldNumber()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase175/aggregate"")]
+    public partial class AggregateState
+    {
+        [FoxRunField(""count"", ProtobufFieldNumber = 23)]
+        private int _count;
+    }
+}");
+            var descriptor = result.Results
+                .Single()
+                .GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+
+            Assert.Contains("\\\"encoding\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"protobufFieldNumber\\\":23", descriptor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorAcceptsNestedDtoForProtobufContract()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public sealed class VehicleTelemetry
+    {
+        public string Label;
+        public Pose Pose;
+    }
+
+    public sealed class Pose
+    {
+        public float X;
+        public float Y;
+    }
+
+    public partial class WireState
+    {
+        [FoxRun(""/phase175/dto"", Encoding = FoxRunWireEncoding.Protobuf)]
+        private VehicleTelemetry _telemetry;
+    }
+}");
+
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN006");
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+
+        [Fact]
+        public void ReflectionLowererPreservesDeclaredWirePolicyAndFieldNumber()
+        {
+            var model = FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo", "WireState", "_count", "field", "System.Int32", "int",
+                    true, false, "", "/phase175/wire_state", "", 10f, 0, 0f, 0f, 0, "",
+                    encoding: (int)FoxRunWireEncoding.Protobuf,
+                    protobufFieldNumber: 17)
+            });
+            var member = model.Types.Single().Members.Single();
+
+            Assert.Equal("protobuf", member.Encoding);
+            Assert.Equal(17, member.ProtobufFieldNumber);
+        }
+
+        [Fact]
         public void DescriptorJsonIncludesExplicitFoxRunMode()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
@@ -353,6 +495,37 @@ namespace Demo
             Assert.NotEqual(
                 publishOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
                 publishAndSubscribe.Sections.FoxRun.Types[0].Contracts[0].ContractHash);
+        }
+
+        [Fact]
+        public void ManifestExpandsInheritedWirePolicyIntoJsonAndProtobufContracts()
+        {
+            var manifest = FoxRunManifestBuilder.Build(new[]
+            {
+                new FoxRunManifestMember(
+                    "Demo",
+                    "WireState",
+                    "_count",
+                    "field",
+                    "System.Int32",
+                    true,
+                    false,
+                    "",
+                    "/phase175/wire_state",
+                    10f,
+                    "Demo.WireState",
+                    0,
+                    0f,
+                    0f,
+                    encoding: (int)FoxRunWireEncoding.Inherit,
+                    protobufFieldNumber: 17)
+            });
+
+            var contracts = manifest.Sections.FoxRun.Types.Single().Contracts;
+
+            Assert.Equal(new[] { "json", "protobuf" }, contracts.Select(contract => contract.Encoding).OrderBy(encoding => encoding));
+            Assert.Equal(0, contracts.Single(contract => contract.Encoding == "json").Fields.Single().ProtobufFieldNumber);
+            Assert.Equal(17, contracts.Single(contract => contract.Encoding == "protobuf").Fields.Single().ProtobufFieldNumber);
         }
 
         [Fact]

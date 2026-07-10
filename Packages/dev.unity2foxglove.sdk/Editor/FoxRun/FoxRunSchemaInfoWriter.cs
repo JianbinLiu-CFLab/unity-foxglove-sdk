@@ -195,7 +195,8 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ChangeEpsilon) + ",");
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ForceIntervalSeconds) + ",");
                 WriteFieldsArray(sb, contract.Fields, indentLevel + 2, trailingComma: true);
-                AppendIndentedStringLiteralLine(sb, inner, contract.FlowMode, "");
+                AppendIndentedStringLiteralLine(sb, inner, contract.FlowMode, ",");
+                AppendProtobufDescriptorSet(sb, inner, contract);
                 sb.AppendLine(inner + "),");
             }
             sb.AppendLine(indent + "}");
@@ -220,9 +221,48 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, field.Type, ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Nullable) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(field.Array) + ",");
-                sb.AppendLine(inner + "    " + BoolLiteral(field.Aggregate) + "),");
+                sb.AppendLine(inner + "    " + BoolLiteral(field.Aggregate) + ",");
+                sb.AppendLine(inner + "    " + field.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture) + "),");
             }
             sb.AppendLine(indent + (trailingComma ? "}," : "}"));
+        }
+
+        private static void AppendProtobufDescriptorSet(
+            StringBuilder sb,
+            string indent,
+            FoxRunManifestContract contract)
+        {
+            if (!string.Equals(contract.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))
+            {
+                sb.AppendLine(indent + "    null");
+                return;
+            }
+
+            var descriptor = FoxRunProtobufContractBuilder.Build(ToProtobufContractInput(contract)).FileDescriptorSet;
+            sb.Append(indent + "    global::System.Convert.FromBase64String(");
+            AppendStringLiteral(sb, Convert.ToBase64String(descriptor));
+            sb.AppendLine(")");
+        }
+
+        private static FoxRunProtobufContractInput ToProtobufContractInput(FoxRunManifestContract contract)
+        {
+            var fields = new List<FoxRunProtobufFieldInput>();
+            foreach (var field in contract.Fields)
+            {
+                fields.Add(new FoxRunProtobufFieldInput(
+                    field.JsonName,
+                    field.MemberName,
+                    field.Type,
+                    field.Array,
+                    field.ProtobufFieldNumber,
+                    field.ProtobufTypeShape));
+            }
+
+            return new FoxRunProtobufContractInput(
+                contract.DeclaringType,
+                contract.Topic,
+                contract.SchemaName,
+                fields);
         }
 
         private static bool EnsureMetaFile(string metaPath)

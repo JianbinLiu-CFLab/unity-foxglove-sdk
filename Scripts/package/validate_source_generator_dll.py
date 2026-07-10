@@ -19,10 +19,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECT = REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj"
-CHECKED_IN_DLL = (
-    REPO_ROOT
-    / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll"
-)
+ANALYZER_DIRECTORY = REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs"
+CHECKED_IN_ARTIFACTS = {
+    "FoxgloveLogSourceGenerator.dll": ANALYZER_DIRECTORY / "FoxgloveLogSourceGenerator.dll",
+    "Google.Protobuf.dll": ANALYZER_DIRECTORY / "Google.Protobuf.dll",
+}
 BUILD_OUTPUT_DIR = REPO_ROOT / "build/SourceGenerators/Release/netstandard2.0"
 
 
@@ -59,7 +60,7 @@ def run_build(build_output_dir: Path = BUILD_OUTPUT_DIR, msbuild_props: list[str
 
 
 def validate_or_update(update: bool, build_output_dir: Path, msbuild_props: list[str]) -> int:
-    """Validate or update the checked-in analyzer DLL."""
+    """Validate or update the checked-in analyzer assembly and its dependencies."""
     if not PROJECT.exists():
         print(f"[FAIL] Source generator project missing: {PROJECT}", file=sys.stderr)
         return 1
@@ -67,32 +68,41 @@ def validate_or_update(update: bool, build_output_dir: Path, msbuild_props: list
     if not run_build(build_output_dir, msbuild_props):
         return 1
 
-    built_dll = build_output_dir / "FoxgloveLogSourceGenerator.dll"
-    if not built_dll.exists():
-        print(f"[FAIL] Release build did not produce {built_dll}", file=sys.stderr)
-        return 1
+    built_artifacts = {}
+    for name in CHECKED_IN_ARTIFACTS:
+        built = build_output_dir / name
+        if not built.exists():
+            print(f"[FAIL] Release build did not produce {built}", file=sys.stderr)
+            return 1
+        built_artifacts[name] = built
 
     if update:
-        shutil.copy2(built_dll, CHECKED_IN_DLL)
-        print(f"[PASS] Updated checked-in source generator DLL: {CHECKED_IN_DLL.relative_to(REPO_ROOT)}")
-        print(f"       sha256={sha256(CHECKED_IN_DLL)}")
+        for name, checked_in in CHECKED_IN_ARTIFACTS.items():
+            shutil.copy2(built_artifacts[name], checked_in)
+            print(f"[PASS] Updated checked-in source generator artifact: {checked_in.relative_to(REPO_ROOT)}")
+            print(f"       sha256={sha256(checked_in)}")
         return 0
 
-    if not CHECKED_IN_DLL.exists():
-        print(f"[FAIL] Checked-in analyzer DLL missing: {CHECKED_IN_DLL.relative_to(REPO_ROOT)}", file=sys.stderr)
-        return 1
+    for name, checked_in in CHECKED_IN_ARTIFACTS.items():
+        if not checked_in.exists():
+            print(f"[FAIL] Checked-in analyzer artifact missing: {checked_in.relative_to(REPO_ROOT)}", file=sys.stderr)
+            return 1
 
-    built_hash = sha256(built_dll)
-    checked_hash = sha256(CHECKED_IN_DLL)
-    if built_hash != checked_hash:
-        print("[FAIL] Checked-in source generator DLL is stale.", file=sys.stderr)
-        print(f"       built:   {built_dll.relative_to(REPO_ROOT)} sha256={built_hash}", file=sys.stderr)
-        print(f"       checked: {CHECKED_IN_DLL.relative_to(REPO_ROOT)} sha256={checked_hash}", file=sys.stderr)
-        print("       Run: python Scripts/package/validate_source_generator_dll.py --update", file=sys.stderr)
-        return 1
+        built_hash = sha256(built_artifacts[name])
+        checked_hash = sha256(checked_in)
+        if built_hash != checked_hash:
+            print(f"[FAIL] Checked-in source generator artifact is stale: {name}", file=sys.stderr)
+            print(
+                f"       built:   {built_artifacts[name].relative_to(REPO_ROOT)} sha256={built_hash}",
+                file=sys.stderr,
+            )
+            print(f"       checked: {checked_in.relative_to(REPO_ROOT)} sha256={checked_hash}", file=sys.stderr)
+            print("       Run: python Scripts/package/validate_source_generator_dll.py --update", file=sys.stderr)
+            return 1
 
-    print("[PASS] Checked-in source generator DLL matches a fresh Release build.")
-    print(f"       sha256={checked_hash}")
+    print("[PASS] Checked-in source generator artifacts match a fresh Release build.")
+    for checked_in in CHECKED_IN_ARTIFACTS.values():
+        print(f"       {checked_in.name}: sha256={sha256(checked_in)}")
     return 0
 
 

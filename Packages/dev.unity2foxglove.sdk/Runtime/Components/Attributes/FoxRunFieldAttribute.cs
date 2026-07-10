@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Components/Attributes
-// Purpose: FoxRun aggregate field attribute for class-level JSON topics.
+// Purpose: FoxRun aggregate field attribute for class-level wire-contract topics.
 
 using System;
 
@@ -20,6 +20,12 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Alias for <see cref="JsonName"/>.</summary>
         public string Name => JsonName;
+
+        /// <summary>
+        /// Optional pinned Protobuf field number for this aggregate member.
+        /// Zero uses the generated stable field number.
+        /// </summary>
+        public int ProtobufFieldNumber { get; set; }
 
         /// <summary>Create a FoxRun aggregate field using the default JSON name.</summary>
         public FoxRunFieldAttribute()

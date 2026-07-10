@@ -138,6 +138,26 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun Unless condition member could not be resolved",
             "FoxRun", DiagnosticSeverity.Error, true);
 
+        public static readonly DiagnosticDescriptor InvalidWireEncoding = new DiagnosticDescriptor(
+            "FOXRUN030", "FoxRun wire encoding invalid",
+            "{0}: FoxRun Encoding must be inherit, json, or protobuf",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidProtobufFieldNumber = new DiagnosticDescriptor(
+            "FOXRUN031", "FoxRun Protobuf field number invalid",
+            "{0}: FoxRun ProtobufFieldNumber must be 0 or a legal non-reserved Protobuf field number",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MixedTopicWireEncoding = new DiagnosticDescriptor(
+            "FOXRUN032", "Mixed same-topic wire encoding",
+            "Topic '{0}' has mixed FoxRun Encoding declarations",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor DuplicateProtobufFieldNumber = new DiagnosticDescriptor(
+            "FOXRUN033", "Duplicate FoxRun Protobuf field number",
+            "{0}: FoxRun topic contains a duplicate ProtobufFieldNumber",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
         public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
         {
             return new DiagnosticDescriptor(
@@ -250,6 +270,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN016": return ConditionNotBool;
                 case "FOXRUN017": return MixedTopicConditions;
                 case "FOXRUN029": return UnlessConditionMissing;
+                case "FOXRUN030": return InvalidWireEncoding;
+                case "FOXRUN031": return InvalidProtobufFieldNumber;
+                case "FOXRUN032": return MixedTopicWireEncoding;
+                case "FOXRUN033": return DuplicateProtobufFieldNumber;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;

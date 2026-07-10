@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Editor
         private const string PackageName = "Unity2Foxglove";
         private const string GeneratorName = "FoxRun";
         private const string JsonEncoding = "json";
+        private const string ProtobufEncoding = "protobuf";
 
         public static FoxRunCanonicalManifest Build(
             IReadOnlyList<FoxRunManifestMember> members,
@@ -57,11 +58,12 @@ namespace Unity.FoxgloveSDK.Editor
             IReadOnlyList<FoxRunManifestMember> members)
         {
             return members
-                .GroupBy(member => new ContractKey(member.Topic, member.SchemaName, JsonEncoding))
+                .SelectMany(member => ResolveEncodings(member).Select(encoding => new MemberEncodingVariant(member, encoding)))
+                .GroupBy(variant => new ContractKey(variant.Member.Topic, variant.Member.SchemaName, variant.Encoding))
                 .OrderBy(group => group.Key.Topic, StringComparer.Ordinal)
                 .ThenBy(group => group.Key.SchemaName, StringComparer.Ordinal)
                 .ThenBy(group => group.Key.Encoding, StringComparer.Ordinal)
-                .Select(group => BuildContract(declaringType, group.Key, group.ToList()))
+                .Select(group => BuildContract(declaringType, group.Key, group.Select(variant => variant.Member).ToList()))
                 .ToList()
                 .AsReadOnly();
         }
@@ -72,7 +74,7 @@ namespace Unity.FoxgloveSDK.Editor
             IReadOnlyList<FoxRunManifestMember> members)
         {
             var fields = members
-                .Select(BuildField)
+                .Select(member => BuildField(member, key.Encoding == ProtobufEncoding))
                 .OrderBy(field => field.JsonName, StringComparer.Ordinal)
                 .ThenBy(field => field.MemberName, StringComparer.Ordinal)
                 .ThenBy(field => field.Type, StringComparer.Ordinal)
@@ -109,7 +111,7 @@ namespace Unity.FoxgloveSDK.Editor
                 flowMode);
         }
 
-        private static FoxRunManifestField BuildField(FoxRunManifestMember member)
+        private static FoxRunManifestField BuildField(FoxRunManifestMember member, bool includeProtobufFieldNumber)
         {
             var sourceType = ResolveFieldSourceType(member);
             var normalized = FoxRunCanonicalTypeNormalizer.NormalizeTypeName(sourceType);
@@ -124,7 +126,30 @@ namespace Unity.FoxgloveSDK.Editor
                 normalized,
                 nullable,
                 member.IsArray,
-                member.IsAggregateMember);
+                member.IsAggregateMember,
+                includeProtobufFieldNumber ? member.ProtobufFieldNumber : 0,
+                includeProtobufFieldNumber ? member.ProtobufTypeShape : null);
+        }
+
+        private static IEnumerable<string> ResolveEncodings(FoxRunManifestMember member)
+        {
+            switch (member.Encoding)
+            {
+                case 0:
+                    yield return JsonEncoding;
+                    yield return ProtobufEncoding;
+                    yield break;
+                case 1:
+                    yield return ProtobufEncoding;
+                    yield break;
+                case 2:
+                    yield return JsonEncoding;
+                    yield break;
+                default:
+                    throw new InvalidOperationException(
+                        "FoxRun manifest wire encoding is outside the supported range 0..2 for "
+                        + DeclaringType(member) + "." + member.MemberName + ".");
+            }
         }
 
         private static string ResolveFieldSourceType(FoxRunManifestMember member)
@@ -283,6 +308,18 @@ namespace Unity.FoxgloveSDK.Editor
                     hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(Encoding);
                     return hash;
                 }
+            }
+        }
+
+        private readonly struct MemberEncodingVariant
+        {
+            public readonly FoxRunManifestMember Member;
+            public readonly string Encoding;
+
+            public MemberEncodingVariant(FoxRunManifestMember member, string encoding)
+            {
+                Member = member ?? throw new ArgumentNullException(nameof(member));
+                Encoding = encoding ?? string.Empty;
             }
         }
     }

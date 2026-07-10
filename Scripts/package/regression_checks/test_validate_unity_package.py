@@ -342,6 +342,31 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
         written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
         self.assertIn("[FAIL] Source generator Release build failed", written)
 
+    def test_missing_analyzer_dependency_is_reported_before_hash_comparison(self) -> None:
+        """A source generator dependency must ship beside the analyzer DLL for Unity to load it."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            build.mkdir()
+            (build / "FoxgloveLogSourceGenerator.dll").write_bytes(b"generator")
+
+            with mock.patch.object(self.validator, "run_build", return_value=True):
+                with mock.patch.object(
+                    self.validator,
+                    "CHECKED_IN_ARTIFACTS",
+                    {
+                        "FoxgloveLogSourceGenerator.dll": root / "checked" / "FoxgloveLogSourceGenerator.dll",
+                        "Google.Protobuf.dll": root / "checked" / "Google.Protobuf.dll",
+                    },
+                ):
+                    with mock.patch("sys.stderr") as stderr:
+                        result = self.validator.validate_or_update(False, build, [])
+
+        self.assertEqual(1, result)
+        written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
+        self.assertIn("Google.Protobuf.dll", written)
+        self.assertIn("did not produce", written)
+
 
 if __name__ == "__main__":
     unittest.main()

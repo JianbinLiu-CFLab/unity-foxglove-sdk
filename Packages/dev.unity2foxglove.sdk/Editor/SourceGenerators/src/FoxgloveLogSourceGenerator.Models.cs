@@ -118,6 +118,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly bool IsValueType;
         public readonly bool IsArray;
         public readonly string ElementTypeName;
+        public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly int RawMemberOrder;
         public readonly Location MemberLocation;
         /// <summary>Whether the containing class is declared <c>partial</c>.</summary>
@@ -137,8 +138,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>
         /// Creates a valid member-data record with no diagnostic.
         /// </summary>
-        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null)
+        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null)
+            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape)
         {
         }
 
@@ -147,11 +148,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <c>ForDiagnostic</c>.
         /// </summary>
         private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, diagnosticLocation, string.Empty)
+            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, diagnosticLocation, string.Empty, null)
         {
         }
 
-        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId)
+        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null)
         {
             Ns = ns;
             ClassName = cn;
@@ -163,6 +164,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             IsValueType = isValueType;
             IsArray = isArray;
             ElementTypeName = elementTypeName;
+            ProtobufTypeShape = protobufTypeShape;
             RawMemberOrder = rawMemberOrder;
             MemberLocation = memberLocation;
             Topics = t;
@@ -210,7 +212,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic.Unless,
                 topic.IsAggregateMember,
                 topic.JsonFieldName,
-                topic.Mode);
+                topic.Mode,
+                topic.Encoding,
+                topic.ProtobufFieldNumber,
+                ProtobufTypeShape);
         }
     }
 
@@ -229,6 +234,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>Publish mode enum value.</summary>
         public readonly int PublishMode;
         public readonly int Mode;
+        public readonly int Encoding;
+        public readonly int ProtobufFieldNumber;
         /// <summary>Change epsilon.</summary>
         public readonly float ChangeEpsilon;
         /// <summary>Heartbeat interval.</summary>
@@ -249,11 +256,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// </summary>
         public TopicEntry(string topic, float rate, string schema,
             int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
-            bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
+            bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0)
         {
             Topic = topic; RateHz = rate; SchemaName = schema;
             PublishMode = publishMode;
             Mode = mode;
+            Encoding = encoding;
+            ProtobufFieldNumber = protobufFieldNumber;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
             When = when ?? string.Empty;

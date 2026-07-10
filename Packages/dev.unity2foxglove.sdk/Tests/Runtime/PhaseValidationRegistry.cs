@@ -202,6 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase168", "Phase 168: validation for MessagePack raw channel encoding support", MessagePackRawChannelEncodingValidation.Validate, includeInDefault: false),
             Ci("--phase171", "Phase 171: optional Remote Access Gateway package boundary", RemoteGatewayBoundaryValidation.Validate, includeInDefault: false),
             Ci("--phase172", "Phase 172: camera health-based capture admission", CameraHealthCaptureAdmissionValidation.Validate, includeInDefault: false),
+            Ci("--phase175a", "Phase 175A: FoxRun typed Protobuf contract model", Phase175AValidation.Validate, includeInDefault: false),
             Ci("--phase163-2", "Phase 163-2: phase163-2 review regression checks for FoxgloveManager lifecycle contracts", Phase163_2Validation.Validate, includeInDefault: false),
             Ci("--phase163-3", "Phase 163-3: phase163-3 review regression checks for session protocol and client routing", Phase163_3Validation.Validate, includeInDefault: false),
             Ci("--phase163-4", "Phase 163-4: phase163-4 review regression checks for registries, assets, parameters, and services", Phase163_4Validation.Validate, includeInDefault: false),

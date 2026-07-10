@@ -39,7 +39,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     member.Unless,
                     member.IsAggregateMember,
                     member.JsonFieldName,
-                    member.Mode))
+                    member.Mode,
+                    FoxRunGenerationMember.DeclaredEncodingToText(member.Encoding),
+                    member.ProtobufFieldNumber,
+                    member.ProtobufTypeShape))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -61,6 +64,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly float RateHz;
         public readonly int PublishMode;
         public readonly int Mode;
+        public readonly int Encoding;
+        public readonly int ProtobufFieldNumber;
+        public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly float ChangeEpsilon;
         public readonly float ForceIntervalSeconds;
         public readonly int RawMemberOrder;
@@ -92,7 +98,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0)
+            int mode = 0,
+            int encoding = 0,
+            int protobufFieldNumber = 0,
+            FoxRunProtobufTypeShape protobufTypeShape = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -110,6 +119,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             RateHz = rateHz;
             PublishMode = publishMode;
             Mode = mode;
+            Encoding = encoding;
+            ProtobufFieldNumber = protobufFieldNumber;
+            ProtobufTypeShape = protobufTypeShape;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
             RawMemberOrder = rawMemberOrder;
@@ -140,7 +152,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string when = "",
             string unless = "",
             bool isAggregateMember = false,
-            string jsonFieldName = "")
+            string jsonFieldName = "",
+            int mode = 0,
+            int encoding = 0,
+            int protobufFieldNumber = 0,
+            FoxRunProtobufTypeShape protobufTypeShape = null)
             : this(
                 ns,
                 className,
@@ -162,7 +178,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 when,
                 unless,
                 isAggregateMember,
-                jsonFieldName)
+                jsonFieldName,
+                mode,
+                encoding,
+                protobufFieldNumber,
+                protobufTypeShape)
         {
         }
     }

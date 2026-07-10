@@ -9,6 +9,7 @@
     <Deterministic>true</Deterministic>
     <DebugType>none</DebugType>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="src\**\*.cs" />
@@ -26,5 +27,6 @@
     <!-- Keep compatible with Unity's built-in Roslyn; 4.2.0 is the tested package pin. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.2.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" PrivateAssets="all" />
   </ItemGroup>
 </Project>

@@ -18,6 +18,8 @@ namespace Unity.FoxgloveSDK.Editor
         // Descriptor/generator format version, not the package release version.
         // Bump when descriptor JSON changes in a backward-incompatible way.
         public const string GeneratorVersion = "1.0.0";
+        public const string InheritEncoding = "inherit";
+        public const string ProtobufEncoding = "protobuf";
         public const string JsonEncoding = "json";
         public const string DescriptorFileName = "foxrun.generation-descriptor.json";
     }
