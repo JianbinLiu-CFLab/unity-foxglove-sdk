@@ -255,6 +255,20 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void Phase14013RepoLocatorSupportsGitWorktreeFiles()
+        {
+            var method = LoadRuntimeSyntax("Phase140_13Validation.cs")
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "FindRepoRoot");
+            var source = method.ToString();
+
+            Assert.Contains("Directory.Exists(Path.Combine(dir, \".git\"))", source, StringComparison.Ordinal);
+            Assert.Contains("File.Exists(Path.Combine(dir, \".git\"))", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DescriptorReaderRejectsUnknownPublishMode()
         {
             var method = LoadRuntimeSyntax("FoxRunGenerationDescriptorJsonReader.cs")
@@ -402,7 +416,8 @@ namespace Unity.FoxgloveSDK.UnitTests
             while (dir != null)
             {
                 if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                    || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    || Directory.Exists(Path.Combine(dir.FullName, ".git"))
+                    || File.Exists(Path.Combine(dir.FullName, ".git")))
                     return dir.FullName;
                 dir = dir.Parent;
             }
