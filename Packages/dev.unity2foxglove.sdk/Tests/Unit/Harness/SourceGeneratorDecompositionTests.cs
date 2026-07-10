@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var models = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Models.cs");
             var diagnostics = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
             var descriptor = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxRunDescriptorCarrierEmitter.cs");
+            var typeHelpers = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxService/FoxServiceRoslynTypeHelpers.cs");
             var dto = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxService/FoxServiceRoslynDtoValidator.cs");
             var schema = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxService/FoxServiceRoslynSchemaBuilder.cs");
 
@@ -46,6 +47,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("UnknownFoxRunDiagnostic", diagnostics, StringComparison.Ordinal);
             Assert.Contains("internal static class FoxRunDescriptorCarrierEmitter", descriptor, StringComparison.Ordinal);
             Assert.Contains("EscapeStringLiteral", descriptor, StringComparison.Ordinal);
+            Assert.Contains("internal static class FoxServiceRoslynTypeHelpers", typeHelpers, StringComparison.Ordinal);
+            Assert.Contains("InheritedAndDeclaredMembers", typeHelpers, StringComparison.Ordinal);
+            Assert.Contains("using static Unity.FoxgloveSDK.SourceGenerators.FoxServiceRoslynTypeHelpers", dto, StringComparison.Ordinal);
+            Assert.Contains("using static Unity.FoxgloveSDK.SourceGenerators.FoxServiceRoslynTypeHelpers", schema, StringComparison.Ordinal);
             Assert.Contains("internal static class FoxServiceRoslynDtoValidator", dto, StringComparison.Ordinal);
             Assert.Contains("validatedTypes", dto, StringComparison.Ordinal);
             Assert.Contains("internal static class FoxServiceRoslynSchemaBuilder", schema, StringComparison.Ordinal);
