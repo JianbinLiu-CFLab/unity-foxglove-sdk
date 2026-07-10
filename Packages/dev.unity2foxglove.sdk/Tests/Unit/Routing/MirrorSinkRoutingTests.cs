@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
@@ -18,6 +19,28 @@ namespace Unity.FoxgloveSDK.UnitTests
     [Trait("Domain", "Routing")]
     public sealed class MirrorSinkRoutingTests
     {
+        [Fact]
+        public void ReplaySuppressionWarningsDeduplicateUntilCleared()
+        {
+            var logger = new RecordingLogger();
+            using var runtime = new FoxgloveRuntime(
+                new MirrorTransport(),
+                new SystemClock(),
+                new DefaultSchemaRegistry(),
+                logger);
+
+            InvokeReplaySuppression(runtime, "WarnReplaySuppressed", "Publish", 7U);
+            InvokeReplaySuppression(runtime, "WarnReplaySuppressed", "Publish", 7U);
+
+            Assert.Single(logger.Warnings);
+            Assert.Contains("Publish for channel 7", logger.Warnings[0], StringComparison.Ordinal);
+
+            InvokeReplaySuppression(runtime, "ClearReplaySuppressionWarnings");
+            InvokeReplaySuppression(runtime, "WarnReplaySuppressed", "Publish", 7U);
+
+            Assert.Equal(2, logger.Warnings.Count);
+        }
+
         [Fact]
         public void SessionMirrorSinkReceivesRegistrationDemandAndPublish()
         {
@@ -83,6 +106,23 @@ namespace Unity.FoxgloveSDK.UnitTests
                 SchemaEncoding = "jsonschema",
                 Schema = "{}"
             });
+
+        private static void InvokeReplaySuppression(FoxgloveRuntime runtime, string methodName, params object[] arguments)
+        {
+            var method = typeof(FoxgloveRuntime).GetMethod(
+                methodName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(method);
+            method.Invoke(runtime, arguments);
+        }
+
+        private sealed class RecordingLogger : IFoxgloveLogger
+        {
+            public readonly List<string> Warnings = new List<string>();
+
+            public void LogWarning(string message) => Warnings.Add(message);
+            public void LogError(string message) => throw new InvalidOperationException(message);
+        }
 
         private sealed class RecordingMirrorSink : IFoxgloveMirrorSink
         {
