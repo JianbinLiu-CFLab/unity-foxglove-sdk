@@ -80,7 +80,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyOptionalProtobufRegistrationAvoidsMethodInfoInvoke()
         {
-            var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
+            var runtime = PhaseValidationSourceHelpers.ReadFoxgloveRuntimeSources();
             var packageLink = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/link.xml");
 
             Check(!runtime.Contains("method.Invoke", StringComparison.Ordinal)

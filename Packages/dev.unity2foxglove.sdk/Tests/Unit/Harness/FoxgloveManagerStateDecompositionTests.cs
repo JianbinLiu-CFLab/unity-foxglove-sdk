@@ -15,6 +15,45 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     public sealed class FoxgloveManagerStateDecompositionTests
     {
         [Fact]
+        public void ServerResourcePartialsKeepResourceOwnershipSeparateFromLifecycle()
+        {
+            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var remoteMcap = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs");
+            var replayCursor = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.ReplayCursor.cs");
+            var secrets = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.Secrets.cs");
+
+            Assert.Contains("public void StartServer()", server, StringComparison.Ordinal);
+            Assert.Contains("private void StopServer(bool restoreLivePublishers)", server, StringComparison.Ordinal);
+            Assert.Contains("private IFoxgloveTransport CreateTransport", server, StringComparison.Ordinal);
+            Assert.Contains("private bool ValidateTransportConfiguration()", server, StringComparison.Ordinal);
+            Assert.DoesNotContain("private void StartRemoteMcapFileServerIfNeeded()", server, StringComparison.Ordinal);
+            Assert.DoesNotContain("private void StartReplayCursorEndpointIfNeeded()", server, StringComparison.Ordinal);
+            Assert.DoesNotContain("private string ResolveSharedToken()", server, StringComparison.Ordinal);
+
+            Assert.Contains("private RemoteMcapHttpServer _remoteMcapFileServer", remoteMcap, StringComparison.Ordinal);
+            Assert.Contains("private void RefreshRemoteMcapFileServerIfNeeded()", remoteMcap, StringComparison.Ordinal);
+            Assert.Contains("private RemoteMcapHttpOptions BuildRemoteMcapFileServerOptions", remoteMcap, StringComparison.Ordinal);
+            Assert.Contains("private void StopRemoteMcapFileServer()", remoteMcap, StringComparison.Ordinal);
+            Assert.DoesNotContain("StartServer", remoteMcap, StringComparison.Ordinal);
+            Assert.DoesNotContain("StopServer", remoteMcap, StringComparison.Ordinal);
+
+            Assert.Contains("private void StartReplayCursorEndpointIfNeeded()", replayCursor, StringComparison.Ordinal);
+            Assert.Contains("private bool ShouldRunReplayCursorEndpoint()", replayCursor, StringComparison.Ordinal);
+            Assert.Contains("private UnityReplayCursorEndpointQueueResult QueueExternalReplayCursor", replayCursor, StringComparison.Ordinal);
+            Assert.Contains("private void StopReplayCursorEndpoint()", replayCursor, StringComparison.Ordinal);
+            Assert.DoesNotContain("StartServer", replayCursor, StringComparison.Ordinal);
+            Assert.DoesNotContain("StopServer", replayCursor, StringComparison.Ordinal);
+
+            Assert.Contains("private string ResolveSharedToken()", secrets, StringComparison.Ordinal);
+            Assert.Contains("private string ResolveCertificatePassword()", secrets, StringComparison.Ordinal);
+            Assert.Contains("private string ResolveRemoteMcapFileServerToken()", secrets, StringComparison.Ordinal);
+            Assert.Contains("private string ResolveReplayCursorBridgeToken()", secrets, StringComparison.Ordinal);
+            Assert.Contains("private static string ResolveSecretValue", secrets, StringComparison.Ordinal);
+            Assert.DoesNotContain("StartServer", secrets, StringComparison.Ordinal);
+            Assert.DoesNotContain("StopServer", secrets, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void RecordingRuntimeStateOwnsPendingSidecarWithoutMovingSerializedFields()
         {
             var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
@@ -131,7 +170,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var manager = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var setup = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
-            var server = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var remoteMcap = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs");
             var state = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ReplayRuntimeState.cs");
             var stateMeta = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ReplayRuntimeState.cs.meta");
 
@@ -147,8 +186,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             Assert.Contains("_replayState.LivePublishersDisabled", setup, StringComparison.Ordinal);
             Assert.Contains("_disabledPublishers", setup, StringComparison.Ordinal);
-            Assert.Contains("_replayState.CachedReplayFilePathInput", server, StringComparison.Ordinal);
-            Assert.Contains("_replayState.CachedResolvedReplayFilePath", server, StringComparison.Ordinal);
+            Assert.Contains("_replayState.CachedReplayFilePathInput", remoteMcap, StringComparison.Ordinal);
+            Assert.Contains("_replayState.CachedResolvedReplayFilePath", remoteMcap, StringComparison.Ordinal);
 
             Assert.Contains("internal sealed class ReplayRuntimeState", state, StringComparison.Ordinal);
             Assert.Contains("internal string CachedReplayFilePathInput;", state, StringComparison.Ordinal);

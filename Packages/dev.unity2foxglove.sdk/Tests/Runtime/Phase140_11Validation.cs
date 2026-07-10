@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void RemoteFileServerWarnsWhenCorsIsTokenless()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var manager = PhaseValidationSourceHelpers.ReadFoxgloveManagerServerSources();
             var options = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpOptions.cs");
 
             Check(manager.Contains("Remote MCAP file URL is running without a bearer token", StringComparison.Ordinal),

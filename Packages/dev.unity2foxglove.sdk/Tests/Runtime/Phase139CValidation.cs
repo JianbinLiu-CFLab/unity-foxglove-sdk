@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyManagerInspectorRemoteFileAccess()
         {
             var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var server = PhaseValidationSourceHelpers.ReadFoxgloveManagerServerSources();
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
 
             Check(manager.Contains("_enableRemoteMcapFileServer", StringComparison.Ordinal)

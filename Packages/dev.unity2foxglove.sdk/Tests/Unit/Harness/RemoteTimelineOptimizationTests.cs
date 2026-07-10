@@ -35,9 +35,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void Phase139DReadsServerSourceThroughOneCachedPath()
+        public void Phase139DReadsAllServerPartialsThroughOneCachedAggregator()
         {
-            Assert.Equal(1, Count(RuntimeText("Phase139DValidation.cs"), "FoxgloveManager.Server.cs"));
+            var source = RuntimeText("Phase139DValidation.cs");
+
+            Assert.Contains("FoxgloveManager.Server.cs", source, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveManager.Server.RemoteMcap.cs", source, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveManager.Server.ReplayCursor.cs", source, StringComparison.Ordinal);
+            Assert.Contains("FoxgloveManager.Server.Secrets.cs", source, StringComparison.Ordinal);
+            Assert.Equal(1, Count(source, "private static string ReadManagerServerSources()"));
+            Assert.DoesNotContain("const string ManagerServerSourcePath =", source, StringComparison.Ordinal);
         }
 
         [Fact]
