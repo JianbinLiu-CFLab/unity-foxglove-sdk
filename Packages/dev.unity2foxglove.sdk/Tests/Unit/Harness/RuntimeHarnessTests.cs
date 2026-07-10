@@ -269,6 +269,28 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void TestSourcesRepoLocatorSupportsGitWorktreeFiles()
+        {
+            var path = Path.Combine(
+                FindRepoRoot(),
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Tests",
+                "Unit",
+                "Harness",
+                "RuntimeValidationOptimizationTests.cs");
+            var method = CSharpSyntaxTree.ParseText(File.ReadAllText(path))
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(node => node.Identifier.ValueText == "FindRepoRoot");
+            var source = method.ToString();
+
+            Assert.Contains("Directory.Exists(Path.Combine(dir.FullName, \".git\"))", source, StringComparison.Ordinal);
+            Assert.Contains("File.Exists(Path.Combine(dir.FullName, \".git\"))", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DescriptorReaderRejectsUnknownPublishMode()
         {
             var method = LoadRuntimeSyntax("FoxRunGenerationDescriptorJsonReader.cs")
