@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
+using System.IO;
 using Unity.FoxgloveSDK.IO;
 using Xunit;
 
@@ -129,6 +130,61 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             Assert.Equal(40UL, queue.Pop().LogTime);
         }
 
+        [Fact]
+        [Trait("Phase", "174-013")]
+        public void ChunkRecordReaderSkipsNonMessageRecordAndAdvancesCursor()
+        {
+            var bytes = CreateRecord(opcode: 0x03, declaredLength: 3, 0xAA, 0xBB, 0xCC);
+            var offset = 0;
+
+            var record = McapReplayChunkRecordReader.ReadNext(bytes, ref offset);
+
+            Assert.False(record.IsMessage);
+            Assert.Equal(bytes.Length, offset);
+        }
+
+        [Fact]
+        [Trait("Phase", "174-013")]
+        public void ChunkRecordReaderReturnsMessageHeaderAndPayloadWindowWithoutCopyingPayload()
+        {
+            var content = new List<byte>();
+            WriteU16(content, 7);
+            WriteU32(content, 9);
+            WriteU64(content, 10);
+            WriteU64(content, 11);
+            content.AddRange(new byte[] { 0xCA, 0xFE, 0x01 });
+            var bytes = CreateRecord(McapWriter.OpcodeMessage, (ulong)content.Count, content.ToArray());
+            var offset = 0;
+
+            var record = McapReplayChunkRecordReader.ReadNext(bytes, ref offset);
+
+            Assert.True(record.IsMessage);
+            Assert.Equal((ushort)7, record.ChannelId);
+            Assert.Equal(9U, record.Sequence);
+            Assert.Equal(10UL, record.LogTime);
+            Assert.Equal(11UL, record.PublishTime);
+            Assert.Equal(3, record.DataLength);
+            Assert.Equal(0xCA, bytes[record.DataOffset]);
+            Assert.Equal(0xFE, bytes[record.DataOffset + 1]);
+            Assert.Equal(bytes.Length, offset);
+        }
+
+        [Theory]
+        [Trait("Phase", "174-013")]
+        [InlineData("zero opcode", "MCAP opcode 0x00 is invalid inside chunk.")]
+        [InlineData("oversized record", "MCAP chunk inner record length exceeds supported size.")]
+        [InlineData("truncated record", "MCAP chunk inner record is truncated.")]
+        [InlineData("truncated message", "MCAP chunk message record is truncated.")]
+        public void ChunkRecordReaderRejectsMalformedRecords(string kind, string expectedMessage)
+        {
+            var bytes = CreateMalformedRecord(kind);
+            var offset = 0;
+
+            var error = Assert.Throws<InvalidDataException>(() => McapReplayChunkRecordReader.ReadNext(bytes, ref offset));
+
+            Assert.Equal(expectedMessage, error.Message);
+        }
+
         private static McapMessage Message(ulong logTime, ushort channelId = 1)
             => new McapMessage
             {
@@ -138,6 +194,54 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 PublishTime = logTime,
                 Data = new byte[] { (byte)channelId }
             };
+
+        private static byte[] CreateRecord(byte opcode, ulong declaredLength, params byte[] content)
+        {
+            var bytes = new List<byte> { opcode };
+            WriteU64(bytes, declaredLength);
+            bytes.AddRange(content);
+            return bytes.ToArray();
+        }
+
+        private static byte[] CreateMalformedRecord(string kind)
+        {
+            switch (kind)
+            {
+                case "zero opcode":
+                    return CreateRecord(0x00, 0);
+                case "oversized record":
+                    return CreateRecord(0x03, (ulong)int.MaxValue + 1);
+                case "truncated record":
+                    return CreateRecord(0x03, 1);
+                case "truncated message":
+                    var content = new List<byte>();
+                    WriteU16(content, 1);
+                    WriteU32(content, 2);
+                    WriteU64(content, 3);
+                    WriteU64(content, 4);
+                    return CreateRecord(McapWriter.OpcodeMessage, 1, content.ToArray());
+                default:
+                    throw new InvalidDataException("Unknown malformed record fixture: " + kind);
+            }
+        }
+
+        private static void WriteU16(List<byte> bytes, ushort value)
+        {
+            bytes.Add((byte)value);
+            bytes.Add((byte)(value >> 8));
+        }
+
+        private static void WriteU32(List<byte> bytes, uint value)
+        {
+            for (var shift = 0; shift < 32; shift += 8)
+                bytes.Add((byte)(value >> shift));
+        }
+
+        private static void WriteU64(List<byte> bytes, ulong value)
+        {
+            for (var shift = 0; shift < 64; shift += 8)
+                bytes.Add((byte)(value >> shift));
+        }
 
         private static int CompareMessages(McapMessage a, McapMessage b)
         {

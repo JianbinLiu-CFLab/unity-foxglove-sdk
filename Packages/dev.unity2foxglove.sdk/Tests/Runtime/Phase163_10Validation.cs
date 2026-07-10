@@ -135,7 +135,22 @@ namespace Unity.FoxgloveSDK.Tests
         private static void SourceRejectsZeroOpcodeInsideReplayChunks()
         {
             var replaySource = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
-            Check(Count(replaySource, "MCAP opcode 0x00 is invalid inside chunk.") >= 3,
+            var recordReaderSource = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayChunkRecordReader.cs");
+            var tick = PhaseValidationSourceHelpers.SourceMethod(
+                replaySource,
+                "public List<McapMessage> Tick(ulong nowNs, List<McapMessage> result)");
+            var snapshot = PhaseValidationSourceHelpers.SourceMethod(
+                replaySource,
+                "public List<McapMessage> Snapshot(ulong timeNs, List<McapMessage> result)");
+            var history = PhaseValidationSourceHelpers.SourceMethod(
+                replaySource,
+                "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)");
+
+            Check(Count(recordReaderSource, "MCAP opcode 0x00 is invalid inside chunk.") == 1
+                  && !replaySource.Contains("MCAP opcode 0x00 is invalid inside chunk.", StringComparison.Ordinal)
+                  && tick.Contains("McapReplayChunkRecordReader.ReadNext", StringComparison.Ordinal)
+                  && snapshot.Contains("McapReplayChunkRecordReader.ReadNext", StringComparison.Ordinal)
+                  && history.Contains("McapReplayChunkRecordReader.ReadNext", StringComparison.Ordinal),
                 "163-10F: replay tick, snapshot, and history chunk loops reject opcode 0x00");
         }
 

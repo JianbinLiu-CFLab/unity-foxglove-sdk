@@ -268,53 +268,42 @@ namespace Unity.FoxgloveSDK.IO
                 // Read messages from current chunk
                 while (_readOffset + 9 <= _currentUncompressed.Length)
                 {
-                    var opcode = _currentUncompressed[_readOffset++];
-                    if (opcode == 0x00)
-                        throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
+                    var record = McapReplayChunkRecordReader.ReadNext(_currentUncompressed, ref _readOffset);
+                    if (!record.IsMessage)
+                        continue;
 
-                    var len = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
-                    if (len > int.MaxValue)
-                        throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
-                    var recordLength = (int)len;
-                    if (recordLength > _currentUncompressed.Length - _readOffset)
-                        throw new InvalidDataException("MCAP chunk inner record is truncated.");
+                    var logNs = record.LogTime;
+                    var dataLen = record.DataLength;
+                    if (logNs < emitAfter)
+                        continue;
 
-                    if (opcode == McapWriter.OpcodeMessage)
+                    var data = new byte[dataLen];
+                    Buffer.BlockCopy(_currentUncompressed, record.DataOffset, data, 0, dataLen);
+
+                    if (logNs > clampedNow)
                     {
-                        var startOff = _readOffset;
-                        var chId = McapBinaryReader.ReadU16LE(_currentUncompressed, ref _readOffset);
-                        var seq = McapBinaryReader.ReadU32LE(_currentUncompressed, ref _readOffset);
-                        var logNs = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
-                        var pubNs = McapBinaryReader.ReadU64LE(_currentUncompressed, ref _readOffset);
-                        var dataLen = recordLength - (_readOffset - startOff);
-                        if (dataLen < 0 || dataLen > _currentUncompressed.Length - _readOffset)
-                            throw new InvalidDataException("MCAP chunk message record is truncated.");
-
-                        if (logNs < emitAfter)
+                        AddPending(new McapMessage
                         {
-                            _readOffset += dataLen;
-                            continue;
-                        }
-
-                        var data = new byte[dataLen];
-                        Buffer.BlockCopy(_currentUncompressed, _readOffset, data, 0, dataLen);
-                        _readOffset += dataLen;
-
-                        if (logNs > clampedNow)
-                        {
-                            AddPending(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
-                            continue;
-                        }
-
-                        // Collect all eligible messages; FinishTickResult caps
-                        // at MaxMessagesPerTick and moves the sorted tail to
-                        // pending so overflow never violates _lastEmitTime.
-                        result.Add(new McapMessage { ChannelId = chId, Sequence = seq, LogTime = logNs, PublishTime = pubNs, Data = data });
+                            ChannelId = record.ChannelId,
+                            Sequence = record.Sequence,
+                            LogTime = logNs,
+                            PublishTime = record.PublishTime,
+                            Data = data
+                        });
+                        continue;
                     }
-                    else
+
+                    // Collect all eligible messages; FinishTickResult caps
+                    // at MaxMessagesPerTick and moves the sorted tail to
+                    // pending so overflow never violates _lastEmitTime.
+                    result.Add(new McapMessage
                     {
-                        _readOffset += recordLength;
-                    }
+                        ChannelId = record.ChannelId,
+                        Sequence = record.Sequence,
+                        LogTime = logNs,
+                        PublishTime = record.PublishTime,
+                        Data = data
+                    });
                 }
             }
 
@@ -354,48 +343,24 @@ namespace Unity.FoxgloveSDK.IO
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
                 {
-                    var opcode = uncompressed[offset++];
-                    if (opcode == 0x00)
-                        throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
-
-                    var len = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    if (len > int.MaxValue)
-                        throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
-                    var recordLength = (int)len;
-                    if (recordLength > uncompressed.Length - offset)
-                        throw new InvalidDataException("MCAP chunk inner record is truncated.");
-
-                    if (opcode != McapWriter.OpcodeMessage)
-                    {
-                        offset += recordLength;
+                    var record = McapReplayChunkRecordReader.ReadNext(uncompressed, ref offset);
+                    if (!record.IsMessage)
                         continue;
-                    }
 
-                    var startOff = offset;
-                    var chId = McapBinaryReader.ReadU16LE(uncompressed, ref offset);
-                    var seq = McapBinaryReader.ReadU32LE(uncompressed, ref offset);
-                    var logNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    var pubNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    var dataLen = recordLength - (offset - startOff);
-                    if (dataLen < 0 || dataLen > uncompressed.Length - offset)
-                        throw new InvalidDataException("MCAP chunk message record is truncated.");
-
+                    var logNs = record.LogTime;
+                    var dataLen = record.DataLength;
                     if (logNs > clampedTime)
-                    {
-                        offset += dataLen;
                         continue;
-                    }
 
                     var data = new byte[dataLen];
-                    Buffer.BlockCopy(uncompressed, offset, data, 0, dataLen);
-                    offset += dataLen;
+                    Buffer.BlockCopy(uncompressed, record.DataOffset, data, 0, dataLen);
 
-                    latestByChannel[chId] = new McapMessage
+                    latestByChannel[record.ChannelId] = new McapMessage
                     {
-                        ChannelId = chId,
-                        Sequence = seq,
+                        ChannelId = record.ChannelId,
+                        Sequence = record.Sequence,
                         LogTime = logNs,
-                        PublishTime = pubNs,
+                        PublishTime = record.PublishTime,
                         Data = data
                     };
                 }
@@ -448,48 +413,24 @@ namespace Unity.FoxgloveSDK.IO
                 var offset = 0;
                 while (offset + 9 <= uncompressed.Length)
                 {
-                    var opcode = uncompressed[offset++];
-                    if (opcode == 0x00)
-                        throw new InvalidDataException("MCAP opcode 0x00 is invalid inside chunk.");
-
-                    var len = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    if (len > int.MaxValue)
-                        throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
-                    var recordLength = (int)len;
-                    if (recordLength > uncompressed.Length - offset)
-                        throw new InvalidDataException("MCAP chunk inner record is truncated.");
-
-                    if (opcode != McapWriter.OpcodeMessage)
-                    {
-                        offset += recordLength;
+                    var record = McapReplayChunkRecordReader.ReadNext(uncompressed, ref offset);
+                    if (!record.IsMessage)
                         continue;
-                    }
 
-                    var startOff = offset;
-                    var chId = McapBinaryReader.ReadU16LE(uncompressed, ref offset);
-                    var seq = McapBinaryReader.ReadU32LE(uncompressed, ref offset);
-                    var logNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    var pubNs = McapBinaryReader.ReadU64LE(uncompressed, ref offset);
-                    var dataLen = recordLength - (offset - startOff);
-                    if (dataLen < 0 || dataLen > uncompressed.Length - offset)
-                        throw new InvalidDataException("MCAP chunk message record is truncated.");
-
+                    var logNs = record.LogTime;
+                    var dataLen = record.DataLength;
                     if (logNs < clampedFrom || logNs > clampedTo)
-                    {
-                        offset += dataLen;
                         continue;
-                    }
 
                     var data = new byte[dataLen];
-                    Buffer.BlockCopy(uncompressed, offset, data, 0, dataLen);
-                    offset += dataLen;
+                    Buffer.BlockCopy(uncompressed, record.DataOffset, data, 0, dataLen);
 
                     result.Add(new McapMessage
                     {
-                        ChannelId = chId,
-                        Sequence = seq,
+                        ChannelId = record.ChannelId,
+                        Sequence = record.Sequence,
                         LogTime = logNs,
-                        PublishTime = pubNs,
+                        PublishTime = record.PublishTime,
                         Data = data
                     });
                 }
