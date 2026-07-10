@@ -53,9 +53,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && runtime.Contains("if (_stopped && _session == null)", StringComparison.Ordinal)
                   && runtime.Contains("_stopped = false;", StringComparison.Ordinal),
                 "163-2H: FoxgloveRuntime.Stop is explicitly idempotent across lifecycle callbacks");
-            Check(diagnostics.Contains("temporarily", StringComparison.Ordinal)
-                  && diagnostics.Contains("Unity's global Log stack-trace mode", StringComparison.Ordinal),
-                "163-2I: stack-trace suppression documents its global Unity logging window");
+            Check(diagnostics.Contains("for this log call only", StringComparison.Ordinal)
+                  && diagnostics.Contains("LogOption.NoStacktrace", StringComparison.Ordinal),
+                "163-2I: stack-trace suppression stays scoped to the individual diagnostic log call");
             Check(registry.Contains("Ci(\"--phase163-2\", \"Phase 163-2: phase163-2 review regression checks for FoxgloveManager lifecycle contracts\", Phase163_2Validation.Validate", StringComparison.Ordinal),
                 "163-2J: PhaseValidationRegistry wires --phase163-2");
 
