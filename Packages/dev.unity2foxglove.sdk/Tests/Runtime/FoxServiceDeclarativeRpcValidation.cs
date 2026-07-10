@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyAttributeSurface();
             VerifyRuntimeDescriptorSurface();
             VerifyHubUsesExistingServiceRegistrationPath();
+            VerifyDisabledSourceReactivationContract();
             VerifyRoslynGeneratorEmitsDirectServiceWrappers();
             VerifyValidationWiring();
             VerifyPlayerFallbackGenerationPath();
@@ -81,7 +82,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHubUsesExistingServiceRegistrationPath()
         {
-            var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxService/FoxgloveServiceHub.cs");
+            var hub = PhaseValidationSourceHelpers.ReadFoxgloveServiceHubSources();
             var managerServices = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Services.cs");
             var sessionServices = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Services.cs");
 
@@ -104,6 +105,19 @@ namespace Unity.FoxgloveSDK.Tests
                 "141B-20: existing manual service registration API remains available");
             Check(sessionServices.Contains("Handler exception:", StringComparison.Ordinal),
                 "141B-21: existing service drain path converts handler exceptions to failures");
+        }
+
+        private static void VerifyDisabledSourceReactivationContract()
+        {
+            var hub = PhaseValidationSourceHelpers.ReadFoxgloveServiceHubSources();
+
+            Check(hub.Contains("_temporarilyUnavailableSources", StringComparison.Ordinal),
+                "141B-21a: FoxgloveServiceHub retains previously registered disabled MonoBehaviour sources for reactivation");
+            Check(hub.Contains("TrackTemporarilyUnavailableSource(source)", StringComparison.Ordinal),
+                "141B-21b: FoxgloveServiceHub tracks a service source when disabling unregisters it");
+            Check(hub.Contains("ReregisterReenabledSources()", StringComparison.Ordinal)
+                  && hub.Contains("RegisterSourceNow(source)", StringComparison.Ordinal),
+                "141B-21c: FoxgloveServiceHub re-registers only tracked sources after they are re-enabled");
         }
 
         private static void VerifyRoslynGeneratorEmitsDirectServiceWrappers()

@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyExistingServiceHubExtension()
         {
-            var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxService/FoxgloveServiceHub.cs");
+            var hub = PhaseValidationSourceHelpers.ReadFoxgloveServiceHubSources();
             var local = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxService/FoxgloveLocalServiceCall.cs");
 
             Check(hub.Contains("FoxgloveLocalServiceCallResult CallLocal", StringComparison.Ordinal)
