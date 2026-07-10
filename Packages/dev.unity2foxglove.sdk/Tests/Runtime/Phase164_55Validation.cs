@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRemoteRouterParsesIsoTimesWithoutIntermediateStrings()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpRouter.cs");
+            var source = PhaseValidationSourceHelpers.ReadRemoteMcapHttpRouterSources();
             var parse = ExtractMethodBody(source, "private static bool TryParseIsoUtcNs(string value, out ulong nanoseconds)");
 
             Check(parse.Contains("value.AsSpan(0, value.Length - 1)", StringComparison.Ordinal)
