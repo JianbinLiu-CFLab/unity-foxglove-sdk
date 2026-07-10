@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRemoteRouterParsesIsoTimesWithoutIntermediateStrings()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Remote/RemoteMcapHttpRouter.cs");
+            var source = PhaseValidationSourceHelpers.ReadRemoteMcapHttpRouterSources();
             var parse = ExtractMethodBody(source, "private static bool TryParseIsoUtcNs(string value, out ulong nanoseconds)");
 
             Check(parse.Contains("value.AsSpan(0, value.Length - 1)", StringComparison.Ordinal)
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(registry.Contains("Ci(\"--phase164-55\", \"Phase 164-55\", Phase164_55Validation.Validate, includeInDefault: false)", StringComparison.Ordinal)
+            Check(registry.Contains("Ci(\"--phase164-55\", \"Phase 164-55: optimization guards for Phase 139 remote timeline paths\", Phase164_55Validation.Validate, includeInDefault: false)", StringComparison.Ordinal)
                   && project.Contains("Phase164_55Validation.cs", StringComparison.Ordinal),
                 "164-55E-1: validation registry and project compile Phase164-55");
         }
