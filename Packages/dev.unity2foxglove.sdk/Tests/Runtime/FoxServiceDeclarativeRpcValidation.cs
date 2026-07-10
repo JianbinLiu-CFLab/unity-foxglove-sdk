@@ -110,14 +110,27 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDisabledSourceReactivationContract()
         {
             var hub = PhaseValidationSourceHelpers.ReadFoxgloveServiceHubSources();
+            var reactivation = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private void ReregisterReenabledSources()");
 
             Check(hub.Contains("_temporarilyUnavailableSources", StringComparison.Ordinal),
                 "141B-21a: FoxgloveServiceHub retains previously registered disabled MonoBehaviour sources for reactivation");
             Check(hub.Contains("TrackTemporarilyUnavailableSource(source)", StringComparison.Ordinal),
                 "141B-21b: FoxgloveServiceHub tracks a service source when disabling unregisters it");
-            Check(hub.Contains("ReregisterReenabledSources()", StringComparison.Ordinal)
-                  && hub.Contains("RegisterSourceNow(source)", StringComparison.Ordinal),
-                "141B-21c: FoxgloveServiceHub re-registers only tracked sources after they are re-enabled");
+            Check(reactivation.Contains("behaviour == null", StringComparison.Ordinal)
+                  && reactivation.Contains("_temporarilyUnavailableSources.RemoveAt(i)", StringComparison.Ordinal),
+                "141B-21c: FoxgloveServiceHub discards destroyed parked sources");
+            Check(reactivation.Contains("!behaviour.isActiveAndEnabled", StringComparison.Ordinal)
+                  && reactivation.Contains("continue;", StringComparison.Ordinal),
+                "141B-21d: disabled parked sources remain unregistered until they are active again");
+
+            var finalRemoval = reactivation.LastIndexOf(
+                "_temporarilyUnavailableSources.RemoveAt(i)",
+                StringComparison.Ordinal);
+            var reregister = reactivation.IndexOf("RegisterSourceNow(source)", StringComparison.Ordinal);
+            Check(finalRemoval >= 0 && reregister > finalRemoval,
+                "141B-21e: a re-enabled source leaves the parked list before its service is re-registered");
         }
 
         private static void VerifyRoslynGeneratorEmitsDirectServiceWrappers()

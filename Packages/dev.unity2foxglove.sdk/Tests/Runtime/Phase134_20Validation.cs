@@ -160,6 +160,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static ProcessStartInfo CreateStderrFloodStartInfo()
         {
+            // Keep the >100 KiB concurrent-drain probe while avoiding the 200-iteration
+            // shell loop that made this cross-platform validation timing-sensitive.
             const int lineCount = 32;
             var payload = new string('x', 4096);
 

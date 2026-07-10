@@ -134,10 +134,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Imu/VirtualImu.cs");
             var update = ExtractMethod(source, "private void Update()");
-            Check(update.Contains("while (_queue.Count > 0)", StringComparison.Ordinal),
-                "138S-3A: VirtualImu still drains the IMU queue on Update");
-            Check(update.Contains("var sample = _queue.Dequeue();", StringComparison.Ordinal),
-                "138S-3B: VirtualImu dequeue path remains single source sample");
+            Check(update.Contains("while (_queue.TryDequeue(out var sample))", StringComparison.Ordinal),
+                "138S-3A: VirtualImu drains the IMU queue on Update through TryDequeue");
+            Check(!update.Contains("_queue.Dequeue()", StringComparison.Ordinal),
+                "138S-3B: VirtualImu uses the queue's non-throwing drain contract");
             Check(update.Contains("var nativeFrameHandler = ImuNativeFrameReady;", StringComparison.Ordinal)
                   && update.Contains("ImuNativeFrame nativeFrame = null;", StringComparison.Ordinal)
                   && update.Contains("if (nativeFrameHandler != null)", StringComparison.Ordinal)
