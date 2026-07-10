@@ -43,5 +43,25 @@ namespace Unity.FoxgloveSDK.Tests.Replay
             Assert.Equal(0, buffer.DebugBufferedCount);
             Assert.Equal(101UL, buffer.GetHistoryFromTime(startNs: 0, clampedToNs: 130, windowNs: 30));
         }
+
+        [Fact]
+        public void CompletedMaximumWatermarkDoesNotOverflowHistoryStart()
+        {
+            var buffer = new ReplayPanelHistoryBuffer();
+            buffer.BeginDrain(ulong.MaxValue);
+            buffer.MarkDrainComplete();
+
+            Assert.Equal(
+                ulong.MaxValue,
+                buffer.GetHistoryFromTime(startNs: 0, clampedToNs: ulong.MaxValue, windowNs: 30));
+        }
+
+        [Fact]
+        public void WindowFallbackDoesNotPrecedeReplayStart()
+        {
+            var buffer = new ReplayPanelHistoryBuffer();
+
+            Assert.Equal(40UL, buffer.GetHistoryFromTime(startNs: 40, clampedToNs: 50, windowNs: 100));
+        }
     }
 }
