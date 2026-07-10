@@ -22,8 +22,13 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase139DValidation
     {
-        private const string ManagerServerSourcePath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs";
+        private static readonly string[] ManagerServerSourcePaths =
+        {
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs",
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.RemoteMcap.cs",
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.ReplayCursor.cs",
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.Secrets.cs"
+        };
 
         private static readonly string CachedRepoRoot = ResolveRepoRoot();
         private static readonly Dictionary<string, string> SourceCache = new Dictionary<string, string>();
@@ -147,7 +152,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && endpointSource.Contains("GET", StringComparison.Ordinal),
                 "139D-4F: cursor endpoint exposes Unity replay state for Foxglove follow mode");
 
-            var managerSource = Read(ManagerServerSourcePath);
+            var managerSource = ReadManagerServerSources();
             Check(managerSource.Contains("Replay cursor bridge disabled", StringComparison.Ordinal)
                   && managerSource.Contains("SetExternalReplayCursorEnabled(false)", StringComparison.Ordinal),
                 "139D-4G: cursor endpoint startup failure does not fail the main server");
@@ -342,7 +347,7 @@ namespace Unity.FoxgloveSDK.Tests
             var runtime = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
             var coordinator = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/TickCoordinator.cs");
             var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = Read(ManagerServerSourcePath);
+            var server = ReadManagerServerSources();
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
             var externalSeek = ExtractMethodBody(coordinator, "private void ReplaySeekExternalCursor");
             var externalAdvance = ExtractMethodBody(coordinator, "private static void ReplayAdvanceToExternalCursor");
@@ -431,6 +436,19 @@ class Fixture
             var text = File.ReadAllText(RepoPath(relativePath));
             SourceCache[relativePath] = text;
             return text;
+        }
+
+        private static string ReadManagerServerSources()
+        {
+            var source = new StringBuilder();
+            foreach (var path in ManagerServerSourcePaths)
+            {
+                if (source.Length > 0)
+                    source.Append(Environment.NewLine);
+                source.Append(Read(path));
+            }
+
+            return source.ToString();
         }
 
         /// <summary>Extract a method body so validation can inspect one implementation boundary.</summary>

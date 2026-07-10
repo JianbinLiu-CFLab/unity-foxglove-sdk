@@ -97,15 +97,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var replayState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/ReplayRuntimeState.cs");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var refresh = SourceMethod(server, "private void RefreshRemoteMcapFileServerIfNeeded()");
+            var serverResources = PhaseValidationSourceHelpers.ReadFoxgloveManagerServerSources();
+            var refresh = SourceMethod(serverResources, "private void RefreshRemoteMcapFileServerIfNeeded()");
 
             Check(replayState.Contains("internal string CachedResolvedReplayFilePath;", StringComparison.Ordinal)
                   && replayState.Contains("internal string CachedReplayFilePathInput;", StringComparison.Ordinal)
                   && manager.Contains("private readonly ReplayRuntimeState _replayState = new ReplayRuntimeState();", StringComparison.Ordinal)
                   && manager.Contains("InvalidateResolvedReplayFilePathCache();", StringComparison.Ordinal),
                 "164-2D-1: FoxgloveManager owns a replay-file resolution cache invalidated from validation");
-            Check(server.Contains("private string ResolveReplayFilePathCached()", StringComparison.Ordinal)
+            Check(serverResources.Contains("private string ResolveReplayFilePathCached()", StringComparison.Ordinal)
                   && refresh.Contains("ResolveReplayFilePathCached()", StringComparison.Ordinal)
                   && !refresh.Contains("ResolveProjectPath(_replayFilePath)", StringComparison.Ordinal),
                 "164-2D-2: remote MCAP refresh reuses cached replay-file resolution");
@@ -114,21 +114,22 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRemoteMcapTokenAndCleanupAreCached()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var serverLifecycle = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var serverResources = PhaseValidationSourceHelpers.ReadFoxgloveManagerServerSources();
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var mcapEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
-            var stopServer = SourceMethod(server, "private void StopServer(bool restoreLivePublishers)");
-            var refresh = SourceMethod(server, "private void RefreshRemoteMcapFileServerIfNeeded()");
+            var stopServer = SourceMethod(serverLifecycle, "private void StopServer(bool restoreLivePublishers)");
+            var refresh = SourceMethod(serverResources, "private void RefreshRemoteMcapFileServerIfNeeded()");
 
             Check(manager.Contains("public const string RemoteMcapFileServerTokenEnvironmentVariable = \"FOXGLOVE_REMOTE_MCAP_TOKEN\";", StringComparison.Ordinal)
                   && manager.Contains("[SerializeField, HideInInspector] private string _remoteMcapFileServerToken = \"\";", StringComparison.Ordinal)
                   && editor.Contains("_remoteMcapFileServerTokenProperty", StringComparison.Ordinal)
                   && mcapEditor.Contains("DrawPasswordProperty(\"_remoteMcapFileServerToken\", \"Bearer Token\")", StringComparison.Ordinal),
                 "164-2D2-1: Remote MCAP bearer token is env-first and drawn as a password field");
-            Check(server.Contains("RequiredBearerToken = ResolveRemoteMcapFileServerToken()", StringComparison.Ordinal)
+            Check(serverResources.Contains("RequiredBearerToken = ResolveRemoteMcapFileServerToken()", StringComparison.Ordinal)
                   && refresh.Contains("var token = ResolveRemoteMcapFileServerToken();", StringComparison.Ordinal)
                   && refresh.Contains("string.Equals(_remoteMcapFileServerKnownToken, token, System.StringComparison.Ordinal)", StringComparison.Ordinal)
-                  && server.Contains("_remoteMcapFileServerKnownToken = ResolveRemoteMcapFileServerToken();", StringComparison.Ordinal),
+                  && serverResources.Contains("_remoteMcapFileServerKnownToken = ResolveRemoteMcapFileServerToken();", StringComparison.Ordinal),
                 "164-2D2-2: resolved Remote MCAP bearer token participates in server options and refresh cache");
             Check(stopServer.Contains("DetachRuntimeForwarders(_runtime?.Session);", StringComparison.Ordinal)
                   && stopServer.IndexOf("DetachRuntimeForwarders(_runtime?.Session);", StringComparison.Ordinal)

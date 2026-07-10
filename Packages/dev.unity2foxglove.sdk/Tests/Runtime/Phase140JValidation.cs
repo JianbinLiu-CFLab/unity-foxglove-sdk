@@ -143,7 +143,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ManagerWarnsOnceForReplayUnavailableCursor()
         {
             var manager = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
+            var server = PhaseValidationSourceHelpers.ReadFoxgloveManagerServerSources();
 
             Check(manager.Contains("_replayCursorEndpointLoggedUnavailable", StringComparison.Ordinal),
                 "140J-4A: manager tracks one-shot replay-unavailable cursor warnings");
