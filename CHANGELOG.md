@@ -10,7 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
-- No unreleased changes yet.
+- Temporarily disabled declarative FoxService components now re-register their
+  services when re-enabled, without requiring the component to be removed and
+  added again.
 
 ## 1.9.6 - 2026-07-06
 

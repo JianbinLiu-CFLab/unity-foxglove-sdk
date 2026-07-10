@@ -165,6 +165,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void ReregisterReenabledSources()
         {
+            // Source lifecycle callbacks can precede the hub's registration path, so poll only the small parked set.
             for (var i = _temporarilyUnavailableSources.Count - 1; i >= 0; i--)
             {
                 var source = _temporarilyUnavailableSources[i];
