@@ -96,7 +96,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (remoteFileServerEnabled)
             {
                 EditorGUILayout.HelpBox(
-                    "Foxglove as Replay Timeline is on. Replay Auto Play is unavailable because Foxglove owns replay time.",
+                    "Foxglove as Replay Timeline is on. Replay Auto Play is unavailable because Foxglove owns replay time. To drive Unity, add Unity Replay Sync to the active Foxglove layout and keep its sync switch enabled.",
                     MessageType.Warning);
             }
         }
@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUI.indentLevel++;
             EditorGUILayout.HelpBox(
-                "Serves the selected Replay File Path as a local MCAP URL using the direct /v1/files/... route so Foxglove can load it and control replay time. When enabled, Unity follows the Foxglove timeline; Replay Auto Play is disabled.",
+                "Serves the selected Replay File Path as a local MCAP URL using the direct /v1/files/... route so Foxglove can load it and control replay time. To have Unity follow Foxglove time, add Unity Replay Sync to the active Foxglove layout and keep its sync switch enabled. Replay Auto Play is disabled while Foxglove owns replay time.",
                 MessageType.Info);
 
             DrawProperty("_enableRemoteMcapFileServer", "Foxglove as Replay Timeline");

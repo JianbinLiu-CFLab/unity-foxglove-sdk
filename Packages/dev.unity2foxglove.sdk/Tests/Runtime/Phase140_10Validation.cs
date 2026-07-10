@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
             TickOverflowUpdatesBufferingStatusImmediately();
             LoadUsesNullSafeChunkIndexCount();
             PendingDocDoesNotClaimTimestampMutation();
-            HistorySkipsRedundantSortForCappedQueries();
+            HistorySortsOnceBeforeTrimmingCappedQueries();
             DisposedReplayEngineRejectsRetainedReferences();
             TickHasNoUnreachablePendingBufferingBranch();
             ReplayFiltersBeforeCopyingPayloads();
@@ -135,11 +135,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "140-10E-1: PopPending XML doc does not claim it mutates last emitted time");
         }
 
-        private static void HistorySkipsRedundantSortForCappedQueries()
+        private static void HistorySortsOnceBeforeTrimmingCappedQueries()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
-            Check(source.Contains("if (maxMessages <= 0 && result.Count > 1)", StringComparison.Ordinal),
-                "140-10F-1: capped History queries avoid a redundant final sort");
+            var history = SourceBetween(
+                source,
+                "public List<McapMessage> History(ulong fromTimeNs, ulong toTimeNs, List<McapMessage> result, int maxMessages)",
+                "public void Play()");
+            Check(AppearsBefore(history, "result.Sort(CompareMessages)", "TrimHistoryToLatestMessages(result, maxMessages)")
+                  && !history.Contains("result.Insert(", StringComparison.Ordinal),
+                "140-10F-1: capped History sorts once before retaining its latest-message window");
         }
 
         private static void DisposedReplayEngineRejectsRetainedReferences()

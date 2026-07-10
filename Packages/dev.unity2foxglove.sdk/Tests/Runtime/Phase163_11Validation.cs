@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.Tests
             var replay = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Replay/McapReplayEngine.cs");
 
             Check(dataSource.Contains("ReadAllBytesWithinCap", StringComparison.Ordinal)
-                  && dataSource.Contains("info.Length != loadLength", StringComparison.Ordinal),
+                  && dataSource.Contains("!SameStamp(loadStamp, storeStamp)", StringComparison.Ordinal),
                 "163-11E-1: remote data source guards cap and manifest cache fingerprint");
             Check(server.Contains("ContinueWith(_ => _stop.Dispose()", StringComparison.Ordinal),
                 "163-11E-2: remote HTTP dispose defers CTS disposal until loop completion when needed");

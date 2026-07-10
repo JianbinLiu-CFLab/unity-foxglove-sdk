@@ -100,6 +100,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "139C-3B: manager lifecycle starts and stops the Remote files server");
             Check(editor.Contains("Foxglove Timeline Replay", StringComparison.Ordinal)
                   && editor.Contains("Foxglove as Replay Timeline", StringComparison.Ordinal)
+                  && editor.Contains("Unity Replay Sync", StringComparison.Ordinal)
                   && !editor.Contains("Use Foxglove as Replay Timeline", StringComparison.Ordinal)
                   && editor.Contains("Copy Foxglove URL", StringComparison.Ordinal)
                   && editor.Contains("Open in Foxglove", StringComparison.Ordinal)
