@@ -265,6 +265,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "82C-12: MediaFoundation sidecar exposes access-unit dequeue");
 
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs");
+            var interopSource = ReadMediaFoundationSidecarSources();
             Check(source.Contains("H264AccessUnitNormalizer"),
                 "82C-13: MediaFoundation sidecar normalizes encoder output");
             Check(source.Contains("IsWindows"),
@@ -284,13 +285,13 @@ namespace Unity.FoxgloveSDK.Tests
                 "82C-20: Media Foundation size/ratio attributes use packed UINT64 values");
             Check(source.Contains("DescribeException") && source.Contains("HResult=0x"),
                 "82C-21: Media Foundation runtime failures include diagnostic exception details");
-            Check(source.Contains("UnmanagedType.LPArray") && source.Contains("GetBlob("),
+            Check(interopSource.Contains("UnmanagedType.LPArray") && interopSource.Contains("GetBlob("),
                 "82C-22: Media Foundation blob attributes marshal byte buffers as LPArray");
-            Check(!source.Contains("private interface IMFSample : IMFAttributes")
-                  && source.Contains("IMFSample extends IMFAttributes"),
+            Check(!interopSource.Contains("private interface IMFSample : IMFAttributes")
+                  && interopSource.Contains("IMFSample extends IMFAttributes"),
                 "82C-23: IMFSample COM interface is flattened to match the native vtable");
-            Check(source.Contains("[PreserveSig] int ProcessOutput")
-                  && source.Contains("IntPtr pOutputSamples"),
+            Check(interopSource.Contains("[PreserveSig] int ProcessOutput")
+                  && interopSource.Contains("IntPtr pOutputSamples"),
                 "82C-24: IMFTransform.ProcessOutput uses PreserveSig and unmanaged output buffers");
             Check(source.Contains("Marshal.StructureToPtr(output, outputPtr")
                   && source.Contains("Marshal.PtrToStructure<MftOutputDataBuffer>"),
@@ -536,6 +537,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadCameraPublisherSources()
             => PhaseValidationSourceHelpers.ReadCameraPublisherSources();
+
+        private static string ReadMediaFoundationSidecarSources()
+            => PhaseValidationSourceHelpers.ReadMediaFoundationH264EncoderSidecarSources();
 
         private static string FindRepoRoot()
             => Phase16Validation.FindRepoRoot();

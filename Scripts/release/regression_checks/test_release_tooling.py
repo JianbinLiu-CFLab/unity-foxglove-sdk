@@ -314,6 +314,13 @@ class RunCiTests(unittest.TestCase):
             self.run_ci.SCHEMA_GENERATED_OUTPUT_VALIDATOR,
         )
 
+    def test_validator_msbuild_args_keep_dash_prefixed_property_attached(self) -> None:
+        """Argparse must receive dash-prefixed MSBuild properties as option values."""
+        self.assertEqual(
+            ["--msbuild-prop=-p:BaseOutputPath=C:/ci/bin/"],
+            self.run_ci.validator_msbuild_args(["-p:BaseOutputPath=C:/ci/bin/"]),
+        )
+
     def test_package_validators_use_current_python_executable(self) -> None:
         """Local CI should not depend on a bare python command existing."""
         calls: list[list[str]] = []

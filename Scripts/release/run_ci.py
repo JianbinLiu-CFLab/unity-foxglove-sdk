@@ -135,7 +135,7 @@ def validator_msbuild_args(msbuild_props: list[str]) -> list[str]:
     """Convert MSBuild properties into validator pass-through arguments."""
     args: list[str] = []
     for prop in msbuild_props:
-        args.extend(["--msbuild-prop", prop])
+        args.append("--msbuild-prop=" + prop)
     return args
 
 
