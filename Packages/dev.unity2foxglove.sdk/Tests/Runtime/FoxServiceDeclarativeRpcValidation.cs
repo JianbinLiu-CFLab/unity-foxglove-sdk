@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHubUsesExistingServiceRegistrationPath()
         {
-            var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxService/FoxgloveServiceHub.cs");
+            var hub = PhaseValidationSourceHelpers.ReadFoxgloveServiceHubSources();
             var managerServices = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Services.cs");
             var sessionServices = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.Services.cs");
 

@@ -117,7 +117,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyHubForwardsGeneratedSchemas()
         {
-            var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxService/FoxgloveServiceHub.cs");
+            var hub = PhaseValidationSourceHelpers.ReadFoxgloveServiceHubSources();
             Check(hub.Contains("Schema = generated.RequestSchema", StringComparison.Ordinal)
                   && hub.Contains("Schema = generated.ResponseSchema", StringComparison.Ordinal),
                 "141E-8: FoxgloveServiceHub forwards generated schema payloads into service descriptors");
