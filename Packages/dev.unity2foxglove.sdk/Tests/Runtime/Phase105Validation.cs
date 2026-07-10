@@ -169,8 +169,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "internal const byte OpcodeHeader = 0x01;",
                 "105D-7: MCAP opcode table has source record-table comment",
                 "MCAP", "opcode");
-            CheckGroupCommentBefore(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/Proto/Video/MediaFoundationH264EncoderSidecar.cs",
+            CheckGroupCommentBeforeSource(
+                PhaseValidationSourceHelpers.ReadMediaFoundationH264EncoderSidecarSources(),
                 "private static class MfGuids",
                 "105D-8: Media Foundation GUID block documents Media Foundation and CodecAPI source",
                 "Media Foundation", "CodecAPI");
@@ -267,6 +267,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void CheckGroupCommentBefore(string relativePath, string declaration, string message, params string[] requiredTerms)
         {
             var lines = ReadRepoLines(relativePath);
+            var window = WindowBefore(lines, declaration, 10, message);
+            var ok = (window.Contains("//", StringComparison.Ordinal) || window.Contains("///", StringComparison.Ordinal))
+                     && requiredTerms.All(term => window.Contains(term, StringComparison.OrdinalIgnoreCase));
+            Check(ok, message);
+        }
+
+        private static void CheckGroupCommentBeforeSource(string source, string declaration, string message, params string[] requiredTerms)
+        {
+            var lines = source.Replace("\r\n", "\n").Split('\n');
             var window = WindowBefore(lines, declaration, 10, message);
             var ok = (window.Contains("//", StringComparison.Ordinal) || window.Contains("///", StringComparison.Ordinal))
                      && requiredTerms.All(term => window.Contains(term, StringComparison.OrdinalIgnoreCase));
