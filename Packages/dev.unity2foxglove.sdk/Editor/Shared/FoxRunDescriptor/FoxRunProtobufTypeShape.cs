@@ -16,6 +16,13 @@ namespace Unity.FoxgloveSDK.Editor
         Enum = 2
     }
 
+    public enum FoxRunProtobufRepeatedCollectionKind
+    {
+        None = 0,
+        Array = 1,
+        List = 2
+    }
+
     public sealed class FoxRunProtobufTypeShape
     {
         private FoxRunProtobufTypeShape(
@@ -86,13 +93,21 @@ namespace Unity.FoxgloveSDK.Editor
             string memberName,
             FoxRunProtobufTypeShape typeShape,
             bool repeated = false,
-            int protobufFieldNumber = 0)
+            int protobufFieldNumber = 0,
+            FoxRunProtobufRepeatedCollectionKind repeatedCollectionKind = FoxRunProtobufRepeatedCollectionKind.None,
+            bool canAssign = true)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             TypeShape = typeShape ?? throw new ArgumentNullException(nameof(typeShape));
             Repeated = repeated;
             ProtobufFieldNumber = protobufFieldNumber;
+            RepeatedCollectionKind = repeated
+                ? repeatedCollectionKind == FoxRunProtobufRepeatedCollectionKind.None
+                    ? FoxRunProtobufRepeatedCollectionKind.List
+                    : repeatedCollectionKind
+                : FoxRunProtobufRepeatedCollectionKind.None;
+            CanAssign = canAssign;
         }
 
         public string JsonName { get; }
@@ -100,6 +115,9 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunProtobufTypeShape TypeShape { get; }
         public bool Repeated { get; }
         public int ProtobufFieldNumber { get; }
+        public FoxRunProtobufRepeatedCollectionKind RepeatedCollectionKind { get; }
+        /// <summary>Whether generated inbound Protobuf code can assign this DTO member.</summary>
+        public bool CanAssign { get; }
     }
 
     public sealed class FoxRunProtobufEnumValue

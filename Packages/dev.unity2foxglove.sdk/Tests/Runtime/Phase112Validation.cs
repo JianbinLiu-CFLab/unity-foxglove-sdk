@@ -219,7 +219,7 @@ namespace Unity.FoxgloveSDK.Tests
             var manifestCode = string.Join("\n", TextFiles(ManifestDir)
                 .Concat(new[] { RepoPath(ManifestWriterPath), RepoPath(PlayModeHookPath) })
                 .Select(File.ReadAllText));
-            foreach (var token in new[] { "typed publisher", "protobuf", "ROS2", "MCAP", "replay" })
+            foreach (var token in new[] { "typed publisher", "ROS2", "MCAP", "replay" })
                 Check(!manifestCode.Contains(token, StringComparison.OrdinalIgnoreCase),
                     "112-F2: manifest code avoids out-of-scope token: " + token);
 

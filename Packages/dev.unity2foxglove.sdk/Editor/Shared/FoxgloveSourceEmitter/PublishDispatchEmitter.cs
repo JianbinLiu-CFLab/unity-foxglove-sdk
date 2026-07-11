@@ -34,6 +34,10 @@ namespace Unity.FoxgloveSDK.Editor
                 var schema = StringLiteralEmitter.CSharpStringLiteral(fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "");
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
                 var suppressRemoteEcho = fields.Any(field => field.Mode == 2);
+                var protobuf = string.Equals(
+                    TopicMetadataEmitter.EffectiveEncoding(fields),
+                    FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                    System.StringComparison.Ordinal);
                 if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
@@ -46,9 +50,16 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                    break;");
                         sb.AppendLine($"{pad}                }}");
                     }
-                    sb.AppendLine($"{pad}                var __payload_{i} = __BuildFoxRunJson_{i}();");
-                    sb.AppendLine($"{pad}                __foxRunLastJson_{i} = __payload_{i};");
-                    sb.AppendLine($"{pad}                mgr.PublishFoxRunJsonBytes(\"{topic}\", \"{schema}\", __payload_{i}, nowNs);");
+                    if (protobuf)
+                    {
+                        sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{schema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                var __payload_{i} = __BuildFoxRunJson_{i}();");
+                        sb.AppendLine($"{pad}                __foxRunLastJson_{i} = __payload_{i};");
+                        sb.AppendLine($"{pad}                mgr.PublishFoxRunJsonBytes(\"{topic}\", \"{schema}\", __payload_{i}, nowNs);");
+                    }
                     sb.AppendLine($"{pad}                break;");
                 }
                 else
@@ -62,7 +73,10 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                    break;");
                         sb.AppendLine($"{pad}                }}");
                     }
-                    sb.AppendLine($"{pad}                mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs);");
+                    if (protobuf)
+                        sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{schema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                    else
+                        sb.AppendLine($"{pad}                mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs);");
                     sb.AppendLine($"{pad}                break;");
                 }
             }
@@ -70,6 +84,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}    }}");
 
             EmitAggregateJsonWriters(sb, topics, topicMap, pad);
+            ProtobufPublishDispatchEmitter.EmitBuilders(sb, topics, topicMap, pad);
         }
 
         /// <summary>

@@ -86,7 +86,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (field.IsStatic || field.IsConst || field.DeclaredAccessibility != Accessibility.Public)
                         continue;
-                    AddMember(fields, field.Name, JsonPropertyName(field), field.Type, depth, memo, stack);
+                    AddMember(fields, field.Name, JsonPropertyName(field), field.Type, !field.IsReadOnly, depth, memo, stack);
                 }
                 else if (member is IPropertySymbol property)
                 {
@@ -94,7 +94,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         || property.IsIndexer
                         || property.GetMethod == null)
                         continue;
-                    AddMember(fields, property.Name, JsonPropertyName(property), property.Type, depth, memo, stack);
+                    AddMember(fields, property.Name, JsonPropertyName(property), property.Type,
+                        property.SetMethod != null && property.SetMethod.DeclaredAccessibility == Accessibility.Public && !property.SetMethod.IsInitOnly,
+                        depth, memo, stack);
                 }
             }
 
@@ -109,23 +111,30 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string memberName,
             string jsonName,
             ITypeSymbol memberType,
+            bool canAssign,
             int depth,
             IDictionary<string, FoxRunProtobufTypeShape> memo,
             ISet<string> stack)
         {
             var repeated = memberType is IArrayTypeSymbol;
+            var collectionKind = repeated
+                ? FoxRunProtobufRepeatedCollectionKind.Array
+                : FoxRunProtobufRepeatedCollectionKind.None;
             ITypeSymbol elementType = repeated ? ((IArrayTypeSymbol)memberType).ElementType : null;
             if (!repeated && TryGetListElementType(memberType, FoxServiceDtoRules.ResponseSide, out var listElementType))
             {
                 repeated = true;
                 elementType = listElementType;
+                collectionKind = FoxRunProtobufRepeatedCollectionKind.List;
             }
 
             fields.Add(new FoxRunProtobufTypeField(
                 jsonName,
                 memberName,
                 Build(repeated ? elementType : memberType, depth + 1, memo, stack),
-                repeated));
+                repeated,
+                repeatedCollectionKind: collectionKind,
+                canAssign: canAssign));
         }
 
         private static FoxRunProtobufTypeShape BuildEnum(

@@ -205,6 +205,11 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public event System.Action<uint, uint, string, byte[]> OnClientMessage;
 
+        /// <summary>
+        /// Fires when a client-published message arrives with its advertised wire encoding.
+        /// </summary>
+        public event System.Action<uint, uint, string, string, byte[]> OnClientMessageWithEncoding;
+
         /// <summary>Fires when a replay message is forwarded on the main thread.</summary>
         public event System.Action<string, byte[]> OnReplayMessage;
 
@@ -220,7 +225,7 @@ namespace Unity.FoxgloveSDK.Components
         private System.Action<string, byte[]> _replayForwarder;
         private System.Action<ReplayMessageContext> _replayContextForwarder;
         private System.Action<ReplayBatchContext> _replayBatchForwarder;
-        private System.Action<uint, uint, string, byte[]> _clientMessageForwarder;
+        private System.Action<uint, uint, string, string, byte[]> _clientMessageForwarder;
 
         /// <summary>Current coordinate mode, read from Inspector or code.</summary>
         public CoordinateMode ActiveCoordinateMode => _coordinateMode;

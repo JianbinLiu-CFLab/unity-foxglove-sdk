@@ -77,7 +77,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("RuntimeInitializeOnLoadMethod", StringComparison.Ordinal),
                 "113-A3: generated schema info is visible to Editor Play Mode and Player runtime");
 
-            foreach (var token in new[] { "generatedAtUtc", "Library/", "MCAP", "replay", "protobuf", "ROS2", "typed-publisher" })
+            foreach (var token in new[] { "generatedAtUtc", "Library/", "MCAP", "replay", "ROS2", "typed-publisher" })
             {
                 Check(!source.Contains(token, StringComparison.OrdinalIgnoreCase),
                     "113-A4: generated schema info avoids out-of-scope token: " + token);
@@ -187,7 +187,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var writer = ReadRepoText(SchemaWriterPath);
-            foreach (var token in new[] { "FoxRunManifestHasher", "WriteCanonical", "SHA256", "generatedAtUtc", "MCAP", "replay", "protobuf", "ROS2", "typed-publisher" })
+            foreach (var token in new[] { "FoxRunManifestHasher", "WriteCanonical", "SHA256", "generatedAtUtc", "MCAP", "replay", "ROS2", "typed-publisher" })
             {
                 Check(!writer.Contains(token, StringComparison.OrdinalIgnoreCase),
                     "113-D2: schema writer avoids second hash path or out-of-scope token: " + token);

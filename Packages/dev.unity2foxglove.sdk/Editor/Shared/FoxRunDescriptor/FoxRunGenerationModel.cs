@@ -382,7 +382,10 @@ namespace Unity.FoxgloveSDK.Editor
                 IsAggregateMember,
                 JsonFieldName,
                 Mode,
-                CanonicalType);
+                CanonicalType,
+                Encoding,
+                ProtobufFieldNumber,
+                ProtobufTypeShape);
         }
 
         private static string DefaultJsonFieldName(string memberName)

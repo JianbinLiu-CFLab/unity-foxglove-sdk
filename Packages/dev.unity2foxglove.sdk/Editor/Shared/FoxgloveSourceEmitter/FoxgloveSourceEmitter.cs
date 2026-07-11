@@ -68,6 +68,12 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly bool IsAggregateMember;
             /// <summary>JSON property name emitted for aggregate and dictionary payloads.</summary>
             public readonly string JsonFieldName;
+            /// <summary>Declared FoxRun wire policy: inherit, protobuf, or json.</summary>
+            public readonly string Encoding;
+            /// <summary>Optional stable Protobuf field-number override.</summary>
+            public readonly int ProtobufFieldNumber;
+            /// <summary>DTO/enum shape used for direct Protobuf code generation.</summary>
+            public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
 
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
@@ -76,11 +82,38 @@ namespace Unity.FoxgloveSDK.Editor
                 : this(memberName, typeName, topic, rateHz, schemaName, 0, 0f, 0f) { }
 
             /// <summary>
+            /// Creates a topic-member descriptor with an explicit wire contract.
+            /// </summary>
+            public TopicMember(
+                string memberName,
+                string typeName,
+                string topic,
+                float rateHz,
+                string schemaName,
+                string encoding,
+                int protobufFieldNumber = 0,
+                FoxRunProtobufTypeShape protobufTypeShape = null)
+                : this(
+                    memberName,
+                    typeName,
+                    topic,
+                    rateHz,
+                    schemaName,
+                    0,
+                    0f,
+                    0f,
+                    encoding: encoding,
+                    protobufFieldNumber: protobufFieldNumber,
+                    protobufTypeShape: protobufTypeShape) { }
+
+            /// <summary>
             /// Creates a topic-member descriptor with publish policy.
             /// </summary>
             public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName,
                 int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
-                bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, string canonicalType = "")
+                bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, string canonicalType = "",
+                string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding, int protobufFieldNumber = 0,
+                FoxRunProtobufTypeShape protobufTypeShape = null)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -100,6 +133,11 @@ namespace Unity.FoxgloveSDK.Editor
                 JsonFieldName = string.IsNullOrWhiteSpace(jsonFieldName)
                     ? DefaultJsonFieldName(memberName)
                     : jsonFieldName;
+                Encoding = string.IsNullOrWhiteSpace(encoding)
+                    ? FoxRunGenerationDescriptorConstants.JsonEncoding
+                    : encoding;
+                ProtobufFieldNumber = protobufFieldNumber;
+                ProtobufTypeShape = protobufTypeShape;
             }
         }
 

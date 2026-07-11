@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveClock _clock;
         private readonly IFoxgloveLogger _logger;
         private readonly SessionGraphHandler _graph;
-        private readonly Action<uint, uint, string, byte[]> _messageCallback;
+        private readonly Action<uint, uint, string, string, byte[]> _messageCallback;
         private readonly Dictionary<(uint clientId, uint chId), AdvertiseChannel> _clientChannels = new();
         private readonly HashSet<uint> _budgetWarnedClients = new();
         private readonly List<(uint clientId, uint chId)> _clientChannelRemovalScratch = new();
@@ -40,13 +40,13 @@ namespace Unity.FoxgloveSDK.Core
             IFoxgloveClock clock,
             IFoxgloveLogger logger,
             SessionGraphHandler graph,
-            Action<uint, uint, string, byte[]> messageCallback)
+            Action<uint, uint, string, string, byte[]> messageCallback)
         {
             _recorderProvider = recorderProvider ?? (() => null);
             _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             _logger = logger ?? new ConsoleLogger();
             _graph = graph ?? throw new ArgumentNullException(nameof(graph));
-            _messageCallback = messageCallback ?? ((_, _, _, _) => { });
+            _messageCallback = messageCallback ?? ((_, _, _, _, _) => { });
         }
 
         public void Clear()
@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.Core
                     return;
             }
 
-            _messageCallback(clientId, chId, ch.Topic, payload);
+            _messageCallback(clientId, chId, ch.Topic, ch.Encoding, payload);
             var recorder = _recorderProvider();
             recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
                 ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);

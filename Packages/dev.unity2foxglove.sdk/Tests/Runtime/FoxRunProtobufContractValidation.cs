@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
             var publishEmitter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var inputEmitter = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/InputDispatchEmitter.cs");
 
-            Check(session.Contains("Action<uint, uint, string, byte[]> _messageCallback", StringComparison.Ordinal)
+            Check(session.Contains("Action<uint, uint, string, string, byte[]> _messageCallback", StringComparison.Ordinal)
                   && hub.Contains("_router.Dispatch", StringComparison.Ordinal)
                   && publishEmitter.Contains("PublishFoxRunJsonBytes", StringComparison.Ordinal)
                   && inputEmitter.Contains("FoxRunInboundJson.TryRead", StringComparison.Ordinal),

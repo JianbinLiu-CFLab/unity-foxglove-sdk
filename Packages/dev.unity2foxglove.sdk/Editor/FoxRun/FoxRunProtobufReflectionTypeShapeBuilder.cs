@@ -69,13 +69,14 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     if (field.IsStatic || field.IsLiteral)
                         continue;
-                    AddMember(fields, field.Name, FoxServiceDtoReflectionMembers.JsonPropertyName(field), field.FieldType, depth, memo, stack);
+                    AddMember(fields, field.Name, FoxServiceDtoReflectionMembers.JsonPropertyName(field), field.FieldType, !field.IsInitOnly, depth, memo, stack);
                 }
                 else if (member is PropertyInfo property)
                 {
                     if (property.GetIndexParameters().Length != 0 || property.GetMethod == null || !property.GetMethod.IsPublic)
                         continue;
-                    AddMember(fields, property.Name, FoxServiceDtoReflectionMembers.JsonPropertyName(property), property.PropertyType, depth, memo, stack);
+                    AddMember(fields, property.Name, FoxServiceDtoReflectionMembers.JsonPropertyName(property), property.PropertyType,
+                        property.SetMethod != null && property.SetMethod.IsPublic, depth, memo, stack);
                 }
             }
 
@@ -90,16 +91,24 @@ namespace Unity.FoxgloveSDK.Editor
             string memberName,
             string jsonName,
             Type memberType,
+            bool canAssign,
             int depth,
             IDictionary<string, FoxRunProtobufTypeShape> memo,
             ISet<string> stack)
         {
             var repeated = TryGetRepeatedElementType(memberType, out var elementType);
+            var collectionKind = memberType != null && memberType.IsArray
+                ? FoxRunProtobufRepeatedCollectionKind.Array
+                : repeated
+                    ? FoxRunProtobufRepeatedCollectionKind.List
+                    : FoxRunProtobufRepeatedCollectionKind.None;
             fields.Add(new FoxRunProtobufTypeField(
                 jsonName,
                 memberName,
                 Build(repeated ? elementType : memberType, depth + 1, memo, stack),
-                repeated));
+                repeated,
+                repeatedCollectionKind: collectionKind,
+                canAssign: canAssign));
         }
 
         private static FoxRunProtobufTypeShape BuildEnum(

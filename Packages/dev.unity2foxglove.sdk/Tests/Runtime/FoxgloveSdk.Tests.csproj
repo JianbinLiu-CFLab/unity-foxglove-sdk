@@ -152,7 +152,8 @@
     <Compile Include="Phase155Validation.cs" />
     <Compile Include="Phase156Validation.cs" />
     <Compile Include="Phase157Validation.cs" />
-    <Compile Include="Phase175AValidation.cs" />
+    <Compile Include="FoxRunProtobufContractValidation.cs" />
+    <Compile Include="FoxRunDualCodecValidation.cs" />
     <Compile Include="Phase163_2Validation.cs" />
     <Compile Include="Phase163_3Validation.cs" />
     <Compile Include="Phase163_4Validation.cs" />

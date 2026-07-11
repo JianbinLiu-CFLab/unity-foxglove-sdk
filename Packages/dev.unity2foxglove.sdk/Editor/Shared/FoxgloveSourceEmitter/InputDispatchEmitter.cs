@@ -32,7 +32,10 @@ namespace Unity.FoxgloveSDK.Editor
                 var member = members[i];
                 var topic = StringLiteralEmitter.CSharpStringLiteral(member.Topic);
                 var mode = member.Mode == 2 ? "FoxRunMode.PublishAndSubscribe" : "FoxRunMode.SubscribeOnly";
-                sb.AppendLine($"{pad}            case {i}: return new FoxgloveInputTopicInfo(\"{topic}\", \"json\", {mode});");
+                var encoding = string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, System.StringComparison.Ordinal)
+                    ? FoxRunGenerationDescriptorConstants.ProtobufEncoding
+                    : FoxRunGenerationDescriptorConstants.JsonEncoding;
+                sb.AppendLine($"{pad}            case {i}: return new FoxgloveInputTopicInfo(\"{topic}\", \"{encoding}\", {mode});");
             }
             sb.AppendLine($"{pad}            default: throw new ArgumentOutOfRangeException(nameof(index));");
             sb.AppendLine($"{pad}        }}");
@@ -48,9 +51,16 @@ namespace Unity.FoxgloveSDK.Editor
                 var fieldName = StringLiteralEmitter.CSharpStringLiteral(member.JsonFieldName);
                 var typeName = GlobalTypeName(member.TypeName);
                 var access = TypeExprEmitter.MemberAccess(member.MemberName);
+                var protobuf = string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, System.StringComparison.Ordinal);
+                var protobufFieldNumber = FoxRunProtobufFieldNumber.Resolve(
+                    member.Topic + "|" + member.SchemaName + "|" + member.MemberName,
+                    member.ProtobufFieldNumber);
+                var reader = protobuf
+                    ? ProtobufInputDispatchEmitter.ReaderCall(protobufFieldNumber, typeName, member.ProtobufTypeShape, i)
+                    : $"FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error)";
                 sb.AppendLine($"{pad}            case {i}:");
                 sb.AppendLine($"{pad}                {{");
-                sb.AppendLine($"{pad}                    if (!FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error))");
+                sb.AppendLine($"{pad}                    if (!{reader})");
                 sb.AppendLine($"{pad}                        return false;");
                 sb.AppendLine($"{pad}                    {access} = __value;");
                 if (member.Mode == 2)
@@ -67,12 +77,15 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}                return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
+            ProtobufInputDispatchEmitter.EmitReaders(sb, members, pad);
         }
 
         private static string GlobalTypeName(string typeName)
         {
             if (string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", System.StringComparison.Ordinal))
                 return typeName;
+            if (typeName.EndsWith("[]", System.StringComparison.Ordinal))
+                return GlobalTypeName(typeName.Substring(0, typeName.Length - 2)) + "[]";
             switch (typeName)
             {
                 case "bool":

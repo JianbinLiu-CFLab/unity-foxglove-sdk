@@ -90,10 +90,10 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == manager)
                 return;
             if (_manager != null)
-                _manager.OnClientMessage -= OnClientMessage;
+                _manager.OnClientMessageWithEncoding -= OnClientMessage;
             _manager = manager;
             if (_manager != null)
-                _manager.OnClientMessage += OnClientMessage;
+                _manager.OnClientMessageWithEncoding += OnClientMessage;
         }
 
         private void Scan()
@@ -146,7 +146,7 @@ namespace Unity.FoxgloveSDK.Components
             _scanSources.Clear();
         }
 
-        private void OnClientMessage(uint clientId, uint channelId, string topic, byte[] payload)
+        private void OnClientMessage(uint clientId, uint channelId, string topic, string encoding, byte[] payload)
         {
             if (_manager == null || !_manager.EnableFoxRunInbound)
                 return;
@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Components
             var result = _router.Dispatch(
                 topic,
                 payload,
-                "json",
+                encoding,
                 Time.realtimeSinceStartupAsDouble);
             if (result.Status != FoxRunInputDispatchStatus.Applied
                 && result.Status != FoxRunInputDispatchStatus.UnknownTopic)

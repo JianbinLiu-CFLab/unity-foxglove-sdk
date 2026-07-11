@@ -97,12 +97,27 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
 
-            if (member.Mode != 0 && (member.IsArray || member.IsAggregateMember))
+            if (member.Mode != 0
+                && (member.IsAggregateMember
+                    || (member.IsArray
+                        && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                     "FOXRUN024",
                     target,
                     member.MemberName,
-                    "FoxRun inbound currently supports scalar field/property topics only; arrays and aggregate members are rejected."));
+                    "FoxRun inbound collections require explicit Protobuf encoding; aggregate members remain unsupported."));
+
+            if (member.Mode != 0
+                && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+                && member.ProtobufTypeShape != null
+                && !IsInboundAssignable(member.ProtobufTypeShape))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    "FOXRUN024",
+                    target,
+                    member.MemberName,
+                    "FoxRun inbound Protobuf DTO members must be writable fields or settable properties."));
+            }
 
             if (member.Mode == 1
                 && (member.PublishMode != 0
@@ -141,7 +156,8 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(UnlessConditionMissingDiagnosticId, target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
 
             if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType)
-                && member.ProtobufTypeShape == null)
+                && (!string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+                    || member.ProtobufTypeShape == null))
             {
                 var raw = member.RawObservedTypeName ?? string.Empty;
                 var message = string.IsNullOrWhiteSpace(raw)
@@ -322,6 +338,20 @@ namespace Unity.FoxgloveSDK.Editor
             return string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal)
                    || string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal)
                    || string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal);
+        }
+
+        private static bool IsInboundAssignable(FoxRunProtobufTypeShape shape)
+        {
+            if (shape == null || shape.Kind != FoxRunProtobufTypeShapeKind.Object)
+                return true;
+
+            foreach (var field in shape.Fields)
+            {
+                if (!field.CanAssign || !IsInboundAssignable(field.TypeShape))
+                    return false;
+            }
+
+            return true;
         }
 
         private static bool LooksLikeInputPort(string memberName)

@@ -377,6 +377,111 @@ namespace Demo
         }
 
         [Fact]
+        public void RoslynGeneratorEmitsRecursiveDtoAndCollectionProtobufInputs()
+        {
+            var result = RunGenerator(@"
+using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
+using UnityEngine;
+
+namespace Demo
+{
+    public sealed class Pose
+    {
+        public Vector3 Position { get; set; }
+    }
+
+    public sealed class Telemetry
+    {
+        public Pose Pose { get; set; }
+        public List<float> Samples { get; set; }
+    }
+
+    public partial class CommandInput
+    {
+        [FoxRun(""/phase175/telemetry_in"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        private Telemetry _incomingTelemetry;
+
+        [FoxRun(""/phase175/samples_in"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        private float[] _incomingSamples;
+    }
+}");
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class CommandInput", StringComparison.Ordinal));
+
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            Assert.Contains("__TryReadFoxRunProtobufObject", generated, StringComparison.Ordinal);
+            Assert.Contains("TryReadRepeatedFloat", generated, StringComparison.Ordinal);
+            Assert.Contains("__TryReadFoxRunProtobufCollection", generated, StringComparison.Ordinal);
+            Assert.Contains("out global::Demo.Telemetry __value", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsReadonlyNestedProtobufDtoInput()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public sealed class Command
+    {
+        public int Value { get; }
+    }
+
+    public partial class CommandInput
+    {
+        [FoxRun(""/phase175/readonly_dto"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        private Command _incomingCommand;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN024");
+        }
+
+        [Fact]
+        public void GeneratedProtobufDtoAndCollectionInputCompilesWithItsHostType()
+        {
+            var output = RunGeneratorAndUpdateCompilation(@"
+using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public enum CommandKind { Unknown = 0, Start = 1 }
+
+    public sealed class Command
+    {
+        public List<int> Values { get; set; }
+        public List<CommandKind> Kinds { get; set; }
+    }
+
+    public partial class CommandInput
+    {
+        [FoxRun(""/phase175/commands"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        private Command _incomingCommand;
+
+        [FoxRun(""/phase175/ints"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        private int[] _incomingInts;
+
+        [FoxRun(""/phase175/kind"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        private CommandKind _incomingKind;
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+
+        [Fact]
         public void ReflectionLowererPreservesDeclaredWirePolicyAndFieldNumber()
         {
             var model = FoxRunReflectionGenerationModelLowerer.Lower(new[]
@@ -585,7 +690,7 @@ namespace Demo
         }
 
         [Fact]
-        public void InboundValidationRejectsArraysAndWarnsAboutPublishOptions()
+        public void InboundValidationRejectsJsonArraysAndWarnsAboutPublishOptions()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
             {
@@ -599,6 +704,26 @@ namespace Demo
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024" && diagnostic.Severity == "Error");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN025" && diagnostic.Severity == "Warning");
+        }
+
+        [Fact]
+        public void InboundValidationAllowsExplicitProtobufArrays()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                new FoxRunGenerationMember(
+                    "Demo", "CommandInput", "_incomingSamples", "field", "System.Single[]",
+                    false, true, "System.Single", "/phase175/samples", 10f, "",
+                    1, 0.1f, 2f, "UnitTest", 0, "",
+                    mode: (int)FoxRunMode.SubscribeOnly,
+                    encoding: "protobuf",
+                    protobufTypeShape: FoxRunProtobufTypeShape.Canonical("float32"))
+            });
+
+            var diagnostics = FoxRunGenerationModelValidator.Validate(model);
+
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024" && diagnostic.Severity == "Error");
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN025" && diagnostic.Severity == "Warning");
         }
 
@@ -718,6 +843,14 @@ namespace Demo
             GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
             driver = driver.RunGenerators(compilation);
             return driver.GetRunResult();
+        }
+
+        private static Compilation RunGeneratorAndUpdateCompilation(string source)
+        {
+            var compilation = CreateCompilation(source);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var outputCompilation, out _);
+            return outputCompilation;
         }
 
         private static CSharpCompilation CreateCompilation(string source)
