@@ -20,6 +20,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECT = REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj"
 ANALYZER_DIRECTORY = REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/analyzers/dotnet/cs"
+UNITY_PLUGIN_GOOGLE_PROTOBUF = REPO_ROOT / "Packages/dev.unity2foxglove.sdk/Plugins/Google.Protobuf/Google.Protobuf.dll"
 CHECKED_IN_ARTIFACTS = {
     "FoxgloveLogSourceGenerator.dll": ANALYZER_DIRECTORY / "FoxgloveLogSourceGenerator.dll",
     "Google.Protobuf.dll": ANALYZER_DIRECTORY / "Google.Protobuf.dll",
@@ -59,6 +60,32 @@ def run_build(build_output_dir: Path = BUILD_OUTPUT_DIR, msbuild_props: list[str
     return True
 
 
+def validate_unity_plugin_protobuf_match(analyzer_dependency: Path) -> bool:
+    """Ensure the Unity runtime plug-in matches the supplied Protobuf dependency exactly."""
+    if not UNITY_PLUGIN_GOOGLE_PROTOBUF.exists():
+        print(
+            "[FAIL] Unity runtime Google.Protobuf plug-in is missing: "
+            f"{UNITY_PLUGIN_GOOGLE_PROTOBUF}",
+            file=sys.stderr,
+        )
+        return False
+
+    if sha256(analyzer_dependency) != sha256(UNITY_PLUGIN_GOOGLE_PROTOBUF):
+        print(
+            "[FAIL] Unity runtime Google.Protobuf plug-in differs from checked-in analyzer dependency.",
+            file=sys.stderr,
+        )
+        print(f"       analyzer: {analyzer_dependency} sha256={sha256(analyzer_dependency)}", file=sys.stderr)
+        print(
+            f"       runtime:  {UNITY_PLUGIN_GOOGLE_PROTOBUF} "
+            f"sha256={sha256(UNITY_PLUGIN_GOOGLE_PROTOBUF)}",
+            file=sys.stderr,
+        )
+        return False
+
+    return True
+
+
 def validate_or_update(update: bool, build_output_dir: Path, msbuild_props: list[str]) -> int:
     """Validate or update the checked-in analyzer assembly and its dependencies."""
     if not PROJECT.exists():
@@ -77,6 +104,8 @@ def validate_or_update(update: bool, build_output_dir: Path, msbuild_props: list
         built_artifacts[name] = built
 
     if update:
+        if not validate_unity_plugin_protobuf_match(built_artifacts["Google.Protobuf.dll"]):
+            return 1
         for name, checked_in in CHECKED_IN_ARTIFACTS.items():
             shutil.copy2(built_artifacts[name], checked_in)
             print(f"[PASS] Updated checked-in source generator artifact: {checked_in.relative_to(REPO_ROOT)}")
@@ -99,6 +128,9 @@ def validate_or_update(update: bool, build_output_dir: Path, msbuild_props: list
             print(f"       checked: {checked_in.relative_to(REPO_ROOT)} sha256={checked_hash}", file=sys.stderr)
             print("       Run: python Scripts/package/validate_source_generator_dll.py --update", file=sys.stderr)
             return 1
+
+    if not validate_unity_plugin_protobuf_match(CHECKED_IN_ARTIFACTS["Google.Protobuf.dll"]):
+        return 1
 
     print("[PASS] Checked-in source generator artifacts match a fresh Release build.")
     for checked_in in CHECKED_IN_ARTIFACTS.values():

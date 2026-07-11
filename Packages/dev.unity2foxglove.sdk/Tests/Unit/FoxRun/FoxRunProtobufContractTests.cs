@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Google.Protobuf.Reflection;
 using Unity.FoxgloveSDK.Components;
@@ -35,6 +36,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 FoxRunProtobufFieldNumber.Resolve("Demo.WireState|/phase175/wire_state|_count", fieldNumber));
+        }
+
+        [Fact]
+        public void AddingFieldDoesNotChangeExistingAutomaticTag()
+        {
+            var count = new FoxRunProtobufFieldInput("count", "_count", "int32", false);
+            var original = FoxRunProtobufContractBuilder.Build(new FoxRunProtobufContractInput(
+                "Demo.WireState",
+                "/phase175/wire_state",
+                "Demo.WireState",
+                new[] { count }));
+            var expanded = FoxRunProtobufContractBuilder.Build(new FoxRunProtobufContractInput(
+                "Demo.WireState",
+                "/phase175/wire_state",
+                "Demo.WireState",
+                new[] { count, new FoxRunProtobufFieldInput("label", "_label", "string", false) }));
+
+            var originalMessage = Assert.Single(FileDescriptorSet.Parser.ParseFrom(original.FileDescriptorSet).File.Single().MessageType);
+            var expandedMessage = Assert.Single(FileDescriptorSet.Parser.ParseFrom(expanded.FileDescriptorSet).File.Single().MessageType);
+
+            Assert.Equal(
+                originalMessage.Field.Single(field => field.Name == "count").Number,
+                expandedMessage.Field.Single(field => field.Name == "count").Number);
         }
 
         [Fact]
@@ -90,6 +114,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void NestedDtoFieldNumberCollisionNamesTheExplicitTagEscapeHatch()
+        {
+            var conflictingDto = FoxRunProtobufTypeShape.Object(
+                "Demo.ConflictingDto",
+                new[]
+                {
+                    new FoxRunProtobufTypeField("first", "First", FoxRunProtobufTypeShape.Canonical("int32"), protobufFieldNumber: 7),
+                    new FoxRunProtobufTypeField("second", "Second", FoxRunProtobufTypeShape.Canonical("int32"), protobufFieldNumber: 7)
+                });
+            var contract = new FoxRunProtobufContractInput(
+                "Demo.WireState",
+                "/phase175/conflicting_dto",
+                "Demo.WireState",
+                new[]
+                {
+                    new FoxRunProtobufFieldInput("payload", "_payload", "Demo.ConflictingDto", false, typeShape: conflictingDto)
+                });
+
+            var error = Assert.Throws<InvalidOperationException>(() => FoxRunProtobufContractBuilder.Build(contract));
+
+            Assert.Contains("Demo.ConflictingDto", error.Message, StringComparison.Ordinal);
+            Assert.Contains("ProtobufFieldNumber", error.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ModelValidatorRejectsMixedWirePoliciesAndDuplicateExplicitTags()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
@@ -108,6 +157,30 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN032");
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN033");
+        }
+
+        [Fact]
+        public void ModelValidatorReportsOneDeterministicExplicitTagCollision()
+        {
+            var model = FoxRunGenerationModel.FromMembers(new[]
+            {
+                new FoxRunGenerationMember(
+                    "Demo", "WireState", "_first", "field", "System.Int32", true, false, "",
+                    "/phase175/duplicate", 10f, "", 0, 0f, 0f, "UnitTest", 0, "",
+                    encoding: "protobuf", protobufFieldNumber: 17),
+                new FoxRunGenerationMember(
+                    "Demo", "WireState", "_second", "field", "System.Int32", true, false, "",
+                    "/phase175/duplicate", 10f, "", 0, 0f, 0f, "UnitTest", 1, "",
+                    encoding: "protobuf", protobufFieldNumber: 17)
+            });
+
+            var collision = Assert.Single(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN033");
+
+            Assert.Equal(
+                "FoxRun topic '/phase175/duplicate' has duplicate ProtobufFieldNumber 17.",
+                collision.Message);
         }
 
         [Fact]

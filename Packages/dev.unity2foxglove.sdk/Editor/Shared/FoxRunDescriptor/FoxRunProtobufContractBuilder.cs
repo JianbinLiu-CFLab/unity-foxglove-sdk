@@ -203,7 +203,8 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     throw new InvalidOperationException(
                         "FoxRun Protobuf field-number collision between '" + existingMember + "' and '"
-                        + nestedField.MemberName + "' in DTO '" + shape.TypeName + "'.");
+                        + nestedField.MemberName + "' in DTO '" + shape.TypeName
+                        + "'. Set ProtobufFieldNumber explicitly on the new DTO member.");
                 }
 
                 usedNumbers.Add(number, nestedField.MemberName);
