@@ -34,6 +34,17 @@ You will learn what the main Inspector fields do, when to change them, and which
 | Playback Start Offset Seconds | `0` | Start time offset for playback control. | Tune when simulating a time range. | Using negative or confusing offsets without checking timeline. |
 | Playback Duration Seconds | `60` | Playback control time window. | Increase for longer manual replay sessions. | Zero, negative, non-finite, or overflowing values disable playback control with a warning. |
 
+### 3.3.1 FoxRun
+
+| Field | Default | What it does | When to change it | Common mistakes |
+|---|---:|---|---|---|
+| Default Wire Encoding | `Protobuf` | Resolves generated `[FoxRun]` topics that leave `Encoding` as `Inherit`. | Select `JSON` only for a deliberate legacy-client compatibility session. | Expecting the popup to override an explicit `[FoxRun(Encoding = ...)]` declaration. |
+| Enable FoxRun Inbound | Disabled | Enables generated `SubscribeOnly` and `PublishAndSubscribe` inputs. | Enable only for an intentional remote-control surface. | Enabling it on a non-loopback endpoint without the explicit shared-token policy. |
+| Inbound Max Payload | `65536` | Maximum accepted client message size in bytes. | Lower it for small command messages. | Treating it as an outbound publish limit. |
+| Inbound Max Rate | `60` | Per-topic cap on incoming client messages per second. | Lower it to bound external-control traffic. | Treating it as a Unity publish scheduler frequency. |
+
+FoxRun policy is captured when the server starts. Changing **Default Wire Encoding** while Play Mode is running is visible in the Inspector but applies after server restart or re-enable. The runtime topic summary distinguishes source-owned `Inherit`, explicit JSON/Protobuf declarations, and the active effective contract.
+
 ### 3.4 MCAP Recording
 
 | Field | Default | What it does | When to change it | Common mistakes |

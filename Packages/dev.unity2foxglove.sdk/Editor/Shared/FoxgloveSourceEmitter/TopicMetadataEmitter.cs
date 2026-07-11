@@ -116,6 +116,20 @@ namespace Unity.FoxgloveSDK.Editor
                 : FoxRunGenerationDescriptorConstants.JsonEncoding;
         }
 
+        internal static bool IsInherited(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        {
+            return fields != null
+                   && fields.Count > 0
+                   && string.Equals(
+                       fields[0].Encoding,
+                       FoxRunGenerationDescriptorConstants.InheritEncoding,
+                       StringComparison.Ordinal);
+        }
+
+        internal static bool UsesProtobuf(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+            => string.Equals(EffectiveEncoding(fields), FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+               || IsInherited(fields);
+
         private static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
             var sb = new StringBuilder();

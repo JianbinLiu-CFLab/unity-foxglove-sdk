@@ -203,13 +203,36 @@ private void Update()
 }
 ```
 
-`SubscribeOnly` fields are not published. `PublishAndSubscribe` fields retain publishing and suppress the first echo after an inbound assignment. Inbound fields must be writable scalar, string, or supported Unity value types; arrays, aggregate message fields, readonly fields, and properties without setters are rejected by generator diagnostics.
+`SubscribeOnly` fields are not published. `PublishAndSubscribe` fields retain publishing and suppress the first echo after an inbound assignment. Inbound fields must be writable scalar, string, or supported Unity value types. Protobuf inputs also support generated enums, DTO graphs, arrays, and `List<T>` values; aggregate message fields, readonly fields, and properties without setters are rejected by generator diagnostics.
 
 Prefer an input-buffer field such as `_requestedTargetSpeed`, validate it in normal Unity code, and then apply it to authoritative state. Use `SubscribeOnly` for remote-authoritative commands. Keep local-authoritative state publish-only. Use `PublishAndSubscribe` only for intentionally shared observed state where both sides understand the ownership and feedback-loop policy.
 
-Inbound FoxRun is an external control surface and is disabled by default. Enable it under `FoxgloveManager > Connection & Security > FoxRun Inbound`. The runtime accepts only generated topic contracts, applies bounded payload and per-topic rate limits, decodes JSON directly into the declared member type, rejects polymorphic `$type` metadata, and assigns values on the Unity main thread.
+Inbound FoxRun is an external control surface and is disabled by default. Enable it under `FoxgloveManager > FoxRun > Inbound Control`. The runtime accepts only generated topic contracts, applies bounded payload and per-topic rate limits, rejects polymorphic `$type` metadata for JSON, and assigns values on the Unity main thread.
 
 Loopback endpoints may opt in directly. A non-loopback endpoint remains fail-closed unless shared-token authentication is configured and the separate remote-inbound option is enabled. Every authenticated client currently receives the same generated allowlist; per-client topic authorization is not provided.
+
+### Wire Encoding Migration
+
+`[FoxRun]` now declares `Encoding = FoxRunWireEncoding.Inherit` by default. After recompilation, inherited topics use the Manager's **Default Wire Encoding**, which defaults to **Protobuf**. The Manager Inspector exposes only **Protobuf** and **JSON** for that default; `Inherit` is source-owned and is not an Inspector option.
+
+Use an explicit JSON declaration for a legacy client that must keep its existing contract:
+
+```csharp
+[FoxRun("/control/legacy-speed", Mode = FoxRunMode.SubscribeOnly,
+    Encoding = FoxRunWireEncoding.Json)]
+private float _legacyRequestedSpeed;
+```
+
+An inherited bidirectional DTO uses Protobuf by default and retains both generated schema variants for migration evidence:
+
+```csharp
+[FoxRun("/control/command", Mode = FoxRunMode.PublishAndSubscribe)]
+private DriveCommand _command;
+```
+
+The Manager captures the selected default when its server starts. Changing the Inspector popup during Play Mode takes effect only after restarting or re-enabling the server; an active session never changes channel encoding in place. The FoxRun Inspector summary shows each topic's declared and effective encodings plus its schema.
+
+Encoding contributes to the schema contract identity. An inherited topic activated as Protobuf therefore has different schema/fingerprint evidence from its JSON variant. Re-record MCAP data after changing an inherited topic's effective encoding, and explicitly select JSON before recording when an external client must retain the legacy JSON contract.
 
 Local service calls extend the existing `[FoxService]` registry through `FoxgloveServiceHub.CallLocal`. They do not create a second service registry or move Unity handlers onto worker threads.
 

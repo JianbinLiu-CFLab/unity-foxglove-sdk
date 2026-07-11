@@ -44,6 +44,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             EnsureRuntimeCreated();
+            CaptureFoxRunWireEncodingForSession();
 
             try
             {
@@ -111,6 +112,7 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
             TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
+            ClearFoxRunWireEncodingForSession();
         }
 
         private static void TryCleanupStartupStep(System.Action cleanup, string description)
@@ -232,6 +234,7 @@ namespace Unity.FoxgloveSDK.Components
                 DetachRuntimeForwarders(_runtime?.Session);
                 if (_runtime?.Session == null)
                 {
+                    ClearFoxRunWireEncodingForSession();
                     return;
                 }
             }
@@ -249,6 +252,7 @@ namespace Unity.FoxgloveSDK.Components
 
             AdvanceChannelSessionGeneration();
             _runtime.Stop();
+            ClearFoxRunWireEncodingForSession();
             _sharedSensorClock.Reset();
             StopRemoteMcapFileServer();
             StopReplayCursorEndpoint();

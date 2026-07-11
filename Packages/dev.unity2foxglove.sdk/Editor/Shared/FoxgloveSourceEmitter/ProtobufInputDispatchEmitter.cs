@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Editor
             for (var index = 0; index < members.Count; index++)
             {
                 var member = members[index];
-                if (!string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+                if (!UsesProtobuf(member.Encoding)
                     || member.ProtobufTypeShape == null)
                     continue;
                 var shapes = new List<FoxRunProtobufTypeShape>();
@@ -294,5 +294,9 @@ namespace Unity.FoxgloveSDK.Editor
                     return "global::" + typeName;
             }
         }
+
+        private static bool UsesProtobuf(string encoding)
+            => string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+               || string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal);
     }
 }

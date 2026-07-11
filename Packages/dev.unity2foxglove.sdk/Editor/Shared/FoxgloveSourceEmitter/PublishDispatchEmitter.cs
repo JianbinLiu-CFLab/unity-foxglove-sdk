@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Editor
                     TopicMetadataEmitter.EffectiveEncoding(fields),
                     FoxRunGenerationDescriptorConstants.ProtobufEncoding,
                     System.StringComparison.Ordinal);
+                var inherited = TopicMetadataEmitter.IsInherited(fields);
                 if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
@@ -50,7 +51,18 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                    break;");
                         sb.AppendLine($"{pad}                }}");
                     }
-                    if (protobuf)
+                    if (inherited)
+                    {
+                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{schema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine($"{pad}                    var __payload_{i} = __BuildFoxRunJson_{i}();");
+                        sb.AppendLine($"{pad}                    __foxRunLastJson_{i} = __payload_{i};");
+                        sb.AppendLine($"{pad}                    mgr.PublishFoxRunJsonBytes(\"{topic}\", \"{schema}\", __payload_{i}, nowNs);");
+                        sb.AppendLine($"{pad}                }}");
+                    }
+                    else if (protobuf)
                     {
                         sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{schema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
                     }
@@ -73,7 +85,14 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                    break;");
                         sb.AppendLine($"{pad}                }}");
                     }
-                    if (protobuf)
+                    if (inherited)
+                    {
+                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{schema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
+                        sb.AppendLine($"{pad}                else");
+                        sb.AppendLine($"{pad}                    mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs);");
+                    }
+                    else if (protobuf)
                         sb.AppendLine($"{pad}                mgr.PublishProto(\"{topic}\", \"{schema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
                     else
                         sb.AppendLine($"{pad}                mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs);");

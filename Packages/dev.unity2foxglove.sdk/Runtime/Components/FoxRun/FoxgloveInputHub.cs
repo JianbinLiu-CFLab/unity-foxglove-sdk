@@ -64,6 +64,7 @@ namespace Unity.FoxgloveSDK.Components
 
             _router.MaxPayloadBytes = _manager.FoxRunInboundMaxPayloadBytes;
             _router.MaxMessagesPerSecondPerTopic = _manager.FoxRunInboundMaxMessagesPerSecondPerTopic;
+            _router.DefaultWireEncoding = _manager.ActiveFoxRunDefaultWireEncoding;
 
             _scanTimer -= Time.deltaTime;
             if (_scanTimer <= 0f)

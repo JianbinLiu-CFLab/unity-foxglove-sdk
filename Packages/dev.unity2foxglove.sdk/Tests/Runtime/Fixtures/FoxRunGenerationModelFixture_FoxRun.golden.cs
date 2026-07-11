@@ -54,25 +54,46 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             switch (topicIndex)
             {
                 case 0:
-                    mgr.PublishJson("/debug/array", "", new Dictionary<string, object> { ["samples"] = this._samples }, nowNs);
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)
+                        mgr.PublishProto("/debug/array", "", __BuildFoxRunProtobuf_0(), nowNs);
+                    else
+                        mgr.PublishJson("/debug/array", "", new Dictionary<string, object> { ["samples"] = this._samples }, nowNs);
                     break;
                 case 1:
-                    mgr.PublishJson("/debug/extra", "", new Dictionary<string, object> { ["extra"] = this._extra }, nowNs);
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)
+                        mgr.PublishProto("/debug/extra", "", __BuildFoxRunProtobuf_1(), nowNs);
+                    else
+                        mgr.PublishJson("/debug/extra", "", new Dictionary<string, object> { ["extra"] = this._extra }, nowNs);
                     break;
                 case 2:
-                    mgr.PublishJson("/debug/list", "", new Dictionary<string, object> { ["sampleList"] = this._sampleList }, nowNs);
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)
+                        mgr.PublishProto("/debug/list", "", __BuildFoxRunProtobuf_2(), nowNs);
+                    else
+                        mgr.PublishJson("/debug/list", "", new Dictionary<string, object> { ["sampleList"] = this._sampleList }, nowNs);
                     break;
                 case 3:
-                    mgr.PublishJson("/debug/nullable", "", new Dictionary<string, object> { ["optionalCount"] = this._optionalCount }, nowNs);
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)
+                        mgr.PublishProto("/debug/nullable", "", __BuildFoxRunProtobuf_3(), nowNs);
+                    else
+                        mgr.PublishJson("/debug/nullable", "", new Dictionary<string, object> { ["optionalCount"] = this._optionalCount }, nowNs);
                     break;
                 case 4:
-                    mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = this._trigger }, nowNs);
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)
+                        mgr.PublishProto("/debug/trigger", "", __BuildFoxRunProtobuf_4(), nowNs);
+                    else
+                        mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = this._trigger }, nowNs);
                     break;
                 case 5:
-                    mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, nowNs);
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)
+                        mgr.PublishProto("/debug/value", "", __BuildFoxRunProtobuf_5(), nowNs);
+                    else
+                        mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, nowNs);
                     break;
                 case 6:
-                    mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, nowNs);
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)
+                        mgr.PublishProto("/debug/vector", "", __BuildFoxRunProtobuf_6(), nowNs);
+                    else
+                        mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, nowNs);
                     break;
             }
         }
@@ -246,6 +267,64 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 }
             }
             __json.Append('\"');
+        }
+
+        private byte[] __BuildFoxRunProtobuf_0()
+        {
+            var __payload = new global::System.Collections.Generic.List<byte>(64);
+            if (this._samples != null)
+            {
+                foreach (var __item in this._samples)
+                    FoxRunProtobufWire.WriteFloat(__payload, 207451342, __item);
+            }
+            return __payload.ToArray();
+        }
+
+        private byte[] __BuildFoxRunProtobuf_1()
+        {
+            var __payload = new global::System.Collections.Generic.List<byte>(64);
+            FoxRunProtobufWire.WriteString(__payload, 32607455, this._extra);
+            return __payload.ToArray();
+        }
+
+        private byte[] __BuildFoxRunProtobuf_2()
+        {
+            var __payload = new global::System.Collections.Generic.List<byte>(64);
+            if (this._sampleList != null)
+            {
+                foreach (var __item in this._sampleList)
+                    FoxRunProtobufWire.WriteFloat(__payload, 281792889, __item);
+            }
+            return __payload.ToArray();
+        }
+
+        private byte[] __BuildFoxRunProtobuf_3()
+        {
+            var __payload = new global::System.Collections.Generic.List<byte>(64);
+            FoxRunProtobufWire.WriteInt32(__payload, 78618506, this._optionalCount);
+            return __payload.ToArray();
+        }
+
+        private byte[] __BuildFoxRunProtobuf_4()
+        {
+            var __payload = new global::System.Collections.Generic.List<byte>(64);
+            FoxRunProtobufWire.WriteInt32(__payload, 123017804, this._trigger);
+            return __payload.ToArray();
+        }
+
+        private byte[] __BuildFoxRunProtobuf_5()
+        {
+            var __payload = new global::System.Collections.Generic.List<byte>(64);
+            FoxRunProtobufWire.WriteFloat(__payload, 119936009, this._value);
+            FoxRunProtobufWire.WriteFloat(__payload, 4427300, this._valueMirror);
+            return __payload.ToArray();
+        }
+
+        private byte[] __BuildFoxRunProtobuf_6()
+        {
+            var __payload = new global::System.Collections.Generic.List<byte>(64);
+            FoxRunProtobufWire.WriteVector3(__payload, 128696334, this._position);
+            return __payload.ToArray();
         }
 
         [Preserve]

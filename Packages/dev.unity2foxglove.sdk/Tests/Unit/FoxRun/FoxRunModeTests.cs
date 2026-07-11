@@ -132,8 +132,10 @@ namespace Demo
 
             Assert.Contains("partial class CommandInput : IFoxgloveInputSource", generated, StringComparison.Ordinal);
             Assert.Contains("int IFoxgloveInputSource.FoxgloveInput_TopicCount => 1", generated, StringComparison.Ordinal);
-            Assert.Contains("new FoxgloveInputTopicInfo(\"/phase157/cmd_vel\", \"json\", FoxRunMode.SubscribeOnly)", generated, StringComparison.Ordinal);
+            Assert.Contains("new FoxgloveInputTopicInfo(\"/phase157/cmd_vel\", FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly)", generated, StringComparison.Ordinal);
+            Assert.Contains("string.Equals(encoding, \"protobuf\", global::System.StringComparison.OrdinalIgnoreCase)", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundJson.TryRead(payload, \"incomingVelocity\", out global::UnityEngine.Vector3 __value", generated, StringComparison.Ordinal);
+            Assert.Contains("FoxRunInboundProtobuf.TryRead", generated, StringComparison.Ordinal);
             Assert.Contains("this._incomingVelocity = __value", generated, StringComparison.Ordinal);
             Assert.DoesNotContain("IFoxgloveLogSource", generated, StringComparison.Ordinal);
         }

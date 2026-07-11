@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## Unreleased
 
+### Added
+
+- FoxRun now supports source-generated Protobuf wire contracts for inherited
+  topics, including typed inbound DTO and collection decoding. The Manager
+  Inspector exposes a per-session Protobuf/JSON default while explicit JSON
+  declarations remain available for legacy clients.
+
 ### Changed
 
 - Temporarily disabled declarative FoxService components now re-register their

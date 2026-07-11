@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Editor
             for (var topicIndex = 0; topicIndex < topics.Count; topicIndex++)
             {
                 var fields = topicMap[topics[topicIndex]];
-                if (!string.Equals(TopicMetadataEmitter.EffectiveEncoding(fields), FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))
+                if (!TopicMetadataEmitter.UsesProtobuf(fields))
                     continue;
 
                 sb.AppendLine();

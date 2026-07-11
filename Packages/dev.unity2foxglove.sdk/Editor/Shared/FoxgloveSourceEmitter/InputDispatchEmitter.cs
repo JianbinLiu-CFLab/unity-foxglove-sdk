@@ -32,10 +32,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var member = members[i];
                 var topic = StringLiteralEmitter.CSharpStringLiteral(member.Topic);
                 var mode = member.Mode == 2 ? "FoxRunMode.PublishAndSubscribe" : "FoxRunMode.SubscribeOnly";
-                var encoding = string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, System.StringComparison.Ordinal)
-                    ? FoxRunGenerationDescriptorConstants.ProtobufEncoding
-                    : FoxRunGenerationDescriptorConstants.JsonEncoding;
-                sb.AppendLine($"{pad}            case {i}: return new FoxgloveInputTopicInfo(\"{topic}\", \"{encoding}\", {mode});");
+                sb.AppendLine($"{pad}            case {i}: return new FoxgloveInputTopicInfo(\"{topic}\", {WireEncodingLiteral(member.Encoding)}, {mode});");
             }
             sb.AppendLine($"{pad}            default: throw new ArgumentOutOfRangeException(nameof(index));");
             sb.AppendLine($"{pad}        }}");
@@ -51,18 +48,53 @@ namespace Unity.FoxgloveSDK.Editor
                 var fieldName = StringLiteralEmitter.CSharpStringLiteral(member.JsonFieldName);
                 var typeName = GlobalTypeName(member.TypeName);
                 var access = TypeExprEmitter.MemberAccess(member.MemberName);
-                var protobuf = string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, System.StringComparison.Ordinal);
+                var protobuf = UsesProtobuf(member.Encoding);
+                var inherited = IsInherited(member.Encoding);
                 var protobufFieldNumber = FoxRunProtobufFieldNumber.Resolve(
                     member.Topic + "|" + member.SchemaName + "|" + member.MemberName,
                     member.ProtobufFieldNumber);
-                var reader = protobuf
+                var protobufReader = protobuf
                     ? ProtobufInputDispatchEmitter.ReaderCall(protobufFieldNumber, typeName, member.ProtobufTypeShape, i)
-                    : $"FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error)";
+                    : string.Empty;
+                var jsonReader = $"FoxRunInboundJson.TryRead(payload, \"{fieldName}\", out {typeName} __value, out error)";
                 sb.AppendLine($"{pad}            case {i}:");
                 sb.AppendLine($"{pad}                {{");
-                sb.AppendLine($"{pad}                    if (!{reader})");
-                sb.AppendLine($"{pad}                        return false;");
-                sb.AppendLine($"{pad}                    {access} = __value;");
+                if (inherited)
+                {
+                    sb.AppendLine($"{pad}                    if (string.Equals(encoding, \"protobuf\", global::System.StringComparison.OrdinalIgnoreCase))");
+                    sb.AppendLine($"{pad}                    {{");
+                    sb.AppendLine($"{pad}                        if (!{protobufReader}) return false;");
+                    sb.AppendLine($"{pad}                        {access} = __value;");
+                    sb.AppendLine($"{pad}                    }}");
+                    if (SupportsJsonInbound(member))
+                    {
+                        sb.AppendLine($"{pad}                    else if (string.Equals(encoding, \"json\", global::System.StringComparison.OrdinalIgnoreCase))");
+                        sb.AppendLine($"{pad}                    {{");
+                        sb.AppendLine($"{pad}                        if (!{jsonReader}) return false;");
+                        sb.AppendLine($"{pad}                        {access} = __value;");
+                        sb.AppendLine($"{pad}                    }}");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"{pad}                    else if (string.Equals(encoding, \"json\", global::System.StringComparison.OrdinalIgnoreCase))");
+                        sb.AppendLine($"{pad}                    {{");
+                        sb.AppendLine($"{pad}                        error = \"This inherited FoxRun input requires Protobuf for its declared type.\";");
+                        sb.AppendLine($"{pad}                        return false;");
+                        sb.AppendLine($"{pad}                    }}");
+                    }
+                    sb.AppendLine($"{pad}                    else");
+                    sb.AppendLine($"{pad}                    {{");
+                    sb.AppendLine($"{pad}                        error = \"Unsupported FoxRun inbound wire encoding.\";");
+                    sb.AppendLine($"{pad}                        return false;");
+                    sb.AppendLine($"{pad}                    }}");
+                }
+                else
+                {
+                    var reader = protobuf ? protobufReader : jsonReader;
+                    sb.AppendLine($"{pad}                    if (!{reader})");
+                    sb.AppendLine($"{pad}                        return false;");
+                    sb.AppendLine($"{pad}                    {access} = __value;");
+                }
                 if (member.Mode == 2)
                 {
                     var publishIndex = IndexOf(publishTopics, member.Topic);
@@ -116,6 +148,38 @@ namespace Unity.FoxgloveSDK.Editor
                 if (string.Equals(values[i], value, System.StringComparison.Ordinal))
                     return i;
             return -1;
+        }
+
+        private static bool UsesProtobuf(string encoding)
+            => string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, System.StringComparison.Ordinal)
+               || IsInherited(encoding);
+
+        private static bool IsInherited(string encoding)
+            => string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, System.StringComparison.Ordinal);
+
+        private static string WireEncodingLiteral(string encoding)
+        {
+            if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, System.StringComparison.Ordinal))
+                return "FoxRunWireEncoding.Protobuf";
+            if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, System.StringComparison.Ordinal))
+                return "FoxRunWireEncoding.Json";
+            return "FoxRunWireEncoding.Inherit";
+        }
+
+        private static bool SupportsJsonInbound(FoxgloveSourceEmitter.TopicMember member)
+        {
+            if (member.ProtobufTypeShape != null
+                && (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Object
+                    || member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum))
+            {
+                return false;
+            }
+
+            var type = member.TypeName ?? string.Empty;
+            return !type.EndsWith("[]", System.StringComparison.Ordinal)
+                   && type.IndexOf("List<", System.StringComparison.Ordinal) < 0
+                   && type.IndexOf("IList<", System.StringComparison.Ordinal) < 0
+                   && type.IndexOf("IReadOnlyList<", System.StringComparison.Ordinal) < 0;
         }
     }
 }

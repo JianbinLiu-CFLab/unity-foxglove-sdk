@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private bool _connectionSecurityExpanded;
         private bool _publishDataExpanded;
+        private bool _foxRunExpanded;
         private bool _ros2BridgeExpanded;
         private bool _mcapExpanded;
         private bool _foxServicesExpanded;
@@ -60,6 +61,7 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _ros2NativeEnabledProperty;
         private SerializedProperty _ros2BridgeEnabledProperty;
         private SerializedProperty _enableFoxRunInboundProperty;
+        private SerializedProperty _defaultFoxRunWireEncodingProperty;
         private SerializedProperty _allowRemoteFoxRunInboundWithSharedTokenProperty;
         private SerializedProperty _certificatePfxPathProperty;
         private SerializedProperty _certificatePasswordProperty;
@@ -145,6 +147,7 @@ namespace Unity.FoxgloveSDK.Editor
             _ros2NativeEnabledProperty = serializedObject.FindProperty("_ros2NativeEnabled");
             _ros2BridgeEnabledProperty = serializedObject.FindProperty("_ros2BridgeEnabled");
             _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
+            _defaultFoxRunWireEncodingProperty = serializedObject.FindProperty("_defaultFoxRunWireEncoding");
             _allowRemoteFoxRunInboundWithSharedTokenProperty = serializedObject.FindProperty("_allowRemoteFoxRunInboundWithSharedToken");
             _certificatePfxPathProperty = serializedObject.FindProperty("_certificatePfxPath");
             _certificatePasswordProperty = serializedObject.FindProperty("_certificatePassword");
@@ -181,6 +184,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawSection("Connection & Security", "ConnectionSecurity", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
             DrawSection("Publish Data", "PublishData", ref _publishDataExpanded, DrawPublishDataSection);
+            DrawSection("FoxRun", "FoxRun", ref _foxRunExpanded, DrawFoxRunSection);
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", "Mcap", ref _mcapExpanded, DrawMcapSection);
             DrawSection("FoxServices", "FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
@@ -274,6 +278,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             _connectionSecurityExpanded = SessionState.GetBool(InspectorFoldoutKey("ConnectionSecurity"), false);
             _publishDataExpanded = SessionState.GetBool(InspectorFoldoutKey("PublishData"), false);
+            _foxRunExpanded = SessionState.GetBool(InspectorFoldoutKey("FoxRun"), false);
             _ros2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("Ros2Bridge"), false);
             _mcapExpanded = SessionState.GetBool(InspectorFoldoutKey("Mcap"), false);
             _foxServicesExpanded = SessionState.GetBool(InspectorFoldoutKey("FoxServices"), false);
@@ -299,24 +304,6 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveManagerInspectorLayout.Subheader("Web Access");
             DrawProperty("_allowHostedFoxgloveWeb");
             DrawProperty("_allowedBrowserOrigins");
-
-            FoxgloveManagerInspectorLayout.Subheader("FoxRun Inbound");
-            DrawProperty("_enableFoxRunInbound");
-            using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
-            {
-                DrawProperty("_allowRemoteFoxRunInboundWithSharedToken");
-                DrawProperty("_foxRunInboundMaxPayloadBytes");
-                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic");
-            }
-            if (GetBool("_enableFoxRunInbound")
-                && !Components.FoxgloveManager.IsLoopbackHost(GetString("_host", "127.0.0.1"))
-                && (!GetBool("_allowRemoteFoxRunInboundWithSharedToken")
-                    || string.IsNullOrWhiteSpace(GetString("_sharedToken", ""))))
-            {
-                EditorGUILayout.HelpBox(
-                    "FoxRun inbound is fail-closed for non-loopback hosts. Enable remote inbound explicitly and configure a shared token.",
-                    MessageType.Warning);
-            }
 
             var isSecure = IsSecureMode();
             FoxgloveManagerInspectorLayout.Subheader("Security / WSS");
@@ -374,6 +361,7 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_ros2NativeEnabled": return _ros2NativeEnabledProperty;
                 case "_ros2BridgeEnabled": return _ros2BridgeEnabledProperty;
                 case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
+                case "_defaultFoxRunWireEncoding": return _defaultFoxRunWireEncodingProperty;
                 case "_allowRemoteFoxRunInboundWithSharedToken": return _allowRemoteFoxRunInboundWithSharedTokenProperty;
                 case "_certificatePfxPath": return _certificatePfxPathProperty;
                 case "_certificatePassword": return _certificatePasswordProperty;
