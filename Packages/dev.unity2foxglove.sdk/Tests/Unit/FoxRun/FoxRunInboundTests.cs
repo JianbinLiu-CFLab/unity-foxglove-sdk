@@ -158,6 +158,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(
                 FoxRunInputDispatchStatus.DecodeRejected,
                 router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "json", 2).Status);
+            Assert.Equal(1, input.ApplyCount);
 
             router.DefaultWireEncoding = FoxRunWireEncoding.Json;
 

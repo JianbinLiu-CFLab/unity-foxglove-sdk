@@ -730,6 +730,42 @@ namespace Demo
         }
 
         [Fact]
+        public void RoslynGeneratorDoesNotEmitNullableProtobufWriterConversionErrors()
+        {
+            var output = RunGeneratorAndUpdateCompilation(@"
+using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public sealed class OptionalPayload
+    {
+        public int? OptionalCount;
+        public List<int?> Samples = new List<int?>();
+    }
+
+    public partial class NullablePublisher
+    {
+        [FoxRun(""/phase175/optional-root"", Encoding = FoxRunWireEncoding.Protobuf)]
+        public int? OptionalRoot;
+
+        [FoxRun(""/phase175/optional-payload"", Encoding = FoxRunWireEncoding.Protobuf)]
+        public OptionalPayload Payload = new OptionalPayload();
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Id == "CS1503");
+        }
+
+        [Fact]
         public void RoslynGeneratorRejectsReadOnlyInboundProperty()
         {
             var result = RunGenerator(@"

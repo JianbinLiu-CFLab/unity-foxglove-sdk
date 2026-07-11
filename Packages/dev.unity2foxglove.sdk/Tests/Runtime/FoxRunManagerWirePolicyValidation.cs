@@ -40,9 +40,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && inbound.Contains("_defaultFoxRunWireEncoding == FoxRunWireEncoding.Inherit", StringComparison.Ordinal)
                   && inbound.Contains("ResolveFoxRunWireEncoding", StringComparison.Ordinal),
                 "175C-2: Manager defaults inherited topics to Protobuf");
-            Check(server.Contains("CaptureFoxRunWireEncodingForSession();", StringComparison.Ordinal)
+            var captureIndex = server.IndexOf("CaptureFoxRunWireEncodingForSession();", StringComparison.Ordinal);
+            var schemaRegistrationIndex = server.IndexOf("FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas", StringComparison.Ordinal);
+            Check(captureIndex >= 0
+                  && schemaRegistrationIndex > captureIndex
+                && inbound.Contains("public FoxRunWireEncoding ActiveFoxRunDefaultWireEncoding => _hasActiveFoxRunWireEncoding", StringComparison.Ordinal)
+                && inbound.Contains("? _activeFoxRunDefaultWireEncoding", StringComparison.Ordinal)
+                  && inbound.Contains("_activeFoxRunDefaultWireEncoding = DefaultFoxRunWireEncoding;", StringComparison.Ordinal)
                   && server.Contains("ClearFoxRunWireEncodingForSession();", StringComparison.Ordinal),
-                "175C-3: Manager freezes and clears wire policy with the server lifecycle");
+                "175C-3: Manager freezes the policy before registration and clears it with the session lifecycle");
         }
 
         private static void VerifyGeneratedInheritedDualCodecDispatch()
@@ -74,9 +80,13 @@ namespace Unity.FoxgloveSDK.Tests
                      < main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal),
                 "175C-7: FoxRun Inspector section sits between Publish Data and MCAP");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
+                  && labels.Contains("property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0", StringComparison.Ordinal)
+                  && labels.Contains("property.enumValueIndex = selected == 0", StringComparison.Ordinal)
+                  && labels.Contains("? (int)FoxRunWireEncoding.Protobuf", StringComparison.Ordinal)
+                  && labels.Contains(": (int)FoxRunWireEncoding.Json", StringComparison.Ordinal)
                   && !labels.Contains("MsgPack", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
-                "175C-8: Manager dropdown offers only Protobuf and JSON");
+                "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
             Check(inspector.Contains("Topic\", \"Direction | Declared | Effective | Schema", StringComparison.Ordinal)
                   && inspector.Contains("restarted or re-enabled", StringComparison.Ordinal),
                 "175C-9: Inspector exposes effective topic summary and restart boundary");

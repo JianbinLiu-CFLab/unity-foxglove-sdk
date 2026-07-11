@@ -63,12 +63,53 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine($"{pad}if ({access} != null)");
                 sb.AppendLine($"{pad}{{");
                 sb.AppendLine($"{pad}    foreach (var __item in {access})");
-                EmitValue(sb, field.CanonicalType, field.ProtobufTypeShape, number, "__item", buffer, pad + "        ", objectShapes);
+                EmitOptionalValue(
+                    sb,
+                    field.CanonicalType,
+                    field.ProtobufTypeShape,
+                    number,
+                    "__item",
+                    buffer,
+                    pad + "        ",
+                    objectShapes,
+                    IsCollectionElementNullable(field.TypeName));
                 sb.AppendLine($"{pad}}}");
                 return;
             }
 
-            EmitValue(sb, field.CanonicalType, field.ProtobufTypeShape, number, access, buffer, pad, objectShapes);
+            EmitOptionalValue(
+                sb,
+                field.CanonicalType,
+                field.ProtobufTypeShape,
+                number,
+                access,
+                buffer,
+                pad,
+                objectShapes,
+                IsNullableValueType(field.TypeName));
+        }
+
+        private static void EmitOptionalValue(
+            StringBuilder sb,
+            string canonicalType,
+            FoxRunProtobufTypeShape shape,
+            int number,
+            string access,
+            string buffer,
+            string pad,
+            IReadOnlyList<FoxRunProtobufTypeShape> objectShapes,
+            bool isNullable)
+        {
+            if (!isNullable)
+            {
+                EmitValue(sb, canonicalType, shape, number, access, buffer, pad, objectShapes);
+                return;
+            }
+
+            sb.AppendLine($"{pad}if ({access}.HasValue)");
+            sb.AppendLine($"{pad}{{");
+            EmitValue(sb, canonicalType, shape, number, access + ".Value", buffer, pad + "    ", objectShapes);
+            sb.AppendLine($"{pad}}}");
         }
 
         private static void EmitValue(
@@ -106,10 +147,28 @@ namespace Unity.FoxgloveSDK.Editor
                 if (field.Repeated)
                 {
                     sb.AppendLine($"{pad}        if ({access} != null) foreach (var __item in {access})");
-                    EmitValue(sb, field.TypeShape.CanonicalType, field.TypeShape, number, "__item", "__nested", pad + "            ", objectShapes);
+                    EmitOptionalValue(
+                        sb,
+                        field.TypeShape.CanonicalType,
+                        field.TypeShape,
+                        number,
+                        "__item",
+                        "__nested",
+                        pad + "            ",
+                        objectShapes,
+                        field.IsNullable);
                 }
                 else
-                    EmitValue(sb, field.TypeShape.CanonicalType, field.TypeShape, number, access, "__nested", pad + "        ", objectShapes);
+                    EmitOptionalValue(
+                        sb,
+                        field.TypeShape.CanonicalType,
+                        field.TypeShape,
+                        number,
+                        access,
+                        "__nested",
+                        pad + "        ",
+                        objectShapes,
+                        field.IsNullable);
             }
             sb.AppendLine($"{pad}        FoxRunProtobufWire.WriteBytes(__target, __fieldNumber, __nested);");
             sb.AppendLine($"{pad}    }}");
@@ -164,6 +223,49 @@ namespace Unity.FoxgloveSDK.Editor
                    || type.IndexOf("List<", StringComparison.Ordinal) >= 0
                    || type.IndexOf("IList<", StringComparison.Ordinal) >= 0
                    || type.IndexOf("IReadOnlyList<", StringComparison.Ordinal) >= 0;
+        }
+
+        private static bool IsCollectionElementNullable(string typeName)
+        {
+            if (!TryGetCollectionElementType(typeName, out var elementType))
+                return false;
+            return IsNullableValueType(elementType);
+        }
+
+        private static bool TryGetCollectionElementType(string typeName, out string elementType)
+        {
+            var type = (typeName ?? string.Empty).Trim();
+            if (type.EndsWith("[]", StringComparison.Ordinal))
+            {
+                elementType = type.Substring(0, type.Length - 2).Trim();
+                return elementType.Length > 0;
+            }
+
+            return TryGetSingleGenericArgument(type, "List<", out elementType)
+                   || TryGetSingleGenericArgument(type, "System.Collections.Generic.List<", out elementType)
+                   || TryGetSingleGenericArgument(type, "IList<", out elementType)
+                   || TryGetSingleGenericArgument(type, "System.Collections.Generic.IList<", out elementType)
+                   || TryGetSingleGenericArgument(type, "IReadOnlyList<", out elementType)
+                   || TryGetSingleGenericArgument(type, "System.Collections.Generic.IReadOnlyList<", out elementType);
+        }
+
+        private static bool TryGetSingleGenericArgument(string type, string prefix, out string argument)
+        {
+            argument = string.Empty;
+            if (!type.StartsWith(prefix, StringComparison.Ordinal) || !type.EndsWith(">", StringComparison.Ordinal))
+                return false;
+
+            argument = type.Substring(prefix.Length, type.Length - prefix.Length - 1).Trim();
+            return argument.Length > 0;
+        }
+
+        private static bool IsNullableValueType(string typeName)
+        {
+            var type = (typeName ?? string.Empty).Trim();
+            return type.EndsWith("?", StringComparison.Ordinal)
+                   || (type.EndsWith(">", StringComparison.Ordinal)
+                       && (type.StartsWith("Nullable<", StringComparison.Ordinal)
+                           || type.StartsWith("System.Nullable<", StringComparison.Ordinal)));
         }
     }
 }

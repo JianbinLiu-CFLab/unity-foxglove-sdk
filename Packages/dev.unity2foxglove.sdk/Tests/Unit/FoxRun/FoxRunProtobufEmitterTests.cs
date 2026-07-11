@@ -83,5 +83,42 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.DoesNotContain("not yet supported", source, System.StringComparison.OrdinalIgnoreCase);
         }
 
+        [Fact]
+        public void NullableValuesAreOmittedInsteadOfPassedToScalarProtobufWriters()
+        {
+            var rootNullable = new FoxgloveSourceEmitter.TopicMember(
+                "_optionalCount", "System.Nullable<System.Int32>", "/phase175/optional", 10f, "Demo.Optional",
+                0, 0f, 0f, encoding: "protobuf", protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
+            var nested = FoxRunProtobufTypeShape.Object(
+                "Demo.OptionalPayload",
+                new[]
+                {
+                    new FoxRunProtobufTypeField(
+                        "optionalCount",
+                        "OptionalCount",
+                        FoxRunProtobufTypeShape.Canonical("int32"),
+                        isNullable: true),
+                    new FoxRunProtobufTypeField(
+                        "samples",
+                        "Samples",
+                        FoxRunProtobufTypeShape.Canonical("int32"),
+                        repeated: true,
+                        isNullable: true)
+                });
+            var nestedNullable = new FoxgloveSourceEmitter.TopicMember(
+                "_payload", "Demo.OptionalPayload", "/phase175/optional-payload", 10f, "Demo.OptionalPayload",
+                0, 0f, 0f, encoding: "protobuf", protobufTypeShape: nested);
+
+            var source = FoxgloveSourceEmitter.EmitClass("Demo", "NullableSource", new[] { rootNullable, nestedNullable });
+
+            Assert.Contains("if (this._optionalCount.HasValue)", source);
+            Assert.Contains("WriteInt32(__payload", source);
+            Assert.Contains(", this._optionalCount.Value);", source);
+            Assert.Contains("if (__value.OptionalCount.HasValue)", source);
+            Assert.Contains(", __value.OptionalCount.Value);", source);
+            Assert.Contains("if (__item.HasValue)", source);
+            Assert.Contains(", __item.Value);", source);
+        }
+
     }
 }

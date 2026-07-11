@@ -102,13 +102,15 @@ namespace Unity.FoxgloveSDK.Editor
                 : repeated
                     ? FoxRunProtobufRepeatedCollectionKind.List
                     : FoxRunProtobufRepeatedCollectionKind.None;
+            var valueType = repeated ? elementType : memberType;
             fields.Add(new FoxRunProtobufTypeField(
                 jsonName,
                 memberName,
-                Build(repeated ? elementType : memberType, depth + 1, memo, stack),
+                Build(valueType, depth + 1, memo, stack),
                 repeated,
                 repeatedCollectionKind: collectionKind,
-                canAssign: canAssign));
+                canAssign: canAssign,
+                isNullable: Nullable.GetUnderlyingType(valueType) != null));
         }
 
         private static FoxRunProtobufTypeShape BuildEnum(

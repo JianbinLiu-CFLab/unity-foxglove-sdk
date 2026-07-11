@@ -301,7 +301,10 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         private byte[] __BuildFoxRunProtobuf_3()
         {
             var __payload = new global::System.Collections.Generic.List<byte>(64);
-            FoxRunProtobufWire.WriteInt32(__payload, 78618506, this._optionalCount);
+            if (this._optionalCount.HasValue)
+            {
+                FoxRunProtobufWire.WriteInt32(__payload, 78618506, this._optionalCount.Value);
+            }
             return __payload.ToArray();
         }
 

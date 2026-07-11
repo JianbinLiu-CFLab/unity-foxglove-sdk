@@ -128,14 +128,22 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 collectionKind = FoxRunProtobufRepeatedCollectionKind.List;
             }
 
+            var valueType = repeated ? elementType : memberType;
+
             fields.Add(new FoxRunProtobufTypeField(
                 jsonName,
                 memberName,
-                Build(repeated ? elementType : memberType, depth + 1, memo, stack),
+                Build(valueType, depth + 1, memo, stack),
                 repeated,
                 repeatedCollectionKind: collectionKind,
-                canAssign: canAssign));
+                canAssign: canAssign,
+                isNullable: IsNullableValueType(valueType)));
         }
+
+        private static bool IsNullableValueType(ITypeSymbol type)
+            => type is INamedTypeSymbol named
+               && named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
+               && named.TypeArguments.Length == 1;
 
         private static FoxRunProtobufTypeShape BuildEnum(
             INamedTypeSymbol type,

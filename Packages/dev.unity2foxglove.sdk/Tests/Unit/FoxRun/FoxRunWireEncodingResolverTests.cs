@@ -31,5 +31,12 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 FoxRunWireEncodingResolver.ValidateManagerDefault(FoxRunWireEncoding.Inherit));
         }
+
+        [Fact]
+        public void ManagerDefaultRejectsUnknownEnumState()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                FoxRunWireEncodingResolver.ValidateManagerDefault((FoxRunWireEncoding)99));
+        }
     }
 }

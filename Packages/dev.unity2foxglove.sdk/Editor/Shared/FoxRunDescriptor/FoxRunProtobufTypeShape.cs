@@ -95,7 +95,8 @@ namespace Unity.FoxgloveSDK.Editor
             bool repeated = false,
             int protobufFieldNumber = 0,
             FoxRunProtobufRepeatedCollectionKind repeatedCollectionKind = FoxRunProtobufRepeatedCollectionKind.None,
-            bool canAssign = true)
+            bool canAssign = true,
+            bool isNullable = false)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -108,6 +109,7 @@ namespace Unity.FoxgloveSDK.Editor
                     : repeatedCollectionKind
                 : FoxRunProtobufRepeatedCollectionKind.None;
             CanAssign = canAssign;
+            IsNullable = isNullable;
         }
 
         public string JsonName { get; }
@@ -118,6 +120,8 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunProtobufRepeatedCollectionKind RepeatedCollectionKind { get; }
         /// <summary>Whether generated inbound Protobuf code can assign this DTO member.</summary>
         public bool CanAssign { get; }
+        /// <summary>Whether this value-type field or repeated element may be absent.</summary>
+        public bool IsNullable { get; }
     }
 
     public sealed class FoxRunProtobufEnumValue

@@ -50,7 +50,10 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        /// <summary>Parses a generated legacy protocol spelling into a declaration.</summary>
+        /// <summary>
+        /// Parses generated or stored topic-metadata spelling into a declaration.
+        /// Live inbound routing must compare the client-advertised protocol encoding directly.
+        /// </summary>
         public static FoxRunWireEncoding FromProtocolEncoding(string encoding)
         {
             if (string.Equals(encoding, "protobuf", StringComparison.OrdinalIgnoreCase))
