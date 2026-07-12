@@ -79,6 +79,58 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ImplicitProtobufSchemaNamesAreStableAndUniquePerTopic()
+        {
+            var first = FoxRunProtobufContractBuilder.Build(new FoxRunProtobufContractInput(
+                "Demo.Counter",
+                "/phase175/first",
+                "",
+                new[] { new FoxRunProtobufFieldInput("count", "_count", "int32", false) }));
+            var repeatedFirst = FoxRunProtobufContractBuilder.Build(new FoxRunProtobufContractInput(
+                "Demo.Counter",
+                "/phase175/first",
+                "",
+                new[] { new FoxRunProtobufFieldInput("count", "_count", "int32", false) }));
+            var second = FoxRunProtobufContractBuilder.Build(new FoxRunProtobufContractInput(
+                "Demo.Counter",
+                "/phase175/second",
+                "",
+                new[] { new FoxRunProtobufFieldInput("count", "_count", "int32", false) }));
+
+            Assert.Equal(first.MessageFullName, repeatedFirst.MessageFullName);
+            Assert.NotEqual(first.MessageFullName, second.MessageFullName);
+        }
+
+        [Fact]
+        public void ManifestUsesTheDescriptorSchemaNameForImplicitProtobufContracts()
+        {
+            var manifest = FoxRunManifestBuilder.Build(new[]
+            {
+                new FoxRunManifestMember(
+                    "Demo", "Counter", "_count", "field", "System.Int32", true, false, "",
+                    "/phase175/implicit", 10f, "", 0, 0f, 0f,
+                    encoding: 0, protobufFieldNumber: 17)
+            });
+            var protobufContract = Assert.Single(
+                manifest.Sections.FoxRun.Types.Single().Contracts,
+                contract => contract.Encoding == "protobuf");
+            var expectedSchemaName = FoxRunProtobufContractBuilder.Build(new FoxRunProtobufContractInput(
+                protobufContract.DeclaringType,
+                protobufContract.Topic,
+                protobufContract.SchemaName,
+                protobufContract.Fields.Select(field => new FoxRunProtobufFieldInput(
+                    field.JsonName,
+                    field.MemberName,
+                    field.Type,
+                    field.Array,
+                    field.ProtobufFieldNumber,
+                    field.ProtobufTypeShape)).ToList()))
+                .MessageFullName;
+
+            Assert.Equal(expectedSchemaName, protobufContract.SchemaName);
+        }
+
+        [Fact]
         public void ContractBuilderEmitsNestedDtoGraphWithoutJsonFallback()
         {
             var pose = FoxRunProtobufTypeShape.Object(
@@ -268,6 +320,43 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
                 Assert.True(registry.TryGetSchema("Demo.WireState", "protobuf", out var entry));
                 Assert.Equal(descriptor, entry.RawContent);
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
+        public void TopicSummariesKeepInheritPolicyWhenCodecVariantsUseDistinctSchemas()
+        {
+            var fields = new[] { new FoxRunSchemaFieldInfo("count", "_count", "field", "int32", false, false, false, 17) };
+            var json = new FoxRunSchemaContractInfo(
+                "Demo.Counter", "/phase175/implicit", string.Empty, "json",
+                "json-contract", "json-binding", "policy", "FixedRate", 10f, 0f, 0f, fields);
+            var protobuf = new FoxRunSchemaContractInfo(
+                "Demo.Counter", "/phase175/implicit", "unity2foxglove.foxrun.Demo_Counter_a1b2c3d4", "protobuf",
+                "protobuf-contract", "protobuf-binding", "policy", "FixedRate", 10f, 0f, 0f, fields,
+                protobufDescriptorSet: new byte[] { 1 });
+            var manifest = new FoxRunSchemaManifestInfo(
+                1,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[] { new FoxRunSchemaTypeInfo("Demo.Counter", new[] { json, protobuf }) });
+
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+
+                var summary = Assert.Single(FoxRunSchemaInfoRegistry.GetTopicSummaries(FoxRunWireEncoding.Protobuf));
+
+                Assert.Equal(FoxRunWireEncoding.Inherit, summary.DeclaredEncoding);
+                Assert.Equal(FoxRunWireEncoding.Protobuf, summary.EffectiveEncoding);
+                Assert.Equal(protobuf.SchemaName, summary.SchemaName);
             }
             finally
             {

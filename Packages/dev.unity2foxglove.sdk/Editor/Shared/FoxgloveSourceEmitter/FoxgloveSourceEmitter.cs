@@ -254,12 +254,12 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
                 TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
-                PublishDispatchEmitter.EmitPublish(sb, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublish(sb, ns, className, topics, topicMap, pad);
                 PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
                 PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
                 ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
             }
-            InputDispatchEmitter.EmitInput(sb, inputMembers, topics, pad);
+            InputDispatchEmitter.EmitInput(sb, ns, className, inputMembers, topics, pad);
 
             var triggerMembers = TriggerEmitter.BuildTriggerMembers(publishMembers, topics, topicModes);
             TriggerEmitter.EmitTriggers(sb, triggerMembers, topics, topicModes, pad);

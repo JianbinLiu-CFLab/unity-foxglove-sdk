@@ -228,10 +228,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && registry.Contains("ResetState", StringComparison.Ordinal),
                 "113-D6b: schema registry resets static state for each Unity runtime load");
 
+            var playModeRefresh = PhaseValidationSourceHelpers.SourceMethod(
+                playModeHook,
+                "private static void OnPlayModeStateChanged");
             Check(playModeHook.Contains("FoxRunSchemaInfo.g.cs changed before Play Mode", StringComparison.Ordinal)
-                  && playModeHook.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && playModeRefresh.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && playModeRefresh.Contains("QueueSchemaInfoRefreshAfterPlayCancellation", StringComparison.Ordinal)
+                  && !playModeRefresh.Contains("AssetDatabase.Refresh", StringComparison.Ordinal)
+                  && playModeHook.Contains("EditorApplication.delayCall", StringComparison.Ordinal)
                   && playModeHook.Contains("ForceSynchronousImport", StringComparison.Ordinal),
-                "113-D6c: Play Mode refresh cancels once when generated schema info source changes");
+                "113-D6c: Play Mode refresh cancels before queueing the synchronous import in a stable Editor update");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");

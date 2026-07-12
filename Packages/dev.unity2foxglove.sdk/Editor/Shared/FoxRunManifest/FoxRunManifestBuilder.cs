@@ -59,13 +59,30 @@ namespace Unity.FoxgloveSDK.Editor
         {
             return members
                 .SelectMany(member => ResolveEncodings(member).Select(encoding => new MemberEncodingVariant(member, encoding)))
-                .GroupBy(variant => new ContractKey(variant.Member.Topic, variant.Member.SchemaName, variant.Encoding))
+                .GroupBy(variant => new ContractKey(
+                    variant.Member.Topic,
+                    ResolveContractSchemaName(declaringType, variant.Member, variant.Encoding),
+                    variant.Encoding))
                 .OrderBy(group => group.Key.Topic, StringComparer.Ordinal)
                 .ThenBy(group => group.Key.SchemaName, StringComparer.Ordinal)
                 .ThenBy(group => group.Key.Encoding, StringComparer.Ordinal)
                 .Select(group => BuildContract(declaringType, group.Key, group.Select(variant => variant.Member).ToList()))
                 .ToList()
                 .AsReadOnly();
+        }
+
+        private static string ResolveContractSchemaName(
+            string declaringType,
+            FoxRunManifestMember member,
+            string encoding)
+        {
+            if (!string.Equals(encoding, ProtobufEncoding, StringComparison.Ordinal))
+                return member.SchemaName ?? string.Empty;
+
+            return FoxRunProtobufContractBuilder.ResolveMessageFullName(
+                member.SchemaName,
+                declaringType,
+                member.Topic);
         }
 
         private static FoxRunManifestContract BuildContract(

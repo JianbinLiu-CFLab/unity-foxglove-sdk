@@ -46,7 +46,7 @@ namespace Unity.FoxgloveSDK.Components
 
                     foreach (var group in type.Contracts
                                  .Where(contract => contract != null)
-                                 .GroupBy(contract => new ContractKey(contract.Topic, contract.SchemaName, contract.FlowMode)))
+                                 .GroupBy(contract => new ContractKey(contract.Topic, contract.FlowMode)))
                     {
                         var contracts = group.ToList();
                         var hasJson = contracts.Any(contract => string.Equals(contract.Encoding, "json", StringComparison.Ordinal));
@@ -212,20 +212,17 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly struct ContractKey : IEquatable<ContractKey>
         {
-            public ContractKey(string topic, string schemaName, string flowMode)
+            public ContractKey(string topic, string flowMode)
             {
                 Topic = topic ?? string.Empty;
-                SchemaName = schemaName ?? string.Empty;
                 FlowMode = flowMode ?? string.Empty;
             }
 
             private string Topic { get; }
-            private string SchemaName { get; }
             private string FlowMode { get; }
 
             public bool Equals(ContractKey other)
                 => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
-                   && string.Equals(SchemaName, other.SchemaName, StringComparison.Ordinal)
                    && string.Equals(FlowMode, other.FlowMode, StringComparison.Ordinal);
 
             public override bool Equals(object obj) => obj is ContractKey other && Equals(other);
@@ -235,7 +232,6 @@ namespace Unity.FoxgloveSDK.Components
                 unchecked
                 {
                     var hash = StringComparer.Ordinal.GetHashCode(Topic);
-                    hash = (hash * 397) ^ StringComparer.Ordinal.GetHashCode(SchemaName);
                     return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(FlowMode);
                 }
             }

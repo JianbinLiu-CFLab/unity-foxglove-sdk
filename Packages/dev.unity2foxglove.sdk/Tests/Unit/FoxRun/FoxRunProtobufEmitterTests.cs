@@ -26,8 +26,12 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "Counter", new[] { member });
+            var expectedSchemaName = FoxRunProtobufContractBuilder.ResolveMessageFullName(
+                "Demo.Count",
+                "Demo.Counter",
+                "/phase175/count");
 
-            Assert.Contains("mgr.PublishProto(\"/phase175/count\", \"Demo.Count\"", source);
+            Assert.Contains("mgr.PublishProto(\"/phase175/count\", \"" + expectedSchemaName + "\"", source);
             Assert.Contains("__BuildFoxRunProtobuf_0", source);
             Assert.Contains("FoxRunInboundProtobuf.TryRead", source);
             Assert.DoesNotContain("FoxRunInboundJson.TryRead(payload, \"count\"", source);
@@ -53,6 +57,69 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("mgr.PublishJson(\"/phase175/json_count\", \"Demo.Count\"", source);
             Assert.Contains("FoxRunInboundJson.TryRead", source);
             Assert.DoesNotContain("mgr.PublishProto(\"/phase175/json_count\"", source);
+        }
+
+        [Fact]
+        public void InheritedTopicWithoutSchemaPublishesUsingItsDescriptorSchemaName()
+        {
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_count",
+                "System.Int32",
+                "/phase175/implicit",
+                10f,
+                "",
+                0,
+                0f,
+                0f,
+                encoding: "inherit",
+                protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
+            var expectedSchemaName = FoxRunProtobufContractBuilder.Build(
+                new FoxRunProtobufContractInput(
+                    "Demo.Counter",
+                    "/phase175/implicit",
+                    "",
+                    new[] { new FoxRunProtobufFieldInput("count", "_count", "int32", false) }))
+                .MessageFullName;
+
+            var source = FoxgloveSourceEmitter.EmitClass("Demo", "Counter", new[] { member });
+
+            Assert.Contains(
+                "mgr.PublishProto(\"/phase175/implicit\", \"" + expectedSchemaName + "\"",
+                source);
+            var expectedFieldNumber = FoxRunProtobufFieldNumber.Resolve(
+                "Demo.Counter|/phase175/implicit|" + expectedSchemaName + "|_count",
+                0);
+            Assert.Contains(
+                "FoxRunProtobufWire.WriteInt32(__payload, " + expectedFieldNumber + ", this._count)",
+                source);
+        }
+
+        [Fact]
+        public void ProtobufCollectionInputUsesTheDescriptorFieldNumber()
+        {
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_samples",
+                "int[]",
+                "/phase175/samples",
+                10f,
+                "",
+                0,
+                0f,
+                0f,
+                mode: 1,
+                encoding: "protobuf",
+                protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
+            var expectedSchemaName = FoxRunProtobufContractBuilder.ResolveMessageFullName(
+                "",
+                "Demo.InputProbe",
+                "/phase175/samples");
+            var expectedFieldNumber = FoxRunProtobufFieldNumber.Resolve(
+                "Demo.InputProbe|/phase175/samples|" + expectedSchemaName + "|_samples",
+                0);
+
+            var source = FoxgloveSourceEmitter.EmitClass("Demo", "InputProbe", new[] { member });
+
+            Assert.Contains("if (__field.Number != " + expectedFieldNumber + ") continue;", source);
         }
 
         [Fact]

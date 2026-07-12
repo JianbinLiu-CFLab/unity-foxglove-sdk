@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Google.Protobuf;
 using Google.Protobuf.Reflection;
@@ -16,6 +17,17 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const string PackageName = "unity2foxglove.foxrun";
 
+        /// <summary>
+        /// Resolves the fully-qualified root message name stored in a Foxglove
+        /// protobuf channel. The name must exist in the descriptor set, so an
+        /// omitted logical schema receives a deterministic topic-qualified name.
+        /// </summary>
+        public static string ResolveMessageFullName(string schemaName, string declaringType, string topic)
+        {
+            var messageName = ToMessageName(schemaName, declaringType, topic);
+            return PackageName + "." + messageName;
+        }
+
         public static FoxRunProtobufContract Build(FoxRunProtobufContractInput contract)
         {
             if (contract == null)
@@ -23,7 +35,11 @@ namespace Unity.FoxgloveSDK.Editor
             if (!string.Equals(contract.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))
                 throw new ArgumentException("FoxRun Protobuf contracts must use protobuf encoding.", nameof(contract));
 
-            var messageName = ToMessageName(contract.SchemaName, contract.DeclaringType);
+            var messageFullName = ResolveMessageFullName(
+                contract.SchemaName,
+                contract.DeclaringType,
+                contract.Topic);
+            var messageName = messageFullName.Substring(PackageName.Length + 1);
             var message = new DescriptorProto { Name = messageName };
             var file = new FileDescriptorProto
             {
@@ -39,7 +55,11 @@ namespace Unity.FoxgloveSDK.Editor
             foreach (var field in contract.Fields.OrderBy(field => field.MemberName, StringComparer.Ordinal))
             {
                 var number = FoxRunProtobufFieldNumber.Resolve(
-                    BuildFieldIdentity(contract, field),
+                    BuildFieldIdentity(
+                        contract.DeclaringType,
+                        contract.Topic,
+                        contract.SchemaName,
+                        field.MemberName),
                     field.ProtobufFieldNumber);
                 if (usedNumbers.TryGetValue(number, out var existingMember))
                 {
@@ -65,16 +85,24 @@ namespace Unity.FoxgloveSDK.Editor
             var descriptorSet = new FileDescriptorSet();
             descriptorSet.File.Add(file);
             return new FoxRunProtobufContract(
-                PackageName + "." + messageName,
+                messageFullName,
                 descriptorSet.ToByteArray());
         }
 
-        private static string BuildFieldIdentity(FoxRunProtobufContractInput contract, FoxRunProtobufFieldInput field)
+        /// <summary>
+        /// Builds the stable root-field identity shared by descriptors and
+        /// generated Protobuf readers and writers.
+        /// </summary>
+        public static string BuildFieldIdentity(
+            string declaringType,
+            string topic,
+            string schemaName,
+            string memberName)
         {
-            return (contract.DeclaringType ?? string.Empty) + "|"
-                   + (contract.Topic ?? string.Empty) + "|"
-                   + (contract.SchemaName ?? string.Empty) + "|"
-                   + (field.MemberName ?? string.Empty);
+            return (declaringType ?? string.Empty) + "|"
+                   + (topic ?? string.Empty) + "|"
+                   + ResolveMessageFullName(schemaName, declaringType, topic) + "|"
+                   + (memberName ?? string.Empty);
         }
 
         private static void ApplyType(
@@ -271,11 +299,39 @@ namespace Unity.FoxgloveSDK.Editor
             return name;
         }
 
-        private static string ToMessageName(string schemaName, string declaringType)
+        private static string ToMessageName(string schemaName, string declaringType, string topic)
         {
-            var source = string.IsNullOrWhiteSpace(schemaName) ? declaringType : schemaName;
-            var separator = source == null ? -1 : source.LastIndexOf('.');
-            return ToIdentifier(separator >= 0 ? source.Substring(separator + 1) : source, "FoxRunMessage", upperFirst: true);
+            if (!string.IsNullOrWhiteSpace(schemaName))
+            {
+                var source = schemaName.StartsWith(PackageName + ".", StringComparison.Ordinal)
+                    ? schemaName.Substring(PackageName.Length + 1)
+                    : schemaName;
+                var separator = source.LastIndexOf('.');
+                return ToIdentifier(
+                    separator >= 0 ? source.Substring(separator + 1) : source,
+                    "FoxRunMessage",
+                    upperFirst: true);
+            }
+
+            var typeName = ToIdentifier(
+                (declaringType ?? string.Empty).Replace('.', '_'),
+                "FoxRunMessage",
+                upperFirst: true);
+            return typeName + "_" + ComputeStableTopicHash(topic).ToString("x8", CultureInfo.InvariantCulture);
+        }
+
+        private static uint ComputeStableTopicHash(string topic)
+        {
+            const uint offsetBasis = 2166136261;
+            const uint prime = 16777619;
+            var hash = offsetBasis;
+            foreach (var character in topic ?? string.Empty)
+            {
+                hash ^= character;
+                hash *= prime;
+            }
+
+            return hash;
         }
 
         private static string ToFieldName(string jsonName, string memberName)

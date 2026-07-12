@@ -53,11 +53,12 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(validator.Contains("dotnet", StringComparison.Ordinal)
                   && validator.Contains("build", StringComparison.Ordinal)
-                  && validator.Contains("built_hash = sha256(built_dll)", StringComparison.Ordinal)
-                  && validator.Contains("checked_hash = sha256(CHECKED_IN_DLL)", StringComparison.Ordinal)
+                  && validator.Contains("CHECKED_IN_ARTIFACTS", StringComparison.Ordinal)
+                  && validator.Contains("built_hash = sha256(built_artifacts[name])", StringComparison.Ordinal)
+                  && validator.Contains("checked_hash = sha256(checked_in)", StringComparison.Ordinal)
                   && validator.Contains("if built_hash != checked_hash:", StringComparison.Ordinal)
                   && !validator.Contains("BUILT_DLL.read_bytes() != CHECKED_IN_DLL.read_bytes()", StringComparison.Ordinal),
-                "163-24B-1: source generator DLL validator rebuilds and hash-compares the checked-in analyzer");
+                "163-24B-1: source generator validator rebuilds and hash-compares every checked-in analyzer artifact");
         }
 
         private static void UnityIl2CppBuildPreflightsGeneratedArtifacts()
@@ -96,9 +97,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(preprocess.Contains("Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts", StringComparison.Ordinal)
                   && preprocess.Contains("AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)", StringComparison.Ordinal),
                 "163-24E-1: build preprocess refreshes schema manifest assets synchronously");
-            Check(playMode.Contains("Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts(manifest)", StringComparison.Ordinal)
+            var playModeCallback = PhaseValidationSourceHelpers.SourceMethod(
+                playMode,
+                "private static void OnPlayModeStateChanged");
+            Check(playMode.Contains("Unity2FoxgloveSchemaManifestGenerator.GenerateArtifacts(refresh.Manifest)", StringComparison.Ordinal)
+                  && playModeCallback.Contains("QueueSchemaInfoRefreshAfterPlayCancellation", StringComparison.Ordinal)
+                  && !playModeCallback.Contains("AssetDatabase.Refresh", StringComparison.Ordinal)
+                  && playMode.Contains("EditorApplication.delayCall", StringComparison.Ordinal)
                   && playMode.Contains("AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)", StringComparison.Ordinal),
-                "163-24E-2: play-mode manifest refresh synchronously imports generated schema artifacts");
+                "163-24E-2: play-mode manifest refresh defers synchronous import until after Play cancellation");
         }
 
         private static void PhaseWiringIsPresent()

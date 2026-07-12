@@ -13,6 +13,8 @@ namespace Unity.FoxgloveSDK.Editor
     {
         internal static void EmitInput(
             StringBuilder sb,
+            string ns,
+            string className,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
             IReadOnlyList<string> publishTopics,
             string pad)
@@ -20,6 +22,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (members == null || members.Count == 0)
                 return;
 
+            var declaringType = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
             sb.AppendLine();
             sb.AppendLine($"{pad}    int IFoxgloveInputSource.FoxgloveInput_TopicCount => {members.Count};");
             sb.AppendLine();
@@ -51,7 +54,11 @@ namespace Unity.FoxgloveSDK.Editor
                 var protobuf = UsesProtobuf(member.Encoding);
                 var inherited = IsInherited(member.Encoding);
                 var protobufFieldNumber = FoxRunProtobufFieldNumber.Resolve(
-                    member.Topic + "|" + member.SchemaName + "|" + member.MemberName,
+                    FoxRunProtobufContractBuilder.BuildFieldIdentity(
+                        declaringType,
+                        member.Topic,
+                        member.SchemaName,
+                        member.MemberName),
                     member.ProtobufFieldNumber);
                 var protobufReader = protobuf
                     ? ProtobufInputDispatchEmitter.ReaderCall(protobufFieldNumber, typeName, member.ProtobufTypeShape, i)
@@ -109,7 +116,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}                return false;");
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
-            ProtobufInputDispatchEmitter.EmitReaders(sb, members, pad);
+            ProtobufInputDispatchEmitter.EmitReaders(sb, declaringType, members, pad);
         }
 
         private static string GlobalTypeName(string typeName)

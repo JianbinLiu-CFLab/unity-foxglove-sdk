@@ -15,6 +15,7 @@ namespace Unity.FoxgloveSDK.Editor
     {
         internal static void EmitBuilders(
             StringBuilder sb,
+            string declaringType,
             IReadOnlyList<string> topics,
             Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap,
             string pad)
@@ -37,7 +38,11 @@ namespace Unity.FoxgloveSDK.Editor
                 foreach (var field in fields.OrderBy(candidate => candidate.MemberName, StringComparer.Ordinal))
                 {
                     var number = FoxRunProtobufFieldNumber.Resolve(
-                        field.Topic + "|" + field.SchemaName + "|" + field.MemberName,
+                        FoxRunProtobufContractBuilder.BuildFieldIdentity(
+                            declaringType,
+                            field.Topic,
+                            field.SchemaName,
+                            field.MemberName),
                         field.ProtobufFieldNumber);
                     EmitWriteField(sb, field, number, TypeExprEmitter.MemberAccess(field.MemberName), "__payload", pad + "        ", objectShapes);
                 }

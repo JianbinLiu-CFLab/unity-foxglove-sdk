@@ -22,7 +22,11 @@ namespace Unity.FoxgloveSDK.Editor
                         ? "__TryReadFoxRunProtobufEnum_" + topicIndex + "(payload, out " + GlobalTypeName(typeName) + " __value, out error)"
                     : "FoxRunInboundProtobuf.TryRead(payload, " + fieldNumber + ", out " + GlobalTypeName(typeName) + " __value, out error)";
 
-        internal static void EmitReaders(StringBuilder sb, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members, string pad)
+        internal static void EmitReaders(
+            StringBuilder sb,
+            string declaringType,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            string pad)
         {
             for (var index = 0; index < members.Count; index++)
             {
@@ -35,16 +39,25 @@ namespace Unity.FoxgloveSDK.Editor
                 for (var shapeIndex = 0; shapeIndex < shapes.Count; shapeIndex++)
                     EmitObjectReader(sb, shapes[shapeIndex], index, shapeIndex, pad, shapes);
                 if (IsCollectionTypeName(member.TypeName))
-                    EmitCollectionReader(sb, member, index, pad, shapes);
+                    EmitCollectionReader(sb, declaringType, member, index, pad, shapes);
                 else if (member.ProtobufTypeShape.Kind == FoxRunProtobufTypeShapeKind.Enum)
-                    EmitEnumReader(sb, member, index, pad);
+                    EmitEnumReader(sb, declaringType, member, index, pad);
             }
         }
 
-        private static void EmitEnumReader(StringBuilder sb, FoxgloveSourceEmitter.TopicMember member, int index, string pad)
+        private static void EmitEnumReader(
+            StringBuilder sb,
+            string declaringType,
+            FoxgloveSourceEmitter.TopicMember member,
+            int index,
+            string pad)
         {
             var number = FoxRunProtobufFieldNumber.Resolve(
-                member.Topic + "|" + member.SchemaName + "|" + member.MemberName,
+                FoxRunProtobufContractBuilder.BuildFieldIdentity(
+                    declaringType,
+                    member.Topic,
+                    member.SchemaName,
+                    member.MemberName),
                 member.ProtobufFieldNumber);
             var type = GlobalTypeName(member.TypeName);
             sb.AppendLine();
@@ -100,13 +113,18 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void EmitCollectionReader(
             StringBuilder sb,
+            string declaringType,
             FoxgloveSourceEmitter.TopicMember member,
             int rootIndex,
             string pad,
             IReadOnlyList<FoxRunProtobufTypeShape> shapes)
         {
             var fieldNumber = FoxRunProtobufFieldNumber.Resolve(
-                member.Topic + "|" + member.SchemaName + "|" + member.MemberName,
+                FoxRunProtobufContractBuilder.BuildFieldIdentity(
+                    declaringType,
+                    member.Topic,
+                    member.SchemaName,
+                    member.MemberName),
                 member.ProtobufFieldNumber);
             var type = GlobalTypeName(member.TypeName);
             var storageType = RepeatedStorageType(member.ProtobufTypeShape);
