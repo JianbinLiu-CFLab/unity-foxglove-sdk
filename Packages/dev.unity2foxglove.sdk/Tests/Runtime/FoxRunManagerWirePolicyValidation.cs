@@ -22,6 +22,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyPolicyResolverAndFrozenSessionState();
             VerifyGeneratedInheritedDualCodecDispatch();
             VerifyInspectorContract();
+            VerifyExplicitProtobufManualAcceptance();
+            VerifyExplicitJsonManualAcceptance();
             VerifyValidationRegistryEntry();
 
             Console.WriteLine("Phase 175C: " + _passed + " checks passed.\n");
@@ -94,11 +96,50 @@ namespace Unity.FoxgloveSDK.Tests
                 "175C-9: Inspector exposes effective topic summary and restart boundary");
         }
 
+        private static void VerifyExplicitProtobufManualAcceptance()
+        {
+            const string relativePath = "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase175ProtobufManualAcceptance.cs";
+            var root = Phase16Validation.FindRepoRoot();
+            var fullPath = root == null
+                ? string.Empty
+                : Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var source = File.Exists(fullPath) ? File.ReadAllText(fullPath) : string.Empty;
+
+            Check(source.Contains("class Phase175ProtobufManualAcceptance", StringComparison.Ordinal)
+                  && source.Contains("/phase175/protobuf/target-value", StringComparison.Ordinal)
+                  && source.Contains("/phase175/protobuf/shared-state", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
+                  && source.Contains("#pragma warning disable FOXRUN026", StringComparison.Ordinal)
+                  && source.Contains("remote-authoritative shared observation", StringComparison.Ordinal)
+                  && source.Contains("#pragma warning restore FOXRUN026", StringComparison.Ordinal)
+                  && !source.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal),
+                "175C-10: manual acceptance pins Protobuf contracts and documents bidirectional authority");
+        }
+
+        private static void VerifyExplicitJsonManualAcceptance()
+        {
+            const string relativePath = "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase175JsonManualAcceptance.cs";
+            var root = Phase16Validation.FindRepoRoot();
+            var fullPath = root == null
+                ? string.Empty
+                : Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var source = File.Exists(fullPath) ? File.ReadAllText(fullPath) : string.Empty;
+
+            Check(source.Contains("class Phase175JsonManualAcceptance", StringComparison.Ordinal)
+                  && source.Contains("/phase175/json/legacy-state", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Json", StringComparison.Ordinal)
+                  && source.Contains("requestedLegacyJsonState", StringComparison.Ordinal)
+                  && source.Contains("Applied JSON legacy state", StringComparison.Ordinal)
+                  && !source.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal),
+                "175C-11: manual acceptance pins an explicit JSON legacy contract");
+        }
+
         private static void VerifyValidationRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase175c"
                                                            && item.Name == "Phase 175C: FoxRun Manager wire policy and migration"),
-                "175C-10: validation registry exposes a descriptive Manager policy gate");
+                "175C-12: validation registry exposes a descriptive Manager policy gate");
         }
 
         private static string ReadRepoText(string relativePath)

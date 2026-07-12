@@ -178,6 +178,21 @@ class CoreSmokeScriptTests(unittest.TestCase):
 
         self.assertIn("len(msg) >= TIME_VALUE_END", branch)
 
+    def test_phase175_protobuf_publish_helper_advertises_and_frames_binary_float(self) -> None:
+        """Phase175 helper must declare a Protobuf client channel and field-1 float payload."""
+        relative = "websocket/phase175_protobuf_inbound_publish.py"
+        self.assertTrue((SMOKE / relative).is_file(), "Phase175 Protobuf publish helper is missing.")
+        module = load_smoke_module("phase175_protobuf_publish_under_test", relative)
+
+        advertise = json.loads(module.build_client_advertise("/phase175/protobuf/shared-state", 175_001))
+        payload = module.encode_float_field(5.0)
+        frame = module.build_client_message_frame(175_001, payload)
+
+        self.assertEqual("protobuf", advertise["channels"][0]["encoding"])
+        self.assertEqual(b"\x0d\x00\x00\xa0\x40", payload)
+        self.assertEqual(bytes([1]) + struct.pack("<I", 175_001) + payload, frame)
+        self.assertEqual(5.0, module.decode_float_field(payload))
+
     def test_phase139b_launch_backend_enforces_startup_timeout_without_stdout(self) -> None:
         """A silent child process should not block past startup_timeout."""
         module = load_smoke_module("phase139b_under_test", "replay/phase139b_remote_data_loader_acceptance.py")
