@@ -57,12 +57,16 @@ namespace Unity.FoxgloveSDK.Tests
                 "70A-4b: main workflow order starts with Connection & Security before Publish Data");
             CheckOrdered(source,
                 "DrawSection(\"Publish Data\"",
+                "DrawSection(\"MCAP Record & Replay\"",
+                "70A-4c: MCAP follows Publish Data before FoxRun");
+            CheckOrdered(source,
+                "DrawSection(\"MCAP Record & Replay\"",
                 "DrawSection(\"FoxRun\"",
-                "70A-4c: FoxRun follows Publish Data");
+                "70A-4d: FoxRun follows MCAP before FoxServices");
             CheckOrdered(source,
                 "DrawSection(\"FoxRun\"",
-                "DrawSection(\"MCAP Record & Replay\"",
-                "70A-4d: MCAP follows FoxRun before optional bridge");
+                "DrawSection(\"FoxServices\"",
+                "70A-4d1: FoxServices follows FoxRun");
             CheckOrdered(source,
                 "DrawSection(\"MCAP Record & Replay\"",
                 "DrawSection(\"ROS2 Bridge\"",

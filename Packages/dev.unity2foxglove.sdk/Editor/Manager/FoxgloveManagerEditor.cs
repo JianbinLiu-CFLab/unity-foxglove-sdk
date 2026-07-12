@@ -184,9 +184,9 @@ namespace Unity.FoxgloveSDK.Editor
 
             DrawSection("Connection & Security", "ConnectionSecurity", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
             DrawSection("Publish Data", "PublishData", ref _publishDataExpanded, DrawPublishDataSection);
-            DrawSection("FoxRun", "FoxRun", ref _foxRunExpanded, DrawFoxRunSection);
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", "Mcap", ref _mcapExpanded, DrawMcapSection);
+            DrawSection("FoxRun", "FoxRun", ref _foxRunExpanded, DrawFoxRunSection);
             DrawSection("FoxServices", "FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
             var ros2BridgeProp = FindCachedProperty("_ros2BridgeEnabled");
             if (ros2BridgeProp != null && ros2BridgeProp.boolValue)

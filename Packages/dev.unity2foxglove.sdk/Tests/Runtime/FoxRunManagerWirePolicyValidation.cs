@@ -75,10 +75,12 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(main.Contains("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
                   && main.IndexOf("DrawSection(\"Publish Data\"", StringComparison.Ordinal)
+                     < main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
+                  && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
                   && main.IndexOf("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
-                     < main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal),
-                "175C-7: FoxRun Inspector section sits between Publish Data and MCAP");
+                     < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal),
+                "175C-7: FoxRun Inspector section sits between MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex = selected == 0", StringComparison.Ordinal)
