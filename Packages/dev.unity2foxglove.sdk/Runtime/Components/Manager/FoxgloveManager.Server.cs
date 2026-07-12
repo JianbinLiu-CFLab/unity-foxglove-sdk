@@ -44,6 +44,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             EnsureRuntimeCreated();
+            CaptureFoxRunWireEncodingForSession();
 
             try
             {
@@ -93,9 +94,9 @@ namespace Unity.FoxgloveSDK.Components
             {
                 transport.OnClientConnected += EnqueueConnect;
                 transport.OnClientDisconnected += EnqueueDisconnect;
-                _clientMessageForwarder = (cid, chId, topic, payload) =>
-                    EnqueueClientMessageEvent(ClientEvent.Message(cid, chId, topic, payload));
-                _runtime.Session.OnClientMessage += _clientMessageForwarder;
+                _clientMessageForwarder = (cid, chId, topic, encoding, payload) =>
+                    EnqueueClientMessageEvent(ClientEvent.Message(cid, chId, topic, encoding, payload));
+                _runtime.Session.OnClientMessageWithEncoding += _clientMessageForwarder;
             }
 
             Debug.Log(StatusTextBuilder.CreateServerStartedMessage(BuildConnectionUrl(redactToken: true)));
@@ -111,6 +112,7 @@ namespace Unity.FoxgloveSDK.Components
             TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
             TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
+            ClearFoxRunWireEncodingForSession();
         }
 
         private static void TryCleanupStartupStep(System.Action cleanup, string description)
@@ -232,6 +234,7 @@ namespace Unity.FoxgloveSDK.Components
                 DetachRuntimeForwarders(_runtime?.Session);
                 if (_runtime?.Session == null)
                 {
+                    ClearFoxRunWireEncodingForSession();
                     return;
                 }
             }
@@ -249,6 +252,7 @@ namespace Unity.FoxgloveSDK.Components
 
             AdvanceChannelSessionGeneration();
             _runtime.Stop();
+            ClearFoxRunWireEncodingForSession();
             _sharedSensorClock.Reset();
             StopRemoteMcapFileServer();
             StopReplayCursorEndpoint();
@@ -265,7 +269,7 @@ namespace Unity.FoxgloveSDK.Components
         private void DetachRuntimeForwarders(FoxgloveSession session)
         {
             if (session != null && _clientMessageForwarder != null)
-                session.OnClientMessage -= _clientMessageForwarder;
+                session.OnClientMessageWithEncoding -= _clientMessageForwarder;
             _clientMessageForwarder = null;
 
             if (_runtime != null)

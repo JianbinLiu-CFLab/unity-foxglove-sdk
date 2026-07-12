@@ -71,10 +71,11 @@ namespace Unity.FoxgloveSDK.Editor
                 var topic = topics[i];
                 var fields = topicMap[topic];
                 var schema = fields.FirstOrDefault(f => !string.IsNullOrEmpty(f.SchemaName))?.SchemaName ?? "";
-                var canonical = CanonicalTopicShape(topic, schema, fields);
+                var encoding = EffectiveEncoding(fields);
+                var canonical = CanonicalTopicShape(topic, schema, encoding, fields);
                 var fingerprint = Sha256Hex(canonical);
                 sb.AppendLine(
-                    $"{pad}            case {i}: return new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"json\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
+                    $"{pad}            case {i}: return new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"{encoding}\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
             }
             sb.AppendLine($"{pad}            default: return null;");
             sb.AppendLine($"{pad}        }}");
@@ -99,11 +100,41 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static string CanonicalTopicShape(string topic, string schema, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        internal static string EffectiveEncoding(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        {
+            var declared = fields.Count == 0
+                ? FoxRunGenerationDescriptorConstants.JsonEncoding
+                : fields[0].Encoding;
+            for (var i = 1; i < fields.Count; i++)
+            {
+                if (!string.Equals(declared, fields[i].Encoding, StringComparison.Ordinal))
+                    throw new InvalidOperationException("FoxRun topic members must share one declared wire encoding.");
+            }
+
+            return string.Equals(declared, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+                ? FoxRunGenerationDescriptorConstants.ProtobufEncoding
+                : FoxRunGenerationDescriptorConstants.JsonEncoding;
+        }
+
+        internal static bool IsInherited(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+        {
+            return fields != null
+                   && fields.Count > 0
+                   && string.Equals(
+                       fields[0].Encoding,
+                       FoxRunGenerationDescriptorConstants.InheritEncoding,
+                       StringComparison.Ordinal);
+        }
+
+        internal static bool UsesProtobuf(IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
+            => string.Equals(EffectiveEncoding(fields), FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
+               || IsInherited(fields);
+
+        private static string CanonicalTopicShape(string topic, string schema, string encoding, IReadOnlyList<FoxgloveSourceEmitter.TopicMember> fields)
         {
             var sb = new StringBuilder();
             sb.Append("topic=").Append(topic ?? string.Empty).Append('\n');
-            sb.Append("encoding=json\n");
+            sb.Append("encoding=").Append(encoding ?? string.Empty).Append('\n');
             sb.Append("schema=").Append(schema ?? string.Empty).Append('\n');
             sb.Append("fields=");
             for (var i = 0; i < fields.Count; i++)

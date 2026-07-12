@@ -55,6 +55,18 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxRunMode Mode { get; set; } = FoxRunMode.PublishOnly;
 
+        /// <summary>
+        /// Declared wire encoding for this topic. The default is resolved by
+        /// FoxgloveManager when the topic is registered for a session.
+        /// </summary>
+        public FoxRunWireEncoding Encoding { get; set; } = FoxRunWireEncoding.Inherit;
+
+        /// <summary>
+        /// Optional pinned Protobuf field number for this member. Zero uses the
+        /// generated stable field number.
+        /// </summary>
+        public int ProtobufFieldNumber { get; set; }
+
         /// <summary>Epsilon for float/double/Vector change detection. Negative treated as 0.</summary>
         public float ChangeEpsilon { get; set; } = 0f;
 

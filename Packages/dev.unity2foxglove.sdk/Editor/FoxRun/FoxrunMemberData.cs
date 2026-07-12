@@ -43,6 +43,9 @@ namespace Unity.FoxgloveSDK.Editor
             /// <summary>Publish mode as int enum value.</summary>
             public readonly int PublishMode;
             public readonly int Mode;
+            public readonly int Encoding;
+            public readonly int ProtobufFieldNumber;
+            public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
             /// <summary>Change epsilon.</summary>
             public readonly float ChangeEpsilon;
             /// <summary>Heartbeat interval seconds.</summary>
@@ -59,7 +62,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0)
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -75,6 +78,9 @@ namespace Unity.FoxgloveSDK.Editor
                 SchemaName = schema;
                 PublishMode = publishMode;
                 Mode = mode;
+                Encoding = encoding;
+                ProtobufFieldNumber = protobufFieldNumber;
+                ProtobufTypeShape = TryBuildProtobufTypeShape(elementType ?? type);
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
                 RawMemberOrder = rawMemberOrder;
@@ -90,7 +96,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0)
             {
                 if (LooksLikeArrayType(rawType))
                     throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
@@ -109,6 +115,9 @@ namespace Unity.FoxgloveSDK.Editor
                 ClassName = "";
                 PublishMode = publishMode;
                 Mode = mode;
+                Encoding = encoding;
+                ProtobufFieldNumber = protobufFieldNumber;
+                ProtobufTypeShape = null;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
                 RawMemberOrder = rawMemberOrder;
@@ -138,7 +147,10 @@ namespace Unity.FoxgloveSDK.Editor
                     ForceIntervalSeconds,
                     IsAggregateMember,
                     JsonFieldName,
-                    Mode);
+                    Mode,
+                    Encoding,
+                    ProtobufFieldNumber,
+                    ProtobufTypeShape);
             }
 
             public FoxRunReflectionGenerationMember ToReflectionMember()
@@ -165,7 +177,10 @@ namespace Unity.FoxgloveSDK.Editor
                     Unless,
                     IsAggregateMember,
                     JsonFieldName,
-                    Mode);
+                    Mode,
+                    Encoding,
+                    ProtobufFieldNumber,
+                    ProtobufTypeShape);
             }
         }
 
@@ -198,6 +213,22 @@ namespace Unity.FoxgloveSDK.Editor
                    || text.IndexOf("List<", StringComparison.Ordinal) >= 0
                    || text.IndexOf("IList<", StringComparison.Ordinal) >= 0
                    || text.IndexOf("IReadOnlyList<", StringComparison.Ordinal) >= 0;
+        }
+
+        private static FoxRunProtobufTypeShape TryBuildProtobufTypeShape(Type type)
+        {
+            try
+            {
+                return FoxRunProtobufReflectionTypeShapeBuilder.Build(type);
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
         }
     }
 }

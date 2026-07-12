@@ -146,6 +146,43 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void RouterResolvesInheritedInputAgainstTheCurrentSessionDefault()
+        {
+            var input = new InheritedRecordingInput("/phase175/inherit");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "protobuf", 1).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.DecodeRejected,
+                router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "json", 2).Status);
+            Assert.Equal(1, input.ApplyCount);
+
+            router.DefaultWireEncoding = FoxRunWireEncoding.Json;
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "json", 3).Status);
+            Assert.Equal(2, input.ApplyCount);
+        }
+
+        [Fact]
+        public void RouterEncodingMismatchNamesExpectedAndClientAdvertisedEncodings()
+        {
+            var input = new InheritedRecordingInput("/phase175/protobuf");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            var result = router.Dispatch("/phase175/protobuf", Array.Empty<byte>(), "json", 1);
+
+            Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
+            Assert.Contains("expected \"protobuf\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("client advertised \"json\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void RouterIsolatesAssignmentExceptionsAndContinuesInRegistrationOrder()
         {
             var throwing = new ThrowingInput("/phase157/cmd");
@@ -269,6 +306,27 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public bool FoxgloveInput_TryApply(int topicIndex, byte[] payload, string encoding, out string error)
             {
                 throw new InvalidOperationException("assignment failed");
+            }
+        }
+
+        private sealed class InheritedRecordingInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+
+            public InheritedRecordingInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(topic, FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly);
+            }
+
+            public int ApplyCount { get; private set; }
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryApply(int topicIndex, byte[] payload, string encoding, out string error)
+            {
+                ApplyCount++;
+                error = string.Empty;
+                return true;
             }
         }
     }

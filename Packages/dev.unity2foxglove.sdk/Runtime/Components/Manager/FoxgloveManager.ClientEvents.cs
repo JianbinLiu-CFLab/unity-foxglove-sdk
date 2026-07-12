@@ -103,6 +103,7 @@ namespace Unity.FoxgloveSDK.Components
                     if (evt.IsMessage)
                     {
                         OnClientMessage?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Payload);
+                        OnClientMessageWithEncoding?.Invoke(evt.ClientId, evt.ChannelId, evt.Topic, evt.Encoding, evt.Payload);
                     }
                     else if (evt.IsConnect)
                     {
@@ -132,24 +133,25 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal readonly struct ClientEvent
     {
-        private ClientEvent(uint clientId, uint channelId, string topic, byte[] payload, bool isConnect, bool isMessage)
+        private ClientEvent(uint clientId, uint channelId, string topic, string encoding, byte[] payload, bool isConnect, bool isMessage)
         {
             ClientId = clientId;
             ChannelId = channelId;
             Topic = topic;
+            Encoding = encoding;
             Payload = payload;
             IsConnect = isConnect;
             IsMessage = isMessage;
         }
 
         public static ClientEvent Connect(uint clientId) =>
-            new(clientId, 0, null, null, isConnect: true, isMessage: false);
+            new(clientId, 0, null, null, null, isConnect: true, isMessage: false);
 
         public static ClientEvent Disconnect(uint clientId) =>
-            new(clientId, 0, null, null, isConnect: false, isMessage: false);
+            new(clientId, 0, null, null, null, isConnect: false, isMessage: false);
 
-        public static ClientEvent Message(uint clientId, uint channelId, string topic, byte[] payload) =>
-            new(clientId, channelId, topic, payload, isConnect: false, isMessage: true);
+        public static ClientEvent Message(uint clientId, uint channelId, string topic, string encoding, byte[] payload) =>
+            new(clientId, channelId, topic, encoding, payload, isConnect: false, isMessage: true);
 
         /// <summary>
         /// Foxglove client identifier associated with the event.
@@ -165,6 +167,11 @@ namespace Unity.FoxgloveSDK.Components
         /// Client-advertised topic name for message events.
         /// </summary>
         public readonly string Topic;
+
+        /// <summary>
+        /// Encoding advertised by the client channel that carried a message event.
+        /// </summary>
+        public readonly string Encoding;
 
         /// <summary>
         /// Client-published payload bytes for message events.

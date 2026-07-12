@@ -28,7 +28,7 @@ using UnityEngine;
 ///    successful /phase157/apply-command local call.
 /// </remarks>
 [DisallowMultipleComponent]
-[AddComponentMenu("Foxglove/Manual Acceptance/Phase157")]
+[AddComponentMenu("Foxglove/Manual Acceptance/Phase157 FoxRun Inbound and Service Smoke")]
 public sealed partial class Phase157ManualAcceptance : MonoBehaviour
 {
     private const string ApplyCommandService = "/phase157/apply-command";

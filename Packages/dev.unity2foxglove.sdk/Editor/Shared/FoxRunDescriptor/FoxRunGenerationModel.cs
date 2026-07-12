@@ -153,6 +153,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string Topic;
         public readonly string SchemaName;
         public readonly string Encoding;
+        public readonly int ProtobufFieldNumber;
+        public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly float RateHz;
         public readonly int PublishMode;
         public readonly string PublishModeName;
@@ -193,7 +195,10 @@ namespace Unity.FoxgloveSDK.Editor
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0)
+            int mode = 0,
+            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            int protobufFieldNumber = 0,
+            FoxRunProtobufTypeShape protobufTypeShape = null)
             : this(
                 ns,
                 className,
@@ -217,7 +222,10 @@ namespace Unity.FoxgloveSDK.Editor
                 unless,
                 isAggregateMember,
                 jsonFieldName,
-                mode)
+                mode,
+                encoding,
+                protobufFieldNumber,
+                protobufTypeShape)
         {
         }
 
@@ -244,7 +252,10 @@ namespace Unity.FoxgloveSDK.Editor
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0)
+            int mode = 0,
+            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            int protobufFieldNumber = 0,
+            FoxRunProtobufTypeShape protobufTypeShape = null)
             : this(
                 ns,
                 className,
@@ -269,7 +280,10 @@ namespace Unity.FoxgloveSDK.Editor
                 unless,
                 isAggregateMember,
                 jsonFieldName,
-                mode)
+                mode,
+                encoding,
+                protobufFieldNumber,
+                protobufTypeShape)
         {
         }
 
@@ -297,7 +311,10 @@ namespace Unity.FoxgloveSDK.Editor
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0)
+            int mode = 0,
+            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            int protobufFieldNumber = 0,
+            FoxRunProtobufTypeShape protobufTypeShape = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -314,7 +331,9 @@ namespace Unity.FoxgloveSDK.Editor
                 : FoxRunEmissionTypeNameFormatter.NormalizeCSharpTypeName(elementTypeName);
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
-            Encoding = FoxRunGenerationDescriptorConstants.JsonEncoding;
+            Encoding = encoding ?? string.Empty;
+            ProtobufFieldNumber = protobufFieldNumber;
+            ProtobufTypeShape = protobufTypeShape;
             HasNonFiniteRateHz = IsNonFinite(rateHz);
             HasNonFiniteChangeEpsilon = IsNonFinite(changeEpsilon);
             HasNonFiniteForceIntervalSeconds = IsNonFinite(forceIntervalSeconds);
@@ -363,7 +382,10 @@ namespace Unity.FoxgloveSDK.Editor
                 IsAggregateMember,
                 JsonFieldName,
                 Mode,
-                CanonicalType);
+                CanonicalType,
+                Encoding,
+                ProtobufFieldNumber,
+                ProtobufTypeShape);
         }
 
         private static string DefaultJsonFieldName(string memberName)
@@ -372,6 +394,17 @@ namespace Unity.FoxgloveSDK.Editor
                 ? memberName.Substring(1)
                 : memberName ?? string.Empty;
             return name.TrimStart('_');
+        }
+
+        public static string DeclaredEncodingToText(int encoding)
+        {
+            switch (encoding)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritEncoding;
+                case 1: return FoxRunGenerationDescriptorConstants.ProtobufEncoding;
+                case 2: return FoxRunGenerationDescriptorConstants.JsonEncoding;
+                default: return string.Empty;
+            }
         }
 
         public static float NormalizeRateHz(float rateHz)

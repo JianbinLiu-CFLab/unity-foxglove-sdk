@@ -41,6 +41,7 @@ namespace Unity.FoxgloveSDK.Components
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, Queue<double>> _arrivalTimes =
             new(StringComparer.Ordinal);
+        private FoxRunWireEncoding _defaultWireEncoding = FoxRunWireEncoding.Protobuf;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
@@ -50,6 +51,34 @@ namespace Unity.FoxgloveSDK.Components
 
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
+
+        /// <summary>Manager-resolved default used only for inherited input topics.</summary>
+        public FoxRunWireEncoding DefaultWireEncoding
+        {
+            get
+            {
+                lock (_gate)
+                    return _defaultWireEncoding;
+            }
+            set
+            {
+                value = FoxRunWireEncodingResolver.ValidateManagerDefault(value);
+                lock (_gate)
+                {
+                    if (_defaultWireEncoding == value)
+                        return;
+
+                    _defaultWireEncoding = value;
+                    foreach (var pair in _registrations)
+                    {
+                        var registrations = pair.Value;
+                        for (var index = 0; index < registrations.Count; index++)
+                            registrations[index] = registrations[index].Resolve(value);
+                        _registrationSnapshots[pair.Key] = registrations.ToArray();
+                    }
+                }
+            }
+        }
 
         public void Register(IFoxgloveInputSource source)
         {
@@ -67,7 +96,7 @@ namespace Unity.FoxgloveSDK.Components
                         _registrations[info.Topic] = registrations = new List<Registration>();
                     if (registrations.Exists(item => ReferenceEquals(item.Source, source) && item.TopicIndex == index))
                         continue;
-                    registrations.Add(new Registration(source, index, info.Encoding));
+                    registrations.Add(new Registration(source, index, info.DeclaredWireEncoding, _defaultWireEncoding));
                     _registrationSnapshots[info.Topic] = registrations.ToArray();
                 }
             }
@@ -157,7 +186,11 @@ namespace Unity.FoxgloveSDK.Components
                 if (!string.Equals(registration.Encoding, encoding ?? string.Empty, StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.IsNullOrEmpty(firstError))
-                        firstError = "Inbound encoding does not match the generated FoxRun contract.";
+                        firstError = "Inbound encoding does not match the generated FoxRun contract: expected \""
+                            + registration.Encoding
+                            + "\" but client advertised \""
+                            + (encoding ?? string.Empty)
+                            + "\".";
                     continue;
                 }
 
@@ -205,16 +238,26 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly struct Registration
         {
-            public Registration(IFoxgloveInputSource source, int topicIndex, string encoding)
+            public Registration(
+                IFoxgloveInputSource source,
+                int topicIndex,
+                FoxRunWireEncoding declaredWireEncoding,
+                FoxRunWireEncoding managerDefault)
             {
                 Source = source;
                 TopicIndex = topicIndex;
-                Encoding = encoding ?? string.Empty;
+                DeclaredWireEncoding = declaredWireEncoding;
+                Encoding = FoxRunWireEncodingResolver.ToProtocolEncoding(
+                    FoxRunWireEncodingResolver.Resolve(declaredWireEncoding, managerDefault));
             }
 
             public IFoxgloveInputSource Source { get; }
             public int TopicIndex { get; }
+            public FoxRunWireEncoding DeclaredWireEncoding { get; }
             public string Encoding { get; }
+
+            public Registration Resolve(FoxRunWireEncoding managerDefault)
+                => new(Source, TopicIndex, DeclaredWireEncoding, managerDefault);
         }
     }
 }

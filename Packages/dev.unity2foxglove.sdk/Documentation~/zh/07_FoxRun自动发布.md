@@ -95,6 +95,22 @@ private Vector3 _pose;  // 3D 面板可识别并渲染
 
 以上类型会自动展开为 JSON 对象，其他类型直接输出 `.ToString()`。
 
+## Phase 175 FoxRun Protobuf 默认编码
+
+`[FoxRun]` 的 `Encoding` 默认值是 `FoxRunWireEncoding.Inherit`。重新编译后，继承编码的话题使用 `FoxgloveManager > FoxRun > Default Wire Encoding`；默认是 **Protobuf**。Inspector 下拉菜单只提供 **Protobuf** 和 **JSON**，`Inherit` 只属于源码 attribute，不能由场景覆盖。
+
+旧 JSON 客户端需要保持既有合同时，请显式写出 JSON：
+
+```csharp
+[FoxRun("/control/legacy-speed", Mode = FoxRunMode.SubscribeOnly,
+    Encoding = FoxRunWireEncoding.Json)]
+private float _legacyRequestedSpeed;
+```
+
+普通 scalar、Vector 和生成的 DTO/集合输入都可以使用继承策略；DTO 与集合的入站解码走 Protobuf。Manager 在 server 启动时冻结默认编码。Play Mode 中修改下拉菜单不会让已连接会话中途换协议，必须重启或重新启用 server。FoxRun Inspector 的 Runtime Topics 会显示 `Declared`、`Effective` 和 schema。
+
+编码属于 schema contract identity。继承话题在 Protobuf 与 JSON 下有不同的 schema/fingerprint evidence；切换有效编码后应重新录制 MCAP。必须保留 JSON 的外部客户端，请在录制前显式指定 JSON。
+
 ## 代码生成机制
 
 ### Editor 模式（ISG）

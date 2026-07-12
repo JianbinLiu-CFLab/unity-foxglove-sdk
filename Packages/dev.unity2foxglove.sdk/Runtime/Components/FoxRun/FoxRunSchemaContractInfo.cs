@@ -21,6 +21,7 @@ namespace Unity.FoxgloveSDK.Components
         public string PolicyHash { get; }
         public string Mode { get; }
         public string FlowMode { get; }
+        public byte[] ProtobufDescriptorSet { get; }
         public float RateHz { get; }
         public float ChangeEpsilon { get; }
         public float ForceIntervalSeconds { get; }
@@ -39,7 +40,8 @@ namespace Unity.FoxgloveSDK.Components
             float changeEpsilon,
             float forceIntervalSeconds,
             IReadOnlyList<FoxRunSchemaFieldInfo> fields,
-            string flowMode = "PublishOnly")
+            string flowMode = "PublishOnly",
+            byte[] protobufDescriptorSet = null)
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -54,6 +56,7 @@ namespace Unity.FoxgloveSDK.Components
             ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
             ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);
             Fields = new List<FoxRunSchemaFieldInfo>(fields ?? Array.Empty<FoxRunSchemaFieldInfo>()).AsReadOnly();
+            ProtobufDescriptorSet = protobufDescriptorSet == null ? Array.Empty<byte>() : (byte[])protobufDescriptorSet.Clone();
         }
 
         private static float NormalizeRateHz(float value)

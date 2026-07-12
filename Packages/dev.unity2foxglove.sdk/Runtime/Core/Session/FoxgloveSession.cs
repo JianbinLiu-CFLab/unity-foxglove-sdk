@@ -89,6 +89,8 @@ namespace Unity.FoxgloveSDK.Core
         internal const int MaxPendingPlaybackControls = SessionPlaybackHandler.MaxPendingPlaybackControls;
         /// <summary>Raised when a client-published binary message is received.</summary>
         public event Action<uint, uint, string, byte[]> OnClientMessage;
+        /// <summary>Raised with the client-advertised channel encoding for inbound routing.</summary>
+        public event Action<uint, uint, string, string, byte[]> OnClientMessageWithEncoding;
 
         private McapRecorder _recorder;
         private IFoxgloveMirrorSink _mirrorSink;
@@ -188,7 +190,11 @@ namespace Unity.FoxgloveSDK.Core
                 _clock,
                 _logger,
                 _graph,
-                (clientId, chId, topic, payload) => OnClientMessage?.Invoke(clientId, chId, topic, payload));
+                (clientId, chId, topic, encoding, payload) =>
+                {
+                    OnClientMessage?.Invoke(clientId, chId, topic, payload);
+                    OnClientMessageWithEncoding?.Invoke(clientId, chId, topic, encoding, payload);
+                });
             _assets = new SessionAssetHandler(() => Volatile.Read(ref _runtime), _transport);
 
             _channels.ChannelOverwritten += OnChannelOverwritten;
@@ -232,6 +238,7 @@ namespace Unity.FoxgloveSDK.Core
             Volatile.Write(ref _recorder, null);
             Volatile.Write(ref _mirrorSink, null);
             OnClientMessage = null;
+            OnClientMessageWithEncoding = null;
         }
 
         // ── Status API ──

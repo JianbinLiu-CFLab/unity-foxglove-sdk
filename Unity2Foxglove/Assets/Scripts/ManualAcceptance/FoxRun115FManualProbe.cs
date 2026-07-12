@@ -30,7 +30,7 @@ using UnityEngine;
 ///    path outside the normal FoxRun workflow.
 /// </remarks>
 [DisallowMultipleComponent]
-[AddComponentMenu("Foxglove/Manual Acceptance/FoxRun 115F Manual Probe")]
+[AddComponentMenu("Foxglove/Manual Acceptance/Phase115F FoxRun Contract Smoke")]
 public partial class FoxRun115FManualProbe : MonoBehaviour
 {
     [Serializable]

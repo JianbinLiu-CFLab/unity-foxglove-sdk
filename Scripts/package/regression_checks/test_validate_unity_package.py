@@ -342,6 +342,105 @@ class ValidateSourceGeneratorDllTests(unittest.TestCase):
         written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
         self.assertIn("[FAIL] Source generator Release build failed", written)
 
+    def test_missing_analyzer_dependency_is_reported_before_hash_comparison(self) -> None:
+        """A source generator dependency must ship beside the analyzer DLL for Unity to load it."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            build.mkdir()
+            (build / "FoxgloveLogSourceGenerator.dll").write_bytes(b"generator")
+
+            with mock.patch.object(self.validator, "run_build", return_value=True):
+                with mock.patch.object(
+                    self.validator,
+                    "CHECKED_IN_ARTIFACTS",
+                    {
+                        "FoxgloveLogSourceGenerator.dll": root / "checked" / "FoxgloveLogSourceGenerator.dll",
+                        "Google.Protobuf.dll": root / "checked" / "Google.Protobuf.dll",
+                    },
+                ):
+                    with mock.patch("sys.stderr") as stderr:
+                        result = self.validator.validate_or_update(False, build, [])
+
+        self.assertEqual(1, result)
+        written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
+        self.assertIn("Google.Protobuf.dll", written)
+        self.assertIn("did not produce", written)
+
+    def test_runtime_protobuf_plugin_must_match_checked_in_analyzer_dependency(self) -> None:
+        """The Unity runtime plug-in must stay in lockstep with analyzer Google.Protobuf."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            checked = root / "checked"
+            build.mkdir()
+            checked.mkdir()
+            (build / "FoxgloveLogSourceGenerator.dll").write_bytes(b"generator")
+            (build / "Google.Protobuf.dll").write_bytes(b"protobuf-3.29.3")
+            (checked / "FoxgloveLogSourceGenerator.dll").write_bytes(b"generator")
+            (checked / "Google.Protobuf.dll").write_bytes(b"protobuf-3.29.3")
+            runtime_plugin = root / "Google.Protobuf.runtime.dll"
+            runtime_plugin.write_bytes(b"protobuf-mismatch")
+
+            with mock.patch.object(self.validator, "run_build", return_value=True):
+                with mock.patch.object(
+                    self.validator,
+                    "CHECKED_IN_ARTIFACTS",
+                    {
+                        "FoxgloveLogSourceGenerator.dll": checked / "FoxgloveLogSourceGenerator.dll",
+                        "Google.Protobuf.dll": checked / "Google.Protobuf.dll",
+                    },
+                ):
+                    with mock.patch.object(
+                        self.validator,
+                        "UNITY_PLUGIN_GOOGLE_PROTOBUF",
+                        runtime_plugin,
+                        create=True,
+                    ):
+                        with mock.patch("sys.stderr") as stderr:
+                            result = self.validator.validate_or_update(False, build, [])
+
+        self.assertEqual(1, result)
+        written = "".join(call.args[0] for call in stderr.write.call_args_list if call.args)
+        self.assertIn("Unity runtime Google.Protobuf plug-in", written)
+
+    def test_runtime_protobuf_mismatch_blocks_analyzer_update_before_copy(self) -> None:
+        """A mismatched runtime plug-in must not leave an --update half-applied."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / "build"
+            checked = root / "checked"
+            build.mkdir()
+            checked.mkdir()
+            (build / "FoxgloveLogSourceGenerator.dll").write_bytes(b"fresh-generator")
+            (build / "Google.Protobuf.dll").write_bytes(b"fresh-protobuf")
+            checked_generator = checked / "FoxgloveLogSourceGenerator.dll"
+            checked_generator.write_bytes(b"old-generator")
+            (checked / "Google.Protobuf.dll").write_bytes(b"old-protobuf")
+            runtime_plugin = root / "Google.Protobuf.runtime.dll"
+            runtime_plugin.write_bytes(b"protobuf-mismatch")
+
+            with mock.patch.object(self.validator, "run_build", return_value=True):
+                with mock.patch.object(
+                    self.validator,
+                    "CHECKED_IN_ARTIFACTS",
+                    {
+                        "FoxgloveLogSourceGenerator.dll": checked_generator,
+                        "Google.Protobuf.dll": checked / "Google.Protobuf.dll",
+                    },
+                ):
+                    with mock.patch.object(
+                        self.validator,
+                        "UNITY_PLUGIN_GOOGLE_PROTOBUF",
+                        runtime_plugin,
+                    ):
+                        with mock.patch("sys.stderr"):
+                            result = self.validator.validate_or_update(True, build, [])
+            persisted_generator = checked_generator.read_bytes()
+
+        self.assertEqual(1, result)
+        self.assertEqual(b"old-generator", persisted_generator)
+
 
 if __name__ == "__main__":
     unittest.main()

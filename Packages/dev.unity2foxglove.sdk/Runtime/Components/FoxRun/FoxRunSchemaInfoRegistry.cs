@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.FoxgloveSDK.Schemas;
 
 namespace Unity.FoxgloveSDK.Components
@@ -27,6 +28,52 @@ namespace Unity.FoxgloveSDK.Components
         public static string ConflictMessage { get { lock (Sync) return _conflictMessage; } }
         public static string ConflictingHash { get { lock (Sync) return _conflictingHash; } }
         public static FoxRunSchemaManifestInfo Current { get { lock (Sync) return _current; } }
+
+        /// <summary>Builds Inspector-friendly effective topic contracts from generated metadata.</summary>
+        public static IReadOnlyList<FoxRunTopicSummary> GetTopicSummaries(FoxRunWireEncoding managerDefault)
+        {
+            managerDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(managerDefault);
+            lock (Sync)
+            {
+                if (_current == null)
+                    return Array.Empty<FoxRunTopicSummary>();
+
+                var summaries = new List<FoxRunTopicSummary>();
+                foreach (var type in _current.Types)
+                {
+                    if (type == null)
+                        continue;
+
+                    foreach (var group in type.Contracts
+                                 .Where(contract => contract != null)
+                                 .GroupBy(contract => new ContractKey(contract.Topic, contract.FlowMode)))
+                    {
+                        var contracts = group.ToList();
+                        var hasJson = contracts.Any(contract => string.Equals(contract.Encoding, "json", StringComparison.Ordinal));
+                        var hasProtobuf = contracts.Any(contract => string.Equals(contract.Encoding, "protobuf", StringComparison.Ordinal));
+                        var declared = hasJson && hasProtobuf
+                            ? FoxRunWireEncoding.Inherit
+                            : hasProtobuf ? FoxRunWireEncoding.Protobuf : FoxRunWireEncoding.Json;
+                        var effective = FoxRunWireEncodingResolver.Resolve(declared, managerDefault);
+                        var protocolEncoding = FoxRunWireEncodingResolver.ToProtocolEncoding(effective);
+                        var contract = contracts.FirstOrDefault(candidate =>
+                            string.Equals(candidate.Encoding, protocolEncoding, StringComparison.Ordinal)) ?? contracts[0];
+                        summaries.Add(new FoxRunTopicSummary(
+                            type.DeclaringType,
+                            contract.Topic,
+                            contract.FlowMode,
+                            declared,
+                            effective,
+                            contract.SchemaName));
+                    }
+                }
+
+                return summaries
+                    .OrderBy(summary => summary.Topic, StringComparer.Ordinal)
+                    .ThenBy(summary => summary.DeclaringType, StringComparer.Ordinal)
+                    .ToArray();
+            }
+        }
 
 #if UNITY_5_3_OR_NEWER
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -82,27 +129,41 @@ namespace Unity.FoxgloveSDK.Components
 
                 foreach (var contract in type.Contracts)
                 {
-                    if (contract == null
-                        || !string.Equals(contract.Encoding, "json", StringComparison.Ordinal)
-                        || string.IsNullOrWhiteSpace(contract.SchemaName)
-                        || !IsGeneratedAggregateContract(contract))
+                    if (contract == null || string.IsNullOrWhiteSpace(contract.SchemaName))
                     {
                         continue;
                     }
 
                     try
                     {
-                        registry.Register(new SchemaEntry
+                        if (string.Equals(contract.Encoding, "json", StringComparison.Ordinal))
                         {
-                            Name = contract.SchemaName,
-                            Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
-                            Content = GetOrBuildGeneratedSchema(contract)
-                        });
+                            if (!IsGeneratedAggregateContract(contract))
+                                continue;
+
+                            registry.Register(new SchemaEntry
+                            {
+                                Name = contract.SchemaName,
+                                Encoding = FoxgloveSchemaDefinitions.JsonSchemaEncoding,
+                                Content = GetOrBuildGeneratedSchema(contract)
+                            });
+                        }
+                        else if (string.Equals(contract.Encoding, "protobuf", StringComparison.Ordinal)
+                                 && contract.ProtobufDescriptorSet.Length > 0)
+                        {
+                            registry.Register(new SchemaEntry
+                            {
+                                Name = contract.SchemaName,
+                                Encoding = "protobuf",
+                                Content = Convert.ToBase64String(contract.ProtobufDescriptorSet),
+                                RawContent = contract.ProtobufDescriptorSet
+                            });
+                        }
                     }
                     catch (Exception ex) when (IsRecoverableSchemaException(ex))
                     {
                         var message =
-                            "Failed to register generated FoxRun JSON schema for topic '"
+                            "Failed to register generated FoxRun " + (contract.Encoding ?? string.Empty) + " schema for topic '"
                             + (contract.Topic ?? string.Empty)
                             + "' and schema '"
                             + (contract.SchemaName ?? string.Empty)
@@ -146,6 +207,33 @@ namespace Unity.FoxgloveSDK.Components
 
                 GeneratedSchemaCache[key] = built;
                 return built;
+            }
+        }
+
+        private readonly struct ContractKey : IEquatable<ContractKey>
+        {
+            public ContractKey(string topic, string flowMode)
+            {
+                Topic = topic ?? string.Empty;
+                FlowMode = flowMode ?? string.Empty;
+            }
+
+            private string Topic { get; }
+            private string FlowMode { get; }
+
+            public bool Equals(ContractKey other)
+                => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
+                   && string.Equals(FlowMode, other.FlowMode, StringComparison.Ordinal);
+
+            public override bool Equals(object obj) => obj is ContractKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = StringComparer.Ordinal.GetHashCode(Topic);
+                    return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(FlowMode);
+                }
             }
         }
 

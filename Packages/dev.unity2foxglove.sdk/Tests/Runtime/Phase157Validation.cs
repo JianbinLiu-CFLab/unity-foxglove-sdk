@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(clientEvents.Contains("BoundedEventQueue<ClientEvent>", StringComparison.Ordinal)
                   && clientEvents.Contains("OnClientMessage?.Invoke", StringComparison.Ordinal)
-                  && hub.Contains("_manager.OnClientMessage += OnClientMessage", StringComparison.Ordinal),
+                  && hub.Contains("_manager.OnClientMessageWithEncoding += OnClientMessage", StringComparison.Ordinal),
                 "transport messages cross the existing bounded manager queue before input assignment");
             Check(authorization.Contains("IsLoopbackHost", StringComparison.Ordinal)
                   && authorization.Contains("remote inbound requires a configured shared token", StringComparison.Ordinal),

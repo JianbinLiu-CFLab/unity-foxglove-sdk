@@ -77,7 +77,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("RuntimeInitializeOnLoadMethod", StringComparison.Ordinal),
                 "113-A3: generated schema info is visible to Editor Play Mode and Player runtime");
 
-            foreach (var token in new[] { "generatedAtUtc", "Library/", "MCAP", "replay", "protobuf", "ROS2", "typed-publisher" })
+            foreach (var token in new[] { "generatedAtUtc", "Library/", "MCAP", "replay", "ROS2", "typed-publisher" })
             {
                 Check(!source.Contains(token, StringComparison.OrdinalIgnoreCase),
                     "113-A4: generated schema info avoids out-of-scope token: " + token);
@@ -187,7 +187,7 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var writer = ReadRepoText(SchemaWriterPath);
-            foreach (var token in new[] { "FoxRunManifestHasher", "WriteCanonical", "SHA256", "generatedAtUtc", "MCAP", "replay", "protobuf", "ROS2", "typed-publisher" })
+            foreach (var token in new[] { "FoxRunManifestHasher", "WriteCanonical", "SHA256", "generatedAtUtc", "MCAP", "replay", "ROS2", "typed-publisher" })
             {
                 Check(!writer.Contains(token, StringComparison.OrdinalIgnoreCase),
                     "113-D2: schema writer avoids second hash path or out-of-scope token: " + token);
@@ -228,10 +228,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && registry.Contains("ResetState", StringComparison.Ordinal),
                 "113-D6b: schema registry resets static state for each Unity runtime load");
 
+            var playModeRefresh = PhaseValidationSourceHelpers.SourceMethod(
+                playModeHook,
+                "private static void OnPlayModeStateChanged");
             Check(playModeHook.Contains("FoxRunSchemaInfo.g.cs changed before Play Mode", StringComparison.Ordinal)
-                  && playModeHook.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && playModeRefresh.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
+                  && playModeRefresh.Contains("QueueSchemaInfoRefreshAfterPlayCancellation", StringComparison.Ordinal)
+                  && !playModeRefresh.Contains("AssetDatabase.Refresh", StringComparison.Ordinal)
+                  && playModeHook.Contains("EditorApplication.delayCall", StringComparison.Ordinal)
                   && playModeHook.Contains("ForceSynchronousImport", StringComparison.Ordinal),
-                "113-D6c: Play Mode refresh cancels once when generated schema info source changes");
+                "113-D6c: Play Mode refresh cancels before queueing the synchronous import in a stable Editor update");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             var validationRegistry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");

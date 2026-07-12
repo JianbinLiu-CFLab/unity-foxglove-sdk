@@ -133,12 +133,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && editor.Contains("DrawFoxServicesSection", StringComparison.Ordinal),
                 "141E-10: FoxgloveManager Inspector includes a FoxServices section");
             var mcapIndex = editor.IndexOf("\"MCAP Record & Replay\"", StringComparison.Ordinal);
+            var foxRunIndex = editor.IndexOf("\"FoxRun\"", StringComparison.Ordinal);
             var foxServicesIndex = editor.IndexOf("\"FoxServices\"", StringComparison.Ordinal);
             var diagnosticsIndex = editor.IndexOf("\"Diagnostics\"", StringComparison.Ordinal);
             Check(mcapIndex >= 0
-                  && foxServicesIndex > mcapIndex
+                  && foxRunIndex > mcapIndex
+                  && foxServicesIndex > foxRunIndex
                   && diagnosticsIndex > foxServicesIndex,
-                "141E-10a: FoxServices Inspector section sits between MCAP and Diagnostics");
+                "141E-10a: FoxRun and FoxServices stay together between MCAP and Diagnostics");
             Check(editorSources.Contains("GetRegisteredServiceSnapshots", StringComparison.Ordinal)
                   && editorSources.Contains("EditorGUIUtility.systemCopyBuffer", StringComparison.Ordinal),
                 "141E-11: FoxServices Inspector section reads snapshots and supports copy workflow");

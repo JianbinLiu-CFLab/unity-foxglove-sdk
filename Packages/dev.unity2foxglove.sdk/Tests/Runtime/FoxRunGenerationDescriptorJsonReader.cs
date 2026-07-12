@@ -53,7 +53,9 @@ namespace Unity.FoxgloveSDK.Tests
                         unless: StringValue(member, "unless"),
                         isAggregateMember: BoolValue(member, "isAggregateMember"),
                         jsonFieldName: StringValue(member, "jsonFieldName"),
-                        mode: ModeValue(member)));
+                        mode: ModeValue(member),
+                        encoding: StringValue(member, "encoding"),
+                        protobufFieldNumber: IntValue(member, "protobufFieldNumber")));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));
             }

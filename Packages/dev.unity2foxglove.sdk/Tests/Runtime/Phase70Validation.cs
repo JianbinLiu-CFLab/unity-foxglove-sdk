@@ -45,6 +45,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "70A-1: Inspector has Connection & Security workflow section");
             Check(source.Contains("DrawSection(\"Publish Data\""),
                 "70A-2: Inspector has Publish Data workflow section");
+            Check(source.Contains("DrawSection(\"FoxRun\""),
+                "70A-2b: Inspector has FoxRun workflow section");
             Check(source.Contains("DrawSection(\"MCAP Record & Replay\""),
                 "70A-3: Inspector has MCAP Record & Replay workflow section");
             Check(source.Contains("DrawSection(\"Diagnostics\""),
@@ -56,15 +58,23 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(source,
                 "DrawSection(\"Publish Data\"",
                 "DrawSection(\"MCAP Record & Replay\"",
-                "70A-4c: main workflow order promotes MCAP before optional bridge");
+                "70A-4c: MCAP follows Publish Data before FoxRun");
+            CheckOrdered(source,
+                "DrawSection(\"MCAP Record & Replay\"",
+                "DrawSection(\"FoxRun\"",
+                "70A-4d: FoxRun follows MCAP before FoxServices");
+            CheckOrdered(source,
+                "DrawSection(\"FoxRun\"",
+                "DrawSection(\"FoxServices\"",
+                "70A-4d1: FoxServices follows FoxRun");
             CheckOrdered(source,
                 "DrawSection(\"MCAP Record & Replay\"",
                 "DrawSection(\"ROS2 Bridge\"",
-                "70A-4d: ROS2 Bridge follows MCAP Record & Replay");
+                "70A-4e: ROS2 Bridge follows MCAP Record & Replay");
             CheckOrdered(source,
                 "DrawSection(\"ROS2 Bridge\"",
                 "DrawSection(\"Diagnostics\"",
-                "70A-4e: Diagnostics remains last after ROS2 Bridge");
+                "70A-4f: Diagnostics remains last after ROS2 Bridge");
 
             Check(!source.Contains("DrawSection(\"Server\""),
                 "70A-5: Server is no longer a top-level section");
@@ -136,6 +146,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "_port",
                 "_startOnEnable",
                 "_runInBackground",
+                "_defaultFoxRunWireEncoding",
                 "_defaultPublisherEncoding",
                 "_allowPublisherOverride",
                 "_coordinateMode",

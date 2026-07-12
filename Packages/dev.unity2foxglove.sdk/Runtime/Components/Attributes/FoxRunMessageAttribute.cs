@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Runtime/Components/Attributes
-// Purpose: FoxRun aggregate message attribute for class-level JSON topics.
+// Purpose: FoxRun aggregate message attribute for class-level wire-contract topics.
 
 using System;
 
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Declares a class-level FoxRun JSON message. Members marked with
+    /// Declares a class-level FoxRun message. Members marked with
     /// <see cref="FoxRunFieldAttribute"/> are grouped into one topic payload.
     /// </summary>
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
@@ -26,6 +26,12 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Publish mode for the aggregate topic.</summary>
         public FoxRunPublishMode PublishMode { get; set; } = FoxRunPublishMode.FixedRate;
+
+        /// <summary>
+        /// Declared wire encoding for this aggregate topic. The default is
+        /// resolved by FoxgloveManager when the topic is registered.
+        /// </summary>
+        public FoxRunWireEncoding Encoding { get; set; } = FoxRunWireEncoding.Inherit;
 
         /// <summary>Epsilon for numeric and Unity value-type change detection.</summary>
         public float ChangeEpsilon { get; set; } = 0f;

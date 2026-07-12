@@ -163,7 +163,7 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode));
+                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber));
                 }
 
                 var aggregateField = fi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
                         (int)aggregateMessage.PublishMode, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, fi.MetadataToken, "",
-                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName));
+                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName, encoding: (int)aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber));
                 }
             }
             foreach (var pi in type.GetProperties(flags))
@@ -185,7 +185,7 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode));
+                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber));
                 }
 
                 var aggregateField = pi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -194,7 +194,7 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
                         (int)aggregateMessage.PublishMode, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, pi.MetadataToken, "",
-                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName));
+                        aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName, encoding: (int)aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber));
                 }
             }
             return result;

@@ -167,6 +167,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 string schemaName = "";
                 int publishMode = 0;
                 int mode = 0;
+                int encoding = 0;
+                int protobufFieldNumber = 0;
                 float changeEpsilon = 0f;
                 float forceIntervalSeconds = 0f;
                 string when = "";
@@ -177,12 +179,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
                     if (named.Key == "PublishMode" && TryReadIntConstant(named.Value, out var pm)) publishMode = pm;
                     if (named.Key == "Mode" && TryReadIntConstant(named.Value, out var flowMode)) mode = flowMode;
+                    if (named.Key == "Encoding" && TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
+                    if (named.Key == "ProtobufFieldNumber" && TryReadIntConstant(named.Value, out var fieldNumber)) protobufFieldNumber = fieldNumber;
                     if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
                     if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
                     if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
                     if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
                 }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode));
+                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode, encoding: encoding, protobufFieldNumber: protobufFieldNumber));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -201,6 +205,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var rateHz = 10f;
                 var schemaName = "";
                 var publishMode = 0;
+                var encoding = 0;
                 var changeEpsilon = 0f;
                 var forceIntervalSeconds = 0f;
                 var when = "";
@@ -210,6 +215,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
                     if (named.Key == "PublishMode" && TryReadIntConstant(named.Value, out var pm)) publishMode = pm;
+                    if (named.Key == "Encoding" && TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
                     if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
                     if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
                     if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
@@ -220,6 +226,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     schemaName = DeclaringTypeName(containingType);
 
                 var jsonFieldName = ReadStringConstructorArgument(aggregateFieldAttr);
+                var protobufFieldNumber = 0;
+                foreach (var named in aggregateFieldAttr.NamedArguments)
+                {
+                    if (named.Key == "ProtobufFieldNumber" && TryReadIntConstant(named.Value, out var fieldNumber))
+                        protobufFieldNumber = fieldNumber;
+                }
                 topics.Add(new TopicEntry(
                     topic,
                     rateHz,
@@ -230,7 +242,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     when,
                     unless,
                     isAggregateMember: true,
-                    jsonFieldName: jsonFieldName));
+                    jsonFieldName: jsonFieldName,
+                    encoding: encoding,
+                    protobufFieldNumber: protobufFieldNumber));
             }
             if (topics.Count == 0) return null;
 
@@ -274,12 +288,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var isArray = TryGetArrayElementType(typeSymbol, out var elementType);
             var elementTypeName = elementType == null ? "" : elementType.ToDisplayString();
             var rawMemberOrder = symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start ?? 0;
+            FoxRunRoslynProtobufTypeShapeBuilder.TryBuild(
+                isArray ? elementType : typeSymbol,
+                out var protobufTypeShape);
 
             string ns = containingType.ContainingNamespace != null
                 && !containingType.ContainingNamespace.IsGlobalNamespace
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
 
-            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray());
+            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape);
         }
 
         private static string DeclaringTypeName(INamedTypeSymbol containingType)

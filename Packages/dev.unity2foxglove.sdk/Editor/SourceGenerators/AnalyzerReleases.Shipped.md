@@ -36,6 +36,10 @@ FOXRUN026 | FoxRun | Warning | PublishAndSubscribe requires explicit authority o
 FOXRUN027 | FoxRun | Warning | SubscribeOnly member names should communicate input-port authority.
 FOXRUN028 | FoxRun | Error | FoxRun inbound targets must be writable.
 FOXRUN029 | FoxRun | Error | FoxRun Unless conditional gate member is missing or invalid.
+FOXRUN030 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
+FOXRUN031 | FoxRun | Error | FoxRun ProtobufFieldNumber must be a legal non-reserved tag or zero for automatic assignment.
+FOXRUN032 | FoxRun | Error | Same-topic FoxRun members cannot mix Encoding declarations.
+FOXRUN033 | FoxRun | Error | FoxRun ProtobufFieldNumber values must be unique per topic.
 FOXSERVICE001 | FoxService | Error | FoxService name must be non-empty and absolute.
 FOXSERVICE002 | FoxService | Error | FoxService method signature is unsupported.
 FOXSERVICE003 | FoxService | Error | FoxService request type is unsupported.

@@ -92,6 +92,12 @@ namespace Unity.FoxgloveSDK.Editor
             WriteStringField(sb, "schemaName", member.SchemaName);
             sb.Append(',');
             WriteStringField(sb, "encoding", member.Encoding);
+            if (member.ProtobufFieldNumber > 0)
+            {
+                sb.Append(',');
+                WriteName(sb, "protobufFieldNumber");
+                sb.Append(member.ProtobufFieldNumber.ToString(CultureInfo.InvariantCulture));
+            }
             sb.Append(',');
             WriteName(sb, "rateHz");
             WriteFloat(sb, member.RateHz);

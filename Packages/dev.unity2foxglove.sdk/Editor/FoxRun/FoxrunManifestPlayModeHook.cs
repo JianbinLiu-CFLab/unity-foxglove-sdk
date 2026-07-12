@@ -13,6 +13,8 @@ namespace Unity.FoxgloveSDK.Editor
     [InitializeOnLoad]
     internal static class FoxrunManifestPlayModeHook
     {
+        private static bool _schemaInfoRefreshQueued;
+
         static FoxrunManifestPlayModeHook()
         {
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
@@ -41,11 +43,12 @@ namespace Unity.FoxgloveSDK.Editor
 
                 if (refresh.SchemaInfoChanged)
                 {
-                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
                     EditorApplication.isPlaying = false;
-                    // The manifest, schema info, and descriptor are refreshed as
-                    // one artifact set, then Unity recompiles before the next Play attempt
-                    // observes the generated schema-info constants.
+                    QueueSchemaInfoRefreshAfterPlayCancellation();
+                    // A synchronous import while ExitingEditMode can overlap native
+                    // runtime teardown. Cancel first, then refresh the artifact set
+                    // from a stable Editor update so the next Play attempt sees the
+                    // new constants.
                     Debug.LogWarning(
                         "[FoxRun] Generated FoxRunSchemaInfo.g.cs changed before Play Mode. " +
                         "Unity must recompile it before runtime schema consumers can use the new manifest hash. " +
@@ -59,5 +62,27 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private static void QueueSchemaInfoRefreshAfterPlayCancellation()
+        {
+            if (_schemaInfoRefreshQueued)
+                return;
+
+            _schemaInfoRefreshQueued = true;
+            EditorApplication.delayCall += RefreshSchemaInfoAfterPlayCancellation;
+        }
+
+        private static void RefreshSchemaInfoAfterPlayCancellation()
+        {
+            _schemaInfoRefreshQueued = false;
+            if (EditorApplication.isPlayingOrWillChangePlaymode
+                || EditorApplication.isCompiling
+                || EditorApplication.isUpdating)
+            {
+                QueueSchemaInfoRefreshAfterPlayCancellation();
+                return;
+            }
+
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        }
     }
 }

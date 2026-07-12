@@ -24,6 +24,9 @@ namespace Unity.FoxgloveSDK.Editor
         public string SchemaName { get; }
         public int PublishMode { get; }
         public int FlowMode { get; }
+        public int Encoding { get; }
+        public int ProtobufFieldNumber { get; }
+        public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
         public float ChangeEpsilon { get; }
         public float ForceIntervalSeconds { get; }
         public bool IsAggregateMember { get; }
@@ -46,7 +49,10 @@ namespace Unity.FoxgloveSDK.Editor
             float forceIntervalSeconds,
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int flowMode = 0)
+            int flowMode = 0,
+            int encoding = 2,
+            int protobufFieldNumber = 0,
+            FoxRunProtobufTypeShape protobufTypeShape = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -61,6 +67,9 @@ namespace Unity.FoxgloveSDK.Editor
             SchemaName = schemaName ?? string.Empty;
             PublishMode = publishMode;
             FlowMode = flowMode;
+            Encoding = encoding;
+            ProtobufFieldNumber = protobufFieldNumber;
+            ProtobufTypeShape = protobufTypeShape;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
             IsAggregateMember = isAggregateMember;
@@ -189,6 +198,8 @@ namespace Unity.FoxgloveSDK.Editor
         public bool Nullable { get; }
         public bool Array { get; }
         public bool Aggregate { get; }
+        public int ProtobufFieldNumber { get; }
+        public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
 
         public FoxRunManifestField(
             string jsonName,
@@ -197,7 +208,9 @@ namespace Unity.FoxgloveSDK.Editor
             string type,
             bool nullable,
             bool array,
-            bool aggregate = false)
+            bool aggregate = false,
+            int protobufFieldNumber = 0,
+            FoxRunProtobufTypeShape protobufTypeShape = null)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -206,6 +219,8 @@ namespace Unity.FoxgloveSDK.Editor
             Nullable = nullable;
             Array = array;
             Aggregate = aggregate;
+            ProtobufFieldNumber = protobufFieldNumber;
+            ProtobufTypeShape = protobufTypeShape;
         }
     }
 

@@ -11,8 +11,12 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
+        [SerializeField] private FoxRunWireEncoding _defaultFoxRunWireEncoding = FoxRunWireEncoding.Protobuf;
+        private FoxRunWireEncoding _activeFoxRunDefaultWireEncoding = FoxRunWireEncoding.Protobuf;
+        private bool _hasActiveFoxRunWireEncoding;
+
         [Header("FoxRun Inbound")]
-        [Tooltip("Allow generated SubscribeOnly and PublishAndSubscribe FoxRun members to receive client-published JSON. Disabled by default.")]
+        [Tooltip("Allow generated SubscribeOnly and PublishAndSubscribe FoxRun members to receive client-published Protobuf or JSON. Disabled by default.")]
         [SerializeField] private bool _enableFoxRunInbound;
         [Tooltip("Permit non-loopback FoxRun inbound only when a configured shared token is required at WebSocket connect time. This is shared-token authorization, not per-client identity.")]
         [SerializeField] private bool _allowRemoteFoxRunInboundWithSharedToken;
@@ -28,6 +32,36 @@ namespace Unity.FoxgloveSDK.Components
         public int FoxRunInboundMaxPayloadBytes => Math.Max(256, _foxRunInboundMaxPayloadBytes);
         public int FoxRunInboundMaxMessagesPerSecondPerTopic =>
             Math.Max(1, _foxRunInboundMaxMessagesPerSecondPerTopic);
+
+        /// <summary>Serialized default used by generated FoxRun declarations that specify <see cref="FoxRunWireEncoding.Inherit"/>.</summary>
+        public FoxRunWireEncoding DefaultFoxRunWireEncoding
+        {
+            get => _defaultFoxRunWireEncoding == FoxRunWireEncoding.Inherit
+                ? FoxRunWireEncoding.Protobuf
+                : FoxRunWireEncodingResolver.ValidateManagerDefault(_defaultFoxRunWireEncoding);
+            set => _defaultFoxRunWireEncoding = FoxRunWireEncodingResolver.ValidateManagerDefault(value);
+        }
+
+        /// <summary>Effective default for the active server session, or the current configuration while stopped.</summary>
+        public FoxRunWireEncoding ActiveFoxRunDefaultWireEncoding => _hasActiveFoxRunWireEncoding
+            ? _activeFoxRunDefaultWireEncoding
+            : DefaultFoxRunWireEncoding;
+
+        /// <summary>Resolves a generated declaration against the active session policy.</summary>
+        public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding)
+            => FoxRunWireEncodingResolver.Resolve(declaredEncoding, ActiveFoxRunDefaultWireEncoding);
+
+        internal void CaptureFoxRunWireEncodingForSession()
+        {
+            _activeFoxRunDefaultWireEncoding = DefaultFoxRunWireEncoding;
+            _hasActiveFoxRunWireEncoding = true;
+        }
+
+        internal void ClearFoxRunWireEncodingForSession()
+        {
+            _hasActiveFoxRunWireEncoding = false;
+            _activeFoxRunDefaultWireEncoding = FoxRunWireEncoding.Protobuf;
+        }
 
         public bool IsFoxRunInboundAuthorized
         {
