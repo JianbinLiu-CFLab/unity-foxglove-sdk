@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             if (fieldNumber <= 0)
                 throw new ArgumentOutOfRangeException(nameof(fieldNumber));
-            WriteVarint(buffer, (ulong)((fieldNumber << 3) | wireType));
+            WriteVarint(buffer, ((ulong)fieldNumber << 3) | (uint)wireType);
         }
 
         internal static void WriteVarint(List<byte> buffer, ulong value)

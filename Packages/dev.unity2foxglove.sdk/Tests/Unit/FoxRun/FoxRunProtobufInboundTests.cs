@@ -27,6 +27,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ProtobufWireWritesCanonicalTagForLargeLegalFieldNumber()
+        {
+            const int fieldNumber = 276_595_399;
+            var payload = new System.Collections.Generic.List<byte>();
+
+            FoxRunProtobufWire.WriteInt32(payload, fieldNumber, 1);
+
+            Assert.Equal(new byte[] { 0xb8, 0xac, 0x90, 0x9f, 0x08, 0x01 }, payload);
+        }
+
+        [Fact]
         public void MalformedProtobufDoesNotProduceAnInboundValue()
         {
             var malformed = new byte[] { 0x88, 0x01, 0x80 };

@@ -186,7 +186,11 @@ namespace Unity.FoxgloveSDK.Components
                 if (!string.Equals(registration.Encoding, encoding ?? string.Empty, StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.IsNullOrEmpty(firstError))
-                        firstError = "Inbound encoding does not match the generated FoxRun contract.";
+                        firstError = "Inbound encoding does not match the generated FoxRun contract: expected \""
+                            + registration.Encoding
+                            + "\" but client advertised \""
+                            + (encoding ?? string.Empty)
+                            + "\".";
                     continue;
                 }
 

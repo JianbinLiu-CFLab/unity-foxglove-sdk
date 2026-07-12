@@ -169,6 +169,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void RouterEncodingMismatchNamesExpectedAndClientAdvertisedEncodings()
+        {
+            var input = new InheritedRecordingInput("/phase175/protobuf");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            var result = router.Dispatch("/phase175/protobuf", Array.Empty<byte>(), "json", 1);
+
+            Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
+            Assert.Contains("expected \"protobuf\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("client advertised \"json\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void RouterIsolatesAssignmentExceptionsAndContinuesInRegistrationOrder()
         {
             var throwing = new ThrowingInput("/phase157/cmd");
