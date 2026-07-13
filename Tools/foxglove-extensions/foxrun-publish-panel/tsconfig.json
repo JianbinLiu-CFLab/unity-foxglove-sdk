@@ -1,0 +1,10 @@
+{
+  "extends": "./node_modules/create-foxglove-extension/tsconfig/tsconfig.json",
+  "compilerOptions": {
+    "declarationDir": "./dist/types",
+    "lib": ["dom", "dom.iterable", "es2020"],
+    "tsBuildInfoFile": "../../../build/foxglove-extensions/foxrun-publish-panel/tsconfig.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -189,7 +189,7 @@ This SDK schema manifest is release evidence, not replay governance. Unity repla
 
 For temporary diagnostics that should stay outside the FoxRun contract, publish explicit `/debug/...` schemaless JSON through the debug overlay helper. Debug overlay messages are non-contract data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or the canonical manifest fingerprints, and they are not replay guard keys. MCAP recording may still capture them as ordinary JSON frames, but replay schema mismatch checks should ignore them.
 
-## 14. Inbound Fields
+## 14. Subscribe Data Fields
 
 FoxRun fields are publish-only by default. To expose a field as an explicit input port, set `Mode`:
 
@@ -207,13 +207,28 @@ private void Update()
 
 Prefer an input-buffer field such as `_requestedTargetSpeed`, validate it in normal Unity code, and then apply it to authoritative state. Use `SubscribeOnly` for remote-authoritative commands. Keep local-authoritative state publish-only. Use `PublishAndSubscribe` only for intentionally shared observed state where both sides understand the ownership and feedback-loop policy.
 
-Inbound FoxRun is an external control surface and is disabled by default. Enable it under `FoxgloveManager > FoxRun > Inbound Control`. The runtime accepts only generated topic contracts, applies bounded payload and per-topic rate limits, rejects polymorphic `$type` metadata for JSON, and assigns values on the Unity main thread.
+**Subscribe Data** means Unity subscribes to data published by a Foxglove
+client. It is an external control surface and is disabled by default. Enable it
+under `FoxgloveManager > Subscribe Data > FoxRun Subscription Control`. The
+runtime accepts only generated topic contracts, applies bounded payload and
+per-topic rate limits, rejects polymorphic `$type` metadata for JSON, and
+assigns values on the Unity main thread.
 
 Loopback endpoints may opt in directly. A non-loopback endpoint remains fail-closed unless shared-token authentication is configured and the separate remote-inbound option is enabled. Every authenticated client currently receives the same generated allowlist; per-client topic authorization is not provided.
 
-### Wire Encoding Migration
+### Directional Wire Encoding
 
-`[FoxRun]` now declares `Encoding = FoxRunWireEncoding.Inherit` by default. After recompilation, inherited topics use the Manager's **Default Wire Encoding**, which defaults to **Protobuf**. The Manager Inspector exposes only **Protobuf** and **JSON** for that default; `Inherit` is source-owned and is not an Inspector option.
+`[FoxRun]` declares `Encoding = FoxRunWireEncoding.Inherit` by default. The
+Manager has two concrete defaults, both initially **Protobuf**:
+
+- **Default FoxRun Publish Encoding** resolves inherited `PublishOnly`
+  contracts.
+- **Default Subscription Encoding** resolves inherited `SubscribeOnly`
+  contracts.
+
+The Inspector exposes only **Protobuf** and **JSON** for these defaults;
+`Inherit` is source-owned and is not an Inspector option. Changing the
+subscription default does not change a `PublishOnly` topic, and vice versa.
 
 Use an explicit JSON declaration for a legacy client that must keep its existing contract:
 
@@ -223,16 +238,46 @@ Use an explicit JSON declaration for a legacy client that must keep its existing
 private float _legacyRequestedSpeed;
 ```
 
-An inherited bidirectional DTO uses Protobuf by default and retains both generated schema variants for migration evidence:
+Bidirectional contracts have one wire contract in both directions, so they must
+declare their encoding explicitly. The source generator rejects
+`PublishAndSubscribe` with `Encoding = Inherit`:
 
 ```csharp
-[FoxRun("/control/command", Mode = FoxRunMode.PublishAndSubscribe)]
+[FoxRun("/control/command", Mode = FoxRunMode.PublishAndSubscribe,
+    Encoding = FoxRunWireEncoding.Protobuf)]
 private DriveCommand _command;
 ```
 
-The Manager captures the selected default when its server starts. Changing the Inspector popup during Play Mode takes effect only after restarting or re-enabling the server; an active session never changes channel encoding in place. The FoxRun Inspector summary shows each topic's declared and effective encodings plus its schema.
+The Manager captures both defaults when its server starts. Changing either
+Inspector popup during Play Mode takes effect only after restarting or
+re-enabling the server; an active session never changes channel encoding in
+place. The FoxRun Runtime Topics summary under **FoxServices** shows each
+topic's direction, declared and effective encodings, schema, and a topic copy
+button.
 
 Encoding contributes to the schema contract identity. An inherited topic activated as Protobuf therefore has different schema/fingerprint evidence from its JSON variant. Re-record MCAP data after changing an inherited topic's effective encoding, and explicitly select JSON before recording when an external client must retain the legacy JSON contract.
+
+### FoxRun Publish Panel
+
+The optional **FoxRun Publish** Foxglove extension discovers writable
+`SubscribeOnly` and `PublishAndSubscribe` contracts through Unity's
+`/foxrun/subscription-contracts` service. It renders generated writable fields
+for a selected contract rather than asking users to type a topic or encoding.
+
+Install the packaged extension from
+`Tools/foxglove-extensions/foxrun-publish-panel`, add **FoxRun Publish** to a
+Foxglove layout, then enter Unity Play Mode with **Enable FoxRun
+Subscriptions** enabled. The panel reports Unity's authoritative per-topic
+limit and clamps its requested repeat rate to that bound. A disabled
+subscription service returns no writable contracts, and the panel disables
+sending instead of offering inputs that Unity will reject.
+
+JSON contracts use the Foxglove panel publishing path. Protobuf contracts use
+a direct Unity WebSocket connection, explicitly advertise `protobuf`, and send
+binary `MessageData`; they never fall back to JSON. A shared token, when a
+remote endpoint requires one, is memory-only and must be entered again for a
+new panel session. Panel send status is fire-and-forget: use Unity diagnostics
+and an observed Unity-side applied-message counter as acceptance authority.
 
 Local service calls extend the existing `[FoxService]` registry through `FoxgloveServiceHub.CallLocal`. They do not create a second service registry or move Unity handlers onto worker threads.
 
