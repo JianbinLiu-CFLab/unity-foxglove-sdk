@@ -205,6 +205,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase175a", "Phase 175A: FoxRun typed Protobuf contract model", Phase175AValidation.Validate, includeInDefault: false),
             Ci("--phase175b", "Phase 175B: FoxRun dual-codec generation and routing", Phase175BValidation.Validate, includeInDefault: false),
             Ci("--phase175c", "Phase 175C: FoxRun Manager wire policy and migration", Phase175CValidation.Validate, includeInDefault: false),
+            Ci("--phase176", "Phase 176: FoxRun Subscribe Data and Publish panel", Phase176Validation.Validate, includeInDefault: false),
             Ci("--phase163-2", "Phase 163-2: phase163-2 review regression checks for FoxgloveManager lifecycle contracts", Phase163_2Validation.Validate, includeInDefault: false),
             Ci("--phase163-3", "Phase 163-3: phase163-3 review regression checks for session protocol and client routing", Phase163_3Validation.Validate, includeInDefault: false),
             Ci("--phase163-4", "Phase 163-4: phase163-4 review regression checks for registries, assets, parameters, and services", Phase163_4Validation.Validate, includeInDefault: false),
