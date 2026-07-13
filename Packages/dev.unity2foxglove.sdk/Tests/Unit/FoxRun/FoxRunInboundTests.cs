@@ -146,7 +146,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void RouterResolvesInheritedInputAgainstTheCurrentSessionDefault()
+        public void RouterResolvesInheritedInputAgainstTheCurrentSubscriptionDefault()
         {
             var input = new InheritedRecordingInput("/phase175/inherit");
             var router = new FoxRunInputRouter();
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "json", 2).Status);
             Assert.Equal(1, input.ApplyCount);
 
-            router.DefaultWireEncoding = FoxRunWireEncoding.Json;
+            router.DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Json;
 
             Assert.Equal(
                 FoxRunInputDispatchStatus.Applied,

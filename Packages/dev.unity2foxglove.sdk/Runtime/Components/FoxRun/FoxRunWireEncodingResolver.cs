@@ -28,6 +28,37 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Resolves a declaration against the concrete default that owns its data-flow direction.
+        /// Bidirectional contracts must declare their one shared encoding explicitly.
+        /// </summary>
+        public static FoxRunWireEncoding Resolve(
+            FoxRunWireEncoding declaredEncoding,
+            FoxRunMode mode,
+            FoxRunWireEncoding publishDefault,
+            FoxRunWireEncoding subscriptionDefault)
+        {
+            if (declaredEncoding == FoxRunWireEncoding.Protobuf || declaredEncoding == FoxRunWireEncoding.Json)
+                return declaredEncoding;
+
+            if (declaredEncoding != FoxRunWireEncoding.Inherit)
+                throw new ArgumentOutOfRangeException(nameof(declaredEncoding));
+
+            switch (mode)
+            {
+                case FoxRunMode.PublishOnly:
+                    return ValidateManagerDefault(publishDefault);
+                case FoxRunMode.SubscribeOnly:
+                    return ValidateManagerDefault(subscriptionDefault);
+                case FoxRunMode.PublishAndSubscribe:
+                    throw new ArgumentException(
+                        "PublishAndSubscribe requires an explicit Protobuf or Json encoding.",
+                        nameof(declaredEncoding));
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(mode));
+            }
+        }
+
         /// <summary>Validates the concrete Manager-owned default.</summary>
         public static FoxRunWireEncoding ValidateManagerDefault(FoxRunWireEncoding managerDefault)
         {

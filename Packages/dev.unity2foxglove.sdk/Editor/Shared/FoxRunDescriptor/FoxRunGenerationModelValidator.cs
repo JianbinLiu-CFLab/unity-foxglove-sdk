@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
         private const string InvalidProtobufFieldNumberDiagnosticId = "FOXRUN031";
         private const string MixedWireEncodingDiagnosticId = "FOXRUN032";
         private const string DuplicateProtobufFieldNumberDiagnosticId = "FOXRUN033";
+        private const string BidirectionalInheritedWireEncodingDiagnosticId = "FOXRUN034";
         private const float DefaultRateHz = 10f;
 
         private static readonly string[] UnityNativeContainerPrefixes =
@@ -80,6 +81,16 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (!IsKnownDeclaredEncoding(member.Encoding))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidWireEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be inherit, json, or protobuf."));
+
+            if (member.Mode == 2
+                && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    BidirectionalInheritedWireEncodingDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "PublishAndSubscribe requires an explicit Protobuf or Json Encoding because it has one shared bidirectional wire contract."));
+            }
 
             if (member.ProtobufFieldNumber != 0)
             {

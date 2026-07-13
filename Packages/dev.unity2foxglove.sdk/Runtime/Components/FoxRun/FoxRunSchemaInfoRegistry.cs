@@ -31,8 +31,18 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Builds Inspector-friendly effective topic contracts from generated metadata.</summary>
         public static IReadOnlyList<FoxRunTopicSummary> GetTopicSummaries(FoxRunWireEncoding managerDefault)
+            => GetTopicSummaries(managerDefault, managerDefault);
+
+        /// <summary>
+        /// Builds Inspector-friendly effective topic contracts from generated metadata using
+        /// independent defaults for Unity output and client subscriptions.
+        /// </summary>
+        public static IReadOnlyList<FoxRunTopicSummary> GetTopicSummaries(
+            FoxRunWireEncoding publishDefault,
+            FoxRunWireEncoding subscriptionDefault)
         {
-            managerDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(managerDefault);
+            publishDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(publishDefault);
+            subscriptionDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(subscriptionDefault);
             lock (Sync)
             {
                 if (_current == null)
@@ -54,7 +64,12 @@ namespace Unity.FoxgloveSDK.Components
                         var declared = hasJson && hasProtobuf
                             ? FoxRunWireEncoding.Inherit
                             : hasProtobuf ? FoxRunWireEncoding.Protobuf : FoxRunWireEncoding.Json;
-                        var effective = FoxRunWireEncodingResolver.Resolve(declared, managerDefault);
+                        var mode = ParseFlowMode(group.Key.FlowMode);
+                        var effective = FoxRunWireEncodingResolver.Resolve(
+                            declared,
+                            mode,
+                            publishDefault,
+                            subscriptionDefault);
                         var protocolEncoding = FoxRunWireEncodingResolver.ToProtocolEncoding(effective);
                         var contract = contracts.FirstOrDefault(candidate =>
                             string.Equals(candidate.Encoding, protocolEncoding, StringComparison.Ordinal)) ?? contracts[0];
@@ -218,8 +233,8 @@ namespace Unity.FoxgloveSDK.Components
                 FlowMode = flowMode ?? string.Empty;
             }
 
-            private string Topic { get; }
-            private string FlowMode { get; }
+            public string Topic { get; }
+            public string FlowMode { get; }
 
             public bool Equals(ContractKey other)
                 => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
@@ -235,6 +250,18 @@ namespace Unity.FoxgloveSDK.Components
                     return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(FlowMode);
                 }
             }
+        }
+
+        private static FoxRunMode ParseFlowMode(string flowMode)
+        {
+            if (string.Equals(flowMode, "PublishOnly", StringComparison.Ordinal))
+                return FoxRunMode.PublishOnly;
+            if (string.Equals(flowMode, "SubscribeOnly", StringComparison.Ordinal))
+                return FoxRunMode.SubscribeOnly;
+            if (string.Equals(flowMode, "PublishAndSubscribe", StringComparison.Ordinal))
+                return FoxRunMode.PublishAndSubscribe;
+
+            throw new ArgumentException("Unsupported FoxRun flow mode: " + (flowMode ?? string.Empty), nameof(flowMode));
         }
 
         private static bool IsGeneratedAggregateContract(FoxRunSchemaContractInfo contract)

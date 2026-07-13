@@ -62,9 +62,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(authorization.Contains("IsLoopbackHost", StringComparison.Ordinal)
                   && authorization.Contains("remote inbound requires a configured shared token", StringComparison.Ordinal),
                 "non-loopback inbound fails closed without explicit token-backed authorization");
-            Check(hub.Contains("FoxRunInboundMaxPayloadBytes", StringComparison.Ordinal)
-                  && hub.Contains("FoxRunInboundMaxMessagesPerSecondPerTopic", StringComparison.Ordinal),
-                "input dispatch receives manager-owned payload and per-topic rate limits");
+            Check(hub.Contains("FoxRunSubscriptionMaxPayloadBytes", StringComparison.Ordinal)
+                  && hub.Contains("FoxRunSubscriptionMaxMessagesPerSecondPerTopic", StringComparison.Ordinal),
+                "input dispatch receives manager-owned payload and per-topic subscription rate limits");
         }
 
         private static void VerifyExistingServiceHubExtension()

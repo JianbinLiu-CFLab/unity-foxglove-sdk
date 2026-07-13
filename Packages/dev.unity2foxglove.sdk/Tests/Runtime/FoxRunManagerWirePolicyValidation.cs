@@ -33,24 +33,29 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var resolver = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunWireEncodingResolver.cs");
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
+            var publishing = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPublishing.cs");
+            var migration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
             var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
 
             Check(resolver.Contains("ValidateManagerDefault", StringComparison.Ordinal)
-                  && resolver.Contains("FoxRunWireEncoding.Protobuf", StringComparison.Ordinal),
-                "175C-1: resolver accepts only concrete Manager defaults");
+                  && resolver.Contains("PublishAndSubscribe requires an explicit", StringComparison.Ordinal),
+                "175C-1: resolver accepts only concrete directional defaults and rejects ambiguous bidirectional inheritance");
             Check(inbound.Contains("_defaultFoxRunWireEncoding = FoxRunWireEncoding.Protobuf", StringComparison.Ordinal)
-                  && inbound.Contains("_defaultFoxRunWireEncoding == FoxRunWireEncoding.Inherit", StringComparison.Ordinal)
-                  && inbound.Contains("ResolveFoxRunWireEncoding", StringComparison.Ordinal),
-                "175C-2: Manager defaults inherited topics to Protobuf");
+                  && inbound.Contains("_defaultFoxRunSubscriptionEncoding", StringComparison.Ordinal)
+                  && publishing.Contains("_defaultFoxRunPublishEncoding", StringComparison.Ordinal)
+                  && migration.Contains("ISerializationCallbackReceiver", StringComparison.Ordinal)
+                  && migration.Contains("FoxRunWireEncodingPolicyMigration.Migrate", StringComparison.Ordinal),
+                "175C-2: Manager retains the legacy policy source and migrates it into directional defaults in player-safe deserialization");
             var captureIndex = server.IndexOf("CaptureFoxRunWireEncodingForSession();", StringComparison.Ordinal);
             var schemaRegistrationIndex = server.IndexOf("FoxRunSchemaInfoRegistry.RegisterGeneratedSchemas", StringComparison.Ordinal);
             Check(captureIndex >= 0
                   && schemaRegistrationIndex > captureIndex
-                && inbound.Contains("public FoxRunWireEncoding ActiveFoxRunDefaultWireEncoding => _hasActiveFoxRunWireEncoding", StringComparison.Ordinal)
-                && inbound.Contains("? _activeFoxRunDefaultWireEncoding", StringComparison.Ordinal)
-                  && inbound.Contains("_activeFoxRunDefaultWireEncoding = DefaultFoxRunWireEncoding;", StringComparison.Ordinal)
+                && inbound.Contains("ActiveFoxRunSubscriptionEncoding", StringComparison.Ordinal)
+                && publishing.Contains("ActiveFoxRunPublishEncoding", StringComparison.Ordinal)
+                  && inbound.Contains("_activeFoxRunSubscriptionEncoding = DefaultFoxRunSubscriptionEncoding;", StringComparison.Ordinal)
+                  && inbound.Contains("_activeFoxRunPublishEncoding = DefaultFoxRunPublishEncoding;", StringComparison.Ordinal)
                   && server.Contains("ClearFoxRunWireEncodingForSession();", StringComparison.Ordinal),
-                "175C-3: Manager freezes the policy before registration and clears it with the session lifecycle");
+                "175C-3: Manager freezes both directional policies before registration and clears them with the session lifecycle");
         }
 
         private static void VerifyGeneratedInheritedDualCodecDispatch()
@@ -62,27 +67,27 @@ namespace Unity.FoxgloveSDK.Tests
             Check(input.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal)
                   && input.Contains("Unsupported FoxRun inbound wire encoding", StringComparison.Ordinal),
                 "175C-4: generated inbound dispatch preserves Inherit and supports both concrete encodings");
-            Check(publish.Contains("mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit)", StringComparison.Ordinal),
-                "175C-5: generated publish dispatch resolves inherited encoding through Manager");
+            Check(publish.Contains("mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly)", StringComparison.Ordinal),
+                "175C-5: generated publish dispatch resolves inherited encoding through the publish policy");
             Check(router.Contains("DeclaredWireEncoding", StringComparison.Ordinal)
-                  && router.Contains("DefaultWireEncoding", StringComparison.Ordinal),
-                "175C-6: input router separates declared and effective client contracts");
+                  && router.Contains("DefaultSubscriptionWireEncoding", StringComparison.Ordinal),
+                "175C-6: input router separates declared and effective subscription contracts");
         }
 
         private static void VerifyInspectorContract()
         {
-            var inspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.FoxRun.cs");
+            var inspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
             var labels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunEncodingEditorLabels.cs");
             var main = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
 
-            Check(main.Contains("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
+            Check(main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
                   && main.IndexOf("DrawSection(\"Publish Data\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
                   && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
-                     < main.IndexOf("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
-                  && main.IndexOf("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
+                     < main.IndexOf("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
+                  && main.IndexOf("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal),
-                "175C-7: FoxRun Inspector section sits between MCAP and FoxServices");
+                "175C-7: Subscribe Data Inspector section sits between MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex = selected == 0", StringComparison.Ordinal)
@@ -91,9 +96,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && !labels.Contains("MsgPack", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
-            Check(inspector.Contains("Topic\", \"Direction | Declared | Effective | Schema", StringComparison.Ordinal)
+            Check(inspector.Contains("Default Subscription Encoding", StringComparison.Ordinal)
+                  && inspector.Contains("Subscription Rate Limit Hz (per Topic)", StringComparison.Ordinal)
                   && inspector.Contains("restarted or re-enabled", StringComparison.Ordinal),
-                "175C-9: Inspector exposes effective topic summary and restart boundary");
+                "175C-9: Inspector exposes subscription controls and the restart boundary");
         }
 
         private static void VerifyExplicitProtobufManualAcceptance()

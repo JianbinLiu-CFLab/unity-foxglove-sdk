@@ -150,7 +150,7 @@ namespace Demo
 {
     public partial class SharedState
     {
-        [FoxRun(""/phase157/state"", Mode = FoxRunMode.PublishAndSubscribe)]
+        [FoxRun(""/phase157/state"", Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private string _state;
     }
 }";
@@ -230,7 +230,7 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        [FoxRun(""/phase157/shared-state"", Mode = FoxRunMode.PublishAndSubscribe)]
+        [FoxRun(""/phase157/shared-state"", Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Json)]
         private float sharedState;
 
         [FoxRun(""/phase157/target-speed"", Mode = FoxRunMode.SubscribeOnly)]
@@ -245,6 +245,24 @@ namespace Demo
             Assert.Contains("case 1:\n                    {", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundJson.TryRead(payload, \"requestedTargetSpeed\", out float __value", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundJson.TryRead(payload, \"sharedState\", out float __value", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsBidirectionalInheritedWireEncoding()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class SharedState
+    {
+        [FoxRun(""/phase176/ambiguous-state"", Mode = FoxRunMode.PublishAndSubscribe)]
+        private float sharedState;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN034");
         }
 
         [Fact]

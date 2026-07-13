@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     if (inherited)
                     {
-                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
                         sb.AppendLine($"{pad}                else");
                         sb.AppendLine($"{pad}                {{");
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     if (inherited)
                     {
-                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit) == FoxRunWireEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
                         sb.AppendLine($"{pad}                else");
                         sb.AppendLine($"{pad}                    mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs);");
