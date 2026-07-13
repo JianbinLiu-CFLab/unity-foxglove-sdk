@@ -365,6 +365,54 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void TopicSummariesResolveInheritedContractsAgainstTheirFlowDefaults()
+        {
+            var fields = new[] { new FoxRunSchemaFieldInfo("count", "_count", "field", "int32", false, false, false, 17) };
+            var contracts = new[]
+            {
+                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", string.Empty, "json", "json-output", "json-output", "policy", "FixedRate", 10f, 0f, 0f, fields, flowMode: "PublishOnly"),
+                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", "unity2foxglove.foxrun.Demo_Output", "protobuf", "protobuf-output", "protobuf-output", "policy", "FixedRate", 10f, 0f, 0f, fields, flowMode: "PublishOnly", protobufDescriptorSet: new byte[] { 1 }),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", string.Empty, "json", "json-input", "json-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flowMode: "SubscribeOnly"),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "unity2foxglove.foxrun.Demo_Input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flowMode: "SubscribeOnly", protobufDescriptorSet: new byte[] { 2 })
+            };
+            var manifest = new FoxRunSchemaManifestInfo(
+                1,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[] { new FoxRunSchemaTypeInfo("Demo.Contracts", contracts) });
+
+            FoxRunSchemaInfoRegistry.ClearForTests();
+            try
+            {
+                FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
+
+                var summaries = FoxRunSchemaInfoRegistry.GetTopicSummaries(
+                    FoxRunWireEncoding.Protobuf,
+                    FoxRunWireEncoding.Json);
+
+                Assert.Collection(
+                    summaries,
+                    input =>
+                    {
+                        Assert.Equal("/phase176/input", input.Topic);
+                        Assert.Equal(FoxRunWireEncoding.Json, input.EffectiveEncoding);
+                    },
+                    output =>
+                    {
+                        Assert.Equal("/phase176/output", output.Topic);
+                        Assert.Equal(FoxRunWireEncoding.Protobuf, output.EffectiveEncoding);
+                    });
+            }
+            finally
+            {
+                FoxRunSchemaInfoRegistry.ClearForTests();
+            }
+        }
+
+        [Fact]
         public void ReflectionLowererCarriesNestedDtoShapeIntoProtobufContract()
         {
             var reflected = new FoxrunCodeGenerator.MemberData(

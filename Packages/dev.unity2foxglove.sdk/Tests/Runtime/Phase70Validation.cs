@@ -45,8 +45,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "70A-1: Inspector has Connection & Security workflow section");
             Check(source.Contains("DrawSection(\"Publish Data\""),
                 "70A-2: Inspector has Publish Data workflow section");
-            Check(source.Contains("DrawSection(\"FoxRun\""),
-                "70A-2b: Inspector has FoxRun workflow section");
+            Check(source.Contains("DrawSection(\"Subscribe Data\""),
+                "70A-2b: Inspector has Subscribe Data workflow section");
             Check(source.Contains("DrawSection(\"MCAP Record & Replay\""),
                 "70A-3: Inspector has MCAP Record & Replay workflow section");
             Check(source.Contains("DrawSection(\"Diagnostics\""),
@@ -58,15 +58,15 @@ namespace Unity.FoxgloveSDK.Tests
             CheckOrdered(source,
                 "DrawSection(\"Publish Data\"",
                 "DrawSection(\"MCAP Record & Replay\"",
-                "70A-4c: MCAP follows Publish Data before FoxRun");
+                "70A-4c: MCAP follows Publish Data before Subscribe Data");
             CheckOrdered(source,
                 "DrawSection(\"MCAP Record & Replay\"",
-                "DrawSection(\"FoxRun\"",
-                "70A-4d: FoxRun follows MCAP before FoxServices");
+                "DrawSection(\"Subscribe Data\"",
+                "70A-4d: Subscribe Data follows MCAP before FoxServices");
             CheckOrdered(source,
-                "DrawSection(\"FoxRun\"",
+                "DrawSection(\"Subscribe Data\"",
                 "DrawSection(\"FoxServices\"",
-                "70A-4d1: FoxServices follows FoxRun");
+                "70A-4d1: FoxServices follows Subscribe Data");
             CheckOrdered(source,
                 "DrawSection(\"MCAP Record & Replay\"",
                 "DrawSection(\"ROS2 Bridge\"",
@@ -146,7 +146,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "_port",
                 "_startOnEnable",
                 "_runInBackground",
-                "_defaultFoxRunWireEncoding",
+                "_defaultFoxRunPublishEncoding",
+                "_defaultFoxRunSubscriptionEncoding",
                 "_defaultPublisherEncoding",
                 "_allowPublisherOverride",
                 "_coordinateMode",

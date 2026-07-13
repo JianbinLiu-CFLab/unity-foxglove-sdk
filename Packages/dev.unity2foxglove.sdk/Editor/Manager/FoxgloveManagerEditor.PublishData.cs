@@ -44,6 +44,11 @@ namespace Unity.FoxgloveSDK.Editor
             DrawGlobalEncodingProperty("_defaultPublisherEncoding", "Default Publisher Encoding");
             DrawProperty("_allowPublisherOverride");
 
+            FoxgloveManagerInspectorLayout.Subheader("FoxRun Publish Encoding");
+            FoxRunEncodingEditorLabels.DrawFoxRunWireEncoding(
+                FindCachedProperty("_defaultFoxRunPublishEncoding"),
+                "Default FoxRun Publish Encoding");
+
             DrawProperty("_coordinateMode");
 
             FoxgloveManagerInspectorLayout.Subheader("Assets");

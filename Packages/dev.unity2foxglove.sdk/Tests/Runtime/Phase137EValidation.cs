@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             "FoxgloveManagerEditor.cs",
             "FoxgloveManagerEditor.PublishData.cs",
-            "FoxgloveManagerEditor.FoxRun.cs",
+            "FoxgloveManagerEditor.SubscribeData.cs",
             "FoxgloveManagerEditor.Mcap.cs",
             "FoxgloveManagerEditor.Ros2Bridge.cs",
             "FoxgloveManagerEditor.Diagnostics.cs",
@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             "_connectionSecurityExpanded",
             "_publishDataExpanded",
-            "_foxRunExpanded",
+            "_subscribeDataExpanded",
             "_ros2BridgeExpanded",
             "_mcapExpanded",
             "_schemaEvidenceAdvancedExpanded",
@@ -123,7 +123,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var methods = new[] {
                 "DrawPublishDataSection",
-                "DrawFoxRunSection",
+                "DrawSubscribeDataSection",
                 "DrawMcapSection",
                 "DrawDiagnosticsSection",
                 "DrawRos2BridgeSection",

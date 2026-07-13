@@ -158,6 +158,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun topic contains a duplicate ProtobufFieldNumber",
             "FoxRun", DiagnosticSeverity.Error, true);
 
+        public static readonly DiagnosticDescriptor BidirectionalInheritedWireEncoding = new DiagnosticDescriptor(
+            "FOXRUN034", "PublishAndSubscribe wire encoding",
+            "{0}: PublishAndSubscribe requires an explicit Protobuf or Json Encoding",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
         public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
         {
             return new DiagnosticDescriptor(
@@ -274,6 +279,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN031": return InvalidProtobufFieldNumber;
                 case "FOXRUN032": return MixedTopicWireEncoding;
                 case "FOXRUN033": return DuplicateProtobufFieldNumber;
+                case "FOXRUN034": return BidirectionalInheritedWireEncoding;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
