@@ -65,6 +65,7 @@ namespace Unity.FoxgloveSDK.Components
 
                 SetupAllowedOrigins();
                 StartCertificateDistributorIfNeeded();
+                RegisterFoxRunSubscriptionCatalogService();
                 _runtime.Start(_serverName, _host, _port, enableCdrClientPublish: false);
                 StartRemoteMcapFileServerIfNeeded();
                 StartReplayCursorEndpointIfNeeded();
@@ -108,6 +109,7 @@ namespace Unity.FoxgloveSDK.Components
             StopRemoteMcapFileServer();
             StopReplayCursorEndpoint();
             StopCertificateDistributor();
+            UnregisterFoxRunSubscriptionCatalogService();
             TryCleanupStartupStep(() => _runtime?.Stop(), "stop runtime after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
             TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
@@ -251,6 +253,7 @@ namespace Unity.FoxgloveSDK.Components
             DetachRuntimeForwarders(_runtime?.Session);
 
             AdvanceChannelSessionGeneration();
+            UnregisterFoxRunSubscriptionCatalogService();
             _runtime.Stop();
             ClearFoxRunWireEncodingForSession();
             _sharedSensorClock.Reset();
