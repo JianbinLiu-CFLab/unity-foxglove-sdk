@@ -56,6 +56,8 @@ namespace Unity.FoxgloveSDK.IO
         private uint _metadataCount;
         private bool _chunkHasMessages;
         private bool _closed, _recordingFailed, _disposed;
+        private long? _failedChunkStartPosition;
+        private Exception _chunkFlushFailure;
         private readonly int _chunkSz;
 
         /// <summary>
@@ -343,6 +345,21 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_closed) return;
+
+                if (_failedChunkStartPosition.HasValue)
+                {
+                    var failure = _chunkFlushFailure ??
+                                  new IOException("An earlier MCAP chunk flush failed.");
+                    if (TryRecoverAfterFailedChunkFlush(_failedChunkStartPosition.Value, failure))
+                    {
+                        _closed = true;
+                        return;
+                    }
+
+                    _closed = true;
+                    throw new IOException("MCAP recorder could not recover after an earlier chunk flush failure.", failure);
+                }
+
                 var flushStartPosition = _w.Position;
                 try
                 {
@@ -350,7 +367,8 @@ namespace Unity.FoxgloveSDK.IO
                 }
                 catch (Exception ex)
                 {
-                    if (TryRecoverAfterFailedFinalChunkFlush(flushStartPosition, ex))
+                    var failedChunkStart = _failedChunkStartPosition ?? flushStartPosition;
+                    if (TryRecoverAfterFailedChunkFlush(failedChunkStart, ex))
                     {
                         _closed = true;
                         return;
@@ -468,7 +486,7 @@ namespace Unity.FoxgloveSDK.IO
             return summary;
         }
 
-        private void WriteRecoverableTrailerAfterDroppedFinalChunk()
+        private void WriteRecoverableTrailerAfterDroppedChunk()
         {
             _w.WriteDataEnd(0);
             McapSummarySerializer.WriteSummaryAndFooter(
@@ -480,19 +498,18 @@ namespace Unity.FoxgloveSDK.IO
             _w.Flush();
         }
 
-        private bool TryRecoverAfterFailedFinalChunkFlush(long flushStartPosition, Exception flushError)
+        private bool TryRecoverAfterFailedChunkFlush(long flushStartPosition, Exception flushError)
         {
             if (!_w.CanSeek)
                 return false;
 
             try
             {
-                if (_w.Position != flushStartPosition)
-                    _w.TruncateToPosition(flushStartPosition);
+                _w.TruncateToPosition(flushStartPosition);
 
                 _log.LogWarning(
-                    $"MCAP recorder dropped the final unflushed chunk during close; writing a recoverable indexed trailer without final-chunk statistics: {flushError.Message}");
-                WriteRecoverableTrailerAfterDroppedFinalChunk();
+                    $"MCAP recorder dropped an incomplete chunk; writing a recoverable indexed trailer without final statistics: {flushError.Message}");
+                WriteRecoverableTrailerAfterDroppedChunk();
                 return true;
             }
             catch (Exception recoveryError)
@@ -597,6 +614,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (!_options.UseChunking) return;
             if (_chunkBuf.Length == 0) return;
+            var flushStartPosition = _w.Position;
             try
             {
                 if (!_chunkBuf.TryGetBuffer(out var raw))
@@ -640,6 +658,8 @@ namespace Unity.FoxgloveSDK.IO
             }
             catch (Exception ex)
             {
+                _failedChunkStartPosition ??= flushStartPosition;
+                _chunkFlushFailure ??= ex;
                 ResetActiveChunkState();
                 Fail("Chunk flush failed: " + ex.Message);
                 throw;

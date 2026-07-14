@@ -52,7 +52,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyRecorderOwnsFileStreamWhenRequested();
             VerifyCrcMismatchDetected();
             VerifyZeroLengthTopicHandled();
-            VerifyAttachmentSafeSkip();
+            VerifyAttachmentInSummaryRejected();
             VerifyAttachmentIndexSafeSkip();
             VerifyReplayLoadDisposesPreviousStream();
             Console.WriteLine("Phase 31: All checks passed.\n");
@@ -382,8 +382,9 @@ namespace Unity.FoxgloveSDK.Tests
             var sumStart = (ulong)ms.Position;
             // Channel with zero-length topic
             w.WriteChannel(1, 0, "", "json", new Dictionary<string, string>());
+            var sumOffStart = (ulong)ms.Position;
             w.WriteSummaryOffset(0x04, sumStart, (ulong)ms.Position - sumStart);
-            w.WriteFooter(sumStart, (ulong)ms.Position, 0);
+            w.WriteFooter(sumStart, sumOffStart, 0);
             w.WriteMagic();
             ms.Position = 0;
             var reader = new McapReader(ms);
@@ -392,7 +393,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(summary.Channels[0].Topic == "", "zero topic: empty string preserved");
         }
 
-        static void VerifyAttachmentSafeSkip()
+        static void VerifyAttachmentInSummaryRejected()
         {
             // Craft a minimal MCAP with an attachment record in the summary section.
             var ms = new MemoryStream();
@@ -427,9 +428,15 @@ namespace Unity.FoxgloveSDK.Tests
             ms.Position = 0;
 
             var reader = new McapReader(ms);
-            // Should not throw — attachment opcode is safely skipped
-            var summary = reader.ReadSummary();
-            Check(summary.Schemas.Count == 1, "attachment skip: schema still decoded");
+            try
+            {
+                reader.ReadSummary();
+                Check(false, "attachment in summary: should have thrown");
+            }
+            catch (InvalidDataException)
+            {
+                // Attachment records belong in the data section, never the summary.
+            }
         }
 
         static void VerifyAttachmentIndexSafeSkip()

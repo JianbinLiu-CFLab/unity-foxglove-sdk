@@ -10,7 +10,7 @@ This note describes the replay architecture behind Unity2Foxglove's paused-scrub
 
 The key observation is that paused scrubbing is not ordinary playback at a different speed. It is a state-reproduction query initiated by a remote client.
 
-Unity2Foxglove addresses this by separating three responsibilities: protocol state broadcast, latest-at scene reproduction, and ordered replay/panel data delivery. Full continuous range history is available when Foxglove opens the MCAP through the Remote files path; bounded WebSocket history remains available for replay sessions that do not use that file-backed path. This separation produces a replay loop where Foxglove is not only a viewer of MCAP data, but also a controller of the Unity replay timeline.
+Unity2Foxglove addresses this by separating three responsibilities: request-correlated protocol state responses, latest-at scene reproduction, and ordered replay/panel data delivery. Full continuous range history is available when Foxglove opens the MCAP through the Remote files path; bounded WebSocket history remains available for replay sessions that do not use that file-backed path. This separation produces a replay loop where Foxglove is not only a viewer of MCAP data, but also a controller of the Unity replay timeline.
 
 ## 2 Problem
 
@@ -42,7 +42,7 @@ MCAP [3, 4] provides the timestamped, multi-channel log container used by Unity2
 
 ### 3.3 Foxglove PlaybackControl Protocol
 
-Foxglove's PlaybackControl capability [5, 6, 7] lets the Foxglove UI control an external WebSocket server that owns playback. Foxglove sends play, pause, seek, and speed changes; the application loads data, handles requests, advances time, and returns updated playback state so the UI stays synchronized. The SDK `PlaybackState` frame includes a `did_seek` field [8], and Foxglove panel render state exposes `didSeek` so panels can clear stale state when data may have been skipped [9]. Unity2Foxglove uses this protocol directly. The important difference is that Unity2Foxglove is not only streaming data back to Foxglove 鈥?it also uses the same replay control path to reproduce a Unity scene from MCAP state.
+Foxglove's PlaybackControl capability [5, 6, 7] lets the Foxglove UI control an external WebSocket server that owns playback. Foxglove sends play, pause, seek, and speed changes; the application loads data, handles requests, advances time, and returns updated playback state so the UI stays synchronized. The SDK `PlaybackState` frame includes a `did_seek` field [8], and Foxglove panel render state exposes `didSeek` so panels can clear stale state when data may have been skipped [9]. Unity2Foxglove uses this protocol directly. The important difference is that Unity2Foxglove is not only streaming data back to Foxglove; it also uses the same replay control path to reproduce a Unity scene from MCAP state.
 
 ### 3.4 Dexory foxglove_mcap_player
 
@@ -74,7 +74,7 @@ Unity-specific replay systems such as commercial asset-store tools and open-sour
 | Range panel data | Yes | Ordered stream | Client/file | Live stream | Usually no | ROS topic stream / assertions | Full curve through Remote files; bounded settled-scrub history through WebSocket |
 | Dual output (3D engine + panels) | No | Yes | No | ROS to Foxglove | Unity-only | ROS nodes | Yes |
 | Remote timeline controls | Viewer-local | PlaybackControl | Client controls | No | Unity-local | CLI/test-runner | PlaybackControl |
-| Multi-client state broadcast | N/A | Partial | Client-local | No | No | No | Yes |
+| Multi-client request isolation | N/A | Partial | Client-local | No | No | No | Yes |
 | Stale live/replay queue separation | N/A | Ordered stream | Client/file | No | No | No | Yes |
 
 ## 4 Design Principle
@@ -101,7 +101,7 @@ flowchart TD
   Replay --> Stream["Ordered replay stream"]
   SceneSnapshot --> UnityScene["Unity scene reproduction"]
   Stream --> FoxglovePanels["Foxglove panels"]
-  Runtime --> State["PlaybackState broadcast"]
+  Runtime --> State["Request-correlated PlaybackState response"]
   State --> FoxglovePanels
 ```
 
@@ -133,7 +133,7 @@ flowchart LR
 
   subgraph SplitPath["Split-path replay"]
     PSeek["Seek / scrub request"] --> PTick["Unity runtime tick"]
-    PTick --> PState["PlaybackState + didSeek broadcast"]
+    PTick --> PState["PlaybackState + didSeek response to requester"]
     PTick --> PSnapshot["Latest-at scene snapshot"]
     PTick --> PQueue["Clear stale data queue"]
     PTick --> PHistory["Settled bounded history"]
@@ -149,9 +149,9 @@ flowchart LR
 
 Playback-control requests arrive from the WebSocket receive path. They are not applied directly on that thread. Instead, requests are queued and drained by the Unity runtime tick. This ensures that seek, pause, play, replay cursor mutation, and scene snapshot application are serialized with Unity's main update loop. This matters because Unity scene objects cannot be safely mutated from transport threads.
 
-### 5.2 Broadcast Playback State
+### 5.2 Return Request-Correlated Playback State
 
-When a client seeks, the resulting playback state is broadcast to all connected clients rather than only returned to the initiating client. This keeps multiple Foxglove panels or clients aligned on the same `currentTime`, `status`, and `didSeek` transition. The request identifier is primarily meaningful to the initiating client, but the state transition itself is global for the replay session.
+When a client sends a playback-control request, the resulting `PlaybackState` is returned only to that client. The response carries the initiating client's `requestId`, so broadcasting it would leak request correlation and a transient `didSeek` signal to unrelated clients. The replay runtime itself remains shared: another client observes the resulting global timeline state through its own control or state-query flow, with a response correlated to that client's request.
 
 ### 5.3 Queue Reset Before Replay Resume
 
@@ -365,7 +365,7 @@ Automated checks include:
 
 - Playback-control requests are queued and drained on runtime tick.
 - Runtime drains playback controls before advancing replay time.
-- Playback seek broadcasts `didSeek` state to all connected clients.
+- Playback seek returns `didSeek` only in the initiating client's correlated response.
 - Paused seek applies a scene-only latest-at snapshot.
 - Active paused scrub suppresses panel history before the settled debounce.
 - Superseded paused scrub requests cancel the older pending history operation.
@@ -390,7 +390,7 @@ Unity2Foxglove introduces a WebSocket-controlled replay architecture for Unity s
 - playback-control requests are serialized onto Unity's runtime tick,
 - scene reproduction is driven from MCAP latest-at snapshots,
 - replay output is separated from live publisher output,
-- WebSocket `didSeek` state is broadcast to connected clients,
+- WebSocket `didSeek` state is returned only to the requesting client,
 - queued stale data is cleared before replay data resumes,
 - paused scrub no longer causes "data went back in time" warnings.
 

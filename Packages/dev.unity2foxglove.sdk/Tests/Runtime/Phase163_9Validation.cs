@@ -132,7 +132,7 @@ namespace Unity.FoxgloveSDK.Tests
             var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var writer = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
 
-            Check(recorder.Contains("TryRecoverAfterFailedFinalChunkFlush", StringComparison.Ordinal)
+            Check(recorder.Contains("TryRecoverAfterFailedChunkFlush", StringComparison.Ordinal)
                   && recorder.Contains("_w.TruncateToPosition(flushStartPosition)", StringComparison.Ordinal)
                   && recorder.Contains("if (!_w.CanSeek)", StringComparison.Ordinal)
                   && writer.Contains("internal void TruncateToPosition(long position)", StringComparison.Ordinal)

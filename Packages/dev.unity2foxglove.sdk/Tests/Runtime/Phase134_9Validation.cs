@@ -30,7 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             SummaryOffsetOutsideSummarySectionThrows();
             SummaryRecordCrossingFooterThrows();
-            WrongSummaryOpcodeIsSkippedWithoutCursorDrift();
+            DataOpcodeInSummaryThrows();
             StreamingDataEndCrcMismatchThrowsWhenValidationEnabled();
             StreamingDataEndCrcMismatchCanBeIgnoredWhenValidationDisabled();
             TruncatedMessageContentThrowsInvalidData();
@@ -61,14 +61,11 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-9A-2: summary record crossing footer is rejected");
         }
 
-        private static void WrongSummaryOpcodeIsSkippedWithoutCursorDrift()
+        private static void DataOpcodeInSummaryThrows()
         {
-            using var stream = CreateSummaryWithWrongOpcodeMcap();
-            var summary = new McapReader(stream).ReadSummary();
-            Check(summary.Schemas.Count == 1,
-                "134-9A-3: summary scan recovers schema after non-summary opcode");
-            Check(summary.Channels.Count == 1 && summary.Channels[0].Topic == "/phase134_9",
-                "134-9A-4: summary scan recovers channel after non-summary opcode");
+            using var stream = CreateSummaryWithDataOpcodeMcap();
+            Check(ThrowsInvalidData(() => new McapReader(stream).ReadSummary()),
+                "134-9A-3: data-only opcode in summary is rejected");
         }
 
         private static void StreamingDataEndCrcMismatchThrowsWhenValidationEnabled()
@@ -240,7 +237,7 @@ namespace Unity.FoxgloveSDK.Tests
             return stream;
         }
 
-        private static MemoryStream CreateSummaryWithWrongOpcodeMcap()
+        private static MemoryStream CreateSummaryWithDataOpcodeMcap()
         {
             var stream = new MemoryStream();
             using (var writer = new McapWriter(stream, leaveOpen: true))

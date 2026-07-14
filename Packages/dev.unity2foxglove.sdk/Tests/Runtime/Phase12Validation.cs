@@ -197,13 +197,8 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(cix, (ulong)raw.Length);
             WriteRecord(ms, 0x08, cix);
 
-            var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
-
             var ftr = new MemoryStream();
-            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
+            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, 0); McapWriter.WriteU32(ftr, 0);
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 
@@ -266,13 +261,8 @@ namespace Unity.FoxgloveSDK.Tests
             // MetadataIndex in summary
             WriteRecord(ms, 0x0D, new MemoryStream(metaIdxContent.ToArray()));
 
-            var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
-
             var ftr = new MemoryStream();
-            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
+            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, 0); McapWriter.WriteU32(ftr, 0);
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 
@@ -334,13 +324,8 @@ namespace Unity.FoxgloveSDK.Tests
             WriteRecord(ms, 0x0B, stats);
             WriteRecord(ms, 0x0D, new MemoryStream(metaIdxContent.ToArray()));
 
-            var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
-
             var ftr = new MemoryStream();
-            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
+            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, 0); McapWriter.WriteU32(ftr, 0);
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 
@@ -439,13 +424,8 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             WriteRecord(ms, 0x08, cix);
 
-            var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
-
             var ftr = new MemoryStream();
-            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
+            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, 0); McapWriter.WriteU32(ftr, 0);
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 
@@ -494,13 +474,8 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(stats, 0); McapWriter.WriteU64(stats, 0); McapWriter.WriteU32(stats, 0);
             WriteRecord(ms, 0x0B, stats);
 
-            var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
-
             var ftr = new MemoryStream();
-            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
+            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, 0); McapWriter.WriteU32(ftr, 0);
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 
@@ -542,13 +517,8 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(stats, 0); McapWriter.WriteU64(stats, 0); McapWriter.WriteU32(stats, 0);
             WriteRecord(ms, 0x0B, stats);
 
-            var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
-
             var ftr = new MemoryStream();
-            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
+            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, 0); McapWriter.WriteU32(ftr, 0);
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 
@@ -614,13 +584,8 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(stats, 0); McapWriter.WriteU64(stats, 0); McapWriter.WriteU32(stats, 0);
             WriteRecord(ms, 0x0B, stats);
 
-            var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
-
             var ftr = new MemoryStream();
-            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
+            McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, 0); McapWriter.WriteU32(ftr, 0);
             WriteRecord(ms, 0x02, ftr);
             ms.Write(McapWriter.Magic, 0, 8);
 

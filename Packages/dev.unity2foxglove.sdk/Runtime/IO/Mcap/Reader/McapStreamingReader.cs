@@ -268,13 +268,7 @@ namespace Unity.FoxgloveSDK.IO
                         break;
                     }
                     case McapWriter.OpcodeAttachment:
-                    {
-                        var attachment = McapRecordDecoder.DecodeAttachment(uncompressedRecords, off, recordLength);
-                        if (options.ValidateCrcs && !attachment.CrcValid)
-                            throw new InvalidDataException("MCAP attachment CRC mismatch.");
-                        AddAttachment(result, attachment, ref retainedAttachmentBytes);
-                        break;
-                    }
+                        throw new InvalidDataException("MCAP Attachment records must not appear inside a Chunk.");
                 }
 
                 off += recordLength;
@@ -539,24 +533,10 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         private static void AddSchema(List<McapSchema> schemas, McapSchema schema)
-        {
-            for (var i = 0; i < schemas.Count; i++)
-            {
-                if (schemas[i].Id == schema.Id)
-                    return;
-            }
-            schemas.Add(schema);
-        }
+            => McapRecordDecoder.AddSchema(schemas, schema);
 
         private static void AddChannel(List<McapChannel> channels, McapChannel channel)
-        {
-            for (var i = 0; i < channels.Count; i++)
-            {
-                if (channels[i].Id == channel.Id)
-                    return;
-            }
-            channels.Add(channel);
-        }
+            => McapRecordDecoder.AddChannel(channels, channel);
 
         private static int CompareMessages(McapMessage left, McapMessage right)
         {

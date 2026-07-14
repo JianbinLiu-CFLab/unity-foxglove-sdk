@@ -181,11 +181,11 @@ namespace Unity.FoxgloveSDK.Tests
                 UseStatistics = false,
                 UseSummaryOffsets = true
             }));
-            Check(Count(partial, McapWriter.OpcodeSchema) == 1
+            Check(Count(partial, McapWriter.OpcodeSchema) == 2
                   && Count(partial, McapWriter.OpcodeChannel) == 2
                   && Count(partial, McapWriter.OpcodeStatistics) == 0
                   && Count(partial, McapWriter.OpcodeChunkIndex) == 1,
-                "122-D4: repeated schema/channel, statistics, and chunk index gates are independent");
+                "122-D4: chunk indexes force repeated schema and channel definitions");
         }
 
         private static void VerifyCrcGates()

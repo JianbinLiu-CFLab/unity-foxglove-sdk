@@ -57,11 +57,20 @@ namespace Unity.FoxgloveSDK.IO
         public bool UseChunking = true;
         /// <summary>Index groups to emit. Message and Chunk indexes only apply when chunking is enabled.</summary>
         public McapIndexTypes IndexTypes = McapIndexTypes.All;
-        /// <summary>Repeat Channel records in the summary section.</summary>
+        /// <summary>
+        /// Repeat Channel records in the summary section. Normalization enables this when
+        /// Chunk indexes or Statistics require summary-resident Channel definitions.
+        /// </summary>
         public bool RepeatChannels = true;
-        /// <summary>Repeat Schema records in the summary section.</summary>
+        /// <summary>
+        /// Repeat Schema records in the summary section. Normalization enables this when
+        /// Chunk indexes require summary-resident Schema definitions.
+        /// </summary>
         public bool RepeatSchemas = true;
-        /// <summary>Emit a Statistics record in the summary section.</summary>
+        /// <summary>
+        /// Emit a Statistics record in the summary section. Enabling Statistics also
+        /// enables repeated Channel records during normalization.
+        /// </summary>
         public bool UseStatistics = true;
         /// <summary>Emit Summary Offset records after the summary section.</summary>
         public bool UseSummaryOffsets = true;
@@ -112,6 +121,20 @@ namespace Unity.FoxgloveSDK.IO
 
             if (!copy.UseChunking)
                 copy.IndexTypes &= ~(McapIndexTypes.Chunk | McapIndexTypes.Message);
+
+            // Indexed chunks require random-access readers to find every
+            // referenced schema and channel in the summary section.
+            if (copy.UseChunking && copy.HasIndex(McapIndexTypes.Chunk))
+            {
+                copy.RepeatSchemas = true;
+                copy.RepeatChannels = true;
+            }
+
+            // The recorder emits populated per-channel counts whenever
+            // Statistics are enabled, so the corresponding Channel records
+            // must precede Statistics in the summary section.
+            if (copy.UseStatistics)
+                copy.RepeatChannels = true;
 
             return copy;
         }
