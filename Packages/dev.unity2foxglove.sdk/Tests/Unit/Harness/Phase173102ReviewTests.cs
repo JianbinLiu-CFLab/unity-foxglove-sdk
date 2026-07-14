@@ -53,6 +53,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void MissingMcapReportDoesNotAddASecondaryWorkflowFailure()
+        {
+            var source = TestSources.Text(".github/workflows/dotnet-tests.yml");
+            var uploadStart = source.IndexOf("- name: Upload MCAP differential report", StringComparison.Ordinal);
+            Assert.True(uploadStart >= 0, "MCAP differential report upload step is missing.");
+            var uploadEnd = source.IndexOf("\n\n", uploadStart, StringComparison.Ordinal);
+            var uploadStep = source.Substring(
+                uploadStart,
+                (uploadEnd >= 0 ? uploadEnd : source.Length) - uploadStart);
+
+            Assert.Contains("if-no-files-found: warn", uploadStep, StringComparison.Ordinal);
+            Assert.DoesNotContain("if-no-files-found: error", uploadStep, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PerformanceThresholdsKeepGen2CollectionsMeaningful()
         {
             var json = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Performance/performance-thresholds.json");

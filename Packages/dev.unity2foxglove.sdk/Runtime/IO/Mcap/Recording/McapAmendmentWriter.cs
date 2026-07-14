@@ -267,19 +267,14 @@ namespace Unity.FoxgloveSDK.IO
             amended.Channels.AddRange(_summary.Channels);
             amended.ChunkIndexes.AddRange(_summary.ChunkIndexes);
 
-            var allMetadataIndexes = new List<McapMetadataIndex>(_summary.MetadataIndexes.Count + newMetadataIndexes.Count);
-            allMetadataIndexes.AddRange(_summary.MetadataIndexes);
-            allMetadataIndexes.AddRange(newMetadataIndexes);
-            amended.MetadataIndexes.AddRange(allMetadataIndexes);
-
-            var allAttachmentIndexes = new List<McapAttachmentIndex>(_summary.AttachmentIndexes.Count + newAttachmentIndexes.Count);
-            allAttachmentIndexes.AddRange(_summary.AttachmentIndexes);
-            allAttachmentIndexes.AddRange(newAttachmentIndexes);
-            amended.AttachmentIndexes.AddRange(allAttachmentIndexes);
+            amended.MetadataIndexes.AddRange(_summary.MetadataIndexes);
+            amended.MetadataIndexes.AddRange(newMetadataIndexes);
+            amended.AttachmentIndexes.AddRange(_summary.AttachmentIndexes);
+            amended.AttachmentIndexes.AddRange(newAttachmentIndexes);
 
             amended.Statistics = CreateAmendedStatistics(
-                (uint)allMetadataIndexes.Count,
-                (uint)allAttachmentIndexes.Count);
+                (uint)amended.MetadataIndexes.Count,
+                (uint)amended.AttachmentIndexes.Count);
             return amended;
         }
 

@@ -28,11 +28,16 @@ namespace Unity.FoxgloveSDK.Tests
             var summaryBuilder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapSummaryBuilder.cs");
             var readSummary = SourceMethod(reader, "public McapFileSummary ReadSummary");
             var readTrailerInfo = SourceMethod(reader, "internal McapTrailerInfo ReadTrailerInfo");
+            var readFooter = SourceMethod(reader, "private (McapFooter footer, ulong footerOffset) ReadAndValidateFooter");
 
-            Check(readSummary.Contains("ReadExact(_buf, 0, _buf.Length)", StringComparison.Ordinal)
-                  && readSummary.Contains("_buf is reused; leading magic was already validated above", StringComparison.Ordinal)
-                  && !readSummary.Contains("new byte[8]", StringComparison.Ordinal),
-                "164-10A-1: McapReader reuses the instance 8-byte buffer for magic probes");
+            Check(reader.Contains("private readonly byte[] _eightByteScratch = new byte[sizeof(ulong)]", StringComparison.Ordinal)
+                  && readFooter.Contains("ReadExact(_eightByteScratch, 0, _eightByteScratch.Length)", StringComparison.Ordinal)
+                  && readFooter.Contains("ValidateMagic(\"leading\")", StringComparison.Ordinal)
+                  && readFooter.Contains("ValidateMagic(\"trailing\")", StringComparison.Ordinal)
+                  && readSummary.Contains("ReadAndValidateFooter(recordSizeLimit)", StringComparison.Ordinal)
+                  && readTrailerInfo.Contains("ReadAndValidateFooter(recordSizeLimit)", StringComparison.Ordinal)
+                  && !reader.Contains("new byte[8]", StringComparison.Ordinal),
+                "164-10A-1: McapReader shares footer validation and reuses its 8-byte scratch buffer");
             Check(readSummary.Contains("var summaryBytes = new byte[(int)summaryLen]", StringComparison.Ordinal)
                   && readSummary.Contains("ReadExact(summaryBytes, 0, summaryBytes.Length)", StringComparison.Ordinal)
                   && readSummary.Contains("McapSummaryBuilder.FromSummarySection", StringComparison.Ordinal)

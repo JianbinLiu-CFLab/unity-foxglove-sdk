@@ -23,7 +23,9 @@ namespace Unity.FoxgloveSDK.IO
             public string SchemaName;
             /// <summary>Schema encoding (e.g. "jsonschema").</summary>
             public string SchemaEncoding;
-            /// <summary>Hex-encoded SHA-256 hash of schema content.</summary>
+            /// <summary>
+            /// Hex-encoded SHA-256 hash of schema name, encoding, and content.
+            /// </summary>
             public string Hash;
 
             public bool Equals(TopicSignature other) =>

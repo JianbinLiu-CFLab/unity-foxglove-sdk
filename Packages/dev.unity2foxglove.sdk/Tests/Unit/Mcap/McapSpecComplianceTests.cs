@@ -75,6 +75,27 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void PrimitiveStreamWritersBatchEachValueIntoOneWrite()
+        {
+            using var stream = new WriteCallTrackingStream();
+
+            McapWriter.WriteU16(stream, 0x1234);
+            McapWriter.WriteU32(stream, 0x89ABCDEF);
+            McapWriter.WriteU64(stream, 0x0123456789ABCDEF);
+
+            Assert.Equal(0, stream.ByteWriteCalls);
+            Assert.Equal(3, stream.BulkWriteCalls);
+            Assert.Equal(
+                new byte[]
+                {
+                    0x34, 0x12,
+                    0xEF, 0xCD, 0xAB, 0x89,
+                    0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01
+                },
+                stream.ToArray());
+        }
+
+        [Fact]
         public void StrictValidatorAcceptsCanonicalFile()
         {
             using var stream = CreateMcap(writer =>
@@ -87,6 +108,18 @@ namespace Unity.FoxgloveSDK.UnitTests
             var summary = McapStrictValidator.Validate(stream);
 
             Assert.Single(summary.Schemas);
+            Assert.Single(summary.Channels);
+        }
+
+        [Fact]
+        public void ReadSummaryDoesNotDependOnCallerStreamPosition()
+        {
+            using var stream = CreateMcap(writer =>
+                writer.WriteChannel(1, 0, "/mcap/topic", "json", new Dictionary<string, string>()));
+            stream.Position = 3;
+
+            var summary = new McapReader(stream).ReadSummary();
+
             Assert.Single(summary.Channels);
         }
 
@@ -111,6 +144,24 @@ namespace Unity.FoxgloveSDK.UnitTests
             using var stream = CreateMcap(writer => WriteUncheckedRecord(writer, 0x10, Array.Empty<byte>()));
 
             Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(stream));
+        }
+
+        [Fact]
+        public void StrictValidatorRejectsPrivateRecordInSummarySection()
+        {
+            using var stream = CreateMcapWithSummary(writer =>
+                WriteUncheckedRecord(writer, 0x80, Array.Empty<byte>()));
+
+            Assert.Throws<InvalidDataException>(() => McapStrictValidator.Validate(stream));
+        }
+
+        [Fact]
+        public void StrictValidatorAcceptsPrivateRecordInDataSection()
+        {
+            using var stream = CreateMcap(writer =>
+                writer.WritePrivateRecord(0x80, new byte[] { 0x12, 0x34 }));
+
+            McapStrictValidator.Validate(stream);
         }
 
         [Fact]
@@ -460,6 +511,24 @@ namespace Unity.FoxgloveSDK.UnitTests
             return stream;
         }
 
+        private static MemoryStream CreateMcapWithSummary(Action<McapWriter> writeSummary)
+        {
+            var stream = new MemoryStream();
+            using (var writer = new McapWriter(stream, leaveOpen: true))
+            {
+                writer.WriteMagic();
+                writer.WriteHeader("", "mcap-spec-test");
+                writer.WriteDataEnd();
+                var summaryStart = (ulong)writer.Position;
+                writeSummary(writer);
+                writer.WriteFooter(summaryStart, 0, 0);
+                writer.WriteMagic();
+            }
+
+            stream.Position = 0;
+            return stream;
+        }
+
         private static void WriteUncheckedRecord(McapWriter writer, byte opcode, byte[] content)
         {
             var streamField = typeof(McapWriter).GetField("_stream", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
@@ -685,6 +754,31 @@ namespace Unity.FoxgloveSDK.UnitTests
             }
 
             public bool Exists(string path) => File.Exists(path);
+        }
+
+        private sealed class WriteCallTrackingStream : MemoryStream
+        {
+            public int BulkWriteCalls { get; private set; }
+            public int ByteWriteCalls { get; private set; }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                BulkWriteCalls++;
+                base.Write(buffer, offset, count);
+            }
+
+            public override void Write(ReadOnlySpan<byte> buffer)
+            {
+                BulkWriteCalls++;
+                var copy = buffer.ToArray();
+                base.Write(copy, 0, copy.Length);
+            }
+
+            public override void WriteByte(byte value)
+            {
+                ByteWriteCalls++;
+                base.WriteByte(value);
+            }
         }
 
         private sealed class FailOnceWriteStream : Stream

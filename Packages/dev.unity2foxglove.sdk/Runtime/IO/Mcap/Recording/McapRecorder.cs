@@ -24,14 +24,14 @@ namespace Unity.FoxgloveSDK.IO
     /// </summary>
     public partial class McapRecorder : IDisposable
     {
-        private readonly McapWriter _w;
+        private readonly McapWriter _writer;
         private readonly IFoxgloveLogger _log;
         private readonly McapWriterOptions _options;
         private readonly string _compression;
-        private readonly Dictionary<(string name, string enc, string hash), ushort> _sKey = new();
+        private readonly Dictionary<(string name, string enc, string hash), ushort> _schemaIdsBySignature = new();
         private readonly Dictionary<(uint clientId, uint chId), ChannelWriteState> _clientChannelWriteState = new();
         private readonly HashSet<(uint clientId, uint chId)> _skippedClientChannels = new();
-        private readonly Dictionary<uint, ChannelWriteState> _chMap = new();
+        private readonly Dictionary<uint, ChannelWriteState> _serverChannelWriteStates = new();
         private readonly Dictionary<string, ChannelWriteState> _topicChannelWriteState = new();
         private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
         private readonly HashSet<ushort> _seenChannelIds = new();
@@ -49,7 +49,8 @@ namespace Unity.FoxgloveSDK.IO
         private readonly object _lock = new object();
         private Compressor _zstdCompressor;
         private byte[] _zstdCompressionBuffer;
-        private ushort _nextSid = 1, _nextCid = 1;
+        private ushort _nextSchemaId = 1;
+        private ushort _nextChannelId = 1;
         private ulong _chunkSt, _chunkEt;
         private ulong _msgSt = ulong.MaxValue, _msgEt;
         private ulong _msgCount, _chunkCount;
@@ -86,18 +87,18 @@ namespace Unity.FoxgloveSDK.IO
 
             _log = logger ?? new ConsoleLogger();
             _options = McapWriterOptions.Normalize(options);
-            _w = new McapWriter(stream, leaveOpen);
+            _writer = new McapWriter(stream, leaveOpen);
             _chunkSz = _options.ChunkSizeBytes;
             _chunkBuf = new MemoryStream(_chunkSz);
             _compression = _options.Compression;
             try
             {
-                _w.WriteMagic();
-                _w.WriteHeader("", "unity-foxglove-sdk");
+                _writer.WriteMagic();
+                _writer.WriteHeader("", "unity-foxglove-sdk");
             }
             catch
             {
-                _w.Dispose();
+                _writer.Dispose();
                 throw;
             }
         }
@@ -125,7 +126,7 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_recordingFailed || _closed) return;
-                if (_chMap.ContainsKey(fId))
+                if (_serverChannelWriteStates.ContainsKey(fId))
                 {
                     _log.LogWarning(
                         $"MCAP: ignoring duplicate server channel id {fId} for topic '{topic}' because the channel id is already registered.");
@@ -152,21 +153,21 @@ namespace Unity.FoxgloveSDK.IO
                         return;
                     }
 
-                    if (mCid >= _nextCid)
-                        _nextCid = (ushort)(mCid == ushort.MaxValue ? 0 : mCid + 1);
+                    if (mCid >= _nextChannelId)
+                        _nextChannelId = (ushort)(mCid == ushort.MaxValue ? 0 : mCid + 1);
                 }
                 else
                 {
-                    if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
-                    mCid = _nextCid++;
+                    if (_nextChannelId == 0) { Fail("Channel ID overflow"); return; }
+                    mCid = _nextChannelId++;
                 }
                 var state = new ChannelWriteState { McapId = mCid, Topic = topic };
-                _chMap[fId] = state;
+                _serverChannelWriteStates[fId] = state;
                 if (!_topicChannelWriteState.ContainsKey(topic))
                     _topicChannelWriteState[topic] = state;
 
                 var meta = CreateChannelMetadata();
-                _w.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
+                _writer.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
                 _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = SnapshotChannelMetadata(meta) });
                 RecordTopicSignature(topic, signature);
             }
@@ -174,7 +175,7 @@ namespace Unity.FoxgloveSDK.IO
 
         private bool IsMcapChannelIdRegistered(ushort mcapChannelId)
         {
-            foreach (var state in _chMap.Values)
+            foreach (var state in _serverChannelWriteStates.Values)
                 if (state.McapId == mcapChannelId)
                     return true;
             foreach (var state in _clientChannelWriteState.Values)
@@ -215,12 +216,12 @@ namespace Unity.FoxgloveSDK.IO
 
                         var sid = GetOrCreateSchema(sName, sEnc, sContent);
                         if (_recordingFailed) return;
-                        if (_nextCid == 0) { Fail("Channel ID overflow"); return; }
-                        var mcapId = _nextCid++;
+                        if (_nextChannelId == 0) { Fail("Channel ID overflow"); return; }
+                        var mcapId = _nextChannelId++;
                         map = new ChannelWriteState { McapId = mcapId, Topic = topic };
                         _clientChannelWriteState[key] = map;
                         var meta = CreateChannelMetadata();
-                        _w.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
+                        _writer.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
                         _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = SnapshotChannelMetadata(meta) });
                         RecordTopicSignature(topic, signature);
                     }
@@ -239,7 +240,7 @@ namespace Unity.FoxgloveSDK.IO
             if (!_options.UseChunking)
             {
                 // MCAP publish_time intentionally mirrors log_time for Unity live recording.
-                _w.WriteMessage(map.McapId, seq, logNs, logNs, payload);
+                _writer.WriteMessage(map.McapId, seq, logNs, logNs, payload);
                 TrackMessageTimes(logNs);
                 return;
             }
@@ -298,9 +299,9 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_recordingFailed || _closed) return;
-                var off = (ulong)_w.Position;
-                _w.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
-                var len = (ulong)_w.Position - off;
+                var off = (ulong)_writer.Position;
+                _writer.WriteMetadata(name, new Dictionary<string, string> { ["value"] = jsonValue });
+                var len = (ulong)_writer.Position - off;
                 _metaIdx.Add(new MetadataIndexState { Offset = off, Length = len, Name = name });
                 _metadataCount++;
             }
@@ -316,7 +317,7 @@ namespace Unity.FoxgloveSDK.IO
             {
                 if (_recordingFailed || _closed) return;
                 FlushChunk();
-                var index = _w.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data, _options.EnableCrcs);
+                var index = _writer.WriteAttachment(logTimeNs, createTimeNs, name, mediaType, data, _options.EnableCrcs);
                 _attachmentIdx.Add(index);
                 _attachmentCount++;
             }
@@ -329,7 +330,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             lock (_lock)
             {
-                if (_recordingFailed || _closed || !_chMap.TryGetValue(fId, out var map)) return;
+                if (_recordingFailed || _closed || !_serverChannelWriteStates.TryGetValue(fId, out var map)) return;
                 WriteMessageToChannelWriteState(map, logNs, payload);
             }
         }
@@ -360,7 +361,7 @@ namespace Unity.FoxgloveSDK.IO
                     throw new IOException("MCAP recorder could not recover after an earlier chunk flush failure.", failure);
                 }
 
-                var flushStartPosition = _w.Position;
+                var flushStartPosition = _writer.Position;
                 try
                 {
                     FlushChunk();
@@ -381,17 +382,17 @@ namespace Unity.FoxgloveSDK.IO
                 try
                 {
                     var dataSectionCrc = _options.EnableDataCrcs
-                        ? _w.ComputeCrc32FromStartToCurrent()
+                        ? _writer.ComputeCrc32FromStartToCurrent()
                         : 0;
-                    _w.WriteDataEnd(dataSectionCrc);
+                    _writer.WriteDataEnd(dataSectionCrc);
 
                     McapSummarySerializer.WriteSummaryAndFooter(
-                        _w,
+                        _writer,
                         BuildFinalSummary(includeStatistics: true),
                         _options.UseSummaryOffsets,
                         _options.EnableCrcs);
-                    _w.WriteMagic();
-                    _w.Flush();
+                    _writer.WriteMagic();
+                    _writer.Flush();
                 }
                 finally
                 {
@@ -488,24 +489,24 @@ namespace Unity.FoxgloveSDK.IO
 
         private void WriteRecoverableTrailerAfterDroppedChunk()
         {
-            _w.WriteDataEnd(0);
+            _writer.WriteDataEnd(0);
             McapSummarySerializer.WriteSummaryAndFooter(
-                _w,
+                _writer,
                 BuildFinalSummary(includeStatistics: false),
                 _options.UseSummaryOffsets,
                 _options.EnableCrcs);
-            _w.WriteMagic();
-            _w.Flush();
+            _writer.WriteMagic();
+            _writer.Flush();
         }
 
         private bool TryRecoverAfterFailedChunkFlush(long flushStartPosition, Exception flushError)
         {
-            if (!_w.CanSeek)
+            if (!_writer.CanSeek)
                 return false;
 
             try
             {
-                _w.TruncateToPosition(flushStartPosition);
+                _writer.TruncateToPosition(flushStartPosition);
 
                 _log.LogWarning(
                     $"MCAP recorder dropped an incomplete chunk; writing a recoverable indexed trailer without final statistics: {flushError.Message}");
@@ -544,7 +545,7 @@ namespace Unity.FoxgloveSDK.IO
                 _disposed = true;
                 try
                 {
-                    _w.Dispose();
+                    _writer.Dispose();
                 }
                 catch (Exception ex)
                 {
@@ -591,7 +592,7 @@ namespace Unity.FoxgloveSDK.IO
             System.Diagnostics.Debug.Assert(Monitor.IsEntered(_lock));
             _seenChannelIds.Clear();
             _allChannelWriteStates.Clear();
-            foreach (var m in _chMap.Values)
+            foreach (var m in _serverChannelWriteStates.Values)
             {
                 if (_seenChannelIds.Add(m.McapId))
                     _allChannelWriteStates.Add(m);
@@ -614,7 +615,7 @@ namespace Unity.FoxgloveSDK.IO
         {
             if (!_options.UseChunking) return;
             if (_chunkBuf.Length == 0) return;
-            var flushStartPosition = _w.Position;
+            var flushStartPosition = _writer.Position;
             try
             {
                 if (!_chunkBuf.TryGetBuffer(out var raw))
@@ -632,9 +633,9 @@ namespace Unity.FoxgloveSDK.IO
                     _compressionBuf,
                     zstdCompressor,
                     ref _zstdCompressionBuffer);
-                var off = (ulong)_w.Position;
-                _w.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
-                var chunkLen = (ulong)_w.Position - off;
+                var off = (ulong)_writer.Position;
+                _writer.WriteChunk(_chunkSt, _chunkEt, (ulong)raw.Count, rawCrc, _compression, (ulong)compressed.Count, compressed);
+                var chunkLen = (ulong)_writer.Position - off;
                 var channelStates = FillAndGetScratchChannelWriteStates();
                 var mio = _messageIndexOffsetsScratch;
                 mio.Clear();
@@ -644,15 +645,28 @@ namespace Unity.FoxgloveSDK.IO
                     if (map.Pending.Count == 0) continue;
                     if (_options.HasIndex(McapIndexTypes.Message))
                     {
-                        var start = (ulong)_w.Position;
-                        _w.WriteMessageIndex(map.McapId, map.Pending);
-                        var len = (ulong)_w.Position - start;
+                        var start = (ulong)_writer.Position;
+                        _writer.WriteMessageIndex(map.McapId, map.Pending);
+                        var len = (ulong)_writer.Position - start;
                         mio[map.McapId] = start;
                         mioTLen += len;
                     }
                 }
                 if (_options.HasIndex(McapIndexTypes.Chunk))
-                    _chunkIdx.Add(new ChunkIndexState { StartTime = _chunkSt, EndTime = _chunkEt, Offset = off, Length = chunkLen, MessageIndexOffsets = new Dictionary<ushort, ulong>(mio), MessageIndexLength = mioTLen, Compression = _compression, CompressedSize = (ulong)compressed.Count, UncompressedSize = (ulong)raw.Count });
+                {
+                    _chunkIdx.Add(new ChunkIndexState
+                    {
+                        StartTime = _chunkSt,
+                        EndTime = _chunkEt,
+                        Offset = off,
+                        Length = chunkLen,
+                        MessageIndexOffsets = new Dictionary<ushort, ulong>(mio),
+                        MessageIndexLength = mioTLen,
+                        Compression = _compression,
+                        CompressedSize = (ulong)compressed.Count,
+                        UncompressedSize = (ulong)raw.Count
+                    });
+                }
                 _chunkCount++;
                 ResetActiveChunkState(channelStates);
             }

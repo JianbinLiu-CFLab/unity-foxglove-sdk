@@ -70,7 +70,7 @@ jobs:
         with:
           name: mcap-differential-report
           path: build/mcap-conformance/phase121-conformance-report.json
-          if-no-files-found: error
+          if-no-files-found: warn
 
   analyzer-freshness:
     runs-on: windows-latest
