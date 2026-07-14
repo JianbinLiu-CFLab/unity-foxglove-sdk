@@ -166,11 +166,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyValidationWiring()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase134-31" });
 
             Check(project.Contains("<Compile Include=\"Phase134_31Validation.cs\" />", StringComparison.Ordinal),
                 "134-31H-1: Phase134_31Validation is compiled by the runtime test project");
-            Check(registry.Contains("Ci(\"--phase134-31\", \"Phase 134-31: regression coverage for generator/build architecture scripts\", Phase134_31Validation.Validate)", StringComparison.Ordinal),
+            Check(entry != null
+                  && entry.Name == "Phase 134-31: regression coverage for generator/build architecture scripts"
+                  && entry.Category == ValidationCategory.CiSafe
+                  && entry.Evidence == ValidationEvidence.Structural
+                  && entry.Run == (Action)Validate,
                 "134-31H-2: Phase134_31Validation is wired into the validation registry");
         }
 
