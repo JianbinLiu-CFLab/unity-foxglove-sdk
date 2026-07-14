@@ -58,23 +58,32 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyValidationRegistry()
         {
             var program = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Program.cs");
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var phase126 = PhaseValidationRegistry.Find(new[] { "--phase126" });
+            var phase138b = PhaseValidationRegistry.Find(new[] { "--phase138b" });
+            var representedEvidence = PhaseValidationRegistry.All.Aggregate(
+                ValidationEvidence.None,
+                (combined, item) => combined | item.Evidence);
 
             Check(program.Contains("PhaseValidationRegistry.FindAll", StringComparison.Ordinal)
                   && program.Contains("RunTests(argSet.Contains(\"--local-evidence\"))", StringComparison.Ordinal),
                 "126B-1: Program.cs dispatches through the phase validation registry");
-            Check(registry.Contains("ValidationCategory.CiSafe", StringComparison.Ordinal)
-                  && registry.Contains("ValidationCategory.LocalEvidence", StringComparison.Ordinal)
-                  && registry.Contains("includeLocalEvidence && item.Category == ValidationCategory.LocalEvidence", StringComparison.Ordinal)
-                  && registry.Contains("ValidationCategory.LocalEvidence, run, includeInDefault: true", StringComparison.Ordinal)
-                  && registry.Contains("--phase126", StringComparison.Ordinal)
-                  && registry.Contains("--phase138b", StringComparison.Ordinal),
+            Check(phase126 != null
+                  && phase126.Category == ValidationCategory.CiSafe
+                  && phase126.Evidence == ValidationEvidence.Structural
+                  && phase138b != null
+                  && phase138b.Category == ValidationCategory.LocalEvidence
+                  && PhaseValidationRegistry.All.All(item => item.Evidence != ValidationEvidence.None)
+                  && !PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false).Contains(phase138b)
+                  && PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: true).Contains(phase138b),
                 "126B-2: validation registry classifies CI-safe and local-evidence phases");
             Check(project.Contains("Phase126Validation.cs", StringComparison.Ordinal)
                   && project.Contains("PhaseValidationRegistry.cs", StringComparison.Ordinal)
+                  && project.Contains("ValidationEvidence.cs", StringComparison.Ordinal)
                   && project.Contains("Phase138BValidation.cs", StringComparison.Ordinal),
                 "126B-3: test project compiles Phase126 registry files and shifted Phase138B validation");
+            Check(representedEvidence == ValidationEvidenceFormatter.All,
+                "126B-4: validation registry exposes every supported evidence classification");
         }
 
         private static void VerifyExperimentalDemoAssets()

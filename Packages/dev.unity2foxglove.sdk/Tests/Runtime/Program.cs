@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -235,7 +236,8 @@ class Program
                 var flags = string.Join(", ", validation.AllFlags());
                 if (string.IsNullOrEmpty(flags))
                     flags = "(default only)";
-                Console.WriteLine($"{flags} [{validation.Category}] {validation.Name}");
+                Console.WriteLine(
+                    $"{flags} [{validation.Category}] {ValidationEvidenceFormatter.Format(validation.Evidence)} {validation.Name}");
             }
             foreach (var tool in LegacyToolFlags)
                 Console.WriteLine($"{tool.Flag} [{tool.Category}] {tool.Name}");
@@ -286,8 +288,17 @@ class Program
 
     private static int RunValidation(PhaseValidationCase validation)
     {
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        var classifiedOut = TextWriter.Synchronized(
+            new ValidationEvidenceTextWriter(originalOut, validation.Evidence));
+        var classifiedError = TextWriter.Synchronized(
+            new ValidationEvidenceTextWriter(originalError, validation.Evidence));
+
         try
         {
+            Console.SetOut(classifiedOut);
+            Console.SetError(classifiedError);
             validation.Run();
             Console.WriteLine($"\n{validation.Name} checks passed.");
             return 0;
@@ -296,6 +307,13 @@ class Program
         {
             Console.Error.WriteLine($"\n[FAIL] {validation.Name}: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            classifiedOut.Flush();
+            classifiedError.Flush();
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
         }
     }
 

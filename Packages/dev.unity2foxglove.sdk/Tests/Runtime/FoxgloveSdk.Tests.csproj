@@ -46,6 +46,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Fixtures/FoxRunGenerationModelFixture.cs" />
     <Compile Include="ValidationCategory.cs" />
+    <Compile Include="ValidationEvidence.cs" />
     <Compile Include="PhaseValidationCase.cs" />
     <Compile Include="PhaseValidationRegistry.cs" />
     <Compile Include="PhaseRos2ForUnityValidationHelpers.cs" />

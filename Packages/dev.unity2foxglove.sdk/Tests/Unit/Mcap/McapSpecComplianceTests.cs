@@ -16,6 +16,7 @@ using Xunit;
 namespace Unity.FoxgloveSDK.UnitTests
 {
     [Trait("Domain", "Mcap")]
+    [Trait("Evidence", "Conformance")]
     public class McapSpecComplianceTests
     {
         [Fact]
@@ -122,6 +123,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void AutomaticChunkFlushFailureDropsPartialChunkAndStatistics()
         {
             using var stream = new FailOnceWriteStream();
@@ -154,6 +156,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void FirstChunkFailureRecoversCanonicalEmptyRecording()
         {
             var clean = CreateFaultMatrixFixture();
@@ -168,6 +171,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void MiddleChunkFailurePreservesOnlyDurableEarlierChunks()
         {
             var clean = CreateFaultMatrixFixture();
@@ -182,6 +186,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void MessageIndexFailureDropsItsOwningChunkAndPreservesEarlierChunks()
         {
             var clean = CreateFaultMatrixFixture();
@@ -196,6 +201,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void SummaryFailureIsReportedAndNeverProducesAFalseValidFile()
         {
             var clean = CreateFaultMatrixFixture();
@@ -207,6 +213,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void FooterFailureIsReportedAndNeverProducesAFalseValidFile()
         {
             var clean = CreateFaultMatrixFixture();
@@ -218,6 +225,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void FlushFailureIsReportedAfterCompleteBytesAreWritten()
         {
             using var stream = RecordCloseFaultMatrixFixture(-1, throwOnFlush: true, out var closeError);
@@ -227,6 +235,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        [Trait("Evidence", "FaultInjection")]
         public void AmendmentReplacementFailureRestoresOriginalFile()
         {
             var path = Path.Combine(Path.GetTempPath(), "u2f-mcap-replace-" + Guid.NewGuid().ToString("N") + ".mcap");

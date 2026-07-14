@@ -24,5 +24,8 @@
   <ItemGroup>
     <!-- Shared test helpers (also compiled by the console runner). -->
     <Compile Include="../Runtime/McapRecordReader.cs" Link="TestHelpers/McapRecordReader.cs" />
+    <Compile Include="../Runtime/ValidationCategory.cs" Link="TestHarness/ValidationCategory.cs" />
+    <Compile Include="../Runtime/ValidationEvidence.cs" Link="TestHarness/ValidationEvidence.cs" />
+    <Compile Include="../Runtime/PhaseValidationCase.cs" Link="TestHarness/PhaseValidationCase.cs" />
   </ItemGroup>
 </Project>

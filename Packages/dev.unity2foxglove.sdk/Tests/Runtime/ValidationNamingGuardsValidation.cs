@@ -80,11 +80,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRegistryAndProjectWiring()
         {
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var registered = PhaseValidationRegistry.Find(new[] { "--phase164-59" });
 
-            Check(registry.Contains("Ci(\"--phase164-59\", \"Validation naming guardrails\", ValidationNamingGuardsValidation.Validate, includeInDefault: false)", StringComparison.Ordinal)
-                  && PhaseValidationRegistry.Find(new[] { "--phase164-59" }) != null,
+            Check(registered != null
+                  && registered.Name == "Validation naming guardrails"
+                  && registered.Evidence == ValidationEvidence.Structural,
                 "164-59D-1: validation registry exposes descriptive Phase164-59 guard");
             Check(project.Contains("ValidationNamingGuardsValidation.cs", StringComparison.Ordinal)
                   && !project.Contains("Phase164_59Validation.cs", StringComparison.Ordinal),

@@ -15,13 +15,16 @@ namespace Unity.FoxgloveSDK.Tests
             string flag,
             string name,
             ValidationCategory category,
+            ValidationEvidence evidence,
             Action run,
             bool includeInDefault,
             params string[] aliases)
         {
+            ValidationEvidenceFormatter.Validate(evidence);
             Flag = flag;
             Name = name;
             Category = category;
+            Evidence = evidence;
             Run = run;
             IncludeInDefault = includeInDefault;
             Aliases = aliases ?? Array.Empty<string>();
@@ -30,6 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
         public string Flag { get; }
         public string Name { get; }
         public ValidationCategory Category { get; }
+        public ValidationEvidence Evidence { get; }
         public Action Run { get; }
         public bool IncludeInDefault { get; }
         public IReadOnlyList<string> Aliases { get; }
