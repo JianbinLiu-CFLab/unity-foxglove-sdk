@@ -20,6 +20,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 BUMP_VERSION_PATH = ROOT / "Scripts" / "release" / "bump_version.py"
 RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
+MCAP_CONFORMANCE_PATH = ROOT / "Scripts" / "mcap" / "conformance" / "run_phase121_conformance.py"
 UNITY_IL2CPP_PATH = ROOT / "Scripts" / "unity_build" / "unity_il2cpp.py"
 
 
@@ -357,17 +358,58 @@ class RunCiTests(unittest.TestCase):
                     self.run_ci.run(["tool"], "fatal-timeout", fatal=True)
         self.assertEqual(124, context.exception.code)
 
+    def test_run_accepts_command_specific_timeout(self) -> None:
+        """Long bounded gates should not inherit the shorter general command timeout."""
+        completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed) as run_process:
+            self.assertTrue(self.run_ci.run(["tool"], "long gate", timeout_seconds=1234))
+
+        self.assertEqual(1234, run_process.call_args.kwargs["timeout"])
+
     def test_default_ci_builds_independent_subcommand_jobs(self) -> None:
         """Default local CI should fan out independent suites through self-subcommands."""
         args = types.SimpleNamespace(skip_analyzer=False)
 
         jobs = self.run_ci.build_default_ci_jobs(args)
 
-        self.assertEqual(["analyzer", "dotnet", "packages", "boundary"], [job.name for job in jobs])
+        self.assertEqual(
+            ["analyzer", "dotnet", "mcap-conformance", "packages", "boundary"],
+            [job.name for job in jobs],
+        )
         for job in jobs:
             self.assertEqual(sys.executable, job.command[0])
             self.assertEqual(str(RUN_CI_PATH), job.command[1])
             self.assertEqual(["--only", job.name], job.command[2:])
+
+    def test_mcap_conformance_uses_dedicated_timeout_budget(self) -> None:
+        """The external differential gate should outlive its longest internal stages."""
+        observed: dict[str, object] = {}
+
+        def fake_run(cmd, label, **kwargs):
+            observed["cmd"] = cmd
+            observed["label"] = label
+            observed["timeout_seconds"] = kwargs.get("timeout_seconds")
+            return True
+
+        with mock.patch.object(self.run_ci, "run", side_effect=fake_run):
+            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", "mcap-conformance"]):
+                self.assertEqual(0, self.run_ci.main())
+
+        self.assertIn("run_phase121_conformance.py", " ".join(observed["cmd"]))
+        self.assertEqual("Official MCAP differential conformance", observed["label"])
+        self.assertEqual(
+            self.run_ci.DEFAULT_MCAP_CONFORMANCE_TIMEOUT_SECONDS,
+            observed["timeout_seconds"],
+        )
+        self.assertGreaterEqual(
+            self.run_ci.DEFAULT_MCAP_CONFORMANCE_TIMEOUT_SECONDS,
+            2400,
+        )
+        self.assertGreater(
+            self.run_ci.DEFAULT_JOB_TIMEOUT_SECONDS,
+            self.run_ci.DEFAULT_MCAP_CONFORMANCE_TIMEOUT_SECONDS,
+        )
 
     def test_main_dispatches_default_ci_through_parallel_jobs(self) -> None:
         """Without --only, CI should use the parallel job runner and aggregate job results."""
@@ -383,8 +425,46 @@ class RunCiTests(unittest.TestCase):
             with mock.patch.object(sys, "argv", ["run_ci.py", "--jobs", "2"]):
                 self.assertEqual(0, self.run_ci.main())
 
-        self.assertEqual(["analyzer", "dotnet", "packages", "boundary"], observed["names"])
+        self.assertEqual(
+            ["analyzer", "dotnet", "mcap-conformance", "packages", "boundary"],
+            observed["names"],
+        )
         self.assertEqual(2, observed["max_workers"])
+
+
+class McapConformanceToolTests(unittest.TestCase):
+    """Regression coverage for the release-blocking official MCAP differential."""
+
+    def setUp(self) -> None:
+        """Load a fresh conformance wrapper for each test."""
+        self.conformance = load_module("mcap_conformance_under_test", MCAP_CONFORMANCE_PATH)
+
+    def test_runner_budget_covers_slow_synced_workspaces(self) -> None:
+        """The full streamed matrix must not sit on the observed 180-second cliff."""
+        self.assertGreaterEqual(self.conformance.RUNNER_TIMEOUT_SECONDS, 300)
+
+    def test_timeout_failure_details_preserve_the_timeout_reason(self) -> None:
+        """Large runner output must not truncate away the actionable timeout diagnosis."""
+        stdout = "running csharp-streamed-reader\n" + "\n".join(
+            f"  testing fixture-{index}.mcap" for index in range(600)
+        )
+        result = self.conformance.CommandResult(
+            -1,
+            stdout,
+            "Timed out after 180 second(s).",
+            "runner command",
+            timed_out=True,
+        )
+
+        report = self.conformance.measure_runner_output(
+            "csharp-streamed-reader",
+            "streamed-reader",
+            result,
+        )
+
+        failure = report["failures"][0]
+        self.assertTrue(failure["timedOut"])
+        self.assertIn("Timed out after 180 second(s).", failure["details"])
 
 
 class UnityIl2CppBuildTests(unittest.TestCase):

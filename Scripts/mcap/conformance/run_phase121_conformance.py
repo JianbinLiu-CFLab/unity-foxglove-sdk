@@ -43,6 +43,9 @@ CSHARP_RUNNER_INSERTION = (
     "  new CsharpWriterTestRunner(),"
 )
 CSHARP_CONFORMANCE_DLL_NAME = "Unity2Foxglove.McapConformance.dll"
+RUNNER_TIMEOUT_SECONDS = 300
+FAILURE_DETAILS_MAX_CHARACTERS = 4000
+FAILURE_DETAILS_TAIL_CHARACTERS = 800
 
 
 @dataclass(frozen=True)
@@ -396,6 +399,18 @@ def add_csharp_runner_overlay() -> None:
     index_path.write_text(index, encoding="utf-8")
 
 
+def summarize_failure_details(text: str) -> str:
+    """Bound failure output while retaining the final diagnostic lines."""
+
+    details = "\n".join(line for line in text.strip().splitlines() if line.strip())
+    if len(details) <= FAILURE_DETAILS_MAX_CHARACTERS:
+        return details
+
+    marker = "\n... output truncated; tail follows ...\n"
+    head_characters = FAILURE_DETAILS_MAX_CHARACTERS - FAILURE_DETAILS_TAIL_CHARACTERS - len(marker)
+    return details[:head_characters] + marker + details[-FAILURE_DETAILS_TAIL_CHARACTERS:]
+
+
 def measure_runner_output(name: str, kind: str, result: CommandResult) -> dict[str, object]:
     """Summarize official conformance runner console output."""
 
@@ -416,7 +431,8 @@ def measure_runner_output(name: str, kind: str, result: CommandResult) -> dict[s
         failures.append(
             {
                 "exitCode": result.exit_code,
-                "details": "\n".join((line for line in text.strip().splitlines() if line.strip()))[:4000],
+                "timedOut": result.timed_out,
+                "details": summarize_failure_details(text),
             }
         )
     return new_runner_report(name=name, kind=kind, passed=passed, failed=errors, skipped=skipped, failures=failures)
@@ -558,7 +574,7 @@ def run_conformance(release_blocking: bool, explicit_official_root: str | None) 
             ],
             cwd=OVERLAY_ROOT,
             env=env,
-            timeout_seconds=180,
+            timeout_seconds=RUNNER_TIMEOUT_SECONDS,
         )
         runner_reports.append(measure_runner_output(runner_name, kind, result))
 
