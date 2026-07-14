@@ -387,6 +387,7 @@ class RunCiTests(unittest.TestCase):
         observed: dict[str, object] = {}
 
         def fake_run(cmd, label, **kwargs):
+            """Capture the dedicated conformance command without executing it."""
             observed["cmd"] = cmd
             observed["label"] = label
             observed["timeout_seconds"] = kwargs.get("timeout_seconds")
