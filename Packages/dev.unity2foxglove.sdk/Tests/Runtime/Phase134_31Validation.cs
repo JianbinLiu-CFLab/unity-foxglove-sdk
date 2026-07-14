@@ -66,9 +66,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("def resolve_conformance_dll_path()", StringComparison.Ordinal)
                   && !source.Contains("build/McapConformance/Release/net10.0", StringComparison.Ordinal),
                 "134-31B-2: MCAP conformance DLL path is resolved from the C# project target framework");
-            Check(source.Contains("r\"(?m)^(Error:|FAIL\\b|\\w+Error:)\"", StringComparison.Ordinal)
-                  && !source.Contains("fail\\s+", StringComparison.Ordinal),
-                "134-31B-3: MCAP conformance error parsing no longer treats diagnostic 'fail count' lines as failures");
+            Check(source.Contains("explicit_failures", StringComparison.Ordinal)
+                  && source.Contains("explicit_passes", StringComparison.Ordinal)
+                  && source.Contains("clean_text", StringComparison.Ordinal),
+                "134-31B-3: MCAP conformance output parsing classifies explicit pass, fail, and ANSI output");
         }
 
         private static void VerifyPerformanceBaselineRunner()

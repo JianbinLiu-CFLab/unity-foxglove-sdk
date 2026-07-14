@@ -48,7 +48,11 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             actual.AddRange(result.Metadata.Select(ToRecord));
             actual.AddRange(result.Attachments.Select(ToRecord));
 
-            if (result.Summary.Statistics != null)
+            // The streaming reader synthesizes statistics for query support
+            // even when the file has no Statistics record. Conformance must
+            // compare serialized records, not that derived runtime view.
+            if (result.Summary.Statistics != null
+                && scannerRecords.Any(record => record.Type == "Statistics"))
                 actual.Add(ToRecord(result.Summary.Statistics));
 
             var expected = NormalizeCoreRecords(scannerRecords);

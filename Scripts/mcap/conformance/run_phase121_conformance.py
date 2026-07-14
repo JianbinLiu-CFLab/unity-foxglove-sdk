@@ -3,7 +3,7 @@
 #
 # Purpose: Run the Phase 121 MCAP conformance baseline through a cross-platform Python entry point.
 # Usage: python Scripts/mcap/conformance/run_phase121_conformance.py [--release-blocking] [--ci-smoke]
-# Inputs: third-party/mcap checkout, C# conformance console project, and csharp runner overlay sources.
+# Inputs: pinned foxglove/mcap checkout, C# conformance console project, and csharp runner overlay sources.
 # Outputs: phase121 conformance report (default under build/mcap-conformance)
 # and overlay/test artifacts under build/mcap-conformance.
 
@@ -23,11 +23,13 @@ from typing import Iterable
 
 
 EXPECTED_OBSERVED_COMMIT = "c3cab6bd3ce79199e362766daec3a4689f3a0335"
+OFFICIAL_REPOSITORY_URL = "https://github.com/foxglove/mcap.git"
 SCRIPT_PATH = Path(__file__).resolve()
 REPO_ROOT = SCRIPT_PATH.parents[3]
-OFFICIAL_ROOT = REPO_ROOT / "third-party/mcap"
-OFFICIAL_CONFORMANCE = OFFICIAL_ROOT / "tests/conformance"
 BUILD_ROOT = REPO_ROOT / "build/mcap-conformance"
+BOOTSTRAPPED_OFFICIAL_ROOT = BUILD_ROOT / "official-mcap"
+OFFICIAL_ROOT = BOOTSTRAPPED_OFFICIAL_ROOT
+OFFICIAL_CONFORMANCE = OFFICIAL_ROOT / "tests/conformance"
 OVERLAY_ROOT = BUILD_ROOT / "mcap-overlay"
 DATA_DIR = BUILD_ROOT / "data"
 REPORT_PATH = BUILD_ROOT / "phase121-conformance-report.json"
@@ -72,7 +74,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Write the conformance report schema without running the official TypeScript harness.",
     )
+    parser.add_argument(
+        "--official-root",
+        help=(
+            "Explicit foxglove/mcap checkout for local development. Full release/CI runs omit this "
+            "option and bootstrap the pinned commit under build/mcap-conformance."
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def set_official_root(path: Path) -> None:
+    """Select the official source root used by the rest of the wrapper."""
+
+    global OFFICIAL_ROOT, OFFICIAL_CONFORMANCE
+    OFFICIAL_ROOT = path.resolve()
+    OFFICIAL_CONFORMANCE = OFFICIAL_ROOT / "tests/conformance"
 
 
 def invoke_command_capture(
@@ -127,6 +144,80 @@ def get_official_commit() -> str | None:
     if result.exit_code != 0:
         return None
     return result.stdout.strip()
+
+
+def prepare_official_checkout(explicit_root: str | None) -> str | None:
+    """Select or bootstrap the exact public foxglove/mcap implementation under test."""
+
+    if shutil.which("git") is None:
+        return "git is required to obtain the pinned official foxglove/mcap implementation."
+
+    if explicit_root:
+        set_official_root(Path(explicit_root))
+        commit = get_official_commit()
+        if commit is None:
+            return f"The explicit official checkout is not a Git worktree: {OFFICIAL_ROOT}"
+        if commit != EXPECTED_OBSERVED_COMMIT:
+            return (
+                "The explicit official checkout is at "
+                f"{commit}, expected {EXPECTED_OBSERVED_COMMIT}."
+            )
+        return None
+
+    set_official_root(BOOTSTRAPPED_OFFICIAL_ROOT)
+    if get_official_commit() == EXPECTED_OBSERVED_COMMIT and OFFICIAL_CONFORMANCE.exists():
+        return None
+
+    if OFFICIAL_ROOT.exists() and not (OFFICIAL_ROOT / ".git").exists():
+        shutil.rmtree(OFFICIAL_ROOT)
+    OFFICIAL_ROOT.mkdir(parents=True, exist_ok=True)
+
+    if not (OFFICIAL_ROOT / ".git").exists():
+        initialize = invoke_command_capture(["git", "init", str(OFFICIAL_ROOT)])
+        if initialize.exit_code != 0:
+            return "Unable to initialize the official MCAP checkout: " + first_lines(
+                initialize.stdout + initialize.stderr
+            )
+        remote = invoke_command_capture(
+            ["git", "-C", str(OFFICIAL_ROOT), "remote", "add", "origin", OFFICIAL_REPOSITORY_URL]
+        )
+        if remote.exit_code != 0:
+            return "Unable to configure the official MCAP remote: " + first_lines(
+                remote.stdout + remote.stderr
+            )
+
+    fetch = invoke_command_capture(
+        [
+            "git",
+            "-C",
+            str(OFFICIAL_ROOT),
+            "fetch",
+            "--depth",
+            "1",
+            "origin",
+            EXPECTED_OBSERVED_COMMIT,
+        ],
+        timeout_seconds=300,
+    )
+    if fetch.exit_code != 0:
+        return "Unable to fetch the pinned official MCAP commit: " + first_lines(
+            fetch.stdout + fetch.stderr
+        )
+
+    checkout = invoke_command_capture(
+        ["git", "-C", str(OFFICIAL_ROOT), "checkout", "--detach", "--force", "FETCH_HEAD"]
+    )
+    if checkout.exit_code != 0:
+        return "Unable to check out the pinned official MCAP commit: " + first_lines(
+            checkout.stdout + checkout.stderr
+        )
+
+    commit = get_official_commit()
+    if commit != EXPECTED_OBSERVED_COMMIT:
+        return f"Bootstrapped official MCAP commit {commit!r}, expected {EXPECTED_OBSERVED_COMMIT}."
+    if not OFFICIAL_CONFORMANCE.exists():
+        return f"Pinned official conformance harness is missing: {OFFICIAL_CONFORMANCE}"
+    return None
 
 
 def new_runner_report(
@@ -262,6 +353,20 @@ def copy_directory_without_local_state(source: Path, destination: Path) -> None:
             shutil.copy2(child, target)
 
 
+def prepare_data_directory() -> None:
+    """Create a fresh fixture root with official JSON inputs and regenerated MCAP bytes."""
+
+    if DATA_DIR.exists():
+        shutil.rmtree(DATA_DIR)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    source_data = OFFICIAL_CONFORMANCE / "data"
+    for source in source_data.rglob("*.json"):
+        target = DATA_DIR / source.relative_to(source_data)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
 def add_csharp_runner_overlay() -> None:
     """Overlay C# conformance runners into the copied official MCAP harness."""
 
@@ -295,12 +400,17 @@ def measure_runner_output(name: str, kind: str, result: CommandResult) -> dict[s
     """Summarize official conformance runner console output."""
 
     text = result.stdout + "\n" + result.stderr
-    tested = len(re.findall(r"(?m)^\s*testing\s+", text))
-    skipped = len(re.findall(r"(?m)^\s*(not supported|unsupported)\s+", text))
-    errors = len(re.findall(r"(?m)^(Error:|FAIL\b|\w+Error:)", text, re.IGNORECASE))
+    clean_text = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    tested = len(re.findall(r"(?m)^\s*testing\s+", clean_text))
+    explicit_passes = len(re.findall(r"(?m)^\s*pass\s+", clean_text, re.IGNORECASE))
+    skipped = len(
+        re.findall(r"(?m)^\s*(?:not supported|unsupported)\s+", clean_text, re.IGNORECASE)
+    )
+    explicit_failures = len(re.findall(r"(?m)^\s*fail\s+", clean_text, re.IGNORECASE))
+    errors = len(re.findall(r"(?m)^\s*(?:Error:|\w+Error:)", clean_text)) + explicit_failures
     if result.exit_code != 0 and errors == 0:
         errors = 1
-    passed = max(0, tested - errors)
+    passed = explicit_passes if explicit_passes > 0 else max(0, tested - errors)
     failures: list[dict[str, object]] = []
     if errors > 0:
         failures.append(
@@ -374,13 +484,18 @@ def resolve_conformance_dll_path() -> Path:
     return expected
 
 
-def run_conformance(release_blocking: bool) -> int:
+def run_conformance(release_blocking: bool, explicit_official_root: str | None) -> int:
     """Run the full Phase 121 measured conformance baseline."""
 
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
 
+    checkout_error = prepare_official_checkout(explicit_official_root)
+    if checkout_error:
+        write_skipped_report(checkout_error)
+        return 1 if release_blocking else 0
+
     if not OFFICIAL_CONFORMANCE.exists():
-        write_skipped_report("third-party/mcap/regression_checks/conformance was not found.")
+        write_skipped_report(f"Official conformance harness was not found at {OFFICIAL_CONFORMANCE}.")
         return 1 if release_blocking else 0
 
     if shutil.which("dotnet") is None:
@@ -404,6 +519,7 @@ def run_conformance(release_blocking: bool) -> int:
 
     copy_directory_without_local_state(OFFICIAL_ROOT, OVERLAY_ROOT)
     add_csharp_runner_overlay()
+    prepare_data_directory()
 
     env = {"U2F_MCAP_CONFORMANCE_DLL": str(resolve_conformance_dll_path())}
 
@@ -477,7 +593,7 @@ def main(argv: list[str]) -> int:
     if args.ci_smoke:
         write_ci_smoke_report()
         return 0
-    return run_conformance(bool(args.release_blocking))
+    return run_conformance(bool(args.release_blocking), args.official_root)
 
 
 if __name__ == "__main__":

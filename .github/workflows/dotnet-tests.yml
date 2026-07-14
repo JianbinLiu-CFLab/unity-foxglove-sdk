@@ -22,6 +22,13 @@ jobs:
         with:
           dotnet-version: "10.0"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack for the pinned official MCAP harness
+        run: corepack enable
+
       - name: Restore Roslyn analyzer project
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj --ignore-failed-sources
 
@@ -37,8 +44,8 @@ jobs:
       - name: Run validation suite
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
-      - name: Run MCAP conformance wrapper CI smoke
-        run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --ci-smoke --report-path build/mcap-conformance/phase121-conformance-ci-smoke.json
+      - name: Run official MCAP differential conformance
+        run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
 
       - name: Restore xUnit unit test project
         run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj --ignore-failed-sources
@@ -56,6 +63,14 @@ jobs:
           name: unit-test-results
           path: build/TestResults/Unit
           if-no-files-found: ignore
+
+      - name: Upload MCAP differential report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcap-differential-report
+          path: build/mcap-conformance/phase121-conformance-report.json
+          if-no-files-found: error
 
   analyzer-freshness:
     runs-on: windows-latest

@@ -116,7 +116,9 @@ namespace Unity.FoxgloveSDK.Tests
             var script = ReadRepoText("Scripts/mcap/conformance/run_phase121_conformance.py");
             foreach (var required in new[]
             {
-                "third-party/mcap",
+                "OFFICIAL_REPOSITORY_URL",
+                "prepare_official_checkout",
+                "prepare_data_directory",
                 "build/mcap-conformance",
                 "--report-path",
                 "phase121-conformance-report.json",
@@ -146,6 +148,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!script.Contains("third-party/mcap/regression_checks/conformance/scripts/run-tests/runners/index.ts", StringComparison.Ordinal),
                 "121-C3: wrapper does not require editing tracked upstream runner index in place");
+            Check(script.Contains("git", StringComparison.Ordinal)
+                  && script.Contains("--depth", StringComparison.Ordinal)
+                  && script.Contains("EXPECTED_OBSERVED_COMMIT", StringComparison.Ordinal),
+                "121-C4: wrapper bootstraps the exact public official implementation in build output");
         }
 
         private static void VerifyReportContract()
