@@ -43,7 +43,6 @@ CSHARP_RUNNER_INSERTION = (
     "  new CsharpWriterTestRunner(),"
 )
 CSHARP_CONFORMANCE_DLL_NAME = "Unity2Foxglove.McapConformance.dll"
-RUNNER_TIMEOUT_SECONDS = 300
 FAILURE_DETAILS_MAX_CHARACTERS = 4000
 FAILURE_DETAILS_TAIL_CHARACTERS = 800
 
@@ -200,7 +199,6 @@ def prepare_official_checkout(explicit_root: str | None) -> str | None:
             "origin",
             EXPECTED_OBSERVED_COMMIT,
         ],
-        timeout_seconds=300,
     )
     if fetch.exit_code != 0:
         return "Unable to fetch the pinned official MCAP commit: " + first_lines(
@@ -454,10 +452,10 @@ def package_manager_command() -> tuple[list[str], str] | None:
     return None
 
 
-def run_package_manager(base_command: list[str], args: Iterable[str], *, cwd: Path, timeout_seconds: int) -> CommandResult:
+def run_package_manager(base_command: list[str], args: Iterable[str], *, cwd: Path) -> CommandResult:
     """Run the selected package manager with additional arguments."""
 
-    return invoke_command_capture(base_command + list(args), cwd=cwd, timeout_seconds=timeout_seconds)
+    return invoke_command_capture(base_command + list(args), cwd=cwd)
 
 
 def count_generated_variants() -> int:
@@ -539,7 +537,7 @@ def run_conformance(release_blocking: bool, explicit_official_root: str | None) 
 
     env = {"U2F_MCAP_CONFORMANCE_DLL": str(resolve_conformance_dll_path())}
 
-    install = run_package_manager(package_command, ["install", "--immutable"], cwd=OVERLAY_ROOT, timeout_seconds=600)
+    install = run_package_manager(package_command, ["install", "--immutable"], cwd=OVERLAY_ROOT)
     if install.exit_code != 0:
         write_skipped_report("Yarn dependencies are unavailable: " + first_lines(install.stdout + install.stderr))
         return 1 if release_blocking else 0
@@ -548,7 +546,6 @@ def run_conformance(release_blocking: bool, explicit_official_root: str | None) 
         package_command,
         ["workspace", "@foxglove/mcap-conformance", "generate-inputs", "--data-dir", str(DATA_DIR)],
         cwd=OVERLAY_ROOT,
-        timeout_seconds=300,
     )
     if generate.exit_code != 0:
         write_skipped_report("Official fixture generation failed: " + first_lines(generate.stdout + generate.stderr))
@@ -574,7 +571,6 @@ def run_conformance(release_blocking: bool, explicit_official_root: str | None) 
             ],
             cwd=OVERLAY_ROOT,
             env=env,
-            timeout_seconds=RUNNER_TIMEOUT_SECONDS,
         )
         runner_reports.append(measure_runner_output(runner_name, kind, result))
 
