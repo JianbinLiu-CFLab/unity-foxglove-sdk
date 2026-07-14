@@ -11,6 +11,30 @@ using System.IO;
 
 namespace Unity.FoxgloveSDK.IO
 {
+    internal interface IMcapAmendmentFileOperations
+    {
+        void Replace(string sourcePath, string destinationPath, string backupPath);
+        void Move(string sourcePath, string destinationPath);
+        bool Exists(string path);
+    }
+
+    internal sealed class McapAmendmentFileOperations : IMcapAmendmentFileOperations
+    {
+        public static readonly McapAmendmentFileOperations Instance = new McapAmendmentFileOperations();
+
+        private McapAmendmentFileOperations()
+        {
+        }
+
+        public void Replace(string sourcePath, string destinationPath, string backupPath)
+            => File.Replace(sourcePath, destinationPath, backupPath, ignoreMetadataErrors: true);
+
+        public void Move(string sourcePath, string destinationPath)
+            => File.Move(sourcePath, destinationPath);
+
+        public bool Exists(string path) => File.Exists(path);
+    }
+
     /// <summary>
     /// Appends post-recording metadata, attachments, and private records to an
     /// indexed MCAP file. Close writes a complete sibling temp file first, then
@@ -23,6 +47,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly McapFileSummary _summary;
         private readonly McapTrailerInfo _trailer;
         private readonly bool _enableCrcs;
+        private readonly IMcapAmendmentFileOperations _fileOperations;
         private FileStream _sourceStream;
         private readonly List<PendingMetadata> _metadata = new List<PendingMetadata>();
         private readonly List<PendingAttachment> _attachments = new List<PendingAttachment>();
@@ -37,12 +62,21 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         public McapAmendmentWriter(string filePath, bool enableCrcs)
+            : this(filePath, enableCrcs, McapAmendmentFileOperations.Instance)
+        {
+        }
+
+        internal McapAmendmentWriter(
+            string filePath,
+            bool enableCrcs,
+            IMcapAmendmentFileOperations fileOperations)
         {
             if (string.IsNullOrEmpty(filePath))
                 throw new ArgumentException("MCAP file path is required.", nameof(filePath));
 
             _filePath = Path.GetFullPath(filePath);
             _enableCrcs = enableCrcs;
+            _fileOperations = fileOperations ?? throw new ArgumentNullException(nameof(fileOperations));
             _sourceStream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             try
             {
@@ -290,21 +324,21 @@ namespace Unity.FoxgloveSDK.IO
             var backupPath = CreateBackupPath(_filePath);
             try
             {
-                File.Replace(tempPath, _filePath, backupPath, ignoreMetadataErrors: true);
+                _fileOperations.Replace(tempPath, _filePath, backupPath);
             }
             catch (PlatformNotSupportedException)
             {
-                File.Move(_filePath, backupPath);
+                _fileOperations.Move(_filePath, backupPath);
                 try
                 {
-                    File.Move(tempPath, _filePath);
+                    _fileOperations.Move(tempPath, _filePath);
                 }
                 catch (Exception replaceError)
                 {
                     try
                     {
-                        if (!File.Exists(_filePath) && File.Exists(backupPath))
-                            File.Move(backupPath, _filePath);
+                        if (!_fileOperations.Exists(_filePath) && _fileOperations.Exists(backupPath))
+                            _fileOperations.Move(backupPath, _filePath);
                     }
                     catch (Exception restoreError)
                     {

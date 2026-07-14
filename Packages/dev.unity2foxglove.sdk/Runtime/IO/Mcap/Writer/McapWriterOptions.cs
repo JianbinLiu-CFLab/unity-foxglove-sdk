@@ -139,6 +139,41 @@ namespace Unity.FoxgloveSDK.IO
             return copy;
         }
 
+        /// <summary>
+        /// Rejects option values that <see cref="Normalize"/> would repair or
+        /// discard. Use this at explicit conformance boundaries when silently
+        /// changing an advanced writer configuration is not acceptable.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The current option combination is not canonical and interoperable.
+        /// </exception>
+        public void ValidateStrict()
+        {
+            if (ChunkSizeBytes <= 0 || ChunkSizeBytes > MaxChunkSizeBytes)
+                throw new InvalidOperationException(
+                    $"ChunkSizeBytes must be between 1 and {MaxChunkSizeBytes} in strict mode.");
+
+            if (Compression == null)
+                throw new InvalidOperationException("Compression must not be null in strict mode; use an empty string for no compression.");
+            if (Compression != "" && Compression != "lz4" && Compression != "zstd")
+                throw new InvalidOperationException("Compression must be empty, 'lz4', or 'zstd' in strict mode.");
+            if (!Enum.IsDefined(typeof(LZ4Level), Lz4CompressionLevel))
+                throw new InvalidOperationException("Lz4CompressionLevel is not a defined LZ4 level.");
+
+            if ((IndexTypes & ~McapIndexTypes.All) != 0)
+                throw new InvalidOperationException("IndexTypes contains unknown flags.");
+
+            if (!UseChunking && (IndexTypes & (McapIndexTypes.Chunk | McapIndexTypes.Message)) != 0)
+                throw new InvalidOperationException("Chunk and Message indexes require UseChunking in strict mode.");
+
+            if (UseChunking && HasIndex(McapIndexTypes.Chunk) && (!RepeatSchemas || !RepeatChannels))
+                throw new InvalidOperationException(
+                    "Chunk indexes require RepeatSchemas and RepeatChannels in strict mode.");
+
+            if (UseStatistics && !RepeatChannels)
+                throw new InvalidOperationException("Statistics require RepeatChannels in strict mode.");
+        }
+
         /// <summary>True when the given index group is enabled after normalization.</summary>
         public bool HasIndex(McapIndexTypes type) => (IndexTypes & type) == type;
     }
