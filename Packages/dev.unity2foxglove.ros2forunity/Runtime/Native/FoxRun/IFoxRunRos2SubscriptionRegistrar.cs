@@ -12,7 +12,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// <summary>
     /// Receives generated, statically typed subscription bindings. Implementations
     /// own mailbox and transport lifecycle; generated delegates own message graph
-    /// copying, main-thread assignment, conditional clearing, and disposal.
+    /// copying, main-thread assignment, conditional clearing, and disposal. The
+    /// registrar records each typed registration outcome on its binding rather
+    /// than asking generated user code to interpret transport failures.
     /// </summary>
     public interface IFoxRunRos2SubscriptionRegistrar
     {

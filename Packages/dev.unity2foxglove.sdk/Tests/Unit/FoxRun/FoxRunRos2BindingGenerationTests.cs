@@ -646,7 +646,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     public sealed class FoxRunRos2GeneratedContract
     {
         public FoxRunRos2GeneratedContract(string id, string topic, string declaringType,
-            string memberName, string canonicalRosType, string declaredProvider, string ros2Qos) { }
+            string memberName, string canonicalRosType,
+            Unity.FoxgloveSDK.Components.FoxRunMode mode,
+            Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
+            Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative) { }
     }
     public sealed class FoxRunRos2CopyContext { public void RequireBytes(long value) { } }
     public interface IFoxRunRos2SubscriptionSource
@@ -670,7 +673,7 @@ namespace Demo { public partial class Receiver { private sensor_msgs.msg.Imu _in
             var output = CSharpCompilation.Create(
                 "phase179_generated_imu_" + distro,
                 new[] { CSharpSyntaxTree.ParseText(generated, parseOptions), host },
-                references.Concat(new[] { nativeReference }),
+                references.Concat(new[] { CoreAttributeAssembly.Value, nativeReference }),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             Assert.DoesNotContain(
@@ -868,8 +871,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 "contract constructor omits qos",
                 CompleteNativeSeamSource.Replace(
-                    "string memberName, string canonicalRosType, string declaredProvider, string ros2Qos)",
-                    "string memberName, string canonicalRosType, string declaredProvider)")
+                    "Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative)",
+                    "bool supportsNative)")
             };
             yield return new object[]
             {
@@ -1089,6 +1092,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Assert.DoesNotContain("IFoxgloveInputSource", source, StringComparison.Ordinal);
             Assert.DoesNotContain("FoxRunInboundJson", source, StringComparison.Ordinal);
             Assert.DoesNotContain("TryReadFoxRunProtobuf", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunMode)1", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunSubscriptionProvider.Ros2Native", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunRos2QosPreset.SensorData", source, StringComparison.Ordinal);
+            Assert.Contains("                true)", source, StringComparison.Ordinal);
 
             var tree = CSharpSyntaxTree.ParseText(
                 source,
@@ -1192,6 +1199,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Assert.Contains("IFoxRunRos2SubscriptionSource", nativePartial, StringComparison.Ordinal);
             Assert.Contains("Register<global::std_msgs.msg.String>", nativePartial, StringComparison.Ordinal);
             Assert.Contains(nativeTopic, nativePartial, StringComparison.Ordinal);
+            Assert.Contains("FoxRunMode)1", nativePartial, StringComparison.Ordinal);
+            Assert.Contains("FoxRunSubscriptionProvider.Ros2Native", nativePartial, StringComparison.Ordinal);
+            Assert.Contains("FoxRunRos2QosPreset.SensorData", nativePartial, StringComparison.Ordinal);
             Assert.DoesNotContain("IFoxgloveInputSource", nativePartial, StringComparison.Ordinal);
             Assert.DoesNotContain(jsonTopic, nativePartial, StringComparison.Ordinal);
             Assert.DoesNotContain(protobufTopic, nativePartial, StringComparison.Ordinal);
@@ -1284,7 +1294,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     public sealed class FoxRunRos2GeneratedContract
     {
         public FoxRunRos2GeneratedContract(string id, string topic, string declaringType,
-            string memberName, string canonicalRosType, string declaredProvider, string ros2Qos) { }
+            string memberName, string canonicalRosType,
+            Unity.FoxgloveSDK.Components.FoxRunMode mode,
+            Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
+            Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative) { }
     }
     public sealed class FoxRunRos2CopyContext
     {
@@ -1331,7 +1344,12 @@ namespace Demo
             var compilation = CSharpCompilation.Create(
                 "phase179_generated_native_string",
                 sources,
-                PlatformReferences().Concat(new[] { Ros2Contract.Value.Reference, nativeReference }),
+                PlatformReferences().Concat(new[]
+                {
+                    CoreAttributeAssembly.Value,
+                    Ros2Contract.Value.Reference,
+                    nativeReference
+                }),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
             Assert.DoesNotContain(
@@ -1345,8 +1363,8 @@ namespace Demo
             const string boundary = "tab\t nul\0 control\u0001 lines\u2028\u2029 surrogate\uD800 quote\" slash\\";
             var topic = "/phase179/" + boundary;
             var canonical = "std_msgs/msg/String|" + boundary;
-            var provider = "ros2-native|" + boundary;
-            var qos = "sensor-data|" + boundary;
+            const string provider = FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider;
+            const string qos = FoxRunGenerationDescriptorConstants.SensorDataRos2Qos;
             var shape = MessageShape(
                 "std_msgs.msg.String",
                 canonical,
@@ -1390,23 +1408,35 @@ namespace Demo
             var support = CSharpSyntaxTree.ParseText(@"
 using System;
 namespace ROS2 { public interface Message { } }
+namespace Unity.FoxgloveSDK.Components
+{
+    public enum FoxRunMode { PublishOnly, SubscribeOnly, PublishAndSubscribe }
+    public enum FoxRunSubscriptionProvider { Inherit, FoxgloveWebSocket, Ros2Native }
+    public enum FoxRunRos2QosPreset { Inherit, Default, Reliable, SensorData, TransientLocal }
+}
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     public sealed class FoxRunRos2GeneratedContract
     {
         public FoxRunRos2GeneratedContract(string id, string topic, string declaringType,
-            string memberName, string canonicalRosType, string declaredProvider, string ros2Qos)
+            string memberName, string canonicalRosType,
+            Unity.FoxgloveSDK.Components.FoxRunMode mode,
+            Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
+            Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative)
         {
             Id = id; Topic = topic; DeclaringType = declaringType; MemberName = memberName;
-            CanonicalRosType = canonicalRosType; DeclaredProvider = declaredProvider; Ros2Qos = ros2Qos;
+            CanonicalRosType = canonicalRosType; Mode = mode; SubscriptionProvider = provider;
+            QosPreset = qos; SupportsRos2Native = supportsNative;
         }
         public string Id { get; }
         public string Topic { get; }
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string CanonicalRosType { get; }
-        public string DeclaredProvider { get; }
-        public string Ros2Qos { get; }
+        public Unity.FoxgloveSDK.Components.FoxRunMode Mode { get; }
+        public Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider SubscriptionProvider { get; }
+        public Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset QosPreset { get; }
+        public bool SupportsRos2Native { get; }
     }
     public sealed class FoxRunRos2CopyContext { public void RequireBytes(long value) { } }
     public interface IFoxRunRos2SubscriptionSource
@@ -1466,8 +1496,10 @@ namespace TestSupport
             Assert.Equal("Demo.Receiver", Get(contract, "DeclaringType"));
             Assert.Equal("_incoming", Get(contract, "MemberName"));
             Assert.Equal(canonical, Get(contract, "CanonicalRosType"));
-            Assert.Equal(provider, Get(contract, "DeclaredProvider"));
-            Assert.Equal(qos, Get(contract, "Ros2Qos"));
+            Assert.Equal(1, Convert.ToInt32(Get(contract, "Mode")));
+            Assert.Equal(2, Convert.ToInt32(Get(contract, "SubscriptionProvider")));
+            Assert.Equal(3, Convert.ToInt32(Get(contract, "QosPreset")));
+            Assert.Equal(true, Get(contract, "SupportsRos2Native"));
         }
 
         [Fact]
@@ -1503,14 +1535,22 @@ using System;
 using System.Collections.Generic;
 namespace UnityEngine { }
 namespace UnityEngine.Scripting { public sealed class PreserveAttribute : Attribute { } }
-namespace Unity.FoxgloveSDK.Components { }
+namespace Unity.FoxgloveSDK.Components
+{
+    public enum FoxRunMode { PublishOnly, SubscribeOnly, PublishAndSubscribe }
+    public enum FoxRunSubscriptionProvider { Inherit, FoxgloveWebSocket, Ros2Native }
+    public enum FoxRunRos2QosPreset { Inherit, Default, Reliable, SensorData, TransientLocal }
+}
 namespace ROS2 { public interface Message { } }
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     public sealed class FoxRunRos2GeneratedContract
     {
         public FoxRunRos2GeneratedContract(string id, string topic, string declaringType,
-            string memberName, string canonicalRosType, string declaredProvider, string ros2Qos) { }
+            string memberName, string canonicalRosType,
+            Unity.FoxgloveSDK.Components.FoxRunMode mode,
+            Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
+            Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative) { }
     }
     public sealed class FoxRunRos2CopyContext
     {
@@ -2260,7 +2300,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     public sealed class FoxRunRos2GeneratedContract
     {
         public FoxRunRos2GeneratedContract(string id, string topic, string declaringType,
-            string memberName, string canonicalRosType, string declaredProvider, string ros2Qos) { }
+            string memberName, string canonicalRosType,
+            Unity.FoxgloveSDK.Components.FoxRunMode mode,
+            Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
+            Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative) { }
     }
     public sealed class FoxRunRos2CopyContext
     {
@@ -2314,7 +2357,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var compilation = CSharpCompilation.Create(
                 "Unity2Foxglove.Ros2ForUnity.Native",
                 new[] { CSharpSyntaxTree.ParseText(source) },
-                PlatformReferences().Concat(new[] { Ros2Contract.Value.Reference }),
+                PlatformReferences().Concat(new[]
+                {
+                    CoreAttributeAssembly.Value,
+                    Ros2Contract.Value.Reference
+                }),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             using var image = new MemoryStream();
             var emit = compilation.Emit(image);

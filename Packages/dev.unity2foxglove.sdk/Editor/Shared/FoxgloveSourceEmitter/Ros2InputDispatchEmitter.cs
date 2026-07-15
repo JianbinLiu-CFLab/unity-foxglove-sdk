@@ -85,12 +85,42 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(declaringType) + "\",");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.MemberName) + "\",");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(shape.CanonicalRosType) + "\",");
-            sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.SubscriptionProvider) + "\",");
-            sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.Ros2Qos) + "\"),");
+            sb.AppendLine(pad + "                " + ModeLiteral(member.Mode) + ",");
+            sb.AppendLine(pad + "                " + SubscriptionProviderLiteral(member.SubscriptionProvider) + ",");
+            sb.AppendLine(pad + "                " + QosLiteral(member.Ros2Qos) + ",");
+            sb.AppendLine(pad + "                " + (member.GeneratesRos2NativeRegistration ? "true" : "false") + "),");
             sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),");
             sb.AppendLine(pad + "            static owned => __FoxRunRos2Dispose_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2Apply_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2ClearIfOwned_" + index + "(owned));");
+        }
+
+        private static string ModeLiteral(int mode)
+            => "(global::Unity.FoxgloveSDK.Components.FoxRunMode)" +
+               mode.ToString(CultureInfo.InvariantCulture);
+
+        private static string SubscriptionProviderLiteral(string provider)
+        {
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                    StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native";
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                    StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.FoxgloveWebSocket";
+            return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Inherit";
+        }
+
+        private static string QosLiteral(string qos)
+        {
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.DefaultRos2Qos, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default";
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.ReliableRos2Qos, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable";
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.SensorDataRos2Qos, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData";
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos, StringComparison.Ordinal))
+                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.TransientLocal";
+            return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Inherit";
         }
 
         internal static string BuildContractId(

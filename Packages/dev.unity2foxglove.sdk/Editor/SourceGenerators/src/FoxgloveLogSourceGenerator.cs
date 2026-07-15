@@ -702,6 +702,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             private const string CopyContextMetadataName =
                 "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext";
             private const string Ros2MessageMetadataName = "ROS2.Message";
+            private const string FoxRunModeMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunMode";
+            private const string SubscriptionProviderMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider";
+            private const string Ros2QosMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset";
 
             public NativeCompilationEvidence(bool hasNativeDefine, bool hasNativeAssemblyReference)
             {
@@ -831,13 +837,31 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 INamedTypeSymbol contract)
             {
                 var stringType = compilation.GetSpecialType(SpecialType.System_String);
+                var boolType = compilation.GetSpecialType(SpecialType.System_Boolean);
+                var mode = compilation.GetTypeByMetadataName(FoxRunModeMetadataName);
+                var provider = compilation.GetTypeByMetadataName(SubscriptionProviderMetadataName);
+                var qos = compilation.GetTypeByMetadataName(Ros2QosMetadataName);
+                if (mode == null || provider == null || qos == null)
+                    return false;
+                var expected = new ITypeSymbol[]
+                {
+                    stringType,
+                    stringType,
+                    stringType,
+                    stringType,
+                    stringType,
+                    mode,
+                    provider,
+                    qos,
+                    boolType
+                };
                 return contract.InstanceConstructors.Any(constructor =>
                     constructor.DeclaredAccessibility == Accessibility.Public
-                    && constructor.Parameters.Length == 7
+                    && constructor.Parameters.Length == expected.Length
+                    && constructor.Parameters.Select(parameter => parameter.Type)
+                        .SequenceEqual(expected, SymbolEqualityComparer.Default)
                     && constructor.Parameters.All(parameter =>
-                        parameter.RefKind == RefKind.None
-                        && !parameter.IsOptional
-                        && SymbolEqualityComparer.Default.Equals(parameter.Type, stringType)));
+                        parameter.RefKind == RefKind.None && !parameter.IsOptional));
             }
 
             private static bool HasExactCopyContextSeam(

@@ -34,8 +34,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("where T : ROS2.Message, new()", registrar, StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2CopyContext", registrar, StringComparison.Ordinal);
             Assert.Contains("public sealed class FoxRunRos2GeneratedContract", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunMode mode", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunSubscriptionProvider subscriptionProvider", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunRos2QosPreset qosPreset", contract, StringComparison.Ordinal);
+            Assert.Contains("HasCompleteMetadata", contract, StringComparison.Ordinal);
             Assert.DoesNotContain("reflection", registrar, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("dynamic", registrar, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void NativeInboundHostDoesNotRequireWebSocketInputMetadata()
+        {
+            var root = FindRepoRoot();
+            var host = File.ReadAllText(Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun",
+                "FoxRunRos2SubscriptionHub.cs"));
+
+            Assert.Contains("IFoxRunRos2SubscriptionSource", host, StringComparison.Ordinal);
+            Assert.DoesNotContain("IFoxgloveInputSource", host, StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxgloveInputTopicInfo", host, StringComparison.Ordinal);
         }
 
         [Fact]

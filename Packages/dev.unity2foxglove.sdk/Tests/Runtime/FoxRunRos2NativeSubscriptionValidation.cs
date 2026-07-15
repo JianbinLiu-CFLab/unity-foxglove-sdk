@@ -38,6 +38,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyExistingR2fuSinkRemainsOutboundOnly();
             VerifyTypedGenerationAndNativeCatalogExclusion();
             VerifyOptionalCompilationLanes();
+            VerifyNativeHostLifecycleBoundary();
+            VerifyManualOwnershipProbe();
             VerifyRegistryAndProjectWiring();
 
             Console.WriteLine(
@@ -312,6 +314,280 @@ namespace Unity.FoxgloveSDK.Tests
                 "Native compile-only stubs expose only the source-owned R2FU node and subscription seam");
         }
 
+        private static void VerifyNativeHostLifecycleBoundary()
+        {
+            const string nativeRoot =
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/";
+            var hub = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                nativeRoot + "FoxRun/FoxRunRos2SubscriptionHub.cs");
+            var binding = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                nativeRoot + "FoxRun/FoxRunRos2SubscriptionBinding.cs");
+            var backend = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                nativeRoot + "FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
+
+            var bootstrap = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private static void Bootstrap()");
+            var ensureCreated = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "internal static bool EnsureCreated()");
+            var update = PhaseValidationSourceHelpers.SourceMethod(hub, "private void Update()");
+            var ensureNode = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private bool TryEnsureNodeOwner");
+            var scan = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private void ScanAndReconcile()");
+            var addBinding = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private void AddBinding<T>");
+            var nativeAdmission = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "internal bool CanUseNativeRuntimeNow()");
+            var beginShutdown = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private void BeginShutdown()");
+            var onDisable = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private void OnDisable()");
+            var callback = PhaseValidationSourceHelpers.SourceMethod(
+                binding,
+                "private void OnBorrowedMessage");
+            var stop = PhaseValidationSourceHelpers.SourceMethod(
+                binding,
+                "private void StopCore");
+            var backendRegister = PhaseValidationSourceHelpers.SourceMethod(
+                backend,
+                "public FoxRunRos2NativeBackendRegistration Register<T>");
+
+            Check(OccursBefore(bootstrap, "CanBootstrapBridge", "EnsureCreated()")
+                  && OccursBefore(ensureCreated, "CanBootstrapBridge", "new GameObject"),
+                "native subscription host creation remains behind the shared bootstrap gate");
+
+            Check(OccursBefore(update, "IsShuttingDownForBridge", "ResolveManager();")
+                  && OccursBefore(update, "BeginShutdown();", "ResolveManager();")
+                  && update.Contains("return;", StringComparison.Ordinal),
+                "native subscription Update stops before manager recovery, scans, or drains during shutdown");
+
+            var nativeGate = ensureNode.IndexOf(
+                "CanInitializeNativeRuntimeForBridge(gameObject.scene)",
+                StringComparison.Ordinal);
+            Check(nativeGate >= 0
+                  && nativeGate < ensureNode.IndexOf("_nodeOwner", StringComparison.Ordinal)
+                  && nativeGate < ensureNode.IndexOf("GetComponent<", StringComparison.Ordinal)
+                  && nativeGate < ensureNode.IndexOf("AddComponent<", StringComparison.Ordinal)
+                  && nativeGate < ensureNode.IndexOf(".Ok()", StringComparison.Ordinal)
+                  && nativeGate < ensureNode.IndexOf("CreateNode(", StringComparison.Ordinal)
+                  && OccursBefore(
+                      scan,
+                      "CanInitializeNativeRuntimeForBridge",
+                      "Binding.TryRegister()")
+                  && OccursBefore(
+                      addBinding,
+                      "CanInitializeNativeRuntimeForBridge",
+                      "binding.TryRegister()")
+                  && hub.Contains(
+                      "internal sealed class FoxRunRos2NativeRuntimeAdmission",
+                      StringComparison.Ordinal)
+                  && nativeAdmission.Contains(
+                      "_activeSession.ReadGeneration() >= 0",
+                      StringComparison.Ordinal)
+                  && nativeAdmission.Contains(
+                      "CanInitializeNativeRuntimeForBridge(",
+                      StringComparison.Ordinal)
+                  && nativeAdmission.Contains("_ownerScene", StringComparison.Ordinal)
+                  && ensureNode.Contains(
+                      "new FoxRunRos2NativeRuntimeAdmission(",
+                      StringComparison.Ordinal)
+                  && ensureNode.Contains(
+                      "admission.CanUseNativeRuntimeNow",
+                      StringComparison.Ordinal)
+                  && OccursBefore(
+                      backendRegister,
+                      "_canUseNativeRuntime()",
+                      "_driver.CreateSubscription("),
+                "every component lookup, R2FU readiness check, node creation, and subscription registration is lifecycle-gated");
+
+            Check(OccursBefore(beginShutdown, "_stopping = true", "SetManager(null);")
+                  && OccursBefore(beginShutdown, "SetManager(null);", "StopBindingsAndNode();")
+                  && beginShutdown.Contains(
+                      "Application.quitting -= OnApplicationQuitting;",
+                      StringComparison.Ordinal)
+                  && OccursBefore(onDisable, "_stopping = true", "BeginShutdown();")
+                  && OccursBefore(stop, "Volatile.Write(ref _stopping, 1)", "_slot.BeginStop")
+                  && OccursBefore(stop, "_slot.BeginStop", "_backend.RemoveSubscription")
+                  && OccursBefore(stop, "_backend.RemoveSubscription", "_slot.Stop")
+                  && OccursBefore(stop, "_slot.Stop", "ReleaseNodeIfClaimed"),
+                "shutdown closes callback admission, detaches subscriptions, drains owned copies, releases the node, and unsubscribes events in order");
+
+            var forbiddenCallbackTokens = new[]
+            {
+                "UnityEngine.Object",
+                "FindObject",
+                "GetComponent",
+                "AddComponent",
+                "ROS2UnityComponent.Ok",
+                "CreateNode",
+                "CreateSubscription",
+                "Debug.Log",
+                "SceneManager",
+            };
+            Check(forbiddenCallbackTokens.All(
+                      token => callback.IndexOf(token, StringComparison.Ordinal) < 0)
+                  && hub.Contains("_activeSession.ReadGeneration", StringComparison.Ordinal)
+                  && !addBinding.Contains("ActiveGeneration,", StringComparison.Ordinal)
+                  && !nativeAdmission.Contains(
+                      "FoxRunRos2SubscriptionHub",
+                      StringComparison.Ordinal)
+                  && backendRegister.Contains("_driver.CreateSubscription(", StringComparison.Ordinal)
+                  && backendRegister.Contains("callback,", StringComparison.Ordinal),
+                "executor callbacks retain only binding-owned managed state and never reacquire Unity or R2FU runtime services");
+        }
+
+        private static void VerifyManualOwnershipProbe()
+        {
+            const string probePath =
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase179Ros2OwnershipProbe.cs";
+            var probe = PhaseValidationSourceHelpers.ReadRequiredRepoText(probePath);
+            var probeMeta = PhaseValidationSourceHelpers.ReadRequiredRepoText(probePath + ".meta");
+            var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionDiagnostics.cs");
+            var binding = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs");
+            var slot = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2OwnedLatestSlot.cs");
+            var armBurst = PhaseValidationSourceHelpers.SourceMethod(
+                probe,
+                "public void ArmBurstAttempt()");
+            var emitBurst = PhaseValidationSourceHelpers.SourceMethod(
+                probe,
+                "private void TryEmitBurstLatestMarker");
+            var observe = PhaseValidationSourceHelpers.SourceMethod(
+                probe,
+                "private void ObserveGeneratedOwnedCopy()");
+            var repoRoot = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var probeMetaAbsolute = Path.Combine(
+                repoRoot,
+                (probePath + ".meta").Replace('/', Path.DirectorySeparatorChar));
+            var probeGuid = ReadUnityAssetGuid(probeMetaAbsolute);
+
+            Check(probe.Contains("/foxrun/phase179/string", StringComparison.Ordinal)
+                  && probe.Contains("Mode = FoxRunMode.SubscribeOnly", StringComparison.Ordinal)
+                  && probe.Contains(
+                      "SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native",
+                      StringComparison.Ordinal)
+                  && probe.Contains("Ros2Qos = FoxRunRos2QosPreset.Reliable", StringComparison.Ordinal)
+                  && probe.Contains("private std_msgs.msg.String inputString;", StringComparison.Ordinal)
+                  && probe.Contains(
+                      "BorrowedLifetimeEvidence => borrowedLifetimeEvidence",
+                      StringComparison.Ordinal),
+                "manual ownership probe declares the explicit native reliable String contract");
+
+            Check(probe.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
+                  && probe.Contains("ROS2 native subscription support is unavailable", StringComparison.Ordinal)
+                  && probe.Contains("nextFrameReadableCount", StringComparison.Ordinal)
+                  && probe.Contains("bindingReceivedCount", StringComparison.Ordinal)
+                  && probe.Contains("bindingReplacedCount", StringComparison.Ordinal)
+                  && probe.Contains("bindingAppliedCount", StringComparison.Ordinal)
+                  && probe.Contains("bindingPendingCount", StringComparison.Ordinal)
+                  && probe.Contains("disableNoApplyPassCount", StringComparison.Ordinal)
+                  && probe.Contains("PHASE179_ROS2_OWNERSHIP_APPLIED", StringComparison.Ordinal)
+                  && probe.Contains("PHASE179_ROS2_OWNERSHIP_NEXT_FRAME_READABLE", StringComparison.Ordinal)
+                  && probe.Contains("PHASE179_ROS2_OWNERSHIP_BURST_ARMED", StringComparison.Ordinal)
+                  && probe.Contains("PHASE179_ROS2_OWNERSHIP_BURST_LATEST", StringComparison.Ordinal)
+                  && probe.Contains("PHASE179_ROS2_OWNERSHIP_DISABLE_ARMED", StringComparison.Ordinal)
+                  && probe.Contains("PHASE179_ROS2_OWNERSHIP_DISABLE_CLEAN", StringComparison.Ordinal),
+                "manual ownership probe exposes bounded copied-value, latest-wins, and disable-clean evidence");
+
+            Check(diagnostics.Contains(
+                      "public readonly struct FoxRunRos2SubscriptionAcceptanceSnapshot",
+                      StringComparison.Ordinal)
+                  && diagnostics.Contains(
+                      "public readonly struct FoxRunRos2AcceptanceAttemptSnapshot",
+                      StringComparison.Ordinal)
+                  && diagnostics.Contains(
+                      "public static class FoxRunRos2SubscriptionAcceptanceDiagnostics",
+                      StringComparison.Ordinal)
+                  && diagnostics.Contains("public static FoxRunRos2AcceptanceArmStatus ArmAttempt", StringComparison.Ordinal)
+                  && diagnostics.Contains("public static bool TryGetAttempt", StringComparison.Ordinal)
+                  && diagnostics.Contains("public static bool EndAttempt", StringComparison.Ordinal)
+                  && diagnostics.Contains("public static bool TryCompleteAcceptanceAttempt", StringComparison.Ordinal)
+                  && diagnostics.Contains("IsSingleApplyLatestWinsComplete", StringComparison.Ordinal)
+                  && diagnostics.Contains("Received == Replaced + Applied", StringComparison.Ordinal)
+                  && probe.Contains(
+                      "FoxRunRos2SubscriptionAcceptanceDiagnostics.TryGet",
+                      StringComparison.Ordinal)
+                  && probe.Contains("bindingPendingCount > 0", StringComparison.Ordinal)
+                  && probe.Contains("_disablePendingArmed", StringComparison.Ordinal),
+                "managed diagnostics expose cumulative cleanup evidence and an explicit exact acceptance attempt");
+
+            Check(armBurst.Contains(
+                      "FoxRunRos2SubscriptionAcceptanceDiagnostics.ArmAttempt",
+                      StringComparison.Ordinal)
+                  && armBurst.Contains("FoxRunRos2AcceptanceArmStatus.Armed", StringComparison.Ordinal)
+                  && armBurst.Contains("CopyAttemptSnapshot", StringComparison.Ordinal)
+                  && emitBurst.Contains("!burstArmed", StringComparison.Ordinal)
+                  && emitBurst.Contains("SessionMatchesArmedToken", StringComparison.Ordinal)
+                  && probe.Contains("TryCompleteArmedBurstAttempt", StringComparison.Ordinal)
+                  && probe.Contains("TryCompleteAcceptanceAttempt", StringComparison.Ordinal)
+                  && probe.Contains("_latestAttemptSnapshot.Epoch != completedEpoch", StringComparison.Ordinal)
+                  && probe.Contains("IsSingleApplyLatestWinsComplete", StringComparison.Ordinal)
+                  && !emitBurst.Contains("TryGetAttempt", StringComparison.Ordinal)
+                  && !emitBurst.Contains("EndAttempt", StringComparison.Ordinal)
+                  && probe.Contains("finally", StringComparison.Ordinal)
+                  && probe.Contains("FoxRunRos2SubscriptionAcceptanceDiagnostics.EndAttempt", StringComparison.Ordinal)
+                  && !probe.Contains("Burst Baseline", StringComparison.Ordinal)
+                  && !probe.Contains("_burstBaseline", StringComparison.Ordinal)
+                  && !probe.Contains("HasPositiveBurstProgressFrom", StringComparison.Ordinal)
+                  && !probe.Contains("receivedDelta=", StringComparison.Ordinal)
+                  && !probe.Contains("inferredReplaced", StringComparison.OrdinalIgnoreCase),
+                "manual burst acceptance arms an idle epoch and requires exact one-apply latest-wins accounting for the matching token");
+
+            Check(binding.Contains("private long _acceptanceAdmission", StringComparison.Ordinal)
+                  && binding.Contains("_slot.PendingCount != 0", StringComparison.Ordinal)
+                  && binding.Contains("_acceptanceCallbacksInFlight", StringComparison.Ordinal)
+                  && binding.Contains("AcceptanceCompleting", StringComparison.Ordinal)
+                  && binding.Contains("AcceptanceCompleted", StringComparison.Ordinal)
+                  && binding.Contains("TryCompleteAcceptanceAttempt", StringComparison.Ordinal)
+                  && binding.Contains("var acceptanceEpoch = Volatile.Read(ref _acceptanceAdmission)", StringComparison.Ordinal)
+                  && binding.Contains("out var replacedPending", StringComparison.Ordinal)
+                  && binding.Contains("Interlocked.Increment(ref _acceptanceReplaced)", StringComparison.Ordinal)
+                  && slot.Contains("out bool replacedPending", StringComparison.Ordinal)
+                  && slot.Contains("replacedPending = true", StringComparison.Ordinal),
+                "acceptance admission excludes pending or in-flight history and counts actual pending replacement from callback entry");
+
+            Check(probe.Contains("private int _lastObservedLength", StringComparison.Ordinal)
+                  && probe.Contains("private ulong _lastObservedFingerprint", StringComparison.Ordinal)
+                  && probe.Contains("private int _pendingNextFrameLength", StringComparison.Ordinal)
+                  && probe.Contains("private ulong _pendingNextFrameFingerprint", StringComparison.Ordinal)
+                  && !probe.Contains("_lastObservedValue", StringComparison.Ordinal)
+                  && !probe.Contains("_pendingNextFrameValue", StringComparison.Ordinal)
+                  && OccursBefore(
+                      observe,
+                      "if (_burstCompletionPending)",
+                      "currentFingerprint == _lastObservedFingerprint")
+                  && OccursBefore(observe, "currentFingerprint == _lastObservedFingerprint", "TryParseBurstValue(")
+                  && probe.Contains("private bool CanEmitMarker", StringComparison.Ordinal)
+                  && probe.Contains("!_evidenceComplete", StringComparison.Ordinal)
+                  && CountOccurrences(probe, "if (CanEmitMarker)") >= 6,
+                "manual probe retains only bounded Inspector strings, fingerprints unchanged values, and stops constructing capped evidence markers");
+
+            Check(!string.IsNullOrEmpty(probeGuid)
+                  && probeMeta.Contains("MonoImporter:", StringComparison.Ordinal)
+                  && CountUnityAssetGuidOccurrences(repoRoot, probeGuid) == 1,
+                "manual ownership probe metadata keeps one unique 32-hex Unity GUID and a complete MonoImporter block");
+
+            Check(!probe.Contains("CreateSubscription", StringComparison.Ordinal)
+                  && !probe.Contains("CreateNode", StringComparison.Ordinal)
+                  && !probe.Contains("ROS2Node", StringComparison.Ordinal)
+                  && !probe.Contains("ISubscription", StringComparison.Ordinal)
+                  && !probe.Contains("OnRos2", StringComparison.Ordinal)
+                  && !probe.Contains("rawCallback", StringComparison.OrdinalIgnoreCase)
+                  && !probe.Contains("Debug.Log(inbound", StringComparison.Ordinal)
+                  && probe.Contains("MaximumMarkersPerEnable", StringComparison.Ordinal),
+                "manual ownership probe uses only the generated host and bounds diagnostics without retaining callback objects");
+        }
+
         private static void VerifyRegistryAndProjectWiring()
         {
             var entries = PhaseValidationRegistry.All
@@ -466,6 +742,24 @@ namespace Unity.FoxgloveSDK.Tests
                 .FirstOrDefault(value => value.StartsWith(prefix, StringComparison.Ordinal));
             var guid = line?.Substring(prefix.Length).Trim() ?? string.Empty;
             return guid.Length == 32 && guid.All(Uri.IsHexDigit) ? guid : string.Empty;
+        }
+
+        private static int CountUnityAssetGuidOccurrences(string repoRoot, string guid)
+        {
+            if (string.IsNullOrEmpty(guid))
+                return 0;
+
+            return new[]
+                {
+                    Path.Combine(repoRoot, "Packages"),
+                    Path.Combine(repoRoot, "Unity2Foxglove", "Assets"),
+                }
+                .Where(Directory.Exists)
+                .SelectMany(root => EnumerateSourceDefinitionFiles(root, "*.meta"))
+                .Count(path => string.Equals(
+                    ReadUnityAssetGuid(path),
+                    guid,
+                    StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool IsOptionalAsmdefReference(

@@ -25,6 +25,12 @@ namespace UnityEngine
         public AddComponentMenuAttribute(string menuName) { }
     }
 
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class DefaultExecutionOrderAttribute : Attribute
+    {
+        public DefaultExecutionOrderAttribute(int order) { }
+    }
+
     [AttributeUsage(AttributeTargets.Field)]
     public sealed class SerializeField : Attribute { }
 
@@ -36,18 +42,23 @@ namespace UnityEngine
 
     public class Object
     {
+        private static int s_nextId;
+        private readonly int _instanceId = ++s_nextId;
         public string name { get; set; }
         public HideFlags hideFlags { get; set; }
+        public int GetInstanceID() => _instanceId;
         public static T FindFirstObjectByType<T>() where T : class => null;
         public static T[] FindObjectsByType<T>(FindObjectsInactive inactive, FindObjectsSortMode sortMode)
             => Array.Empty<T>();
         public static void DestroyImmediate(Object value) { }
+        public static void Destroy(Object value) { }
         public static void DontDestroyOnLoad(Object value) { }
     }
 
     public class GameObject : Object
     {
         public GameObject(string objectName) { name = objectName; }
+        public UnityEngine.SceneManagement.Scene scene { get; set; }
         public T AddComponent<T>() where T : new() => new T();
     }
 
@@ -55,6 +66,7 @@ namespace UnityEngine
     {
         public bool isActiveAndEnabled { get; set; }
         public GameObject gameObject { get; set; }
+        public T GetComponent<T>() where T : class => null;
     }
 
     public static class Application
@@ -73,6 +85,20 @@ namespace UnityEngine
     public static class Debug
     {
         public static void LogWarning(object message) { }
+    }
+}
+
+namespace Unity.Profiling
+{
+    public readonly struct ProfilerMarker
+    {
+        public ProfilerMarker(string name) { }
+        public AutoScope Auto() => new AutoScope();
+
+        public readonly struct AutoScope : IDisposable
+        {
+            public void Dispose() { }
+        }
     }
 }
 
@@ -105,5 +131,7 @@ namespace Unity.FoxgloveSDK.Components
         public bool IsRunning { get; set; }
         public bool SuppressLivePublishersForReplay { get; set; }
         public ulong NowNs { get; set; }
+        public FoxRunSubscriptionSessionPolicy ActiveFoxRunSubscriptionSessionPolicy { get; set; }
+        public event Action<FoxRunSubscriptionSessionPolicy> FoxRunSubscriptionSessionChanged;
     }
 }

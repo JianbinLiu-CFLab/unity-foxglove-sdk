@@ -45,11 +45,14 @@
       <_Phase179Contract Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2GeneratedContract'" />
       <_Phase179Registrar Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2SubscriptionRegistrar'" />
       <_Phase179LifecycleGate Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeBridgeLifecycleGate'" />
+      <_Phase179InboundHub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2SubscriptionHub'" />
+      <_Phase179InboundBackend Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityFoxRunInboundBackend'" />
+      <_Phase179InboundDiagnostics Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2SubscriptionDiagnostics'" />
       <_Phase179CompileStub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeCompileStubs'" />
       <_Phase179UnrelatedNative Include="@(Compile)" Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/')) and '%(Compile.Filename)' != 'Ros2ForUnityNativeBridgeLifecycleGate' and !$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/FoxRun/'))" />
     </ItemGroup>
     <Error Condition="!$([System.String]::Copy('$(DefineConstants)').Contains('UNITY2FOXGLOVE_ROS2_FOR_UNITY'))" Text="Phase179 Native lane must define UNITY2FOXGLOVE_ROS2_FOR_UNITY." />
-    <Error Condition="'@(_Phase179Contract)' == '' or '@(_Phase179Registrar)' == '' or '@(_Phase179LifecycleGate)' == '' or '@(_Phase179CompileStub)' == ''" Text="Phase179 Native lane compiled no named host/binding/lifecycle/stub surface (vacuous green)." />
+    <Error Condition="'@(_Phase179Contract)' == '' or '@(_Phase179Registrar)' == '' or '@(_Phase179LifecycleGate)' == '' or '@(_Phase179InboundHub)' == '' or '@(_Phase179InboundBackend)' == '' or '@(_Phase179InboundDiagnostics)' == '' or '@(_Phase179CompileStub)' == ''" Text="Phase179 Native lane compiled no named host/binding/lifecycle/stub surface (vacuous green)." />
     <Error Condition="'@(_Phase179UnrelatedNative)' != ''" Text="Phase179 focused Native lane included unrelated native bridge sources: @(_Phase179UnrelatedNative)." />
   </Target>
 </Project>

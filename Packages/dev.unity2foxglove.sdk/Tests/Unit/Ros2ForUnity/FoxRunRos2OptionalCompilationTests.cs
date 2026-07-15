@@ -132,9 +132,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "ROS2.ROS2UnityComponent",
                 typeof(ROS2.ROS2UnityComponent).FullName);
             Assert.Equal(
+                "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionHub",
+                typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionHub).FullName);
+            Assert.Equal(
+                "Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityFoxRunInboundBackend",
+                typeof(Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityFoxRunInboundBackend).FullName);
+            Assert.Equal(
+                "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionDiagnostics",
+                typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2SubscriptionDiagnostics).FullName);
+            Assert.Equal(
                 "Unity2Foxglove.Ros2ForUnity.Native",
                 typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract)
                     .Assembly.GetName().Name);
+            var completeConstructor = typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract)
+                .GetConstructors()
+                .Single(constructor => constructor.GetParameters().Length == 9);
+            Assert.Equal(
+                new[]
+                {
+                    typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunMode),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset),
+                    typeof(bool)
+                },
+                completeConstructor.GetParameters().Select(parameter => parameter.ParameterType));
         }
 #else
         [Fact]
@@ -230,15 +252,16 @@ namespace Demo
         private std_msgs.msg.String _incoming;
     }
 }";
+            var coreReference = BuildCoreAttributeAssemblyReference();
             var references = PlatformReferences()
                 .Concat(new[]
                 {
-                    BuildCoreAttributeAssemblyReference(),
+                    coreReference,
                     JazzyReference("ros2cs_common.dll"),
                     JazzyReference("std_msgs_assembly.dll")
                 })
                 .Concat(includeNativeReference
-                    ? new[] { BuildNativeSeamReference(parseOptions) }
+                    ? new[] { BuildNativeSeamReference(parseOptions, coreReference) }
                     : Array.Empty<MetadataReference>())
                 .ToArray();
             var compilation = CSharpCompilation.Create(
@@ -271,7 +294,9 @@ namespace Demo
                 generatedSource);
         }
 
-        private static MetadataReference BuildNativeSeamReference(CSharpParseOptions parseOptions)
+        private static MetadataReference BuildNativeSeamReference(
+            CSharpParseOptions parseOptions,
+            MetadataReference coreReference)
         {
             var nativeRoot =
                 "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/";
@@ -279,13 +304,18 @@ namespace Demo
                 {
                     "IFoxRunRos2SubscriptionSource.cs",
                     "IFoxRunRos2SubscriptionRegistrar.cs",
+                    "FoxRunRos2CopyBudget.cs",
                     "FoxRunRos2GeneratedContract.cs"
                 }
                 .Select(file => CSharpSyntaxTree.ParseText(Text(nativeRoot + file), parseOptions));
             var compilation = CSharpCompilation.Create(
                 "Unity2Foxglove.Ros2ForUnity.Native",
                 trees,
-                PlatformReferences().Concat(new[] { JazzyReference("ros2cs_common.dll") }),
+                PlatformReferences().Concat(new[]
+                {
+                    coreReference,
+                    JazzyReference("ros2cs_common.dll")
+                }),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             using var image = new MemoryStream();
             var emit = compilation.Emit(image);
