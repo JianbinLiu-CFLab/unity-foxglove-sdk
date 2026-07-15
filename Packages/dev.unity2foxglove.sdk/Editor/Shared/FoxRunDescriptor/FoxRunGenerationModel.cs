@@ -153,6 +153,11 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string Topic;
         public readonly string SchemaName;
         public readonly string Encoding;
+        public readonly string SubscriptionProvider;
+        public readonly string Ros2Qos;
+        public readonly bool GeneratesWebSocketCodec;
+        public readonly bool GeneratesRos2NativeRegistration;
+        public readonly FoxRunRos2MessageShape Ros2MessageShape;
         public readonly int ProtobufFieldNumber;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly float RateHz;
@@ -198,7 +203,12 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 0,
             string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null)
+            FoxRunProtobufTypeShape protobufTypeShape = null,
+            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            bool generatesWebSocketCodec = true,
+            bool generatesRos2NativeRegistration = false,
+            FoxRunRos2MessageShape ros2MessageShape = null)
             : this(
                 ns,
                 className,
@@ -225,7 +235,12 @@ namespace Unity.FoxgloveSDK.Editor
                 mode,
                 encoding,
                 protobufFieldNumber,
-                protobufTypeShape)
+                protobufTypeShape,
+                subscriptionProvider,
+                ros2Qos,
+                generatesWebSocketCodec,
+                generatesRos2NativeRegistration,
+                ros2MessageShape)
         {
         }
 
@@ -255,7 +270,12 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 0,
             string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null)
+            FoxRunProtobufTypeShape protobufTypeShape = null,
+            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            bool generatesWebSocketCodec = true,
+            bool generatesRos2NativeRegistration = false,
+            FoxRunRos2MessageShape ros2MessageShape = null)
             : this(
                 ns,
                 className,
@@ -283,7 +303,12 @@ namespace Unity.FoxgloveSDK.Editor
                 mode,
                 encoding,
                 protobufFieldNumber,
-                protobufTypeShape)
+                protobufTypeShape,
+                subscriptionProvider,
+                ros2Qos,
+                generatesWebSocketCodec,
+                generatesRos2NativeRegistration,
+                ros2MessageShape)
         {
         }
 
@@ -314,7 +339,12 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 0,
             string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null)
+            FoxRunProtobufTypeShape protobufTypeShape = null,
+            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            bool generatesWebSocketCodec = true,
+            bool generatesRos2NativeRegistration = false,
+            FoxRunRos2MessageShape ros2MessageShape = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -332,6 +362,11 @@ namespace Unity.FoxgloveSDK.Editor
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             Encoding = encoding ?? string.Empty;
+            SubscriptionProvider = subscriptionProvider ?? string.Empty;
+            Ros2Qos = ros2Qos ?? string.Empty;
+            GeneratesWebSocketCodec = generatesWebSocketCodec;
+            GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
+            Ros2MessageShape = ros2MessageShape;
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
             HasNonFiniteRateHz = IsNonFinite(rateHz);
@@ -385,7 +420,12 @@ namespace Unity.FoxgloveSDK.Editor
                 CanonicalType,
                 Encoding,
                 ProtobufFieldNumber,
-                ProtobufTypeShape);
+                ProtobufTypeShape,
+                SubscriptionProvider,
+                Ros2Qos,
+                GeneratesWebSocketCodec,
+                GeneratesRos2NativeRegistration,
+                Ros2MessageShape);
         }
 
         private static string DefaultJsonFieldName(string memberName)
@@ -403,6 +443,30 @@ namespace Unity.FoxgloveSDK.Editor
                 case 0: return FoxRunGenerationDescriptorConstants.InheritEncoding;
                 case 1: return FoxRunGenerationDescriptorConstants.ProtobufEncoding;
                 case 2: return FoxRunGenerationDescriptorConstants.JsonEncoding;
+                default: return string.Empty;
+            }
+        }
+
+        public static string DeclaredSubscriptionProviderToText(int provider)
+        {
+            switch (provider)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
+                case 1: return FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider;
+                case 2: return FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider;
+                default: return string.Empty;
+            }
+        }
+
+        public static string DeclaredRos2QosToText(int qos)
+        {
+            switch (qos)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritRos2Qos;
+                case 1: return FoxRunGenerationDescriptorConstants.DefaultRos2Qos;
+                case 2: return FoxRunGenerationDescriptorConstants.ReliableRos2Qos;
+                case 3: return FoxRunGenerationDescriptorConstants.SensorDataRos2Qos;
+                case 4: return FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos;
                 default: return string.Empty;
             }
         }
@@ -459,4 +523,5 @@ namespace Unity.FoxgloveSDK.Editor
             return kind;
         }
     }
+
 }

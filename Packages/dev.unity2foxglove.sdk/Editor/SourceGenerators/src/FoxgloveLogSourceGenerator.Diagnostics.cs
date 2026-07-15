@@ -113,6 +113,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "FoxRun inbound fields must not be readonly and properties must have a setter",
             "FoxRun", DiagnosticSeverity.Error, true);
 
+        public static readonly DiagnosticDescriptor SharedInboundTargetNotWritable = new DiagnosticDescriptor(
+            "FOXRUN028", "FoxRun inbound target is not writable",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
         public static readonly DiagnosticDescriptor InvalidMemberKind = new DiagnosticDescriptor(
             "FOXRUN014", "FoxRun member kind invalid",
             "{0}: FoxRun member kind must be field or property",
@@ -162,6 +167,56 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "FOXRUN034", "PublishAndSubscribe wire encoding",
             "{0}: PublishAndSubscribe requires an explicit Protobuf or Json Encoding",
             "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidSubscriptionProvider = new DiagnosticDescriptor(
+            "FOXRUN035", "FoxRun subscription provider invalid",
+            "{0}: FoxRun SubscriptionProvider must be inherit, foxglove-websocket, or ros2-native",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor NativeSubscribeOnly = new DiagnosticDescriptor(
+            "FOXRUN036", "Native ROS2 subscription mode invalid",
+            "{0}: Ros2Native subscriptions are supported only for SubscribeOnly members",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor NativeEncoding = new DiagnosticDescriptor(
+            "FOXRUN037", "Native ROS2 encoding invalid",
+            "{0}: Ros2Native subscriptions cannot declare JSON or Protobuf Encoding",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageIdentity = new DiagnosticDescriptor(
+            "FOXRUN038", "Native ROS2 message interface invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageConstructor = new DiagnosticDescriptor(
+            "FOXRUN039", "Native ROS2 message constructor missing",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageNamespace = new DiagnosticDescriptor(
+            "FOXRUN040", "Native ROS2 message namespace invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2SchemaMismatch = new DiagnosticDescriptor(
+            "FOXRUN041", "Native ROS2 schema name mismatch",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageShape = new DiagnosticDescriptor(
+            "FOXRUN042", "Native ROS2 message shape unsupported",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MissingNativeAssemblyReference = new DiagnosticDescriptor(
+            "FOXRUN043", "Native ROS2 assembly reference missing",
+            "{0}: native ROS2 generation requires an assembly reference to Unity2Foxglove.Ros2ForUnity.Native",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor IgnoredRos2Qos = new DiagnosticDescriptor(
+            "FOXRUN044", "ROS2 QoS policy ignored",
+            "{0}: Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription",
+            "FoxRun", DiagnosticSeverity.Warning, true);
 
         public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
         {
@@ -280,6 +335,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN032": return MixedTopicWireEncoding;
                 case "FOXRUN033": return DuplicateProtobufFieldNumber;
                 case "FOXRUN034": return BidirectionalInheritedWireEncoding;
+                case "FOXRUN035": return InvalidSubscriptionProvider;
+                case "FOXRUN036": return NativeSubscribeOnly;
+                case "FOXRUN037": return NativeEncoding;
+                case "FOXRUN038": return Ros2MessageIdentity;
+                case "FOXRUN039": return Ros2MessageConstructor;
+                case "FOXRUN040": return Ros2MessageNamespace;
+                case "FOXRUN041": return Ros2SchemaMismatch;
+                case "FOXRUN042": return Ros2MessageShape;
+                case "FOXRUN043": return MissingNativeAssemblyReference;
+                case "FOXRUN044": return IgnoredRos2Qos;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
@@ -288,10 +353,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN025": return IgnoredSubscribePolicy;
                 case "FOXRUN026": return BidirectionalAuthority;
                 case "FOXRUN027": return InboundNaming;
+                case "FOXRUN028": return SharedInboundTargetNotWritable;
                 default:
                     return UnknownFoxRunDiagnostic(id);
             }
         }
+
+        public static bool SharedUsesDetailedMessage(string id)
+            => id == "FOXRUN028"
+               || id == "FOXRUN038"
+               || id == "FOXRUN039"
+               || id == "FOXRUN040"
+               || id == "FOXRUN041"
+               || id == "FOXRUN042";
 
         public static DiagnosticDescriptor Member(string id)
         {

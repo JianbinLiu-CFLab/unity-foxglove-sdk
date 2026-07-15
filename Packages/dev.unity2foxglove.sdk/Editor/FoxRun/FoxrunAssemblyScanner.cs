@@ -163,7 +163,8 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber));
+                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
+                        subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
                 }
 
                 var aggregateField = fi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -185,7 +186,8 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber));
+                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
+                        subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
                 }
 
                 var aggregateField = pi.GetCustomAttribute<FoxRunFieldAttribute>();

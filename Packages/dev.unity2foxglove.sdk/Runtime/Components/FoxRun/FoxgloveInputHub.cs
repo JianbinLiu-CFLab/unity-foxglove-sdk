@@ -129,6 +129,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _subscriptionsEnabled = policy.SubscriptionsEnabled;
+            _router.DefaultSubscriptionProvider = policy.DefaultProvider;
             _router.DefaultSubscriptionWireEncoding = policy.WebSocketSubscriptionEncoding;
             _router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;
         }

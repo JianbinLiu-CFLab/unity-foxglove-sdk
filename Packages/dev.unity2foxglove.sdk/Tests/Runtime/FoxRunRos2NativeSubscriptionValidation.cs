@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         public static void Validate()
         {
-            Console.WriteLine("\n--- FoxRun Native ROS2 Subscription Boundary ---");
+            Console.WriteLine("\n--- FoxRun Native ROS2 Subscription Generation Boundary ---");
             _passed = 0;
 
             VerifyWireEncodingAndProviderAxes();
@@ -36,10 +36,12 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyIndependentManagerSubscriptionSession();
             VerifyLegacyProviderMigrationDefaultsToWebSocket();
             VerifyExistingR2fuSinkRemainsOutboundOnly();
+            VerifyTypedGenerationAndNativeCatalogExclusion();
+            VerifyOptionalCompilationLanes();
             VerifyRegistryAndProjectWiring();
 
             Console.WriteLine(
-                "FoxRun native ROS2 subscription boundary: " + _passed + " checks passed.\n");
+                "FoxRun native ROS2 subscription generation boundary: " + _passed + " checks passed.\n");
         }
 
         private static void VerifyWireEncodingAndProviderAxes()
@@ -110,6 +112,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "core asmdef references remain free of optional ROS2 For Unity dependencies");
 
             var forbiddenProjectReferences = EnumerateSourceDefinitionFiles(coreRoot, "*.csproj")
+                .Where(path => !IsTestProjectPath(coreRoot, path))
                 .SelectMany(ReadProjectDependencyReferences)
                 .Where(IsOptionalNativeDependency)
                 .ToArray();
@@ -230,18 +233,97 @@ namespace Unity.FoxgloveSDK.Tests
                 "existing R2FU topic sink remains outbound-only without subscription ownership");
         }
 
+        private static void VerifyTypedGenerationAndNativeCatalogExclusion()
+        {
+            var emitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/Shared/FoxgloveSourceEmitter/Ros2InputDispatchEmitter.cs");
+            var router = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
+            var catalog = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunSubscriptionCatalog.cs");
+
+            var registerIndex = emitter.IndexOf("registrar.Register<", StringComparison.Ordinal);
+            var copyIndex = emitter.IndexOf(
+                "static (source, budget) => __FoxRunRos2Copy_",
+                registerIndex < 0 ? 0 : registerIndex,
+                StringComparison.Ordinal);
+            var applyIndex = emitter.IndexOf(
+                "owned => __FoxRunRos2Apply_",
+                registerIndex < 0 ? 0 : registerIndex,
+                StringComparison.Ordinal);
+            Check(registerIndex >= 0
+                  && copyIndex > registerIndex
+                  && applyIndex > copyIndex
+                  && !emitter.Contains("MakeGenericMethod", StringComparison.Ordinal)
+                  && !emitter.Contains("Activator", StringComparison.Ordinal)
+                  && !emitter.Contains("dynamic", StringComparison.Ordinal)
+                  && !emitter.Contains("Enqueue", StringComparison.Ordinal),
+                "generated native registration is closed-generic and supplies owned copy before apply without raw enqueue");
+
+            Check(router.Contains("info.DeclaredSubscriptionProvider", StringComparison.Ordinal)
+                  && router.Contains("info.SupportsRos2Native", StringComparison.Ordinal)
+                  && router.Contains(
+                      "provider.Provider != FoxRunSubscriptionProvider.FoxgloveWebSocket",
+                      StringComparison.Ordinal)
+                  && catalog.Contains("binding.SupportsRos2Native", StringComparison.Ordinal)
+                  && catalog.Contains(
+                      "resolution.Provider != FoxRunSubscriptionProvider.FoxgloveWebSocket",
+                      StringComparison.Ordinal)
+                  && !catalog.Contains("\"cdr\"", StringComparison.OrdinalIgnoreCase),
+                "byte router and subscription catalog exclude effective native contracts and never advertise cdr");
+        }
+
+        private static void VerifyOptionalCompilationLanes()
+        {
+            var props = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Tests/FoxgloveSdk.TestSurface.props");
+            var unitProject = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Tests/Unit/FoxgloveSdk.UnitTests.csproj");
+            var runtimeProject = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var nativeStub = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Tests/NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs");
+
+            Check(props.Contains("Runtime/Native/**/*.cs", StringComparison.Ordinal)
+                  && props.Contains("Runtime/Native/FoxRun/**/*.cs", StringComparison.Ordinal)
+                  && props.Contains("Ros2ForUnityNativeBridgeLifecycleGate.cs", StringComparison.Ordinal)
+                  && props.Contains("ros2cs_common.dll", StringComparison.Ordinal)
+                  && props.Contains("ros2cs_core.dll", StringComparison.Ordinal)
+                  && props.Contains("std_msgs_assembly.dll", StringComparison.Ordinal)
+                  && props.Contains("geometry_msgs_assembly.dll", StringComparison.Ordinal)
+                  && props.Contains("sensor_msgs_assembly.dll", StringComparison.Ordinal),
+                "shared test surface removes broad Native sources, re-includes FoxRun plus lifecycle gate, and pins Jazzy managed references");
+
+            Check(unitProject.Contains("IncludeRos2ForUnityNative", StringComparison.Ordinal)
+                  && unitProject.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
+                  && unitProject.Contains("ValidatePhase179NativeCompileSurface", StringComparison.Ordinal)
+                  && unitProject.Contains("Ros2ForUnityNativeCompileStubs.cs", StringComparison.Ordinal)
+                  && runtimeProject.Contains("IncludeRos2ForUnityNative", StringComparison.Ordinal)
+                  && runtimeProject.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
+                  && runtimeProject.Contains("ValidatePhase179NativeCompileSurface", StringComparison.Ordinal)
+                  && runtimeProject.Contains("Ros2ForUnityNativeCompileStubs.cs", StringComparison.Ordinal),
+                "unit and runtime Native lanes imply adapter compilation, activate the define, and reject vacuous compile sets");
+
+            Check(nativeStub.Contains("class ROS2UnityComponent", StringComparison.Ordinal)
+                  && nativeStub.Contains("class ROS2Node", StringComparison.Ordinal)
+                  && nativeStub.Contains("CreateSubscription<T>", StringComparison.Ordinal)
+                  && nativeStub.Contains("RemoveSubscription(ISubscriptionBase", StringComparison.Ordinal)
+                  && nativeStub.Contains("where T : Message, new()", StringComparison.Ordinal),
+                "Native compile-only stubs expose only the source-owned R2FU node and subscription seam");
+        }
+
         private static void VerifyRegistryAndProjectWiring()
         {
             var entries = PhaseValidationRegistry.All
                 .Where(item => string.Equals(item.Flag, "--phase179", StringComparison.Ordinal))
                 .ToArray();
             Check(entries.Length == 1
-                  && entries[0].Name == "FoxRun native ROS2 subscription boundary"
+                  && entries[0].Name == "FoxRun native ROS2 subscription generation boundary"
                   && entries[0].Category == ValidationCategory.CiSafe
-                  && entries[0].Evidence == ValidationEvidence.Structural
+                  && entries[0].Evidence == (ValidationEvidence.Behavior | ValidationEvidence.Structural)
                   && !entries[0].IncludeInDefault
                   && entries[0].Run.Method.DeclaringType == typeof(FoxRunRos2NativeSubscriptionValidation),
-                "native subscription registry entry is singular, structural, CI-safe, and excluded from default");
+                "native subscription registry entry is singular, behavior-and-structural, CI-safe, and excluded from default");
 
             var registry = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Tests/Runtime/PhaseValidationRegistry.cs");
@@ -335,6 +417,13 @@ namespace Unity.FoxgloveSDK.Tests
                     StringSplitOptions.RemoveEmptyEntries)
                 .Any(segment => string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
                                 || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsTestProjectPath(string coreRoot, string path)
+        {
+            var relative = Path.GetRelativePath(coreRoot, path)
+                .Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            return relative.StartsWith("Tests" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         }
 
         private static IReadOnlyDictionary<string, AsmdefIdentity> BuildAsmdefGuidIndex(

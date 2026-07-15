@@ -134,10 +134,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyReportAndEmptyManifest()
         {
-            var empty = FoxRunManifestBuilder.Build(Array.Empty<FoxRunManifestMember>());
+            var empty = FoxRunManifestBuilder.Build(
+                Array.Empty<FoxRunManifestMember>(),
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
             var emptyJson = FoxRunManifestJsonWriter.WriteCanonical(empty);
             var emptyAgainJson = FoxRunManifestJsonWriter.WriteCanonical(
-                FoxRunManifestBuilder.Build(Array.Empty<FoxRunManifestMember>()));
+                FoxRunManifestBuilder.Build(
+                    Array.Empty<FoxRunManifestMember>(),
+                    manifestVersion: FoxrunManifestWriter.CurrentManifestVersion));
             Check(emptyJson == emptyAgainJson
                   && empty.Sections.FoxRun.Types.Count == 0
                   && FoxRunManifestHasher.IsLowercaseSha256Hex(empty.GlobalManifestHash),
@@ -219,9 +223,13 @@ namespace Unity.FoxgloveSDK.Tests
             var manifestCode = string.Join("\n", TextFiles(ManifestDir)
                 .Concat(new[] { RepoPath(ManifestWriterPath), RepoPath(PlayModeHookPath) })
                 .Select(File.ReadAllText));
-            foreach (var token in new[] { "typed publisher", "ROS2", "MCAP", "replay" })
+            foreach (var token in new[] { "typed publisher", "MCAP", "replay" })
                 Check(!manifestCode.Contains(token, StringComparison.OrdinalIgnoreCase),
                     "112-F2: manifest code avoids out-of-scope token: " + token);
+            Check(FoxrunManifestWriter.CurrentManifestVersion == 2
+                  && manifestCode.Contains("subscriptions", StringComparison.Ordinal)
+                  && manifestCode.Contains("SupportsRos2Native", StringComparison.Ordinal),
+                "112-F2a: manifest v2 owns the native ROS2 subscription contract section");
 
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
             Check(project.Contains("Phase112Validation.cs", StringComparison.Ordinal)

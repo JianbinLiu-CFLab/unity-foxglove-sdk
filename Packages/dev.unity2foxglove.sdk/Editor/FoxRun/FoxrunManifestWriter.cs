@@ -18,6 +18,7 @@ namespace Unity.FoxgloveSDK.Editor
         public const string ManifestJsonFileName = "foxrun.manifest.json";
         public const string ManifestHashFileName = "foxrun.manifest.hash";
         public const string ManifestReportFileName = "foxrun.manifest.report.json";
+        public const int CurrentManifestVersion = 2;
         private const int ReplaceAttempts = 3;
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
@@ -30,7 +31,9 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrEmpty(outputDirectory))
                 throw new ArgumentException("Output directory is required.", nameof(outputDirectory));
 
-            var manifest = FoxRunManifestBuilder.Build(members ?? Array.Empty<FoxRunManifestMember>());
+            var manifest = FoxRunManifestBuilder.Build(
+                members ?? Array.Empty<FoxRunManifestMember>(),
+                manifestVersion: CurrentManifestVersion);
             var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
             Directory.CreateDirectory(outputDirectory);
             var manifestChanged = WriteIfChanged(Path.Combine(outputDirectory, ManifestJsonFileName), canonical);

@@ -21,6 +21,11 @@ namespace Unity.FoxgloveSDK.Editor
         private const string MixedWireEncodingDiagnosticId = "FOXRUN032";
         private const string DuplicateProtobufFieldNumberDiagnosticId = "FOXRUN033";
         private const string BidirectionalInheritedWireEncodingDiagnosticId = "FOXRUN034";
+        private const string InvalidSubscriptionProviderDiagnosticId = "FOXRUN035";
+        private const string NativeSubscribeOnlyDiagnosticId = "FOXRUN036";
+        private const string NativeEncodingDiagnosticId = "FOXRUN037";
+        private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN041";
+        private const string IgnoredRos2QosDiagnosticId = "FOXRUN044";
         private const float DefaultRateHz = 10f;
 
         private static readonly string[] UnityNativeContainerPrefixes =
@@ -66,6 +71,31 @@ namespace Unity.FoxgloveSDK.Editor
         private static void ValidateMember(FoxRunGenerationMember member, List<FoxRunGenerationDiagnostic> diagnostics)
         {
             var target = member.DeclaringType + "." + member.MemberName;
+            var hasValidNativeCapability = HasValidNativeCapability(member);
+            var hasTargetedNativeDiagnostics = HasTargetedNativeDiagnostics(member.Ros2MessageShape);
+            var requiresWebSocketShapeValidation = RequiresWebSocketShapeValidation(
+                member,
+                hasValidNativeCapability);
+
+            if (!member.GeneratesWebSocketCodec
+                && !member.GeneratesRos2NativeRegistration
+                && !(RequiresNativeShapeValidation(member) && hasTargetedNativeDiagnostics))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    "FOXRUN006",
+                    target,
+                    member.MemberName,
+                    "FoxRun member has no supported WebSocket codec or native ROS2 registration capability."));
+            }
+
+            if (member.GeneratesRos2NativeRegistration && !hasValidNativeCapability)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    "FOXRUN006",
+                    target,
+                    member.MemberName,
+                    "FoxRun native ROS2 registration requires a validated host-neutral message-copy shape."));
+            }
 
             if (string.IsNullOrWhiteSpace(member.ClassName))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN011", target, member.MemberName, "FoxRun declaring class name is required."));
@@ -82,7 +112,65 @@ namespace Unity.FoxgloveSDK.Editor
             if (!IsKnownDeclaredEncoding(member.Encoding))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidWireEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be inherit, json, or protobuf."));
 
-            if (member.Mode == 2
+            if (!IsKnownSubscriptionProvider(member.SubscriptionProvider))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidSubscriptionProviderDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun SubscriptionProvider must be inherit, foxglove-websocket, or ros2-native."));
+            }
+
+            if (IsNativeProvider(member.SubscriptionProvider) && member.Mode != 1)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    NativeSubscribeOnlyDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Ros2Native subscriptions are supported only for SubscribeOnly members."));
+            }
+
+            if (IsNativeProvider(member.SubscriptionProvider)
+                && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    NativeEncodingDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Ros2Native is a typed native subscription and cannot declare JSON or Protobuf Encoding."));
+            }
+
+            if (string.Equals(
+                    member.SubscriptionProvider,
+                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                    StringComparison.Ordinal)
+                && !string.Equals(member.Ros2Qos, FoxRunGenerationDescriptorConstants.InheritRos2Qos, StringComparison.Ordinal))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
+                    IgnoredRos2QosDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription."));
+            }
+
+            AppendNativeShapeDiagnostics(member, target, diagnostics);
+
+            if (IsNativeProvider(member.SubscriptionProvider)
+                && member.Ros2MessageShape != null
+                && !string.IsNullOrWhiteSpace(member.SchemaName)
+                && !string.IsNullOrWhiteSpace(member.Ros2MessageShape.CanonicalRosType)
+                && !string.Equals(member.SchemaName, member.Ros2MessageShape.CanonicalRosType, StringComparison.Ordinal))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    Ros2SchemaMismatchDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Explicit SchemaName '" + member.SchemaName + "' does not match validated ROS type '"
+                    + member.Ros2MessageShape.CanonicalRosType + "'."));
+            }
+
+            if (requiresWebSocketShapeValidation
+                && member.Mode == 2
                 && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
@@ -92,7 +180,7 @@ namespace Unity.FoxgloveSDK.Editor
                     "PublishAndSubscribe requires an explicit Protobuf or Json Encoding because it has one shared bidirectional wire contract."));
             }
 
-            if (member.ProtobufFieldNumber != 0)
+            if (requiresWebSocketShapeValidation && member.ProtobufFieldNumber != 0)
             {
                 try
                 {
@@ -108,7 +196,8 @@ namespace Unity.FoxgloveSDK.Editor
                 }
             }
 
-            if (member.Mode != 0
+            if (requiresWebSocketShapeValidation
+                && member.Mode != 0
                 && (member.IsAggregateMember
                     || (member.IsArray
                         && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))))
@@ -118,7 +207,8 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     "FoxRun inbound collections require explicit Protobuf encoding; aggregate members remain unsupported."));
 
-            if (member.Mode != 0
+            if (requiresWebSocketShapeValidation
+                && member.Mode != 0
                 && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
                 && member.ProtobufTypeShape != null
                 && !IsInboundAssignable(member.ProtobufTypeShape))
@@ -166,7 +256,8 @@ namespace Unity.FoxgloveSDK.Editor
             if (IsInvalidConditionName(member.Unless))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(UnlessConditionMissingDiagnosticId, target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
 
-            if (!FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType)
+            if (requiresWebSocketShapeValidation
+                && !FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType)
                 && (!string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
                     || member.ProtobufTypeShape == null))
             {
@@ -180,14 +271,14 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN006", target, member.MemberName, message));
             }
 
-            if (member.IsAggregateMember && member.IsArray)
+            if (requiresWebSocketShapeValidation && member.IsAggregateMember && member.IsArray)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                     "FOXRUN020",
                     target,
                     member.MemberName,
                     "FoxRun aggregate array fields are not supported yet; publish a scalar aggregate field or keep the array as a field-level topic."));
 
-            if (IsUnsupportedGenericMember(member))
+            if (requiresWebSocketShapeValidation && IsUnsupportedGenericMember(member))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN007", target, member.MemberName, "Generic FoxRun member type may be unsafe for IL2CPP contract governance."));
 
             if (string.IsNullOrEmpty(member.Topic) || !member.Topic.StartsWith("/", StringComparison.Ordinal))
@@ -204,9 +295,88 @@ namespace Unity.FoxgloveSDK.Editor
             if (member.HasNonFiniteForceIntervalSeconds)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "ForceIntervalSeconds must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
 
-            if (IsBinaryLike(member.RawObservedTypeName) || IsBinaryLike(member.EmissionTypeName) || IsBinaryLike(member.CanonicalType)
-                || (member.IsArray && member.CanonicalType == "uint8"))
+            if (requiresWebSocketShapeValidation
+                && (IsBinaryLike(member.RawObservedTypeName) || IsBinaryLike(member.EmissionTypeName) || IsBinaryLike(member.CanonicalType)
+                    || (member.IsArray && member.CanonicalType == "uint8")))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN010", target, member.MemberName, "Binary/blob values are not supported in the FoxRun contract path."));
+        }
+
+        private static bool HasValidNativeCapability(FoxRunGenerationMember member)
+        {
+            var shape = member.Ros2MessageShape;
+            return member.GeneratesRos2NativeRegistration
+                && shape != null
+                && shape.HasPublicParameterlessConstructor
+                && shape.ImplementsRos2Message
+                && shape.Diagnostics.Count == 0;
+        }
+
+        private static bool HasTargetedNativeDiagnostics(FoxRunRos2MessageShape shape)
+        {
+            if (shape == null)
+                return false;
+            foreach (var value in shape.Diagnostics)
+            {
+                if (FoxRunRos2ShapeDiagnostic.TryDecode(value, out var id, out _, out _)
+                    && id.StartsWith("FOXRUN", StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static void AppendNativeShapeDiagnostics(
+            FoxRunGenerationMember member,
+            string target,
+            ICollection<FoxRunGenerationDiagnostic> diagnostics)
+        {
+            if (!RequiresNativeShapeValidation(member)
+                || member.Ros2MessageShape == null)
+                return;
+            foreach (var encoded in member.Ros2MessageShape.Diagnostics)
+            {
+                if (!FoxRunRos2ShapeDiagnostic.TryDecode(encoded, out var id, out var path, out var message))
+                    continue;
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    id,
+                    target,
+                    member.MemberName,
+                    (string.IsNullOrEmpty(path) ? target : path) + ": " + message));
+            }
+        }
+
+        private static bool RequiresNativeShapeValidation(FoxRunGenerationMember member)
+            => IsNativeProvider(member.SubscriptionProvider)
+               || (string.Equals(
+                       member.SubscriptionProvider,
+                       FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                       StringComparison.Ordinal)
+                   && !member.GeneratesWebSocketCodec);
+
+        private static bool RequiresWebSocketShapeValidation(
+            FoxRunGenerationMember member,
+            bool hasValidNativeCapability)
+        {
+            if (string.Equals(
+                member.SubscriptionProvider,
+                FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (string.Equals(
+                member.SubscriptionProvider,
+                FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                StringComparison.Ordinal))
+            {
+                return member.GeneratesWebSocketCodec || !hasValidNativeCapability;
+            }
+
+            return string.Equals(
+                member.SubscriptionProvider,
+                FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                StringComparison.Ordinal);
         }
 
         private static void ValidateTopicGroups(FoxRunGenerationType type, List<FoxRunGenerationDiagnostic> diagnostics)
@@ -350,6 +520,14 @@ namespace Unity.FoxgloveSDK.Editor
                    || string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal)
                    || string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal);
         }
+
+        private static bool IsKnownSubscriptionProvider(string provider)
+            => string.Equals(provider, FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider, StringComparison.Ordinal)
+               || string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal)
+               || IsNativeProvider(provider);
+
+        private static bool IsNativeProvider(string provider)
+            => string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal);
 
         private static bool IsInboundAssignable(FoxRunProtobufTypeShape shape)
         {

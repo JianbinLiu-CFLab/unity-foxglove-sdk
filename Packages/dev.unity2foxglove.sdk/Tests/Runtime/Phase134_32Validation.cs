@@ -45,10 +45,18 @@ namespace Unity.FoxgloveSDK.Tests
             Check(project.Contains("<IncludeRos2ForUnityAdapter Condition=\"'$(IncludeRos2ForUnityAdapter)' == ''\">false</IncludeRos2ForUnityAdapter>", StringComparison.Ordinal),
                 "134-32A-1: test project defaults optional R2FU adapter compilation to false");
             Check(project.Contains("../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs", StringComparison.Ordinal)
-                  && project.Contains("Condition=\"'$(IncludeRos2ForUnityAdapter)' == 'true' and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')\"", StringComparison.Ordinal),
-                "134-32A-2: optional R2FU adapter sources compile only behind explicit property and path check");
+                  && project.Contains("('$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true') and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')", StringComparison.Ordinal),
+                "134-32A-2: optional R2FU sources compile only behind explicit adapter/native property and path checks");
             Check(!project.Contains("<Compile Include=\"../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs\" LinkBase=\"Ros2ForUnityRuntime\" />", StringComparison.Ordinal),
                 "134-32A-3: test project no longer unconditionally compiles optional R2FU adapter sources");
+            Check(project.Contains("<IncludeRos2ForUnityNative Condition=\"'$(IncludeRos2ForUnityNative)' == ''\">false</IncludeRos2ForUnityNative>", StringComparison.Ordinal)
+                  && project.Contains("<IncludeRos2ForUnityAdapter Condition=\"'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''\">true</IncludeRos2ForUnityAdapter>", StringComparison.Ordinal)
+                  && project.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal),
+                "134-32A-4: native lane is opt-in, implies adapter compilation, and defines the R2FU symbol");
+            Check(project.Contains("<Compile Remove=\"../../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs\"", StringComparison.Ordinal)
+                  && project.Contains("Runtime/Native/FoxRun/**/*.cs", StringComparison.Ordinal)
+                  && project.Contains("Ros2ForUnityNativeBridgeLifecycleGate.cs", StringComparison.Ordinal),
+                "134-32A-5: native lane whitelists FoxRun bindings and the lifecycle gate after removing unrelated native bridges");
         }
 
         private static void VerifyAdapterFacadeValidationsUseReflection()

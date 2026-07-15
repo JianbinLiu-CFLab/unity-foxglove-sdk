@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
@@ -18,6 +19,72 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
     public sealed class FoxRunInboundTests
     {
+        [Fact]
+        public void InputTopicAndRouterExposeProviderCapabilitySessionSurface()
+        {
+            Assert.NotNull(typeof(FoxgloveInputTopicInfo).GetProperty("DeclaredSubscriptionProvider"));
+            Assert.NotNull(typeof(FoxgloveInputTopicInfo).GetProperty("SupportsWebSocket"));
+            Assert.NotNull(typeof(FoxgloveInputTopicInfo).GetProperty("SupportsRos2Native"));
+            Assert.NotNull(typeof(FoxRunInputRouter).GetProperty("DefaultSubscriptionProvider"));
+
+            var constructor = typeof(FoxgloveInputTopicInfo).GetConstructor(new[]
+            {
+                typeof(string),
+                typeof(FoxRunWireEncoding),
+                typeof(FoxRunMode),
+                typeof(FoxRunSubscriptionProvider),
+                typeof(bool),
+                typeof(bool)
+            });
+            Assert.NotNull(constructor);
+        }
+
+        [Fact]
+        public void RouterRoutesCoexistingContractsOnlyToCapturedWebSocketProvider()
+        {
+            var input = new MultiProviderInput();
+            var router = new FoxRunInputRouter
+            {
+                DefaultSubscriptionProvider = FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Protobuf
+            };
+            router.Register(input);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                router.Dispatch("/phase179/json", Array.Empty<byte>(), "json", 1).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                router.Dispatch("/phase179/dual", Array.Empty<byte>(), "protobuf", 2).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch("/phase179/native", Array.Empty<byte>(), "protobuf", 3).Status);
+
+            router.DefaultSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native;
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                router.Dispatch("/phase179/dual", Array.Empty<byte>(), "protobuf", 4).Status);
+
+            var nativeDefaultRouter = new FoxRunInputRouter
+            {
+                DefaultSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+                DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Json
+            };
+            nativeDefaultRouter.Register(input);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                nativeDefaultRouter.Dispatch("/phase179/json", Array.Empty<byte>(), "json", 5).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                nativeDefaultRouter.Dispatch("/phase179/dual", Array.Empty<byte>(), "json", 6).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                nativeDefaultRouter.Dispatch("/phase179/native", Array.Empty<byte>(), "json", 7).Status);
+            Assert.Equal(new[] { 2, 2, 0 }, input.ApplyCounts);
+        }
+
         [Fact]
         public void JsonDecoderReadsDeclaredVectorShape()
         {
@@ -277,10 +344,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 sessionPolicy,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "_router.DefaultSubscriptionProvider = policy.DefaultProvider;",
+                sessionPolicy,
+                StringComparison.Ordinal);
+            Assert.Contains(
                 "_router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;",
                 sessionPolicy,
                 StringComparison.Ordinal);
-            Assert.DoesNotContain("Ros2Native", source, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("cdr", source, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -463,6 +533,49 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public bool FoxgloveInput_TryApply(int topicIndex, byte[] payload, string encoding, out string error)
             {
                 ApplyCount++;
+                error = string.Empty;
+                return true;
+            }
+        }
+
+        private sealed class MultiProviderInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo[] _topics =
+            {
+                new(
+                    "/phase179/json",
+                    FoxRunWireEncoding.Json,
+                    FoxRunMode.SubscribeOnly,
+                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false),
+                new(
+                    "/phase179/dual",
+                    FoxRunWireEncoding.Inherit,
+                    FoxRunMode.SubscribeOnly,
+                    FoxRunSubscriptionProvider.Inherit,
+                    supportsWebSocket: true,
+                    supportsRos2Native: true),
+                new(
+                    "/phase179/native",
+                    FoxRunWireEncoding.Inherit,
+                    FoxRunMode.SubscribeOnly,
+                    FoxRunSubscriptionProvider.Ros2Native,
+                    supportsWebSocket: true,
+                    supportsRos2Native: true)
+            };
+
+            public int[] ApplyCounts { get; } = new int[3];
+            public int FoxgloveInput_TopicCount => _topics.Length;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
+
+            public bool FoxgloveInput_TryApply(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                ApplyCounts[topicIndex]++;
                 error = string.Empty;
                 return true;
             }

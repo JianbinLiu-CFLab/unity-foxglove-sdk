@@ -216,7 +216,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Path.Combine(packageRoot, "Samples~")
             };
 
-            var forbidden = new[]
+            var forbiddenTextTokens = new[]
             {
                 "using ROS2;",
                 "namespace ROS2",
@@ -232,14 +232,23 @@ namespace Unity.FoxgloveSDK.Tests
                          .Where(HasTextExtension))
             {
                 var text = File.ReadAllText(path);
+                var forbidden = Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                    ? PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(text, forbiddenTextTokens)
+                    : forbiddenTextTokens.Where(token => text.Contains(token, StringComparison.Ordinal));
                 hits.AddRange(forbidden
-                    .Where(token => text.Contains(token, StringComparison.Ordinal))
                     .Select(token => Path.GetRelativePath(root, path).Replace('\\', '/') + " -> " + token));
             }
 
             Check(hits.Count == 0,
                 "107-C2: core package Runtime/Editor/Samples have no hard R2FU dependency"
                 + (hits.Count == 0 ? string.Empty : " (" + string.Join(", ", hits) + ")"));
+            Check(!PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(
+                        "const string NativeAssembly = \"Unity2Foxglove.Ros2ForUnity.Native\";",
+                        forbiddenTextTokens).Any()
+                  && PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(
+                        "using Unity2Foxglove.Ros2ForUnity.Native;",
+                        forbiddenTextTokens).Contains("Ros2ForUnity", StringComparer.Ordinal),
+                "107-C3: core dependency scan ignores generated namespace strings but rejects compiled namespace references");
         }
 
         private static void VerifyDocsBoundary()

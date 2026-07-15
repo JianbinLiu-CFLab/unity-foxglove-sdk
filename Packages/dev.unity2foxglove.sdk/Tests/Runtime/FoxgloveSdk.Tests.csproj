@@ -5,7 +5,16 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IncludeRos2ForUnityNative Condition="'$(IncludeRos2ForUnityNative)' == ''">false</IncludeRos2ForUnityNative>
+    <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
+    <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
+    <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityNative)' == 'true'">native</Phase179OptionalCompilationLane>
+    <AssemblyName Condition="'$(IncludeRos2ForUnityNative)' == 'true'">Unity2Foxglove.Ros2ForUnity.Native</AssemblyName>
+    <OutputPath>$(BaseOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="K4os.Compression.LZ4.Streams" Version="1.3.8" />
@@ -21,6 +30,8 @@
     <Compile Include="../../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
     <Compile Include="../../Runtime/Components/FoxService/IFoxgloveServiceSource.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxRun*.cs" />
+    <Compile Include="../../Runtime/Components/FoxRun/FoxgloveLogHub.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../Runtime/Components/FoxRun/FoxTopic*.cs" />
     <Compile Include="../../Runtime/Components/FoxRun/IFoxTopic*.cs" />
     <Compile Include="../../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
@@ -397,7 +408,12 @@
     <Compile Include="Phase134_34Validation.cs" />
     <Compile Include="Phase134_35Validation.cs" />
     <Compile Include="Phase163_33Validation.cs" />
-    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="('$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true') and Exists('../../../dev.unity2foxglove.ros2forunity/Runtime')" />
+    <Compile Remove="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityRuntime/Native/FoxRun" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="McapRecordReader.cs" />
     <Compile Include="TempMcapHelper.cs" />
     <Compile Include="../../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
@@ -415,4 +431,23 @@
     <Compile Include="../../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
     <Compile Include="../../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
   </ItemGroup>
+  <ItemGroup Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <Reference Include="ros2cs_common" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_common.dll" Private="true" />
+    <Reference Include="ros2cs_core" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_core.dll" Private="true" />
+    <Reference Include="std_msgs_assembly" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/std_msgs_assembly.dll" Private="true" />
+    <Reference Include="geometry_msgs_assembly" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/geometry_msgs_assembly.dll" Private="true" />
+    <Reference Include="sensor_msgs_assembly" HintPath="../../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/sensor_msgs_assembly.dll" Private="true" />
+  </ItemGroup>
+  <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <ItemGroup>
+      <_Phase179Contract Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2GeneratedContract'" />
+      <_Phase179Registrar Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2SubscriptionRegistrar'" />
+      <_Phase179LifecycleGate Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeBridgeLifecycleGate'" />
+      <_Phase179CompileStub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeCompileStubs'" />
+      <_Phase179UnrelatedNative Include="@(Compile)" Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/')) and '%(Compile.Filename)' != 'Ros2ForUnityNativeBridgeLifecycleGate' and !$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/FoxRun/'))" />
+    </ItemGroup>
+    <Error Condition="!$([System.String]::Copy('$(DefineConstants)').Contains('UNITY2FOXGLOVE_ROS2_FOR_UNITY'))" Text="Phase179 Native lane must define UNITY2FOXGLOVE_ROS2_FOR_UNITY." />
+    <Error Condition="'@(_Phase179Contract)' == '' or '@(_Phase179Registrar)' == '' or '@(_Phase179LifecycleGate)' == '' or '@(_Phase179CompileStub)' == ''" Text="Phase179 Native lane compiled no named host/binding/lifecycle/stub surface (vacuous green)." />
+    <Error Condition="'@(_Phase179UnrelatedNative)' != ''" Text="Phase179 focused Native lane included unrelated native bridge sources: @(_Phase179UnrelatedNative)." />
+  </Target>
 </Project>

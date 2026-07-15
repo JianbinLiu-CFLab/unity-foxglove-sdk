@@ -31,6 +31,11 @@ namespace Unity.FoxgloveSDK.Editor
         public float ForceIntervalSeconds { get; }
         public bool IsAggregateMember { get; }
         public string JsonFieldName { get; }
+        public string SubscriptionProvider { get; }
+        public string Ros2Qos { get; }
+        public bool GeneratesWebSocketCodec { get; }
+        public bool GeneratesRos2NativeRegistration { get; }
+        public FoxRunRos2MessageShape Ros2MessageShape { get; }
 
         public FoxRunManifestMember(
             string ns,
@@ -52,7 +57,12 @@ namespace Unity.FoxgloveSDK.Editor
             int flowMode = 0,
             int encoding = 2,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null)
+            FoxRunProtobufTypeShape protobufTypeShape = null,
+            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            bool generatesWebSocketCodec = true,
+            bool generatesRos2NativeRegistration = false,
+            FoxRunRos2MessageShape ros2MessageShape = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -74,6 +84,75 @@ namespace Unity.FoxgloveSDK.Editor
             ForceIntervalSeconds = forceIntervalSeconds;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
+            SubscriptionProvider = subscriptionProvider ?? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
+            Ros2Qos = ros2Qos ?? FoxRunGenerationDescriptorConstants.InheritRos2Qos;
+            GeneratesWebSocketCodec = generatesWebSocketCodec;
+            GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
+            Ros2MessageShape = ros2MessageShape;
+        }
+
+        /// <summary>
+        /// Projects the host-neutral generation member into canonical manifest
+        /// input. Both Roslyn and reflection hosts use the same normalized
+        /// provider, capability, QoS, and native-copy-shape values here.
+        /// </summary>
+        public static FoxRunManifestMember FromGenerationMember(FoxRunGenerationMember member)
+        {
+            if (member == null)
+                throw new ArgumentNullException(nameof(member));
+
+            return new FoxRunManifestMember(
+                member.Namespace,
+                member.ClassName,
+                member.MemberName,
+                member.MemberKind,
+                member.RawObservedTypeName,
+                member.IsValueType,
+                member.IsArray,
+                member.ElementTypeName,
+                member.Topic,
+                member.RateHz,
+                member.SchemaName,
+                member.PublishMode,
+                member.ChangeEpsilon,
+                member.ForceIntervalSeconds,
+                member.IsAggregateMember,
+                member.JsonFieldName,
+                member.Mode,
+                EncodingValue(member.Encoding),
+                member.ProtobufFieldNumber,
+                member.ProtobufTypeShape,
+                member.SubscriptionProvider,
+                member.Ros2Qos,
+                member.GeneratesWebSocketCodec,
+                member.GeneratesRos2NativeRegistration,
+                member.Ros2MessageShape);
+        }
+
+        private static int EncodingValue(string encoding)
+        {
+            if (string.Equals(
+                    encoding,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    StringComparison.Ordinal))
+            {
+                return 0;
+            }
+            if (string.Equals(
+                    encoding,
+                    FoxRunGenerationDescriptorConstants.ProtobufEncoding,
+                    StringComparison.Ordinal))
+            {
+                return 1;
+            }
+            if (string.Equals(
+                    encoding,
+                    FoxRunGenerationDescriptorConstants.JsonEncoding,
+                    StringComparison.Ordinal))
+            {
+                return 2;
+            }
+            return -1;
         }
     }
 
@@ -115,10 +194,75 @@ namespace Unity.FoxgloveSDK.Editor
     public sealed class FoxRunManifestSections
     {
         public FoxRunManifestFoxRunSection FoxRun { get; }
+        public FoxRunManifestSubscriptionSection Subscriptions { get; }
 
         public FoxRunManifestSections(FoxRunManifestFoxRunSection foxRun)
+            : this(foxRun, new FoxRunManifestSubscriptionSection(string.Empty, Array.Empty<FoxRunManifestSubscriptionBinding>()))
+        {
+        }
+
+        public FoxRunManifestSections(
+            FoxRunManifestFoxRunSection foxRun,
+            FoxRunManifestSubscriptionSection subscriptions)
         {
             FoxRun = foxRun ?? throw new ArgumentNullException(nameof(foxRun));
+            Subscriptions = subscriptions ?? throw new ArgumentNullException(nameof(subscriptions));
+        }
+    }
+
+    public sealed class FoxRunManifestSubscriptionSection
+    {
+        public string ManifestHash { get; }
+        public IReadOnlyList<FoxRunManifestSubscriptionBinding> Bindings { get; }
+
+        public FoxRunManifestSubscriptionSection(
+            string manifestHash,
+            IReadOnlyList<FoxRunManifestSubscriptionBinding> bindings)
+        {
+            ManifestHash = manifestHash ?? string.Empty;
+            Bindings = new List<FoxRunManifestSubscriptionBinding>(
+                bindings ?? Array.Empty<FoxRunManifestSubscriptionBinding>()).AsReadOnly();
+        }
+    }
+
+    public sealed class FoxRunManifestSubscriptionBinding
+    {
+        public string DeclaringType { get; }
+        public string MemberName { get; }
+        public string Topic { get; }
+        public string FlowMode { get; }
+        public string DeclaredProvider { get; }
+        public string Ros2Qos { get; }
+        public bool SupportsWebSocket { get; }
+        public bool SupportsRos2Native { get; }
+        public string NativeType { get; }
+        public string CanonicalRosType { get; }
+        public string CopyShapeIdentity { get; }
+
+        public FoxRunManifestSubscriptionBinding(
+            string declaringType,
+            string memberName,
+            string topic,
+            string flowMode,
+            string declaredProvider,
+            string ros2Qos,
+            bool supportsWebSocket,
+            bool supportsRos2Native,
+            string nativeType,
+            string canonicalRosType,
+            string copyShapeIdentity)
+        {
+            DeclaringType = declaringType ?? string.Empty;
+            MemberName = memberName ?? string.Empty;
+            Topic = topic ?? string.Empty;
+            FlowMode = flowMode ?? string.Empty;
+            DeclaredProvider = declaredProvider ?? string.Empty;
+            Ros2Qos = ros2Qos ?? string.Empty;
+            SupportsWebSocket = supportsWebSocket;
+            SupportsRos2Native = supportsRos2Native;
+            NativeType = nativeType ?? string.Empty;
+            CanonicalRosType = canonicalRosType ?? string.Empty;
+            CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
         }
     }
 

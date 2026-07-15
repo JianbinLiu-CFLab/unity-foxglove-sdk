@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var member = members[i];
                 var topic = StringLiteralEmitter.CSharpStringLiteral(member.Topic);
                 var mode = member.Mode == 2 ? "FoxRunMode.PublishAndSubscribe" : "FoxRunMode.SubscribeOnly";
-                sb.AppendLine($"{pad}            case {i}: return new FoxgloveInputTopicInfo(\"{topic}\", {WireEncodingLiteral(member.Encoding)}, {mode});");
+                sb.AppendLine($"{pad}            case {i}: return new FoxgloveInputTopicInfo(\"{topic}\", {WireEncodingLiteral(member.Encoding)}, {mode}, {SubscriptionProviderLiteral(member.SubscriptionProvider)}, supportsWebSocket: {BoolLiteral(member.GeneratesWebSocketCodec)}, supportsRos2Native: {BoolLiteral(member.GeneratesRos2NativeRegistration)});");
             }
             sb.AppendLine($"{pad}            default: throw new ArgumentOutOfRangeException(nameof(index));");
             sb.AppendLine($"{pad}        }}");
@@ -172,6 +172,27 @@ namespace Unity.FoxgloveSDK.Editor
                 return "FoxRunWireEncoding.Json";
             return "FoxRunWireEncoding.Inherit";
         }
+
+        private static string SubscriptionProviderLiteral(string provider)
+        {
+            if (string.Equals(
+                    provider,
+                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                    System.StringComparison.Ordinal))
+            {
+                return "FoxRunSubscriptionProvider.FoxgloveWebSocket";
+            }
+            if (string.Equals(
+                    provider,
+                    FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                    System.StringComparison.Ordinal))
+            {
+                return "FoxRunSubscriptionProvider.Ros2Native";
+            }
+            return "FoxRunSubscriptionProvider.Inherit";
+        }
+
+        private static string BoolLiteral(bool value) => value ? "true" : "false";
 
         private static bool SupportsJsonInbound(FoxgloveSourceEmitter.TopicMember member)
         {

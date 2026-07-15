@@ -74,6 +74,16 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly int ProtobufFieldNumber;
             /// <summary>DTO/enum shape used for direct Protobuf code generation.</summary>
             public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
+            /// <summary>Normalized declared subscription provider.</summary>
+            public readonly string SubscriptionProvider;
+            /// <summary>Normalized portable ROS2 QoS policy.</summary>
+            public readonly string Ros2Qos;
+            /// <summary>True when a byte-router codec is valid for this member.</summary>
+            public readonly bool GeneratesWebSocketCodec;
+            /// <summary>True when a validated closed native binding can be emitted.</summary>
+            public readonly bool GeneratesRos2NativeRegistration;
+            /// <summary>Validated host-neutral recursive native message shape.</summary>
+            public readonly FoxRunRos2MessageShape Ros2MessageShape;
 
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
@@ -113,7 +123,12 @@ namespace Unity.FoxgloveSDK.Editor
                 int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
                 bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, string canonicalType = "",
                 string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding, int protobufFieldNumber = 0,
-                FoxRunProtobufTypeShape protobufTypeShape = null)
+                FoxRunProtobufTypeShape protobufTypeShape = null,
+                string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+                bool generatesWebSocketCodec = true,
+                bool generatesRos2NativeRegistration = false,
+                FoxRunRos2MessageShape ros2MessageShape = null)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -138,6 +153,11 @@ namespace Unity.FoxgloveSDK.Editor
                     : encoding;
                 ProtobufFieldNumber = protobufFieldNumber;
                 ProtobufTypeShape = protobufTypeShape;
+                SubscriptionProvider = subscriptionProvider ?? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
+                Ros2Qos = ros2Qos ?? FoxRunGenerationDescriptorConstants.InheritRos2Qos;
+                GeneratesWebSocketCodec = generatesWebSocketCodec;
+                GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
+                Ros2MessageShape = ros2MessageShape;
             }
         }
 
@@ -160,11 +180,23 @@ namespace Unity.FoxgloveSDK.Editor
         /// <param name="type">Generation model for one class.</param>
         /// <returns>Generated C# source as a string.</returns>
         public static string EmitClass(FoxRunGenerationType type)
+            => EmitClass(type, emitRos2NativePartial: true);
+
+        /// <summary>
+        /// Emits one class while allowing the Roslyn host to suppress only the
+        /// optional native partial when the consuming assembly lacks the exact
+        /// Native interface reference.
+        /// </summary>
+        public static string EmitClass(FoxRunGenerationType type, bool emitRos2NativePartial)
         {
             if (type == null)
                 throw new ArgumentNullException(nameof(type));
 
-            return EmitClassCore(type.Namespace, type.ClassName, type.Members.Select(member => member.ToTopicMember()).ToList());
+            return EmitClassCore(
+                type.Namespace,
+                type.ClassName,
+                type.Members.Select(member => member.ToTopicMember()).ToList(),
+                emitRos2NativePartial);
         }
 
         // Public API forwarding wrappers — the implementations live in sub-emitters
@@ -184,10 +216,14 @@ namespace Unity.FoxgloveSDK.Editor
         /// </summary>
         internal static string EmitClass(string ns, string className, IReadOnlyList<TopicMember> members)
         {
-            return EmitClassCore(ns, className, members);
+            return EmitClassCore(ns, className, members, emitRos2NativePartial: true);
         }
 
-        private static string EmitClassCore(string ns, string className, IReadOnlyList<TopicMember> members)
+        private static string EmitClassCore(
+            string ns,
+            string className,
+            IReadOnlyList<TopicMember> members,
+            bool emitRos2NativePartial)
         {
             if (members == null || members.Count == 0)
                 throw new ArgumentException("At least one member is required.", nameof(members));
@@ -205,6 +241,21 @@ namespace Unity.FoxgloveSDK.Editor
                 .Where(member => member.Mode == 1 || member.Mode == 2)
                 .OrderBy(member => member.Topic, StringComparer.Ordinal)
                 .ThenBy(member => member.MemberName, StringComparer.Ordinal)
+                .ToList();
+            var webSocketInputMembers = inputMembers
+                .Where(member => member.GeneratesWebSocketCodec
+                                 && !string.Equals(
+                                     member.SubscriptionProvider,
+                                     FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                                     StringComparison.Ordinal))
+                .ToList();
+            var nativeInputMembers = inputMembers
+                .Where(member => member.GeneratesRos2NativeRegistration
+                                 && member.Ros2MessageShape != null
+                                 && !string.Equals(
+                                     member.SubscriptionProvider,
+                                     FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                                     StringComparison.Ordinal))
                 .ToList();
 
             foreach (var m in inputMembers)
@@ -248,7 +299,7 @@ namespace Unity.FoxgloveSDK.Editor
                 topics.Count,
                 hasPolicy,
                 hasConditions,
-                inputMembers.Count > 0,
+                webSocketInputMembers.Count > 0,
                 pad);
             if (topics.Count > 0)
             {
@@ -259,7 +310,7 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
                 ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
             }
-            InputDispatchEmitter.EmitInput(sb, ns, className, inputMembers, topics, pad);
+            InputDispatchEmitter.EmitInput(sb, ns, className, webSocketInputMembers, topics, pad);
 
             var triggerMembers = TriggerEmitter.BuildTriggerMembers(publishMembers, topics, topicModes);
             TriggerEmitter.EmitTriggers(sb, triggerMembers, topics, topicModes, pad);
@@ -269,6 +320,9 @@ namespace Unity.FoxgloveSDK.Editor
 
             sb.AppendLine($"{pad}}}");
             if (!string.IsNullOrEmpty(ns)) sb.AppendLine("}");
+
+            if (emitRos2NativePartial)
+                Ros2InputDispatchEmitter.EmitConditionalPartial(sb, ns, className, nativeInputMembers);
 
             return sb.ToString();
         }

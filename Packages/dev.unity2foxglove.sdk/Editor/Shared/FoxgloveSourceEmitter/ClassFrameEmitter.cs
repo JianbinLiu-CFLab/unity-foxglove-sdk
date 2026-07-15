@@ -59,7 +59,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (hasInput)
                 interfaces.Add("IFoxgloveInputSource");
 
-            sb.Append($"{pad}partial class {className} : {string.Join(", ", interfaces)}\n");
+            sb.Append($"{pad}partial class {className}");
+            if (interfaces.Count > 0)
+                sb.Append(" : " + string.Join(", ", interfaces));
+            sb.Append('\n');
             sb.AppendLine($"{pad}{{");
             if (topicCount > 0)
             {

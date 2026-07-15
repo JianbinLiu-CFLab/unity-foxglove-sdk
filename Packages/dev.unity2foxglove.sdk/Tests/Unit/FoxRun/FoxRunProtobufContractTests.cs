@@ -7,17 +7,192 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Google.Protobuf.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
     public sealed class FoxRunProtobufContractTests
     {
+        [Fact]
+        public void LegacyJsonAndProtobufWireContractsKeepCanonicalGoldenIdentity()
+        {
+            var jsonManifest = FoxRunManifestBuilder.Build(
+                new[]
+                {
+                    new FoxRunManifestMember(
+                        "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
+                        "/phase112/battery", 10f, "", 1, 0.001f, 0f,
+                        encoding: (int)FoxRunWireEncoding.Json)
+                },
+                manifestVersion: 1);
+            var jsonContract = Assert.Single(Assert.Single(jsonManifest.Sections.FoxRun.Types).Contracts);
+
+            Assert.Equal("d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16", jsonContract.ContractHash);
+            Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", jsonContract.BindingHash);
+            Assert.Equal("e555d34de178132da2bc530e15f17fef8c2a782a3e9c65985dd4926adba41eb8", jsonContract.PolicyHash);
+            Assert.Equal("653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d", jsonManifest.Sections.FoxRun.ManifestHash);
+
+            var protobuf = FoxRunProtobufContractBuilder.Build(CreateContract());
+            Assert.Equal(
+                "CvoBChZmb3hydW4vV2lyZVN0YXRlLnByb3RvEhV1bml0eTJmb3hnbG92ZS5mb3hydW4ihQEKCVdpcmVTdGF0ZRIUCgVjb3VudBgRIAEoBVIFY291bnQSRAoIcG9zaXRpb24Y35SypgEgASgLMiQudW5pdHkyZm94Z2xvdmUuZm94cnVuLlVuaXR5X1ZlY3RvcjNSCHBvc2l0aW9uEhwKB3NhbXBsZXMYr9j4ngEgAygCUgdzYW1wbGVzIjkKDVVuaXR5X1ZlY3RvcjMSDAoBeBgBIAEoAlIBeBIMCgF5GAIgASgCUgF5EgwKAXoYAyABKAJSAXpiBnByb3RvMw==",
+                Convert.ToBase64String(protobuf.FileDescriptorSet));
+            using var sha256 = SHA256.Create();
+            Assert.Equal(
+                "e4bec17adf20ae1d18763954f3e9acb8a476843ba800f042d18dd25dce4f974c",
+                BitConverter.ToString(sha256.ComputeHash(protobuf.FileDescriptorSet)).Replace("-", string.Empty).ToLowerInvariant());
+
+            var descriptor = FileDescriptorSet.Parser.ParseFrom(protobuf.FileDescriptorSet);
+            var root = Assert.Single(Assert.Single(descriptor.File).MessageType, message => message.Name == "WireState");
+            Assert.Equal(17, Assert.Single(root.Field, field => field.Name == "count").Number);
+        }
+
+        [Fact]
+        public void CanonicalManifestExposesSeparateSubscriptionBindingSection()
+        {
+            Assert.NotNull(typeof(FoxRunManifestSections).GetProperty("Subscriptions"));
+            Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("SubscriptionProvider"));
+            Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("GeneratesWebSocketCodec"));
+            Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("GeneratesRos2NativeRegistration"));
+
+            var writerSource = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestWriter.cs");
+            Assert.Contains("CurrentManifestVersion", writerSource, StringComparison.Ordinal);
+            Assert.NotNull(typeof(FoxRunSchemaManifestInfo).GetProperty("SubscriptionBindings"));
+            Assert.NotNull(typeof(FoxRunSchemaManifestInfo).Assembly.GetType(
+                "Unity.FoxgloveSDK.Components.FoxRunSchemaSubscriptionBindingInfo"));
+        }
+
+        [Fact]
+        public void NativeProviderMetadataUsesSeparateV2DigestWithoutChangingWireDigests()
+        {
+            var json = new FoxRunManifestMember(
+                "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
+                "/phase112/battery", 10f, "", 1, 0.001f, 0f,
+                encoding: (int)FoxRunWireEncoding.Json,
+                subscriptionProvider: FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                generatesWebSocketCodec: true);
+            var native = new FoxRunManifestMember(
+                "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
+                "/phase179/native", 0f, "std_msgs/msg/String", 0, 0f, 0f,
+                flowMode: (int)FoxRunMode.SubscribeOnly,
+                encoding: (int)FoxRunWireEncoding.Inherit,
+                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
+                generatesWebSocketCodec: false,
+                generatesRos2NativeRegistration: true);
+
+            var manifest = FoxRunManifestBuilder.Build(new[] { json, native }, manifestVersion: 2);
+            var jsonOnlyV1 = FoxRunManifestBuilder.Build(new[] { json }, manifestVersion: 1);
+            var contract = Assert.Single(Assert.Single(manifest.Sections.FoxRun.Types).Contracts);
+
+            Assert.Equal(2, manifest.ManifestVersion);
+            Assert.Equal("json", contract.Encoding);
+            Assert.Equal("d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16", contract.ContractHash);
+            Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", contract.BindingHash);
+            Assert.Single(manifest.Sections.Subscriptions.Bindings);
+            Assert.True(FoxRunManifestHasher.IsLowercaseSha256Hex(manifest.Sections.Subscriptions.ManifestHash));
+            Assert.Equal("653e287d1f7a491f75b5995affcf182dad9ec594c12ec2535428cab55dd1814d", jsonOnlyV1.Sections.FoxRun.ManifestHash);
+
+            var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
+            Assert.Contains("\"subscriptions\"", canonical, StringComparison.Ordinal);
+            Assert.Contains("\"declaredProvider\":\"ros2-native\"", canonical, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"encoding\":\"cdr\"", canonical, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"encoding\":\"ros2\"", canonical, StringComparison.Ordinal);
+
+            var qosChanged = new FoxRunManifestMember(
+                "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
+                "/phase179/native", 0f, "std_msgs/msg/String", 0, 0f, 0f,
+                flowMode: (int)FoxRunMode.SubscribeOnly,
+                encoding: (int)FoxRunWireEncoding.Inherit,
+                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
+                generatesWebSocketCodec: false,
+                generatesRos2NativeRegistration: true);
+            var changed = FoxRunManifestBuilder.Build(new[] { json, qosChanged }, manifestVersion: 2);
+
+            Assert.Equal(manifest.Sections.FoxRun.ManifestHash, changed.Sections.FoxRun.ManifestHash);
+            Assert.NotEqual(manifest.Sections.Subscriptions.ManifestHash, changed.Sections.Subscriptions.ManifestHash);
+            Assert.NotEqual(manifest.GlobalManifestHash, changed.GlobalManifestHash);
+        }
+
+        [Fact]
+        public void SchemaInfoWriterCarriesV2SubscriptionBindingsIntoRuntimeMetadata()
+        {
+            var shape = new FoxRunRos2MessageShape(
+                "std_msgs.msg.String",
+                "std_msgs/msg/String",
+                hasPublicParameterlessConstructor: true,
+                implementsRos2Message: true,
+                copyShapeIdentity: "std-string-copy-v1",
+                members: Array.Empty<FoxRunRos2MessageMemberShape>(),
+                diagnostics: Array.Empty<string>());
+            var manifest = FoxRunManifestBuilder.Build(
+                new[]
+                {
+                    new FoxRunManifestMember(
+                        "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
+                        "/phase179/native", 0f, "std_msgs/msg/String", 0, 0f, 0f,
+                        flowMode: (int)FoxRunMode.SubscribeOnly,
+                        encoding: (int)FoxRunWireEncoding.Inherit,
+                        subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                        ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
+                        generatesWebSocketCodec: false,
+                        generatesRos2NativeRegistration: true,
+                        ros2MessageShape: shape)
+                },
+                manifestVersion: 2);
+
+            var source = FoxRunSchemaInfoWriter.GenerateSource(manifest);
+
+            Assert.Contains("public const int ManifestVersion = 2;", source, StringComparison.Ordinal);
+            Assert.Contains("public const int SubscriptionBindingCount = 1;", source, StringComparison.Ordinal);
+            Assert.Contains("public const string SubscriptionManifestHash =", source, StringComparison.Ordinal);
+            Assert.Contains("new FoxRunSchemaSubscriptionBindingInfo(", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunSubscriptionProvider.Ros2Native", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunRos2QosPreset.SensorData", source, StringComparison.Ordinal);
+            Assert.Contains("\"std_msgs.msg.String\"", source, StringComparison.Ordinal);
+            Assert.Contains("\"std_msgs/msg/String\"", source, StringComparison.Ordinal);
+            Assert.Contains("\"std-string-copy-v1\"", source, StringComparison.Ordinal);
+            Assert.Contains("SubscriptionBindings));", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LegacyV1ManifestAndRuntimeDtoTreatMissingSubscriptionsAsEmpty()
+        {
+            var manifest = FoxRunManifestBuilder.Build(
+                new[]
+                {
+                    new FoxRunManifestMember(
+                        "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
+                        "/phase112/battery", 10f, "", 1, 0.001f, 0f,
+                        encoding: (int)FoxRunWireEncoding.Json)
+                },
+                manifestVersion: 1);
+            var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
+            var legacyRuntimeDto = new FoxRunSchemaManifestInfo(
+                1,
+                "dev.unity2foxglove.sdk",
+                "FoxRunSchemaManifestGenerator",
+                1,
+                manifest.GlobalManifestHash,
+                manifest.Sections.FoxRun.ManifestHash,
+                Array.Empty<FoxRunSchemaTypeInfo>());
+
+            Assert.Empty(manifest.Sections.Subscriptions.Bindings);
+            Assert.Equal(string.Empty, manifest.Sections.Subscriptions.ManifestHash);
+            Assert.DoesNotContain("\"subscriptions\"", canonical, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"subscriptionManifestHash\"", canonical, StringComparison.Ordinal);
+            Assert.Empty(legacyRuntimeDto.SubscriptionBindings);
+            Assert.Equal(string.Empty, legacyRuntimeDto.SubscriptionManifestHash);
+        }
+
         [Fact]
         public void StableIdentityProducesStableLegalFieldNumber()
         {

@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, model);
 
-            Assert.Contains("\"descriptorVersion\":1", json, StringComparison.Ordinal);
+            Assert.Contains("\"descriptorVersion\":2", json, StringComparison.Ordinal);
             Assert.Contains("\"elementTypeName\":\"float\"", json, StringComparison.Ordinal);
             Assert.Contains("\"topic\":\"/vehicle/samples\"", json, StringComparison.Ordinal);
             Assert.True(comparison.IsSemanticEqual);

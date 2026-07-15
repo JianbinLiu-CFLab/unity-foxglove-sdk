@@ -60,6 +60,7 @@ namespace Unity.FoxgloveSDK.Components
                 subscriptionPolicy.SubscriptionsEnabled && IsFoxRunInboundAuthorized,
                 ActiveFoxRunPublishEncoding,
                 subscriptionPolicy.WebSocketSubscriptionEncoding,
+                subscriptionPolicy.DefaultProvider,
                 subscriptionPolicy.MainThreadApplyRateLimitHz,
                 requestedTopic,
                 includeDescriptor);

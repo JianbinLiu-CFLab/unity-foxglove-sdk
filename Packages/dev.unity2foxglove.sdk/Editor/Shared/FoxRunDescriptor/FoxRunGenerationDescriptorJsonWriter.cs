@@ -92,6 +92,19 @@ namespace Unity.FoxgloveSDK.Editor
             WriteStringField(sb, "schemaName", member.SchemaName);
             sb.Append(',');
             WriteStringField(sb, "encoding", member.Encoding);
+            sb.Append(',');
+            WriteStringField(sb, "subscriptionProvider", member.SubscriptionProvider);
+            sb.Append(',');
+            WriteStringField(sb, "ros2Qos", member.Ros2Qos);
+            sb.Append(',');
+            WriteName(sb, "generatesWebSocketCodec");
+            sb.Append(member.GeneratesWebSocketCodec ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "generatesRos2NativeRegistration");
+            sb.Append(member.GeneratesRos2NativeRegistration ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "ros2MessageShape");
+            WriteRos2MessageShape(sb, member.Ros2MessageShape);
             if (member.ProtobufFieldNumber > 0)
             {
                 sb.Append(',');
@@ -127,6 +140,72 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(member.RawMemberOrder.ToString(CultureInfo.InvariantCulture));
             sb.Append(',');
             WriteStringField(sb, "conditionalSymbols", member.ConditionalSymbols);
+            sb.Append('}');
+        }
+
+        private static void WriteRos2MessageShape(StringBuilder sb, FoxRunRos2MessageShape shape)
+        {
+            if (shape == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('{');
+            WriteStringField(sb, "fullyQualifiedTypeName", shape.FullyQualifiedTypeName);
+            sb.Append(',');
+            WriteStringField(sb, "canonicalRosType", shape.CanonicalRosType);
+            sb.Append(',');
+            WriteName(sb, "hasPublicParameterlessConstructor");
+            sb.Append(shape.HasPublicParameterlessConstructor ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "implementsRos2Message");
+            sb.Append(shape.ImplementsRos2Message ? "true" : "false");
+            sb.Append(',');
+            WriteStringField(sb, "copyShapeIdentity", shape.CopyShapeIdentity);
+            sb.Append(',');
+            WriteName(sb, "members");
+            sb.Append('[');
+            for (var i = 0; i < shape.Members.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var member = shape.Members[i];
+                sb.Append('{');
+                WriteStringField(sb, "name", member.Name);
+                sb.Append(',');
+                WriteStringField(sb, "kind", member.Kind.ToString());
+                sb.Append(',');
+                WriteStringField(sb, "fullyQualifiedTypeName", member.FullyQualifiedTypeName);
+                sb.Append(',');
+                WriteStringField(sb, "sequenceElementTypeName", member.SequenceElementTypeName);
+                sb.Append(',');
+                WriteStringField(sb, "nestedShapeIdentity", member.NestedShapeIdentity);
+                sb.Append(',');
+                WriteName(sb, "nestedShape");
+                WriteRos2MessageShape(sb, member.NestedShape);
+                sb.Append(',');
+                WriteName(sb, "canRead");
+                sb.Append(member.CanRead ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "canWrite");
+                sb.Append(member.CanWrite ? "true" : "false");
+                sb.Append(',');
+                WriteStringField(sb, "sequenceRepresentation", member.SequenceRepresentation.ToString());
+                sb.Append(',');
+                WriteName(sb, "fixedSize");
+                sb.Append(member.FixedSize.ToString(CultureInfo.InvariantCulture));
+                sb.Append('}');
+            }
+            sb.Append(']');
+            sb.Append(',');
+            WriteName(sb, "diagnostics");
+            sb.Append('[');
+            for (var i = 0; i < shape.Diagnostics.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                WriteString(sb, shape.Diagnostics[i]);
+            }
+            sb.Append(']');
             sb.Append('}');
         }
 
