@@ -159,6 +159,30 @@ MCAP 文件包含以下数据类型：
 
 Unity replay 会在 MCAP 文件 load 完成后、正式 playback 前读取这条 metadata。recorded `globalManifestHash` 和当前 runtime `globalManifestHash` 不一致时，replay 会因为 schema mismatch 被阻断，并在日志里显示短 hash。显式 replay 模式下，confirmed mismatch 会 fail closed：Manager 会中止启动，不会恢复 live publishers 作为 fallback。缺少 recorded metadata、缺少当前 schema info、或 recorded metadata malformed 只会 warning，以便旧 MCAP 文件还能回放。
 
+## 严格验证与互操作门禁
+
+普通 replay 和 DataLoader reader 保持向前兼容：已知 record 末尾出现新增字段时仍可读取。只有在 conformance、release 或文件接入边界需要拒绝 reserved opcode、非法 record 位置、未解析的 schema/channel 引用、重复结构 record，或当前版本额外字段时，才使用 `McapStrictValidator`。
+
+```csharp
+using var stream = File.OpenRead(path);
+var summary = McapStrictValidator.Validate(stream);
+```
+
+需要严格检查结构、同时允许未来 MCAP 版本追加字段时，将 `McapStrictValidationOptions.RequireCurrentVersionRecordLengths` 设为 `false`。CRC 验证默认开启。
+
+高级 writer option 有两个不同入口：
+
+- `McapWriterOptions.Normalize(...)` 返回防御性复制并修复相互依赖的配置，使结果保持可互操作。
+- `McapWriterOptions.ValidateStrict()` 拒绝任何会被 normalization 修复或丢弃的值；不允许静默改写请求配置时，应在写入前调用它。
+
+仓库 CI 还会对固定提交的官方 `foxglove/mcap` 实现运行 release-blocking 差分：
+
+```text
+python Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking
+```
+
+该命令在 `build/mcap-conformance/` 下临时引导精确的上游提交，对比有效 reader fixture、indexed read 和 chunked writer 字节，并生成 JSON 报告。外部 checkout 只属于验证工具，不会作为 SDK 依赖发布。
+
 ## 注意事项
 
 - **不要中断录制**：`Close()` 方法负责写入 MCAP footer 和 summary 区段。如果 Unity 异常退出，footer 未写入会导致文件无法读取。正常 Stop Play 会触发 `OnDestroy` > `StopServer()` 确保正常关闭。

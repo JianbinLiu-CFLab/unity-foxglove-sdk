@@ -125,7 +125,31 @@ Phase 120 records the current MCAP compatibility verdict as `PASS WITH NOTED LIM
 
 This is not the official Foxglove data-loader host ABI. It does not add WASM bindings, remote data loading, HTTP range serving, Remote Access Gateway support, multi-file timeline merge, or decoded typed payload views.
 
-## 12. Common Mistakes
+## 12. Strict Validation and Interoperability Gates
+
+Normal replay and DataLoader readers remain forward-compatible: they accept additive trailing fields on known records. Use `McapStrictValidator` only at an explicit conformance, release, or file-ingest boundary that must reject reserved opcodes, invalid record placement, unresolved schema/channel references, duplicate structural records, or current-version trailing fields.
+
+```csharp
+using var stream = File.OpenRead(path);
+var summary = McapStrictValidator.Validate(stream);
+```
+
+Set `McapStrictValidationOptions.RequireCurrentVersionRecordLengths = false` when strict structural checks are required but additive fields from a future MCAP version must remain readable. CRC validation is enabled by default.
+
+Advanced writer options have two distinct entry points:
+
+- `McapWriterOptions.Normalize(...)` returns a defensive, interoperable configuration and repairs dependent settings.
+- `McapWriterOptions.ValidateStrict()` rejects values that normalization would repair or discard. Use it before writing when silently changing the requested configuration is unacceptable.
+
+Repository CI also runs a release-blocking differential against the pinned official `foxglove/mcap` implementation:
+
+```text
+python Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking
+```
+
+The command bootstraps the exact pinned upstream commit under `build/mcap-conformance/`, compares valid reader fixtures, indexed reads, and chunked writer bytes, and writes a JSON report. The external checkout is validation tooling only; it is not shipped as an SDK dependency.
+
+## 13. Common Mistakes
 
 | Symptom | Likely cause | Fix |
 |---|---|---|

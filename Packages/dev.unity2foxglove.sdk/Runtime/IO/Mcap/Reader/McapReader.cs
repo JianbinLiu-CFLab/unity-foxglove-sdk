@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.IO
     public class McapReader : IDisposable
     {
         private readonly Stream _stream;
-        private readonly byte[] _buf = new byte[8];
+        private readonly byte[] _eightByteScratch = new byte[sizeof(ulong)];
         private byte[] _recordContentBuffer;
 
         /// <summary>
@@ -58,39 +58,7 @@ namespace Unity.FoxgloveSDK.IO
             if (!_stream.CanSeek)
                 throw new NotSupportedException("McapReader.ReadSummary requires a seekable stream; use McapStreamingReader for non-seekable streams.");
 
-            const int minFileBytes =
-                McapWriter.MagicLength + McapWriter.RecordHeaderLength +
-                McapWriter.FooterContentLength + McapWriter.MagicLength;
-            if (_stream.Length < minFileBytes)
-                throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
-
-            // Verify leading magic.
-            ReadExact(_buf, 0, _buf.Length);
-            var expectedMagic = McapWriter.MagicSpan;
-            for (var i = 0; i < expectedMagic.Length; i++)
-                if (_buf[i] != expectedMagic[i])
-                    throw new InvalidDataException("MCAP leading magic mismatch");
-
-            // Verify trailing magic before trusting footer offsets.
-            _stream.Seek(-8, SeekOrigin.End);
-            // _buf is reused; leading magic was already validated above.
-            ReadExact(_buf, 0, _buf.Length);
-            for (var i = 0; i < expectedMagic.Length; i++)
-                if (_buf[i] != expectedMagic[i])
-                    throw new InvalidDataException("MCAP trailing magic mismatch");
-
-            // Read Footer before trailing magic.
-            _stream.Seek(-(McapWriter.MagicLength + McapWriter.RecordHeaderLength + McapWriter.FooterContentLength), SeekOrigin.End);
-            var (opcode, footerContent, footerContentLength) = ReadOneRecordSegment(recordSizeLimit);
-            if (opcode != McapWriter.OpcodeFooter)
-                throw new InvalidDataException($"Expected Footer (0x02) at end of file, got 0x{opcode:X2}");
-
-            var footer = McapRecordDecoder.DecodeFooter(footerContent, 0, footerContentLength);
-
-            var footerOffset = (ulong)_stream.Length
-                - McapWriter.MagicLength
-                - McapWriter.RecordHeaderLength
-                - McapWriter.FooterContentLength;
+            var (footer, footerOffset) = ReadAndValidateFooter(recordSizeLimit);
             if (footer.SummaryStart == 0)
                 return ScanDataSection(
                     footerOffset,
@@ -100,13 +68,6 @@ namespace Unity.FoxgloveSDK.IO
                     sequentialLimits: null,
                     validateCrcs: validateCrcs,
                     chunkUncompressedSizeLimit: chunkUncompressedSizeLimit);
-            if (footer.SummaryStart > footerOffset)
-                throw new InvalidDataException("Footer summary_start is past the footer record");
-            if (footer.SummaryStart < (ulong)(McapWriter.MagicLength + McapWriter.RecordHeaderLength))
-                throw new InvalidDataException("Footer summary_start is before the data section");
-            if (footer.SummaryOffsetStart != 0 &&
-                (footer.SummaryOffsetStart < footer.SummaryStart || footer.SummaryOffsetStart > footerOffset))
-                throw new InvalidDataException("Footer summary_offset_start is outside the summary section bounds");
 
             var summaryLen = footerOffset - footer.SummaryStart;
             if (summaryLen > int.MaxValue)
@@ -132,45 +93,9 @@ namespace Unity.FoxgloveSDK.IO
             if (!_stream.CanSeek)
                 throw new NotSupportedException("McapReader.ReadTrailerInfo requires a seekable stream.");
 
-            const int minFileBytes =
-                McapWriter.MagicLength + McapWriter.RecordHeaderLength +
-                McapWriter.FooterContentLength + McapWriter.MagicLength;
-            if (_stream.Length < minFileBytes)
-                throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
-
-            _stream.Seek(0, SeekOrigin.Begin);
-            ReadExact(_buf, 0, _buf.Length);
-            var expectedMagic = McapWriter.MagicSpan;
-            for (var i = 0; i < expectedMagic.Length; i++)
-                if (_buf[i] != expectedMagic[i])
-                    throw new InvalidDataException("MCAP leading magic mismatch");
-
-            _stream.Seek(-McapWriter.MagicLength, SeekOrigin.End);
-            // _buf is reused; leading magic was already validated above.
-            ReadExact(_buf, 0, _buf.Length);
-            for (var i = 0; i < expectedMagic.Length; i++)
-                if (_buf[i] != expectedMagic[i])
-                    throw new InvalidDataException("MCAP trailing magic mismatch");
-
-            var footerOffset = (ulong)_stream.Length
-                - McapWriter.MagicLength
-                - McapWriter.RecordHeaderLength
-                - McapWriter.FooterContentLength;
-            _stream.Seek(ToSeekOffset(footerOffset, "footer"), SeekOrigin.Begin);
-            var (opcode, footerContent, footerContentLength) = ReadOneRecordSegment(recordSizeLimit);
-            if (opcode != McapWriter.OpcodeFooter)
-                throw new InvalidDataException($"Expected Footer (0x02) at end of file, got 0x{opcode:X2}");
-
-            var footer = McapRecordDecoder.DecodeFooter(footerContent, 0, footerContentLength);
+            var (footer, footerOffset) = ReadAndValidateFooter(recordSizeLimit);
             if (footer.SummaryStart == 0)
                 throw new InvalidDataException("MCAP amendment requires a summary section.");
-            if (footer.SummaryStart > footerOffset)
-                throw new InvalidDataException("Footer summary_start is past the footer record");
-            if (footer.SummaryStart < (ulong)(McapWriter.MagicLength + McapWriter.RecordHeaderLength))
-                throw new InvalidDataException("Footer summary_start is before the data section");
-            if (footer.SummaryOffsetStart != 0 &&
-                (footer.SummaryOffsetStart < footer.SummaryStart || footer.SummaryOffsetStart > footerOffset))
-                throw new InvalidDataException("Footer summary_offset_start is outside the summary section bounds");
 
             var summaryBytes = ReadSummaryBytes(footer.SummaryStart, footerOffset);
             ValidateSummaryCrc(
@@ -391,6 +316,54 @@ namespace Unity.FoxgloveSDK.IO
                     yield break;
                 }
             }
+        }
+
+        private (McapFooter footer, ulong footerOffset) ReadAndValidateFooter(ulong recordSizeLimit)
+        {
+            const int minFileBytes =
+                McapWriter.MagicLength + McapWriter.RecordHeaderLength +
+                McapWriter.FooterContentLength + McapWriter.MagicLength;
+            if (_stream.Length < minFileBytes)
+                throw new EndOfStreamException("MCAP stream is shorter than the minimum header/footer size");
+
+            _stream.Seek(0, SeekOrigin.Begin);
+            ReadExact(_eightByteScratch, 0, _eightByteScratch.Length);
+            ValidateMagic("leading");
+
+            _stream.Seek(-McapWriter.MagicLength, SeekOrigin.End);
+            ReadExact(_eightByteScratch, 0, _eightByteScratch.Length);
+            ValidateMagic("trailing");
+
+            var footerOffset = (ulong)_stream.Length
+                - McapWriter.MagicLength
+                - McapWriter.RecordHeaderLength
+                - McapWriter.FooterContentLength;
+            _stream.Seek(ToSeekOffset(footerOffset, "footer"), SeekOrigin.Begin);
+            var (opcode, footerContent, footerContentLength) = ReadOneRecordSegment(recordSizeLimit);
+            if (opcode != McapWriter.OpcodeFooter)
+                throw new InvalidDataException($"Expected Footer (0x02) at end of file, got 0x{opcode:X2}");
+
+            var footer = McapRecordDecoder.DecodeFooter(footerContent, 0, footerContentLength);
+            if (footer.SummaryStart != 0)
+            {
+                if (footer.SummaryStart > footerOffset)
+                    throw new InvalidDataException("Footer summary_start is past the footer record");
+                if (footer.SummaryStart < (ulong)(McapWriter.MagicLength + McapWriter.RecordHeaderLength))
+                    throw new InvalidDataException("Footer summary_start is before the data section");
+                if (footer.SummaryOffsetStart != 0 &&
+                    (footer.SummaryOffsetStart < footer.SummaryStart || footer.SummaryOffsetStart > footerOffset))
+                    throw new InvalidDataException("Footer summary_offset_start is outside the summary section bounds");
+            }
+
+            return (footer, footerOffset);
+        }
+
+        private void ValidateMagic(string location)
+        {
+            var expectedMagic = McapWriter.MagicSpan;
+            for (var i = 0; i < expectedMagic.Length; i++)
+                if (_eightByteScratch[i] != expectedMagic[i])
+                    throw new InvalidDataException($"MCAP {location} magic mismatch");
         }
 
         private byte[] ReadSummaryBytes(ulong summaryStart, ulong footerOffset)
@@ -614,9 +587,15 @@ namespace Unity.FoxgloveSDK.IO
         /// </summary>
         private ulong ReadU64()
         {
-            ReadExact(_buf, 0, 8);
-            return (ulong)_buf[0] | ((ulong)_buf[1] << 8) | ((ulong)_buf[2] << 16) | ((ulong)_buf[3] << 24)
-                 | ((ulong)_buf[4] << 32) | ((ulong)_buf[5] << 40) | ((ulong)_buf[6] << 48) | ((ulong)_buf[7] << 56);
+            ReadExact(_eightByteScratch, 0, _eightByteScratch.Length);
+            return (ulong)_eightByteScratch[0]
+                 | ((ulong)_eightByteScratch[1] << 8)
+                 | ((ulong)_eightByteScratch[2] << 16)
+                 | ((ulong)_eightByteScratch[3] << 24)
+                 | ((ulong)_eightByteScratch[4] << 32)
+                 | ((ulong)_eightByteScratch[5] << 40)
+                 | ((ulong)_eightByteScratch[6] << 48)
+                 | ((ulong)_eightByteScratch[7] << 56);
         }
 
         /// <summary>

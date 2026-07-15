@@ -100,18 +100,28 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyPhase137GExplicitOptIn()
         {
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase137g" });
+
             Check(registry.Contains("Phase 137G is an explicit governance audit", StringComparison.Ordinal)
-                  && registry.Contains("Ci(\"--phase137g\", \"Phase 137G\", Phase137GValidation.Validate, includeInDefault: false)", StringComparison.Ordinal),
+                  && entry != null
+                  && entry.Category == ValidationCategory.CiSafe
+                  && entry.Evidence == ValidationEvidence.Structural
+                  && !entry.IncludeInDefault
+                  && entry.Run == (Action)Phase137GValidation.Validate,
                 "163-53E-1: Phase137G remains explicit opt-in with the baseline limitation documented");
         }
 
         private static void VerifyRegistryAndProjectWiring()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase163-53" });
 
             Check(project.Contains("Phase163_53Validation.cs", StringComparison.Ordinal)
-                  && registry.Contains("Ci(\"--phase163-53\", \"Phase 163-53\", Phase163_53Validation.Validate, includeInDefault: false)", StringComparison.Ordinal),
+                  && entry != null
+                  && entry.Name == "Phase 163-53: review follow-up guard for Phase 134/137 validation robustness"
+                  && entry.Category == ValidationCategory.CiSafe
+                  && !entry.IncludeInDefault
+                  && entry.Run == (Action)Validate,
                 "163-53F-1: Phase163-53 validation is compiled and registered");
         }
 

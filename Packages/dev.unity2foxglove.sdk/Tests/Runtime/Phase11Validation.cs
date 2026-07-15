@@ -92,12 +92,17 @@ namespace Unity.FoxgloveSDK.Tests
             // Summary
             var sumStart = (ulong)ms.Position;
             // Schema copy
+            var schemaGroupStart = (ulong)ms.Position;
             var schContent = sch.ToArray();
             WriteRecord(ms, 0x03, new MemoryStream(schContent));
+            var schemaGroupLength = (ulong)ms.Position - schemaGroupStart;
             // Channel copy
+            var channelGroupStart = (ulong)ms.Position;
             var chContent = ch.ToArray();
             WriteRecord(ms, 0x04, new MemoryStream(chContent));
+            var channelGroupLength = (ulong)ms.Position - channelGroupStart;
             // Statistics
+            var statisticsGroupStart = (ulong)ms.Position;
             var stats = new MemoryStream();
             McapWriter.WriteU64(stats, 2); // msgCount
             McapWriter.WriteU16(stats, 1); // schemaCount
@@ -110,7 +115,9 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU32(stats, 10); // cms 1*10
             McapWriter.WriteU16(stats, 1); McapWriter.WriteU64(stats, 2);
             WriteRecord(ms, 0x0B, stats);
+            var statisticsGroupLength = (ulong)ms.Position - statisticsGroupStart;
             // ChunkIndex
+            var chunkIndexGroupStart = (ulong)ms.Position;
             var cix = new MemoryStream();
             McapWriter.WriteU64(cix, 1000); McapWriter.WriteU64(cix, 2000);
             McapWriter.WriteU64(cix, chunkOff);
@@ -122,11 +129,13 @@ namespace Unity.FoxgloveSDK.Tests
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             McapWriter.WriteU64(cix, (ulong)chunkMs.Length);
             WriteRecord(ms, 0x08, cix);
+            var chunkIndexGroupLength = (ulong)ms.Position - chunkIndexGroupStart;
             // SummaryOffset
             var sumOffStart = (ulong)ms.Position;
-            var so = new MemoryStream();
-            so.WriteByte(0x02); McapWriter.WriteU64(so, sumStart); McapWriter.WriteU64(so, sumOffStart - sumStart);
-            WriteRecord(ms, 0x0E, so);
+            WriteSummaryOffset(ms, 0x03, schemaGroupStart, schemaGroupLength);
+            WriteSummaryOffset(ms, 0x04, channelGroupStart, channelGroupLength);
+            WriteSummaryOffset(ms, 0x0B, statisticsGroupStart, statisticsGroupLength);
+            WriteSummaryOffset(ms, 0x08, chunkIndexGroupStart, chunkIndexGroupLength);
             // Footer
             var ftr = new MemoryStream();
             McapWriter.WriteU64(ftr, sumStart); McapWriter.WriteU64(ftr, sumOffStart); McapWriter.WriteU32(ftr, 0);
@@ -134,6 +143,15 @@ namespace Unity.FoxgloveSDK.Tests
             // Trailing magic
             ms.Write(McapWriter.Magic, 0, 8);
             return ms.ToArray();
+        }
+
+        static void WriteSummaryOffset(Stream stream, byte groupOpcode, ulong groupStart, ulong groupLength)
+        {
+            var content = new MemoryStream();
+            content.WriteByte(groupOpcode);
+            McapWriter.WriteU64(content, groupStart);
+            McapWriter.WriteU64(content, groupLength);
+            WriteRecord(stream, 0x0E, content);
         }
 
         static ulong WriteRecord(Stream s, byte opcode, MemoryStream content)

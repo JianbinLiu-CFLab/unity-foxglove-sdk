@@ -181,11 +181,11 @@ namespace Unity.FoxgloveSDK.Tests
                 UseStatistics = false,
                 UseSummaryOffsets = true
             }));
-            Check(Count(partial, McapWriter.OpcodeSchema) == 1
+            Check(Count(partial, McapWriter.OpcodeSchema) == 2
                   && Count(partial, McapWriter.OpcodeChannel) == 2
                   && Count(partial, McapWriter.OpcodeStatistics) == 0
                   && Count(partial, McapWriter.OpcodeChunkIndex) == 1,
-                "122-D4: repeated schema/channel, statistics, and chunk index gates are independent");
+                "122-D4: chunk indexes force repeated schema and channel definitions");
         }
 
         private static void VerifyCrcGates()
@@ -216,13 +216,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(writer.Contains("CreateOptionsFromFeatures", StringComparison.Ordinal)
                   && writer.Contains("UseChunking = features.Contains(\"ch\")", StringComparison.Ordinal)
                   && writer.Contains("IndexTypes", StringComparison.Ordinal)
-                  && writer.Contains("EnableDataCrcs = true", StringComparison.Ordinal),
+                  && writer.Contains("WriteChunk(", StringComparison.Ordinal)
+                  && writer.Contains("WriteMessageIndex(", StringComparison.Ordinal)
+                  && writer.Contains("WriteChunkIndex(", StringComparison.Ordinal),
                 "122-F1: C# conformance writer maps official feature flags to writer options");
-            Check(runnerLf.Contains("TestFeatures.UseChunks", StringComparison.Ordinal)
-                  && runnerLf.Contains("TestFeatures.AddExtraDataToRecords", StringComparison.Ordinal)
+            Check(runnerLf.Contains("TestFeatures.AddExtraDataToRecords", StringComparison.Ordinal)
+                  && !runnerLf.Contains("TestFeatures.UseChunks", StringComparison.Ordinal)
                   && runnerLf.Contains("return true;", StringComparison.Ordinal)
                   && !runnerLf.Contains("return false;\n  }\n\n  async runWriteTest", StringComparison.Ordinal),
-                "122-F2: writer runner supports a measured direct/no-padding subset instead of skipping all variants");
+                "122-F2: writer runner includes chunked variants and only skips official padding cases");
             Check(File.Exists(RepoPath("Packages/dev.unity2foxglove.sdk/Tests/McapConformance/Unity2Foxglove.McapConformance.csproj")),
                 "122-F3: C# conformance console project remains present for writer byte checks");
         }

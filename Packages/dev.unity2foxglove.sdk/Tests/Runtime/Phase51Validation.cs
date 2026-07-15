@@ -533,7 +533,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && method.Contains("_allChannelWriteStates.Add(m)")
                   && method.Contains("Monitor.IsEntered(_lock)")
                   && !method.Contains("new HashSet<ushort>")
-                  && !Regex.IsMatch(method, @"foreach\s*\(var\s+m\s+in\s+_chMap\.Values\)\s*_seenChannelIds\.Add\(m\.McapId\)"),
+                  && !Regex.IsMatch(method, @"foreach\s*\(var\s+m\s+in\s+_serverChannelWriteStates\.Values\)\s*_seenChannelIds\.Add\(m\.McapId\)"),
                 "51C-3b: McapRecorder tracks channel ids during the scratch channel-state pass");
         }
 

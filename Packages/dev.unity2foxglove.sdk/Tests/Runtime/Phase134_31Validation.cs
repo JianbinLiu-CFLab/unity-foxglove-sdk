@@ -66,9 +66,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("def resolve_conformance_dll_path()", StringComparison.Ordinal)
                   && !source.Contains("build/McapConformance/Release/net10.0", StringComparison.Ordinal),
                 "134-31B-2: MCAP conformance DLL path is resolved from the C# project target framework");
-            Check(source.Contains("r\"(?m)^(Error:|FAIL\\b|\\w+Error:)\"", StringComparison.Ordinal)
-                  && !source.Contains("fail\\s+", StringComparison.Ordinal),
-                "134-31B-3: MCAP conformance error parsing no longer treats diagnostic 'fail count' lines as failures");
+            Check(source.Contains("explicit_failures", StringComparison.Ordinal)
+                  && source.Contains("explicit_passes", StringComparison.Ordinal)
+                  && source.Contains("clean_text", StringComparison.Ordinal),
+                "134-31B-3: MCAP conformance output parsing classifies explicit pass, fail, and ANSI output");
         }
 
         private static void VerifyPerformanceBaselineRunner()
@@ -165,11 +166,15 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyValidationWiring()
         {
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase134-31" });
 
             Check(project.Contains("<Compile Include=\"Phase134_31Validation.cs\" />", StringComparison.Ordinal),
                 "134-31H-1: Phase134_31Validation is compiled by the runtime test project");
-            Check(registry.Contains("Ci(\"--phase134-31\", \"Phase 134-31: regression coverage for generator/build architecture scripts\", Phase134_31Validation.Validate)", StringComparison.Ordinal),
+            Check(entry != null
+                  && entry.Name == "Phase 134-31: regression coverage for generator/build architecture scripts"
+                  && entry.Category == ValidationCategory.CiSafe
+                  && entry.Evidence == ValidationEvidence.Structural
+                  && entry.Run == (Action)Validate,
                 "134-31H-2: Phase134_31Validation is wired into the validation registry");
         }
 

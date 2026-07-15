@@ -43,7 +43,8 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase17", "Phase 17: validates UPM samples declaration, BasicVisualization and FullDemoVisualization sample integrity, forbidden items, and layout consistency", Phase17Validation.Validate),
             Ci("--phase24d", "Phase 24D: validates MCAP mixed-schema guards, client publish schema dedup, encoding normalization (empty == json), and duplicate topic rejection", Phase24DValidation.Validate),
             Ci("--phase28", "Phase 28", Phase28Validation.Validate),
-            Ci("--phase31", "Phase 31", Phase31Validation.Validate),
+            Ci("--phase31", "Phase 31", Phase31Validation.Validate,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural | ValidationEvidence.Conformance | ValidationEvidence.FaultInjection),
             Ci("--phase32", "Phase 32: validation for protobuf encoding, schema catalog, publish, and MCAP paths", Phase32Validation.Validate),
             Ci("--phase33", "Phase 33: validate Phase 33 transport backpressure queueing and WebSocket", Phase33Validation.Validate),
             Ci("--phase34", "Phase 34: validate Phase 34 MCAP attachment records and summary CRC behavior", Phase34Validation.Validate),
@@ -112,23 +113,36 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase115c", "Phase 115C: schema evidence hardening validation", Phase115CValidation.Validate),
             Ci("--phase115d", "Phase 115D: validates replay pose ownership arbitration without depending on UnityEngine", Phase115DValidation.Validate),
             Ci("--phase115e", "Phase 115E: validates FoxRun analyzer diagnostics and generation-model equivalence", Phase115EValidation.Validate),
-            Ci("--phase115f", "Phase 115F: hardens FoxRun generation-model equivalence after Phase 115E", Phase115FValidation.Validate),
+            Ci("--phase115f", "Phase 115F: hardens FoxRun generation-model equivalence after Phase 115E", Phase115FValidation.Validate,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural | ValidationEvidence.Conformance),
             Ci("--phase115g", "Phase 115G: validates review-fix hardening after replay pose and FoxRun generation-model reviews", Phase115GValidation.Validate),
             Ci("--phase115h", "Phase 115H: validates the post-Phase105 comment governance refresh boundary", Phase115HValidation.Validate),
             Ci("--phase116", "Phase 116: validation for the local MCAP DataLoader facade", Phase116Validation.Validate),
-            Ci("--phase117", "Phase 117: validation for MCAP spec parity matrix and local direct-message fallback", Phase117Validation.Validate),
-            Ci("--phase118", "Phase 118: validation for MCAP DataLoader hardening and performance harness coverage", Phase118Validation.Validate),
+            Ci("--phase117", "Phase 117: validation for MCAP spec parity matrix and local direct-message fallback", Phase117Validation.Validate,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Conformance),
+            Ci("--phase118", "Phase 118: validation for MCAP DataLoader hardening and performance harness coverage", Phase118Validation.Validate,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Performance),
             Ci("--phase119", "Phase 119: validation for the local prototype remote MCAP data-source boundary", Phase119Validation.Validate),
-            Local("--phase120", "Phase 120: MCAP official compatibility gate validation and evidence report generation", Phase120Validation.Validate),
-            Local("--phase120-official", "Phase 120 official compatibility", Phase120Validation.ValidateOfficial),
-            Local("--phase120b", "Phase 120B: validation for MCAP DataLoader hardening review closure", Phase120BValidation.Validate),
-            Local("--phase121", "Phase 121: validation for the C# MCAP official conformance runner baseline", Phase121Validation.Validate),
-            Ci("--phase121-conformance", "Phase 121 conformance", Phase121Validation.ValidateConformance, includeInDefault: false),
-            Ci("--phase122", "Phase 122: validation for MCAP writer option parity", Phase122Validation.Validate, includeInDefault: false),
-            Ci("--phase123", "Phase 123: validation for MCAP streaming reader and query parity", Phase123Validation.Validate, includeInDefault: false),
-            Ci("--phase124", "Phase 124: validation for decoded MCAP DataLoader iteration", Phase124Validation.Validate, includeInDefault: false),
-            Ci("--phase125", "Phase 125: validation for typed ROS2 CDR MCAP decode", Phase125Validation.Validate, includeInDefault: false),
-            Ci("--phase126", "Phase 126: architecture coupling, local-boundary, and validation-registry gate", Phase126Validation.Validate),
+            Local("--phase120", "Phase 120: MCAP official compatibility gate validation and evidence report generation", Phase120Validation.Validate,
+                evidence: ValidationEvidence.Conformance),
+            Local("--phase120-official", "Phase 120 official compatibility", Phase120Validation.ValidateOfficial,
+                evidence: ValidationEvidence.Conformance),
+            Local("--phase120b", "Phase 120B: validation for MCAP DataLoader hardening review closure", Phase120BValidation.Validate,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Conformance),
+            Local("--phase121", "Phase 121: validation for the C# MCAP official conformance runner baseline", Phase121Validation.Validate,
+                evidence: ValidationEvidence.Conformance),
+            Ci("--phase121-conformance", "Phase 121 conformance", Phase121Validation.ValidateConformance, includeInDefault: false,
+                evidence: ValidationEvidence.Conformance),
+            Ci("--phase122", "Phase 122: validation for MCAP writer option parity", Phase122Validation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Conformance),
+            Ci("--phase123", "Phase 123: validation for MCAP streaming reader and query parity", Phase123Validation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Conformance),
+            Ci("--phase124", "Phase 124: validation for decoded MCAP DataLoader iteration", Phase124Validation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Conformance),
+            Ci("--phase125", "Phase 125: validation for typed ROS2 CDR MCAP decode", Phase125Validation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Conformance),
+            Ci("--phase126", "Phase 126: architecture coupling, local-boundary, and validation-registry gate", Phase126Validation.Validate,
+                evidence: ValidationEvidence.Structural),
             Ci("--phase128", "Phase 128: RViz2 standard visualization acceptance kit validation", Phase128Validation.Validate, includeInDefault: false),
             Ci("--phase129", "Phase 129: generic PointCloud2 RViz2 acceptance kit validation", Phase129Validation.Validate, includeInDefault: false),
             Ci("--phase130", "Phase 130: MarkerArray RViz2 acceptance kit validation", Phase130Validation.Validate, includeInDefault: false),
@@ -164,19 +178,27 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase134-28", "Phase 134-28: regression coverage for runtime package builder extraction safety", Phase134_28Validation.Validate),
             Ci("--phase134-29", "Phase 134-29: regression coverage for core smoke script hardening", Phase134_29Validation.Validate),
             Ci("--phase134-30", "Phase 134-30: regression coverage for R2FU smoke/build script path hygiene", Phase134_30Validation.Validate),
-            Ci("--phase134-31", "Phase 134-31: regression coverage for generator/build architecture scripts", Phase134_31Validation.Validate),
+            Ci("--phase134-31", "Phase 134-31: regression coverage for generator/build architecture scripts", Phase134_31Validation.Validate,
+                evidence: ValidationEvidence.Structural),
             Ci("--phase134-32", "Phase 134-32: regression coverage for optional R2FU adapter test harness isolation", Phase134_32Validation.Validate),
             Ci("--phase134-33", "Phase 134-33: regression coverage for early baseline validation hardening", Phase134_33Validation.Validate),
             Ci("--phase134-34", "Phase 134-34: guard Phase 134-34 mid-baseline validation fixes", Phase134_34Validation.Validate),
             Ci("--phase134-35", "Phase 134-35: validate Phase 134-35 MCAP test helper hardening", Phase134_35Validation.Validate),
-            Ci("--phase137b", "Phase 137B: recording/replay controller decoupling guard", Phase137BValidation.Validate),
-            Ci("--phase137c", "Phase 137C: editor codegen refactoring guard", Phase137CValidation.Validate),
-            Ci("--phase137d", "Phase 137D: McapReader decode split guard", Phase137DValidation.Validate),
-            Ci("--phase137e", "Phase 137E: FoxgloveManagerEditor partial-class split guard", Phase137EValidation.Validate),
-            Ci("--phase137f", "Phase 137F: runtime orchestration decoupling guard", Phase137FValidation.Validate),
+            Ci("--phase137b", "Phase 137B: recording/replay controller decoupling guard", Phase137BValidation.Validate,
+                evidence: ValidationEvidence.Structural),
+            Ci("--phase137c", "Phase 137C: editor codegen refactoring guard", Phase137CValidation.Validate,
+                evidence: ValidationEvidence.Structural),
+            Ci("--phase137d", "Phase 137D: McapReader decode split guard", Phase137DValidation.Validate,
+                evidence: ValidationEvidence.Structural),
+            Ci("--phase137e", "Phase 137E: FoxgloveManagerEditor partial-class split guard", Phase137EValidation.Validate,
+                evidence: ValidationEvidence.Structural),
+            Ci("--phase137f", "Phase 137F: runtime orchestration decoupling guard", Phase137FValidation.Validate,
+                evidence: ValidationEvidence.Structural),
             // Phase 137G is an explicit governance audit until the existing documentation baseline is remediated.
-            Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false),
-            Ci("--phase137", "Phase 137: directory-first runtime structure guard", Phase137Validation.Validate),
+            Ci("--phase137g", "Phase 137G", Phase137GValidation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Structural),
+            Ci("--phase137", "Phase 137: directory-first runtime structure guard", Phase137Validation.Validate,
+                evidence: ValidationEvidence.Structural),
             Ci("--phase142", "Phase 142: FoxRun type safety hardening validation", Phase142Validation.Validate),
             Local("--phase143", "Phase 143: R2FU standalone distro upgrade ladder strategy validation", Phase143Validation.Validate),
             Ci("--phase144", "Phase 144: protocol-edge validation for WebSocket fragmentation,", ProtocolEdgeHardeningValidation.Validate, includeInDefault: false),
@@ -186,7 +208,8 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase147", "Phase 147: generated-source literal and determinism validation", Phase147Validation.Validate, includeInDefault: false),
             Ci("--phase148", "Phase 148: per-sink channel filtering validation", Phase148Validation.Validate, includeInDefault: false),
             Ci("--phase149a", "Phase 149A: validation for lazy MCAP file-order iteration", Phase149AValidation.Validate, includeInDefault: false),
-            Ci("--phase149b", "Phase 149B: validation for post-recording MCAP metadata and attachment amendment", Phase149BValidation.Validate, includeInDefault: false),
+            Ci("--phase149b", "Phase 149B: validation for post-recording MCAP metadata and attachment amendment", Phase149BValidation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural | ValidationEvidence.FaultInjection),
             Ci("--phase149c", "Phase 149C: validation for MCAP private record writing and enumeration", Phase149CValidation.Validate, includeInDefault: false),
             Ci("--phase150", "Phase 150: validation for SDK-style channel facade API boundaries", Phase150Validation.Validate, includeInDefault: false),
             Ci("--phase151", "Phase 151: validation for profiler infrastructure boundaries", Phase151Validation.Validate, includeInDefault: false),
@@ -198,7 +221,8 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase160", "Phase 160: validation for the R2FU Humble Win64 runtime package", R2fuHumbleRuntimePackageValidation.Validate, includeInDefault: false),
             Ci("--phase161", "Phase 161: validation for the R2FU Jazzy Win64 runtime refresh", R2fuJazzyRuntimeRefreshValidation.Validate, includeInDefault: false),
             Ci("--phase162", "Phase 162: phase 146B validation for the R2FU Lyrical Win64 runtime package", R2fuLyricalRuntimePackageValidation.ValidatePhase162, includeInDefault: false),
-            Ci("--phase165", "R2FU native bridge hot path performance", R2fuNativeBridgeHotPathLifecycleValidation.Validate, includeInDefault: false),
+            Ci("--phase165", "R2FU native bridge hot path performance", R2fuNativeBridgeHotPathLifecycleValidation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Performance),
             Ci("--phase168", "Phase 168: validation for MessagePack raw channel encoding support", MessagePackRawChannelEncodingValidation.Validate, includeInDefault: false),
             Ci("--phase171", "Phase 171: optional Remote Access Gateway package boundary", RemoteGatewayBoundaryValidation.Validate, includeInDefault: false),
             Ci("--phase172", "Phase 172: camera health-based capture admission", CameraHealthCaptureAdmissionValidation.Validate, includeInDefault: false),
@@ -257,7 +281,8 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-54", "Phase 163-54: review follow-up guard for Phase 138 sensor validations", Phase163_54Validation.Validate, includeInDefault: false),
             Ci("--phase163-55", "Phase 163-55: review follow-up guard for Phase 139 remote timeline validations", Phase163_55Validation.Validate, includeInDefault: false),
             Ci("--phase163-56", "Phase 163-56: phase163-56 review regression coverage for runtime validation hygiene", Phase163_56Validation.Validate, includeInDefault: false),
-            Ci("--phase163-57", "Phase 163-57: phase163-57 review regression coverage for unit, conformance, and performance test hygiene", Phase163_57Validation.Validate, includeInDefault: false),
+            Ci("--phase163-57", "Phase 163-57: phase163-57 review regression coverage for unit, conformance, and performance test hygiene", Phase163_57Validation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Structural | ValidationEvidence.Conformance | ValidationEvidence.Performance),
             Ci("--phase163-58", "Phase 163-58: phase163-58 regression coverage for isolated local CI dotnet build roots", Phase163_58Validation.Validate, includeInDefault: false),
             Ci("--phase164-1", "Phase 164-1: phase164-1 optimization regression coverage for repository validation paths", Phase164_1Validation.Validate, includeInDefault: false),
             Ci("--phase164-2", "Phase 164-2: phase164-2 optimization regression coverage for runtime lifecycle hot paths", Phase164_2Validation.Validate, includeInDefault: false),
@@ -315,9 +340,12 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase164-54", "Phase 164-54", Phase164_54Validation.Validate, includeInDefault: false),
             Ci("--phase164-55", "Phase 164-55: optimization guards for Phase 139 remote timeline paths", Phase164_55Validation.Validate, includeInDefault: false),
             Ci("--phase164-56", "Phase 164-56: optimization guards for latest runtime validations", Phase164_56Validation.Validate, includeInDefault: false),
-            Ci("--phase164-57", "Phase 164-57: optimization guards for unit, conformance, and performance tests", Phase164_57Validation.Validate, includeInDefault: false),
-            Ci("--phase164-58", "Validation registry descriptive names", ValidationRegistryDescriptiveNamesValidation.Validate, includeInDefault: false),
-            Ci("--phase164-59", "Validation naming guardrails", ValidationNamingGuardsValidation.Validate, includeInDefault: false),
+            Ci("--phase164-57", "Phase 164-57: optimization guards for unit, conformance, and performance tests", Phase164_57Validation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Structural | ValidationEvidence.Conformance | ValidationEvidence.Performance),
+            Ci("--phase164-58", "Validation registry descriptive names", ValidationRegistryDescriptiveNamesValidation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Structural),
+            Ci("--phase164-59", "Validation naming guardrails", ValidationNamingGuardsValidation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Structural),
             Local("--phase138", "Phase 138: Virtual LiDAR Digital Twin validation", Phase138Validation.Validate),
             Local("--phase138b", "Phase 138B: multi-vendor LiDAR middleware validation", Phase138BValidation.Validate),
             Local("--phase138c2", "Phase 138C2: regression checks for shared-channel routing and subscription ids", Phase138C2Validation.Validate),
@@ -333,7 +361,8 @@ namespace Unity.FoxgloveSDK.Tests
             // 138M: cart-mounted camera time sync and standard ROS camera schemas.
             Ci("--phase138m", "Phase 138M: validation for cart-mounted camera time sync and ROS camera schemas", Phase138MValidation.Validate, includeInDefault: false),
             Ci("--phase138p", "Phase 138P: code-review remediation regression coverage", Phase138PValidation.Validate, includeInDefault: false),
-            Ci("--phase138q", "Phase 138Q: architecture decomposition regression coverage", Phase138QValidation.Validate, includeInDefault: false),
+            Ci("--phase138q", "Phase 138Q: architecture decomposition regression coverage", Phase138QValidation.Validate, includeInDefault: false,
+                evidence: ValidationEvidence.Structural),
             Ci("--phase138t", "Phase 138T: validation for camera raw sensor_msgs/Image native DDS output", Phase138TValidation.Validate, includeInDefault: false),
             Ci("--phase138u", "Phase 138U: validation for LiDAR PointCloud2 visualization deskew contracts", Phase138UValidation.Validate, includeInDefault: false),
             Ci("--phase138s", "Phase 138S: IMU native DDS output contract checks", Phase138SValidation.Validate, includeInDefault: false),
@@ -462,6 +491,10 @@ namespace Unity.FoxgloveSDK.Tests
             if (phaseOnlyName != null)
                 throw new InvalidOperationException(
                     "Validation name must be descriptive, not just a phase number: " + phaseOnlyName.Name);
+
+            var unclassified = All.FirstOrDefault(item => item.Evidence == ValidationEvidence.None);
+            if (unclassified != null)
+                throw new InvalidOperationException("Validation evidence classification is required: " + unclassified.Name);
         }
 
         /// <summary>
@@ -507,7 +540,13 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         private static PhaseValidationCase DefaultOnly(string name, System.Action run)
         {
-            return new PhaseValidationCase(null, name, ValidationCategory.CiSafe, run, includeInDefault: true);
+            return new PhaseValidationCase(
+                null,
+                name,
+                ValidationCategory.CiSafe,
+                ValidationEvidence.Behavior,
+                run,
+                includeInDefault: true);
         }
 
         /// <summary>
@@ -517,17 +556,30 @@ namespace Unity.FoxgloveSDK.Tests
             string flag,
             string name,
             System.Action run,
-            bool includeInDefault = true)
+            bool includeInDefault = true,
+            ValidationEvidence evidence = ValidationEvidence.Behavior)
         {
-            return new PhaseValidationCase(flag, name, ValidationCategory.CiSafe, run, includeInDefault);
+            return new PhaseValidationCase(flag, name, ValidationCategory.CiSafe, evidence, run, includeInDefault);
         }
 
         /// <summary>
         /// Builds a local-evidence validation entry with optional aliases.
         /// </summary>
-        private static PhaseValidationCase Local(string flag, string name, System.Action run, params string[] aliases)
+        private static PhaseValidationCase Local(
+            string flag,
+            string name,
+            System.Action run,
+            ValidationEvidence evidence = ValidationEvidence.Behavior,
+            params string[] aliases)
         {
-            return new PhaseValidationCase(flag, name, ValidationCategory.LocalEvidence, run, includeInDefault: true, aliases);
+            return new PhaseValidationCase(
+                flag,
+                name,
+                ValidationCategory.LocalEvidence,
+                evidence,
+                run,
+                includeInDefault: true,
+                aliases);
         }
 
         /// <summary>
@@ -535,7 +587,13 @@ namespace Unity.FoxgloveSDK.Tests
         /// </summary>
         private static PhaseValidationCase Manual(string flag, string name, System.Action run)
         {
-            return new PhaseValidationCase(flag, name, ValidationCategory.ManualSmoke, run, includeInDefault: false);
+            return new PhaseValidationCase(
+                flag,
+                name,
+                ValidationCategory.ManualSmoke,
+                ValidationEvidence.ManualEvidence,
+                run,
+                includeInDefault: false);
         }
     }
 }

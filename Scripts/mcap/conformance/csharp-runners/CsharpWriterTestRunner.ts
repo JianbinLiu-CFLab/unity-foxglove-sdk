@@ -21,9 +21,6 @@ export default class CsharpWriterTestRunner extends WriteTestRunner {
     if (variant.features.has(TestFeatures.AddExtraDataToRecords)) {
       return false;
     }
-    if (variant.features.has(TestFeatures.UseChunks)) {
-      return false;
-    }
     return true;
   }
 

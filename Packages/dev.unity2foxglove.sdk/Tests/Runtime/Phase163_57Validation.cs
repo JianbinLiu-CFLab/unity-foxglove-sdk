@@ -48,13 +48,13 @@ namespace Unity.FoxgloveSDK.Tests
             var runCi = ReadRepoText("Scripts/release/run_ci.py");
 
             Check(workflow.Contains("run_phase121_conformance.py", StringComparison.Ordinal)
-                  && workflow.Contains("--ci-smoke", StringComparison.Ordinal)
-                  && workflow.Contains("Run MCAP conformance wrapper CI smoke", StringComparison.Ordinal),
-                "163-57B-1: GitHub dotnet workflow runs the bounded MCAP conformance wrapper CI smoke");
+                  && workflow.Contains("--release-blocking", StringComparison.Ordinal)
+                  && workflow.Contains("Run official MCAP differential conformance", StringComparison.Ordinal),
+                "163-57B-1: GitHub dotnet workflow runs release-blocking official MCAP differential conformance");
             Check(runCi.Contains("run_phase121_conformance.py", StringComparison.Ordinal)
-                  && runCi.Contains("--ci-smoke", StringComparison.Ordinal)
-                  && runCi.Contains("mcap-conformance-ci-smoke", StringComparison.Ordinal),
-                "163-57B-2: local run_ci.py runs the bounded MCAP conformance wrapper CI smoke");
+                  && runCi.Contains("--release-blocking", StringComparison.Ordinal)
+                  && runCi.Contains("mcap-conformance-differential", StringComparison.Ordinal),
+                "163-57B-2: local run_ci.py runs release-blocking official MCAP differential conformance");
         }
 
         private static void VerifyPerformanceThresholdsDeclareScope()
@@ -102,7 +102,8 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
 
-            Check(registry.Contains("Ci(\"--phase163-57\", \"Phase 163-57\", Phase163_57Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-57\"", StringComparison.Ordinal)
+                  && registry.Contains("Phase163_57Validation.Validate", StringComparison.Ordinal),
                 "163-57E-1: validation registry exposes Phase163-57");
             Check(project.Contains("<Compile Include=\"Phase163_57Validation.cs\" />", StringComparison.Ordinal),
                 "163-57E-2: runtime validation project compiles Phase163-57");

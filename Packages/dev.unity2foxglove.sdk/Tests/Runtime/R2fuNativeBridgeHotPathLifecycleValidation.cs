@@ -227,11 +227,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRegistryAndProjectWiring()
         {
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase165" });
 
-            Check(registry.Contains("Ci(\"--phase165\", \"R2FU native bridge hot path performance\", R2fuNativeBridgeHotPathLifecycleValidation.Validate, includeInDefault: false)", StringComparison.Ordinal)
-                  && PhaseValidationRegistry.Find(new[] { "--phase165" }) != null,
+            Check(entry != null
+                  && entry.Name == "R2FU native bridge hot path performance"
+                  && entry.Category == ValidationCategory.CiSafe
+                  && entry.Evidence == (ValidationEvidence.Behavior | ValidationEvidence.Performance)
+                  && !entry.IncludeInDefault
+                  && entry.Run == (Action)Validate,
                 "165-E1: validation registry exposes descriptive Phase165 hot-path guard");
             Check(project.Contains("R2fuNativeBridgeHotPathLifecycleValidation.cs", StringComparison.Ordinal)
                   && !project.Contains("Phase165Validation.cs", StringComparison.Ordinal),

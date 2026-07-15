@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import os
 import subprocess
@@ -20,6 +21,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[3]
 BUMP_VERSION_PATH = ROOT / "Scripts" / "release" / "bump_version.py"
 RUN_CI_PATH = ROOT / "Scripts" / "release" / "run_ci.py"
+MCAP_CONFORMANCE_PATH = ROOT / "Scripts" / "mcap" / "conformance" / "run_phase121_conformance.py"
 UNITY_IL2CPP_PATH = ROOT / "Scripts" / "unity_build" / "unity_il2cpp.py"
 
 
@@ -357,17 +359,62 @@ class RunCiTests(unittest.TestCase):
                     self.run_ci.run(["tool"], "fatal-timeout", fatal=True)
         self.assertEqual(124, context.exception.code)
 
+    def test_run_can_disable_wall_clock_timeout(self) -> None:
+        """Finite gates should be allowed to finish without a machine-specific deadline."""
+        completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed) as run_process:
+            self.assertTrue(self.run_ci.run(["tool"], "finite gate", disable_timeout=True))
+
+        self.assertIsNone(run_process.call_args.kwargs["timeout"])
+
     def test_default_ci_builds_independent_subcommand_jobs(self) -> None:
         """Default local CI should fan out independent suites through self-subcommands."""
         args = types.SimpleNamespace(skip_analyzer=False)
 
         jobs = self.run_ci.build_default_ci_jobs(args)
 
-        self.assertEqual(["analyzer", "dotnet", "packages", "boundary"], [job.name for job in jobs])
+        self.assertEqual(
+            ["analyzer", "dotnet", "mcap-conformance", "packages", "boundary"],
+            [job.name for job in jobs],
+        )
         for job in jobs:
             self.assertEqual(sys.executable, job.command[0])
             self.assertEqual(str(RUN_CI_PATH), job.command[1])
             self.assertEqual(["--only", job.name], job.command[2:])
+        self.assertTrue(next(job for job in jobs if job.name == "mcap-conformance").disable_timeout)
+        self.assertTrue(all(not job.disable_timeout for job in jobs if job.name != "mcap-conformance"))
+
+    def test_mcap_conformance_disables_wall_clock_timeout(self) -> None:
+        """The external differential gate should not assume how fast the host machine is."""
+        observed: dict[str, object] = {}
+
+        def fake_run(cmd, label, **kwargs):
+            """Capture the dedicated conformance command without executing it."""
+            observed["cmd"] = cmd
+            observed["label"] = label
+            observed["disable_timeout"] = kwargs.get("disable_timeout")
+            return True
+
+        with mock.patch.object(self.run_ci, "run", side_effect=fake_run):
+            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", "mcap-conformance"]):
+                self.assertEqual(0, self.run_ci.main())
+
+        self.assertIn("run_phase121_conformance.py", " ".join(observed["cmd"]))
+        self.assertEqual("Official MCAP differential conformance", observed["label"])
+        self.assertIs(True, observed["disable_timeout"])
+
+    def test_parallel_mcap_job_disables_wall_clock_timeout(self) -> None:
+        """The parent CI process must not reintroduce a deadline around the MCAP child."""
+        completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout="", stderr="")
+
+        with tempfile.TemporaryDirectory() as temp:
+            job = self.run_ci.CiJob("mcap-conformance", ["tool"], disable_timeout=True)
+            with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed) as run_process:
+                result = self.run_ci._run_ci_job(job, Path(temp))
+
+        self.assertTrue(result.ok)
+        self.assertIsNone(run_process.call_args.kwargs["timeout"])
 
     def test_main_dispatches_default_ci_through_parallel_jobs(self) -> None:
         """Without --only, CI should use the parallel job runner and aggregate job results."""
@@ -383,8 +430,57 @@ class RunCiTests(unittest.TestCase):
             with mock.patch.object(sys, "argv", ["run_ci.py", "--jobs", "2"]):
                 self.assertEqual(0, self.run_ci.main())
 
-        self.assertEqual(["analyzer", "dotnet", "packages", "boundary"], observed["names"])
+        self.assertEqual(
+            ["analyzer", "dotnet", "mcap-conformance", "packages", "boundary"],
+            observed["names"],
+        )
         self.assertEqual(2, observed["max_workers"])
+
+
+class McapConformanceToolTests(unittest.TestCase):
+    """Regression coverage for the release-blocking official MCAP differential."""
+
+    def setUp(self) -> None:
+        """Load a fresh conformance wrapper for each test."""
+        self.conformance = load_module("mcap_conformance_under_test", MCAP_CONFORMANCE_PATH)
+
+    def test_official_conformance_stages_have_no_hardcoded_deadlines(self) -> None:
+        """Official finite stages should run to completion independent of host speed."""
+        tree = ast.parse(MCAP_CONFORMANCE_PATH.read_text(encoding="utf-8"))
+        timeout_calls = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not any(keyword.arg == "timeout_seconds" for keyword in node.keywords):
+                continue
+            function_name = node.func.id if isinstance(node.func, ast.Name) else ""
+            if function_name in {"invoke_command_capture", "run_package_manager"}:
+                timeout_calls.append(node.lineno)
+
+        self.assertEqual([], timeout_calls)
+
+    def test_timeout_failure_details_preserve_the_timeout_reason(self) -> None:
+        """Large runner output must not truncate away the actionable timeout diagnosis."""
+        stdout = "running csharp-streamed-reader\n" + "\n".join(
+            f"  testing fixture-{index}.mcap" for index in range(600)
+        )
+        result = self.conformance.CommandResult(
+            -1,
+            stdout,
+            "Timed out after 180 second(s).",
+            "runner command",
+            timed_out=True,
+        )
+
+        report = self.conformance.measure_runner_output(
+            "csharp-streamed-reader",
+            "streamed-reader",
+            result,
+        )
+
+        failure = report["failures"][0]
+        self.assertTrue(failure["timedOut"])
+        self.assertIn("Timed out after 180 second(s).", failure["details"])
 
 
 class UnityIl2CppBuildTests(unittest.TestCase):

@@ -42,14 +42,10 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void WrongSummaryOpcodeIsSkippedWithoutCursorDrift()
+        public void WrongSummaryOpcodeIsRejected()
         {
             using var stream = CreateSummaryWithWrongOpcodeMcap();
-            var summary = new McapReader(stream).ReadSummary();
-            Assert.True(summary.Schemas.Count == 1,
-                "134-9A-3: summary scan recovers schema after non-summary opcode");
-            Assert.True(summary.Channels.Count == 1 && summary.Channels[0].Topic == "/phase134_9",
-                "134-9A-4: summary scan recovers channel after non-summary opcode");
+            Assert.Throws<InvalidDataException>(() => new McapReader(stream).ReadSummary());
         }
 
         [Fact]
@@ -94,7 +90,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void ChunkIndexRejectsTrailingBytes()
+        public void ChunkIndexAllowsTrailingFields()
         {
             var content = new MemoryStream();
             WriteU64LE(content, 1);
@@ -108,8 +104,9 @@ namespace Unity.FoxgloveSDK.UnitTests
             WriteU64LE(content, 0);
             content.WriteByte(0xFF);
 
-            Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeChunkIndex(content.ToArray())),
-                "173-021A: chunk index trailing bytes are rejected");
+            var decoded = McapRecordDecoder.DecodeChunkIndex(content.ToArray());
+            Assert.Equal(1UL, decoded.MessageStartTime);
+            Assert.Equal(2UL, decoded.MessageEndTime);
         }
 
         [Fact]
@@ -166,7 +163,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void StatisticsRejectsTrailingBytes()
+        public void StatisticsAllowsTrailingFields()
         {
             var content = new MemoryStream();
             WriteU64LE(content, 1);
@@ -180,8 +177,9 @@ namespace Unity.FoxgloveSDK.UnitTests
             WriteU32LE(content, 0);
             content.WriteByte(0xFF);
 
-            Assert.True(ThrowsInvalidData(() => McapRecordDecoder.DecodeStatistics(content.ToArray())),
-                "173-021B: statistics trailing bytes are rejected");
+            var decoded = McapRecordDecoder.DecodeStatistics(content.ToArray());
+            Assert.Equal(1UL, decoded.MessageCount);
+            Assert.Equal(1U, decoded.ChannelCount);
         }
 
         [Fact]

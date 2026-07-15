@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.IO
 
             var hash = Sha256(sContent ?? "");
             var key = (sName ?? "", sEnc ?? "", hash);
-            if (_sKey.TryGetValue(key, out var sid))
+            if (_schemaIdsBySignature.TryGetValue(key, out var sid))
                 return sid;
 
             byte[] schemaData;
@@ -49,10 +49,10 @@ namespace Unity.FoxgloveSDK.IO
                 return 0;
             }
 
-            if (_nextSid == 0) { Fail("Schema ID overflow"); return 0; }
-            sid = _nextSid++;
-            _sKey[key] = sid;
-            _w.WriteSchema(sid, key.Item1, key.Item2, schemaData);
+            if (_nextSchemaId == 0) { Fail("Schema ID overflow"); return 0; }
+            sid = _nextSchemaId++;
+            _schemaIdsBySignature[key] = sid;
+            _writer.WriteSchema(sid, key.Item1, key.Item2, schemaData);
             _schemas.Add(new SchemaRecordState { Id = sid, Name = key.Item1, Encoding = key.Item2, Data = schemaData });
             return sid;
         }

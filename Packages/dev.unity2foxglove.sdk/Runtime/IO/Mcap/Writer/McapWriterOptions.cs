@@ -57,11 +57,20 @@ namespace Unity.FoxgloveSDK.IO
         public bool UseChunking = true;
         /// <summary>Index groups to emit. Message and Chunk indexes only apply when chunking is enabled.</summary>
         public McapIndexTypes IndexTypes = McapIndexTypes.All;
-        /// <summary>Repeat Channel records in the summary section.</summary>
+        /// <summary>
+        /// Repeat Channel records in the summary section. Normalization enables this when
+        /// Chunk indexes or Statistics require summary-resident Channel definitions.
+        /// </summary>
         public bool RepeatChannels = true;
-        /// <summary>Repeat Schema records in the summary section.</summary>
+        /// <summary>
+        /// Repeat Schema records in the summary section. Normalization enables this when
+        /// Chunk indexes require summary-resident Schema definitions.
+        /// </summary>
         public bool RepeatSchemas = true;
-        /// <summary>Emit a Statistics record in the summary section.</summary>
+        /// <summary>
+        /// Emit a Statistics record in the summary section. Enabling Statistics also
+        /// enables repeated Channel records during normalization.
+        /// </summary>
         public bool UseStatistics = true;
         /// <summary>Emit Summary Offset records after the summary section.</summary>
         public bool UseSummaryOffsets = true;
@@ -113,7 +122,56 @@ namespace Unity.FoxgloveSDK.IO
             if (!copy.UseChunking)
                 copy.IndexTypes &= ~(McapIndexTypes.Chunk | McapIndexTypes.Message);
 
+            // Indexed chunks require random-access readers to find every
+            // referenced schema and channel in the summary section.
+            if (copy.UseChunking && copy.HasIndex(McapIndexTypes.Chunk))
+            {
+                copy.RepeatSchemas = true;
+                copy.RepeatChannels = true;
+            }
+
+            // The recorder emits populated per-channel counts whenever
+            // Statistics are enabled, so the corresponding Channel records
+            // must precede Statistics in the summary section.
+            if (copy.UseStatistics)
+                copy.RepeatChannels = true;
+
             return copy;
+        }
+
+        /// <summary>
+        /// Rejects option values that <see cref="Normalize"/> would repair or
+        /// discard. Use this at explicit conformance boundaries when silently
+        /// changing an advanced writer configuration is not acceptable.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        /// The current option combination is not canonical and interoperable.
+        /// </exception>
+        public void ValidateStrict()
+        {
+            if (ChunkSizeBytes <= 0 || ChunkSizeBytes > MaxChunkSizeBytes)
+                throw new InvalidOperationException(
+                    $"ChunkSizeBytes must be between 1 and {MaxChunkSizeBytes} in strict mode.");
+
+            if (Compression == null)
+                throw new InvalidOperationException("Compression must not be null in strict mode; use an empty string for no compression.");
+            if (Compression != "" && Compression != "lz4" && Compression != "zstd")
+                throw new InvalidOperationException("Compression must be empty, 'lz4', or 'zstd' in strict mode.");
+            if (!Enum.IsDefined(typeof(LZ4Level), Lz4CompressionLevel))
+                throw new InvalidOperationException("Lz4CompressionLevel is not a defined LZ4 level.");
+
+            if ((IndexTypes & ~McapIndexTypes.All) != 0)
+                throw new InvalidOperationException("IndexTypes contains unknown flags.");
+
+            if (!UseChunking && (IndexTypes & (McapIndexTypes.Chunk | McapIndexTypes.Message)) != 0)
+                throw new InvalidOperationException("Chunk and Message indexes require UseChunking in strict mode.");
+
+            if (UseChunking && HasIndex(McapIndexTypes.Chunk) && (!RepeatSchemas || !RepeatChannels))
+                throw new InvalidOperationException(
+                    "Chunk indexes require RepeatSchemas and RepeatChannels in strict mode.");
+
+            if (UseStatistics && !RepeatChannels)
+                throw new InvalidOperationException("Statistics require RepeatChannels in strict mode.");
         }
 
         /// <summary>True when the given index group is enabled after normalization.</summary>

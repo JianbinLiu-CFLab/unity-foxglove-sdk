@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(reader.Contains("DefaultRecordSizeLimit", StringComparison.Ordinal)
                   && reader.Contains("MCAP opcode 0x00 is invalid", StringComparison.Ordinal),
                 "117-A2: public MCAP reader enforces record-size and invalid-opcode guards");
-            Check(summaryBuilder.Contains("break; // unknown, skip", StringComparison.Ordinal)
+            Check(summaryBuilder.Contains("Future or private summary record; preserve cursor compatibility.", StringComparison.Ordinal)
                   && writer.Contains("WriteRecord", StringComparison.Ordinal),
                 "117-A3: public MCAP implementation can skip unknown records and construct coverage fixtures");
         }

@@ -133,6 +133,8 @@ namespace Unity.FoxgloveSDK.IO
                                 channelMessageCounts);
                         }
                         break;
+                    case McapWriter.OpcodeAttachment:
+                        throw new InvalidDataException("MCAP Attachment records must not appear inside a Chunk.");
                     default:
                         break;
                 }
@@ -189,10 +191,17 @@ namespace Unity.FoxgloveSDK.IO
 
         internal static void AddSchema(List<McapSchema> schemas, McapSchema schema)
         {
+            if (schema == null || schema.Id == 0)
+                return;
+
             for (var i = 0; i < schemas.Count; i++)
             {
                 if (schemas[i].Id == schema.Id)
+                {
+                    if (!SchemasAreIdentical(schemas[i], schema))
+                        throw new InvalidDataException($"MCAP Schema id {schema.Id} has conflicting definitions.");
                     return;
+                }
             }
 
             schemas.Add(schema);
@@ -203,10 +212,63 @@ namespace Unity.FoxgloveSDK.IO
             for (var i = 0; i < channels.Count; i++)
             {
                 if (channels[i].Id == channel.Id)
+                {
+                    if (!ChannelsAreIdentical(channels[i], channel))
+                        throw new InvalidDataException($"MCAP Channel id {channel.Id} has conflicting definitions.");
                     return;
+                }
             }
 
             channels.Add(channel);
+        }
+
+        private static bool SchemasAreIdentical(McapSchema left, McapSchema right)
+        {
+            if (left.Id != right.Id ||
+                !string.Equals(left.Name, right.Name, StringComparison.Ordinal) ||
+                !string.Equals(left.Encoding, right.Encoding, StringComparison.Ordinal))
+                return false;
+
+            var leftData = left.Data ?? Array.Empty<byte>();
+            var rightData = right.Data ?? Array.Empty<byte>();
+            if (leftData.Length != rightData.Length)
+                return false;
+            for (var i = 0; i < leftData.Length; i++)
+            {
+                if (leftData[i] != rightData[i])
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static bool ChannelsAreIdentical(McapChannel left, McapChannel right)
+        {
+            return left.Id == right.Id &&
+                   left.SchemaId == right.SchemaId &&
+                   string.Equals(left.Topic, right.Topic, StringComparison.Ordinal) &&
+                   string.Equals(left.MessageEncoding, right.MessageEncoding, StringComparison.Ordinal) &&
+                   MapsAreIdentical(left.Metadata, right.Metadata);
+        }
+
+        private static bool MapsAreIdentical(
+            Dictionary<string, string> left,
+            Dictionary<string, string> right)
+        {
+            var leftCount = left?.Count ?? 0;
+            if (leftCount != (right?.Count ?? 0))
+                return false;
+            if (leftCount == 0)
+                return true;
+
+            foreach (var pair in left)
+            {
+                if (!right.TryGetValue(pair.Key, out var value) ||
+                    !string.Equals(pair.Value, value, StringComparison.Ordinal))
+                    return false;
+            }
+
+            return true;
         }
 
         internal static uint DecodeDataEnd(byte[] content)
@@ -261,7 +323,6 @@ namespace Unity.FoxgloveSDK.IO
                 Encoding = ReadString(content, ref off, end, "schema encoding"),
                 Data = ReadPrefixed(content, ref off, end, "schema data")
             };
-            RequireExactSegmentEnd(off, end, "schema");
             return schema;
         }
 
@@ -286,7 +347,6 @@ namespace Unity.FoxgloveSDK.IO
                 MessageEncoding = ReadString(content, ref off, end, "channel message encoding"),
                 Metadata = ReadMap(content, ref off, end, "channel metadata")
             };
-            RequireExactSegmentEnd(off, end, "channel");
             return channel;
         }
 
@@ -459,7 +519,6 @@ namespace Unity.FoxgloveSDK.IO
             ci.Compression = ReadString(content, ref off, end, "chunk index compression");
             ci.CompressedSize = ReadU64LE(content, ref off, end, "chunk index compressed_size");
             ci.UncompressedSize = ReadU64LE(content, ref off, end, "chunk index uncompressed_size");
-            RequireExactSegmentEnd(off, end, "chunk index");
             return ci;
         }
 
@@ -493,7 +552,6 @@ namespace Unity.FoxgloveSDK.IO
                 var count = ReadU64LE(content, ref off, end, "statistics channel message count");
                 s.ChannelMessageCounts[cid] = count;
             }
-            RequireExactSegmentEnd(off, end, "statistics");
             return s;
         }
 
@@ -527,8 +585,21 @@ namespace Unity.FoxgloveSDK.IO
             var off = offset;
             var name = ReadString(content, ref off, end, "metadata name");
             var meta = ReadMap(content, ref off, end, "metadata");
-            RequireExactSegmentEnd(off, end, "metadata");
             return new McapMetadata { Name = name, Metadata = meta };
+        }
+
+        internal static (byte GroupOpcode, ulong GroupStart, ulong GroupLength) DecodeSummaryOffset(
+            byte[] content,
+            int offset,
+            int contentLen)
+        {
+            var end = ValidateRecordSegment(content, offset, contentLen, "summary offset");
+            var off = offset;
+            EnsureSegmentBytes(off, 1, end, "summary offset group opcode");
+            var groupOpcode = content[off++];
+            var groupStart = ReadU64LE(content, ref off, end, "summary offset group start");
+            var groupLength = ReadU64LE(content, ref off, end, "summary offset group length");
+            return (groupOpcode, groupStart, groupLength);
         }
 
         /// <summary>

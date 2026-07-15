@@ -48,6 +48,7 @@ class CiJob:
 
     name: str
     command: list[str]
+    disable_timeout: bool = False
 
 
 @dataclass(frozen=True)
@@ -162,13 +163,25 @@ def cyan(msg: str) -> str:
     return f"\033[36m{msg}\033[0m"
 
 
-def run(cmd: list[str], label: str, *, fatal: bool = False) -> bool:
+def run(
+    cmd: list[str],
+    label: str,
+    *,
+    fatal: bool = False,
+    timeout_seconds: int | None = None,
+    disable_timeout: bool = False,
+) -> bool:
     """Run a subprocess command and return True on success."""
     print(f"\n{cyan('--- ' + label + ' ---')}")
+    effective_timeout = (
+        None
+        if disable_timeout
+        else command_timeout_seconds() if timeout_seconds is None else max(1, timeout_seconds)
+    )
     try:
-        result = subprocess.run(cmd, cwd=REPO_ROOT, timeout=command_timeout_seconds())
+        result = subprocess.run(cmd, cwd=REPO_ROOT, timeout=effective_timeout)
     except subprocess.TimeoutExpired:
-        print(red(f"{FAIL} {label} timed out after {command_timeout_seconds()}s"))
+        print(red(f"{FAIL} {label} timed out after {effective_timeout}s"))
         if fatal:
             raise SystemExit(124)
         return False
@@ -240,6 +253,11 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
     jobs.extend(
         [
             CiJob("dotnet", [sys.executable, script, "--only", "dotnet"]),
+            CiJob(
+                "mcap-conformance",
+                [sys.executable, script, "--only", "mcap-conformance"],
+                disable_timeout=True,
+            ),
             CiJob("packages", [sys.executable, script, "--only", "packages"]),
             CiJob("boundary", [sys.executable, script, "--only", "boundary"]),
         ]
@@ -265,6 +283,7 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
     env["UNITY2FOXGLOVE_CI_RUN_ID"] = RUN_ID
     env.setdefault("PYTHONUNBUFFERED", "1")
     start = time.monotonic()
+    effective_timeout = None if job.disable_timeout else job_timeout_seconds()
     try:
         result = subprocess.run(
             job.command,
@@ -274,7 +293,7 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             errors="replace",
-            timeout=job_timeout_seconds(),
+            timeout=effective_timeout,
         )
         elapsed = time.monotonic() - start
         log_path.write_text(result.stdout or "", encoding="utf-8")
@@ -282,10 +301,12 @@ def _run_ci_job(job: CiJob, log_dir: Path) -> CiJobResult:
     except subprocess.TimeoutExpired as ex:
         elapsed = time.monotonic() - start
         stdout = ex.stdout.decode(errors="replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
-        timeout_message = (
-            f"\n{FAIL} {job.name} timed out after {job_timeout_seconds()}s "
-            f"({elapsed:.1f}s elapsed)\n"
+        timeout_description = (
+            "without a configured wall-clock deadline"
+            if effective_timeout is None
+            else f"after {effective_timeout}s"
         )
+        timeout_message = f"\n{FAIL} {job.name} timed out {timeout_description} ({elapsed:.1f}s elapsed)\n"
         log_path.write_text(stdout + timeout_message, encoding="utf-8")
         return CiJobResult(job.name, False, 124, elapsed, log_path)
 
@@ -413,7 +434,7 @@ def main() -> int:
     parser.add_argument(
         "--only",
         type=str,
-        help="Run only one suite: dotnet, packages, boundary, analyzer",
+        help="Run only one suite: dotnet, mcap-conformance, packages, boundary, analyzer",
     )
     parser.add_argument(
         "--jobs",
@@ -515,16 +536,6 @@ def main() -> int:
             ],
             "Dotnet validation suite (default CI)",
         )
-        results["mcap-conformance-ci-smoke"] = run(
-            [
-                sys.executable,
-                "Scripts/mcap/conformance/run_phase121_conformance.py",
-                "--ci-smoke",
-                "--report-path",
-                "build/mcap-conformance/phase121-conformance-ci-smoke.json",
-            ],
-            "MCAP conformance wrapper CI smoke",
-        )
         results["xunit-restore"] = restore_with_ignoring_failed_sources(
             UNIT_TESTS_PROJ, "Restore xUnit unit test project", UNIT_TEST_PROPS
         )
@@ -543,6 +554,20 @@ def main() -> int:
                 "--results-directory", str(UNIT_TEST_RESULTS_DIR),
             ],
             "xUnit unit tests",
+        )
+
+    # --- official MCAP differential conformance ---
+    if args.only in (None, "mcap-conformance"):
+        results["mcap-conformance-differential"] = run(
+            [
+                sys.executable,
+                "Scripts/mcap/conformance/run_phase121_conformance.py",
+                "--release-blocking",
+                "--report-path",
+                "build/mcap-conformance/phase121-conformance-report.json",
+            ],
+            "Official MCAP differential conformance",
+            disable_timeout=True,
         )
 
     # --- package validators ---

@@ -84,6 +84,17 @@ Validation categories are explicit:
 - **Local Evidence:** opt-in checks that may require machine-local tools, generated artifacts, or external runtimes. Run them with `--local-evidence` or a specific phase flag.
 - **Manual Smoke / Optional Tooling:** commands that require live services, native tools, generated fixtures, or external runtimes.
 
+Those execution categories answer where a validation can run. A separate evidence classification answers what its output proves. Every registered validation carries one or more of these labels, and each non-empty output line is prefixed with them:
+
+- **BEHAVIOR:** executable product or harness behavior.
+- **STRUCTURAL:** repository, architecture, source-shape, or packaging constraints.
+- **CONFORMANCE:** comparison against a specification, canonical fixture, or independent implementation.
+- **FAULT_INJECTION:** deterministic failure, rollback, corruption, or recovery behavior.
+- **PERFORMANCE:** measured throughput, allocation, latency, or hot-path bounds.
+- **MANUAL_EVIDENCE:** human-observed Unity, Foxglove, ROS2, hardware, or external-application evidence.
+
+Use `--list-validations` to inspect both dimensions before running a targeted validation. Mixed suites expose every evidence kind they contain rather than presenting a raw check count as if all checks had equal weight.
+
 Tracked demo-only experiments should use `Experimental/`. Validation must never require contributor-private notes.
 
 ## Restraint Rules

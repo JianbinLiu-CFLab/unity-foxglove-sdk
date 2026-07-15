@@ -27,8 +27,6 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
 
             if (features.Contains("pad"))
                 return Unsupported("extra record padding is not implemented", stderr);
-            if (options.UseChunking)
-                return Unsupported("chunked official writer byte parity is deferred", stderr);
 
             var dataRecords = records.OfType<JObject>()
                 .TakeWhile(r => !string.Equals((string)r["type"], "DataEnd", StringComparison.Ordinal))
@@ -40,16 +38,27 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             using var writer = new McapWriter(stream, leaveOpen: true);
             writer.WriteMagic();
 
-            var schemas = new List<JObject>();
-            var channels = new List<JObject>();
+            var schemas = new List<SchemaState>();
+            var channels = new List<ChannelState>();
+            var schemasByInputId = new Dictionary<ushort, SchemaState>();
+            var channelsByInputId = new Dictionary<ushort, ChannelState>();
+            var writtenSchemaIds = new HashSet<ushort>();
+            var writtenChannelIds = new HashSet<ushort>();
             var metadataIndexes = new List<MetadataIndexState>();
             var attachmentIndexes = new List<McapAttachmentIndex>();
+            var chunkIndexes = new List<ChunkIndexState>();
             var channelMessageCounts = new Dictionary<ushort, ulong>();
+            var chunkMessageIndexes = new Dictionary<ushort, List<(ulong, ulong)>>();
             ulong messageCount = 0;
             ulong messageStartTime = ulong.MaxValue;
             ulong messageEndTime = 0;
             uint metadataCount = 0;
             uint attachmentCount = 0;
+            ushort nextSchemaId = 1;
+            ushort nextChannelId = 1;
+
+            using var chunkStream = new MemoryStream();
+            using var chunkWriter = new McapWriter(chunkStream, leaveOpen: true);
 
             foreach (var record in dataRecords)
             {
@@ -61,20 +70,72 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                         writer.WriteHeader(S(fields, "profile"), S(fields, "library"));
                         break;
                     case "Schema":
-                        writer.WriteSchema(U16(fields, "id"), S(fields, "name"), S(fields, "encoding"), Bytes(fields, "data"));
-                        schemas.Add(record);
+                    {
+                        var schema = new SchemaState
+                        {
+                            Id = nextSchemaId++,
+                            Name = S(fields, "name"),
+                            Encoding = S(fields, "encoding"),
+                            Data = Bytes(fields, "data")
+                        };
+                        schemas.Add(schema);
+                        schemasByInputId.Add(U16(fields, "id"), schema);
                         break;
+                    }
                     case "Channel":
-                        writer.WriteChannel(U16(fields, "id"), U16(fields, "schema_id"), S(fields, "topic"), S(fields, "message_encoding"), Map(fields, "metadata"));
-                        channels.Add(record);
+                    {
+                        var inputSchemaId = U16(fields, "schema_id");
+                        var channel = new ChannelState
+                        {
+                            Id = nextChannelId++,
+                            SchemaId = inputSchemaId == 0
+                                ? (ushort)0
+                                : schemasByInputId.TryGetValue(inputSchemaId, out var schema)
+                                    ? schema.Id
+                                    : throw new InvalidDataException("Channel references unknown schema " + inputSchemaId + "."),
+                            Topic = S(fields, "topic"),
+                            MessageEncoding = S(fields, "message_encoding"),
+                            Metadata = Map(fields, "metadata")
+                        };
+                        channels.Add(channel);
+                        channelsByInputId.Add(U16(fields, "id"), channel);
                         break;
+                    }
                     case "Message":
                     {
-                        var channelId = U16(fields, "channel_id");
+                        var inputChannelId = U16(fields, "channel_id");
+                        if (!channelsByInputId.TryGetValue(inputChannelId, out var channel))
+                            throw new InvalidDataException("Message references unknown channel " + inputChannelId + ".");
+
+                        var targetWriter = options.UseChunking ? chunkWriter : writer;
+                        if (writtenChannelIds.Add(channel.Id))
+                        {
+                            if (channel.SchemaId != 0 && writtenSchemaIds.Add(channel.SchemaId))
+                            {
+                                var schema = schemas.Single(item => item.Id == channel.SchemaId);
+                                targetWriter.WriteSchema(schema.Id, schema.Name, schema.Encoding, schema.Data);
+                            }
+                            targetWriter.WriteChannel(
+                                channel.Id,
+                                channel.SchemaId,
+                                channel.Topic,
+                                channel.MessageEncoding,
+                                channel.Metadata);
+                            if (options.HasIndex(McapIndexTypes.Message))
+                                chunkMessageIndexes.Add(channel.Id, new List<(ulong, ulong)>());
+                        }
+
                         var logTime = U64(fields, "log_time");
-                        writer.WriteMessage(channelId, U32(fields, "sequence"), logTime, U64(fields, "publish_time"), Bytes(fields, "data"));
+                        if (options.UseChunking && options.HasIndex(McapIndexTypes.Message))
+                            chunkMessageIndexes[channel.Id].Add((logTime, (ulong)chunkStream.Position));
+                        targetWriter.WriteMessage(
+                            channel.Id,
+                            U32(fields, "sequence"),
+                            logTime,
+                            U64(fields, "publish_time"),
+                            Bytes(fields, "data"));
                         messageCount++;
-                        channelMessageCounts[channelId] = channelMessageCounts.TryGetValue(channelId, out var count) ? count + 1 : 1;
+                        channelMessageCounts[channel.Id] = channelMessageCounts.TryGetValue(channel.Id, out var count) ? count + 1 : 1;
                         if (logTime < messageStartTime) messageStartTime = logTime;
                         if (logTime > messageEndTime) messageEndTime = logTime;
                         break;
@@ -102,6 +163,48 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 }
             }
 
+            uint chunkCount = 0;
+            if (options.UseChunking && messageCount > 0)
+            {
+                chunkWriter.Flush();
+                var raw = chunkStream.ToArray();
+                var chunkOffset = (ulong)writer.Position;
+                writer.WriteChunk(
+                    messageStartTime,
+                    messageEndTime,
+                    (ulong)raw.Length,
+                    Crc32Helper.Compute(raw),
+                    "",
+                    (ulong)raw.Length,
+                    raw);
+                var chunkLength = (ulong)writer.Position - chunkOffset;
+                var messageIndexOffsets = new Dictionary<ushort, ulong>();
+                ulong messageIndexLength = 0;
+                foreach (var item in chunkMessageIndexes)
+                {
+                    var indexOffset = (ulong)writer.Position;
+                    writer.WriteMessageIndex(item.Key, item.Value);
+                    messageIndexOffsets[item.Key] = indexOffset;
+                    messageIndexLength += (ulong)writer.Position - indexOffset;
+                }
+
+                if (options.HasIndex(McapIndexTypes.Chunk))
+                {
+                    chunkIndexes.Add(new ChunkIndexState
+                    {
+                        StartTime = messageStartTime,
+                        EndTime = messageEndTime,
+                        ChunkOffset = chunkOffset,
+                        ChunkLength = chunkLength,
+                        MessageIndexOffsets = messageIndexOffsets,
+                        MessageIndexLength = messageIndexLength,
+                        CompressedSize = (ulong)raw.Length,
+                        UncompressedSize = (ulong)raw.Length
+                    });
+                }
+                chunkCount = 1;
+            }
+
             writer.WriteDataEnd(writer.ComputeCrc32FromStartToCurrent());
             var summaryStart = (ulong)writer.Position;
 
@@ -112,10 +215,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             if (options.RepeatSchemas)
             {
                 foreach (var schema in schemas)
-                {
-                    var fields = Fields(schema);
-                    summaryWriter.WriteSchema(U16(fields, "id"), S(fields, "name"), S(fields, "encoding"), Bytes(fields, "data"));
-                }
+                    summaryWriter.WriteSchema(schema.Id, schema.Name, schema.Encoding, schema.Data);
             }
             var schemaLength = (ulong)summaryBuilder.Position - schemaStart;
 
@@ -123,17 +223,18 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             if (options.RepeatChannels)
             {
                 foreach (var channel in channels)
-                {
-                    var fields = Fields(channel);
-                    summaryWriter.WriteChannel(U16(fields, "id"), U16(fields, "schema_id"), S(fields, "topic"), S(fields, "message_encoding"), Map(fields, "metadata"));
-                }
+                    summaryWriter.WriteChannel(
+                        channel.Id,
+                        channel.SchemaId,
+                        channel.Topic,
+                        channel.MessageEncoding,
+                        channel.Metadata);
             }
             var channelLength = (ulong)summaryBuilder.Position - channelStart;
 
             var statsStart = (ulong)summaryBuilder.Position;
             if (options.UseStatistics)
             {
-                const uint chunkCount = 0; // Chunked conformance cases are rejected before writing.
                 summaryWriter.WriteStatistics(
                     messageCount,
                     checked((ushort)schemas.Count),
@@ -157,6 +258,22 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 summaryWriter.WriteAttachmentIndex(index);
             var attachmentIndexLength = (ulong)summaryBuilder.Position - attachmentIndexStart;
 
+            var chunkIndexStart = (ulong)summaryBuilder.Position;
+            foreach (var index in chunkIndexes)
+            {
+                summaryWriter.WriteChunkIndex(
+                    index.StartTime,
+                    index.EndTime,
+                    index.ChunkOffset,
+                    index.ChunkLength,
+                    index.MessageIndexOffsets,
+                    index.MessageIndexLength,
+                    "",
+                    index.CompressedSize,
+                    index.UncompressedSize);
+            }
+            var chunkIndexLength = (ulong)summaryBuilder.Position - chunkIndexStart;
+
             ulong summaryOffsetStart = 0;
             if (options.UseSummaryOffsets)
             {
@@ -166,6 +283,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 if (statsLength > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeStatistics, summaryStart + statsStart, statsLength);
                 if (metadataIndexLength > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeMetadataIndex, summaryStart + metadataIndexStart, metadataIndexLength);
                 if (attachmentIndexLength > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeAttachmentIndex, summaryStart + attachmentIndexStart, attachmentIndexLength);
+                if (chunkIndexLength > 0) summaryWriter.WriteSummaryOffset(McapWriter.OpcodeChunkIndex, summaryStart + chunkIndexStart, chunkIndexLength);
             }
 
             summaryWriter.Flush();
@@ -206,7 +324,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             if (features.Contains("ax")) indexTypes |= McapIndexTypes.Attachment;
             if (features.Contains("mdx")) indexTypes |= McapIndexTypes.Metadata;
 
-            return McapWriterOptions.Normalize(new McapWriterOptions
+            return new McapWriterOptions
             {
                 UseChunking = features.Contains("ch"),
                 IndexTypes = indexTypes,
@@ -216,7 +334,7 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
                 UseSummaryOffsets = features.Contains("sum"),
                 EnableCrcs = true,
                 EnableDataCrcs = true
-            });
+            };
         }
 
         private static ISet<string> ParseFeatures(string featureCsv, JObject testcase)
@@ -286,6 +404,35 @@ namespace Unity.FoxgloveSDK.Tests.McapConformance
             public ulong Offset;
             public ulong Length;
             public string Name;
+        }
+
+        private sealed class SchemaState
+        {
+            public ushort Id;
+            public string Name;
+            public string Encoding;
+            public byte[] Data;
+        }
+
+        private sealed class ChannelState
+        {
+            public ushort Id;
+            public ushort SchemaId;
+            public string Topic;
+            public string MessageEncoding;
+            public Dictionary<string, string> Metadata;
+        }
+
+        private sealed class ChunkIndexState
+        {
+            public ulong StartTime;
+            public ulong EndTime;
+            public ulong ChunkOffset;
+            public ulong ChunkLength;
+            public Dictionary<ushort, ulong> MessageIndexOffsets;
+            public ulong MessageIndexLength;
+            public ulong CompressedSize;
+            public ulong UncompressedSize;
         }
     }
 }

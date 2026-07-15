@@ -90,10 +90,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyRegistryAndProjectWiring()
         {
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase164-57" });
 
-            Check(registry.Contains("Ci(\"--phase164-57\", \"Phase 164-57: optimization guards for unit, conformance, and performance tests\", Phase164_57Validation.Validate, includeInDefault: false)", StringComparison.Ordinal)
+            Check(entry != null
+                  && entry.Name == "Phase 164-57: optimization guards for unit, conformance, and performance tests"
+                  && entry.Category == ValidationCategory.CiSafe
+                  && entry.Evidence == (ValidationEvidence.Structural | ValidationEvidence.Conformance | ValidationEvidence.Performance)
+                  && !entry.IncludeInDefault
+                  && entry.Run == (Action)Validate
                   && project.Contains("Phase164_57Validation.cs", StringComparison.Ordinal),
                 "164-57E-1: validation registry and project compile Phase164-57");
         }

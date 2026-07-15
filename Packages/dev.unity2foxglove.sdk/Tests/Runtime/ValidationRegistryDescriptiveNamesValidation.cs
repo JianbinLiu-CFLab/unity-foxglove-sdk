@@ -75,11 +75,15 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyNewValidationUsesDescriptiveFileAndRegistryName(ref int passed)
         {
-            var registry = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             var project = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj");
+            var entry = PhaseValidationRegistry.Find(new[] { "--phase164-58" });
 
-            Check(registry.Contains("Ci(\"--phase164-58\", \"Validation registry descriptive names\", ValidationRegistryDescriptiveNamesValidation.Validate, includeInDefault: false)", StringComparison.Ordinal)
-                  && !registry.Contains("Phase164_58Validation.Validate", StringComparison.Ordinal),
+            Check(entry != null
+                  && entry.Name == "Validation registry descriptive names"
+                  && entry.Category == ValidationCategory.CiSafe
+                  && entry.Evidence == ValidationEvidence.Structural
+                  && !entry.IncludeInDefault
+                  && entry.Run == (Action)Validate,
                 "164-58B-1: new validation registry entry uses a descriptive display name and class",
                 ref passed);
             Check(project.Contains("ValidationRegistryDescriptiveNamesValidation.cs", StringComparison.Ordinal)

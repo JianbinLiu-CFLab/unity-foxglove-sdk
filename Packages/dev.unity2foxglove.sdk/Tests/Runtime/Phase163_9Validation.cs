@@ -132,9 +132,9 @@ namespace Unity.FoxgloveSDK.Tests
             var recorder = PhaseValidationSourceHelpers.ReadMcapRecorderSources();
             var writer = Read("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Writer/McapWriter.cs");
 
-            Check(recorder.Contains("TryRecoverAfterFailedFinalChunkFlush", StringComparison.Ordinal)
-                  && recorder.Contains("_w.TruncateToPosition(flushStartPosition)", StringComparison.Ordinal)
-                  && recorder.Contains("if (!_w.CanSeek)", StringComparison.Ordinal)
+            Check(recorder.Contains("TryRecoverAfterFailedChunkFlush", StringComparison.Ordinal)
+                  && recorder.Contains("_writer.TruncateToPosition(flushStartPosition)", StringComparison.Ordinal)
+                  && recorder.Contains("if (!_writer.CanSeek)", StringComparison.Ordinal)
                   && writer.Contains("internal void TruncateToPosition(long position)", StringComparison.Ordinal)
                   && writer.Contains("_stream.SetLength(position)", StringComparison.Ordinal),
                 "163-9F: partial final chunk recovery is seekable-stream gated and truncates before writing the trailer");
