@@ -305,6 +305,51 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void InputHubRebuildsWebSocketRegistrationsAtActiveSessionBoundaries()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            var sessionChanged = TestSources.ExtractMethod(
+                source,
+                "private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)");
+            var applyIndex = sessionChanged.IndexOf(
+                "ApplySubscriptionSessionPolicy(policy);",
+                StringComparison.Ordinal);
+            var rebuildIndex = sessionChanged.IndexOf(
+                "RebuildRouterRegistrationsForActiveSession();",
+                StringComparison.Ordinal);
+
+            Assert.True(applyIndex >= 0, "The new session policy must be applied first.");
+            Assert.True(
+                rebuildIndex > applyIndex,
+                "An active replacement session must rebuild registrations after applying its provider.");
+
+            var setManager = TestSources.ExtractMethod(
+                source,
+                "private void SetManager(FoxgloveManager manager)");
+            var managerApplyIndex = setManager.IndexOf("ApplyManagerPolicy();", StringComparison.Ordinal);
+            var managerRebuildIndex = setManager.IndexOf(
+                "RebuildRouterRegistrationsForActiveSession();",
+                StringComparison.Ordinal);
+            Assert.True(
+                managerRebuildIndex > managerApplyIndex,
+                "Manager rebinding must apply its current session before rebuilding registrations.");
+
+            var rebuild = TestSources.ExtractMethod(
+                source,
+                "private void RebuildRouterRegistrationsForActiveSession()");
+            Assert.Contains("if (!_subscriptionsEnabled)", rebuild, StringComparison.Ordinal);
+            Assert.Contains("RemoveStaleSources();", rebuild, StringComparison.Ordinal);
+            Assert.Contains("_scanSources.Sort(CompareInputSourceOrder);", rebuild, StringComparison.Ordinal);
+            var unregisterIndex = rebuild.IndexOf("_router.Unregister(source);", StringComparison.Ordinal);
+            var registerIndex = rebuild.IndexOf("_router.Register(source);", StringComparison.Ordinal);
+            Assert.True(unregisterIndex >= 0, "Existing byte-router registrations must be removed.");
+            Assert.True(
+                registerIndex > unregisterIndex,
+                "Sources must be registered again only after all old provider resolutions are removed.");
+        }
+
+        [Fact]
         public void InputHubRefreshesSessionPolicyBeforeFirstMessageDispatch()
         {
             var source = TestSources.Text(
