@@ -93,7 +93,9 @@ namespace Unity.FoxgloveSDK.Components
                     continue;
 
                 foreach (var group in type.Contracts
-                             .Where(contract => contract != null && IsSubscriptionFlow(contract.FlowMode))
+                             .Where(contract => contract != null
+                                                && IsSubscriptionFlow(contract.FlowMode)
+                                                && IsWebSocketEncoding(contract.Encoding))
                              .GroupBy(contract => new ContractKey(contract.Topic, contract.FlowMode)))
                 {
                     var variants = group.ToArray();
@@ -153,6 +155,10 @@ namespace Unity.FoxgloveSDK.Components
         private static bool IsSubscriptionFlow(string flowMode)
             => string.Equals(flowMode, "SubscribeOnly", StringComparison.Ordinal)
                || string.Equals(flowMode, "PublishAndSubscribe", StringComparison.Ordinal);
+
+        private static bool IsWebSocketEncoding(string encoding)
+            => string.Equals(encoding, "json", StringComparison.Ordinal)
+               || string.Equals(encoding, "protobuf", StringComparison.Ordinal);
 
         private static FoxRunMode ParseFlowMode(string flowMode)
         {

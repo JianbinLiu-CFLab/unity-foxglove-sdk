@@ -15,8 +15,10 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, HideInInspector, Obsolete("Use directional FoxRun encoding defaults.")]
         private FoxRunWireEncoding _defaultFoxRunWireEncoding = FoxRunWireEncoding.Protobuf;
         [SerializeField] private FoxRunWireEncoding _defaultFoxRunSubscriptionEncoding = FoxRunWireEncoding.Protobuf;
-        private FoxRunWireEncoding _activeFoxRunSubscriptionEncoding = FoxRunWireEncoding.Protobuf;
-        private bool _hasActiveFoxRunWireEncoding;
+        [SerializeField] private FoxRunSubscriptionProvider _defaultFoxRunSubscriptionProvider = FoxRunSubscriptionProvider.FoxgloveWebSocket;
+        [SerializeField] private FoxRunRos2QosPreset _defaultFoxRunRos2Qos = FoxRunRos2QosPreset.Default;
+        [SerializeField, Min(FoxRunWireEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes)]
+        private int _foxRunRos2NativeCopyBudgetBytes = FoxRunWireEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes;
 
         [Tooltip("Allow generated SubscribeOnly and PublishAndSubscribe FoxRun members to receive client-published Protobuf or JSON. Disabled by default.")]
         [SerializeField] private bool _enableFoxRunInbound;
@@ -32,8 +34,12 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         public int FoxRunSubscriptionMaxPayloadBytes => Math.Max(256, _foxRunInboundMaxPayloadBytes);
-        public int FoxRunSubscriptionMaxMessagesPerSecondPerTopic =>
+        private int ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic =>
             Math.Max(1, _foxRunInboundMaxMessagesPerSecondPerTopic);
+        public int FoxRunSubscriptionMaxMessagesPerSecondPerTopic =>
+            ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
+                ? ActiveFoxRunSubscriptionSessionPolicy.MainThreadApplyRateLimitHz
+                : ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic;
 
         /// <summary>Serialized default used by inherited SubscribeOnly contracts.</summary>
         public FoxRunWireEncoding DefaultFoxRunSubscriptionEncoding
@@ -44,10 +50,69 @@ namespace Unity.FoxgloveSDK.Components
             set => _defaultFoxRunSubscriptionEncoding = FoxRunWireEncodingResolver.ValidateManagerDefault(value);
         }
 
-        /// <summary>Effective subscription default for the active server session, or the current configuration while stopped.</summary>
-        public FoxRunWireEncoding ActiveFoxRunSubscriptionEncoding => _hasActiveFoxRunWireEncoding
-            ? _activeFoxRunSubscriptionEncoding
-            : DefaultFoxRunSubscriptionEncoding;
+        /// <summary>Serialized default provider used by inherited subscription contracts.</summary>
+        public FoxRunSubscriptionProvider DefaultFoxRunSubscriptionProvider
+        {
+            get => FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(
+                _defaultFoxRunSubscriptionProvider);
+            set
+            {
+                _defaultFoxRunSubscriptionProvider =
+                    FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(value);
+                _foxRunPolicySerializationVersion =
+                    FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion;
+            }
+        }
+
+        /// <summary>Serialized default QoS used by native ROS2 subscription contracts.</summary>
+        public FoxRunRos2QosPreset DefaultFoxRunRos2Qos
+        {
+            get => FoxRunRos2QosResolver.NormalizeManagerDefault(_defaultFoxRunRos2Qos);
+            set
+            {
+                _defaultFoxRunRos2Qos = FoxRunRos2QosResolver.NormalizeManagerDefault(value);
+                _foxRunPolicySerializationVersion =
+                    FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion;
+            }
+        }
+
+        /// <summary>Configured copied-data budget for optional native subscriptions.</summary>
+        public int FoxRunRos2NativeCopyBudgetBytes
+        {
+            get => FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(
+                _foxRunRos2NativeCopyBudgetBytes);
+            set
+            {
+                _foxRunRos2NativeCopyBudgetBytes =
+                    FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(value);
+                _foxRunPolicySerializationVersion =
+                    FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion;
+            }
+        }
+
+        /// <summary>Effective subscription encoding for the active subscription session.</summary>
+        public FoxRunWireEncoding ActiveFoxRunSubscriptionEncoding =>
+            ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
+                ? ActiveFoxRunSubscriptionSessionPolicy.WebSocketSubscriptionEncoding
+                : DefaultFoxRunSubscriptionEncoding;
+
+        /// <summary>Effective provider for the active subscription session.</summary>
+        public FoxRunSubscriptionProvider ActiveFoxRunSubscriptionProvider =>
+            ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
+                ? ActiveFoxRunSubscriptionSessionPolicy.DefaultProvider
+                : DefaultFoxRunSubscriptionProvider;
+
+        /// <summary>Effective ROS2 QoS for the active subscription session.</summary>
+        public FoxRunRos2QosPreset ActiveFoxRunRos2Qos =>
+            ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
+                ? ActiveFoxRunSubscriptionSessionPolicy.DefaultRos2Qos
+                : DefaultFoxRunRos2Qos;
+
+        /// <summary>Effective native copy budget for the active subscription session.</summary>
+        public int ActiveFoxRunRos2NativeCopyBudgetBytes =>
+            ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
+                ? ActiveFoxRunSubscriptionSessionPolicy.NativeCopyBudgetBytes
+                : FoxRunRos2NativeCopyBudgetBytes;
 
         /// <summary>Compatibility alias for code compiled against the pre-Phase176 input policy.</summary>
         [Obsolete("Use FoxRunSubscriptionMaxPayloadBytes.")]
@@ -74,9 +139,7 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Compatibility alias for the former single active FoxRun default.</summary>
         [Obsolete("Use ActiveFoxRunPublishEncoding or ActiveFoxRunSubscriptionEncoding.")]
-        public FoxRunWireEncoding ActiveFoxRunDefaultWireEncoding => _hasActiveFoxRunWireEncoding
-            ? _activeFoxRunSubscriptionEncoding
-            : DefaultFoxRunSubscriptionEncoding;
+        public FoxRunWireEncoding ActiveFoxRunDefaultWireEncoding => ActiveFoxRunSubscriptionEncoding;
 
         /// <summary>Resolves a generated declaration against the active directional session policy.</summary>
         public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding, FoxRunMode mode)
@@ -90,20 +153,6 @@ namespace Unity.FoxgloveSDK.Components
         [Obsolete("Generated FoxRun code must pass its flow mode.")]
         public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding)
             => ResolveFoxRunWireEncoding(declaredEncoding, FoxRunMode.SubscribeOnly);
-
-        internal void CaptureFoxRunWireEncodingForSession()
-        {
-            _activeFoxRunPublishEncoding = DefaultFoxRunPublishEncoding;
-            _activeFoxRunSubscriptionEncoding = DefaultFoxRunSubscriptionEncoding;
-            _hasActiveFoxRunWireEncoding = true;
-        }
-
-        internal void ClearFoxRunWireEncodingForSession()
-        {
-            _hasActiveFoxRunWireEncoding = false;
-            _activeFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
-            _activeFoxRunSubscriptionEncoding = FoxRunWireEncoding.Protobuf;
-        }
 
         public bool IsFoxRunInboundAuthorized
         {

@@ -5,10 +5,12 @@
 // Purpose: Locks the safe, directional subscription-contract catalog for the FoxRun Publish panel.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -130,6 +132,69 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("object", fields["items"]!.Value<string>("type"));
         }
 
+        [Fact]
+        public void CatalogExcludesRos2CdrAndUnknownVariantsInsteadOfRelabelingThemAsJson()
+        {
+            var response = FoxRunSubscriptionCatalog.BuildResponse(
+                CreateUnsupportedEncodingManifest(),
+                subscriptionsEnabled: true,
+                FoxRunWireEncoding.Protobuf,
+                FoxRunWireEncoding.Protobuf,
+                subscriptionRateLimitHz: 30,
+                requestedTopic: null,
+                includeDescriptor: false);
+
+            var contracts = ((JArray)response["contracts"]).Cast<JObject>().ToArray();
+            Assert.Equal(2, contracts.Length);
+            Assert.Collection(
+                contracts,
+                contract =>
+                {
+                    Assert.Equal("/phase179/json", contract.Value<string>("topic"));
+                    Assert.Equal("json", contract.Value<string>("encoding"));
+                },
+                contract =>
+                {
+                    Assert.Equal("/phase179/protobuf", contract.Value<string>("topic"));
+                    Assert.Equal("protobuf", contract.Value<string>("encoding"));
+                });
+            Assert.DoesNotContain(contracts, contract =>
+                contract.Value<string>("topic") is "/phase179/ros2" or "/phase179/cdr" or "/phase179/unknown");
+            Assert.Null(response["token"]);
+            Assert.Null(response["clientId"]);
+            Assert.Null(response["queueState"]);
+            Assert.Null(response["maxPayloadBytes"]);
+        }
+
+        [Fact]
+        public void ManagerCatalogReadsOneFrozenSnapshotWithoutNativeProviderGating()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunSubscriptionCatalog.cs");
+            var handler = TestSources.ExtractMethod(
+                source,
+                "private JToken HandleFoxRunSubscriptionCatalogRequest(JToken request)");
+
+            Assert.Contains(
+                "var subscriptionPolicy = ActiveFoxRunSubscriptionSessionPolicy;",
+                handler,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "subscriptionPolicy.SubscriptionsEnabled && IsFoxRunInboundAuthorized",
+                handler,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "subscriptionPolicy.WebSocketSubscriptionEncoding",
+                handler,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "subscriptionPolicy.MainThreadApplyRateLimitHz",
+                handler,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("DefaultProvider", handler, StringComparison.Ordinal);
+            Assert.DoesNotContain("Ros2Native", handler, StringComparison.Ordinal);
+        }
+
         private static FoxRunSchemaManifestInfo CreateManifest()
         {
             var fields = new[]
@@ -184,5 +249,51 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "foxrun",
                 new[] { new FoxRunSchemaTypeInfo("Demo.Contracts", contracts) });
         }
+
+        private static FoxRunSchemaManifestInfo CreateUnsupportedEncodingManifest()
+        {
+            var fields = new[]
+            {
+                new FoxRunSchemaFieldInfo("value", "_value", "field", "int32", false, false, false, 1)
+            };
+            var contracts = new[]
+            {
+                SubscriptionContract("/phase179/json", "json", fields),
+                SubscriptionContract("/phase179/protobuf", "protobuf", fields),
+                SubscriptionContract("/phase179/ros2", "ros2", fields),
+                SubscriptionContract("/phase179/cdr", "cdr", fields),
+                SubscriptionContract("/phase179/unknown", "yaml", fields)
+            };
+            return new FoxRunSchemaManifestInfo(
+                1,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[] { new FoxRunSchemaTypeInfo("Demo.Contracts", contracts) });
+        }
+
+        private static FoxRunSchemaContractInfo SubscriptionContract(
+            string topic,
+            string encoding,
+            IReadOnlyList<FoxRunSchemaFieldInfo> fields)
+            => new(
+                "Demo.Input",
+                topic,
+                "phase179." + encoding,
+                encoding,
+                encoding + "-input",
+                encoding + "-input",
+                "policy",
+                "FixedRate",
+                10f,
+                0f,
+                0f,
+                fields,
+                flowMode: "SubscribeOnly",
+                protobufDescriptorSet: string.Equals(encoding, "protobuf", StringComparison.Ordinal)
+                    ? new byte[] { 1, 2, 3 }
+                    : null);
     }
 }

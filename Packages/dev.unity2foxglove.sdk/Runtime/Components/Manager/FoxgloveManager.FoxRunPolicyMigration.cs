@@ -23,7 +23,10 @@ namespace Unity.FoxgloveSDK.Components
                 ref _foxRunPolicySerializationVersion,
                 _defaultFoxRunWireEncoding,
                 ref _defaultFoxRunPublishEncoding,
-                ref _defaultFoxRunSubscriptionEncoding);
+                ref _defaultFoxRunSubscriptionEncoding,
+                ref _defaultFoxRunSubscriptionProvider,
+                ref _defaultFoxRunRos2Qos,
+                ref _foxRunRos2NativeCopyBudgetBytes);
 #pragma warning restore CS0618
         }
     }

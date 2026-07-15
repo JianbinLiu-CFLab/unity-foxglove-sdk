@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxgloveInputSource> _stale = new();
         private readonly List<IFoxgloveInputSource> _scanSources = new();
         private readonly HashSet<string> _warned = new(StringComparer.Ordinal);
+        private bool _subscriptionsEnabled;
         private float _managerSearchCooldown;
         private float _scanTimer;
 
@@ -62,9 +63,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == null)
                 return;
 
-            _router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;
-            _router.MaxMessagesPerSecondPerTopic = _manager.FoxRunSubscriptionMaxMessagesPerSecondPerTopic;
-            _router.DefaultSubscriptionWireEncoding = _manager.ActiveFoxRunSubscriptionEncoding;
+            ApplyManagerPolicy();
 
             _scanTimer -= Time.deltaTime;
             if (_scanTimer <= 0f)
@@ -91,10 +90,47 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager == manager)
                 return;
             if (_manager != null)
+            {
                 _manager.OnClientMessageWithEncoding -= OnClientMessage;
+                _manager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
+            }
             _manager = manager;
             if (_manager != null)
+            {
                 _manager.OnClientMessageWithEncoding += OnClientMessage;
+                _manager.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;
+            }
+            ApplyManagerPolicy();
+        }
+
+        private void ApplyManagerPolicy()
+        {
+            if (_manager == null)
+            {
+                _subscriptionsEnabled = false;
+                return;
+            }
+
+            _router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;
+            ApplySubscriptionSessionPolicy(_manager.ActiveFoxRunSubscriptionSessionPolicy);
+        }
+
+        private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
+        {
+            ApplySubscriptionSessionPolicy(policy);
+        }
+
+        private void ApplySubscriptionSessionPolicy(FoxRunSubscriptionSessionPolicy policy)
+        {
+            if (policy == null)
+            {
+                _subscriptionsEnabled = false;
+                return;
+            }
+
+            _subscriptionsEnabled = policy.SubscriptionsEnabled;
+            _router.DefaultSubscriptionWireEncoding = policy.WebSocketSubscriptionEncoding;
+            _router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;
         }
 
         private void Scan()
@@ -149,7 +185,11 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnClientMessage(uint clientId, uint channelId, string topic, string encoding, byte[] payload)
         {
-            if (_manager == null || !_manager.EnableFoxRunInbound)
+            if (_manager == null)
+                return;
+
+            ApplyManagerPolicy();
+            if (!_subscriptionsEnabled)
                 return;
             if (!_manager.IsFoxRunInboundAuthorized)
             {

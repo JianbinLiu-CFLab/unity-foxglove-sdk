@@ -26,6 +26,26 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FoxRunWireEncodingMembersAndValuesRemainStable()
+        {
+            var values = Enum.GetValues(typeof(FoxRunWireEncoding))
+                .Cast<FoxRunWireEncoding>()
+                .ToArray();
+
+            Assert.Equal(
+                new[]
+                {
+                    FoxRunWireEncoding.Inherit,
+                    FoxRunWireEncoding.Protobuf,
+                    FoxRunWireEncoding.Json
+                },
+                values);
+            Assert.Equal(0, (int)FoxRunWireEncoding.Inherit);
+            Assert.Equal(1, (int)FoxRunWireEncoding.Protobuf);
+            Assert.Equal(2, (int)FoxRunWireEncoding.Json);
+        }
+
+        [Fact]
         public void FoxRunWirePolicyDefaultsToInheritAcrossRegularAndAggregateDeclarations()
         {
             var assembly = typeof(FoxRunAttribute).Assembly;

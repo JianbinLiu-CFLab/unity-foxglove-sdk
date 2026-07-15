@@ -54,12 +54,13 @@ namespace Unity.FoxgloveSDK.Components
             var objectRequest = request as JObject;
             var requestedTopic = objectRequest?.Value<string>("topic");
             var includeDescriptor = objectRequest?.Value<bool?>("includeDescriptor") == true;
+            var subscriptionPolicy = ActiveFoxRunSubscriptionSessionPolicy;
             return FoxRunSubscriptionCatalog.BuildResponse(
                 FoxRunSchemaInfoRegistry.Current,
-                IsFoxRunInboundAuthorized,
+                subscriptionPolicy.SubscriptionsEnabled && IsFoxRunInboundAuthorized,
                 ActiveFoxRunPublishEncoding,
-                ActiveFoxRunSubscriptionEncoding,
-                FoxRunSubscriptionMaxMessagesPerSecondPerTopic,
+                subscriptionPolicy.WebSocketSubscriptionEncoding,
+                subscriptionPolicy.MainThreadApplyRateLimitHz,
                 requestedTopic,
                 includeDescriptor);
         }

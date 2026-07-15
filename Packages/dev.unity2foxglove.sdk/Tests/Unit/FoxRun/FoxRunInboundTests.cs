@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Generic;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.IO;
+using Unity.FoxgloveSDK.Protocol;
+using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using UnityEngine;
 using Xunit;
@@ -182,6 +188,177 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("client advertised \"json\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
         }
 
+        [Theory]
+        [InlineData("ros2")]
+        [InlineData("cdr")]
+        public void RouterRejectsNativeAdvertisedEncodingWithoutApplyingSource(string encoding)
+        {
+            var input = new RecordingInput("/phase179/websocket-only");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            var result = router.Dispatch(
+                "/phase179/websocket-only",
+                Encoding.UTF8.GetBytes("{\"value\":4}"),
+                encoding,
+                nowSeconds: 1);
+
+            Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
+            Assert.Equal(0, input.ApplyCount);
+            Assert.Contains("client advertised \"" + encoding + "\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void InputHubSafelyRebindsSessionPolicyAndAppliesTheCurrentSnapshotImmediately()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            var setManager = TestSources.ExtractMethod(source, "private void SetManager(FoxgloveManager manager)");
+            var unsubscribeIndex = setManager.IndexOf(
+                "_manager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;",
+                StringComparison.Ordinal);
+            var assignIndex = setManager.IndexOf("_manager = manager;", StringComparison.Ordinal);
+            var subscribeIndex = setManager.IndexOf(
+                "_manager.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;",
+                StringComparison.Ordinal);
+            var applyIndex = setManager.IndexOf("ApplyManagerPolicy();", StringComparison.Ordinal);
+
+            Assert.True(unsubscribeIndex >= 0, "SetManager must unsubscribe the previous Manager session event.");
+            Assert.True(assignIndex >= 0, "SetManager must assign the new Manager.");
+            Assert.True(subscribeIndex >= 0, "SetManager must subscribe the new Manager session event.");
+            Assert.True(applyIndex >= 0, "SetManager must immediately apply the current session snapshot.");
+            Assert.True(unsubscribeIndex < assignIndex, "Unsubscribe must happen before Manager assignment.");
+            Assert.True(assignIndex < subscribeIndex, "Manager assignment must happen before subscription.");
+            Assert.True(subscribeIndex < applyIndex, "Subscription must happen before the current snapshot is applied.");
+
+            var onDisable = TestSources.ExtractMethod(source, "private void OnDisable()");
+            var onDestroy = TestSources.ExtractMethod(source, "private void OnDestroy()");
+            Assert.Contains("SetManager(null);", onDisable, StringComparison.Ordinal);
+            Assert.Contains("SetManager(null);", onDestroy, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void InputHubRefreshesSessionPolicyBeforeFirstMessageDispatch()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            var dispatch = TestSources.ExtractMethod(
+                source,
+                "private void OnClientMessage(uint clientId, uint channelId, string topic, string encoding, byte[] payload)");
+            var refreshIndex = dispatch.IndexOf("ApplyManagerPolicy();", StringComparison.Ordinal);
+            var enabledIndex = dispatch.IndexOf("if (!_subscriptionsEnabled)", StringComparison.Ordinal);
+
+            Assert.True(refreshIndex >= 0, "Dispatch must refresh the current session snapshot.");
+            Assert.True(enabledIndex > refreshIndex, "Snapshot refresh must happen before the enabled-state gate.");
+            Assert.DoesNotContain("EnableFoxRunInbound", dispatch, StringComparison.Ordinal);
+            Assert.Contains("IsFoxRunInboundAuthorized", dispatch, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void InputHubSeparatesFrozenEncodingAndRateFromLivePayloadPolicy()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            var managerPolicy = TestSources.ExtractMethod(source, "private void ApplyManagerPolicy()");
+            var sessionPolicy = TestSources.ExtractMethod(
+                source,
+                "private void ApplySubscriptionSessionPolicy(FoxRunSubscriptionSessionPolicy policy)");
+
+            Assert.Contains(
+                "_router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;",
+                managerPolicy,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "ApplySubscriptionSessionPolicy(_manager.ActiveFoxRunSubscriptionSessionPolicy);",
+                managerPolicy,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_router.DefaultSubscriptionWireEncoding = policy.WebSocketSubscriptionEncoding;",
+                sessionPolicy,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;",
+                sessionPolicy,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("Ros2Native", source, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("cdr", source, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void JsonAndProtobufInputsDecodeAfterRuntimeRestartWithinOneSubscriptionSession()
+        {
+            var transport = new RestartInputTransport();
+            using var runtime = new FoxgloveRuntime(
+                transport,
+                new SystemClock(),
+                new DefaultSchemaRegistry());
+            var sessionState = new FoxRunSubscriptionSessionState();
+            var policy = sessionState.BeginIfNeeded(
+                FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                FoxRunWireEncoding.Protobuf,
+                FoxRunRos2QosPreset.Default,
+                nativeCopyBudgetBytes: 4 * 1024 * 1024,
+                mainThreadApplyRateLimitHz: 60);
+            var generation = policy.SessionGeneration;
+            var input = new RestartDecodingInput();
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+            var dispatches = new List<FoxRunInputDispatchResult>();
+            var nowSeconds = 0d;
+
+            void StartAndAttach(FoxRunSubscriptionSessionPolicy activePolicy)
+            {
+                runtime.Start("phase179-restart", enableCdrClientPublish: false);
+                router.DefaultSubscriptionWireEncoding = activePolicy.WebSocketSubscriptionEncoding;
+                router.MaxMessagesPerSecondPerTopic = activePolicy.MainThreadApplyRateLimitHz;
+                runtime.Session.OnClientMessageWithEncoding += (_, _, topic, encoding, payload) =>
+                    dispatches.Add(router.Dispatch(topic, payload, encoding, nowSeconds += 2d));
+            }
+
+            void PublishBoth(int jsonValue, int protobufValue)
+            {
+                transport.ReceiveText(
+                    17,
+                    "{\"op\":\"advertise\",\"channels\":["
+                    + "{\"id\":1,\"topic\":\"/phase179/json\",\"encoding\":\"json\"},"
+                    + "{\"id\":2,\"topic\":\"/phase179/protobuf\",\"encoding\":\"protobuf\"}]}");
+                transport.ReceiveBinary(
+                    17,
+                    ClientMessageFrame(
+                        1,
+                        Encoding.UTF8.GetBytes("{\"value\":" + jsonValue + "}")));
+                var protobuf = new List<byte>();
+                FoxRunProtobufWire.WriteInt32(protobuf, 1, protobufValue);
+                transport.ReceiveBinary(17, ClientMessageFrame(2, protobuf.ToArray()));
+            }
+
+            StartAndAttach(policy);
+            PublishBoth(jsonValue: 4, protobufValue: 8);
+            Assert.Equal(4, input.JsonValue);
+            Assert.Equal(8, input.ProtobufValue);
+            runtime.Stop();
+
+            var frozenPolicy = sessionState.BeginIfNeeded(
+                FoxRunSubscriptionProvider.Ros2Native,
+                FoxRunWireEncoding.Json,
+                FoxRunRos2QosPreset.SensorData,
+                nativeCopyBudgetBytes: 1024,
+                mainThreadApplyRateLimitHz: 1);
+            Assert.Same(policy, frozenPolicy);
+            Assert.Equal(generation, frozenPolicy.SessionGeneration);
+            Assert.Equal(FoxRunWireEncoding.Protobuf, frozenPolicy.WebSocketSubscriptionEncoding);
+            Assert.Equal(60, frozenPolicy.MainThreadApplyRateLimitHz);
+
+            StartAndAttach(frozenPolicy);
+            PublishBoth(jsonValue: 12, protobufValue: 16);
+
+            Assert.Equal(12, input.JsonValue);
+            Assert.Equal(16, input.ProtobufValue);
+            Assert.Equal(4, dispatches.Count);
+            Assert.All(dispatches, result => Assert.Equal(FoxRunInputDispatchStatus.Applied, result.Status));
+            Assert.Equal(generation, sessionState.Current.SessionGeneration);
+        }
+
         [Fact]
         public void RouterIsolatesAssignmentExceptionsAndContinuesInRegistrationOrder()
         {
@@ -328,6 +505,68 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 error = string.Empty;
                 return true;
             }
+        }
+
+        private static byte[] ClientMessageFrame(uint channelId, byte[] payload)
+        {
+            var frame = new byte[5 + payload.Length];
+            frame[0] = ClientOpcode.MessageData;
+            BinaryEncoding.WriteU32LE(frame, 1, channelId);
+            Buffer.BlockCopy(payload, 0, frame, 5, payload.Length);
+            return frame;
+        }
+
+        private sealed class RestartDecodingInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo[] _topics =
+            {
+                new("/phase179/json", FoxRunWireEncoding.Json, FoxRunMode.SubscribeOnly),
+                new("/phase179/protobuf", FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly)
+            };
+
+            public int JsonValue { get; private set; }
+            public int ProtobufValue { get; private set; }
+            public int FoxgloveInput_TopicCount => _topics.Length;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
+
+            public bool FoxgloveInput_TryApply(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                if (topicIndex == 0)
+                {
+                    if (!FoxRunInboundJson.TryRead(payload, "value", out int value, out error))
+                        return false;
+                    JsonValue = value;
+                    return true;
+                }
+
+                if (!FoxRunInboundProtobuf.TryRead(payload, 1, out int protobufValue, out error))
+                    return false;
+                ProtobufValue = protobufValue;
+                return true;
+            }
+        }
+
+        private sealed class RestartInputTransport : IFoxgloveTransport
+        {
+            public bool IsRunning { get; private set; }
+            public event Action<uint> OnClientConnected { add { } remove { } }
+            public event Action<uint> OnClientDisconnected { add { } remove { } }
+            public event Action<uint, string> OnTextReceived;
+            public event Action<uint, byte[]> OnBinaryReceived;
+
+            public void Start(string host, int port) => IsRunning = true;
+            public void Stop() => IsRunning = false;
+            public void Dispose() { }
+            public void BroadcastText(string json) { }
+            public void BroadcastBinary(byte[] data) { }
+            public void SendText(uint clientId, string json) { }
+            public void SendBinary(uint clientId, byte[] data) { }
+            public void ReceiveText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);
+            public void ReceiveBinary(uint clientId, byte[] data) => OnBinaryReceived?.Invoke(clientId, data);
         }
     }
 }

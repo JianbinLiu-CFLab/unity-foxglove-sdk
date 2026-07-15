@@ -40,6 +40,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncodingResolver.ValidateManagerDefault((FoxRunWireEncoding)99));
         }
 
+        [Fact]
+        public void WebSocketWireResolverOnlyReturnsProtobufOrJsonAndRejectsRos2Cdr()
+        {
+            Assert.Equal(
+                "protobuf",
+                FoxRunWireEncodingResolver.ToProtocolEncoding(FoxRunWireEncoding.Protobuf));
+            Assert.Equal(
+                "json",
+                FoxRunWireEncodingResolver.ToProtocolEncoding(FoxRunWireEncoding.Json));
+            Assert.Throws<ArgumentException>(() =>
+                FoxRunWireEncodingResolver.FromProtocolEncoding("ros2"));
+            Assert.Throws<ArgumentException>(() =>
+                FoxRunWireEncodingResolver.FromProtocolEncoding("cdr"));
+        }
+
         [Theory]
         [InlineData(FoxRunMode.PublishOnly, FoxRunWireEncoding.Protobuf)]
         [InlineData(FoxRunMode.SubscribeOnly, FoxRunWireEncoding.Json)]
