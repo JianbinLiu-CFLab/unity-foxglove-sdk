@@ -260,9 +260,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [InlineData(FoxRunRos2QosPreset.TransientLocal)]
         public void ExplicitQosPresetWinsOverTheManagerDefault(FoxRunRos2QosPreset declaredPreset)
         {
-            Assert.Equal(
+            var result = FoxRunRos2QosResolver.Resolve(
                 declaredPreset,
-                FoxRunRos2QosResolver.Resolve(declaredPreset, FoxRunRos2QosPreset.SensorData));
+                FoxRunRos2QosPreset.SensorData);
+
+            Assert.True(result.Success);
+            Assert.Equal(declaredPreset, result.Preset);
+            Assert.Equal(FoxRunRos2QosDiagnosticCode.None, result.DiagnosticCode);
+            Assert.Equal(string.Empty, result.DiagnosticMessage);
         }
 
         [Theory]
@@ -272,41 +277,76 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [InlineData(FoxRunRos2QosPreset.TransientLocal)]
         public void InheritedQosUsesTheManagerDefault(FoxRunRos2QosPreset managerDefault)
         {
-            Assert.Equal(
-                managerDefault,
-                FoxRunRos2QosResolver.Resolve(FoxRunRos2QosPreset.Inherit, managerDefault));
+            var result = FoxRunRos2QosResolver.Resolve(
+                FoxRunRos2QosPreset.Inherit,
+                managerDefault);
+
+            Assert.True(result.Success);
+            Assert.Equal(managerDefault, result.Preset);
+            Assert.Equal(FoxRunRos2QosDiagnosticCode.None, result.DiagnosticCode);
+            Assert.Equal(string.Empty, result.DiagnosticMessage);
         }
 
         [Fact]
         public void ManagerInheritedQosNormalizesSafelyToDefault()
         {
+            var result = FoxRunRos2QosResolver.Resolve(
+                FoxRunRos2QosPreset.Inherit,
+                FoxRunRos2QosPreset.Inherit);
+
+            Assert.True(result.Success);
+            Assert.Equal(FoxRunRos2QosPreset.Default, result.Preset);
+            Assert.Equal(FoxRunRos2QosDiagnosticCode.None, result.DiagnosticCode);
+        }
+
+        [Fact]
+        public void ExplicitQosPresetIgnoresAnInvalidUnusedManagerDefault()
+        {
+            var result = FoxRunRos2QosResolver.Resolve(
+                FoxRunRos2QosPreset.Reliable,
+                (FoxRunRos2QosPreset)99);
+
+            Assert.True(result.Success);
+            Assert.Equal(FoxRunRos2QosPreset.Reliable, result.Preset);
+            Assert.Equal(FoxRunRos2QosDiagnosticCode.None, result.DiagnosticCode);
+        }
+
+        [Fact]
+        public void InvalidDeclaredQosValueReturnsATypedFailure()
+        {
+            var result = FoxRunRos2QosResolver.Resolve(
+                (FoxRunRos2QosPreset)99,
+                FoxRunRos2QosPreset.Default);
+
+            Assert.False(result.Success);
+            Assert.Equal(FoxRunRos2QosPreset.Inherit, result.Preset);
             Assert.Equal(
-                FoxRunRos2QosPreset.Default,
-                FoxRunRos2QosResolver.Resolve(
-                    FoxRunRos2QosPreset.Inherit,
-                    FoxRunRos2QosPreset.Inherit));
+                FoxRunRos2QosDiagnosticCode.InvalidDeclaredPreset,
+                result.DiagnosticCode);
+            Assert.Equal("FoxRun ROS2 QoS declaration is invalid.", result.DiagnosticMessage);
         }
 
         [Fact]
-        public void InvalidDeclaredQosValueFailsDeterministically()
+        public void InvalidManagerQosValueReturnsATypedFailureWhenInherited()
         {
-            var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
-                FoxRunRos2QosResolver.Resolve(
-                    (FoxRunRos2QosPreset)99,
-                    FoxRunRos2QosPreset.Default));
+            var result = FoxRunRos2QosResolver.Resolve(
+                FoxRunRos2QosPreset.Inherit,
+                (FoxRunRos2QosPreset)99);
 
-            Assert.Equal("declaredPreset", exception.ParamName);
+            Assert.False(result.Success);
+            Assert.Equal(FoxRunRos2QosPreset.Inherit, result.Preset);
+            Assert.Equal(
+                FoxRunRos2QosDiagnosticCode.InvalidManagerPreset,
+                result.DiagnosticCode);
+            Assert.Equal("FoxRun Manager ROS2 QoS default is invalid.", result.DiagnosticMessage);
         }
 
         [Fact]
-        public void InvalidManagerQosValueFailsDeterministically()
+        public void QosDiagnosticCodesRemainStable()
         {
-            var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
-                FoxRunRos2QosResolver.Resolve(
-                    FoxRunRos2QosPreset.Inherit,
-                    (FoxRunRos2QosPreset)99));
-
-            Assert.Equal("managerDefault", exception.ParamName);
+            Assert.Equal(0, (int)FoxRunRos2QosDiagnosticCode.None);
+            Assert.Equal(1, (int)FoxRunRos2QosDiagnosticCode.InvalidDeclaredPreset);
+            Assert.Equal(2, (int)FoxRunRos2QosDiagnosticCode.InvalidManagerPreset);
         }
     }
 }

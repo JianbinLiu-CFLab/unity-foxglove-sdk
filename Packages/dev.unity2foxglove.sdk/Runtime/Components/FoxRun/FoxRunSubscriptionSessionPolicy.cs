@@ -10,6 +10,8 @@ namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
     /// Immutable policy captured when a FoxRun subscription session begins.
+    /// Consumers must check <see cref="SubscriptionsEnabled"/> before treating
+    /// any remaining field as an effective subscription policy.
     /// </summary>
     public sealed class FoxRunSubscriptionSessionPolicy
     {
@@ -34,7 +36,10 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Monotonic identifier for the captured subscription session.</summary>
         public ulong SessionGeneration { get; }
 
-        /// <summary>Whether this snapshot represents an active subscription session.</summary>
+        /// <summary>
+        /// Whether this snapshot represents an active subscription session. Disabled snapshots
+        /// retain inert placeholder values in the remaining fields to keep lifecycle state non-null.
+        /// </summary>
         public bool SubscriptionsEnabled { get; }
 
         /// <summary>Concrete default subscription provider.</summary>
