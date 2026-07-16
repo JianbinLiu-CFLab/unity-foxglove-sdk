@@ -23,6 +23,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/README.md";
         private const string ManagerInspectorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs";
+        private const string ManagerInspectorAsmdefPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Unity.FoxgloveSDK.Editor.asmdef";
         private const string ManagerWorkflowPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
         private const string RegistryPath =
@@ -113,6 +115,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ManagerInspectorHostsOptionalSelector()
         {
             var source = ReadRepoText(ManagerInspectorPath);
+            var asmdef = ReadRepoText(ManagerInspectorAsmdefPath);
             var workflow = ReadRepoText(ManagerWorkflowPath);
             var guard = ReadRepoText(PlayModeGuardPath);
 
@@ -123,10 +126,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && guard.Contains("_enableFoxRunInbound", StringComparison.Ordinal)
                   && guard.Contains("_defaultFoxRunSubscriptionProvider", StringComparison.Ordinal),
                 "146A-D1: unified native demand surfaces one runtime selector for native output and inbound subscriptions");
-            Check(source.Contains("\"Unity2Foxglove.Ros2\" + \"ForUnity.Editor.Ros2\" + \"ForUnityRuntimeSelectorInspector", StringComparison.Ordinal)
-                  && source.Contains("Unity2Foxglove.Ros2\" + \"ForUnity.Editor", StringComparison.Ordinal)
+            const string selectorReflectionSeam =
+                "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor";
+            const string diagnosticsReflectionSeam =
+                "Unity2Foxglove.Ros2ForUnity.Native.Editor.FoxRunRos2SubscriptionDiagnosticsInspector, Unity2Foxglove.Ros2ForUnity.Native.Editor";
+            Check(source.Contains("\"" + selectorReflectionSeam + "\"", StringComparison.Ordinal)
+                  && source.Contains("\"" + diagnosticsReflectionSeam + "\"", StringComparison.Ordinal)
+                  && source.Contains("Type.GetType(R2fuRuntimeSelectorInspectorTypeName)", StringComparison.Ordinal)
+                  && source.Contains("Type.GetType(R2fuNativeSubscriptionDiagnosticsInspectorTypeName)", StringComparison.Ordinal)
                   && source.Contains("GetMethod", StringComparison.Ordinal),
-                "146A-D2: core SDK discovers the optional selector by reflection");
+                "146A-D2: core SDK declares its two optional R2FU Inspector reflection endpoints explicitly");
+            Check(CountOccurrences(source, "Unity2Foxglove.Ros2ForUnity") == 4
+                  && !source.Contains("using Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
+                  && !source.Contains("global::Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
+                  && !asmdef.Contains("Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal),
+                "146A-D2b: core Inspector permits only the documented reflection seam and keeps no optional R2FU assembly dependency");
             Check(source.Contains("TargetInvocationException", StringComparison.Ordinal)
                   && source.Contains("DrawOptionalR2fuInspectorFailure", StringComparison.Ordinal),
                 "146A-D3: optional selector failures are contained inside the Inspector UI");
@@ -221,6 +235,19 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoPath(string relativePath)
             => Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        private static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
+        }
 
         private static void Check(bool condition, string message)
         {

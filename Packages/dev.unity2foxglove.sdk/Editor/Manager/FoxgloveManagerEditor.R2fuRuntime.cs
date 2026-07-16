@@ -14,10 +14,13 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public partial class FoxgloveManagerEditor
     {
+        // The core Editor assembly intentionally has no optional R2FU asmdef reference.
+        // These are its only late-bound endpoints; keep each type-and-assembly name whole
+        // so boundary review can audit the reflection seam without concealing it in fragments.
         private const string R2fuRuntimeSelectorInspectorTypeName =
-            "Unity2Foxglove.Ros2" + "ForUnity.Editor.Ros2" + "ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2" + "ForUnity.Editor";
+            "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor";
         private const string R2fuNativeSubscriptionDiagnosticsInspectorTypeName =
-            "Unity2Foxglove.Ros2" + "ForUnity.Native.Editor.FoxRunRos2SubscriptionDiagnosticsInspector, Unity2Foxglove.Ros2" + "ForUnity.Native.Editor";
+            "Unity2Foxglove.Ros2ForUnity.Native.Editor.FoxRunRos2SubscriptionDiagnosticsInspector, Unity2Foxglove.Ros2ForUnity.Native.Editor";
         private const string GeneratedFoxRunSchemaInfoTypeName =
             "Unity.FoxgloveSDK.Generated.FoxRunSchemaInfo";
 
