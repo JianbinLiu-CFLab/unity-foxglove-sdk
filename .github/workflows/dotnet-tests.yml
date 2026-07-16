@@ -44,6 +44,11 @@ jobs:
       - name: Run validation suite
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj
 
+      - name: Run Phase179 ROS2 acceptance helper regressions
+        run: |
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host
+
       - name: Run official MCAP differential conformance
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
 

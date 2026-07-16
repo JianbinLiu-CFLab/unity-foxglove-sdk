@@ -829,6 +829,15 @@ namespace Unity.FoxgloveSDK.Tests
             var phase179MetadataPaths = phase179AssetPaths
                 .Select(path => Path.Combine(repoRoot, path.Replace('/', Path.DirectorySeparatorChar)) + ".meta")
                 .ToArray();
+            var phase179ScriptMetadataPaths = new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/Phase179FoxRunRos2NativeSubscribe.cs.meta",
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase179AcceptancePlayerBuilder.cs.meta",
+                "Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/FoxRun ROS2 Native Subscribe/Phase179FoxRunRos2NativeSubscribe.cs.meta",
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase179FoxRunRos2NativeSubscribeAcceptance.cs.meta",
+            }
+                .Select(path => Path.Combine(repoRoot, path.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
             var phase179Guids = phase179MetadataPaths
                 .Where(File.Exists)
                 .Select(ReadUnityAssetGuid)
@@ -836,8 +845,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(phase179Guids.Length == phase179MetadataPaths.Length
                   && phase179Guids.All(guid => !string.IsNullOrEmpty(guid))
                   && phase179Guids.Distinct(StringComparer.OrdinalIgnoreCase).Count() == phase179Guids.Length
-                  && phase179Guids.All(guid => CountUnityAssetGuidOccurrences(repoRoot, guid) == 1),
-                "Unity-generated Phase179 sample, scene, and manual-acceptance metadata use valid unique GUIDs");
+                  && phase179Guids.All(guid => CountUnityAssetGuidOccurrences(repoRoot, guid) == 1)
+                  && phase179ScriptMetadataPaths.All(HasCompleteUnityScriptMetadata),
+                "Unity-generated Phase179 sample, scene, and manual-acceptance metadata use valid unique GUIDs and complete script importers");
 
             Check(acceptance.Contains("PHASE179_ROS2_INBOUND_READY", StringComparison.Ordinal)
                   && acceptance.Contains("PHASE179_ROS2_INBOUND_APPLIED", StringComparison.Ordinal)
@@ -917,6 +927,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "Scripts/release/run_ci.py");
             var workflow = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 ".github/workflows/dotnet-tests.yml");
+            const string inboundAcceptanceRegression =
+                "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance";
+            const string playerHostRegression =
+                "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host";
 
             Check(localCi.Contains("UNIT_ADAPTER_TEST_PROPS", StringComparison.Ordinal)
                   && localCi.Contains("UNIT_NATIVE_TEST_PROPS", StringComparison.Ordinal)
@@ -931,6 +945,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && workflow.Contains("-p:IncludeRos2ForUnityAdapter=true", StringComparison.Ordinal)
                   && workflow.Contains("-p:IncludeRos2ForUnityNative=true", StringComparison.Ordinal),
                 "GitHub Actions keeps the default test check and names permanent optional adapter and Native gates");
+
+            Check(localCi.Contains("phase179-ros2-regression", StringComparison.Ordinal)
+                  && localCi.Contains(inboundAcceptanceRegression, StringComparison.Ordinal)
+                  && localCi.Contains(playerHostRegression, StringComparison.Ordinal)
+                  && workflow.Contains("python3 -m unittest " + inboundAcceptanceRegression, StringComparison.Ordinal)
+                  && workflow.Contains("python3 -m unittest " + playerHostRegression, StringComparison.Ordinal),
+                "local and GitHub CI run the pure Phase179 Linux helper regression modules");
         }
 
         private static void VerifyRegistryAndProjectWiring()
@@ -1087,6 +1108,26 @@ namespace Unity.FoxgloveSDK.Tests
                 .FirstOrDefault(value => value.StartsWith(prefix, StringComparison.Ordinal));
             var guid = line?.Substring(prefix.Length).Trim() ?? string.Empty;
             return guid.Length == 32 && guid.All(Uri.IsHexDigit) ? guid : string.Empty;
+        }
+
+        private static bool HasCompleteUnityScriptMetadata(string metaPath)
+        {
+            if (!File.Exists(metaPath))
+                return false;
+
+            var metadata = File.ReadAllText(metaPath).Replace("\r\n", "\n");
+            return metadata.EndsWith("\n", StringComparison.Ordinal)
+                   && metadata.Contains(
+                       "MonoImporter:\n"
+                       + "  externalObjects: {}\n"
+                       + "  serializedVersion: 2\n"
+                       + "  defaultReferences: []\n"
+                       + "  executionOrder: 0\n"
+                       + "  icon: {instanceID: 0}\n"
+                       + "  userData:\n"
+                       + "  assetBundleName:\n"
+                       + "  assetBundleVariant:\n",
+                       StringComparison.Ordinal);
         }
 
         private static int CountUnityAssetGuidOccurrences(string repoRoot, string guid)

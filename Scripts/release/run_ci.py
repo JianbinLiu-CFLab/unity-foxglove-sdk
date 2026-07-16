@@ -37,6 +37,12 @@ SOURCE_GENERATOR_PROJ = (
 )
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
+PHASE179_ROS2_INBOUND_ACCEPTANCE_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance"
+)
+PHASE179_ROS2_PLAYER_HOST_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host"
+)
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
 DEFAULT_PARALLEL_JOBS = 2
@@ -264,6 +270,10 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
         [
             CiJob("dotnet", [sys.executable, script, "--only", "dotnet"]),
             CiJob(
+                "phase179-ros2-regression",
+                [sys.executable, script, "--only", "phase179-ros2-regression"],
+            ),
+            CiJob(
                 "mcap-conformance",
                 [sys.executable, script, "--only", "mcap-conformance"],
                 disable_timeout=True,
@@ -444,7 +454,10 @@ def main() -> int:
     parser.add_argument(
         "--only",
         type=str,
-        help="Run only one suite: dotnet, mcap-conformance, packages, boundary, analyzer",
+        help=(
+            "Run only one suite: dotnet, phase179-ros2-regression, "
+            "mcap-conformance, packages, boundary, analyzer"
+        ),
     )
     parser.add_argument(
         "--jobs",
@@ -606,6 +619,17 @@ def main() -> int:
                 "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
             ],
             "xUnit Native ROS2 compilation unit tests",
+        )
+
+    # --- pure ROS2 acceptance-helper regression tests ---
+    if args.only in (None, "phase179-ros2-regression"):
+        results["phase179-ros2-inbound-acceptance"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ROS2_INBOUND_ACCEPTANCE_REGRESSION],
+            "Phase179 Linux ROS2 inbound acceptance helper regressions",
+        )
+        results["phase179-ros2-player-host"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ROS2_PLAYER_HOST_REGRESSION],
+            "Phase179 Windows Player host helper regressions",
         )
 
     # --- official MCAP differential conformance ---
