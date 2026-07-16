@@ -207,6 +207,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void OrdinaryDtoWithNativeManagerDefaultDoesNotFallBackToWebSocket()
+        {
+            var result = FoxRunSubscriptionProviderResolver.Resolve(
+                FoxRunSubscriptionProvider.Inherit,
+                FoxRunSubscriptionProvider.Ros2Native,
+                FoxRunMode.SubscribeOnly,
+                FoxRunWireEncoding.Protobuf,
+                supportsWebSocket: true,
+                supportsRos2Native: false);
+
+            Assert.False(result.Success);
+            Assert.Equal(FoxRunSubscriptionProvider.Ros2Native, result.Provider);
+            Assert.Equal(FoxRunSubscriptionProviderDiagnosticCode.Unsupported, result.DiagnosticCode);
+            Assert.Equal(
+                "The resolved FoxRun subscription provider is unsupported for this type.",
+                result.DiagnosticMessage);
+        }
+
+        [Fact]
         public void InvalidModeReturnsAStableDiagnostic()
         {
             var result = FoxRunSubscriptionProviderResolver.Resolve(

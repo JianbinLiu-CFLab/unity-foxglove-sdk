@@ -41,6 +41,8 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyNativeHostLifecycleBoundary();
             VerifyRuntimeDiagnosticsSurface();
             VerifyManualOwnershipProbe();
+            VerifyInteropAcceptanceSurface();
+            VerifyPermanentOptionalCompilationCiGates();
             VerifyRegistryAndProjectWiring();
 
             Console.WriteLine(
@@ -760,18 +762,189 @@ namespace Unity.FoxgloveSDK.Tests
                 "manual ownership probe uses only the generated host and bounds diagnostics without retaining callback objects");
         }
 
+        private static void VerifyInteropAcceptanceSurface()
+        {
+            var sample = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/Phase179FoxRunRos2NativeSubscribe.cs");
+            var sampleReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/README.md");
+            var packageReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/README.md");
+            var packageJson = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/package.json");
+            var acceptance = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase179FoxRunRos2NativeSubscribeAcceptance.cs");
+            var playerBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase179AcceptancePlayerBuilder.cs");
+
+            Check(sample.Contains("std_msgs.msg.String", StringComparison.Ordinal)
+                  && sample.Contains("geometry_msgs.msg.Twist", StringComparison.Ordinal)
+                  && sample.Contains("sensor_msgs.msg.Joy", StringComparison.Ordinal)
+                  && sample.Contains("sensor_msgs.msg.Imu", StringComparison.Ordinal)
+                  && sample.Contains("SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native", StringComparison.Ordinal)
+                  && sample.Contains("Ros2Qos = FoxRunRos2QosPreset.Reliable", StringComparison.Ordinal)
+                  && sample.Contains("Ros2Qos = FoxRunRos2QosPreset.SensorData", StringComparison.Ordinal)
+                  && sample.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
+                  && sample.Contains("CopyBounded", StringComparison.Ordinal)
+                  && packageJson.Contains("FoxRun ROS2 Native Subscribe", StringComparison.Ordinal),
+                "public sample exposes four existing typed native SubscribeOnly contracts with bounded Inspector copies");
+
+            Check(playerBuilder.Contains("PackageAssetPathToAbsolutePath", StringComparison.Ordinal)
+                  && playerBuilder.Contains("ProjectAssetPathToAbsolutePath", StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "Path.Combine(RepositoryRoot(), assetPath.Replace('/', Path.DirectorySeparatorChar))",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "Path.Combine(ProjectRoot(), assetPath.Replace('/', Path.DirectorySeparatorChar))",
+                      StringComparison.Ordinal),
+                "sample metadata generator resolves package sources from the repository root and temporary Assets staging from the Unity project root");
+
+            Check(playerBuilder.Contains("CleanupStaleSampleMetadataStaging", StringComparison.Ordinal)
+                  && playerBuilder.Contains("IsRecognizedSampleMetadataStaging", StringComparison.Ordinal)
+                  && playerBuilder.Contains("Unexpected Phase179 metadata staging content", StringComparison.Ordinal)
+                  && OccursBefore(
+                      playerBuilder,
+                      "CleanupStaleSampleMetadataStaging();",
+                      "Directory.CreateDirectory(stagingSampleAbsolutePath)"),
+                "sample metadata generator recovers only its recognized stale staging root before retrying Unity generation");
+
+            Check(playerBuilder.Contains("SampleMetadataStagingAssetPath", StringComparison.Ordinal)
+                  && playerBuilder.Contains("FileUtil.CopyFileOrDirectory", StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "AssetDatabase.DeleteAsset(SampleMetadataStagingAssetPath)",
+                      StringComparison.Ordinal)
+                  && !playerBuilder.Contains("AssetDatabase.ImportAsset(assetPath", StringComparison.Ordinal),
+                "sample metadata generator stages source files under Assets so Unity generates sidecars before package copy-back");
+
+            var repoRoot = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
+            var phase179AssetPaths = new[]
+            {
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe",
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/Phase179FoxRunRos2NativeSubscribe.cs",
+                "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/README.md",
+                "Unity2Foxglove/Assets/Scenes/Phase179FoxRunRos2NativeSubscribeAcceptance.unity",
+                "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase179AcceptancePlayerBuilder.cs",
+                "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase179FoxRunRos2NativeSubscribeAcceptance.cs",
+            };
+            var phase179MetadataPaths = phase179AssetPaths
+                .Select(path => Path.Combine(repoRoot, path.Replace('/', Path.DirectorySeparatorChar)) + ".meta")
+                .ToArray();
+            var phase179Guids = phase179MetadataPaths
+                .Where(File.Exists)
+                .Select(ReadUnityAssetGuid)
+                .ToArray();
+            Check(phase179Guids.Length == phase179MetadataPaths.Length
+                  && phase179Guids.All(guid => !string.IsNullOrEmpty(guid))
+                  && phase179Guids.Distinct(StringComparer.OrdinalIgnoreCase).Count() == phase179Guids.Length
+                  && phase179Guids.All(guid => CountUnityAssetGuidOccurrences(repoRoot, guid) == 1),
+                "Unity-generated Phase179 sample, scene, and manual-acceptance metadata use valid unique GUIDs");
+
+            Check(acceptance.Contains("PHASE179_ROS2_INBOUND_READY", StringComparison.Ordinal)
+                  && acceptance.Contains("PHASE179_ROS2_INBOUND_APPLIED", StringComparison.Ordinal)
+                  && acceptance.Contains("PHASE179_ROS2_INBOUND_COMPLETE", StringComparison.Ordinal)
+                  && acceptance.Contains("value=", StringComparison.Ordinal)
+                  && acceptance.Contains("received=", StringComparison.Ordinal)
+                  && acceptance.Contains("replaced=", StringComparison.Ordinal)
+                  && acceptance.Contains("--phase179-player-auto-quit", StringComparison.Ordinal)
+                  && acceptance.Contains("--phase179-token", StringComparison.Ordinal)
+                  && acceptance.Contains("--phase179-player-burst-final-sequence", StringComparison.Ordinal)
+                  && acceptance.Contains("Application.Quit(exitCode)", StringComparison.Ordinal)
+                  && acceptance.Contains("TryParseBurstValue", StringComparison.Ordinal)
+                  && acceptance.Contains("MaximumMarkerTextLength", StringComparison.Ordinal)
+                  && acceptance.Contains("CopySafeText", StringComparison.Ordinal)
+                  && acceptance.Contains("ContainsSensitiveMarkerText", StringComparison.Ordinal)
+                  && acceptance.Contains("sequence == total - 1", StringComparison.Ordinal)
+                  && acceptance.Contains("private string _activeCorrelationToken", StringComparison.Ordinal)
+                  && acceptance.Contains("CaptureCorrelationToken(ExtractCorrelationToken(data))", StringComparison.Ordinal)
+                  && acceptance.Contains("CaptureCorrelationToken(frameId)", StringComparison.Ordinal)
+                  && acceptance.Contains("IsSafeCorrelationToken(_activeCorrelationToken)", StringComparison.Ordinal)
+                  && acceptance.Contains("+ \"|\" + markerToken + \"|\" + valueJson", StringComparison.Ordinal)
+                  && !acceptance.Contains("CreateSubscription", StringComparison.Ordinal)
+                  && !acceptance.Contains("CreateNode", StringComparison.Ordinal),
+                "acceptance receiver emits bounded redacted correlation markers, carries a current peer token to tokenless Twist evidence, preserves a terminal latest-wins burst value, and auto-quits only from its main-thread surface");
+
+            Check(playerBuilder.Contains("NewSceneSetup.EmptyScene, NewSceneMode.Additive", StringComparison.Ordinal)
+                  && playerBuilder.Contains("Refusing to overwrite", StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "SceneManager.MoveGameObjectToScene(managerObject, acceptanceScene)",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "SceneManager.MoveGameObjectToScene(receiverObject, acceptanceScene)",
+                      StringComparison.Ordinal)
+                  && !playerBuilder.Contains(
+                      "SceneManager.SetActiveScene(acceptanceScene)",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains("_foxgloveOutputEnabled", StringComparison.Ordinal)
+                  && playerBuilder.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
+                  && playerBuilder.Contains("_enableFoxRunInbound", StringComparison.Ordinal)
+                  && playerBuilder.Contains("Ros2Native", StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "manager.DefaultFoxRunSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "UnityEditor.PackageManager.PackageInfo.FindForPackageName",
+                      StringComparison.Ordinal)
+                  && playerBuilder.Contains("RuntimeSupport", StringComparison.Ordinal)
+                  && playerBuilder.Contains("SceneManager.GetSceneByPath", StringComparison.Ordinal)
+                  && playerBuilder.Contains("FindComponentsInScene", StringComparison.Ordinal)
+                  && playerBuilder.Contains("AssetDatabase.AssetPathToGUID", StringComparison.Ordinal)
+                  && playerBuilder.Contains("GenerateSampleMetadata", StringComparison.Ordinal)
+                  && playerBuilder.Contains("SampleMetadataAssetPaths", StringComparison.Ordinal)
+                  && playerBuilder.Contains("ValidateSampleMetadata", StringComparison.Ordinal)
+                  && playerBuilder.Contains("build", StringComparison.Ordinal)
+                  && playerBuilder.Contains("Phase179FoxRunRos2NativeSubscribe.exe", StringComparison.Ordinal),
+                "tracked scene builder fails closed, obtains Unity-generated sample metadata, verifies the actual acceptance scene, records one resolved runtime, and keeps Player output under repository build paths");
+
+            Check(sampleReadme.Contains("FOXRUN043", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Foxglove Desktop is unrelated", StringComparison.Ordinal)
+                  && sampleReadme.Contains("Arbitrary FoxRun DTO-to-custom-ROS2-message generation", StringComparison.Ordinal)
+                  && sampleReadme.Contains("native Publish Data/bidirectional contracts", StringComparison.Ordinal)
+                  && sampleReadme.Contains("future work", StringComparison.Ordinal)
+                  && sampleReadme.Contains("4 MiB", StringComparison.Ordinal)
+                  && sampleReadme.Contains("1 KiB", StringComparison.Ordinal)
+                  && sampleReadme.Contains("CopyFailed", StringComparison.Ordinal)
+                  && packageReadme.Contains("WindowsStandalone64", StringComparison.Ordinal)
+                  && packageReadme.Contains("ROS domain IDs are discovery isolation, not authentication", StringComparison.Ordinal)
+                  && packageReadme.Contains("FOXRUN043", StringComparison.Ordinal)
+                  && packageReadme.Contains("4 MiB", StringComparison.Ordinal)
+                  && packageReadme.Contains("CopyFailed", StringComparison.Ordinal),
+                "public native-subscribe documentation states assembly, transport, copy-budget, security, Player, and future custom-message/native-publish boundaries");
+        }
+
+        private static void VerifyPermanentOptionalCompilationCiGates()
+        {
+            var localCi = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Scripts/release/run_ci.py");
+            var workflow = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                ".github/workflows/dotnet-tests.yml");
+
+            Check(localCi.Contains("UNIT_ADAPTER_TEST_PROPS", StringComparison.Ordinal)
+                  && localCi.Contains("UNIT_NATIVE_TEST_PROPS", StringComparison.Ordinal)
+                  && localCi.Contains("-p:IncludeRos2ForUnityAdapter=true", StringComparison.Ordinal)
+                  && localCi.Contains("-p:IncludeRos2ForUnityNative=true", StringComparison.Ordinal),
+                "local CI runs dedicated optional adapter and Native compile/test lanes");
+
+            Check(workflow.Contains("optional-ros2-adapter:", StringComparison.Ordinal)
+                  && workflow.Contains("name: optional ROS2 adapter gate", StringComparison.Ordinal)
+                  && workflow.Contains("optional-ros2-native:", StringComparison.Ordinal)
+                  && workflow.Contains("name: optional ROS2 Native gate", StringComparison.Ordinal)
+                  && workflow.Contains("-p:IncludeRos2ForUnityAdapter=true", StringComparison.Ordinal)
+                  && workflow.Contains("-p:IncludeRos2ForUnityNative=true", StringComparison.Ordinal),
+                "GitHub Actions keeps the default test check and names permanent optional adapter and Native gates");
+        }
+
         private static void VerifyRegistryAndProjectWiring()
         {
             var entries = PhaseValidationRegistry.All
                 .Where(item => string.Equals(item.Flag, "--phase179", StringComparison.Ordinal))
                 .ToArray();
             Check(entries.Length == 1
-                  && entries[0].Name == "FoxRun native ROS2 subscription generation boundary"
+                  && entries[0].Name == "FoxRun native ROS2 subscription boundary"
                   && entries[0].Category == ValidationCategory.CiSafe
                   && entries[0].Evidence == (ValidationEvidence.Behavior | ValidationEvidence.Structural)
-                  && !entries[0].IncludeInDefault
+                  && entries[0].IncludeInDefault
                   && entries[0].Run.Method.DeclaringType == typeof(FoxRunRos2NativeSubscriptionValidation),
-                "native subscription registry entry is singular, behavior-and-structural, CI-safe, and excluded from default");
+                "native subscription registry entry is singular, behavior-and-structural, CI-safe, and included in default");
 
             var registry = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Tests/Runtime/PhaseValidationRegistry.cs");

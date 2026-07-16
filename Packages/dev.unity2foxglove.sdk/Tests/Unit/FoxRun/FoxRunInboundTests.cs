@@ -86,6 +86,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ExplicitWebSocketJsonAndProtobufRemainUsableWhenNativeDefaultCannotServeOrdinaryDto()
+        {
+            var input = new NativeUnavailableCoexistenceInput();
+            var router = new FoxRunInputRouter
+            {
+                DefaultSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+                DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Protobuf
+            };
+            router.Register(input);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                router.Dispatch("/phase179/coexist/json", Array.Empty<byte>(), "json", 1).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Applied,
+                router.Dispatch("/phase179/coexist/protobuf", Array.Empty<byte>(), "protobuf", 2).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch("/phase179/coexist/ordinary-dto", Array.Empty<byte>(), "protobuf", 3).Status);
+            Assert.Equal(new[] { 1, 1, 0 }, input.ApplyCounts);
+        }
+
+        [Fact]
         public void JsonDecoderReadsDeclaredVectorShape()
         {
             var payload = Encoding.UTF8.GetBytes(
@@ -608,6 +631,49 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     FoxRunSubscriptionProvider.Ros2Native,
                     supportsWebSocket: true,
                     supportsRos2Native: true)
+            };
+
+            public int[] ApplyCounts { get; } = new int[3];
+            public int FoxgloveInput_TopicCount => _topics.Length;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
+
+            public bool FoxgloveInput_TryApply(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                ApplyCounts[topicIndex]++;
+                error = string.Empty;
+                return true;
+            }
+        }
+
+        private sealed class NativeUnavailableCoexistenceInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo[] _topics =
+            {
+                new(
+                    "/phase179/coexist/json",
+                    FoxRunWireEncoding.Json,
+                    FoxRunMode.SubscribeOnly,
+                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false),
+                new(
+                    "/phase179/coexist/protobuf",
+                    FoxRunWireEncoding.Protobuf,
+                    FoxRunMode.SubscribeOnly,
+                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false),
+                new(
+                    "/phase179/coexist/ordinary-dto",
+                    FoxRunWireEncoding.Protobuf,
+                    FoxRunMode.SubscribeOnly,
+                    FoxRunSubscriptionProvider.Inherit,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false)
             };
 
             public int[] ApplyCounts { get; } = new int[3];

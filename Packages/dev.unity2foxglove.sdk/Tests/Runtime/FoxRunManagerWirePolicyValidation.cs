@@ -217,10 +217,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && !labels.Contains("MsgPack", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
-            Check(inspector.Contains("Default Subscription Encoding", StringComparison.Ordinal)
+            Check(inspector.Contains("Default Subscription Protocol", StringComparison.Ordinal)
                   && inspector.Contains("Subscription Rate Limit Hz (per Topic)", StringComparison.Ordinal)
-                  && inspector.Contains("restarted or re-enabled", StringComparison.Ordinal),
-                "175C-9: Inspector exposes subscription controls and the restart boundary");
+                  && inspector.Contains("Subscription-policy changes apply after subscriptions are re-enabled.", StringComparison.Ordinal)
+                  && inspector.Contains("captured provider, WebSocket encoding, QoS, and copy budget", StringComparison.Ordinal),
+                "175C-9: Inspector exposes subscription controls and the session re-enable boundary");
         }
 
         private static void VerifyExplicitProtobufManualAcceptance()

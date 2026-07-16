@@ -27,6 +27,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         [InlineData("invalid", "inherit", 1, "FOXRUN035")]
         [InlineData("ros2-native", "inherit", 0, "FOXRUN036")]
         [InlineData("ros2-native", "json", 1, "FOXRUN037")]
+        [InlineData("ros2-native", "protobuf", 1, "FOXRUN037")]
+        [InlineData("ros2-native", "inherit", 2, "FOXRUN036")]
         public void NativeProviderPolicyErrorsUseTargetedDiagnostics(
             string provider,
             string encoding,

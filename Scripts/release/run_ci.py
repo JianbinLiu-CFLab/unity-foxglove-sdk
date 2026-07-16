@@ -144,8 +144,18 @@ ANALYZER_PROPS = dotnet_msbuild_props("analyzer")
 ANALYZER_RUNTIME_TEST_PROPS = dotnet_msbuild_props("analyzer-runtime-tests")
 RUNTIME_TEST_PROPS = dotnet_msbuild_props("runtime-tests")
 UNIT_TEST_PROPS = dotnet_msbuild_props("unit-tests")
+UNIT_ADAPTER_TEST_PROPS = [
+    *dotnet_msbuild_props("unit-tests-adapter"),
+    "-p:IncludeRos2ForUnityAdapter=true",
+]
+UNIT_NATIVE_TEST_PROPS = [
+    *dotnet_msbuild_props("unit-tests-native"),
+    "-p:IncludeRos2ForUnityNative=true",
+]
 ANALYZER_OUTPUT_DIR = ISOLATED_DOTNET_ROOT / "analyzer-output"
 UNIT_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit"
+UNIT_ADAPTER_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-adapter"
+UNIT_NATIVE_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-native"
 
 
 def green(msg: str) -> str:
@@ -554,6 +564,48 @@ def main() -> int:
                 "--results-directory", str(UNIT_TEST_RESULTS_DIR),
             ],
             "xUnit unit tests",
+        )
+        results["xunit-adapter-restore"] = restore_with_ignoring_failed_sources(
+            UNIT_TESTS_PROJ,
+            "Restore xUnit optional ROS2 adapter lane",
+            UNIT_ADAPTER_TEST_PROPS,
+        )
+        results["xunit-adapter"] = run_with_restore_fallback(
+            [
+                "dotnet", "test",
+                "--no-restore", UNIT_TESTS_PROJ,
+                *UNIT_ADAPTER_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-adapter.trx",
+                "--results-directory", str(UNIT_ADAPTER_TEST_RESULTS_DIR),
+            ],
+            [
+                "dotnet", "test", UNIT_TESTS_PROJ,
+                *UNIT_ADAPTER_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-adapter.trx",
+                "--results-directory", str(UNIT_ADAPTER_TEST_RESULTS_DIR),
+            ],
+            "xUnit optional ROS2 adapter unit tests",
+        )
+        results["xunit-native-restore"] = restore_with_ignoring_failed_sources(
+            UNIT_TESTS_PROJ,
+            "Restore xUnit Native ROS2 compilation lane",
+            UNIT_NATIVE_TEST_PROPS,
+        )
+        results["xunit-native"] = run_with_restore_fallback(
+            [
+                "dotnet", "test",
+                "--no-restore", UNIT_TESTS_PROJ,
+                *UNIT_NATIVE_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-native.trx",
+                "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
+            ],
+            [
+                "dotnet", "test", UNIT_TESTS_PROJ,
+                *UNIT_NATIVE_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-native.trx",
+                "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
+            ],
+            "xUnit Native ROS2 compilation unit tests",
         )
 
     # --- official MCAP differential conformance ---

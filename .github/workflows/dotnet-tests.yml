@@ -72,6 +72,54 @@ jobs:
           path: build/mcap-conformance/phase121-conformance-report.json
           if-no-files-found: warn
 
+  optional-ros2-adapter:
+    name: optional ROS2 adapter gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0"
+
+      - name: Restore optional ROS2 adapter xUnit lane
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityAdapter=true --ignore-failed-sources
+
+      - name: Run optional ROS2 adapter xUnit gate
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityAdapter=true --logger "trx;LogFileName=unit-tests-adapter.trx" --results-directory build/TestResults/OptionalRos2Adapter
+
+      - name: Upload optional ROS2 adapter test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-ros2-adapter-test-results
+          path: build/TestResults/OptionalRos2Adapter
+          if-no-files-found: ignore
+
+  optional-ros2-native:
+    name: optional ROS2 Native gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0"
+
+      - name: Restore optional ROS2 Native xUnit lane
+        run: dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true --ignore-failed-sources
+
+      - name: Run optional ROS2 Native xUnit gate
+        run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true --logger "trx;LogFileName=unit-tests-native.trx" --results-directory build/TestResults/OptionalRos2Native
+
+      - name: Upload optional ROS2 Native test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-ros2-native-test-results
+          path: build/TestResults/OptionalRos2Native
+          if-no-files-found: ignore
+
   analyzer-freshness:
     runs-on: windows-latest
     steps:
