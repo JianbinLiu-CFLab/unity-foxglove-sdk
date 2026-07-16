@@ -43,6 +43,7 @@ namespace Unity.FoxgloveSDK.Tests
             var scanner = Read("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
             var generate = PhaseValidationSourceHelpers.SourceMethod(source, "out List<(string AsmName, string Ns, string ClassName)> foxRunTypes)");
             var combined = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices");
+            var sharedTraversal = PhaseValidationSourceHelpers.SourceMethod(scanner, "private static void VisitLoadedFoxRunComponentTypes");
 
             Check(generate.Contains("var editorScan = ScanFoxRunMembersAndServices(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal)
                   && generate.Contains("var scan = editorScan.FoxRun;", StringComparison.Ordinal)
@@ -51,11 +52,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && !generate.Contains("ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal)
                   && !generate.Contains("ScanFoxServiceMethods(ignoreReflectionTypeLoadExceptions: true);", StringComparison.Ordinal),
                 "164-23B-1: source-file generation uses one combined FoxRun/FoxService reflection scan");
-            Check(Count(combined, "AppDomain.CurrentDomain.GetAssemblies()") == 1
+            Check(combined.Contains("VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions", StringComparison.Ordinal)
+                  && Count(sharedTraversal, "AppDomain.CurrentDomain.GetAssemblies()") == 1
+                  && sharedTraversal.Contains("ReflectionTypeLoadException", StringComparison.Ordinal)
                   && combined.Contains("var members = ScanType(type);", StringComparison.Ordinal)
                   && combined.Contains("var methods = ScanServiceType(type);", StringComparison.Ordinal)
                   && combined.Contains("BuildFoxServiceScanResult(serviceEntries)", StringComparison.Ordinal),
-                "164-23B-2: combined scan collects members and services inside one assembly/type traversal");
+                "164-23B-2: combined scan collects members and services inside the shared assembly/type traversal");
         }
 
         private static void VerifyPayloadExprAvoidsJsonNameList()

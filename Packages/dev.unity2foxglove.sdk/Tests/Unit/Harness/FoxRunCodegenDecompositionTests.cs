@@ -39,5 +39,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("FOXSERVICE002", validator, StringComparison.Ordinal);
             Assert.Contains("FOXSERVICE005", validator, StringComparison.Ordinal);
         }
+
+        [Fact]
+        public void AssemblyScannerSharesLoadedComponentTraversalAcrossScanVariants()
+        {
+            var scanner = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
+            const string traversal = "private static void VisitLoadedFoxRunComponentTypes";
+
+            Assert.Contains(traversal, scanner, StringComparison.Ordinal);
+
+            var combinedScan = TestSources.Slice(
+                scanner,
+                "private static FoxRunAndServiceScanResult ScanFoxRunMembersAndServices",
+                "private static FoxRunScanResult ScanFoxRunMembers");
+            var memberScan = TestSources.Slice(
+                scanner,
+                "private static FoxRunScanResult ScanFoxRunMembers",
+                traversal);
+            var sharedTraversal = TestSources.Slice(
+                scanner,
+                traversal,
+                "static bool AssumePartialWasEnforcedBySourceGenerator");
+
+            Assert.Contains("VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions", combinedScan, StringComparison.Ordinal);
+            Assert.Contains("VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions", memberScan, StringComparison.Ordinal);
+            Assert.DoesNotContain("AppDomain.CurrentDomain.GetAssemblies()", combinedScan, StringComparison.Ordinal);
+            Assert.DoesNotContain("AppDomain.CurrentDomain.GetAssemblies()", memberScan, StringComparison.Ordinal);
+            Assert.Contains("AppDomain.CurrentDomain.GetAssemblies()", sharedTraversal, StringComparison.Ordinal);
+            Assert.Contains("ReflectionTypeLoadException", sharedTraversal, StringComparison.Ordinal);
+            Assert.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", sharedTraversal, StringComparison.Ordinal);
+        }
     }
 }
