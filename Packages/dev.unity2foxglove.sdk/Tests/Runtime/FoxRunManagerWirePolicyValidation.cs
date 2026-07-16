@@ -238,9 +238,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("/phase175/protobuf/shared-state", StringComparison.Ordinal)
                   && source.Contains("Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
                   && source.Contains("Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
-                  && source.Contains("#pragma warning disable FOXRUN026", StringComparison.Ordinal)
+                  && source.Contains("#pragma warning disable FOXRUN400", StringComparison.Ordinal)
                   && source.Contains("remote-authoritative shared observation", StringComparison.Ordinal)
-                  && source.Contains("#pragma warning restore FOXRUN026", StringComparison.Ordinal)
+                  && source.Contains("#pragma warning restore FOXRUN400", StringComparison.Ordinal)
                   && !source.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal),
                 "175C-10: manual acceptance pins Protobuf contracts and documents bidirectional authority");
         }

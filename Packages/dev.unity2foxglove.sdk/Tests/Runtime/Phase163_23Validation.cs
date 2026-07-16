@@ -65,11 +65,11 @@ namespace Unity.FoxgloveSDK.Tests
                     })
             }));
 
-            Check(invalidUnless.Any(diagnostic => diagnostic.Id == "FOXRUN029" && diagnostic.MemberName == "_speed"),
-                "163-23B-1: invalid Unless condition names use FOXRUN029 instead of When/boolean diagnostics");
+            Check(invalidUnless.Any(diagnostic => diagnostic.Id == "FOXRUN601" && diagnostic.MemberName == "_speed"),
+                "163-23B-1: invalid Unless condition names use FOXRUN601 instead of When/boolean diagnostics");
             Check(generator.Contains("TryGetConditionDiagnostic(containingType, topics, out var conditionDiagnosticId)", StringComparison.Ordinal)
                   && generator.Contains("diagnosticId = \"FOXRUN016\";", StringComparison.Ordinal)
-                  && generator.Contains("\"FOXRUN029\"", StringComparison.Ordinal)
+                  && generator.Contains("\"FOXRUN601\"", StringComparison.Ordinal)
                   && generator.Contains("SpecialType.System_Boolean", StringComparison.Ordinal),
                 "163-23B-2: Roslyn generator validates resolved When/Unless members are bool");
             Check(validator.Contains("FoxRun Unless condition member name is invalid or missing.", StringComparison.Ordinal)
@@ -107,11 +107,11 @@ namespace Unity.FoxgloveSDK.Tests
             var scanner = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
 
             Check(scanner.Contains("CreateInboundTargetNotWritableException", StringComparison.Ordinal)
-                  && scanner.Contains("FOXRUN028 Error: ", StringComparison.Ordinal),
-                "163-23E-1: reflection build path formats readonly inbound failures as FOXRUN028 errors");
+                  && scanner.Contains("FOXRUN203 Error: ", StringComparison.Ordinal),
+                "163-23E-1: reflection build path formats readonly inbound failures as FOXRUN203 errors");
             Check(scanner.Contains("FoxRun inbound \" + memberKind", StringComparison.Ordinal)
                   && scanner.Contains("cannot receive SubscribeOnly or PublishAndSubscribe messages", StringComparison.Ordinal),
-                "163-23E-2: FOXRUN028 reflection failure message includes member kind and unsupported shape");
+                "163-23E-2: FOXRUN203 reflection failure message includes member kind and unsupported shape");
         }
 
         private static void AnalyzerReleaseTrackingIsShipped()
@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Tests
             var shipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
             var unshipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
 
-            foreach (var id in new[] { "FOXRUN006", "FOXRUN014", "FOXRUN018", "FOXRUN028" })
+            foreach (var id in new[] { "FOXRUN006", "FOXRUN014", "FOXRUN018", "FOXRUN203" })
             {
                 Check(shipped.Contains(id + " | FoxRun |", StringComparison.Ordinal),
                     "163-23F-1: shipped analyzer release notes include " + id);

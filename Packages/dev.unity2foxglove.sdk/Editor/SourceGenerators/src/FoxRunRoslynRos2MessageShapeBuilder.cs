@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (!implements)
             {
                 diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode(
-                    "FOXRUN038", path,
+                    "FOXRUN207", path,
                     "Type must implement ROS2.Message from ros2cs_common by metadata identity."));
             }
 
@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (implements && !hasConstructor)
             {
                 diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode(
-                    "FOXRUN039", path,
+                    "FOXRUN208", path,
                     "Native ROS2 message type requires a public parameterless constructor."));
             }
 
@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 if (!stack.Add(typeName))
                 {
                     diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode(
-                        "FOXRUN042", path,
+                        "FOXRUN211", path,
                         "Native ROS2 message graph contains a recursive reference."));
                 }
                 else
@@ -306,7 +306,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 || ns.Substring(0, ns.Length - suffix.Length).IndexOf('.') >= 0)
             {
                 diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode(
-                    "FOXRUN040", path,
+                    "FOXRUN209", path,
                     "Native ROS2 message type must be declared directly in a <package>.msg namespace; srv/action types are unsupported."));
                 return string.Empty;
             }
@@ -316,11 +316,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         private static void AddNotWritable(string path, ICollection<string> diagnostics)
             => diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode(
-                "FOXRUN028", path,
+                "FOXRUN203", path,
                 "Native ROS2 message members must be both readable and writable, except getter-only fixed arrays."));
 
         private static void AddUnsupported(string path, string message, ICollection<string> diagnostics)
-            => diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode("FOXRUN042", path, message));
+            => diagnostics.Add(FoxRunRos2ShapeDiagnostic.Encode("FOXRUN211", path, message));
 
         private static string BuildIdentity(string canonical, IEnumerable<FoxRunRos2MessageMemberShape> members)
             => canonical + "|" + string.Join(";", members.Select(member =>

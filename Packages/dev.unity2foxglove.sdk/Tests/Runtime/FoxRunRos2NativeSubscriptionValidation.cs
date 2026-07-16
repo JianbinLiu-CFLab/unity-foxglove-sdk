@@ -37,6 +37,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyLegacyProviderMigrationDefaultsToWebSocket();
             VerifyExistingR2fuSinkRemainsOutboundOnly();
             VerifyTypedGenerationAndNativeCatalogExclusion();
+            VerifyDiagnosticIdSemanticRanges();
             VerifyOptionalCompilationLanes();
             VerifyNativeHostLifecycleBoundary();
             VerifyRuntimeDiagnosticsSurface();
@@ -276,6 +277,62 @@ namespace Unity.FoxgloveSDK.Tests
                       StringComparison.Ordinal)
                   && !catalog.Contains("\"cdr\"", StringComparison.OrdinalIgnoreCase),
                 "byte router and subscription catalog exclude effective native contracts and never advertise cdr");
+        }
+
+        private static void VerifyDiagnosticIdSemanticRanges()
+        {
+            var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
+            var shipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
+            var subscribeOnly = new[]
+            {
+                new KeyValuePair<string, string>("UnsupportedInboundShape", "FOXRUN200"),
+                new KeyValuePair<string, string>("IgnoredSubscribePolicy", "FOXRUN201"),
+                new KeyValuePair<string, string>("InboundNaming", "FOXRUN202"),
+                new KeyValuePair<string, string>("InboundTargetNotWritable", "FOXRUN203"),
+                new KeyValuePair<string, string>("SharedInboundTargetNotWritable", "FOXRUN203"),
+                new KeyValuePair<string, string>("InvalidSubscriptionProvider", "FOXRUN204"),
+                new KeyValuePair<string, string>("NativeSubscribeOnly", "FOXRUN205"),
+                new KeyValuePair<string, string>("NativeEncoding", "FOXRUN206"),
+                new KeyValuePair<string, string>("Ros2MessageIdentity", "FOXRUN207"),
+                new KeyValuePair<string, string>("Ros2MessageConstructor", "FOXRUN208"),
+                new KeyValuePair<string, string>("Ros2MessageNamespace", "FOXRUN209"),
+                new KeyValuePair<string, string>("Ros2SchemaMismatch", "FOXRUN210"),
+                new KeyValuePair<string, string>("Ros2MessageShape", "FOXRUN211"),
+                new KeyValuePair<string, string>("MissingNativeAssemblyReference", "FOXRUN212"),
+                new KeyValuePair<string, string>("IgnoredRos2Qos", "FOXRUN213"),
+            };
+            var bidirectional = new[]
+            {
+                new KeyValuePair<string, string>("BidirectionalAuthority", "FOXRUN400"),
+                new KeyValuePair<string, string>("BidirectionalInheritedWireEncoding", "FOXRUN401"),
+            };
+            var infrastructure = new[]
+            {
+                new KeyValuePair<string, string>("InvalidFoxRunMode", "FOXRUN600"),
+                new KeyValuePair<string, string>("UnlessConditionMissing", "FOXRUN601"),
+                new KeyValuePair<string, string>("InvalidWireEncoding", "FOXRUN602"),
+                new KeyValuePair<string, string>("InvalidProtobufFieldNumber", "FOXRUN603"),
+                new KeyValuePair<string, string>("MixedTopicWireEncoding", "FOXRUN604"),
+                new KeyValuePair<string, string>("DuplicateProtobufFieldNumber", "FOXRUN605"),
+            };
+            var retired = Enumerable.Range(23, 22)
+                .Select(number => "FOXRUN" + number.ToString("000"))
+                .ToArray();
+
+            Check(diagnostics.Contains("#region FoxRun publish diagnostics (FOXRUN001-199)", StringComparison.Ordinal)
+                  && diagnostics.Contains("#region FoxRun SubscribeOnly diagnostics (FOXRUN200-399)", StringComparison.Ordinal)
+                  && diagnostics.Contains("#region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)", StringComparison.Ordinal)
+                  && diagnostics.Contains("#region FoxRun cross-direction diagnostics (FOXRUN600+)", StringComparison.Ordinal),
+                "FoxRun diagnostic source declares direction-readable publish, SubscribeOnly, PublishAndSubscribe, and cross-direction ranges");
+
+            var expected = subscribeOnly.Concat(bidirectional).Concat(infrastructure).ToArray();
+            Check(expected.All(pair => HasDiagnosticDescriptorId(diagnostics, pair.Key, pair.Value))
+                  && expected.All(pair => shipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
+                  && retired.All(id => !diagnostics.Contains(id, StringComparison.Ordinal))
+                  && retired.All(id => !shipped.Contains(id + " | FoxRun |", StringComparison.Ordinal)),
+                "FoxRun diagnostics map inbound, bidirectional, and cross-direction rules into their stable ID ranges without retired 023-044 entries");
         }
 
         private static void VerifyOptionalCompilationLanes()
@@ -905,7 +962,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && playerBuilder.Contains("Phase179FoxRunRos2NativeSubscribe.exe", StringComparison.Ordinal),
                 "tracked scene builder fails closed, obtains Unity-generated sample metadata, verifies the actual acceptance scene, records one resolved runtime, and keeps Player output under repository build paths");
 
-            Check(sampleReadme.Contains("FOXRUN043", StringComparison.Ordinal)
+            Check(sampleReadme.Contains("FOXRUN212", StringComparison.Ordinal)
                   && sampleReadme.Contains("Foxglove Desktop is unrelated", StringComparison.Ordinal)
                   && sampleReadme.Contains("Arbitrary FoxRun DTO-to-custom-ROS2-message generation", StringComparison.Ordinal)
                   && sampleReadme.Contains("native Publish Data/bidirectional contracts", StringComparison.Ordinal)
@@ -915,7 +972,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && sampleReadme.Contains("CopyFailed", StringComparison.Ordinal)
                   && packageReadme.Contains("WindowsStandalone64", StringComparison.Ordinal)
                   && packageReadme.Contains("ROS domain IDs are discovery isolation, not authentication", StringComparison.Ordinal)
-                  && packageReadme.Contains("FOXRUN043", StringComparison.Ordinal)
+                  && packageReadme.Contains("FOXRUN212", StringComparison.Ordinal)
                   && packageReadme.Contains("4 MiB", StringComparison.Ordinal)
                   && packageReadme.Contains("CopyFailed", StringComparison.Ordinal),
                 "public native-subscribe documentation states assembly, transport, copy-budget, security, Player, and future custom-message/native-publish boundaries");
@@ -1108,6 +1165,22 @@ namespace Unity.FoxgloveSDK.Tests
                 .FirstOrDefault(value => value.StartsWith(prefix, StringComparison.Ordinal));
             var guid = line?.Substring(prefix.Length).Trim() ?? string.Empty;
             return guid.Length == 32 && guid.All(Uri.IsHexDigit) ? guid : string.Empty;
+        }
+
+        private static bool HasDiagnosticDescriptorId(string source, string descriptorName, string id)
+        {
+            var marker = "public static readonly DiagnosticDescriptor " + descriptorName
+                         + " = new DiagnosticDescriptor(";
+            var start = source.IndexOf(marker, StringComparison.Ordinal);
+            if (start < 0)
+                return false;
+
+            var next = source.IndexOf(
+                "public static readonly DiagnosticDescriptor ",
+                start + marker.Length,
+                StringComparison.Ordinal);
+            var descriptor = next < 0 ? source.Substring(start) : source.Substring(start, next - start);
+            return descriptor.Contains("\"" + id + "\"", StringComparison.Ordinal);
         }
 
         private static bool HasCompleteUnityScriptMetadata(string metaPath)

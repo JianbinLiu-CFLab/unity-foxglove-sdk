@@ -210,7 +210,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var target = (type == null ? "<unknown>" : type.FullName) + "." + (memberName ?? "<unknown>");
             return new InvalidOperationException(
-                "FOXRUN028 Error: " + target
+                "FOXRUN203 Error: " + target
                 + ": FoxRun inbound " + memberKind
                 + " target must be writable; " + unsupportedShape
                 + " cannot receive SubscribeOnly or PublishAndSubscribe messages.");

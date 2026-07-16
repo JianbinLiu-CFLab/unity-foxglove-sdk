@@ -43,7 +43,7 @@ Unity2Foxglove.Ros2ForUnity.Native
 <the selected runtime and generated ROS message assemblies>
 ```
 
-`FOXRUN043` (`Native generation requires the optional Native assembly reference`) means the source generator cannot see the optional Native binding assembly. Add the reference above, ensure the one selected runtime is resolved, and allow Unity to recompile. Do not work around the diagnostic by changing the contract to JSON or Protobuf.
+`FOXRUN212` (`Native generation requires the optional Native assembly reference`) means the source generator cannot see the optional Native binding assembly. Add the reference above, ensure the one selected runtime is resolved, and allow Unity to recompile. Do not work around the diagnostic by changing the contract to JSON or Protobuf.
 
 ## Boundaries
 

@@ -15,17 +15,17 @@ namespace Unity.FoxgloveSDK.Editor
         private const string ConditionMissingDiagnosticId = "FOXRUN015";
         private const string ConditionNotBoolDiagnosticId = "FOXRUN016";
         private const string MixedConditionDiagnosticId = "FOXRUN017";
-        private const string UnlessConditionMissingDiagnosticId = "FOXRUN029";
-        private const string InvalidWireEncodingDiagnosticId = "FOXRUN030";
-        private const string InvalidProtobufFieldNumberDiagnosticId = "FOXRUN031";
-        private const string MixedWireEncodingDiagnosticId = "FOXRUN032";
-        private const string DuplicateProtobufFieldNumberDiagnosticId = "FOXRUN033";
-        private const string BidirectionalInheritedWireEncodingDiagnosticId = "FOXRUN034";
-        private const string InvalidSubscriptionProviderDiagnosticId = "FOXRUN035";
-        private const string NativeSubscribeOnlyDiagnosticId = "FOXRUN036";
-        private const string NativeEncodingDiagnosticId = "FOXRUN037";
-        private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN041";
-        private const string IgnoredRos2QosDiagnosticId = "FOXRUN044";
+        private const string UnlessConditionMissingDiagnosticId = "FOXRUN601";
+        private const string InvalidWireEncodingDiagnosticId = "FOXRUN602";
+        private const string InvalidProtobufFieldNumberDiagnosticId = "FOXRUN603";
+        private const string MixedWireEncodingDiagnosticId = "FOXRUN604";
+        private const string DuplicateProtobufFieldNumberDiagnosticId = "FOXRUN605";
+        private const string BidirectionalInheritedWireEncodingDiagnosticId = "FOXRUN401";
+        private const string InvalidSubscriptionProviderDiagnosticId = "FOXRUN204";
+        private const string NativeSubscribeOnlyDiagnosticId = "FOXRUN205";
+        private const string NativeEncodingDiagnosticId = "FOXRUN206";
+        private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN210";
+        private const string IgnoredRos2QosDiagnosticId = "FOXRUN213";
         private const float DefaultRateHz = 10f;
 
         private static readonly string[] UnityNativeContainerPrefixes =
@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun publish mode must be between 0 and 3."));
 
             if (member.Mode < 0 || member.Mode > 2)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN023", target, member.MemberName, "FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe."));
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN600", target, member.MemberName, "FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe."));
 
             if (!IsKnownDeclaredEncoding(member.Encoding))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidWireEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be inherit, json, or protobuf."));
@@ -202,7 +202,7 @@ namespace Unity.FoxgloveSDK.Editor
                     || (member.IsArray
                         && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    "FOXRUN024",
+                    "FOXRUN200",
                     target,
                     member.MemberName,
                     "FoxRun inbound collections require explicit Protobuf encoding; aggregate members remain unsupported."));
@@ -214,7 +214,7 @@ namespace Unity.FoxgloveSDK.Editor
                 && !IsInboundAssignable(member.ProtobufTypeShape))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    "FOXRUN024",
+                    "FOXRUN200",
                     target,
                     member.MemberName,
                     "FoxRun inbound Protobuf DTO members must be writable fields or settable properties."));
@@ -227,7 +227,7 @@ namespace Unity.FoxgloveSDK.Editor
                     || member.RateHz != DefaultRateHz))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
-                    "FOXRUN025",
+                    "FOXRUN201",
                     target,
                     member.MemberName,
                     "SubscribeOnly ignores RateHz, PublishMode, ChangeEpsilon, and ForceIntervalSeconds."));
@@ -235,14 +235,14 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (member.Mode == 2)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
-                    "FOXRUN026",
+                    "FOXRUN400",
                     target,
                     member.MemberName,
                     "PublishAndSubscribe exposes remote-authoritative state; document ownership and feedback behavior."));
 
             if (member.Mode == 1 && !LooksLikeInputPort(member.MemberName))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
-                    "FOXRUN027",
+                    "FOXRUN202",
                     target,
                     member.MemberName,
                     "SubscribeOnly members should use an input-port name such as _incoming, _input, _requested, _command, or _remote."));

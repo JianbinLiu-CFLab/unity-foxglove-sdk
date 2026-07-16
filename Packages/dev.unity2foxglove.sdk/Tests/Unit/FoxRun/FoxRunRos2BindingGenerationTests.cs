@@ -24,11 +24,11 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     public sealed class FoxRunRos2BindingGenerationTests
     {
         [Theory]
-        [InlineData("invalid", "inherit", 1, "FOXRUN035")]
-        [InlineData("ros2-native", "inherit", 0, "FOXRUN036")]
-        [InlineData("ros2-native", "json", 1, "FOXRUN037")]
-        [InlineData("ros2-native", "protobuf", 1, "FOXRUN037")]
-        [InlineData("ros2-native", "inherit", 2, "FOXRUN036")]
+        [InlineData("invalid", "inherit", 1, "FOXRUN204")]
+        [InlineData("ros2-native", "inherit", 0, "FOXRUN205")]
+        [InlineData("ros2-native", "json", 1, "FOXRUN206")]
+        [InlineData("ros2-native", "protobuf", 1, "FOXRUN206")]
+        [InlineData("ros2-native", "inherit", 2, "FOXRUN205")]
         public void NativeProviderPolicyErrorsUseTargetedDiagnostics(
             string provider,
             string encoding,
@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var diagnostics = FoxRunGenerationModelValidator.Validate(
                 FoxRunGenerationModel.FromMembers(new[] { member }));
 
-            var warning = Assert.Single(diagnostics, diagnostic => diagnostic.Id == "FOXRUN044");
+            var warning = Assert.Single(diagnostics, diagnostic => diagnostic.Id == "FOXRUN213");
             Assert.Equal("Warning", warning.Severity);
             Assert.Contains("ignored", warning.Message, StringComparison.OrdinalIgnoreCase);
         }
@@ -115,10 +115,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var explicitNativeDiagnostics = FoxRunGenerationModelValidator.Validate(
                 FoxRunGenerationModel.FromMembers(new[] { explicitNative }));
 
-            Assert.DoesNotContain(webSocketDiagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
-            Assert.DoesNotContain(inheritedWebSocketDiagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
-            Assert.Contains(inheritedNativeDiagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
-            Assert.Contains(explicitNativeDiagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
+            Assert.DoesNotContain(webSocketDiagnostics, diagnostic => diagnostic.Id == "FOXRUN203");
+            Assert.DoesNotContain(inheritedWebSocketDiagnostics, diagnostic => diagnostic.Id == "FOXRUN203");
+            Assert.Contains(inheritedNativeDiagnostics, diagnostic => diagnostic.Id == "FOXRUN203");
+            Assert.Contains(explicitNativeDiagnostics, diagnostic => diagnostic.Id == "FOXRUN203");
         }
 
         [Fact]
@@ -148,8 +148,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var diagnostics = FoxRunGenerationModelValidator.Validate(
                 FoxRunGenerationModel.FromMembers(new[] { member }));
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN031");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN603");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN200");
         }
 
         [Fact]
@@ -205,7 +205,7 @@ namespace vendor_msgs.msg
 
             var shapes = BuildHostShapes(fixture);
             Assert.All(shapes, shape =>
-                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN039|vendor_msgs.msg.Command|", StringComparison.Ordinal)));
+                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN208|vendor_msgs.msg.Command|", StringComparison.Ordinal)));
             Assert.Equal(shapes[0].Diagnostics, shapes[1].Diagnostics);
         }
 
@@ -228,12 +228,12 @@ namespace vendor_msgs.msg
             {
                 Assert.False(shape.HasPublicParameterlessConstructor);
                 Assert.Contains(shape.Diagnostics, diagnostic =>
-                    diagnostic.StartsWith("FOXRUN039|vendor_msgs.msg.Command|", StringComparison.Ordinal));
+                    diagnostic.StartsWith("FOXRUN208|vendor_msgs.msg.Command|", StringComparison.Ordinal));
             });
             Assert.Equal(shapes[0].Diagnostics, shapes[1].Diagnostics);
 
             var generated = RunGenerator(source, "vendor_msgs/msg/Command");
-            Assert.Contains(generated.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN039");
+            Assert.Contains(generated.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN208");
         }
 
         [Theory]
@@ -265,7 +265,7 @@ namespace vendor_msgs.msg
                 Assert.False(shape.ImplementsRos2Message);
                 Assert.NotEqual("global::vendor_msgs.msg.Command", shape.FullyQualifiedTypeName);
                 Assert.Contains(shape.Diagnostics, diagnostic =>
-                    diagnostic.StartsWith("FOXRUN038|", StringComparison.Ordinal));
+                    diagnostic.StartsWith("FOXRUN207|", StringComparison.Ordinal));
             });
 
             var reflectionMember = new FoxrunCodeGenerator.MemberData(
@@ -289,7 +289,7 @@ namespace vendor_msgs.msg
                     publicConstructor: true),
                 "vendor_msgs/msg/Command",
                 messageTypeName: sourceTypeName);
-            Assert.Contains(generated.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN038");
+            Assert.Contains(generated.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
             Assert.DoesNotContain(
                 generated.Results.SelectMany(result => result.GeneratedSources),
                 source => source.SourceText.ToString().Contains(
@@ -324,7 +324,7 @@ namespace " + ns + @"
             Assert.All(shapes, shape =>
             {
                 Assert.Equal(string.Empty, shape.CanonicalRosType);
-                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN040|" + metadataName + "|", StringComparison.Ordinal));
+                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN209|" + metadataName + "|", StringComparison.Ordinal));
             });
             Assert.Equal(shapes[0].Diagnostics, shapes[1].Diagnostics);
         }
@@ -342,7 +342,7 @@ namespace " + ns + @"
 
             var diagnostic = Assert.Single(
                 FoxRunGenerationModelValidator.Validate(FoxRunGenerationModel.FromMembers(new[] { member })),
-                item => item.Id == "FOXRUN041");
+                item => item.Id == "FOXRUN210");
             Assert.Contains("vendor_msgs/msg/Command", diagnostic.Message, StringComparison.Ordinal);
         }
 
@@ -398,7 +398,7 @@ namespace vendor_msgs.msg
 
             var shapes = BuildHostShapes(fixture);
             Assert.All(shapes, shape =>
-                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN028|vendor_msgs.msg.Command.Value|", StringComparison.Ordinal)));
+                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN203|vendor_msgs.msg.Command.Value|", StringComparison.Ordinal)));
             Assert.Equal(shapes[0].Diagnostics, shapes[1].Diagnostics);
         }
 
@@ -418,7 +418,7 @@ namespace vendor_msgs.msg
             var shapes = BuildHostShapes(fixture);
             Assert.All(shapes, shape =>
                 Assert.Contains(shape.Diagnostics, diagnostic =>
-                    diagnostic.StartsWith("FOXRUN028|vendor_msgs.msg.Command.Value|", StringComparison.Ordinal)));
+                    diagnostic.StartsWith("FOXRUN203|vendor_msgs.msg.Command.Value|", StringComparison.Ordinal)));
             Assert.Equal(shapes[0].Diagnostics, shapes[1].Diagnostics);
         }
 
@@ -443,7 +443,7 @@ namespace vendor_msgs.msg
             var reflectionShape = FoxRunReflectionRos2MessageShapeBuilder.Build(fixture.RuntimeType);
             var encoded = Assert.Single(
                 reflectionShape.Diagnostics,
-                diagnostic => diagnostic.StartsWith("FOXRUN028|", StringComparison.Ordinal));
+                diagnostic => diagnostic.StartsWith("FOXRUN203|", StringComparison.Ordinal));
             Assert.True(FoxRunRos2ShapeDiagnostic.TryDecode(
                 encoded,
                 out _,
@@ -452,7 +452,7 @@ namespace vendor_msgs.msg
             Assert.Equal("vendor_msgs.msg.Command.Child.Value", reflectionPath);
 
             var generated = RunGenerator(source, "vendor_msgs/msg/Command");
-            var diagnostic = Assert.Single(generated.Diagnostics, item => item.Id == "FOXRUN028");
+            var diagnostic = Assert.Single(generated.Diagnostics, item => item.Id == "FOXRUN203");
             Assert.Contains(reflectionPath, diagnostic.GetMessage(), StringComparison.Ordinal);
         }
 
@@ -468,7 +468,7 @@ namespace vendor_msgs.msg
             var shapes = BuildHostShapes(fixture);
             Assert.All(shapes, shape =>
                 Assert.Contains(shape.Diagnostics, diagnostic =>
-                    diagnostic.StartsWith("FOXRUN028|vendor_msgs.msg.Command.Handle|", StringComparison.Ordinal)));
+                    diagnostic.StartsWith("FOXRUN203|vendor_msgs.msg.Command.Handle|", StringComparison.Ordinal)));
             Assert.Equal(shapes[0].Diagnostics, shapes[1].Diagnostics);
         }
 
@@ -491,7 +491,7 @@ namespace vendor_msgs.msg
 
             var shapes = BuildHostShapes(fixture);
             Assert.All(shapes, shape =>
-                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN042|" + expectedPath + "|", StringComparison.Ordinal)));
+                Assert.Contains(shape.Diagnostics, diagnostic => diagnostic.StartsWith("FOXRUN211|" + expectedPath + "|", StringComparison.Ordinal)));
             Assert.Equal(shapes[0].Diagnostics, shapes[1].Diagnostics);
         }
 
@@ -705,12 +705,12 @@ namespace Demo { public partial class Receiver { private sensor_msgs.msg.Imu _in
             var cases = new[]
             {
                 (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", true, interfaceName: "User.Message")
-                    .Replace("namespace vendor_msgs.msg", "namespace User { public interface Message { } } namespace vendor_msgs.msg"), "vendor_msgs/msg/Command", "FOXRUN038", "vendor_msgs.msg.Command"),
-                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", false), "vendor_msgs/msg/Command", "FOXRUN039", "vendor_msgs.msg.Command"),
-                (ValidMessageSource("vendor_msgs.srv", "public int Value { get; set; }", true), "vendor_msgs/srv/Command", "FOXRUN040", "vendor_msgs.srv.Command"),
-                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; }", true), "vendor_msgs/msg/Command", "FOXRUN028", "vendor_msgs.msg.Command"),
-                (ValidMessageSource("vendor_msgs.msg", "public Command Child { get; set; }", true), "vendor_msgs/msg/Command", "FOXRUN042", "vendor_msgs.msg.Command"),
-                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", true), "other_msgs/msg/Command", "FOXRUN041", "vendor_msgs.msg.Command")
+                    .Replace("namespace vendor_msgs.msg", "namespace User { public interface Message { } } namespace vendor_msgs.msg"), "vendor_msgs/msg/Command", "FOXRUN207", "vendor_msgs.msg.Command"),
+                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", false), "vendor_msgs/msg/Command", "FOXRUN208", "vendor_msgs.msg.Command"),
+                (ValidMessageSource("vendor_msgs.srv", "public int Value { get; set; }", true), "vendor_msgs/srv/Command", "FOXRUN209", "vendor_msgs.srv.Command"),
+                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; }", true), "vendor_msgs/msg/Command", "FOXRUN203", "vendor_msgs.msg.Command"),
+                (ValidMessageSource("vendor_msgs.msg", "public Command Child { get; set; }", true), "vendor_msgs/msg/Command", "FOXRUN211", "vendor_msgs.msg.Command"),
+                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", true), "other_msgs/msg/Command", "FOXRUN210", "vendor_msgs.msg.Command")
             };
 
             foreach (var item in cases)
@@ -806,19 +806,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 subscriptionProviderExpression:
                     "(Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider)99");
 
-            Assert.Contains(missing.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.DoesNotContain(present.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.DoesNotContain(defineOff.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.DoesNotContain(webSocketOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.DoesNotContain(publishOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.DoesNotContain(ordinaryDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.DoesNotContain(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.Contains(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN038");
-            Assert.Contains(sameNameEmptyShell.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.Contains(missingRegistrar.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.Contains(wrongVisibility.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.Contains(unknownProvider.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN035");
-            Assert.DoesNotContain(unknownProvider.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
+            Assert.Contains(missing.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(present.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(defineOff.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(webSocketOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(publishOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(ordinaryDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.Contains(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
+            Assert.Contains(sameNameEmptyShell.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.Contains(missingRegistrar.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.Contains(wrongVisibility.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.Contains(unknownProvider.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN204");
+            Assert.DoesNotContain(unknownProvider.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.DoesNotContain(unknownProvider.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN006");
         }
 
@@ -835,7 +835,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 nativeReference: true,
                 nativeReferenceSource: nativeReferenceSource);
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             var generated = string.Join(
                 Environment.NewLine,
                 result.GeneratedTrees.Select(tree => tree.GetText().ToString()));
@@ -1005,7 +1005,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 diagnostics: new[]
                 {
                     FoxRunRos2ShapeDiagnostic.Encode(
-                        "FOXRUN028",
+                        "FOXRUN203",
                         "vendor_msgs.msg.Command.Value",
                         "Native ROS2 message members must be writable.")
                 });
@@ -1262,7 +1262,7 @@ namespace Demo
                 nativeReference: false,
                 subscriptionProvider: "Ros2Native");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             var generatedSources = result.Results.Single().GeneratedSources
                 .Select(source => source.SourceText.ToString())
                 .ToArray();

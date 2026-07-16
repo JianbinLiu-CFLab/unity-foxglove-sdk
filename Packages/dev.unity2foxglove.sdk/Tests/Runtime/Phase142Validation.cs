@@ -244,7 +244,7 @@ namespace Unity.FoxgloveSDK.Tests
                 { "FOXRUN015", ("FoxRun condition member missing", "Error") },
                 { "FOXRUN016", ("FoxRun condition member must be bool", "Error") },
                 { "FOXRUN017", ("Mixed same-topic conditional gates", "Error") },
-                { "FOXRUN029", ("FoxRun Unless condition member missing", "Error") },
+                { "FOXRUN601", ("FoxRun Unless condition member missing", "Error") },
             };
 
             foreach (var kv in expected)

@@ -29,28 +29,28 @@ FOXRUN019 | FoxRun | Error | Aggregate and field-level FoxRun members cannot sha
 FOXRUN020 | FoxRun | Error | Aggregate array fields are not supported yet.
 FOXRUN021 | FoxRun | Error | [FoxRunField] cannot be applied to static members.
 FOXRUN022 | FoxRun | Error | Aggregate JSON field names must be unique per topic.
-FOXRUN023 | FoxRun | Error | FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe.
-FOXRUN024 | FoxRun | Error | FoxRun inbound arrays and aggregate members are not supported.
-FOXRUN025 | FoxRun | Warning | SubscribeOnly ignores publish timing options.
-FOXRUN026 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
-FOXRUN027 | FoxRun | Warning | SubscribeOnly member names should communicate input-port authority.
-FOXRUN028 | FoxRun | Error | FoxRun inbound targets must be writable.
-FOXRUN029 | FoxRun | Error | FoxRun Unless conditional gate member is missing or invalid.
-FOXRUN030 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
-FOXRUN031 | FoxRun | Error | FoxRun ProtobufFieldNumber must be a legal non-reserved tag or zero for automatic assignment.
-FOXRUN032 | FoxRun | Error | Same-topic FoxRun members cannot mix Encoding declarations.
-FOXRUN033 | FoxRun | Error | FoxRun ProtobufFieldNumber values must be unique per topic.
-FOXRUN034 | FoxRun | Error | PublishAndSubscribe requires an explicit Protobuf or Json Encoding.
-FOXRUN035 | FoxRun | Error | FoxRun SubscriptionProvider must be a known provider value.
-FOXRUN036 | FoxRun | Error | Ros2Native is supported only for SubscribeOnly members.
-FOXRUN037 | FoxRun | Error | Ros2Native cannot declare JSON or Protobuf Encoding.
-FOXRUN038 | FoxRun | Error | Native member type must implement ROS2.Message from ros2cs_common.
-FOXRUN039 | FoxRun | Error | Native message type requires a public parameterless constructor.
-FOXRUN040 | FoxRun | Error | Native message type must be declared directly in a package msg namespace.
-FOXRUN041 | FoxRun | Error | Explicit SchemaName must match the validated canonical ROS type.
-FOXRUN042 | FoxRun | Error | Native message graph cannot be deep-copied safely.
-FOXRUN043 | FoxRun | Error | Native generation requires the optional Native assembly reference.
-FOXRUN044 | FoxRun | Warning | Ros2Qos is ignored for explicit WebSocket-only subscriptions.
+FOXRUN200 | FoxRun | Error | FoxRun inbound arrays and aggregate members are not supported.
+FOXRUN201 | FoxRun | Warning | SubscribeOnly ignores publish timing options.
+FOXRUN202 | FoxRun | Warning | SubscribeOnly member names should communicate input-port authority.
+FOXRUN203 | FoxRun | Error | FoxRun inbound targets must be writable.
+FOXRUN204 | FoxRun | Error | FoxRun SubscriptionProvider must be a known provider value.
+FOXRUN205 | FoxRun | Error | Ros2Native is supported only for SubscribeOnly members.
+FOXRUN206 | FoxRun | Error | Ros2Native cannot declare JSON or Protobuf Encoding.
+FOXRUN207 | FoxRun | Error | Native member type must implement ROS2.Message from ros2cs_common.
+FOXRUN208 | FoxRun | Error | Native message type requires a public parameterless constructor.
+FOXRUN209 | FoxRun | Error | Native message type must be declared directly in a package msg namespace.
+FOXRUN210 | FoxRun | Error | Explicit SchemaName must match the validated canonical ROS type.
+FOXRUN211 | FoxRun | Error | Native message graph cannot be deep-copied safely.
+FOXRUN212 | FoxRun | Error | Native generation requires the optional Native assembly reference.
+FOXRUN213 | FoxRun | Warning | Ros2Qos is ignored for explicit WebSocket-only subscriptions.
+FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
+FOXRUN401 | FoxRun | Error | PublishAndSubscribe requires an explicit Protobuf or Json Encoding.
+FOXRUN600 | FoxRun | Error | FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe.
+FOXRUN601 | FoxRun | Error | FoxRun Unless conditional gate member is missing or invalid.
+FOXRUN602 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
+FOXRUN603 | FoxRun | Error | FoxRun ProtobufFieldNumber must be a legal non-reserved tag or zero for automatic assignment.
+FOXRUN604 | FoxRun | Error | Same-topic FoxRun members cannot mix Encoding declarations.
+FOXRUN605 | FoxRun | Error | FoxRun ProtobufFieldNumber values must be unique per topic.
 FOXSERVICE001 | FoxService | Error | FoxService name must be non-empty and absolute.
 FOXSERVICE002 | FoxService | Error | FoxService method signature is unsupported.
 FOXSERVICE003 | FoxService | Error | FoxService request type is unsupported.

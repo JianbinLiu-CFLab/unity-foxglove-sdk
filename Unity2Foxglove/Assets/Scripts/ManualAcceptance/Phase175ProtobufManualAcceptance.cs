@@ -27,10 +27,10 @@ public partial class Phase175ProtobufManualAcceptance : MonoBehaviour
     [SerializeField] private float appliedTargetValue;
 
     [Header("Bidirectional Protobuf")]
-#pragma warning disable FOXRUN026 // This probe treats Foxglove input as the remote-authoritative shared observation; generated PublishAndSubscribe suppresses its immediate echo.
+#pragma warning disable FOXRUN400 // This probe treats Foxglove input as the remote-authoritative shared observation; generated PublishAndSubscribe suppresses its immediate echo.
     [FoxRun("/phase175/protobuf/shared-state", Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1, RateHz = 2f)]
     [SerializeField] private float sharedState;
-#pragma warning restore FOXRUN026
+#pragma warning restore FOXRUN400
 
     [Header("Observed State")]
     [SerializeField] private int receivedTargetMessageCount;

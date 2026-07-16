@@ -286,7 +286,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 && ((symbol is IFieldSymbol inboundField && inboundField.IsReadOnly)
                     || (symbol is IPropertySymbol inboundProperty && inboundProperty.SetMethod == null)))
             {
-                return MemberData.ForDiagnostic(memberLocation, "FOXRUN028");
+                return MemberData.ForDiagnostic(memberLocation, "FOXRUN203");
             }
 
             var memberType = typeSymbol == null ? "object" : typeSymbol.ToDisplayString();
@@ -357,7 +357,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             foreach (var topic in topics)
             {
                 if (TryGetConditionDiagnostic(containingType, topic.When, "FOXRUN015", out diagnosticId)
-                    || TryGetConditionDiagnostic(containingType, topic.Unless, "FOXRUN029", out diagnosticId))
+                    || TryGetConditionDiagnostic(containingType, topic.Unless, "FOXRUN601", out diagnosticId))
                 {
                     return true;
                 }
@@ -648,7 +648,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             var sharedDiagnostics = FoxRunGenerationModelValidator.Validate(model);
             // A missing optional Native reference invalidates only the dependent
             // conditional ROS2 partial. Keep emitting the ROS-free/WebSocket
-            // portion so FOXRUN043 does not create a missing-type diagnostic
+            // portion so FOXRUN212 does not create a missing-type diagnostic
             // cascade or erase otherwise-valid generated behavior.
             var invalidDeclaringTypes = new HashSet<string>(StringComparer.Ordinal);
             foreach (var diagnostic in sharedDiagnostics)

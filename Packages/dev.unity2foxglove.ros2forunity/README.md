@@ -130,7 +130,7 @@ window, or a matching `ROS_DOMAIN_ID` alone are never interoperability proof.
 
 Custom asmdefs need references to `Unity.FoxgloveSDK`,
 `Unity2Foxglove.Ros2ForUnity.Native`, and the selected runtime/message
-assemblies. `FOXRUN043` means `Native generation requires the optional Native
+assemblies. `FOXRUN212` means `Native generation requires the optional Native
 assembly reference`; add the Native reference and let Unity recompile instead
 of changing the contract to a WebSocket encoding.
 

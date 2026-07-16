@@ -382,8 +382,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN032");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN033");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN604");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN605");
         }
 
         [Fact]
@@ -403,7 +403,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var collision = Assert.Single(
                 FoxRunGenerationModelValidator.Validate(model),
-                diagnostic => diagnostic.Id == "FOXRUN033");
+                diagnostic => diagnostic.Id == "FOXRUN605");
 
             Assert.Equal(
                 "FoxRun topic '/phase175/duplicate' has duplicate ProtobufFieldNumber 17.",

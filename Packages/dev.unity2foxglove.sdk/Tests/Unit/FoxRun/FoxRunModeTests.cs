@@ -285,7 +285,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN034");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN401");
         }
 
         [Fact]
@@ -359,7 +359,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN030");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN602");
         }
 
         [Fact]
@@ -480,7 +480,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN024");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN200");
         }
 
         [Fact]
@@ -746,8 +746,8 @@ namespace Demo
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024" && diagnostic.Severity == "Error");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN025" && diagnostic.Severity == "Warning");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN200" && diagnostic.Severity == "Error");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201" && diagnostic.Severity == "Warning");
         }
 
         [Fact]
@@ -766,8 +766,8 @@ namespace Demo
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
-            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024" && diagnostic.Severity == "Error");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN025" && diagnostic.Severity == "Warning");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN200" && diagnostic.Severity == "Error");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201" && diagnostic.Severity == "Warning");
         }
 
         [Fact]
@@ -821,7 +821,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN203");
         }
 
         [Fact]

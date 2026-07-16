@@ -105,12 +105,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var customReferenced = CompileGeneratedFixture("Demo.Custom.Runtime", includeNativeReference: true);
             var customMissing = CompileGeneratedFixture("Demo.Custom.MissingNative", includeNativeReference: false);
 
-            Assert.DoesNotContain(predefined.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
-            Assert.DoesNotContain(customReferenced.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
+            Assert.DoesNotContain(predefined.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(customReferenced.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Empty(predefined.CompilerErrors);
             Assert.Empty(customReferenced.CompilerErrors);
 
-            Assert.Contains(customMissing.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN043");
+            Assert.Contains(customMissing.GeneratorDiagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Empty(customMissing.CompilerErrors);
             Assert.DoesNotContain(
                 customMissing.GeneratedSource,
