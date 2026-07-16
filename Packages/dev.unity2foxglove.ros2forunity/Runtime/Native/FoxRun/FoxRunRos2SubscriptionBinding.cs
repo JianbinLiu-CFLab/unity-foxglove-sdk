@@ -381,6 +381,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     ? Volatile.Read(ref _acceptanceCompletingEpoch)
                     : 0;
             var applied = _slot.TryApplyLatest(_applyOwned, _clearOwned);
+            // A generated main-thread apply delegate can synchronously stop its
+            // Manager/session. The slot correctly defers its drain while this
+            // apply operation is on-stack, but the binding still owns the node
+            // lease. Re-enter normal stop cleanup only after a successful
+            // apply has left the slot operation, so framework-owned values are
+            // cleared and disposed on this consumer thread rather than in the
+            // ROS callback.
+            if (applied && Volatile.Read(ref _stopping) != 0)
+                StopCore(null);
             if (applied
                 && acceptanceEpoch > 0
                 && IsAcceptanceEpochStillOwned(acceptanceEpoch))
@@ -762,6 +771,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
                 if (Volatile.Read(ref _stopping) != 0)
                 {
+                    // Preserve the slot's rejected-after-stop accounting. Its
+                    // admission check runs before _copyBorrowed, so this late
+                    // callback cannot allocate an owned message graph.
                     _slot.TryPublish(borrowed, _copyBorrowed);
                     return;
                 }

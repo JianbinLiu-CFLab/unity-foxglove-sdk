@@ -990,6 +990,174 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void ApplyReentrantStopReleasesLeaseAfterSlotCompletesItsDeferredDrain()
+        {
+            var backend = new FakeBackend();
+            FakeMessage applied = null;
+            FoxRunRos2SubscriptionBinding<FakeMessage> binding = null;
+            binding = CreateBinding(
+                backend,
+                129,
+                () => 129,
+                value =>
+                {
+                    applied = value;
+                    binding.Stop();
+                },
+                value =>
+                {
+                    if (!ReferenceEquals(applied, value))
+                        return false;
+                    applied = null;
+                    return true;
+                });
+            Assert.True(binding.TryRegister().Succeeded);
+            using var borrowed = Message("first");
+            backend.Invoke(borrowed);
+
+            Assert.True(binding.TryApplyLatest(129));
+
+            Assert.Null(applied);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(1, backend.ReleaseCount);
+            binding.Stop();
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(1, backend.ReleaseCount);
+        }
+
+        [Fact]
+        public void ApplyReentrantStopFinalizesInFlightCallbackOnMainThreadAndReleasesLease()
+        {
+            using var copyEntered = new ManualResetEventSlim();
+            using var releaseCopy = new ManualResetEventSlim();
+            using var stopRequested = new ManualResetEventSlim();
+            var mainThread = Environment.CurrentManagedThreadId;
+            var disposeThreads = new ConcurrentDictionary<string, int>();
+            var backend = new FakeBackend();
+            FakeMessage applied = null;
+            FakeMessage firstOwned = null;
+            FakeMessage lateOwned = null;
+            FoxRunRos2SubscriptionBinding<FakeMessage> binding = null;
+            binding = CreateBinding(
+                backend,
+                130,
+                () => 130,
+                value =>
+                {
+                    applied = value;
+                    stopRequested.Set();
+                    binding.Stop();
+                },
+                value =>
+                {
+                    if (!ReferenceEquals(applied, value))
+                        return false;
+                    applied = null;
+                    return true;
+                },
+                source =>
+                {
+                    var owned = Message(source.Data);
+                    if (source.Data == "first")
+                    {
+                        firstOwned = owned;
+                    }
+                    else
+                    {
+                        lateOwned = owned;
+                        copyEntered.Set();
+                        Assert.True(releaseCopy.Wait(TimeSpan.FromSeconds(10)));
+                    }
+                    return owned;
+                },
+                value =>
+                {
+                    disposeThreads[value.Data] = Environment.CurrentManagedThreadId;
+                    value.Dispose();
+                });
+            Assert.True(binding.TryRegister().Succeeded);
+            using var first = Message("first");
+            using var late = Message("late");
+            backend.Invoke(first);
+
+            Exception callbackFailure = null;
+            var callback = new Thread(() =>
+            {
+                try { backend.Invoke(late); }
+                catch (Exception exception) { callbackFailure = exception; }
+            }) { IsBackground = true };
+            callback.Start();
+            Assert.True(copyEntered.Wait(TimeSpan.FromSeconds(10)));
+
+            var slot = typeof(FoxRunRos2SubscriptionBinding<FakeMessage>)
+                .GetField("_slot", System.Reflection.BindingFlags.Instance |
+                                   System.Reflection.BindingFlags.NonPublic)
+                ?.GetValue(binding);
+            Assert.NotNull(slot);
+            var stopState = slot.GetType().GetField(
+                "_stopState",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var activeAppliers = slot.GetType().GetField(
+                "_activeAppliers",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(stopState);
+            Assert.NotNull(activeAppliers);
+            Exception releaseFailure = null;
+            var release = new Thread(() =>
+            {
+                try
+                {
+                    Assert.True(stopRequested.Wait(TimeSpan.FromSeconds(10)));
+                    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+                    while (DateTime.UtcNow < deadline)
+                    {
+                        if ((int)activeAppliers.GetValue(slot) == 0
+                            && (int)stopState.GetValue(slot) != 0)
+                        {
+                            releaseCopy.Set();
+                            return;
+                        }
+                        Thread.Yield();
+                    }
+                    throw new TimeoutException("The apply operation did not request deferred stop completion.");
+                }
+                catch (Exception exception)
+                {
+                    releaseFailure = exception;
+                }
+            }) { IsBackground = true };
+            release.Start();
+
+            try
+            {
+                Assert.True(binding.TryApplyLatest(130));
+                Assert.True(callback.Join(TimeSpan.FromSeconds(10)));
+                Assert.True(release.Join(TimeSpan.FromSeconds(10)));
+
+                Assert.Null(callbackFailure);
+                Assert.Null(releaseFailure);
+                Assert.Null(applied);
+                Assert.Equal(1, firstOwned.DisposeCount);
+                Assert.Equal(1, lateOwned.DisposeCount);
+                Assert.Equal(mainThread, disposeThreads["first"]);
+                Assert.NotEqual(mainThread, disposeThreads["late"]);
+                Assert.Equal(1, backend.RemoveCount);
+                Assert.Equal(1, backend.ReleaseCount);
+
+                binding.Stop();
+                Assert.Equal(1, backend.RemoveCount);
+                Assert.Equal(1, backend.ReleaseCount);
+            }
+            finally
+            {
+                releaseCopy.Set();
+                callback.Join(TimeSpan.FromSeconds(10));
+                release.Join(TimeSpan.FromSeconds(10));
+                binding.Stop();
+            }
+        }
+
+        [Fact]
         public void ConcurrentRegisterStopAndSnapshotNeverExposeTornOutcome()
         {
             using var removeEntered = new ManualResetEventSlim();
