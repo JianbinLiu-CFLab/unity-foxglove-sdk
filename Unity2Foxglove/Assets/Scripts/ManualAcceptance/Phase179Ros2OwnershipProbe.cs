@@ -37,6 +37,18 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [Tooltip("Assign the FoxgloveManager, especially when testing its disabled state. If empty, the active Manager is found on enable.")]
     [SerializeField] private FoxgloveManager manager;
 
+    [Header("Captured Subscription Session Policy")]
+    [Tooltip("Immutable FoxRun subscription-session snapshot captured when the assigned Manager starts or ends a session.")]
+    [SerializeField] private bool capturedSessionEnabled;
+    [SerializeField] private ulong capturedSessionGeneration;
+    [SerializeField] private FoxRunSubscriptionProvider capturedDefaultSubscriptionProvider =
+        FoxRunSubscriptionProvider.FoxgloveWebSocket;
+    [SerializeField] private FoxRunWireEncoding capturedWebSocketSubscriptionEncoding =
+        FoxRunWireEncoding.Protobuf;
+    [SerializeField] private FoxRunRos2QosPreset capturedDefaultRos2Qos =
+        FoxRunRos2QosPreset.Default;
+    [SerializeField] private int capturedNativeCopyBudgetBytes = 4 * 1024 * 1024;
+
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     // The generated host owns this current message. It is intentionally not
     // serialized or shown in Inspector; only the bounded managed copies below
@@ -89,6 +101,8 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [SerializeField] private int burstAttemptPending;
     [SerializeField] private int burstAttemptCallbacksInFlight;
 
+    private FoxgloveManager _sessionPolicyManager;
+
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
     private int _lastObservedLength = -1;
     private ulong _lastObservedFingerprint;
@@ -122,6 +136,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
         emittedMarkerCount = 0;
         if (manager == null)
             manager = FindFirstObjectByType<FoxgloveManager>();
+        AttachManagerSessionPolicyObserver();
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         EndActiveBurstAttempt();
@@ -146,6 +161,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
 
     private void OnDisable()
     {
+        DetachManagerSessionPolicyObserver();
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         EndActiveBurstAttempt();
 #endif
@@ -155,10 +171,54 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     {
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         ObserveManagerDisableWindow();
+#endif
+        AttachManagerSessionPolicyObserver();
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
         ObserveGeneratedOwnedCopy();
 #else
         WarnUnavailableOnce();
 #endif
+    }
+
+    private void AttachManagerSessionPolicyObserver()
+    {
+        if (ReferenceEquals(_sessionPolicyManager, manager))
+            return;
+
+        DetachManagerSessionPolicyObserver();
+        if (manager == null)
+            return;
+
+        _sessionPolicyManager = manager;
+        _sessionPolicyManager.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;
+        CaptureManagerSessionPolicy(_sessionPolicyManager.ActiveFoxRunSubscriptionSessionPolicy);
+    }
+
+    private void DetachManagerSessionPolicyObserver()
+    {
+        if (_sessionPolicyManager == null)
+            return;
+
+        _sessionPolicyManager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
+        _sessionPolicyManager = null;
+    }
+
+    private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
+    {
+        CaptureManagerSessionPolicy(policy);
+    }
+
+    private void CaptureManagerSessionPolicy(FoxRunSubscriptionSessionPolicy policy)
+    {
+        if (policy == null)
+            return;
+
+        capturedSessionEnabled = policy.SubscriptionsEnabled;
+        capturedSessionGeneration = policy.SessionGeneration;
+        capturedDefaultSubscriptionProvider = policy.DefaultProvider;
+        capturedWebSocketSubscriptionEncoding = policy.WebSocketSubscriptionEncoding;
+        capturedDefaultRos2Qos = policy.DefaultRos2Qos;
+        capturedNativeCopyBudgetBytes = policy.NativeCopyBudgetBytes;
     }
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY

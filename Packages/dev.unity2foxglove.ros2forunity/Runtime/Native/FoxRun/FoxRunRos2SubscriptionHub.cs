@@ -411,6 +411,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private FoxgloveManager _manager;
         private FoxRunSubscriptionSessionPolicy _policy;
+        private FoxRunRos2RuntimeDiagnosticContext _runtimeDiagnosticContext =
+            FoxRunRos2RuntimeDiagnosticContext.Unknown;
         private ROS2.ROS2UnityComponent _ros2Unity;
         private Ros2ForUnityFoxRunNodeOwner _nodeOwner;
         private float _managerSearchCooldown;
@@ -446,6 +448,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return true;
             }
             return false;
+        }
+
+        internal static FoxRunRos2SubscriptionDiagnosticSnapshot[] GetDiagnosticSnapshots()
+        {
+            var instance = _instance;
+            return instance == null || instance._stopping
+                ? Array.Empty<FoxRunRos2SubscriptionDiagnosticSnapshot>()
+                : instance._diagnostics.GetSnapshots();
         }
 
         internal static FoxRunRos2AcceptanceArmStatus ArmAcceptanceAttempt(
@@ -707,7 +717,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     WarnHostOnce(
                         source.Key + ": " + exception.GetType().Name,
-                        "Native ROS2 source registration failed for " + source.Key + ": " + exception.Message);
+                        "Native ROS2 source registration failed for " + source.Key + ": "
+                        + FoxRunRos2PublicDiagnostic.Describe(
+                            FoxRunRos2RegistrationError.BackendFailure));
                 }
             }
 
@@ -756,7 +768,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (!_bindings[i].Binding.TryGetSnapshot(generation, out var snapshot))
                     continue;
-                _diagnostics.Update(_bindings[i].Identity, snapshot);
+                _diagnostics.Update(
+                    _bindings[i].Identity,
+                    snapshot,
+                    _runtimeDiagnosticContext);
                 if (_diagnostics.ShouldLog(_bindings[i].Identity, snapshot))
                     Debug.LogWarning("[FoxRun ROS2] " + snapshot.ContractId + ": " + snapshot.Diagnostic);
             }
@@ -785,6 +800,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     _nodeRetry.RecordFailure(now);
                     return false;
                 }
+                _runtimeDiagnosticContext =
+                    FoxRunRos2RuntimeDiagnosticContext.CaptureAfterRuntimeReady(
+                        Environment.GetEnvironmentVariable("ROS_DISTRO"),
+                        Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION"));
                 var node = _ros2Unity.CreateNode(NodeName);
                 if (node == null)
                 {
@@ -805,8 +824,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 _nodeRetry.RecordFailure(now);
                 WarnHostOnce(
-                    "node|" + exception.GetType().Name + "|" + exception.Message,
-                    "Native ROS2 FoxRun node is unavailable: " + exception.Message);
+                    "node|" + exception.GetType().Name,
+                    "Native ROS2 FoxRun node is unavailable: "
+                    + FoxRunRos2PublicDiagnostic.Describe(
+                        FoxRunRos2RegistrationError.RuntimeUnavailable));
                 return false;
             }
         }
@@ -830,7 +851,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             if (!TryEnsureNodeOwner(out var owner))
             {
-                RecordWaiting(identity, contract, "The selected ROS2 runtime or RMW is not ready.");
+                RecordWaiting(identity, contract, qos, "The selected ROS2 runtime or RMW is not ready.");
                 return;
             }
 
@@ -883,38 +904,37 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RegistrationError error,
             string diagnostic)
             => UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
-                contract.Id, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Unsupported,
+                contract, contract.QosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Unsupported,
                 error, diagnostic,
-                0, 0, 0, 0, 0, 0, 0));
+                0, 0, 0, 0, 0, 0, 0, 0, 0));
 
         private void RecordWaiting(
             string endpointIdentity,
             FoxRunRos2GeneratedContract contract,
+            FoxRunRos2QosPreset qosPreset,
             string diagnostic)
             => UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
-                contract.Id, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.WaitingForRuntime,
+                contract, qosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.WaitingForRuntime,
                 FoxRunRos2RegistrationError.RuntimeUnavailable, diagnostic,
-                0, 0, 0, 0, 0, 0, 0));
+                0, 0, 0, 0, 0, 0, 0, 0, 0));
 
         private void RecordFailed(
             string endpointIdentity,
             FoxRunRos2GeneratedContract contract,
             Exception exception)
         {
-            var diagnostic = exception.GetType().Name + ": " + exception.Message;
-            if (diagnostic.Length > FoxRunRos2RegistrationResult.MaximumDiagnosticLength)
-                diagnostic = diagnostic.Substring(0, FoxRunRos2RegistrationResult.MaximumDiagnosticLength);
             UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
-                contract.Id, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Failed,
-                FoxRunRos2RegistrationError.BackendFailure, diagnostic,
-                0, 0, 0, 0, 0, 0, 0));
+                contract, contract.QosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Failed,
+                FoxRunRos2RegistrationError.BackendFailure,
+                FoxRunRos2PublicDiagnostic.Describe(FoxRunRos2RegistrationError.BackendFailure),
+                0, 0, 0, 0, 0, 0, 0, 0, 0));
         }
 
         private void UpdateDiagnostic(
             string endpointIdentity,
             FoxRunRos2SubscriptionBindingSnapshot snapshot)
         {
-            _diagnostics.Update(endpointIdentity, snapshot);
+            _diagnostics.Update(endpointIdentity, snapshot, _runtimeDiagnosticContext);
             if (_diagnostics.ShouldLog(endpointIdentity, snapshot))
                 Debug.LogWarning("[FoxRun ROS2] " + snapshot.ContractId + ": " + snapshot.Diagnostic);
         }
@@ -937,6 +957,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _seenEndpoints.Clear();
             _existingBindings.Clear();
             _diagnostics.Clear();
+            _runtimeDiagnosticContext = FoxRunRos2RuntimeDiagnosticContext.Unknown;
             var owner = _nodeOwner;
             _nodeOwner = null;
             if (owner != null)
@@ -948,8 +969,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 catch (Exception exception)
                 {
                     WarnHostOnce(
-                        "release-node|" + exception.GetType().Name + "|" + exception.Message,
-                        "Native ROS2 FoxRun node removal failed: " + exception.Message);
+                        "release-node|" + exception.GetType().Name,
+                        "Native ROS2 FoxRun node removal failed: "
+                        + FoxRunRos2PublicDiagnostic.Describe(
+                            FoxRunRos2RegistrationError.TeardownFailure));
                 }
             }
             _ros2Unity = null;

@@ -106,7 +106,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-20E-1: R2FU play-mode guard reports asynchronous reload residual risk");
             Check(guard.Contains("EditorApplication.LockReloadAssemblies()", StringComparison.Ordinal)
                   && guard.Contains("RequestNativeRuntimeShutdownBeforeReload", StringComparison.Ordinal)
-                  && guard.Contains("HasR2fuNativeOutputDemand()", StringComparison.Ordinal)
+                  && guard.Contains("HasR2fuNativeDemand()", StringComparison.Ordinal)
+                  && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && guard.Contains("Ros2UnityComponentSuffix", StringComparison.Ordinal)
                   && !guard.Contains("\"ROS2.ROS2UnityComponent\"", StringComparison.Ordinal)
                   && guard.Contains("ShutdownShared", StringComparison.Ordinal),

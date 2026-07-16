@@ -40,7 +40,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (status.SelectedRuntime != null && !string.IsNullOrWhiteSpace(status.SelectedRuntime.ZenohPayloadDiagnostic))
                 EditorGUILayout.HelpBox(status.SelectedRuntime.ZenohPayloadDiagnostic, MessageType.Warning);
 
-            if (status.SelectedRuntime != null && status.SelectedRuntime.SupportsZenoh)
+            if (status.SelectedRuntime != null && status.SelectedRuntime.CommunicationModes.Count > 1)
                 DrawCommunicationModePopup(projectDirectory, status);
 
             DrawRestartStatus(projectDirectory, status);
@@ -55,9 +55,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     EditorGUILayout.TextField(
                         "Active RMW",
                         Ros2ForUnityRuntimeSelection.GetRmwImplementationForCommunicationMode(
+                            status.SelectedRuntime,
                             Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(status.SelectedRuntime)));
                 }
             }
+        }
+
+        /// <summary>
+        /// Returns a read-only selected-runtime label for optional native Editor
+        /// extensions. This is deliberately string-only so those extensions do
+        /// not need access to the internal runtime-selection model.
+        /// </summary>
+        public static string GetSelectedRuntimeDisplayName()
+        {
+            var status = Ros2ForUnityRuntimeSelection.GetStatus(
+                Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication());
+            var selectedRuntime = status?.SelectedRuntime;
+            return selectedRuntime == null
+                ? "No selected runtime"
+                : selectedRuntime.DisplayName + " / " + selectedRuntime.RuntimeId;
         }
 
         private static void DrawRestartStatus(string projectDirectory, Ros2ForUnityRuntimeSelectionStatus status)
@@ -102,7 +118,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 else if (string.IsNullOrWhiteSpace(sessionRuntime))
                 {
                     EditorGUILayout.HelpBox(
-                        "Switching runtime packages or Lyrical communication mode is safe before this Editor session enters Play Mode. A restart is required only after native ROS2 DLLs have already loaded in this session.",
+                        "Switching runtime packages or communication modes is safe before this Editor session enters Play Mode. A restart is required only after native ROS2 DLLs have already loaded in this session.",
                         MessageType.Info);
                 }
             }

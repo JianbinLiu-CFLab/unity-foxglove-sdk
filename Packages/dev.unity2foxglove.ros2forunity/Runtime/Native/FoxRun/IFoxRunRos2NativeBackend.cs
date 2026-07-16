@@ -25,6 +25,45 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         ApplyFailure = 10
     }
 
+    /// <summary>
+    /// Converts internal backend outcomes into public diagnostic text. Backend
+    /// and exception messages can contain middleware configuration, so public
+    /// diagnostics deliberately expose only a stable error-class explanation.
+    /// </summary>
+    internal static class FoxRunRos2PublicDiagnostic
+    {
+        internal static string Describe(FoxRunRos2RegistrationError error)
+        {
+            switch (error)
+            {
+                case FoxRunRos2RegistrationError.None:
+                    return string.Empty;
+                case FoxRunRos2RegistrationError.RuntimeUnavailable:
+                    return "The native ROS2 runtime is unavailable or not ready.";
+                case FoxRunRos2RegistrationError.UnsupportedMessageType:
+                    return "The requested ROS2 message type is not supported by the active runtime.";
+                case FoxRunRos2RegistrationError.UnsupportedQos:
+                    return "The requested ROS2 QoS preset is not supported by the active runtime.";
+                case FoxRunRos2RegistrationError.RegistrationRejected:
+                    return "The native ROS2 subscription registration was rejected.";
+                case FoxRunRos2RegistrationError.InvalidSubscriptionToken:
+                    return "The native ROS2 subscription returned an invalid ownership token.";
+                case FoxRunRos2RegistrationError.BackendFailure:
+                    return "The native ROS2 backend failed while operating the subscription.";
+                case FoxRunRos2RegistrationError.StaleGeneration:
+                    return "The native ROS2 subscription belongs to an inactive session.";
+                case FoxRunRos2RegistrationError.Stopped:
+                    return "The native ROS2 subscription binding is stopped.";
+                case FoxRunRos2RegistrationError.TeardownFailure:
+                    return "The native ROS2 subscription did not complete teardown.";
+                case FoxRunRos2RegistrationError.ApplyFailure:
+                    return "The native ROS2 subscription could not apply the copied message.";
+                default:
+                    return "The native ROS2 subscription failed.";
+            }
+        }
+    }
+
     /// <summary>Bounded, transport-independent registration outcome.</summary>
     public readonly struct FoxRunRos2RegistrationResult
     {
@@ -37,7 +76,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             Succeeded = succeeded;
             Error = error;
-            Diagnostic = Bound(diagnostic);
+            Diagnostic = FoxRunRos2PublicDiagnostic.Describe(error);
         }
 
         public bool Succeeded { get; }
@@ -56,14 +95,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return new FoxRunRos2RegistrationResult(false, error, diagnostic);
         }
 
-        private static string Bound(string diagnostic)
-        {
-            if (string.IsNullOrEmpty(diagnostic))
-                return string.Empty;
-            return diagnostic.Length <= MaximumDiagnosticLength
-                ? diagnostic
-                : diagnostic.Substring(0, MaximumDiagnosticLength);
-        }
     }
 
     /// <summary>

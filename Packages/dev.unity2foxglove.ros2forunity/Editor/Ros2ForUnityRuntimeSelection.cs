@@ -25,7 +25,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             string runtimeId,
             string rosDistro,
             string platform,
-            bool supportsZenoh,
+            Ros2ForUnityRuntimeCapabilities capabilities,
             string zenohPayloadDiagnostic)
         {
             DisplayName = displayName ?? string.Empty;
@@ -33,8 +33,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             RuntimeId = runtimeId ?? string.Empty;
             RosDistro = rosDistro ?? string.Empty;
             Platform = platform ?? string.Empty;
-            SupportsZenoh = supportsZenoh;
             ZenohPayloadDiagnostic = zenohPayloadDiagnostic ?? string.Empty;
+            Capabilities = capabilities ?? Ros2ForUnityRuntimeCapabilityParser.Parse(string.Empty);
+            CommunicationModes = BuildAvailableCommunicationModes(Capabilities.CommunicationModes, ZenohPayloadDiagnostic);
+            DefaultCommunicationMode = SelectDefaultCommunicationMode(CommunicationModes);
+            CommunicationModeIds = BuildCommunicationModeIds(CommunicationModes);
+            CommunicationModeLabels = BuildCommunicationModeLabels(CommunicationModes);
+            SupportsZenoh = ContainsRmw(CommunicationModes, Ros2ForUnityRuntimeSelection.ZenohRmwImplementation);
         }
 
         public string DisplayName { get; }
@@ -42,8 +47,101 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public string RuntimeId { get; }
         public string RosDistro { get; }
         public string Platform { get; }
+        public Ros2ForUnityRuntimeCapabilities Capabilities { get; }
+        public IReadOnlyList<Ros2ForUnityRuntimeCommunicationMode> CommunicationModes { get; }
+        public Ros2ForUnityRuntimeCommunicationMode DefaultCommunicationMode { get; }
+        public IReadOnlyList<string> CommunicationModeIds { get; }
+        public string[] CommunicationModeLabels { get; }
         public bool SupportsZenoh { get; }
         public string ZenohPayloadDiagnostic { get; }
+
+        public Ros2ForUnityRuntimeCommunicationMode FindCommunicationMode(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return null;
+
+            for (var i = 0; i < CommunicationModes.Count; i++)
+            {
+                var mode = CommunicationModes[i];
+                if (string.Equals(mode.Id, id, StringComparison.Ordinal))
+                    return mode;
+            }
+
+            return null;
+        }
+
+        private static IReadOnlyList<Ros2ForUnityRuntimeCommunicationMode> BuildAvailableCommunicationModes(
+            IReadOnlyList<Ros2ForUnityRuntimeCommunicationMode> capabilities,
+            string zenohPayloadDiagnostic)
+        {
+            if (capabilities == null || capabilities.Count == 0)
+                return Array.Empty<Ros2ForUnityRuntimeCommunicationMode>();
+
+            var suppressZenoh = !string.IsNullOrWhiteSpace(zenohPayloadDiagnostic);
+            var available = new List<Ros2ForUnityRuntimeCommunicationMode>(capabilities.Count);
+            for (var i = 0; i < capabilities.Count; i++)
+            {
+                var mode = capabilities[i];
+                if (suppressZenoh
+                    && string.Equals(
+                        mode.RmwImplementation,
+                        Ros2ForUnityRuntimeSelection.ZenohRmwImplementation,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                available.Add(mode);
+            }
+
+            return available.ToArray();
+        }
+
+        private static Ros2ForUnityRuntimeCommunicationMode SelectDefaultCommunicationMode(
+            IReadOnlyList<Ros2ForUnityRuntimeCommunicationMode> modes)
+        {
+            if (modes == null || modes.Count == 0)
+                return null;
+
+            for (var i = 0; i < modes.Count; i++)
+            {
+                if (modes[i].IsDefault)
+                    return modes[i];
+            }
+
+            return modes[0];
+        }
+
+        private static IReadOnlyList<string> BuildCommunicationModeIds(
+            IReadOnlyList<Ros2ForUnityRuntimeCommunicationMode> modes)
+        {
+            var ids = new string[modes?.Count ?? 0];
+            for (var i = 0; i < ids.Length; i++)
+                ids[i] = modes[i].Id;
+            return ids;
+        }
+
+        private static string[] BuildCommunicationModeLabels(
+            IReadOnlyList<Ros2ForUnityRuntimeCommunicationMode> modes)
+        {
+            var labels = new string[modes?.Count ?? 0];
+            for (var i = 0; i < labels.Length; i++)
+                labels[i] = modes[i].DisplayName;
+            return labels;
+        }
+
+        private static bool ContainsRmw(
+            IReadOnlyList<Ros2ForUnityRuntimeCommunicationMode> modes,
+            string rmwImplementation)
+        {
+            for (var i = 0; i < modes.Count; i++)
+            {
+                if (string.Equals(modes[i].RmwImplementation, rmwImplementation, StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
     }
 
     internal sealed class Ros2ForUnityRuntimeSelectionStatus
@@ -71,18 +169,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     {
         public const string BaseCompileSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
         public const string RuntimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
-        public const string FastDdsCommunicationMode = "fastdds";
-        public const string ZenohCommunicationMode = "zenoh";
-        public const string FastDdsRmwImplementation = "rmw_fastrtps_cpp";
-        public const string ZenohRmwImplementation = "rmw_zenoh_cpp";
-        private static readonly string[] FastDdsOnlyCommunicationModes = { FastDdsCommunicationMode };
-        private static readonly string[] ZenohCommunicationModes = { FastDdsCommunicationMode, ZenohCommunicationMode };
-        private static readonly string[] FastDdsOnlyCommunicationLabels = { "FastDDS (default)" };
-        private static readonly string[] ZenohCommunicationLabels =
-        {
-            "FastDDS (default)",
-            "Zenoh (rmw_zenoh_cpp)"
-        };
+        public const string FastDdsCommunicationMode = Ros2ForUnityRuntimeCapabilityParser.FastDdsCommunicationMode;
+        public const string ZenohCommunicationMode = Ros2ForUnityRuntimeCapabilityParser.ZenohCommunicationMode;
+        public const string FastDdsRmwImplementation = Ros2ForUnityRuntimeCapabilityParser.FastDdsRmwImplementation;
+        public const string ZenohRmwImplementation = Ros2ForUnityRuntimeCapabilityParser.ZenohRmwImplementation;
+        private static readonly string[] NoCommunicationModeLabels = Array.Empty<string>();
+        private static readonly IReadOnlyList<string> NoCommunicationModeIds = Array.Empty<string>();
         private const string SessionRuntimeKey = "Unity2Foxglove.R2FU.SessionRuntime";
         private const string SessionCommunicationModeKey = "Unity2Foxglove.R2FU.SessionCommunicationMode";
         private const string CommunicationModeEditorUserSettingsKey =
@@ -200,44 +292,38 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             => SessionState.GetString(SessionCommunicationModeKey, string.Empty);
 
         public static IReadOnlyList<string> GetCommunicationModeIds(Ros2ForUnityRuntimeDescriptor runtime)
-        {
-            if (runtime != null && runtime.SupportsZenoh)
-                return ZenohCommunicationModes;
-            return FastDdsOnlyCommunicationModes;
-        }
+            => runtime?.CommunicationModeIds ?? NoCommunicationModeIds;
 
         public static string[] GetCommunicationModeLabels(Ros2ForUnityRuntimeDescriptor runtime)
+            => runtime?.CommunicationModeLabels ?? NoCommunicationModeLabels;
+
+        public static string GetCommunicationModeDisplayName(
+            Ros2ForUnityRuntimeDescriptor runtime,
+            string mode)
         {
-            if (runtime != null && runtime.SupportsZenoh)
-                return ZenohCommunicationLabels;
-            return FastDdsOnlyCommunicationLabels;
+            var resolved = runtime?.FindCommunicationMode(mode);
+            return resolved?.DisplayName ?? mode ?? string.Empty;
         }
 
-        public static string GetCommunicationModeDisplayName(string mode)
+        public static string GetRmwImplementationForCommunicationMode(
+            Ros2ForUnityRuntimeDescriptor runtime,
+            string mode)
         {
-            return string.Equals(mode, ZenohCommunicationMode, StringComparison.Ordinal)
-                ? "Zenoh (rmw_zenoh_cpp)"
-                : "FastDDS (default)";
-        }
-
-        public static string GetRmwImplementationForCommunicationMode(string mode)
-        {
-            return string.Equals(mode, ZenohCommunicationMode, StringComparison.Ordinal)
-                ? ZenohRmwImplementation
-                : FastDdsRmwImplementation;
+            var resolved = runtime?.FindCommunicationMode(mode) ?? runtime?.DefaultCommunicationMode;
+            return resolved?.RmwImplementation ?? string.Empty;
         }
 
         public static string GetCommunicationModeForRuntime(Ros2ForUnityRuntimeDescriptor runtime)
         {
-            if (runtime == null || !runtime.SupportsZenoh)
-                return FastDdsCommunicationMode;
+            if (runtime == null)
+                return string.Empty;
 
             var saved = EditorUserSettings.GetConfigValue(GetCommunicationModeSettingsKey(runtime));
             if (string.IsNullOrWhiteSpace(saved))
                 saved = EditorUserSettings.GetConfigValue(CommunicationModeEditorUserSettingsKey);
-            return string.Equals(saved, ZenohCommunicationMode, StringComparison.Ordinal)
-                ? ZenohCommunicationMode
-                : FastDdsCommunicationMode;
+            return runtime.FindCommunicationMode(saved)?.Id
+                   ?? runtime.DefaultCommunicationMode?.Id
+                   ?? string.Empty;
         }
 
         public static void SetCommunicationMode(
@@ -251,7 +337,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (runtime == null)
                 throw new InvalidOperationException("Select an active ROS2 For Unity runtime before changing communication mode.");
 
-            if (!GetCommunicationModeIds(runtime).Contains(mode, StringComparer.Ordinal))
+            if (runtime.FindCommunicationMode(mode) == null)
                 throw new InvalidOperationException("Communication mode is not supported by the active runtime: " + mode);
 
             EditorUserSettings.SetConfigValue(GetCommunicationModeSettingsKey(runtime), mode);
@@ -265,7 +351,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             var mode = GetCommunicationModeForRuntime(status.SelectedRuntime);
-            Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", GetRmwImplementationForCommunicationMode(mode));
+            ApplySelectedRuntimeEnvironment(status.SelectedRuntime, mode);
         }
 
         public static void BindActiveRuntimeForPlayMode(string projectDirectory)
@@ -279,15 +365,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
-            Environment.SetEnvironmentVariable(
-                "RMW_IMPLEMENTATION",
-                GetRmwImplementationForCommunicationMode(communicationMode));
+            ApplySelectedRuntimeEnvironment(status.SelectedRuntime, communicationMode);
 
             if (string.IsNullOrWhiteSpace(GetSessionRuntimePackage()))
                 SessionState.SetString(SessionRuntimeKey, status.SelectedRuntime.PackageName);
 
             if (string.IsNullOrWhiteSpace(GetSessionCommunicationMode()))
                 SessionState.SetString(SessionCommunicationModeKey, communicationMode);
+        }
+
+        private static void ApplySelectedRuntimeEnvironment(
+            Ros2ForUnityRuntimeDescriptor runtime,
+            string communicationMode)
+        {
+            if (runtime == null)
+                return;
+
+            // Bind the selected manifest identity before the optional runtime enters
+            // its native-ready path, so post-readiness diagnostics report observed
+            // process state instead of inferring a distro from the package display name.
+            if (!string.IsNullOrWhiteSpace(runtime.RosDistro))
+                Environment.SetEnvironmentVariable("ROS_DISTRO", runtime.RosDistro);
+
+            var rmwImplementation = GetRmwImplementationForCommunicationMode(runtime, communicationMode);
+            if (!string.IsNullOrWhiteSpace(rmwImplementation))
+                Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", rmwImplementation);
         }
 
         public static string GetRuntimePackageRequiringEditorRestart(string projectDirectory)
@@ -456,31 +558,57 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (parts.Length < 2)
                 return null;
 
-            var rosDistro = parts[0];
-            var platform = string.Join(".", parts.Skip(1));
-            var runtimeId = "r2fu-" + rosDistro + "-" + platform.Replace('.', '-');
-            var displayName = ToDisplayName(rosDistro) + " " + ToDisplayName(platform.Replace('.', ' '));
-            var zenohPayloadDiagnostic = GetZenohPayloadDiagnostic(packageDirectory, rosDistro);
+            var packageRosDistro = parts[0];
+            var packagePlatform = string.Join(".", parts.Skip(1));
+            var capabilities = ReadRuntimeCapabilities(packageDirectory);
+            if (!capabilities.IsValid || capabilities.CommunicationModes.Count == 0)
+                return null;
 
-            return new Ros2ForUnityRuntimeDescriptor(
+            var rosDistro = string.IsNullOrWhiteSpace(capabilities.RosDistro)
+                ? packageRosDistro
+                : capabilities.RosDistro;
+            var platform = string.IsNullOrWhiteSpace(capabilities.Platform)
+                ? packagePlatform
+                : capabilities.Platform;
+            var runtimeId = string.IsNullOrWhiteSpace(capabilities.RuntimeId)
+                ? "r2fu-" + rosDistro + "-" + platform.Replace('.', '-')
+                : capabilities.RuntimeId;
+            var displayName = ToDisplayName(rosDistro) + " " + ToDisplayName(platform.Replace('.', ' '));
+            var zenohPayloadDiagnostic = GetZenohPayloadDiagnostic(packageDirectory, capabilities.SupportsZenoh);
+
+            var descriptor = new Ros2ForUnityRuntimeDescriptor(
                 displayName,
                 packageName,
                 runtimeId,
                 rosDistro,
                 platform,
-                IsZenohCapableDistro(rosDistro) && string.IsNullOrWhiteSpace(zenohPayloadDiagnostic),
+                capabilities,
                 zenohPayloadDiagnostic);
+            return descriptor.CommunicationModes.Count == 0 ? null : descriptor;
         }
 
-        private static bool IsZenohCapableDistro(string rosDistro)
-            => string.Equals(rosDistro, "lyrical", StringComparison.Ordinal);
-
-        private static string GetZenohPayloadDiagnostic(string packageDirectory, string rosDistro)
+        private static Ros2ForUnityRuntimeCapabilities ReadRuntimeCapabilities(string packageDirectory)
         {
-            if (!IsZenohCapableDistro(rosDistro))
+            var manifestPath = Path.Combine(packageDirectory, "RuntimeSupport", "runtime-manifest.json");
+            if (!File.Exists(manifestPath))
+                return Ros2ForUnityRuntimeCapabilityParser.Parse(string.Empty);
+
+            try
+            {
+                return Ros2ForUnityRuntimeCapabilityParser.Parse(File.ReadAllText(manifestPath));
+            }
+            catch
+            {
+                return Ros2ForUnityRuntimeCapabilityParser.Parse(string.Empty);
+            }
+        }
+
+        private static string GetZenohPayloadDiagnostic(string packageDirectory, bool manifestDeclaresZenoh)
+        {
+            if (!manifestDeclaresZenoh)
                 return string.Empty;
 
-            var cacheKey = packageDirectory + "|" + rosDistro;
+            var cacheKey = packageDirectory;
             if (ZenohPayloadDiagnostics.TryGetValue(cacheKey, out var cached))
                 return cached;
 
@@ -532,7 +660,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             return "Zenoh communication mode is unavailable for this runtime package. Missing: "
                    + string.Join(", ", missing)
-                   + ". Rebuild or re-import the Lyrical runtime ZIP with rmw_zenoh_cpp and config assets.";
+                   + ". Rebuild or re-import the runtime ZIP with rmw_zenoh_cpp and config assets.";
         }
 
         private static bool HasNativeLibrary(string directory, string libraryName)

@@ -87,6 +87,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(1, pending.Replaced);
             Assert.Equal(0, pending.Applied);
             Assert.Equal(1, pending.Pending);
+            Assert.Equal("/native/string", pending.Topic);
+            Assert.Equal("Demo.Receiver", pending.DeclaringType);
+            Assert.Equal("_incoming", pending.MemberName);
+            Assert.Equal("std_msgs/msg/String", pending.CanonicalRosType);
+            Assert.Equal(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable, pending.QosPreset);
+            Assert.True(pending.LastReceiveStopwatchTimestamp > 0);
+            Assert.Equal(0, pending.LastApplyStopwatchTimestamp);
 
             Assert.True(binding.TryApplyLatest(71));
             Assert.Equal("latest", applied.Data);
@@ -95,6 +102,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(1, drained.Replaced);
             Assert.Equal(1, drained.Applied);
             Assert.Equal(0, drained.Pending);
+            Assert.True(drained.LastReceiveStopwatchTimestamp > 0);
+            Assert.True(drained.LastApplyStopwatchTimestamp > 0);
             binding.Stop();
         }
 
@@ -337,6 +346,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var failure = failedBinding.TryRegister();
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, failedBinding.State);
             Assert.InRange(failure.Diagnostic.Length, 1, FoxRunRos2RegistrationResult.MaximumDiagnosticLength);
+        }
+
+        [Fact]
+        public void PublicDiagnosticsDoNotExposeBackendDetails()
+        {
+            const string sensitiveDetail = "zenoh-password=phase179-secret";
+            const string expectedMessage =
+                "The native ROS2 backend failed while operating the subscription.";
+            var backend = new FakeBackend
+            {
+                Next = FoxRunRos2NativeBackendRegistration.Failure(
+                    FoxRunRos2RegistrationError.BackendFailure,
+                    sensitiveDetail)
+            };
+            var binding = CreateBinding(backend, 34, () => 34, _ => { }, _ => false);
+
+            var registration = binding.TryRegister();
+
+            Assert.False(registration.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.BackendFailure, registration.Error);
+            Assert.Equal(expectedMessage, registration.Diagnostic);
+            Assert.DoesNotContain(sensitiveDetail, registration.Diagnostic, StringComparison.Ordinal);
+            Assert.True(binding.TryGetSnapshot(34, out var bindingSnapshot));
+            Assert.Equal(expectedMessage, bindingSnapshot.Diagnostic);
+            Assert.DoesNotContain(sensitiveDetail, bindingSnapshot.Diagnostic, StringComparison.Ordinal);
+
+            var boundarySnapshot = new FoxRunRos2SubscriptionBindingSnapshot(
+                "public-boundary",
+                34,
+                FoxRunRos2SubscriptionBindingState.Failed,
+                FoxRunRos2RegistrationError.BackendFailure,
+                sensitiveDetail,
+                0, 0, 0, 0, 0, 0, 0);
+            Assert.Equal(expectedMessage, boundarySnapshot.Diagnostic);
+            Assert.DoesNotContain(sensitiveDetail, boundarySnapshot.Diagnostic, StringComparison.Ordinal);
+
+            var diagnostics = new FoxRunRos2SubscriptionDiagnostics();
+            diagnostics.Update(
+                "source:34|public-boundary",
+                boundarySnapshot,
+                FoxRunRos2RuntimeDiagnosticContext.Unknown);
+            var published = Assert.Single(diagnostics.GetSnapshots());
+            Assert.Equal("BackendFailure", published.LastErrorCode);
+            Assert.Equal(expectedMessage, published.LastErrorMessage);
+            Assert.DoesNotContain(sensitiveDetail, published.LastErrorMessage, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -614,8 +668,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Stopped, binding.State);
             Assert.True(binding.TryGetSnapshot(32, out var snapshot));
             Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, snapshot.Error);
-            Assert.Contains("remove subscription", snapshot.Diagnostic, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("remove exploded", snapshot.Diagnostic, StringComparison.Ordinal);
+            Assert.Equal("The native ROS2 subscription did not complete teardown.", snapshot.Diagnostic);
             Assert.Equal(
                 new[] { "remove-subscription", "clear-applied", "dispose-owned", "release-node" },
                 events);
@@ -643,7 +696,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.True(binding.TryGetSnapshot(33, out var snapshot));
             Assert.Equal(FoxRunRos2RegistrationError.TeardownFailure, snapshot.Error);
-            Assert.Contains("release node", snapshot.Diagnostic, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("The native ROS2 subscription did not complete teardown.", snapshot.Diagnostic);
             Assert.Equal(1, backend.ReleaseCount);
         }
 
@@ -1242,8 +1295,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, binding.State);
             Assert.True(binding.TryGetSnapshot(15, out var snapshot));
             Assert.Equal(FoxRunRos2RegistrationError.ApplyFailure, snapshot.Error);
-            Assert.Contains("setter exploded", snapshot.Diagnostic, StringComparison.Ordinal);
-            Assert.DoesNotContain("secondary remove", snapshot.Diagnostic, StringComparison.Ordinal);
+            Assert.Equal("The native ROS2 subscription could not apply the copied message.", snapshot.Diagnostic);
             Assert.Equal(1, backend.RemoveCount);
             Assert.Equal(1, backend.ReleaseCount);
             Assert.Equal(1, owned.DisposeCount);
@@ -1717,8 +1769,55 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Ready, readyResult.State);
             Assert.True(diagnostics.ShouldLog("source:12|failed", failed));
             Assert.False(diagnostics.ShouldLog("source:12|failed", failed));
-            var changed = Snapshot("failed", FoxRunRos2SubscriptionBindingState.WaitingForRuntime, FoxRunRos2RegistrationError.RuntimeUnavailable, "warming");
-            Assert.True(diagnostics.ShouldLog("source:12|failed", changed));
+            Assert.False(diagnostics.ShouldLog("source:99|failed", failed));
+            var sameCodeDifferentMessage = Snapshot(
+                "failed",
+                FoxRunRos2SubscriptionBindingState.Failed,
+                FoxRunRos2RegistrationError.BackendFailure,
+                "backend was retried");
+            Assert.False(diagnostics.ShouldLog("source:12|failed", sameCodeDifferentMessage));
+
+            var healthy = Snapshot(
+                "failed",
+                FoxRunRos2SubscriptionBindingState.Ready,
+                FoxRunRos2RegistrationError.None,
+                string.Empty);
+            diagnostics.Update("source:12|failed", healthy);
+            Assert.False(diagnostics.ShouldLog("source:12|failed", healthy));
+            diagnostics.Update("source:12|failed", failed);
+            Assert.True(diagnostics.ShouldLog("source:12|failed", failed));
+        }
+
+        [Fact]
+        public void DiagnosticsDoNotRelogFailureWhenHealthySiblingSharesContract()
+        {
+            var diagnostics = new FoxRunRos2SubscriptionDiagnostics();
+            var failed = Snapshot(
+                "shared-contract",
+                FoxRunRos2SubscriptionBindingState.Failed,
+                FoxRunRos2RegistrationError.BackendFailure,
+                "backend failed");
+            var healthy = Snapshot(
+                "shared-contract",
+                FoxRunRos2SubscriptionBindingState.Ready,
+                FoxRunRos2RegistrationError.None,
+                string.Empty);
+
+            diagnostics.Update("source:1|shared-contract", failed);
+            diagnostics.Update("source:2|shared-contract", healthy);
+            Assert.True(diagnostics.ShouldLog("source:1|shared-contract", failed));
+
+            // A normal sibling must not clear a still-active contract/error signature.
+            diagnostics.Update("source:2|shared-contract", healthy);
+            Assert.False(diagnostics.ShouldLog("source:2|shared-contract", healthy));
+            diagnostics.Update("source:1|shared-contract", failed);
+            Assert.False(diagnostics.ShouldLog("source:1|shared-contract", failed));
+
+            // Once the last failed sibling recovers, the next recurrence is reportable.
+            diagnostics.Update("source:1|shared-contract", healthy);
+            Assert.False(diagnostics.ShouldLog("source:1|shared-contract", healthy));
+            diagnostics.Update("source:1|shared-contract", failed);
+            Assert.True(diagnostics.ShouldLog("source:1|shared-contract", failed));
         }
 
         [Fact]
@@ -1747,6 +1846,110 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.False(diagnostics.TryGet("source:101|stable-contract", out _));
             Assert.True(diagnostics.TryGet("source:202|stable-contract", out secondResult));
             Assert.Equal(9, secondResult.Received);
+        }
+
+        [Fact]
+        public void RuntimeDiagnosticsExposeSortedBoundedContractAndTransportSnapshots()
+        {
+            var diagnostics = new FoxRunRos2SubscriptionDiagnostics();
+            var zeta = new FoxRunRos2GeneratedContract(
+                "zeta", "/zeta", "Demo.Zeta", "_incoming", "std_msgs/msg/String",
+                Unity.FoxgloveSDK.Components.FoxRunMode.SubscribeOnly,
+                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
+                true);
+            var alpha = new FoxRunRos2GeneratedContract(
+                "alpha", "/alpha", "Demo.Alpha", "_incoming", "geometry_msgs/msg/Twist",
+                Unity.FoxgloveSDK.Components.FoxRunMode.SubscribeOnly,
+                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
+                true);
+
+            diagnostics.Update(
+                "source:2|zeta",
+                new FoxRunRos2SubscriptionBindingSnapshot(
+                    zeta,
+                    Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
+                    9,
+                    FoxRunRos2SubscriptionBindingState.Failed,
+                    FoxRunRos2RegistrationError.BackendFailure,
+                    new string('z', FoxRunRos2RegistrationResult.MaximumDiagnosticLength + 9),
+                    7, 3, 2, 1, 4, 5, 6, 101, 102),
+                new FoxRunRos2RuntimeDiagnosticContext("lyrical", "rmw_zenoh_cpp"));
+            diagnostics.Update(
+                "source:1|alpha",
+                new FoxRunRos2SubscriptionBindingSnapshot(
+                    alpha,
+                    Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
+                    8,
+                    FoxRunRos2SubscriptionBindingState.Receiving,
+                    FoxRunRos2RegistrationError.None,
+                    string.Empty,
+                    11, 1, 10, 0, 0, 0, 0, 201, 202),
+                new FoxRunRos2RuntimeDiagnosticContext("jazzy", "rmw_fastrtps_cpp"));
+
+            var snapshots = diagnostics.GetSnapshots();
+
+            Assert.Equal(2, snapshots.Length);
+            Assert.Equal("alpha", snapshots[0].ContractId);
+            Assert.Equal("/alpha", snapshots[0].Topic);
+            Assert.Equal("Demo.Alpha", snapshots[0].DeclaringType);
+            Assert.Equal("geometry_msgs/msg/Twist", snapshots[0].CanonicalRosType);
+            Assert.Equal("jazzy", snapshots[0].RosDistro);
+            Assert.Equal("rmw_fastrtps_cpp", snapshots[0].RmwImplementation);
+            Assert.Equal("fastdds", snapshots[0].CommunicationMode);
+            Assert.Equal("ROS2 Native / FastDDS (DDS)", snapshots[0].TransportLabel);
+            Assert.Equal(201, snapshots[0].LastReceiveStopwatchTimestamp);
+            Assert.Equal(202, snapshots[0].LastApplyStopwatchTimestamp);
+
+            Assert.Equal("zeta", snapshots[1].ContractId);
+            Assert.Equal("zenoh", snapshots[1].CommunicationMode);
+            Assert.Equal("ROS2 Native / Zenoh", snapshots[1].TransportLabel);
+            Assert.Equal("BackendFailure", snapshots[1].LastErrorCode);
+            Assert.Equal("The native ROS2 backend failed while operating the subscription.", snapshots[1].LastErrorMessage);
+            Assert.Equal(7, snapshots[1].Received);
+            Assert.Equal(3, snapshots[1].Replaced);
+            Assert.Equal(2, snapshots[1].Applied);
+            Assert.Equal(1, snapshots[1].Pending);
+            Assert.Equal(4, snapshots[1].RejectedAfterStop);
+            Assert.Equal(5, snapshots[1].CopyFailed);
+            Assert.Equal(6, snapshots[1].StaleCallbacks);
+
+            var unknownRmw = new FoxRunRos2RuntimeDiagnosticContext(
+                "future", "rmw_custom_cpp");
+            Assert.Equal("unknown", unknownRmw.CommunicationMode);
+            Assert.Equal("ROS2 Native / rmw_custom_cpp", unknownRmw.TransportLabel);
+
+            var getSnapshots = typeof(FoxRunRos2SubscriptionRuntimeDiagnostics).GetMethod("GetSnapshots");
+            Assert.NotNull(getSnapshots);
+            Assert.Equal(typeof(FoxRunRos2SubscriptionDiagnosticSnapshot[]), getSnapshots.ReturnType);
+        }
+
+        [Fact]
+        public void RuntimeDiagnosticOrderingUsesEndpointAsTheFinalDeterministicTieBreaker()
+        {
+            var diagnostics = new FoxRunRos2SubscriptionDiagnostics();
+            var snapshot = Snapshot(
+                "same-contract",
+                FoxRunRos2SubscriptionBindingState.Receiving,
+                FoxRunRos2RegistrationError.None,
+                string.Empty,
+                received: 9);
+            diagnostics.Update("source:9|same-contract", snapshot);
+            diagnostics.Update(
+                "source:1|same-contract",
+                Snapshot(
+                    "same-contract",
+                    FoxRunRos2SubscriptionBindingState.Receiving,
+                    FoxRunRos2RegistrationError.None,
+                    string.Empty,
+                    received: 1));
+
+            var snapshots = diagnostics.GetSnapshots();
+
+            Assert.Equal(2, snapshots.Length);
+            Assert.Equal(1, snapshots[0].Received);
+            Assert.Equal(9, snapshots[1].Received);
         }
 
         [Fact]
@@ -1787,7 +1990,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(FoxRunRos2SubscriptionBindingState.Failed, first.State);
             Assert.True(first.TryGetSnapshot(1, out var snapshot));
             Assert.Equal(FoxRunRos2RegistrationError.ApplyFailure, snapshot.Error);
-            Assert.Contains("first setter failed", snapshot.Diagnostic, StringComparison.Ordinal);
+            Assert.Equal("The native ROS2 subscription could not apply the copied message.", snapshot.Diagnostic);
         }
 
         private static FoxRunRos2GeneratedContract Contract(

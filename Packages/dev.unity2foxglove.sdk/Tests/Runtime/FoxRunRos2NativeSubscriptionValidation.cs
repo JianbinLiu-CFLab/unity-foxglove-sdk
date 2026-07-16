@@ -39,6 +39,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTypedGenerationAndNativeCatalogExclusion();
             VerifyOptionalCompilationLanes();
             VerifyNativeHostLifecycleBoundary();
+            VerifyRuntimeDiagnosticsSurface();
             VerifyManualOwnershipProbe();
             VerifyRegistryAndProjectWiring();
 
@@ -332,6 +333,9 @@ namespace Unity.FoxgloveSDK.Tests
                 hub,
                 "internal static bool EnsureCreated()");
             var update = PhaseValidationSourceHelpers.SourceMethod(hub, "private void Update()");
+            var applySessionPolicy = PhaseValidationSourceHelpers.SourceMethod(
+                hub,
+                "private void ApplySessionPolicy(FoxRunSubscriptionSessionPolicy policy)");
             var ensureNode = PhaseValidationSourceHelpers.SourceMethod(
                 hub,
                 "private bool TryEnsureNodeOwner");
@@ -442,6 +446,127 @@ namespace Unity.FoxgloveSDK.Tests
                   && backendRegister.Contains("_driver.CreateSubscription(", StringComparison.Ordinal)
                   && backendRegister.Contains("callback,", StringComparison.Ordinal),
                 "executor callbacks retain only binding-owned managed state and never reacquire Unity or R2FU runtime services");
+
+            Check(applySessionPolicy.Contains("_activeSession.Activate", StringComparison.Ordinal)
+                  && !applySessionPolicy.Contains("TryEnsureNodeOwner", StringComparison.Ordinal)
+                  && scan.Contains("_sources.Clear();", StringComparison.Ordinal)
+                  && scan.Contains("FoxRunRos2SourceDiscovery.TryGet", StringComparison.Ordinal)
+                  && scan.Contains("source.Native.FoxRunRos2RegisterSubscriptions(registrar);", StringComparison.Ordinal),
+                "default-native session demand is admitted for preflight while zero discovered native sources create no subscription binding");
+        }
+
+        private static void VerifyRuntimeDiagnosticsSurface()
+        {
+            var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionDiagnostics.cs");
+            var binding = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs");
+            var backendBoundary = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/IFoxRunRos2NativeBackend.cs");
+            var hub = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionHub.cs");
+            var optionalInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/FoxRunRos2SubscriptionDiagnosticsInspector.cs");
+            var optionalInspectorAsmdef = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Native/Unity2Foxglove.Ros2ForUnity.Native.Editor.asmdef");
+            var coreInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs");
+            var subscribeInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
+            var runtimeTopicsInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/Manager/FoxgloveManagerEditor.FoxServices.cs");
+            var catalog = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Runtime/Components/FoxRun/FoxRunSubscriptionCatalog.cs");
+            var runtimeTopicSummary = PhaseValidationSourceHelpers.SourceMethod(
+                runtimeTopicsInspector,
+                "private static void DrawFoxRunTopicSummary(FoxgloveManager manager)");
+
+            Check(diagnostics.Contains(
+                      "public readonly struct FoxRunRos2SubscriptionDiagnosticSnapshot",
+                      StringComparison.Ordinal)
+                  && diagnostics.Contains(
+                      "public static class FoxRunRos2SubscriptionRuntimeDiagnostics",
+                      StringComparison.Ordinal)
+                  && diagnostics.Contains("GetSnapshots", StringComparison.Ordinal)
+                   && diagnostics.Contains("LastErrorMessage", StringComparison.Ordinal)
+                   && diagnostics.Contains(
+                       "LastErrorMessage = FoxRunRos2PublicDiagnostic.Describe(binding.Error);",
+                       StringComparison.Ordinal)
+                   && binding.Contains(
+                       "Diagnostic = FoxRunRos2PublicDiagnostic.Describe(error);",
+                       StringComparison.Ordinal)
+                   && backendBoundary.Contains(
+                       "internal static class FoxRunRos2PublicDiagnostic",
+                       StringComparison.Ordinal)
+                   && !hub.Contains("exception.Message", StringComparison.Ordinal)
+                   && diagnostics.Contains("new LoggedDiagnostic(snapshot.ContractId, snapshot.Error)", StringComparison.Ordinal)
+                   && diagnostics.Contains("_lastLogged.Add(signature)", StringComparison.Ordinal)
+                   && diagnostics.Contains("ReconcileLoggedDiagnosticsForContract(snapshot.ContractId)", StringComparison.Ordinal)
+                   && diagnostics.Contains("HasSnapshotForDiagnostic", StringComparison.Ordinal),
+                "native diagnostics publish stable non-secret error descriptions and debounce warnings by contract plus error code");
+
+            Check(binding.Contains("Stopwatch.GetTimestamp", StringComparison.Ordinal)
+                  && binding.Contains("_lastReceiveStopwatchTimestamp", StringComparison.Ordinal)
+                  && binding.Contains("_lastApplyStopwatchTimestamp", StringComparison.Ordinal)
+                  && binding.Contains("Interlocked.Exchange", StringComparison.Ordinal)
+                  && hub.Contains("Environment.GetEnvironmentVariable(\"ROS_DISTRO\")", StringComparison.Ordinal)
+                  && hub.Contains("Environment.GetEnvironmentVariable(\"RMW_IMPLEMENTATION\")", StringComparison.Ordinal)
+                  && (hub.Contains("rmw_fastrtps_cpp", StringComparison.Ordinal)
+                      || diagnostics.Contains("rmw_fastrtps_cpp", StringComparison.Ordinal))
+                  && (hub.Contains("rmw_zenoh_cpp", StringComparison.Ordinal)
+                      || diagnostics.Contains("rmw_zenoh_cpp", StringComparison.Ordinal))
+                  && hub.Contains("GetDiagnosticSnapshots", StringComparison.Ordinal)
+                  && !binding.Contains("UnityEngine.", StringComparison.Ordinal),
+                "native callback diagnostics use managed Stopwatch timestamps and capture active ROS runtime identity only after readiness");
+
+            Check(optionalInspector.Contains(
+                      "public static void DrawFoxRunNativeSubscriptionDiagnostics()",
+                      StringComparison.Ordinal)
+                  && optionalInspector.Contains("FoxRunRos2SubscriptionRuntimeDiagnostics.GetSnapshots", StringComparison.Ordinal)
+                  && optionalInspector.Contains("CopyableField", StringComparison.Ordinal)
+                  && (hub.Contains("ROS2 Native / FastDDS (DDS)", StringComparison.Ordinal)
+                      || diagnostics.Contains("ROS2 Native / FastDDS (DDS)", StringComparison.Ordinal))
+                  && (hub.Contains("ROS2 Native / Zenoh", StringComparison.Ordinal)
+                      || diagnostics.Contains("ROS2 Native / Zenoh", StringComparison.Ordinal))
+                  && coreInspector.Contains(
+                      "R2fuNativeSubscriptionDiagnosticsInspectorTypeName",
+                      StringComparison.Ordinal)
+                   && coreInspector.Contains(
+                       "ResolveR2fuNativeSubscriptionDiagnosticsDrawMethod",
+                       StringComparison.Ordinal)
+                   && coreInspector.Contains(
+                       "ForUnity.Native.Editor",
+                       StringComparison.Ordinal)
+                   && optionalInspectorAsmdef.Contains(
+                       "Unity2Foxglove.Ros2ForUnity.Native",
+                       StringComparison.Ordinal)
+                   && optionalInspectorAsmdef.Contains(
+                       "Unity.FoxgloveSDK",
+                       StringComparison.Ordinal)
+                   && optionalInspectorAsmdef.Contains(
+                       "Unity2Foxglove.Ros2ForUnity.Editor",
+                       StringComparison.Ordinal)
+                   && optionalInspectorAsmdef.Contains(
+                       "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                       StringComparison.Ordinal)
+                   && subscribeInspector.Contains(
+                       "DrawOptionalR2fuNativeSubscriptionDiagnostics();",
+                       StringComparison.Ordinal),
+                "core Inspector reaches a native-constrained optional diagnostics assembly only through cached reflection and exposes safe topic/type copying");
+
+            Check(runtimeTopicsInspector.Contains("ROS2 Native Unity Contracts", StringComparison.Ordinal)
+                  && runtimeTopicsInspector.Contains("DrawFoxRunNativeUnityContracts", StringComparison.Ordinal)
+                  && runtimeTopicsInspector.Contains("FoxRunSubscriptionProviderResolver.Resolve", StringComparison.Ordinal)
+                  && runtimeTopicSummary.IndexOf(
+                      "DrawFoxRunNativeUnityContracts(manager);",
+                      StringComparison.Ordinal)
+                     < runtimeTopicSummary.IndexOf(
+                         "return;",
+                         runtimeTopicSummary.IndexOf("No generated FoxRun topic metadata", StringComparison.Ordinal),
+                         StringComparison.Ordinal)
+                  && catalog.Contains("IsWebSocketEncoding", StringComparison.Ordinal)
+                  && !catalog.Contains("cdr", StringComparison.OrdinalIgnoreCase),
+                "native-only Unity contract status stays visible in Runtime Topics without entering the Foxglove subscription catalog");
         }
 
         private static void VerifyManualOwnershipProbe()
@@ -465,6 +590,15 @@ namespace Unity.FoxgloveSDK.Tests
             var observe = PhaseValidationSourceHelpers.SourceMethod(
                 probe,
                 "private void ObserveGeneratedOwnedCopy()");
+            var attachSessionObserver = PhaseValidationSourceHelpers.SourceMethod(
+                probe,
+                "private void AttachManagerSessionPolicyObserver()");
+            var detachSessionObserver = PhaseValidationSourceHelpers.SourceMethod(
+                probe,
+                "private void DetachManagerSessionPolicyObserver()");
+            var captureSessionPolicy = PhaseValidationSourceHelpers.SourceMethod(
+                probe,
+                "private void CaptureManagerSessionPolicy(");
             var repoRoot = PhaseValidationSourceHelpers.FindRequiredRepoRoot();
             var probeMetaAbsolute = Path.Combine(
                 repoRoot,
@@ -482,6 +616,44 @@ namespace Unity.FoxgloveSDK.Tests
                       "BorrowedLifetimeEvidence => borrowedLifetimeEvidence",
                       StringComparison.Ordinal),
                 "manual ownership probe declares the explicit native reliable String contract");
+
+            Check(probe.Contains("[Header(\"Captured Subscription Session Policy\")]", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private bool capturedSessionEnabled;", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private ulong capturedSessionGeneration;", StringComparison.Ordinal)
+                  && probe.Contains(
+                      "[SerializeField] private FoxRunSubscriptionProvider capturedDefaultSubscriptionProvider",
+                      StringComparison.Ordinal)
+                  && probe.Contains(
+                      "[SerializeField] private FoxRunWireEncoding capturedWebSocketSubscriptionEncoding",
+                      StringComparison.Ordinal)
+                  && probe.Contains(
+                      "[SerializeField] private FoxRunRos2QosPreset capturedDefaultRos2Qos",
+                      StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private int capturedNativeCopyBudgetBytes", StringComparison.Ordinal)
+                  && probe.Contains("FoxRunSubscriptionSessionChanged +=", StringComparison.Ordinal)
+                  && probe.Contains("FoxRunSubscriptionSessionChanged -=", StringComparison.Ordinal)
+                  && OccursBefore(
+                      PhaseValidationSourceHelpers.SourceMethod(probe, "private void OnEnable()"),
+                      "AttachManagerSessionPolicyObserver();",
+                      "#if UNITY2FOXGLOVE_ROS2_FOR_UNITY")
+                  && PhaseValidationSourceHelpers.SourceMethod(probe, "private void OnDisable()")
+                      .Contains("DetachManagerSessionPolicyObserver();", StringComparison.Ordinal)
+                  && attachSessionObserver.Contains(
+                      "ActiveFoxRunSubscriptionSessionPolicy",
+                      StringComparison.Ordinal)
+                  && !attachSessionObserver.Contains("Find", StringComparison.Ordinal)
+                  && detachSessionObserver.Contains(
+                      "FoxRunSubscriptionSessionChanged -=",
+                      StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.SubscriptionsEnabled", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.SessionGeneration", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultProvider", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.WebSocketSubscriptionEncoding", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.NativeCopyBudgetBytes", StringComparison.Ordinal)
+                  && !captureSessionPolicy.Contains("Create", StringComparison.Ordinal)
+                  && !captureSessionPolicy.Contains("Selector", StringComparison.Ordinal),
+                "manual ownership probe captures immutable Manager session policy through symmetric event observation only");
 
             Check(probe.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && probe.Contains("ROS2 native subscription support is unavailable", StringComparison.Ordinal)

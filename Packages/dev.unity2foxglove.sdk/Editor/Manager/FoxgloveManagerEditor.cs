@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Editor
         private bool _connectionSecurityExpanded;
         private bool _publishDataExpanded;
         private bool _subscribeDataExpanded;
+        private bool _r2fuRuntimeExpanded;
         private bool _ros2BridgeExpanded;
         private bool _mcapExpanded;
         private bool _foxServicesExpanded;
@@ -63,6 +64,9 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _enableFoxRunInboundProperty;
         private SerializedProperty _defaultFoxRunPublishEncodingProperty;
         private SerializedProperty _defaultFoxRunSubscriptionEncodingProperty;
+        private SerializedProperty _defaultFoxRunSubscriptionProviderProperty;
+        private SerializedProperty _defaultFoxRunRos2QosProperty;
+        private SerializedProperty _foxRunRos2NativeCopyBudgetBytesProperty;
         private SerializedProperty _allowRemoteFoxRunInboundWithSharedTokenProperty;
         private SerializedProperty _certificatePfxPathProperty;
         private SerializedProperty _certificatePasswordProperty;
@@ -150,6 +154,9 @@ namespace Unity.FoxgloveSDK.Editor
             _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
             _defaultFoxRunPublishEncodingProperty = serializedObject.FindProperty("_defaultFoxRunPublishEncoding");
             _defaultFoxRunSubscriptionEncodingProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionEncoding");
+            _defaultFoxRunSubscriptionProviderProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionProvider");
+            _defaultFoxRunRos2QosProperty = serializedObject.FindProperty("_defaultFoxRunRos2Qos");
+            _foxRunRos2NativeCopyBudgetBytesProperty = serializedObject.FindProperty("_foxRunRos2NativeCopyBudgetBytes");
             _allowRemoteFoxRunInboundWithSharedTokenProperty = serializedObject.FindProperty("_allowRemoteFoxRunInboundWithSharedToken");
             _certificatePfxPathProperty = serializedObject.FindProperty("_certificatePfxPath");
             _certificatePasswordProperty = serializedObject.FindProperty("_certificatePassword");
@@ -189,6 +196,8 @@ namespace Unity.FoxgloveSDK.Editor
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", "Mcap", ref _mcapExpanded, DrawMcapSection);
             DrawSection("Subscribe Data", "SubscribeData", ref _subscribeDataExpanded, DrawSubscribeDataSection);
+            if (HasR2fuNativeRuntimeDemand())
+                DrawSection("ROS2 Runtime (R2FU)", "R2fuRuntime", ref _r2fuRuntimeExpanded, DrawR2fuRuntimeSection);
             DrawSection("FoxServices", "FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
             var ros2BridgeProp = FindCachedProperty("_ros2BridgeEnabled");
             if (ros2BridgeProp != null && ros2BridgeProp.boolValue)
@@ -281,6 +290,7 @@ namespace Unity.FoxgloveSDK.Editor
             _connectionSecurityExpanded = SessionState.GetBool(InspectorFoldoutKey("ConnectionSecurity"), false);
             _publishDataExpanded = SessionState.GetBool(InspectorFoldoutKey("PublishData"), false);
             _subscribeDataExpanded = SessionState.GetBool(InspectorFoldoutKey("SubscribeData"), false);
+            _r2fuRuntimeExpanded = SessionState.GetBool(InspectorFoldoutKey("R2fuRuntime"), false);
             _ros2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("Ros2Bridge"), false);
             _mcapExpanded = SessionState.GetBool(InspectorFoldoutKey("Mcap"), false);
             _foxServicesExpanded = SessionState.GetBool(InspectorFoldoutKey("FoxServices"), false);
@@ -365,6 +375,9 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
                 case "_defaultFoxRunPublishEncoding": return _defaultFoxRunPublishEncodingProperty;
                 case "_defaultFoxRunSubscriptionEncoding": return _defaultFoxRunSubscriptionEncodingProperty;
+                case "_defaultFoxRunSubscriptionProvider": return _defaultFoxRunSubscriptionProviderProperty;
+                case "_defaultFoxRunRos2Qos": return _defaultFoxRunRos2QosProperty;
+                case "_foxRunRos2NativeCopyBudgetBytes": return _foxRunRos2NativeCopyBudgetBytesProperty;
                 case "_allowRemoteFoxRunInboundWithSharedToken": return _allowRemoteFoxRunInboundWithSharedTokenProperty;
                 case "_certificatePfxPath": return _certificatePfxPathProperty;
                 case "_certificatePassword": return _certificatePasswordProperty;

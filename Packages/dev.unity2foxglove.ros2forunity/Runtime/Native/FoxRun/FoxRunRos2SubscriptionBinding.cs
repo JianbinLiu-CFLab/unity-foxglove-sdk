@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Diagnostics;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 
@@ -26,12 +27,104 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             long rejectedAfterStop,
             long copyFailed,
             long staleCallbacks)
+            : this(
+                contractId,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                FoxRunRos2QosPreset.Inherit,
+                sessionGeneration,
+                state,
+                error,
+                diagnostic,
+                received,
+                replaced,
+                applied,
+                pending,
+                rejectedAfterStop,
+                copyFailed,
+                staleCallbacks,
+                0,
+                0)
         {
-            ContractId = contractId;
+        }
+
+        /// <summary>
+        /// Contract-metadata overload for runtime diagnostics. The older
+        /// identifier-only constructor remains for generated Phase179-B callers
+        /// and tests that do not have a full generated contract object.
+        /// </summary>
+        public FoxRunRos2SubscriptionBindingSnapshot(
+            FoxRunRos2GeneratedContract contract,
+            FoxRunRos2QosPreset qosPreset,
+            long sessionGeneration,
+            FoxRunRos2SubscriptionBindingState state,
+            FoxRunRos2RegistrationError error,
+            string diagnostic,
+            long received,
+            long replaced,
+            long applied,
+            int pending,
+            long rejectedAfterStop,
+            long copyFailed,
+            long staleCallbacks,
+            long lastReceiveStopwatchTimestamp,
+            long lastApplyStopwatchTimestamp)
+            : this(
+                RequireContract(contract).Id,
+                contract.Topic,
+                contract.DeclaringType,
+                contract.MemberName,
+                contract.CanonicalRosType,
+                qosPreset,
+                sessionGeneration,
+                state,
+                error,
+                diagnostic,
+                received,
+                replaced,
+                applied,
+                pending,
+                rejectedAfterStop,
+                copyFailed,
+                staleCallbacks,
+                lastReceiveStopwatchTimestamp,
+                lastApplyStopwatchTimestamp)
+        {
+        }
+
+        private FoxRunRos2SubscriptionBindingSnapshot(
+            string contractId,
+            string topic,
+            string declaringType,
+            string memberName,
+            string canonicalRosType,
+            FoxRunRos2QosPreset qosPreset,
+            long sessionGeneration,
+            FoxRunRos2SubscriptionBindingState state,
+            FoxRunRos2RegistrationError error,
+            string diagnostic,
+            long received,
+            long replaced,
+            long applied,
+            int pending,
+            long rejectedAfterStop,
+            long copyFailed,
+            long staleCallbacks,
+            long lastReceiveStopwatchTimestamp,
+            long lastApplyStopwatchTimestamp)
+        {
+            ContractId = contractId ?? string.Empty;
+            Topic = topic ?? string.Empty;
+            DeclaringType = declaringType ?? string.Empty;
+            MemberName = memberName ?? string.Empty;
+            CanonicalRosType = canonicalRosType ?? string.Empty;
+            QosPreset = qosPreset;
             SessionGeneration = sessionGeneration;
             State = state;
             Error = error;
-            Diagnostic = diagnostic ?? string.Empty;
+            Diagnostic = FoxRunRos2PublicDiagnostic.Describe(error);
             Received = received;
             Replaced = replaced;
             Applied = applied;
@@ -39,9 +132,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             RejectedAfterStop = rejectedAfterStop;
             CopyFailed = copyFailed;
             StaleCallbacks = staleCallbacks;
+            LastReceiveStopwatchTimestamp = lastReceiveStopwatchTimestamp;
+            LastApplyStopwatchTimestamp = lastApplyStopwatchTimestamp;
         }
 
         public string ContractId { get; }
+        public string Topic { get; }
+        public string DeclaringType { get; }
+        public string MemberName { get; }
+        public string CanonicalRosType { get; }
+        public FoxRunRos2QosPreset QosPreset { get; }
         public long SessionGeneration { get; }
         public FoxRunRos2SubscriptionBindingState State { get; }
         public FoxRunRos2RegistrationError Error { get; }
@@ -53,6 +153,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long RejectedAfterStop { get; }
         public long CopyFailed { get; }
         public long StaleCallbacks { get; }
+        public long LastReceiveStopwatchTimestamp { get; }
+        public long LastApplyStopwatchTimestamp { get; }
+
+        private static FoxRunRos2GeneratedContract RequireContract(
+            FoxRunRos2GeneratedContract contract)
+            => contract ?? throw new ArgumentNullException(nameof(contract));
     }
 
     /// <summary>
@@ -88,6 +194,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private long _registrationAttemptSequence;
         private long _activeRegistrationAttempt;
         private long _staleCallbacks;
+        private long _lastReceiveStopwatchTimestamp;
+        private long _lastApplyStopwatchTimestamp;
         private bool _registrationInFlight;
         private bool _stopCleanupInProgress;
         private bool _slotCleanupComplete;
@@ -381,6 +489,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     ? Volatile.Read(ref _acceptanceCompletingEpoch)
                     : 0;
             var applied = _slot.TryApplyLatest(_applyOwned, _clearOwned);
+            if (applied)
+                Interlocked.Exchange(ref _lastApplyStopwatchTimestamp, Stopwatch.GetTimestamp());
             // A generated main-thread apply delegate can synchronously stop its
             // Manager/session. The slot correctly defers its drain while this
             // apply operation is on-stack, but the binding still owns the node
@@ -583,7 +693,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return false;
             }
 
-            var contractId = ContractId;
             var received = ReceivedCount;
             var replaced = ReplacedCount;
             var applied = AppliedCount;
@@ -591,11 +700,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var rejectedAfterStop = RejectedAfterStopCount;
             var copyFailed = CopyFailedCount;
             var staleCallbacks = StaleCallbackCount;
+            var lastReceiveStopwatchTimestamp = Interlocked.Read(ref _lastReceiveStopwatchTimestamp);
+            var lastApplyStopwatchTimestamp = Interlocked.Read(ref _lastApplyStopwatchTimestamp);
             lock (_lifecycleLock)
             {
                 var registration = _lastRegistration;
                 snapshot = new FoxRunRos2SubscriptionBindingSnapshot(
-                    contractId,
+                    Contract,
+                    _qosPreset,
                     SessionGeneration,
                     State,
                     registration.Error,
@@ -606,7 +718,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     pending,
                     rejectedAfterStop,
                     copyFailed,
-                    staleCallbacks);
+                    staleCallbacks,
+                    lastReceiveStopwatchTimestamp,
+                    lastApplyStopwatchTimestamp);
             }
             if (!TryReadActiveGeneration(out var generationAfter)
                 || generationAfter != SessionGeneration
@@ -796,6 +910,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     out var replacedPending);
                 if (accepted)
                 {
+                    Interlocked.Exchange(ref _lastReceiveStopwatchTimestamp, Stopwatch.GetTimestamp());
                     if (enteredWhileArming)
                         Interlocked.Increment(ref _acceptanceArmingPublished);
                     else if (acceptanceEpoch > 0 && IsAcceptanceEpochStillOwned(acceptanceEpoch))

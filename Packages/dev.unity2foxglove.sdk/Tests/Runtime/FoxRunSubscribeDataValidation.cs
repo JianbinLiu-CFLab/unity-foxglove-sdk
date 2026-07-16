@@ -78,17 +78,24 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var main = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var subscribe = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
+            var subscriptionProtocolLabels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunSubscriptionProtocolEditorLabels.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var services = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.FoxServices.cs");
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
 
             Check(main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
                   && !main.Contains("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
-                  && subscribe.Contains("Default Subscription Encoding", StringComparison.Ordinal)
+                  && subscribe.Contains("Default Subscription Protocol", StringComparison.Ordinal)
+                  && subscriptionProtocolLabels.Contains("ProtocolLabels", StringComparison.Ordinal)
+                  && subscriptionProtocolLabels.Contains("FoxRunEncodingEditorLabels.ToDisplayLabel(FoxRunWireEncoding.Protobuf)", StringComparison.Ordinal)
+                  && subscriptionProtocolLabels.Contains("FoxRunEncodingEditorLabels.ToDisplayLabel(FoxRunWireEncoding.Json)", StringComparison.Ordinal)
+                  && subscriptionProtocolLabels.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal)
+                  && subscribe.Contains("Native Copied-Data Budget Bytes", StringComparison.Ordinal)
+                  && subscribe.Contains("ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled", StringComparison.Ordinal)
                   && subscribe.Contains("Subscription Rate Limit Hz (per Topic)", StringComparison.Ordinal)
                   && !inbound.Contains("[Header(\"FoxRun Subscription Control\")]", StringComparison.Ordinal)
                   && publish.Contains("Default FoxRun Publish Encoding", StringComparison.Ordinal),
-                "176C-1: Inspector mirrors Publish Data with a directional Subscribe Data workflow");
+                "176C-1: Inspector mirrors Publish Data with directional WebSocket and ROS2 Native subscription workflow");
             Check(services.Contains("FoxRun Runtime Topics", StringComparison.Ordinal)
                   && services.Contains("DrawFoxRunTopicSummaryHeader", StringComparison.Ordinal)
                   && services.Contains("DrawFoxRunTopicSummaryRow", StringComparison.Ordinal)

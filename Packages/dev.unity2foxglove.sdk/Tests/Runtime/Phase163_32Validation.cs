@@ -74,19 +74,30 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var selector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelectorInspector.cs");
+            var capabilities = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs");
             var descriptorCtor = ExtractCSharpMethod(selector, "Ros2ForUnityRuntimeDescriptor");
+            var descriptorFactory = PhaseValidationSourceHelpers.SourceMethod(
+                selector,
+                "private static Ros2ForUnityRuntimeDescriptor TryCreateDescriptor");
             var diagnostic = ExtractCSharpMethod(selector, "ComputeZenohPayloadDiagnostic");
 
             Check(selector.Contains("public string ZenohPayloadDiagnostic", StringComparison.Ordinal)
                   && descriptorCtor.Contains("ZenohPayloadDiagnostic = zenohPayloadDiagnostic", StringComparison.Ordinal)
                   && diagnostic.Contains("rmw_zenoh_cpp native library", StringComparison.Ordinal)
                   && diagnostic.Contains("StreamingAssets Zenoh router config", StringComparison.Ordinal)
-                  && diagnostic.Contains("Rebuild or re-import the Lyrical runtime ZIP", StringComparison.Ordinal),
+                  && diagnostic.Contains("Rebuild or re-import the runtime ZIP", StringComparison.Ordinal),
                 "163-32C-1: runtime descriptor records why Zenoh is unavailable when payload files are missing");
-            Check(selector.Contains("IsZenohCapableDistro(rosDistro) && string.IsNullOrWhiteSpace(zenohPayloadDiagnostic)", StringComparison.Ordinal)
+            Check(selector.Contains("GetZenohPayloadDiagnostic(packageDirectory, capabilities.SupportsZenoh)", StringComparison.Ordinal)
+                  && capabilities.Contains("ZenohRmwImplementation", StringComparison.Ordinal)
+                  && !selector.Contains("IsZenohCapableDistro", StringComparison.Ordinal)
                   && inspector.Contains("SelectedRuntime.ZenohPayloadDiagnostic", StringComparison.Ordinal)
                   && inspector.Contains("MessageType.Warning", StringComparison.Ordinal),
-                "163-32C-2: Inspector shows a warning instead of silently hiding an incomplete Lyrical Zenoh payload");
+                "163-32C-2: Inspector shows a warning instead of silently hiding an incomplete manifest-declared Zenoh payload");
+            Check(descriptorCtor.Contains("BuildAvailableCommunicationModes(Capabilities.CommunicationModes, ZenohPayloadDiagnostic)", StringComparison.Ordinal)
+                  && descriptorFactory.Contains("var descriptor = new Ros2ForUnityRuntimeDescriptor(", StringComparison.Ordinal)
+                  && descriptorFactory.Contains("descriptor.CommunicationModes.Count == 0", StringComparison.Ordinal)
+                  && descriptorFactory.Contains("return null;", StringComparison.Ordinal),
+                "163-32C-3: selector rejects a candidate when payload filtering leaves no available communication mode");
         }
 
         private static void LyricalRuntimeCapturesSourcedDistroBeforeStandalonePatch()
@@ -171,22 +182,28 @@ namespace Unity.FoxgloveSDK.Tests
             var onPlayMode = ExtractCSharpMethod(guard, "OnPlayModeStateChanged");
             var onExitingEditMode = ExtractCSharpMethod(guard, "OnExitingEditMode");
             var requireRouter = ExtractCSharpMethod(guard, "TryGetMissingZenohRouterDiagnostic");
-            var nativeDemand = ExtractCSharpMethod(guard, "HasR2fuNativeOutputDemand");
+            var nativeDemand = ExtractCSharpMethod(guard, "HasR2fuNativeDemand");
             var processProbe = ExtractCSharpMethod(guard, "IsZenohRouterProcessRunning");
 
             Check(onPlayMode.Contains("OnExitingEditMode();", StringComparison.Ordinal)
                   && onExitingEditMode.Contains("TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic)", StringComparison.Ordinal)
                   && onExitingEditMode.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
-                  && requireRouter.Contains("HasR2fuNativeOutputDemand()", StringComparison.Ordinal)
+                  && requireRouter.Contains("HasR2fuNativeDemand()", StringComparison.Ordinal)
                   && guard.Contains("Ros2NativeEnabledSerializedProperty", StringComparison.Ordinal)
                   && guard.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
+                  && guard.Contains("FoxRunInboundEnabledSerializedProperty", StringComparison.Ordinal)
+                  && guard.Contains("_defaultFoxRunSubscriptionProvider", StringComparison.Ordinal)
+                  && nativeDemand.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && nativeDemand.Contains("FindProperty(Ros2NativeEnabledSerializedProperty)", StringComparison.Ordinal)
                   && nativeDemand.Contains("Resources.FindObjectsOfTypeAll<MonoBehaviour>()", StringComparison.Ordinal)
-                  && requireRouter.Contains("Ros2ForUnityRuntimeSelection.ZenohCommunicationMode", StringComparison.Ordinal)
+                  && requireRouter.Contains("GetRmwImplementationForCommunicationMode(", StringComparison.Ordinal)
+                  && requireRouter.Contains("status.SelectedRuntime", StringComparison.Ordinal)
+                  && requireRouter.Contains("communicationMode", StringComparison.Ordinal)
+                  && requireRouter.Contains("Ros2ForUnityRuntimeSelection.ZenohRmwImplementation", StringComparison.Ordinal)
                   && requireRouter.Contains("IsZenohRouterProcessRunning()", StringComparison.Ordinal)
                   && processProbe.Contains("Process.GetProcesses()", StringComparison.Ordinal)
                   && guard.Contains("rmw_zenohd", StringComparison.Ordinal),
-                "163-32F: Lyrical Zenoh Play Mode fails closed when no local Zenoh router is running");
+                "163-32F: any manifest mode backed by rmw_zenoh_cpp fails closed when no local Zenoh router is running");
         }
 
         private static void LyricalZenohSessionDefaultsAreUnitySafe()
