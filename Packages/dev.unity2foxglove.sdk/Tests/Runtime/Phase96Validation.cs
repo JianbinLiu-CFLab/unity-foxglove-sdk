@@ -200,10 +200,14 @@ namespace Unity.FoxgloveSDK.Tests
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
             var normalizedManagerEditor = NormalizeLineEndings(managerEditor);
 
-            Check(normalizedManagerEditor.Contains("DrawSection(\"ROS2 Bridge\"")
-                  && !normalizedManagerEditor.Contains("Subheader(\"ROS2 Bridge\");\n            DrawRos2BridgeSection();"),
-                "96F-1: Manager Inspector promotes ROS2 Bridge to top-level section");
-            Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"QoS Preset\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
+            Check(!normalizedManagerEditor.Contains("DrawSection(\"ROS2 Bridge\"")
+                  && publishDataEditor.Contains("DrawDataTransportSubsection(", StringComparison.Ordinal)
+                  && publishDataEditor.Contains("\"ROS 2 Bridge Output\"", StringComparison.Ordinal)
+                  && publishDataEditor.Contains("\"DataTransportRos2Bridge\"", StringComparison.Ordinal)
+                  && publishDataEditor.Contains("ref _dataTransportRos2BridgeExpanded", StringComparison.Ordinal)
+                  && publishDataEditor.Contains("DrawRos2BridgeSection", StringComparison.Ordinal),
+                "96F-1: Manager Inspector nests ROS 2 Bridge Output under Data Transport Publish");
+            Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"Publish QoS Profile\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
                 "96F-2: Manager Inspector exposes topic namespace and QoS preset");
             Check(ros2BridgeEditor.Contains("\"Host\"") && ros2BridgeEditor.Contains("\"Default Output\"") && ros2BridgeEditor.Contains("\"Allow Publisher Override\""),
                 "96F-3: Manager bridge labels are compact product labels");

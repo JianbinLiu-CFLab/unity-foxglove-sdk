@@ -102,7 +102,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && subscribe.Contains("ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled", StringComparison.Ordinal)
                   && subscribe.Contains("Subscription Rate Limit Hz (per Topic)", StringComparison.Ordinal)
                   && !inbound.Contains("[Header(\"FoxRun Subscription Control\")]", StringComparison.Ordinal)
-                  && publish.Contains("Default FoxRun Publish Encoding", StringComparison.Ordinal),
+                  && publish.Contains("Component Publisher Encoding", StringComparison.Ordinal)
+                  && publish.Contains("Allow Component Publisher Override", StringComparison.Ordinal)
+                  && publish.Contains("FoxRun Contract Encoding", StringComparison.Ordinal)
+                  && !publish.Contains("Default FoxRun Publish Encoding", StringComparison.Ordinal),
                 "176C-1: Inspector mirrors Publish Data with directional WebSocket and ROS2 Native subscription workflow");
             Check(services.Contains("FoxRun Runtime Topics", StringComparison.Ordinal)
                   && services.Contains("DrawFoxRunTopicSummaryHeader", StringComparison.Ordinal)

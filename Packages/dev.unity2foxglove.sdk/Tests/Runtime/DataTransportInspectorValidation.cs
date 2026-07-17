@@ -63,10 +63,12 @@ namespace Unity.FoxgloveSDK.Tests
             var section = FindMethod(mainInspector, "DrawSection");
             var foldoutState = FindMethod(mainInspector, "LoadInspectorFoldoutState");
             var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
+            var publishData = FindMethod(editorSources, "DrawPublishDataSection");
             var subsection = FindMethod(editorSources, "DrawDataTransportSubsection");
 
             VerifyTopLevelWorkflow(topLevel);
-            VerifyNestedTransportWorkflow(dataTransport);
+            VerifyNestedTransportWorkflow(dataTransport, publishData);
+            VerifyPublishPresentation(publishData);
             VerifyFoldoutStateModel(mainInspector, foldoutState);
             VerifyParentSectionPresentationHelper(section);
             VerifySubsectionPresentationHelper(subsection);
@@ -125,7 +127,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "180A-5: ROS2 Bridge is no longer a top-level workflow section");
         }
 
-        private static void VerifyNestedTransportWorkflow(MethodDeclarationSyntax dataTransport)
+        private static void VerifyNestedTransportWorkflow(
+            MethodDeclarationSyntax dataTransport,
+            MethodDeclarationSyntax publishData)
         {
             var subsections = DirectInvocations(dataTransport)
                 .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection"))
@@ -145,6 +149,21 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(invocation => invocation != null
                                      && IsInvocationNamed(invocation, "DrawDataTransportSubsection")
                                      && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)"))
+                .ToArray();
+            var bridgeSubsections = AllInvocations(publishData)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                                     && HasStringHeading(invocation, "ROS 2 Bridge Output"))
+                .ToArray();
+            var bridgeEnabledBranches = DirectIfStatements(publishData)
+                .Where(statement => HasSerializedBooleanCondition(statement, "_ros2BridgeEnabled"))
+                .ToArray();
+            var branchBridgeSubsections = bridgeEnabledBranches
+                .SelectMany(DirectThenStatements)
+                .OfType<ExpressionStatementSyntax>()
+                .Select(statement => statement.Expression as InvocationExpressionSyntax)
+                .Where(invocation => invocation != null
+                                     && IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                                     && HasStringHeading(invocation, "ROS 2 Bridge Output"))
                 .ToArray();
 
             Check(!ContainsStringLiteral(dataTransport, "MCAP Record & Replay")
@@ -178,6 +197,68 @@ namespace Unity.FoxgloveSDK.Tests
                   && branchNativeSubsections.Length == 1
                   && ReferenceEquals(nativeSubsections[0], branchNativeSubsections[0]),
                 "180B-3: Data Transport nests ROS 2 Native Runtime (R2FU) only under native demand");
+            Check(bridgeSubsections.Length == 1
+                  && HasSubsectionArguments(
+                      bridgeSubsections[0],
+                      "ROS 2 Bridge Output",
+                      "DataTransportRos2Bridge",
+                      "_dataTransportRos2BridgeExpanded",
+                      "DrawRos2BridgeSection")
+                  && bridgeEnabledBranches.Length == 1
+                  && branchBridgeSubsections.Length == 1
+                  && ReferenceEquals(bridgeSubsections[0], branchBridgeSubsections[0]),
+                "180B-4: Publish nests persisted ROS 2 Bridge Output only when its destination is enabled");
+        }
+
+        private static void VerifyPublishPresentation(MethodDeclarationSyntax publishData)
+        {
+            var directInvocations = DirectInvocations(publishData).ToArray();
+            var allInvocations = AllInvocations(publishData);
+            var nativeOutputBranches = DirectIfStatements(publishData)
+                .Where(statement => HasSerializedBooleanCondition(statement, "_ros2NativeEnabled"))
+                .ToArray();
+            var nativeQosHelp = nativeOutputBranches
+                .SelectMany(DirectThenStatements)
+                .OfType<ExpressionStatementSyntax>()
+                .Select(statement => statement.Expression as InvocationExpressionSyntax)
+                .Where(invocation => invocation != null
+                                     && IsInvocationNamed(invocation, "HelpBox")
+                                     && HasStringArgument(
+                                         invocation,
+                                         0,
+                                         "This Manager has no global ROS2 Native publish QoS override; configure QoS on individual R2FU publishers.")
+                                     && HasMessageTypeInfoArgument(invocation, 1))
+                .ToArray();
+
+            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                 && HasStringHeading(invocation, "Publish Destinations")) == 1
+                  && HasExactlyOneLabeledProperty(directInvocations, "_foxgloveOutputEnabled", "Foxglove WebSocket")
+                  && HasExactlyOneLabeledProperty(directInvocations, "_ros2NativeEnabled", "ROS 2 Native (R2FU)")
+                  && HasExactlyOneLabeledProperty(directInvocations, "_ros2BridgeEnabled", "ROS 2 Bridge")
+                  && !ContainsStringLiteral(publishData, "Output Mode"),
+                "180E-1: Publish renders the three independent approved destinations without the obsolete output-mode heading");
+            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                 && HasStringHeading(invocation, "Publisher Encoding")) == 1
+                  && HasExactlyOneLabeledInvocation(
+                      allInvocations,
+                      "DrawGlobalEncodingProperty",
+                      "_defaultPublisherEncoding",
+                      "Component Publisher Encoding")
+                  && HasExactlyOneLabeledInvocation(
+                      allInvocations,
+                      "DrawProperty",
+                      "_allowPublisherOverride",
+                      "Allow Component Publisher Override")
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawFoxRunWireEncoding")
+                                                 && HasStringArgument(invocation, 1, "FoxRun Contract Encoding")) == 1
+                  && ContainsStringLiteral(
+                      publishData,
+                      "Component publishers and generated FoxRun contracts use independent default encodings.")
+                  && !ContainsStringLiteral(publishData, "Default FoxRun Publish Encoding"),
+                "180E-2: Publish labels the independent component and FoxRun contract encoding defaults by source");
+            Check(nativeOutputBranches.Length == 1
+                  && nativeQosHelp.Length == 1,
+                "180E-3: selected ROS 2 Native output explains that Manager has no global publish QoS override");
         }
 
         private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)
@@ -425,6 +506,13 @@ namespace Unity.FoxgloveSDK.Tests
                    && invocation.ArgumentList.Arguments.Count == 0;
         }
 
+        private static bool HasSerializedBooleanCondition(IfStatementSyntax statement, string propertyName)
+        {
+            return statement?.Condition is InvocationExpressionSyntax invocation
+                   && IsInvocationNamed(invocation, "GetBool")
+                   && HasStringArgument(invocation, 0, propertyName);
+        }
+
         private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)
         {
             if (invocation == null)
@@ -456,6 +544,35 @@ namespace Unity.FoxgloveSDK.Tests
             return invocation != null && invocation.ArgumentList.Arguments.Any(argument =>
                 argument.Expression is IdentifierNameSyntax identifier
                 && identifier.Identifier.ValueText == methodName);
+        }
+
+        private static bool HasExactlyOneLabeledProperty(
+            IEnumerable<InvocationExpressionSyntax> invocations,
+            string propertyName,
+            string label)
+        {
+            return HasExactlyOneLabeledInvocation(invocations, "DrawProperty", propertyName, label);
+        }
+
+        private static bool HasExactlyOneLabeledInvocation(
+            IEnumerable<InvocationExpressionSyntax> invocations,
+            string invocationName,
+            string propertyName,
+            string label)
+        {
+            return invocations.Count(invocation => IsInvocationNamed(invocation, invocationName)
+                                                && HasStringArgument(invocation, 0, propertyName)
+                                                && HasStringArgument(invocation, 1, label)) == 1;
+        }
+
+        private static bool HasMessageTypeInfoArgument(InvocationExpressionSyntax invocation, int argumentIndex)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Expression is IdentifierNameSyntax receiver
+                   && receiver.Identifier.ValueText == "MessageType"
+                   && memberAccess.Name.Identifier.ValueText == "Info";
         }
 
         private static string DescribeTopLevelWorkflowCall(InvocationExpressionSyntax invocation)
