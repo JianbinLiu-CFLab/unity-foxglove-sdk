@@ -5,9 +5,11 @@
 // Purpose: Phase 96 validation for ROS2 Bridge topic profiles and QoS metadata.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Newtonsoft.Json.Linq;
@@ -201,14 +203,32 @@ namespace Unity.FoxgloveSDK.Tests
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
             var managerInspector = FindMethod(managerEditor, "OnInspectorGUI");
+            var publishDataSection = FindMethod(publishDataEditor, "DrawPublishDataSection");
+            var topLevelInvocations = DirectInvocations(managerInspector);
+            var bridgeEnabledBranches = DirectIfStatements(publishDataSection)
+                .Where(statement => HasGetBoolCondition(statement, "_ros2BridgeEnabled"))
+                .ToArray();
+            var branchSubsections = bridgeEnabledBranches
+                .SelectMany(DirectThenInvocations)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection"))
+                .ToArray();
+            var branchBridgeSubsections = branchSubsections
+                .Where(IsRos2BridgeOutputSubsection)
+                .ToArray();
+            var allBridgeOutputSubsections = AllInvocations(publishDataSection)
+                .Where(IsRos2BridgeOutputSubsection)
+                .ToArray();
 
             Check(managerInspector != null
-                  && !ContainsInvocation(managerInspector, "DrawRos2BridgeSection")
-                  && publishDataEditor.Contains("DrawDataTransportSubsection(", StringComparison.Ordinal)
-                  && publishDataEditor.Contains("\"ROS 2 Bridge Output\"", StringComparison.Ordinal)
-                  && publishDataEditor.Contains("\"DataTransportRos2Bridge\"", StringComparison.Ordinal)
-                  && publishDataEditor.Contains("ref _dataTransportRos2BridgeExpanded", StringComparison.Ordinal)
-                  && publishDataEditor.Contains("DrawRos2BridgeSection", StringComparison.Ordinal),
+                  && !topLevelInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawSection")
+                                                           && HasStringArgument(invocation, 0, "ROS2 Bridge"))
+                  && !topLevelInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection"))
+                  && publishDataSection != null
+                  && bridgeEnabledBranches.Length == 1
+                  && branchSubsections.Length == 1
+                  && branchBridgeSubsections.Length == 1
+                  && allBridgeOutputSubsections.Length == 1
+                  && ReferenceEquals(branchBridgeSubsections[0], allBridgeOutputSubsections[0]),
                 "96F-1: Manager Inspector nests ROS 2 Bridge Output under Data Transport Publish");
             Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"Publish QoS Profile\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
                 "96F-2: Manager Inspector exposes topic namespace and QoS preset");
@@ -233,12 +253,100 @@ namespace Unity.FoxgloveSDK.Tests
             return methods.Length == 1 ? methods[0] : null;
         }
 
-        private static bool ContainsInvocation(MethodDeclarationSyntax method, string name)
+        private static InvocationExpressionSyntax[] DirectInvocations(MethodDeclarationSyntax method)
         {
-            return method != null
-                   && method.DescendantNodes()
-                       .OfType<InvocationExpressionSyntax>()
-                       .Any(invocation => IsInvocationNamed(invocation, name));
+            return method?.Body == null
+                ? Array.Empty<InvocationExpressionSyntax>()
+                : DirectInvocations(method.Body.Statements).ToArray();
+        }
+
+        private static IEnumerable<InvocationExpressionSyntax> DirectInvocations(IEnumerable<StatementSyntax> statements)
+        {
+            foreach (var statement in statements.OfType<ExpressionStatementSyntax>())
+            {
+                if (statement.Expression is InvocationExpressionSyntax invocation)
+                    yield return invocation;
+            }
+        }
+
+        private static IfStatementSyntax[] DirectIfStatements(MethodDeclarationSyntax method)
+        {
+            return method?.Body == null
+                ? Array.Empty<IfStatementSyntax>()
+                : method.Body.Statements.OfType<IfStatementSyntax>().ToArray();
+        }
+
+        private static IEnumerable<InvocationExpressionSyntax> DirectThenInvocations(IfStatementSyntax statement)
+        {
+            return DirectBranchStatements(statement?.Statement)
+                .OfType<ExpressionStatementSyntax>()
+                .Select(branchStatement => branchStatement.Expression as InvocationExpressionSyntax)
+                .Where(invocation => invocation != null);
+        }
+
+        private static IEnumerable<StatementSyntax> DirectBranchStatements(StatementSyntax statement)
+        {
+            if (statement is BlockSyntax block)
+                return block.Statements;
+
+            return statement == null
+                ? Enumerable.Empty<StatementSyntax>()
+                : new[] { statement };
+        }
+
+        private static InvocationExpressionSyntax[] AllInvocations(MethodDeclarationSyntax method)
+        {
+            return method == null
+                ? Array.Empty<InvocationExpressionSyntax>()
+                : method.DescendantNodes().OfType<InvocationExpressionSyntax>().ToArray();
+        }
+
+        private static bool HasGetBoolCondition(IfStatementSyntax statement, string propertyName)
+        {
+            return statement?.Condition is InvocationExpressionSyntax invocation
+                   && IsInvocationNamed(invocation, "GetBool")
+                   && HasStringArgument(invocation, 0, propertyName);
+        }
+
+        private static bool IsRos2BridgeOutputSubsection(InvocationExpressionSyntax invocation)
+        {
+            return IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                   && HasStringArgument(invocation, 0, "ROS 2 Bridge Output")
+                   && HasStringArgument(invocation, 1, "DataTransportRos2Bridge")
+                   && HasRefIdentifierArgument(invocation, 2, "_dataTransportRos2BridgeExpanded")
+                   && HasMethodGroupArgument(invocation, 3, "DrawRos2BridgeSection");
+        }
+
+        private static bool HasStringArgument(InvocationExpressionSyntax invocation, int argumentIndex, string value)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is LiteralExpressionSyntax literal
+                   && literal.IsKind(SyntaxKind.StringLiteralExpression)
+                   && literal.Token.ValueText == value;
+        }
+
+        private static bool HasRefIdentifierArgument(
+            InvocationExpressionSyntax invocation,
+            int argumentIndex,
+            string identifier)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax argument
+                   && argument.Identifier.ValueText == identifier;
+        }
+
+        private static bool HasMethodGroupArgument(
+            InvocationExpressionSyntax invocation,
+            int argumentIndex,
+            string methodName)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax method
+                   && method.Identifier.ValueText == methodName;
         }
 
         private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)
