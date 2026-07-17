@@ -24,10 +24,11 @@ namespace Unity.FoxgloveSDK.Editor
     public partial class FoxgloveManagerEditor : UnityEditor.Editor
     {
         private bool _connectionSecurityExpanded;
-        private bool _publishDataExpanded;
-        private bool _subscribeDataExpanded;
-        private bool _r2fuRuntimeExpanded;
-        private bool _ros2BridgeExpanded;
+        private bool _dataTransportExpanded;
+        private bool _dataTransportPublishExpanded;
+        private bool _dataTransportSubscribeExpanded;
+        private bool _dataTransportNativeRuntimeExpanded;
+        private bool _dataTransportRos2BridgeExpanded;
         private bool _mcapExpanded;
         private bool _foxServicesExpanded;
         private bool _schemaEvidenceAdvancedExpanded;
@@ -192,16 +193,10 @@ namespace Unity.FoxgloveSDK.Editor
             EnsureSecureSettingsVisible();
 
             DrawSection("Connection & Security", "ConnectionSecurity", ref _connectionSecurityExpanded, DrawConnectionSecuritySection);
-            DrawSection("Publish Data", "PublishData", ref _publishDataExpanded, DrawPublishDataSection);
+            DrawSection("Data Transport", "DataTransport", ref _dataTransportExpanded, DrawDataTransportSection);
             DrawRecordingReplayWarning();
             DrawSection("MCAP Record & Replay", "Mcap", ref _mcapExpanded, DrawMcapSection);
-            DrawSection("Subscribe Data", "SubscribeData", ref _subscribeDataExpanded, DrawSubscribeDataSection);
-            if (HasR2fuNativeRuntimeDemand())
-                DrawSection("ROS2 Runtime (R2FU)", "R2fuRuntime", ref _r2fuRuntimeExpanded, DrawR2fuRuntimeSection);
             DrawSection("FoxServices", "FoxServices", ref _foxServicesExpanded, DrawFoxServicesSection);
-            var ros2BridgeProp = FindCachedProperty("_ros2BridgeEnabled");
-            if (ros2BridgeProp != null && ros2BridgeProp.boolValue)
-                DrawSection("ROS2 Bridge", "Ros2Bridge", ref _ros2BridgeExpanded, DrawRos2BridgeSection);
             DrawSection("Diagnostics", "Diagnostics", ref _diagnosticsExpanded, DrawDiagnosticsSection);
 
             serializedObject.ApplyModifiedProperties();
@@ -287,11 +282,29 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void LoadInspectorFoldoutState()
         {
+            if (SessionState.GetInt(InspectorFoldoutKey("DataTransportFoldoutMigrationVersion"), 0) < 1)
+            {
+                var publishDataExpanded = SessionState.GetBool(InspectorFoldoutKey("PublishData"), false);
+                var subscribeDataExpanded = SessionState.GetBool(InspectorFoldoutKey("SubscribeData"), false);
+                var r2fuRuntimeExpanded = SessionState.GetBool(InspectorFoldoutKey("R2fuRuntime"), false);
+                var ros2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("Ros2Bridge"), false);
+
+                SessionState.SetBool(
+                    InspectorFoldoutKey("DataTransport"),
+                    publishDataExpanded || subscribeDataExpanded || r2fuRuntimeExpanded || ros2BridgeExpanded);
+                SessionState.SetBool(InspectorFoldoutKey("DataTransportPublish"), publishDataExpanded);
+                SessionState.SetBool(InspectorFoldoutKey("DataTransportSubscribe"), subscribeDataExpanded);
+                SessionState.SetBool(InspectorFoldoutKey("DataTransportNativeRuntime"), r2fuRuntimeExpanded);
+                SessionState.SetBool(InspectorFoldoutKey("DataTransportRos2Bridge"), ros2BridgeExpanded);
+                SessionState.SetInt(InspectorFoldoutKey("DataTransportFoldoutMigrationVersion"), 1);
+            }
+
             _connectionSecurityExpanded = SessionState.GetBool(InspectorFoldoutKey("ConnectionSecurity"), false);
-            _publishDataExpanded = SessionState.GetBool(InspectorFoldoutKey("PublishData"), false);
-            _subscribeDataExpanded = SessionState.GetBool(InspectorFoldoutKey("SubscribeData"), false);
-            _r2fuRuntimeExpanded = SessionState.GetBool(InspectorFoldoutKey("R2fuRuntime"), false);
-            _ros2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("Ros2Bridge"), false);
+            _dataTransportExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransport"), false);
+            _dataTransportPublishExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportPublish"), false);
+            _dataTransportSubscribeExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportSubscribe"), false);
+            _dataTransportNativeRuntimeExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportNativeRuntime"), false);
+            _dataTransportRos2BridgeExpanded = SessionState.GetBool(InspectorFoldoutKey("DataTransportRos2Bridge"), false);
             _mcapExpanded = SessionState.GetBool(InspectorFoldoutKey("Mcap"), false);
             _foxServicesExpanded = SessionState.GetBool(InspectorFoldoutKey("FoxServices"), false);
             _schemaEvidenceAdvancedExpanded = SessionState.GetBool(InspectorFoldoutKey("SchemaEvidenceAdvanced"), false);

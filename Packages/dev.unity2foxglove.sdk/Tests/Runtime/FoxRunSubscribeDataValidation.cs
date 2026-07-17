@@ -77,13 +77,21 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorWorkflow()
         {
             var main = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var subscribe = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
             var subscriptionProtocolLabels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunSubscriptionProtocolEditorLabels.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var services = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.FoxServices.cs");
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
 
-            Check(main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
+            Check(main.Contains("DrawSection(\"Data Transport\"", StringComparison.Ordinal)
+                  && !main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
+                  && main.IndexOf("DrawSection(\"Data Transport\"", StringComparison.Ordinal)
+                     < main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
+                  && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
+                     < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal)
+                  && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Subscribe\"", StringComparison.Ordinal)
                   && !main.Contains("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
                   && subscribe.Contains("Default Subscription Protocol", StringComparison.Ordinal)
                   && subscriptionProtocolLabels.Contains("ProtocolLabels", StringComparison.Ordinal)

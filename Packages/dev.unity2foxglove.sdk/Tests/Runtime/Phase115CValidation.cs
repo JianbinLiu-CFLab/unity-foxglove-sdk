@@ -218,6 +218,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorAndSettingsSyncSource()
         {
             var editor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var mcapEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Mcap.cs");
             var layout = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerInspectorLayout.cs");
             var settings = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SchemaEvidence/Unity2FoxgloveSchemaEvidenceSettings.cs");
@@ -226,10 +227,17 @@ namespace Unity.FoxgloveSDK.Tests
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
 
             Check(editor.Contains("private bool _connectionSecurityExpanded;", StringComparison.Ordinal)
-                  && editor.Contains("private bool _publishDataExpanded;", StringComparison.Ordinal)
+                  && editor.Contains("private bool _dataTransportExpanded;", StringComparison.Ordinal)
+                  && editor.Contains("private bool _dataTransportPublishExpanded;", StringComparison.Ordinal)
+                  && editor.Contains("private bool _dataTransportSubscribeExpanded;", StringComparison.Ordinal)
+                  && editor.Contains("private bool _dataTransportNativeRuntimeExpanded;", StringComparison.Ordinal)
+                  && editor.Contains("private bool _dataTransportRos2BridgeExpanded;", StringComparison.Ordinal)
+                  && !editor.Contains("private bool _publishDataExpanded;", StringComparison.Ordinal)
+                  && !editor.Contains("private bool _subscribeDataExpanded;", StringComparison.Ordinal)
+                  && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
                   && editor.Contains("private bool _schemaEvidenceAdvancedExpanded;", StringComparison.Ordinal)
                   && layout.Contains("WorkflowSubsection", StringComparison.Ordinal),
-                "115C-F1: low-frequency Inspector sections and schema evidence default collapsed");
+                "115C-F1: Data Transport parent and nested Inspector foldouts coexist with collapsed low-frequency schema evidence");
 
             Check(mcapEditor.Contains("Schema Evidence (Advanced)", StringComparison.Ordinal)
                   && mcapEditor.Contains("Refresh Evidence Now", StringComparison.Ordinal)

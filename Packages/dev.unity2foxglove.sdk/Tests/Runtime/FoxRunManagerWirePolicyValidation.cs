@@ -206,15 +206,19 @@ namespace Unity.FoxgloveSDK.Tests
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
             var labels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunEncodingEditorLabels.cs");
             var main = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
 
-            Check(main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
-                  && main.IndexOf("DrawSection(\"Publish Data\"", StringComparison.Ordinal)
+            Check(main.Contains("DrawSection(\"Data Transport\"", StringComparison.Ordinal)
+                  && !main.Contains("DrawSection(\"Publish Data\"", StringComparison.Ordinal)
+                  && !main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
+                  && main.IndexOf("DrawSection(\"Data Transport\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
                   && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
-                     < main.IndexOf("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
-                  && main.IndexOf("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
-                     < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal),
-                "175C-7: Subscribe Data Inspector section sits between MCAP and FoxServices");
+                     < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal)
+                  && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Publish\"", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Subscribe\"", StringComparison.Ordinal),
+                "175C-7: Data Transport contains Publish and Subscribe before sibling MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex = selected == 0", StringComparison.Ordinal)

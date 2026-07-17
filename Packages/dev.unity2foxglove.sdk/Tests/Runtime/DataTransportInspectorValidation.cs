@@ -20,6 +20,21 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string ManagerEditorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
+        private static readonly string[] LegacyTransportFoldoutKeys =
+        {
+            "PublishData",
+            "SubscribeData",
+            "R2fuRuntime",
+            "Ros2Bridge",
+        };
+        private static readonly string[] DataTransportFoldoutKeys =
+        {
+            "DataTransport",
+            "DataTransportPublish",
+            "DataTransportSubscribe",
+            "DataTransportNativeRuntime",
+            "DataTransportRos2Bridge",
+        };
 
         private static int _passed;
 
@@ -35,10 +50,14 @@ namespace Unity.FoxgloveSDK.Tests
             var mainInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerEditorPath);
             var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var topLevel = FindMethod(mainInspector, "OnInspectorGUI");
+            var foldoutState = FindMethod(mainInspector, "LoadInspectorFoldoutState");
             var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
+            var subsection = FindMethod(editorSources, "DrawDataTransportSubsection");
 
             VerifyTopLevelWorkflow(topLevel);
             VerifyNestedTransportWorkflow(dataTransport);
+            VerifyFoldoutStateModel(mainInspector, foldoutState);
+            VerifySubsectionPresentationHelper(subsection);
 
             Console.WriteLine("Phase 180: " + _passed + " checks passed.");
         }
@@ -51,12 +70,29 @@ namespace Unity.FoxgloveSDK.Tests
             var executableSections = ExecutableInvocations(topLevel)
                 .Where(invocation => IsInvocationNamed(invocation, "DrawSection"))
                 .ToArray();
+            var directWorkflowCalls = DirectInvocations(topLevel)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
+                                     || IsInvocationNamed(invocation, "DrawRecordingReplayWarning"))
+                .ToArray();
+            var expectedWorkflowOrder = new[]
+            {
+                "Connection & Security",
+                "Data Transport",
+                "DrawRecordingReplayWarning",
+                "MCAP Record & Replay",
+                "FoxServices",
+                "Diagnostics",
+            };
+            var actualWorkflowOrder = directWorkflowCalls
+                .Select(DescribeTopLevelWorkflowCall)
+                .ToArray();
             var dataTransport = directSections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
             var mcap = directSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
             var allDataTransport = executableSections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
             var allMcap = executableSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
 
-            Check(allDataTransport.Length == 1
+            Check(actualWorkflowOrder.SequenceEqual(expectedWorkflowOrder)
+                  && allDataTransport.Length == 1
                   && dataTransport.Length == 1
                   && ReferenceEquals(allDataTransport[0], dataTransport[0])
                   && HasMethodGroupArgument(dataTransport[0], "DrawDataTransportSection")
@@ -65,7 +101,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && ReferenceEquals(allMcap[0], mcap[0])
                   && HasMethodGroupArgument(mcap[0], "DrawMcapSection")
                   && Array.IndexOf(directSections, dataTransport[0]) < Array.IndexOf(directSections, mcap[0]),
-                "180A-1: Manager Inspector directly wires one Data Transport workflow before sibling MCAP Record & Replay");
+                "180A-1: Manager Inspector keeps Connection, Data Transport, warning, sibling MCAP, services, and diagnostics in the exact workflow order");
             Check(!executableSections.Any(invocation => HasStringHeading(invocation, "Publish Data")),
                 "180A-2: Publish Data is no longer a top-level workflow section");
             Check(!executableSections.Any(invocation => HasStringHeading(invocation, "Subscribe Data")),
@@ -100,18 +136,139 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
 
             Check(!ContainsStringLiteral(dataTransport, "MCAP Record & Replay")
-                  && !ContainsIdentifier(dataTransport, "DrawMcapSection"),
+                  && !ContainsIdentifier(dataTransport, "DrawMcapSection")
+                  && !ContainsIdentifier(dataTransport, "DrawRos2BridgeSection"),
                 "180B-1: Data Transport contains no MCAP Record & Replay child workflow");
-            Check(HasExactlyOneSubsection(subsections, "Publish", "DrawPublishDataSection"),
+            Check(subsections.Length == 2
+                  && HasExactlyOneSubsection(
+                      subsections,
+                      "Publish",
+                      "DataTransportPublish",
+                      "_dataTransportPublishExpanded",
+                      "DrawPublishDataSection")
+                  && HasExactlyOneSubsection(
+                      subsections,
+                      "Subscribe",
+                      "DataTransportSubscribe",
+                      "_dataTransportSubscribeExpanded",
+                      "DrawSubscribeDataSection")
+                  && HasStringHeading(subsections[0], "Publish")
+                  && HasStringHeading(subsections[1], "Subscribe"),
                 "180B-2: Data Transport nests the public Publish workflow");
-            Check(HasExactlyOneSubsection(subsections, "Subscribe", "DrawSubscribeDataSection"),
-                "180B-3: Data Transport nests the public Subscribe workflow");
             Check(nativeSubsections.Length == 1
-                  && HasMethodGroupArgument(nativeSubsections[0], "DrawR2fuRuntimeSection")
+                  && HasSubsectionArguments(
+                      nativeSubsections[0],
+                      "ROS 2 Native Runtime (R2FU)",
+                      "DataTransportNativeRuntime",
+                      "_dataTransportNativeRuntimeExpanded",
+                      "DrawR2fuRuntimeSection")
                   && nativeDemandBranches.Length == 1
                   && branchNativeSubsections.Length == 1
                   && ReferenceEquals(nativeSubsections[0], branchNativeSubsections[0]),
-                "180B-4: Data Transport nests ROS 2 Native Runtime (R2FU) only under native demand");
+                "180B-3: Data Transport nests ROS 2 Native Runtime (R2FU) only under native demand");
+        }
+
+        private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)
+        {
+            var expectedFields = new[]
+            {
+                "_dataTransportExpanded",
+                "_dataTransportPublishExpanded",
+                "_dataTransportSubscribeExpanded",
+                "_dataTransportNativeRuntimeExpanded",
+                "_dataTransportRos2BridgeExpanded",
+            };
+            var obsoleteFields = new[]
+            {
+                "_publishDataExpanded",
+                "_subscribeDataExpanded",
+                "_r2fuRuntimeExpanded",
+                "_ros2BridgeExpanded",
+            };
+            var migration = DirectIfStatements(foldoutState)
+                .Where(HasDataTransportMigrationCondition)
+                .ToArray();
+            var migrationStatements = migration.Length == 1
+                ? DirectThenStatements(migration[0]).ToArray()
+                : Array.Empty<StatementSyntax>();
+            var migrationInvocations = migrationStatements
+                .SelectMany(AllInvocations)
+                .ToArray();
+            var legacyLocalNames = FindLegacyFoldoutLocalNames(migrationStatements);
+            var markerWrites = migrationInvocations
+                .Where(invocation => IsSessionStateInvocationNamed(invocation, "SetInt")
+                                     && HasInspectorFoldoutKeyArgument(invocation, 0, "DataTransportFoldoutMigrationVersion")
+                                     && HasIntegerLiteralArgument(invocation, 1, 1))
+                .ToArray();
+            var newLoads = AllInvocations(foldoutState)
+                .Where(invocation => IsSessionStateInvocationNamed(invocation, "GetBool")
+                                     && DataTransportFoldoutKeys.Any(key => HasInspectorFoldoutKeyArgument(invocation, 0, key)))
+                .ToArray();
+            var hasUnsupportedSessionStateProbe = AllInvocations(foldoutState)
+                .Any(IsSessionStateHasInvocation);
+
+            Check(expectedFields.All(field => CountBoolFieldDeclarations(mainInspector, field) == 1)
+                  && obsoleteFields.All(field => CountBoolFieldDeclarations(mainInspector, field) == 0),
+                "180C-1: Data Transport owns exactly its five persisted foldout fields and retires the four legacy top-level fields");
+            Check(migration.Length == 1
+                  && LegacyTransportFoldoutKeys.All(key => legacyLocalNames.ContainsKey(key))
+                  && DataTransportFoldoutKeys.All(key => newLoads.Count(invocation => HasInspectorFoldoutKeyArgument(invocation, 0, key)) == 1)
+                  && HasMigratedChildSeed(migrationInvocations, "DataTransportPublish", legacyLocalNames, "PublishData")
+                  && HasMigratedChildSeed(migrationInvocations, "DataTransportSubscribe", legacyLocalNames, "SubscribeData")
+                  && HasMigratedChildSeed(migrationInvocations, "DataTransportNativeRuntime", legacyLocalNames, "R2fuRuntime")
+                  && HasMigratedChildSeed(migrationInvocations, "DataTransportRos2Bridge", legacyLocalNames, "Ros2Bridge")
+                  && HasMigratedParentSeed(migrationInvocations, legacyLocalNames)
+                  && markerWrites.Length == 1
+                  && newLoads.All(invocation => markerWrites[0].SpanStart < invocation.SpanStart)
+                  && !hasUnsupportedSessionStateProbe,
+                "180C-2: one-time SessionState migration seeds nested transport foldouts, opens the parent for any legacy child, and writes its marker before loading new state");
+        }
+
+        private static void VerifySubsectionPresentationHelper(MethodDeclarationSyntax subsection)
+        {
+            var workflowSubsections = AllInvocations(subsection)
+                .Where(invocation => IsInvocationNamed(invocation, "WorkflowSubsection"))
+                .ToArray();
+            var closedSubsectionReturns = DirectIfStatements(subsection)
+                .Where(statement => statement.Condition is PrefixUnaryExpressionSyntax prefix
+                                    && prefix.IsKind(SyntaxKind.LogicalNotExpression)
+                                    && prefix.Operand is InvocationExpressionSyntax invocation
+                                    && IsInvocationNamed(invocation, "WorkflowSubsection")
+                                    && DirectThenStatements(statement).OfType<ReturnStatementSyntax>().Any())
+                .ToArray();
+            var indentationMutations = subsection == null
+                ? Array.Empty<SyntaxNode>()
+                : subsection.DescendantNodes()
+                    .Where(IsEditorGuiIndentMutation)
+                    .ToArray();
+            var increments = indentationMutations
+                .Where(IsEditorGuiIndentIncrement)
+                .ToArray();
+            var decrements = indentationMutations
+                .Where(IsEditorGuiIndentDecrement)
+                .ToArray();
+            var tryStatements = subsection?.Body?.Statements.OfType<TryStatementSyntax>().ToArray()
+                                ?? Array.Empty<TryStatementSyntax>();
+            var tryStatement = tryStatements.Length == 1 ? tryStatements[0] : null;
+            var drawsContents = tryStatement != null
+                                && tryStatement.Block.DescendantNodes()
+                                    .OfType<InvocationExpressionSyntax>()
+                                    .Any(invocation => IsInvocationNamed(invocation, "drawContents"));
+            var decrementsInFinally = tryStatement?.Finally != null
+                                      && tryStatement.Finally.Block.DescendantNodes()
+                                          .Any(IsEditorGuiIndentDecrement);
+
+            Check(workflowSubsections.Length == 1
+                  && HasInspectorFoldoutKeyIdentifierArgument(workflowSubsections[0], 1, "sessionStateName")
+                  && HasRefIdentifierArgument(workflowSubsections[0], 2, "expanded")
+                  && closedSubsectionReturns.Length == 1
+                  && increments.Length == 1
+                  && decrements.Length == 1
+                  && tryStatement != null
+                  && increments[0].SpanStart < tryStatement.SpanStart
+                  && drawsContents
+                  && decrementsInFinally,
+                "180D-1: Data Transport subsection presentation persists the layout foldout and confines indentation to expanded contents with try/finally");
         }
 
         private static MethodDeclarationSyntax FindMethod(string source, string methodName)
@@ -188,13 +345,36 @@ namespace Unity.FoxgloveSDK.Tests
                 : method.DescendantNodes().OfType<InvocationExpressionSyntax>().ToArray();
         }
 
+        private static IEnumerable<InvocationExpressionSyntax> AllInvocations(StatementSyntax statement)
+        {
+            return statement == null
+                ? Enumerable.Empty<InvocationExpressionSyntax>()
+                : statement.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>();
+        }
+
         private static bool HasExactlyOneSubsection(
             IEnumerable<InvocationExpressionSyntax> subsections,
             string heading,
+            string sessionStateName,
+            string expandedField,
             string callback)
         {
             var matches = subsections.Where(invocation => HasStringHeading(invocation, heading)).ToArray();
-            return matches.Length == 1 && HasMethodGroupArgument(matches[0], callback);
+            return matches.Length == 1
+                   && HasSubsectionArguments(matches[0], heading, sessionStateName, expandedField, callback);
+        }
+
+        private static bool HasSubsectionArguments(
+            InvocationExpressionSyntax invocation,
+            string heading,
+            string sessionStateName,
+            string expandedField,
+            string callback)
+        {
+            return HasStringHeading(invocation, heading)
+                   && HasStringArgument(invocation, 1, sessionStateName)
+                   && HasRefIdentifierArgument(invocation, 2, expandedField)
+                   && HasMethodGroupArgument(invocation, callback);
         }
 
         private static bool HasNativeDemandCondition(IfStatementSyntax statement)
@@ -206,6 +386,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)
         {
+            if (invocation == null)
+                return false;
+
             if (invocation.Expression is IdentifierNameSyntax identifier)
                 return identifier.Identifier.ValueText == name;
 
@@ -215,17 +398,230 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool HasStringHeading(InvocationExpressionSyntax invocation, string heading)
         {
-            return invocation.ArgumentList.Arguments.Count > 0
-                   && invocation.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax literal
+            return HasStringArgument(invocation, 0, heading);
+        }
+
+        private static bool HasStringArgument(InvocationExpressionSyntax invocation, int argumentIndex, string value)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is LiteralExpressionSyntax literal
                    && literal.RawKind == (int)SyntaxKind.StringLiteralExpression
-                   && literal.Token.ValueText == heading;
+                   && literal.Token.ValueText == value;
         }
 
         private static bool HasMethodGroupArgument(InvocationExpressionSyntax invocation, string methodName)
         {
-            return invocation.ArgumentList.Arguments.Any(argument =>
+            return invocation != null && invocation.ArgumentList.Arguments.Any(argument =>
                 argument.Expression is IdentifierNameSyntax identifier
                 && identifier.Identifier.ValueText == methodName);
+        }
+
+        private static string DescribeTopLevelWorkflowCall(InvocationExpressionSyntax invocation)
+        {
+            return IsInvocationNamed(invocation, "DrawRecordingReplayWarning")
+                ? "DrawRecordingReplayWarning"
+                : invocation?.ArgumentList.Arguments.FirstOrDefault().Expression is LiteralExpressionSyntax literal
+                    ? literal.Token.ValueText
+                    : string.Empty;
+        }
+
+        private static bool HasDataTransportMigrationCondition(IfStatementSyntax statement)
+        {
+            return statement?.Condition is BinaryExpressionSyntax comparison
+                   && comparison.IsKind(SyntaxKind.LessThanExpression)
+                   && comparison.Left is InvocationExpressionSyntax version
+                   && IsSessionStateInvocationNamed(version, "GetInt")
+                   && HasInspectorFoldoutKeyArgument(version, 0, "DataTransportFoldoutMigrationVersion")
+                   && HasIntegerLiteralArgument(version, 1, 0)
+                   && comparison.Right is LiteralExpressionSyntax literal
+                   && literal.IsKind(SyntaxKind.NumericLiteralExpression)
+                   && literal.Token.Value is int value
+                   && value == 1;
+        }
+
+        private static bool IsSessionStateInvocationNamed(InvocationExpressionSyntax invocation, string methodName)
+        {
+            return invocation?.Expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Expression is IdentifierNameSyntax receiver
+                   && receiver.Identifier.ValueText == "SessionState"
+                   && memberAccess.Name.Identifier.ValueText == methodName;
+        }
+
+        private static bool IsSessionStateHasInvocation(InvocationExpressionSyntax invocation)
+        {
+            return invocation?.Expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Expression is IdentifierNameSyntax receiver
+                   && receiver.Identifier.ValueText == "SessionState"
+                   && memberAccess.Name.Identifier.ValueText.StartsWith("Has", StringComparison.Ordinal);
+        }
+
+        private static bool HasInspectorFoldoutKeyArgument(
+            InvocationExpressionSyntax invocation,
+            int argumentIndex,
+            string key)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is InvocationExpressionSyntax keyInvocation
+                   && IsInvocationNamed(keyInvocation, "InspectorFoldoutKey")
+                   && HasStringArgument(keyInvocation, 0, key);
+        }
+
+        private static bool HasInspectorFoldoutKeyIdentifierArgument(
+            InvocationExpressionSyntax invocation,
+            int argumentIndex,
+            string identifier)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is InvocationExpressionSyntax keyInvocation
+                   && IsInvocationNamed(keyInvocation, "InspectorFoldoutKey")
+                   && keyInvocation.ArgumentList.Arguments.Count == 1
+                   && keyInvocation.ArgumentList.Arguments[0].Expression is IdentifierNameSyntax argument
+                   && argument.Identifier.ValueText == identifier;
+        }
+
+        private static bool HasIntegerLiteralArgument(InvocationExpressionSyntax invocation, int argumentIndex, int value)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is LiteralExpressionSyntax literal
+                   && literal.IsKind(SyntaxKind.NumericLiteralExpression)
+                   && literal.Token.Value is int intValue
+                   && intValue == value;
+        }
+
+        private static bool HasRefIdentifierArgument(
+            InvocationExpressionSyntax invocation,
+            int argumentIndex,
+            string identifier)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax argument
+                   && argument.Identifier.ValueText == identifier;
+        }
+
+        private static Dictionary<string, string> FindLegacyFoldoutLocalNames(IEnumerable<StatementSyntax> statements)
+        {
+            var result = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var declaration in statements.OfType<LocalDeclarationStatementSyntax>())
+            {
+                foreach (var variable in declaration.Declaration.Variables)
+                {
+                    if (!(variable.Initializer?.Value is InvocationExpressionSyntax invocation)
+                        || !IsSessionStateInvocationNamed(invocation, "GetBool"))
+                        continue;
+
+                    foreach (var key in LegacyTransportFoldoutKeys)
+                    {
+                        if (HasInspectorFoldoutKeyArgument(invocation, 0, key)
+                            && HasIntegerLiteralArgument(invocation, 1, 0) == false
+                            && invocation.ArgumentList.Arguments.Count > 1
+                            && invocation.ArgumentList.Arguments[1].Expression.IsKind(SyntaxKind.FalseLiteralExpression))
+                        {
+                            result[key] = variable.Identifier.ValueText;
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static bool HasMigratedChildSeed(
+            IEnumerable<InvocationExpressionSyntax> invocations,
+            string newKey,
+            IReadOnlyDictionary<string, string> legacyLocalNames,
+            string oldKey)
+        {
+            return legacyLocalNames.TryGetValue(oldKey, out var oldLocal)
+                   && invocations.Count(invocation => IsSessionStateInvocationNamed(invocation, "SetBool")
+                                                && HasInspectorFoldoutKeyArgument(invocation, 0, newKey)
+                                                && HasIdentifierArgument(invocation, 1, oldLocal)) == 1;
+        }
+
+        private static bool HasMigratedParentSeed(
+            IEnumerable<InvocationExpressionSyntax> invocations,
+            IReadOnlyDictionary<string, string> legacyLocalNames)
+        {
+            var parentSeeds = invocations
+                .Where(invocation => IsSessionStateInvocationNamed(invocation, "SetBool")
+                                     && HasInspectorFoldoutKeyArgument(invocation, 0, "DataTransport"))
+                .ToArray();
+            if (parentSeeds.Length != 1 || parentSeeds[0].ArgumentList.Arguments.Count < 2)
+                return false;
+
+            var parentExpression = parentSeeds[0].ArgumentList.Arguments[1].Expression;
+            var identifiers = parentExpression.DescendantNodesAndSelf()
+                .OfType<IdentifierNameSyntax>()
+                .Select(identifier => identifier.Identifier.ValueText)
+                .ToArray();
+            return parentExpression.DescendantNodesAndSelf()
+                       .OfType<BinaryExpressionSyntax>()
+                       .Any(expression => expression.IsKind(SyntaxKind.LogicalOrExpression))
+                   && LegacyTransportFoldoutKeys.All(key => legacyLocalNames.TryGetValue(key, out var local)
+                                                       && identifiers.Contains(local));
+        }
+
+        private static bool HasIdentifierArgument(InvocationExpressionSyntax invocation, int argumentIndex, string identifier)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax argument
+                   && argument.Identifier.ValueText == identifier;
+        }
+
+        private static int CountBoolFieldDeclarations(string source, string fieldName)
+        {
+            return CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<FieldDeclarationSyntax>()
+                .Where(field => field.Declaration.Type is PredefinedTypeSyntax type
+                                && type.Keyword.IsKind(SyntaxKind.BoolKeyword))
+                .SelectMany(field => field.Declaration.Variables)
+                .Count(variable => variable.Identifier.ValueText == fieldName);
+        }
+
+        private static bool IsEditorGuiIndentMutation(SyntaxNode node)
+        {
+            return node is AssignmentExpressionSyntax assignment
+                   && IsEditorGuiIndentTarget(assignment.Left)
+                   || node is PostfixUnaryExpressionSyntax unary
+                   && IsEditorGuiIndentTarget(unary.Operand)
+                   && (unary.IsKind(SyntaxKind.PostIncrementExpression)
+                       || unary.IsKind(SyntaxKind.PostDecrementExpression));
+        }
+
+        private static bool IsEditorGuiIndentIncrement(SyntaxNode node)
+        {
+            return node is AssignmentExpressionSyntax assignment
+                   && assignment.IsKind(SyntaxKind.AddAssignmentExpression)
+                   && IsEditorGuiIndentTarget(assignment.Left)
+                   || node is PostfixUnaryExpressionSyntax unary
+                   && unary.IsKind(SyntaxKind.PostIncrementExpression)
+                   && IsEditorGuiIndentTarget(unary.Operand);
+        }
+
+        private static bool IsEditorGuiIndentDecrement(SyntaxNode node)
+        {
+            return node is AssignmentExpressionSyntax assignment
+                   && assignment.IsKind(SyntaxKind.SubtractAssignmentExpression)
+                   && IsEditorGuiIndentTarget(assignment.Left)
+                   || node is PostfixUnaryExpressionSyntax unary
+                   && unary.IsKind(SyntaxKind.PostDecrementExpression)
+                   && IsEditorGuiIndentTarget(unary.Operand);
+        }
+
+        private static bool IsEditorGuiIndentTarget(ExpressionSyntax expression)
+        {
+            return expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Expression is IdentifierNameSyntax receiver
+                   && receiver.Identifier.ValueText == "EditorGUI"
+                   && memberAccess.Name.Identifier.ValueText == "indentLevel";
         }
 
         private static bool ContainsStringLiteral(MethodDeclarationSyntax method, string value)
