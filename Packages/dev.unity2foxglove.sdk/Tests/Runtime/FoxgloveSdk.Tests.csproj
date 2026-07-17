@@ -169,6 +169,7 @@
     <Compile Include="FoxRunManagerWirePolicyValidation.cs" />
     <Compile Include="FoxRunSubscribeDataValidation.cs" />
     <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs" />
+    <Compile Include="DataTransportInspectorValidation.cs" />
     <Compile Include="Phase163_2Validation.cs" />
     <Compile Include="Phase163_3Validation.cs" />
     <Compile Include="Phase163_4Validation.cs" />
