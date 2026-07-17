@@ -50,6 +50,9 @@ LOCAL_EDITOR_DEFAULT_PROFILE_IDS = frozenset(
 LOCAL_ZENOH_TOPOLOGY_ID = "phase179-lyrical-zenoh-local-router"
 WINDOWS_LOCAL_PUBLISH_MAX_WAIT_DISTROS = frozenset({"jazzy", "lyrical"})
 WINDOWS_RCLPY_ENDPOINT_PROBE = pathlib.Path(__file__).with_name("phase179_windows_rclpy_endpoint_probe.py")
+LOCAL_EDITOR_READY_TIMEOUT_SECONDS = 300
+LOCAL_EDITOR_APPLY_TIMEOUT_SECONDS = 90
+LOCAL_EDITOR_CORRELATION_MESSAGE = "string"
 
 
 class MatrixFailure(RuntimeError):
@@ -89,7 +92,14 @@ def profile_wrapper_argv(profile_id: str, argv: Sequence[str]) -> list[str]:
     if supplied or profile is None or profile_id not in LOCAL_EDITOR_DEFAULT_PROFILE_IDS:
         return supplied
 
-    result = ["--role", "windows-local-editor"]
+    result = [
+        "--role",
+        "windows-local-editor",
+        "--ready-timeout-seconds",
+        str(LOCAL_EDITOR_READY_TIMEOUT_SECONDS),
+        "--apply-timeout-seconds",
+        str(LOCAL_EDITOR_APPLY_TIMEOUT_SECONDS),
+    ]
     if profile.rmw == zenoh_topology.ZENOH_RMW:
         ros2_root = ros2env.default_ros2_root(profile.distro, inbound.workspace_root())
         result.extend(
@@ -895,6 +905,19 @@ def build_windows_local_publish_command(
     return command
 
 
+def local_editor_publish_stages(profile: MatrixProfile) -> tuple[tuple[str, ...], ...]:
+    """Stage String before tokenless contracts so their Unity proof has this run's correlation token."""
+
+    if LOCAL_EDITOR_CORRELATION_MESSAGE not in profile.message_set:
+        raise MatrixFailure(
+            "LOCAL_PROFILE",
+            "Windows-local acceptance requires the String correlation contract in every fixed profile.",
+        )
+    first_stage = (LOCAL_EDITOR_CORRELATION_MESSAGE,)
+    remaining_stage = tuple(name for name in profile.message_set if name != LOCAL_EDITOR_CORRELATION_MESSAGE)
+    return (first_stage, remaining_stage) if remaining_stage else (first_stage,)
+
+
 @contextlib.contextmanager
 def managed_windows_local_publishers(
     python: pathlib.Path,
@@ -902,12 +925,16 @@ def managed_windows_local_publishers(
     env: dict[str, str],
     profile: MatrixProfile,
     args: argparse.Namespace,
+    *,
+    message_names: Sequence[str],
 ) -> object:
-    """Keep one repo-local publisher per contract waiting until Unity registers its matching subscription."""
+    """Keep one staged set of repo-local publishers alive until Unity registers their subscriptions."""
 
     processes: list[tuple[str, subprocess.Popen[str]]] = []
     try:
-        for name in profile.message_set:
+        if not message_names or any(name not in profile.message_set for name in message_names):
+            raise MatrixFailure("LOCAL_PROFILE", "Windows-local publisher stage did not match the fixed profile contracts.")
+        for name in message_names:
             spec = inbound.MESSAGE_SPECS[name]
             command = build_windows_local_publish_command(profile, spec, args)
             popen_kwargs: dict[str, object] = {
@@ -945,11 +972,12 @@ def managed_windows_local_publishers(
 def _wait_for_windows_local_apply_markers(
     profile: MatrixProfile,
     args: argparse.Namespace,
+    message_names: Sequence[str],
 ) -> dict[str, inbound.UnityMarker]:
     """Require copied-value evidence for this run's generated token without assuming Editor.log appends at EOF."""
 
     markers: dict[str, inbound.UnityMarker] = {}
-    for name in profile.message_set:
+    for name in message_names:
         spec = inbound.MESSAGE_SPECS[name]
         markers[name] = inbound.wait_for_unity_marker(
             args.unity_log,
@@ -1010,11 +1038,22 @@ def run_windows_local_editor(profile: MatrixProfile, args: argparse.Namespace) -
             profile.distro,
             profile.rmw,
         )
+        publish_stages = local_editor_publish_stages(profile)
+        first_stage = publish_stages[0]
         print(
-            f"[phase179:{profile.profile_id}] Repo-local publishers are waiting for Unity subscriptions; enter Play Mode now.",
+            f"[phase179:{profile.profile_id}] Repo-local String publisher is waiting for its Unity subscription "
+            f"for up to {args.ready_timeout_seconds:g} seconds; enter Play Mode now.",
             flush=True,
         )
-        with managed_windows_local_publishers(python, ros2_script, env, profile, args):
+        markers: dict[str, inbound.UnityMarker] = {}
+        with managed_windows_local_publishers(
+            python,
+            ros2_script,
+            env,
+            profile,
+            args,
+            message_names=first_stage,
+        ):
             inbound.wait_for_unity_ready_marker(
                 args.unity_log,
                 profile.distro,
@@ -1025,9 +1064,25 @@ def run_windows_local_editor(profile: MatrixProfile, args: argparse.Namespace) -
                 excluded_tokens=ready_tokens_before_launch,
             )
             summary["ready"] = True
-            markers = _wait_for_windows_local_apply_markers(profile, args)
-            summary["messageResults"] = _editor_marker_evidence(profile, args.token, markers)
-            summary["allRequiredApplied"] = True
+            markers.update(_wait_for_windows_local_apply_markers(profile, args, first_stage))
+        for stage in publish_stages[1:]:
+            print(
+                f"[phase179:{profile.profile_id}] String correlation proof observed; starting delayed publishers: "
+                + ", ".join(stage)
+                + ".",
+                flush=True,
+            )
+            with managed_windows_local_publishers(
+                python,
+                ros2_script,
+                env,
+                profile,
+                args,
+                message_names=stage,
+            ):
+                markers.update(_wait_for_windows_local_apply_markers(profile, args, stage))
+        summary["messageResults"] = _editor_marker_evidence(profile, args.token, markers)
+        summary["allRequiredApplied"] = True
         # The preceding context verifies every repo-local publisher exited successfully
         # after it waited for Unity and each unique copied-value marker was observed.
         # A new post-publication rclpy graph observer is deliberately not a local hard

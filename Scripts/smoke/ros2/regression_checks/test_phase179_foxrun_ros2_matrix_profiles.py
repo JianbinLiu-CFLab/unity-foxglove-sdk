@@ -155,7 +155,14 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
     def test_all_named_wrappers_default_to_one_command_windows_local_editor(self) -> None:
         """Every named row exposes a safe no-argument local Editor entry point, with Zenoh router ownership explicit."""
 
-        local_editor = ["--role", "windows-local-editor"]
+        local_editor = [
+            "--role",
+            "windows-local-editor",
+            "--ready-timeout-seconds",
+            "300",
+            "--apply-timeout-seconds",
+            "90",
+        ]
         for profile_id in ("humble-fastrtps", "jazzy-fastrtps", "lyrical-fastrtps"):
             self.assertEqual(local_editor, self.profiles.profile_wrapper_argv(profile_id, []))
 
@@ -233,12 +240,14 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
             events: list[str] = []
 
             @contextlib.contextmanager
-            def managed_publishers(*_args, **_kwargs):
-                events.append("publishers-started")
+            def managed_publishers(*_args, **kwargs):
+                message_names = kwargs.get("message_names", profile.message_set)
+                label = ",".join(message_names)
+                events.append(f"publishers-started:{label}")
                 try:
                     yield
                 finally:
-                    events.append("publishers-stopped")
+                    events.append(f"publishers-stopped:{label}")
 
             def wait_ready(*_args, **_kwargs):
                 events.append("ready")
@@ -309,12 +318,14 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
         self.assertEqual(["string", "twist", "joy"], [entry["name"] for entry in summary["messageResults"]])
         self.assertEqual(
             [
-                "publishers-started",
+                "publishers-started:string",
                 "ready",
                 "marker:string",
+                "publishers-stopped:string",
+                "publishers-started:twist,joy",
                 "marker:twist",
                 "marker:joy",
-                "publishers-stopped",
+                "publishers-stopped:twist,joy",
             ],
             events,
         )
@@ -356,12 +367,14 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
             events: list[str] = []
 
             @contextlib.contextmanager
-            def managed_publishers(*_args, **_kwargs):
-                events.append("publishers-started")
+            def managed_publishers(*_args, **kwargs):
+                message_names = kwargs.get("message_names", profile.message_set)
+                label = ",".join(message_names)
+                events.append(f"publishers-started:{label}")
                 try:
                     yield
                 finally:
-                    events.append("publishers-stopped")
+                    events.append(f"publishers-stopped:{label}")
 
             def start_topology(*_args, **_kwargs):
                 events.append("topology-started")
@@ -438,12 +451,14 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
         self.assertEqual(
             [
                 "topology-started",
-                "publishers-started",
+                "publishers-started:string",
                 "ready",
                 "marker:string",
+                "publishers-stopped:string",
+                "publishers-started:twist,joy",
                 "marker:twist",
                 "marker:joy",
-                "publishers-stopped",
+                "publishers-stopped:twist,joy",
                 "topology-closed",
             ],
             events,
