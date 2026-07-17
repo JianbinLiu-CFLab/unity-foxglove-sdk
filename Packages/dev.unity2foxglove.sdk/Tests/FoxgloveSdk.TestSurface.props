@@ -64,6 +64,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/SourceGenerators/src/**/*.cs" LinkBase="SourceGenerators" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunSubscriptionProtocolEditorLabels.cs" Link="Shared/FoxRunSubscriptionProtocolEditorLabels.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunRos2SubscriptionInspectorPresentation.cs" Link="Shared/FoxRunRos2SubscriptionInspectorPresentation.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs" Link="Ros2ForUnityEditor/Ros2ForUnityRuntimeCapabilityModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />

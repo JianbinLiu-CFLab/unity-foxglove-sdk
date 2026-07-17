@@ -69,6 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
             var migration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
             var helper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunWireEncodingPolicyMigration.cs");
+            var copyBudgetPolicy = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2NativeCopyBudgetPolicy.cs");
 
             Check(policy.Contains("public sealed class FoxRunSubscriptionSessionPolicy", StringComparison.Ordinal)
                   && policy.Contains("public ulong SessionGeneration { get; }", StringComparison.Ordinal)
@@ -168,9 +169,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && migration.Contains("ref _defaultFoxRunRos2Qos", StringComparison.Ordinal)
                   && migration.Contains("ref _foxRunRos2NativeCopyBudgetBytes", StringComparison.Ordinal)
                   && helper.Contains("CurrentSerializationVersion = 2", StringComparison.Ordinal)
-                  && helper.Contains("MinRos2NativeCopyBudgetBytes = 1024", StringComparison.Ordinal)
-                  && helper.Contains("MaxRos2NativeCopyBudgetBytes = 256 * 1024 * 1024", StringComparison.Ordinal)
-                  && helper.Contains("DefaultRos2NativeCopyBudgetBytes = 4 * 1024 * 1024", StringComparison.Ordinal)
+                  && copyBudgetPolicy.Contains("public const int MinBytes = 1024", StringComparison.Ordinal)
+                  && copyBudgetPolicy.Contains("public const int MaxBytes = 256 * 1024 * 1024", StringComparison.Ordinal)
+                  && copyBudgetPolicy.Contains("public const int DefaultBytes = 4 * 1024 * 1024", StringComparison.Ordinal)
+                  && helper.Contains("MinRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MinBytes", StringComparison.Ordinal)
+                  && helper.Contains("MaxRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MaxBytes", StringComparison.Ordinal)
+                  && helper.Contains("DefaultRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes", StringComparison.Ordinal)
+                  && helper.Contains("=> FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configuredBytes)", StringComparison.Ordinal)
+                  && helper.Contains("FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(qos)", StringComparison.Ordinal)
                   && compatibilitySetter.Contains("_foxRunPolicySerializationVersion = FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion", StringComparison.Ordinal)
                   && !inbound.Contains("FormerlySerializedAs", StringComparison.Ordinal)
                   && !onValidate.Contains("FoxRunWireEncodingPolicyMigration.Migrate", StringComparison.Ordinal)

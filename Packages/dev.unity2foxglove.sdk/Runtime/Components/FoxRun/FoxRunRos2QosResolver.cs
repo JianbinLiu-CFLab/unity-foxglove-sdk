@@ -93,6 +93,24 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Recovers a Manager value while Unity deserializes an Inspector field.
+        /// This safe path is intentionally separate from strict runtime resolution.
+        /// </summary>
+        public static FoxRunRos2QosPreset NormalizeSerializedManagerDefault(
+            FoxRunRos2QosPreset managerDefault)
+        {
+            switch (managerDefault)
+            {
+                case FoxRunRos2QosPreset.Reliable:
+                case FoxRunRos2QosPreset.SensorData:
+                case FoxRunRos2QosPreset.TransientLocal:
+                    return managerDefault;
+                default:
+                    return FoxRunRos2QosPreset.Default;
+            }
+        }
+
         private static bool IsValidPreset(FoxRunRos2QosPreset preset)
             => preset == FoxRunRos2QosPreset.Inherit
                || preset == FoxRunRos2QosPreset.Default

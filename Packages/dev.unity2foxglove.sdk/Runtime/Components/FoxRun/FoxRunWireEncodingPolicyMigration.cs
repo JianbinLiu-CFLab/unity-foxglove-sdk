@@ -10,9 +10,9 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const int DirectionalSerializationVersion = 1;
         internal const int CurrentSerializationVersion = 2;
-        internal const int MinRos2NativeCopyBudgetBytes = 1024;
-        internal const int MaxRos2NativeCopyBudgetBytes = 256 * 1024 * 1024;
-        internal const int DefaultRos2NativeCopyBudgetBytes = 4 * 1024 * 1024;
+        internal const int MinRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MinBytes;
+        internal const int MaxRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MaxBytes;
+        internal const int DefaultRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes;
 
         /// <summary>
         /// Copies the former shared default into both directional defaults once.
@@ -73,15 +73,7 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>Defaults missing budgets and clamps positive values to the portable range.</summary>
         public static int NormalizeRos2NativeCopyBudgetBytes(int configuredBytes)
-        {
-            if (configuredBytes <= 0)
-                return DefaultRos2NativeCopyBudgetBytes;
-            if (configuredBytes < MinRos2NativeCopyBudgetBytes)
-                return MinRos2NativeCopyBudgetBytes;
-            return configuredBytes > MaxRos2NativeCopyBudgetBytes
-                ? MaxRos2NativeCopyBudgetBytes
-                : configuredBytes;
-        }
+            => FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configuredBytes);
 
         private static FoxRunSubscriptionProvider NormalizeSubscriptionProvider(
             FoxRunSubscriptionProvider provider)
@@ -90,10 +82,6 @@ namespace Unity.FoxgloveSDK.Components
                 : FoxRunSubscriptionProvider.FoxgloveWebSocket;
 
         private static FoxRunRos2QosPreset NormalizeRos2Qos(FoxRunRos2QosPreset qos)
-            => qos == FoxRunRos2QosPreset.Reliable
-               || qos == FoxRunRos2QosPreset.SensorData
-               || qos == FoxRunRos2QosPreset.TransientLocal
-                ? qos
-                : FoxRunRos2QosPreset.Default;
+            => FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(qos);
     }
 }
