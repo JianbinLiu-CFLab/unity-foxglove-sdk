@@ -241,6 +241,8 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
 
             @contextlib.contextmanager
             def managed_publishers(*_args, **kwargs):
+                """Record the staged local publisher lifecycle without launching ROS2."""
+
                 message_names = kwargs.get("message_names", profile.message_set)
                 label = ",".join(message_names)
                 events.append(f"publishers-started:{label}")
@@ -250,10 +252,14 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
                     events.append(f"publishers-stopped:{label}")
 
             def wait_ready(*_args, **_kwargs):
+                """Record the fresh Unity READY boundary for the staged test flow."""
+
                 events.append("ready")
                 return ready
 
             def wait_marker(*marker_args, **_kwargs):
+                """Return the copied-value marker for the currently requested topic."""
+
                 name = str(marker_args[1]).rsplit("/", 1)[-1]
                 events.append(f"marker:{name}")
                 return markers[name]
@@ -368,6 +374,8 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
 
             @contextlib.contextmanager
             def managed_publishers(*_args, **kwargs):
+                """Record each staged publisher set while the fake Zenoh router remains owned."""
+
                 message_names = kwargs.get("message_names", profile.message_set)
                 label = ",".join(message_names)
                 events.append(f"publishers-started:{label}")
@@ -377,16 +385,24 @@ class Phase179FoxRunRos2MatrixProfileTests(unittest.TestCase):
                     events.append(f"publishers-stopped:{label}")
 
             def start_topology(*_args, **_kwargs):
+                """Record owned-router startup and return the fixed test handle."""
+
                 events.append("topology-started")
                 return handle
 
             def close_topology(*_args, **_kwargs):
+                """Record owned-router cleanup after staged local publishers finish."""
+
                 events.append("topology-closed")
 
             def wait_ready(*_args, **_kwargs):
+                """Record the fresh Unity READY boundary for the Zenoh staged flow."""
+
                 events.append("ready")
 
             def wait_marker(*marker_args, **_kwargs):
+                """Return the fixed copied-value marker for the requested Zenoh topic."""
+
                 name = str(marker_args[1]).rsplit("/", 1)[-1]
                 events.append(f"marker:{name}")
                 return markers[name]
