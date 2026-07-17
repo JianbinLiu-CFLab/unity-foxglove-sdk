@@ -96,12 +96,20 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append("        public const string FoxRunManifestHash = ");
             AppendStringLiteral(sb, manifest.Sections.FoxRun.ManifestHash);
             sb.AppendLine(";");
+            sb.Append("        public const string SubscriptionManifestHash = ");
+            AppendStringLiteral(sb, manifest.Sections.Subscriptions.ManifestHash);
+            sb.AppendLine(";");
             sb.AppendLine("        public const int TypeCount = " + counts.TypeCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int ContractCount = " + counts.ContractCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int FieldCount = " + counts.FieldCount.ToString(CultureInfo.InvariantCulture) + ";");
+            sb.AppendLine("        public const int SubscriptionBindingCount = " + manifest.Sections.Subscriptions.Bindings.Count.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine();
             sb.AppendLine("        public static readonly FoxRunSchemaTypeInfo[] Types =");
             WriteTypesArray(sb, types, 3);
+            sb.AppendLine(";");
+            sb.AppendLine();
+            sb.AppendLine("        public static readonly FoxRunSchemaSubscriptionBindingInfo[] SubscriptionBindings =");
+            WriteSubscriptionBindingsArray(sb, manifest.Sections.Subscriptions.Bindings, 3);
             sb.AppendLine(";");
             sb.AppendLine();
             sb.AppendLine("        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]");
@@ -115,7 +123,9 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("                    GeneratorMajorVersion,");
             sb.AppendLine("                    GlobalManifestHash,");
             sb.AppendLine("                    FoxRunManifestHash,");
-            sb.AppendLine("                    Types));");
+            sb.AppendLine("                    Types,");
+            sb.AppendLine("                    SubscriptionManifestHash,");
+            sb.AppendLine("                    SubscriptionBindings));");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine("}");
@@ -148,6 +158,13 @@ namespace Unity.FoxgloveSDK.Editor
                 result.AddError("GlobalManifestHash mismatch.");
             if (!string.Equals(result.ExpectedFoxRunManifestHash, result.ActualFoxRunManifestHash, StringComparison.Ordinal))
                 result.AddError("FoxRunManifestHash mismatch.");
+            if (!string.Equals(
+                    manifest.Sections.Subscriptions.ManifestHash,
+                    ExtractStringConstant(generatedSource, "SubscriptionManifestHash"),
+                    StringComparison.Ordinal))
+            {
+                result.AddError("SubscriptionManifestHash mismatch.");
+            }
             if (result.ExpectedTypeCount != result.ActualTypeCount)
                 result.AddError("TypeCount mismatch.");
             if (result.ExpectedContractCount != result.ActualContractCount)
@@ -200,6 +217,56 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "),");
             }
             sb.AppendLine(indent + "}");
+        }
+
+        private static void WriteSubscriptionBindingsArray(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunManifestSubscriptionBinding> bindings,
+            int indentLevel)
+        {
+            var indent = Indent(indentLevel);
+            var inner = Indent(indentLevel + 1);
+            sb.AppendLine(indent + "new FoxRunSchemaSubscriptionBindingInfo[]");
+            sb.AppendLine(indent + "{");
+            foreach (var binding in bindings)
+            {
+                sb.AppendLine(inner + "new FoxRunSchemaSubscriptionBindingInfo(");
+                AppendIndentedStringLiteralLine(sb, inner, binding.DeclaringType, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.MemberName, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.Topic, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.FlowMode, ",");
+                sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(binding.DeclaredProvider) + ",");
+                sb.AppendLine(inner + "    " + Ros2QosLiteral(binding.Ros2Qos) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsWebSocket) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsRos2Native) + ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.NativeType, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.CanonicalRosType, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.CopyShapeIdentity, string.Empty);
+                sb.AppendLine(inner + "),");
+            }
+            sb.Append(indent + "}");
+        }
+
+        private static string SubscriptionProviderLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal))
+                return "FoxRunSubscriptionProvider.FoxgloveWebSocket";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal))
+                return "FoxRunSubscriptionProvider.Ros2Native";
+            return "FoxRunSubscriptionProvider.Inherit";
+        }
+
+        private static string Ros2QosLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.ReliableRos2Qos, StringComparison.Ordinal))
+                return "FoxRunRos2QosPreset.Reliable";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataRos2Qos, StringComparison.Ordinal))
+                return "FoxRunRos2QosPreset.SensorData";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos, StringComparison.Ordinal))
+                return "FoxRunRos2QosPreset.TransientLocal";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultRos2Qos, StringComparison.Ordinal))
+                return "FoxRunRos2QosPreset.Default";
+            return "FoxRunRos2QosPreset.Inherit";
         }
 
         private static void WriteFieldsArray(

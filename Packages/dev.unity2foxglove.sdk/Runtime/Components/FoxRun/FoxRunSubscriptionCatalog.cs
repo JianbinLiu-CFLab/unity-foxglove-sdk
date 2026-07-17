@@ -29,9 +29,29 @@ namespace Unity.FoxgloveSDK.Components
             int subscriptionRateLimitHz,
             string requestedTopic,
             bool includeDescriptor)
+            => BuildResponse(
+                manifest,
+                subscriptionsEnabled,
+                publishDefault,
+                subscriptionDefault,
+                FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                subscriptionRateLimitHz,
+                requestedTopic,
+                includeDescriptor);
+
+        public static JObject BuildResponse(
+            FoxRunSchemaManifestInfo manifest,
+            bool subscriptionsEnabled,
+            FoxRunWireEncoding publishDefault,
+            FoxRunWireEncoding subscriptionDefault,
+            FoxRunSubscriptionProvider defaultProvider,
+            int subscriptionRateLimitHz,
+            string requestedTopic,
+            bool includeDescriptor)
         {
             publishDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(publishDefault);
             subscriptionDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(subscriptionDefault);
+            defaultProvider = FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(defaultProvider);
 
             var contracts = new JArray();
             var response = new JObject
@@ -44,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
             if (!subscriptionsEnabled || manifest == null)
                 return response;
 
-            foreach (var entry in EnumerateContracts(manifest, publishDefault, subscriptionDefault)
+            foreach (var entry in EnumerateContracts(manifest, publishDefault, subscriptionDefault, defaultProvider)
                          .Where(entry => string.IsNullOrEmpty(requestedTopic)
                                          || string.Equals(entry.Contract.Topic, requestedTopic, StringComparison.Ordinal))
                          .OrderBy(entry => entry.Contract.Topic, StringComparer.Ordinal)
@@ -85,7 +105,8 @@ namespace Unity.FoxgloveSDK.Components
         private static IEnumerable<CatalogContract> EnumerateContracts(
             FoxRunSchemaManifestInfo manifest,
             FoxRunWireEncoding publishDefault,
-            FoxRunWireEncoding subscriptionDefault)
+            FoxRunWireEncoding subscriptionDefault,
+            FoxRunSubscriptionProvider defaultProvider)
         {
             foreach (var type in manifest.Types ?? Array.Empty<FoxRunSchemaTypeInfo>())
             {
@@ -93,12 +114,23 @@ namespace Unity.FoxgloveSDK.Components
                     continue;
 
                 foreach (var group in type.Contracts
-                             .Where(contract => contract != null && IsSubscriptionFlow(contract.FlowMode))
+                             .Where(contract => contract != null
+                                                && IsSubscriptionFlow(contract.FlowMode)
+                                                && IsWebSocketEncoding(contract.Encoding))
                              .GroupBy(contract => new ContractKey(contract.Topic, contract.FlowMode)))
                 {
                     var variants = group.ToArray();
                     var declared = ResolveDeclaredEncoding(variants);
                     var mode = ParseFlowMode(group.Key.FlowMode);
+                    if (!ResolvesToWebSocket(
+                            manifest,
+                            variants,
+                            mode,
+                            declared,
+                            defaultProvider))
+                    {
+                        continue;
+                    }
                     var effective = FoxRunWireEncodingResolver.Resolve(
                         declared,
                         mode,
@@ -110,6 +142,87 @@ namespace Unity.FoxgloveSDK.Components
                     yield return new CatalogContract(selected, effective);
                 }
             }
+        }
+
+        private static bool ResolvesToWebSocket(
+            FoxRunSchemaManifestInfo manifest,
+            IReadOnlyList<FoxRunSchemaContractInfo> contracts,
+            FoxRunMode mode,
+            FoxRunWireEncoding declaredEncoding,
+            FoxRunSubscriptionProvider defaultProvider)
+        {
+            if (contracts == null || contracts.Count == 0)
+                return false;
+            var contract = contracts[0];
+            var bindings = (manifest.SubscriptionBindings
+                            ?? Array.Empty<FoxRunSchemaSubscriptionBindingInfo>())
+                .Where(binding => binding != null
+                                  && string.Equals(binding.DeclaringType, contract.DeclaringType, StringComparison.Ordinal)
+                                  && string.Equals(binding.Topic, contract.Topic, StringComparison.Ordinal)
+                                  && string.Equals(binding.FlowMode, contract.FlowMode, StringComparison.Ordinal))
+                .OrderBy(binding => binding.MemberName, StringComparer.Ordinal)
+                .ToArray();
+            if (bindings.Length == 0)
+            {
+                if (manifest.ManifestVersion >= 2)
+                    return false;
+                var legacy = FoxRunSubscriptionProviderResolver.Resolve(
+                    FoxRunSubscriptionProvider.Inherit,
+                    defaultProvider,
+                    mode,
+                    declaredEncoding,
+                    supportsWebSocket: true,
+                    supportsRos2Native: false);
+                return legacy.Success
+                       && legacy.Provider == FoxRunSubscriptionProvider.FoxgloveWebSocket;
+            }
+
+            if (manifest.ManifestVersion >= 2
+                && !BindingIdentityMatchesContracts(contracts, bindings))
+            {
+                return false;
+            }
+
+            foreach (var binding in bindings)
+            {
+                var resolution = FoxRunSubscriptionProviderResolver.Resolve(
+                    binding.DeclaredProvider,
+                    defaultProvider,
+                    mode,
+                    declaredEncoding,
+                    binding.SupportsWebSocket,
+                    binding.SupportsRos2Native);
+                if (!resolution.Success
+                    || resolution.Provider != FoxRunSubscriptionProvider.FoxgloveWebSocket)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private static bool BindingIdentityMatchesContracts(
+            IReadOnlyList<FoxRunSchemaContractInfo> contracts,
+            IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> bindings)
+        {
+            var expectedMembers = contracts
+                .Where(contract => contract != null)
+                .SelectMany(contract => contract.Fields ?? Array.Empty<FoxRunSchemaFieldInfo>())
+                .Where(field => field != null && !string.IsNullOrEmpty(field.MemberName))
+                .Select(field => field.MemberName)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(memberName => memberName, StringComparer.Ordinal)
+                .ToArray();
+            var actualMembers = bindings
+                .Where(binding => binding != null && !string.IsNullOrEmpty(binding.MemberName))
+                .Select(binding => binding.MemberName)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(memberName => memberName, StringComparer.Ordinal)
+                .ToArray();
+
+            return expectedMembers.Length > 0
+                   && actualMembers.Length == bindings.Count
+                   && expectedMembers.SequenceEqual(actualMembers, StringComparer.Ordinal);
         }
 
         private static JArray BuildFields(IReadOnlyList<FoxRunSchemaFieldInfo> fields)
@@ -153,6 +266,10 @@ namespace Unity.FoxgloveSDK.Components
         private static bool IsSubscriptionFlow(string flowMode)
             => string.Equals(flowMode, "SubscribeOnly", StringComparison.Ordinal)
                || string.Equals(flowMode, "PublishAndSubscribe", StringComparison.Ordinal);
+
+        private static bool IsWebSocketEncoding(string encoding)
+            => string.Equals(encoding, "json", StringComparison.Ordinal)
+               || string.Equals(encoding, "protobuf", StringComparison.Ordinal);
 
         private static FoxRunMode ParseFlowMode(string flowMode)
         {

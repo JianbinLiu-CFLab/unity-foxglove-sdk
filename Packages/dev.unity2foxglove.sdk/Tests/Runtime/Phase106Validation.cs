@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
                 Path.Combine(packageRoot, "Samples~")
             };
 
-            var forbidden = new[]
+            var forbiddenTextTokens = new[]
             {
                 "using ROS2;",
                 "namespace ROS2",
@@ -76,14 +76,29 @@ namespace Unity.FoxgloveSDK.Tests
                          .Where(HasTextExtension))
             {
                 var text = File.ReadAllText(path);
+                var forbidden = Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                    ? PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(text, forbiddenTextTokens)
+                    : forbiddenTextTokens.Where(token => text.Contains(token, StringComparison.Ordinal));
                 hits.AddRange(forbidden
-                    .Where(token => text.Contains(token, StringComparison.Ordinal))
                     .Select(token => Path.GetRelativePath(root, path).Replace('\\', '/') + " -> " + token));
             }
 
             Check(hits.Count == 0,
                 "106B-1: package Runtime/Editor/Samples have no hard ROS2 For Unity dependency"
                 + (hits.Count == 0 ? string.Empty : " (" + string.Join(", ", hits) + ")"));
+            Check(!PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(
+                        "const string NativeAssembly = \"Unity2Foxglove.Ros2ForUnity.Native\";",
+                        forbiddenTextTokens).Any()
+                  && PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(
+                        "using Unity2Foxglove.Ros2ForUnity.Native;",
+                        forbiddenTextTokens).Contains("Ros2ForUnity", StringComparer.Ordinal)
+                  && !PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(
+                        "const string PublisherType = \"IPublisher<Message>\";",
+                        new[] { "IPublisher<" }).Any()
+                  && PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(
+                        "IPublisher<Message> publisher;",
+                        new[] { "IPublisher<" }).Contains("IPublisher", StringComparer.Ordinal),
+                "106B-2: hard-dependency scan ignores generated type strings but rejects compiled namespace and generic references");
         }
 
         private static void VerifyAcceptanceComponent()

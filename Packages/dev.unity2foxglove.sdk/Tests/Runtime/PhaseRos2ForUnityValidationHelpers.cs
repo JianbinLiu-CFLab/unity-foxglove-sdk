@@ -10,6 +10,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -41,6 +43,50 @@ namespace Unity.FoxgloveSDK.Tests
             "visualization_msgs",
             "builtin_interfaces"
         };
+
+        private static readonly HashSet<string> HardR2fuCSharpIdentifiers = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "ROS2",
+            "ROS2UnityComponent",
+            "ROS2Node",
+            "IPublisher",
+            "ISubscription",
+            "Ros2ForUnity",
+            "tf2_msgs",
+            "sensor_msgs",
+            "std_msgs",
+            "geometry_msgs",
+            "nav_msgs",
+            "visualization_msgs",
+            "builtin_interfaces",
+            "ros2cs"
+        };
+
+        /// <summary>
+        /// Finds compiled C# identifiers that would bind the core SDK to R2FU or
+        /// generated ROS2 message assemblies. Comments and string literals are
+        /// intentionally excluded so source generators may describe optional
+        /// types without acquiring an assembly reference.
+        /// </summary>
+        public static IEnumerable<string> FindHardR2fuCSharpIdentifiers(
+            string text,
+            IEnumerable<string> forbiddenTokens)
+        {
+            if (forbiddenTokens == null)
+                throw new ArgumentNullException(nameof(forbiddenTokens));
+
+            var tokens = forbiddenTokens.ToArray();
+            var forbiddenIdentifiers = HardR2fuCSharpIdentifiers
+                .Where(identifier => tokens.Any(token => token.Contains(identifier, StringComparison.Ordinal)))
+                .ToHashSet(StringComparer.Ordinal);
+            return CSharpSyntaxTree.ParseText(text)
+                .GetCompilationUnitRoot()
+                .DescendantNodes()
+                .OfType<SimpleNameSyntax>()
+                .Select(name => name.Identifier.ValueText)
+                .Where(forbiddenIdentifiers.Contains)
+                .Distinct(StringComparer.Ordinal);
+        }
 
         public static bool IsForbiddenR2fuArtifact(string path, string allowedRuntimePackagePrefix = null)
         {

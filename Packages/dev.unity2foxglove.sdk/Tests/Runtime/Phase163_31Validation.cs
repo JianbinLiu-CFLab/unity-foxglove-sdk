@@ -36,13 +36,17 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeSelectionKeepsJazzyFastDdsOnly()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
+            var capabilities = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs");
 
-            Check(source.Contains("IsZenohCapableDistro(rosDistro) && string.IsNullOrWhiteSpace(zenohPayloadDiagnostic)", StringComparison.Ordinal)
-                  && source.Contains("GetZenohPayloadDiagnostic(packageDirectory, rosDistro)", StringComparison.Ordinal),
-                "163-31A-1: runtime selection requires both distro capability and complete Zenoh payload");
-            Check(source.Contains("string.Equals(rosDistro, \"lyrical\", StringComparison.Ordinal)", StringComparison.Ordinal)
-                  && !ExtractMethod(source, "IsZenohCapableDistro").Contains("\"jazzy\"", StringComparison.Ordinal),
-                "163-31A-2: runtime selection does not mark Jazzy Zenoh-capable by stray DLL presence");
+            Check(source.Contains("Ros2ForUnityRuntimeCapabilityParser.Parse", StringComparison.Ordinal)
+                  && source.Contains("capabilities.SupportsZenoh", StringComparison.Ordinal)
+                  && !source.Contains("IsZenohCapableDistro", StringComparison.Ordinal),
+                "163-31A-1: runtime selection derives Zenoh availability from manifest capability data, not distro identity");
+            Check(capabilities.Contains("supportedRmwImplementations", StringComparison.Ordinal)
+                  && capabilities.Contains("communicationModes", StringComparison.Ordinal)
+                  && capabilities.Contains("rmw_zenoh_cpp", StringComparison.Ordinal)
+                  && !capabilities.Contains("\"lyrical\"", StringComparison.Ordinal),
+                "163-31A-2: runtime capability normalization keeps Jazzy FastDDS-only unless its own manifest declares another RMW");
         }
 
         private static void RuntimeSelectionUsesPlatformSensitiveEmbeddedPackageComparison()

@@ -85,7 +85,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && !source.Contains("Regex.Matches", StringComparison.Ordinal),
                 "164-51D-2: manifest runtime package discovery is file-version cached and JSON-based");
             Check(source.Contains("private static readonly Dictionary<string, string> ZenohPayloadDiagnostics", StringComparison.Ordinal)
-                  && source.Contains("private static string GetZenohPayloadDiagnostic(string packageDirectory, string rosDistro)", StringComparison.Ordinal)
+                  && source.Contains("private static string GetZenohPayloadDiagnostic(string packageDirectory, bool manifestDeclaresZenoh)", StringComparison.Ordinal)
                   && source.Contains("ZenohPayloadDiagnostics.TryGetValue(cacheKey, out var cached)", StringComparison.Ordinal)
                   && source.Contains("ZenohPayloadDiagnostics[cacheKey] = diagnostic;", StringComparison.Ordinal)
                   && source.Contains("ZenohPayloadDiagnostics.Clear();", StringComparison.Ordinal),

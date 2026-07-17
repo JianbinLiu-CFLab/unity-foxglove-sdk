@@ -5,7 +5,16 @@
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <IsPackable>false</IsPackable>
+    <IncludeRos2ForUnityNative Condition="'$(IncludeRos2ForUnityNative)' == ''">false</IncludeRos2ForUnityNative>
+    <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityNative)' == 'true' and '$(IncludeRos2ForUnityAdapter)' == ''">true</IncludeRos2ForUnityAdapter>
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
+    <DefineConstants Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(DefineConstants);UNITY2FOXGLOVE_ROS2_FOR_UNITY</DefineConstants>
+    <Phase179OptionalCompilationLane>default</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityAdapter)' == 'true'">adapter</Phase179OptionalCompilationLane>
+    <Phase179OptionalCompilationLane Condition="'$(IncludeRos2ForUnityNative)' == 'true'">native</Phase179OptionalCompilationLane>
+    <AssemblyName Condition="'$(IncludeRos2ForUnityNative)' == 'true'">Unity2Foxglove.Ros2ForUnity.Native</AssemblyName>
+    <OutputPath>$(BaseOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
   </PropertyGroup>
 
   <!-- Shared SDK compile surface (single source of truth with the console runner). -->
@@ -18,7 +27,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs" />
+    <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs;../NativeCompileStubs/**/*.cs" />
+    <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,4 +39,20 @@
     <Compile Include="../Runtime/ValidationEvidence.cs" Link="TestHarness/ValidationEvidence.cs" />
     <Compile Include="../Runtime/PhaseValidationCase.cs" Link="TestHarness/PhaseValidationCase.cs" />
   </ItemGroup>
+
+  <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <ItemGroup>
+      <_Phase179Contract Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2GeneratedContract'" />
+      <_Phase179Registrar Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2SubscriptionRegistrar'" />
+      <_Phase179LifecycleGate Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeBridgeLifecycleGate'" />
+      <_Phase179InboundHub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2SubscriptionHub'" />
+      <_Phase179InboundBackend Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityFoxRunInboundBackend'" />
+      <_Phase179InboundDiagnostics Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2SubscriptionDiagnostics'" />
+      <_Phase179CompileStub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2ForUnityNativeCompileStubs'" />
+      <_Phase179UnrelatedNative Include="@(Compile)" Condition="$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/')) and '%(Compile.Filename)' != 'Ros2ForUnityNativeBridgeLifecycleGate' and !$([System.String]::Copy('%(Compile.Identity)').Replace('\\','/').Contains('/Runtime/Native/FoxRun/'))" />
+    </ItemGroup>
+    <Error Condition="!$([System.String]::Copy('$(DefineConstants)').Contains('UNITY2FOXGLOVE_ROS2_FOR_UNITY'))" Text="Phase179 Native lane must define UNITY2FOXGLOVE_ROS2_FOR_UNITY." />
+    <Error Condition="'@(_Phase179Contract)' == '' or '@(_Phase179Registrar)' == '' or '@(_Phase179LifecycleGate)' == '' or '@(_Phase179InboundHub)' == '' or '@(_Phase179InboundBackend)' == '' or '@(_Phase179InboundDiagnostics)' == '' or '@(_Phase179CompileStub)' == ''" Text="Phase179 Native lane compiled no named host/binding/lifecycle/stub surface (vacuous green)." />
+    <Error Condition="'@(_Phase179UnrelatedNative)' != ''" Text="Phase179 focused Native lane included unrelated native bridge sources: @(_Phase179UnrelatedNative)." />
+  </Target>
 </Project>

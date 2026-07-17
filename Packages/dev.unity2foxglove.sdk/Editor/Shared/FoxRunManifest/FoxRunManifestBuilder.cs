@@ -27,14 +27,25 @@ namespace Unity.FoxgloveSDK.Editor
             var sectionHashInput = FoxRunManifestJsonWriter.WriteFoxRunSectionHashInput(types);
             var manifestHash = FoxRunManifestHasher.Sha256Hex(sectionHashInput);
             var section = new FoxRunManifestFoxRunSection(manifestHash, types);
-            var sections = new FoxRunManifestSections(section);
+            var subscriptionBindings = manifestVersion >= 2
+                ? BuildSubscriptionBindings(source)
+                : Array.Empty<FoxRunManifestSubscriptionBinding>();
+            var subscriptionHash = manifestVersion >= 2
+                ? FoxRunManifestHasher.Sha256Hex(
+                    FoxRunManifestJsonWriter.WriteSubscriptionSectionHashInput(subscriptionBindings))
+                : string.Empty;
+            var subscriptions = new FoxRunManifestSubscriptionSection(
+                subscriptionHash,
+                subscriptionBindings);
+            var sections = new FoxRunManifestSections(section, subscriptions);
             var generator = new FoxRunManifestGenerator(GeneratorName, generatorMajorVersion);
             var globalHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteGlobalHashInput(
                     manifestVersion,
                     PackageName,
                     generator,
-                    manifestHash));
+                    manifestHash,
+                    manifestVersion >= 2 ? subscriptionHash : null));
             return new FoxRunCanonicalManifest(
                 manifestVersion,
                 PackageName,
@@ -46,9 +57,44 @@ namespace Unity.FoxgloveSDK.Editor
         private static IReadOnlyList<FoxRunManifestType> BuildTypes(IReadOnlyList<FoxRunManifestMember> members)
         {
             return members
+                .Where(member => member.GeneratesWebSocketCodec
+                                 && !string.Equals(
+                                     member.SubscriptionProvider,
+                                     FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                                     StringComparison.Ordinal))
                 .GroupBy(DeclaringType)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .Select(group => new FoxRunManifestType(group.Key, BuildContracts(group.Key, group.ToList())))
+                .ToList()
+                .AsReadOnly();
+        }
+
+        private static IReadOnlyList<FoxRunManifestSubscriptionBinding> BuildSubscriptionBindings(
+            IReadOnlyList<FoxRunManifestMember> members)
+        {
+            return members
+                .Where(member => member.FlowMode == 1 || member.FlowMode == 2)
+                .Select(member => new FoxRunManifestSubscriptionBinding(
+                    DeclaringType(member),
+                    member.MemberName,
+                    member.Topic,
+                    FoxRunGenerationMember.ModeToName(member.FlowMode),
+                    member.SubscriptionProvider,
+                    member.Ros2Qos,
+                    member.GeneratesWebSocketCodec,
+                    member.GeneratesRos2NativeRegistration,
+                    member.GeneratesRos2NativeRegistration
+                        ? member.Ros2MessageShape?.FullyQualifiedTypeName ?? member.TypeName
+                        : string.Empty,
+                    member.GeneratesRos2NativeRegistration
+                        ? member.Ros2MessageShape?.CanonicalRosType ?? member.SchemaName
+                        : string.Empty,
+                    member.GeneratesRos2NativeRegistration
+                        ? member.Ros2MessageShape?.CopyShapeIdentity ?? string.Empty
+                        : string.Empty))
+                .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
+                .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
+                .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
         }

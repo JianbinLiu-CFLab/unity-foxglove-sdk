@@ -26,6 +26,26 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FoxRunWireEncodingMembersAndValuesRemainStable()
+        {
+            var values = Enum.GetValues(typeof(FoxRunWireEncoding))
+                .Cast<FoxRunWireEncoding>()
+                .ToArray();
+
+            Assert.Equal(
+                new[]
+                {
+                    FoxRunWireEncoding.Inherit,
+                    FoxRunWireEncoding.Protobuf,
+                    FoxRunWireEncoding.Json
+                },
+                values);
+            Assert.Equal(0, (int)FoxRunWireEncoding.Inherit);
+            Assert.Equal(1, (int)FoxRunWireEncoding.Protobuf);
+            Assert.Equal(2, (int)FoxRunWireEncoding.Json);
+        }
+
+        [Fact]
         public void FoxRunWirePolicyDefaultsToInheritAcrossRegularAndAggregateDeclarations()
         {
             var assembly = typeof(FoxRunAttribute).Assembly;
@@ -132,7 +152,10 @@ namespace Demo
 
             Assert.Contains("partial class CommandInput : IFoxgloveInputSource", generated, StringComparison.Ordinal);
             Assert.Contains("int IFoxgloveInputSource.FoxgloveInput_TopicCount => 1", generated, StringComparison.Ordinal);
-            Assert.Contains("new FoxgloveInputTopicInfo(\"/phase157/cmd_vel\", FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly)", generated, StringComparison.Ordinal);
+            Assert.Contains(
+                "new FoxgloveInputTopicInfo(\"/phase157/cmd_vel\", FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly, FoxRunSubscriptionProvider.Inherit, supportsWebSocket: true, supportsRos2Native: false)",
+                generated,
+                StringComparison.Ordinal);
             Assert.Contains("string.Equals(encoding, \"protobuf\", global::System.StringComparison.OrdinalIgnoreCase)", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundJson.TryRead(payload, \"incomingVelocity\", out global::UnityEngine.Vector3 __value", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundProtobuf.TryRead", generated, StringComparison.Ordinal);
@@ -262,7 +285,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN034");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN401");
         }
 
         [Fact]
@@ -336,7 +359,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN030");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN602");
         }
 
         [Fact]
@@ -457,7 +480,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN024");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN200");
         }
 
         [Fact]
@@ -723,8 +746,8 @@ namespace Demo
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024" && diagnostic.Severity == "Error");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN025" && diagnostic.Severity == "Warning");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN200" && diagnostic.Severity == "Error");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201" && diagnostic.Severity == "Warning");
         }
 
         [Fact]
@@ -743,8 +766,8 @@ namespace Demo
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
-            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN024" && diagnostic.Severity == "Error");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN025" && diagnostic.Severity == "Warning");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN200" && diagnostic.Severity == "Error");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201" && diagnostic.Severity == "Warning");
         }
 
         [Fact]
@@ -798,7 +821,7 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN028");
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN203");
         }
 
         [Fact]

@@ -300,9 +300,10 @@ namespace Unity.FoxgloveSDK.Tests
             var selector = ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs");
             Check(selector.Contains("RuntimePackagePrefix", StringComparison.Ordinal)
                   && selector.Contains("DiscoverCandidateRuntimes", StringComparison.Ordinal)
-                  && selector.Contains("var rosDistro = parts[0]", StringComparison.Ordinal)
+                  && selector.Contains("var packageRosDistro = parts[0]", StringComparison.Ordinal)
+                  && selector.Contains("Ros2ForUnityRuntimeCapabilityParser.Parse", StringComparison.Ordinal)
                   && !selector.Contains("\"Humble Win64\"", StringComparison.Ordinal),
-                "160-E1: active runtime selector discovers Humble by package naming convention");
+                "160-E1: active runtime selector discovers Humble by package naming convention and manifest capability identity");
             Check(selector.Contains("ReadManifestRuntimePackages", StringComparison.Ordinal)
                   && selector.Contains("Multiple ROS2 For Unity runtime packages", StringComparison.Ordinal),
                 "160-E2: runtime selector keeps the single active runtime guard");

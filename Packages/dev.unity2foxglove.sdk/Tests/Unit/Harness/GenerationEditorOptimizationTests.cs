@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, model);
 
-            Assert.Contains("\"descriptorVersion\":1", json, StringComparison.Ordinal);
+            Assert.Contains("\"descriptorVersion\":2", json, StringComparison.Ordinal);
             Assert.Contains("\"elementTypeName\":\"float\"", json, StringComparison.Ordinal);
             Assert.Contains("\"topic\":\"/vehicle/samples\"", json, StringComparison.Ordinal);
             Assert.True(comparison.IsSemanticEqual);
@@ -245,7 +245,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
             var scanner = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunAssemblyScanner.cs");
             var collectTypes = TestSources.Slice(source, "public static List<(string AsmName, string Ns, string ClassName)> CollectFoxRunTypes()", "        /// <summary>\r\n        /// Generate an IL2CPP link.xml snippet");
-            var scanMembers = TestSources.Slice(scanner, "private static FoxRunScanResult ScanFoxRunMembers", "        /// <summary>\r\n        /// Checks whether a type was declared");
+            var scanMembers = TestSources.Slice(scanner, "private static FoxRunScanResult ScanFoxRunMembers", "private static void VisitLoadedFoxRunComponentTypes");
+            var sharedTraversal = TestSources.Slice(scanner, "private static void VisitLoadedFoxRunComponentTypes", "        /// <summary>\r\n        /// Documents the build-time partial-class enforcement boundary");
             var validate = TestSources.Slice(source, "private static void ValidateGenerationModel", "private static string GetManifestOutputDirectory");
             var emitSourceFile = TestSources.Slice(source, "public static string EmitSourceFile(MemberData[] members)", "public static string EmitSourceFile(FoxRunGenerationType type)");
 
@@ -256,8 +257,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Contains("AppDomain.CurrentDomain.GetAssemblies()", collectTypes, StringComparison.Ordinal);
             Assert.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", collectTypes, StringComparison.Ordinal);
             Assert.Contains("ReflectionTypeLoadException", scanner, StringComparison.Ordinal);
-            Assert.Contains("AppDomain.CurrentDomain.GetAssemblies()", scanMembers, StringComparison.Ordinal);
-            Assert.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", scanMembers, StringComparison.Ordinal);
+            Assert.Contains("VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions", scanMembers, StringComparison.Ordinal);
+            Assert.DoesNotContain("AppDomain.CurrentDomain.GetAssemblies()", scanMembers, StringComparison.Ordinal);
+            Assert.Contains("AppDomain.CurrentDomain.GetAssemblies()", sharedTraversal, StringComparison.Ordinal);
+            Assert.Contains("typeof(MonoBehaviour).IsAssignableFrom(type)", sharedTraversal, StringComparison.Ordinal);
             Assert.DoesNotContain("members.Select(member => member.ToManifestMember())", scanMembers, StringComparison.Ordinal);
             Assert.DoesNotContain("members.Select(member => member.ToReflectionMember())", scanMembers, StringComparison.Ordinal);
             Assert.DoesNotContain("diagnostics.Where", validate, StringComparison.Ordinal);

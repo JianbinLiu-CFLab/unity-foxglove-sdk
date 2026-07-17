@@ -23,50 +23,26 @@ namespace Unity.FoxgloveSDK.Editor
             var serviceEntries = new List<FoxServiceScanEntry>();
             var foxRunTypes = new List<(string AsmName, string Ns, string ClassName)>();
 
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions, (asm, type) =>
             {
-                try
+                var ns = type.Namespace ?? "";
+                var key = (ns, type.Name);
+
+                var members = ScanType(type);
+                if (members.Count > 0)
                 {
-                    foreach (var type in asm.GetTypes())
-                    {
-                        if (!type.IsClass || type.IsAbstract) continue;
-                        if (!AssumePartialWasEnforcedBySourceGenerator(type)) continue;
-                        if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
-
-                        var ns = type.Namespace ?? "";
-                        var key = (ns, type.Name);
-
-                        var members = ScanType(type);
-                        if (members.Count > 0)
-                        {
-                            foxRunTypes.Add((asm.GetName().Name, ns, type.Name));
-                            if (!byClass.TryGetValue(key, out var list))
-                                byClass[key] = list = new List<MemberData>();
-
-                            foreach (var member in members)
-                            {
-                                list.Add(member);
-                                manifestMembers.Add(member.ToManifestMember());
-                                reflectionMembers.Add(member.ToReflectionMember());
-                            }
-                        }
-
-                        var methods = ScanServiceType(type);
-                        if (methods.Count > 0)
-                        {
-                            var owner = string.IsNullOrEmpty(ns) ? type.Name : ns + "." + type.Name;
-                            foreach (var method in methods)
-                                serviceEntries.Add(new FoxServiceScanEntry(key, owner, method));
-                        }
-                    }
+                    foxRunTypes.Add((asm.GetName().Name, ns, type.Name));
+                    AddFoxRunMembers(key, members, byClass, manifestMembers, reflectionMembers);
                 }
-                catch (ReflectionTypeLoadException ex)
+
+                var methods = ScanServiceType(type);
+                if (methods.Count > 0)
                 {
-                    if (!ignoreReflectionTypeLoadExceptions)
-                        throw;
-                    WarnSkippedAssembly(asm, ex);
+                    var owner = string.IsNullOrEmpty(ns) ? type.Name : ns + "." + type.Name;
+                    foreach (var method in methods)
+                        serviceEntries.Add(new FoxServiceScanEntry(key, owner, method));
                 }
-            }
+            });
 
             return new FoxRunAndServiceScanResult(
                 new FoxRunScanResult(byClass, manifestMembers, reflectionMembers),
@@ -80,6 +56,45 @@ namespace Unity.FoxgloveSDK.Editor
             var manifestMembers = new List<FoxRunManifestMember>();
             var reflectionMembers = new List<FoxRunReflectionGenerationMember>();
 
+            VisitLoadedFoxRunComponentTypes(ignoreReflectionTypeLoadExceptions, (asm, type) =>
+            {
+                var ns = type.Namespace ?? "";
+                AddFoxRunMembers(
+                    (ns, type.Name),
+                    ScanType(type),
+                    byClass,
+                    manifestMembers,
+                    reflectionMembers);
+            });
+
+            return new FoxRunScanResult(byClass, manifestMembers, reflectionMembers);
+        }
+
+        private static void AddFoxRunMembers(
+            (string Ns, string ClassName) key,
+            List<MemberData> members,
+            Dictionary<(string Ns, string ClassName), List<MemberData>> byClass,
+            List<FoxRunManifestMember> manifestMembers,
+            List<FoxRunReflectionGenerationMember> reflectionMembers)
+        {
+            if (members == null || members.Count == 0)
+                return;
+
+            if (!byClass.TryGetValue(key, out var list))
+                byClass[key] = list = new List<MemberData>();
+
+            foreach (var member in members)
+            {
+                list.Add(member);
+                manifestMembers.Add(member.ToManifestMember());
+                reflectionMembers.Add(member.ToReflectionMember());
+            }
+        }
+
+        private static void VisitLoadedFoxRunComponentTypes(
+            bool ignoreReflectionTypeLoadExceptions,
+            Action<Assembly, Type> visitor)
+        {
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
@@ -90,20 +105,7 @@ namespace Unity.FoxgloveSDK.Editor
                         if (!AssumePartialWasEnforcedBySourceGenerator(type)) continue;
                         if (!typeof(MonoBehaviour).IsAssignableFrom(type)) continue;
 
-                        var members = ScanType(type);
-                        if (members.Count == 0) continue;
-
-                        var ns = type.Namespace ?? "";
-                        var key = (ns, type.Name);
-                        if (!byClass.TryGetValue(key, out var list))
-                            byClass[key] = list = new List<MemberData>();
-
-                        foreach (var member in members)
-                        {
-                            list.Add(member);
-                            manifestMembers.Add(member.ToManifestMember());
-                            reflectionMembers.Add(member.ToReflectionMember());
-                        }
+                        visitor(asm, type);
                     }
                 }
                 catch (ReflectionTypeLoadException ex)
@@ -116,8 +118,6 @@ namespace Unity.FoxgloveSDK.Editor
                     // link.xml scan is fail-fast and catches preservation risk.
                 }
             }
-
-            return new FoxRunScanResult(byClass, manifestMembers, reflectionMembers);
         }
 
         /// <summary>
@@ -163,7 +163,8 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber));
+                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
+                        subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
                 }
 
                 var aggregateField = fi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -185,7 +186,8 @@ namespace Unity.FoxgloveSDK.Editor
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
                         (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
-                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber));
+                        a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
+                        subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
                 }
 
                 var aggregateField = pi.GetCustomAttribute<FoxRunFieldAttribute>();
@@ -208,7 +210,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var target = (type == null ? "<unknown>" : type.FullName) + "." + (memberName ?? "<unknown>");
             return new InvalidOperationException(
-                "FOXRUN028 Error: " + target
+                "FOXRUN203 Error: " + target
                 + ": FoxRun inbound " + memberKind
                 + " target must be writable; " + unsupportedShape
                 + " cannot receive SubscribeOnly or PublishAndSubscribe messages.");

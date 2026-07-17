@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void OptionalSelectorReflectionMatchesAsmdef()
         {
-            var managerInspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var managerInspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs");
             var asmdef = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef");
 
             Check(managerInspector.Contains("Unity2Foxglove.Ros2ForUnity.Editor", StringComparison.Ordinal)

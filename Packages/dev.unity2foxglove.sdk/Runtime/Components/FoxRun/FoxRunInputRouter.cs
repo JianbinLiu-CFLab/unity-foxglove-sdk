@@ -42,6 +42,8 @@ namespace Unity.FoxgloveSDK.Components
         private readonly Dictionary<string, Queue<double>> _arrivalTimes =
             new(StringComparer.Ordinal);
         private FoxRunWireEncoding _defaultSubscriptionWireEncoding = FoxRunWireEncoding.Protobuf;
+        private FoxRunSubscriptionProvider _defaultSubscriptionProvider =
+            FoxRunSubscriptionProvider.FoxgloveWebSocket;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
@@ -51,6 +53,22 @@ namespace Unity.FoxgloveSDK.Components
 
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
+
+        /// <summary>Manager-resolved provider used only when later registrations inherit.</summary>
+        public FoxRunSubscriptionProvider DefaultSubscriptionProvider
+        {
+            get
+            {
+                lock (_gate)
+                    return _defaultSubscriptionProvider;
+            }
+            set
+            {
+                value = FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(value);
+                lock (_gate)
+                    _defaultSubscriptionProvider = value;
+            }
+        }
 
         /// <summary>Manager-resolved default used only for inherited subscription topics.</summary>
         public FoxRunWireEncoding DefaultSubscriptionWireEncoding
@@ -100,6 +118,18 @@ namespace Unity.FoxgloveSDK.Components
                     var info = source.FoxgloveInput_GetTopic(index);
                     if (string.IsNullOrWhiteSpace(info.Topic))
                         continue;
+                    var provider = FoxRunSubscriptionProviderResolver.Resolve(
+                        info.DeclaredSubscriptionProvider,
+                        _defaultSubscriptionProvider,
+                        info.Mode,
+                        info.DeclaredWireEncoding,
+                        info.SupportsWebSocket,
+                        info.SupportsRos2Native);
+                    if (!provider.Success
+                        || provider.Provider != FoxRunSubscriptionProvider.FoxgloveWebSocket)
+                    {
+                        continue;
+                    }
                     if (!_registrations.TryGetValue(info.Topic, out var registrations))
                         _registrations[info.Topic] = registrations = new List<Registration>();
                     if (registrations.Exists(item => ReferenceEquals(item.Source, source) && item.TopicIndex == index))

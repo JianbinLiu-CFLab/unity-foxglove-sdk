@@ -7,6 +7,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Reflection;
+using Unity.FoxgloveSDK.Components;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -20,7 +21,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         static Ros2ForUnityRuntimePlayModeGuard()
         {
             EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-            EditorApplication.hierarchyChanged += InvalidateNativeOutputDemandCache;
+            EditorApplication.hierarchyChanged += InvalidateNativeDemandCache;
             CompilationPipeline.compilationStarted += OnCompilationStarted;
             CompilationPipeline.compilationFinished += OnCompilationFinished;
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
@@ -37,13 +38,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string Ros2ForUnitySuffix = "ForUnity";
         private const string Ros2NativeEnabledSerializedProperty =
             "_ros2NativeEnabled";
+        private const string FoxRunInboundEnabledSerializedProperty =
+            "_enableFoxRunInbound";
+        private const string FoxRunSubscriptionProviderSerializedProperty =
+            "_defaultFoxRunSubscriptionProvider";
+        private const string GeneratedFoxRunSchemaInfoTypeName =
+            "Unity.FoxgloveSDK.Generated.FoxRunSchemaInfo";
         private const double NativeReloadUnlockDelaySeconds = 2.0;
         private const double ZenohRouterProbeCacheSeconds = 2.0;
 
         private static bool _reloadAssembliesLockedForR2fu;
         private static double _unlockReloadAssembliesAfter;
-        private static bool _nativeOutputDemandCacheValid;
-        private static bool _cachedNativeOutputDemand;
+        private static bool _nativeDemandCacheValid;
+        private static bool _cachedNativeDemand;
         private static bool _zenohRouterProcessCacheValid;
         private static bool _cachedZenohRouterProcessRunning;
         private static double _zenohRouterProcessCacheUntil;
@@ -75,8 +82,33 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void OnExitingEditMode()
         {
+            // Inspector property edits do not necessarily trigger hierarchyChanged.
+            // Re-scan at the stable pre-Play boundary before any R2FU Ok() path.
+            InvalidateNativeDemandCache();
+            var hasNativeDemand = HasR2fuNativeDemand();
+            if (!hasNativeDemand
+                && !_reloadAssembliesLockedForR2fu
+                && !SessionState.GetBool(ReloadAssembliesLockedForR2fuKey, false))
+            {
+                return;
+            }
+
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
             var status = Ros2ForUnityRuntimeSelection.GetStatus(projectDirectory);
+            if (hasNativeDemand && (status == null || status.SelectedRuntime == null))
+            {
+                var statusDiagnostic = status == null || string.IsNullOrWhiteSpace(status.Diagnostic)
+                    ? "Select one valid ROS2 For Unity runtime package and resolve packages before entering Play Mode."
+                    : status.Diagnostic;
+                var diagnostic = "No selected ROS2 For Unity runtime is available for native demand. "
+                    + statusDiagnostic;
+                Debug.LogError(diagnostic);
+                if (!Application.isBatchMode)
+                    EditorUtility.DisplayDialog("ROS2 For Unity runtime required", diagnostic, "OK");
+                EditorApplication.isPlaying = false;
+                return;
+            }
+
             var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
             var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
             if (string.IsNullOrWhiteSpace(runtimePackage) && string.IsNullOrWhiteSpace(communicationMode))
@@ -124,15 +156,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             out string diagnostic)
         {
             diagnostic = string.Empty;
-            if (status == null || status.SelectedRuntime == null || !status.SelectedRuntime.SupportsZenoh)
+            if (status == null || status.SelectedRuntime == null)
                 return false;
-            if (!HasR2fuNativeOutputDemand())
+            if (!HasR2fuNativeDemand())
                 return false;
 
             var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(status.SelectedRuntime);
+            var rmwImplementation = Ros2ForUnityRuntimeSelection.GetRmwImplementationForCommunicationMode(
+                status.SelectedRuntime,
+                communicationMode);
             if (!string.Equals(
-                    communicationMode,
-                    Ros2ForUnityRuntimeSelection.ZenohCommunicationMode,
+                    rmwImplementation,
+                    Ros2ForUnityRuntimeSelection.ZenohRmwImplementation,
                     StringComparison.Ordinal))
             {
                 return false;
@@ -221,12 +256,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                        || value.IndexOf("zenohd", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
-        private static bool HasR2fuNativeOutputDemand()
+        private static bool HasR2fuNativeDemand()
         {
-            if (_nativeOutputDemandCacheValid)
-                return _cachedNativeOutputDemand;
+            if (_nativeDemandCacheValid)
+                return _cachedNativeDemand;
 
             var hasDemand = false;
+            var hasExplicitNativeContract = HasGeneratedExplicitNativeSubscriptionContract();
             foreach (var behaviour in Resources.FindObjectsOfTypeAll<MonoBehaviour>())
             {
                 if (behaviour == null)
@@ -242,9 +278,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
                 var serialized = new SerializedObject(behaviour);
                 var ros2NativeEnabled = serialized.FindProperty(Ros2NativeEnabledSerializedProperty);
-                if (ros2NativeEnabled != null && ros2NativeEnabled.propertyType == SerializedPropertyType.Boolean)
+                var subscriptionsEnabled = serialized.FindProperty(FoxRunInboundEnabledSerializedProperty);
+                var defaultProvider = serialized.FindProperty(FoxRunSubscriptionProviderSerializedProperty);
+                if (ros2NativeEnabled != null
+                    && ros2NativeEnabled.propertyType == SerializedPropertyType.Boolean
+                    && subscriptionsEnabled != null
+                    && subscriptionsEnabled.propertyType == SerializedPropertyType.Boolean
+                    && defaultProvider != null
+                    && defaultProvider.propertyType == SerializedPropertyType.Enum)
                 {
-                    if (ros2NativeEnabled.boolValue)
+                    var provider = defaultProvider.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
+                        ? FoxRunSubscriptionProvider.Ros2Native
+                        : FoxRunSubscriptionProvider.FoxgloveWebSocket;
+                    if (FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
+                            ros2NativeEnabled.boolValue,
+                            subscriptionsEnabled.boolValue,
+                            provider,
+                            hasExplicitNativeContract))
                     {
                         hasDemand = true;
                         break;
@@ -252,15 +302,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     continue;
                 }
 
-                var property = type.GetProperty(
-                    "Ros2NativeEnabled",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (property == null || property.PropertyType != typeof(bool))
-                    continue;
-
                 try
                 {
-                    if ((bool)property.GetValue(behaviour, null))
+                    var output = ReadBoolProperty(type, behaviour, "Ros2NativeEnabled");
+                    var subscriptions = ReadBoolProperty(type, behaviour, "EnableFoxRunInbound");
+                    var provider = ReadSubscriptionProviderProperty(
+                        type,
+                        behaviour,
+                        "DefaultFoxRunSubscriptionProvider");
+                    if (FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
+                            output,
+                            subscriptions,
+                            provider,
+                            hasExplicitNativeContract))
                     {
                         hasDemand = true;
                         break;
@@ -272,19 +326,68 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 }
             }
 
-            _cachedNativeOutputDemand = hasDemand;
-            _nativeOutputDemandCacheValid = true;
+            _cachedNativeDemand = hasDemand;
+            _nativeDemandCacheValid = true;
             return hasDemand;
         }
 
-        private static void InvalidateNativeOutputDemandCache()
+        private static bool HasGeneratedExplicitNativeSubscriptionContract()
         {
-            _nativeOutputDemandCacheValid = false;
+            var generatedType = FindLoadedType(GeneratedFoxRunSchemaInfoTypeName);
+            var bindingsField = generatedType?.GetField(
+                "SubscriptionBindings",
+                BindingFlags.Public | BindingFlags.Static);
+            if (!(bindingsField?.GetValue(null) is System.Collections.IEnumerable bindings))
+                return false;
+
+            foreach (var item in bindings)
+            {
+                var provider = item?.GetType().GetProperty(
+                    "DeclaredProvider",
+                    BindingFlags.Instance | BindingFlags.Public)?.GetValue(item, null);
+                if (provider is FoxRunSubscriptionProvider typed
+                    && typed == FoxRunSubscriptionProvider.Ros2Native)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ReadBoolProperty(Type type, object instance, string propertyName)
+        {
+            var property = type.GetProperty(
+                propertyName,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            return property != null
+                   && property.PropertyType == typeof(bool)
+                   && (bool)property.GetValue(instance, null);
+        }
+
+        private static FoxRunSubscriptionProvider ReadSubscriptionProviderProperty(
+            Type type,
+            object instance,
+            string propertyName)
+        {
+            var property = type.GetProperty(
+                propertyName,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            return property != null
+                   && property.PropertyType == typeof(FoxRunSubscriptionProvider)
+                   && property.GetValue(instance, null) is FoxRunSubscriptionProvider provider
+                ? provider
+                : FoxRunSubscriptionProvider.FoxgloveWebSocket;
+        }
+
+        private static void InvalidateNativeDemandCache()
+        {
+            _nativeDemandCacheValid = false;
         }
 
         private static void OnCompilationStarted(object context)
         {
-            InvalidateNativeOutputDemandCache();
+            InvalidateNativeDemandCache();
             _zenohRouterProcessCacheValid = false;
             Ros2ForUnityRuntimeSelection.InvalidateStatusCache();
             if (StopPlayModeBeforeNativeReload("script compilation"))
@@ -303,7 +406,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static void OnBeforeAssemblyReload()
         {
-            InvalidateNativeOutputDemandCache();
+            InvalidateNativeDemandCache();
             _zenohRouterProcessCacheValid = false;
             var compilationStartedWhilePlaying = SessionState.GetBool(CompilationStartedWhileR2fuPlayModeKey, false);
             if (!compilationStartedWhilePlaying && !EditorApplication.isPlaying)
@@ -333,6 +436,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
             if (!Ros2ForUnityRuntimeSelection.HasManifestRuntimePackage(projectDirectory))
                 return false;
+            if (!HasR2fuNativeDemand()
+                && !_reloadAssembliesLockedForR2fu
+                && !SessionState.GetBool(ReloadAssembliesLockedForR2fuKey, false))
+            {
+                return false;
+            }
 
             Debug.LogError(
                 "Unity2Foxglove ROS2 For Unity is active while Unity is starting "
@@ -348,7 +457,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
             if (!Ros2ForUnityRuntimeSelection.HasManifestRuntimePackage(projectDirectory))
                 return;
-            if (!_reloadAssembliesLockedForR2fu && !HasR2fuNativeOutputDemand())
+            if (!_reloadAssembliesLockedForR2fu && !HasR2fuNativeDemand())
                 return;
 
             if (_reloadAssembliesLockedForR2fu)
@@ -358,7 +467,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             _reloadAssembliesLockedForR2fu = true;
             SessionState.SetBool(ReloadAssembliesLockedForR2fuKey, true);
 
-            Debug.LogWarning(
+            Debug.Log(
                 "Unity2Foxglove ROS2 For Unity locked editor assembly reloads while native ROS2/RMW DLLs are active ("
                 + reason
                 + "). Exit Play Mode before changing scripts; pending script reloads will resume after native shutdown.");
@@ -417,7 +526,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!stoppedExecutors && !shutdownShared)
                 return;
 
-            Debug.LogWarning(
+            Debug.Log(
                 "Unity2Foxglove ROS2 For Unity requested native ROS2 shutdown before "
                 + reason
                 + " to avoid unloading ROS2/RMW DLLs while executor threads are active.");

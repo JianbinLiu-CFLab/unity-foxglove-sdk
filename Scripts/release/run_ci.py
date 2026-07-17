@@ -37,6 +37,18 @@ SOURCE_GENERATOR_PROJ = (
 )
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
+PHASE179_ROS2_INBOUND_ACCEPTANCE_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance"
+)
+PHASE179_ROS2_PLAYER_HOST_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host"
+)
+PHASE179_ROS2_MATRIX_PROFILES_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_matrix_profiles"
+)
+PHASE179_ZENOH_TOPOLOGY_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology"
+)
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
 DEFAULT_PARALLEL_JOBS = 2
@@ -144,8 +156,18 @@ ANALYZER_PROPS = dotnet_msbuild_props("analyzer")
 ANALYZER_RUNTIME_TEST_PROPS = dotnet_msbuild_props("analyzer-runtime-tests")
 RUNTIME_TEST_PROPS = dotnet_msbuild_props("runtime-tests")
 UNIT_TEST_PROPS = dotnet_msbuild_props("unit-tests")
+UNIT_ADAPTER_TEST_PROPS = [
+    *dotnet_msbuild_props("unit-tests-adapter"),
+    "-p:IncludeRos2ForUnityAdapter=true",
+]
+UNIT_NATIVE_TEST_PROPS = [
+    *dotnet_msbuild_props("unit-tests-native"),
+    "-p:IncludeRos2ForUnityNative=true",
+]
 ANALYZER_OUTPUT_DIR = ISOLATED_DOTNET_ROOT / "analyzer-output"
 UNIT_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit"
+UNIT_ADAPTER_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-adapter"
+UNIT_NATIVE_TEST_RESULTS_DIR = CI_ROOT / "test-results" / "unit-native"
 
 
 def green(msg: str) -> str:
@@ -253,6 +275,10 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
     jobs.extend(
         [
             CiJob("dotnet", [sys.executable, script, "--only", "dotnet"]),
+            CiJob(
+                "phase179-ros2-regression",
+                [sys.executable, script, "--only", "phase179-ros2-regression"],
+            ),
             CiJob(
                 "mcap-conformance",
                 [sys.executable, script, "--only", "mcap-conformance"],
@@ -434,7 +460,10 @@ def main() -> int:
     parser.add_argument(
         "--only",
         type=str,
-        help="Run only one suite: dotnet, mcap-conformance, packages, boundary, analyzer",
+        help=(
+            "Run only one suite: dotnet, phase179-ros2-regression, "
+            "mcap-conformance, packages, boundary, analyzer"
+        ),
     )
     parser.add_argument(
         "--jobs",
@@ -554,6 +583,67 @@ def main() -> int:
                 "--results-directory", str(UNIT_TEST_RESULTS_DIR),
             ],
             "xUnit unit tests",
+        )
+        results["xunit-adapter-restore"] = restore_with_ignoring_failed_sources(
+            UNIT_TESTS_PROJ,
+            "Restore xUnit optional ROS2 adapter lane",
+            UNIT_ADAPTER_TEST_PROPS,
+        )
+        results["xunit-adapter"] = run_with_restore_fallback(
+            [
+                "dotnet", "test",
+                "--no-restore", UNIT_TESTS_PROJ,
+                *UNIT_ADAPTER_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-adapter.trx",
+                "--results-directory", str(UNIT_ADAPTER_TEST_RESULTS_DIR),
+            ],
+            [
+                "dotnet", "test", UNIT_TESTS_PROJ,
+                *UNIT_ADAPTER_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-adapter.trx",
+                "--results-directory", str(UNIT_ADAPTER_TEST_RESULTS_DIR),
+            ],
+            "xUnit optional ROS2 adapter unit tests",
+        )
+        results["xunit-native-restore"] = restore_with_ignoring_failed_sources(
+            UNIT_TESTS_PROJ,
+            "Restore xUnit Native ROS2 compilation lane",
+            UNIT_NATIVE_TEST_PROPS,
+        )
+        results["xunit-native"] = run_with_restore_fallback(
+            [
+                "dotnet", "test",
+                "--no-restore", UNIT_TESTS_PROJ,
+                *UNIT_NATIVE_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-native.trx",
+                "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
+            ],
+            [
+                "dotnet", "test", UNIT_TESTS_PROJ,
+                *UNIT_NATIVE_TEST_PROPS,
+                "--logger", "trx;LogFileName=unit-tests-native.trx",
+                "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
+            ],
+            "xUnit Native ROS2 compilation unit tests",
+        )
+
+    # --- pure ROS2 acceptance-helper regression tests ---
+    if args.only in (None, "phase179-ros2-regression"):
+        results["phase179-ros2-inbound-acceptance"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ROS2_INBOUND_ACCEPTANCE_REGRESSION],
+            "Phase179 Linux ROS2 inbound acceptance helper regressions",
+        )
+        results["phase179-ros2-player-host"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ROS2_PLAYER_HOST_REGRESSION],
+            "Phase179 Windows Player host helper regressions",
+        )
+        results["phase179-ros2-matrix-profiles"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ROS2_MATRIX_PROFILES_REGRESSION],
+            "Phase179 named four-row interop profile regressions",
+        )
+        results["phase179-zenoh-topology"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ZENOH_TOPOLOGY_REGRESSION],
+            "Phase179 Zenoh topology ownership and readiness regressions",
         )
 
     # --- official MCAP differential conformance ---

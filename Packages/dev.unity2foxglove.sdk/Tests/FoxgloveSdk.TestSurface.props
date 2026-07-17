@@ -23,6 +23,8 @@
   <ItemGroup>
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Attributes/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/FoxRun*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/FoxgloveLogHub.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/IFoxgloveLogConditionSource.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/FoxTopic*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxRun/IFoxTopic*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/FoxService/FoxgloveGeneratedServiceDescriptor.cs" />
@@ -51,13 +53,18 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/*.cs" Exclude="$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/*Publisher.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/Channels/**/*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/FoxgloveCameraPublisher.*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/FoxglovePointCloudPublisher.*.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/ImuMessageBuilder.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/PointCloudTransformFrameBuilder.cs;$(MSBuildThisFileDirectory)../Runtime/Schemas/Proto/**/CameraCaptureResources.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Utilities/*.cs" />
 
-    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' and Exists('$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime')" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/**/*.cs" LinkBase="Ros2ForUnityRuntime" Condition="('$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true') and Exists('$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime')" />
+    <Compile Remove="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityRuntime/Native/FoxRun" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSchema/**/*.cs" LinkBase="Shared/FoxServiceSchema" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceDtoValidation/**/*.cs" LinkBase="Shared/FoxServiceDtoValidation" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/SourceGenerators/src/**/*.cs" LinkBase="SourceGenerators" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunSubscriptionProtocolEditorLabels.cs" Link="Shared/FoxRunSubscriptionProtocolEditorLabels.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs" Link="Ros2ForUnityEditor/Ros2ForUnityRuntimeCapabilityModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/Process/**/*.cs" LinkBase="Shared/Process" />
@@ -66,7 +73,31 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunMemberData.cs" Link="Editor/FoxRun/FoxrunMemberData.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <Reference Include="ros2cs_common">
+      <HintPath>$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_common.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="ros2cs_core">
+      <HintPath>$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="std_msgs_assembly">
+      <HintPath>$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/std_msgs_assembly.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="geometry_msgs_assembly">
+      <HintPath>$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/geometry_msgs_assembly.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="sensor_msgs_assembly">
+      <HintPath>$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/sensor_msgs_assembly.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 </Project>

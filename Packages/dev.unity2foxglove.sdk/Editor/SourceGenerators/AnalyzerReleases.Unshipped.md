@@ -5,3 +5,52 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
+FOXRUN200 | FoxRun | Error | FoxRun inbound arrays and aggregate members are not supported.
+FOXRUN201 | FoxRun | Warning | SubscribeOnly ignores publish timing options.
+FOXRUN202 | FoxRun | Warning | SubscribeOnly member names should communicate input-port authority.
+FOXRUN203 | FoxRun | Error | FoxRun inbound targets must be writable.
+FOXRUN204 | FoxRun | Error | FoxRun SubscriptionProvider must be a known provider value.
+FOXRUN205 | FoxRun | Error | Ros2Native is supported only for SubscribeOnly members.
+FOXRUN206 | FoxRun | Error | Ros2Native cannot declare JSON or Protobuf Encoding.
+FOXRUN207 | FoxRun | Error | Native member type must implement ROS2.Message from ros2cs_common.
+FOXRUN208 | FoxRun | Error | Native message type requires a public parameterless constructor.
+FOXRUN209 | FoxRun | Error | Native message type must be declared directly in a package msg namespace.
+FOXRUN210 | FoxRun | Error | Explicit SchemaName must match the validated canonical ROS type.
+FOXRUN211 | FoxRun | Error | Native message graph cannot be deep-copied safely.
+FOXRUN212 | FoxRun | Error | Native generation requires the optional Native assembly reference.
+FOXRUN213 | FoxRun | Warning | Ros2Qos is ignored for explicit WebSocket-only subscriptions.
+FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
+FOXRUN401 | FoxRun | Error | PublishAndSubscribe requires an explicit Protobuf or Json Encoding.
+FOXRUN600 | FoxRun | Error | FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe.
+FOXRUN601 | FoxRun | Error | FoxRun Unless conditional gate member is missing or invalid.
+FOXRUN602 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
+FOXRUN603 | FoxRun | Error | FoxRun ProtobufFieldNumber must be a legal non-reserved tag or zero for automatic assignment.
+FOXRUN604 | FoxRun | Error | Same-topic FoxRun members cannot mix Encoding declarations.
+FOXRUN605 | FoxRun | Error | FoxRun ProtobufFieldNumber values must be unique per topic.
+
+### Removed Rules
+
+Rule ID | Category | Severity | Notes
+--------|----------|----------|-------
+FOXRUN023 | FoxRun | Error | Retired; renumbered as FOXRUN600 and permanently reserved.
+FOXRUN024 | FoxRun | Error | Retired; renumbered as FOXRUN200 and permanently reserved.
+FOXRUN025 | FoxRun | Warning | Retired; renumbered as FOXRUN201 and permanently reserved.
+FOXRUN026 | FoxRun | Warning | Retired; renumbered as FOXRUN400 and permanently reserved.
+FOXRUN027 | FoxRun | Warning | Retired; renumbered as FOXRUN202 and permanently reserved.
+FOXRUN028 | FoxRun | Error | Retired; renumbered as FOXRUN203 and permanently reserved.
+FOXRUN029 | FoxRun | Error | Retired; renumbered as FOXRUN601 and permanently reserved.
+FOXRUN030 | FoxRun | Error | Retired; renumbered as FOXRUN602 and permanently reserved.
+FOXRUN031 | FoxRun | Error | Retired; renumbered as FOXRUN603 and permanently reserved.
+FOXRUN032 | FoxRun | Error | Retired; renumbered as FOXRUN604 and permanently reserved.
+FOXRUN033 | FoxRun | Error | Retired; renumbered as FOXRUN605 and permanently reserved.
+FOXRUN034 | FoxRun | Error | Retired; renumbered as FOXRUN401 and permanently reserved.
+FOXRUN035 | FoxRun | Error | Retired; renumbered as FOXRUN204 and permanently reserved.
+FOXRUN036 | FoxRun | Error | Retired; renumbered as FOXRUN205 and permanently reserved.
+FOXRUN037 | FoxRun | Error | Retired; renumbered as FOXRUN206 and permanently reserved.
+FOXRUN038 | FoxRun | Error | Retired; renumbered as FOXRUN207 and permanently reserved.
+FOXRUN039 | FoxRun | Error | Retired; renumbered as FOXRUN208 and permanently reserved.
+FOXRUN040 | FoxRun | Error | Retired; renumbered as FOXRUN209 and permanently reserved.
+FOXRUN041 | FoxRun | Error | Retired; renumbered as FOXRUN210 and permanently reserved.
+FOXRUN042 | FoxRun | Error | Retired; renumbered as FOXRUN211 and permanently reserved.
+FOXRUN043 | FoxRun | Error | Retired; renumbered as FOXRUN212 and permanently reserved.
+FOXRUN044 | FoxRun | Warning | Retired; renumbered as FOXRUN213 and permanently reserved.

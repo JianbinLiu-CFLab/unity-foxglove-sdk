@@ -62,6 +62,19 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunWireEncoding Encoding { get; set; } = FoxRunWireEncoding.Inherit;
 
         /// <summary>
+        /// Subscription provider for inbound data. The default is resolved by
+        /// FoxgloveManager when subscriptions are registered for a session.
+        /// </summary>
+        public FoxRunSubscriptionProvider SubscriptionProvider { get; set; } =
+            FoxRunSubscriptionProvider.Inherit;
+
+        /// <summary>
+        /// ROS2 QoS preset for an optional native subscription. The default is
+        /// resolved by FoxgloveManager when subscriptions are registered.
+        /// </summary>
+        public FoxRunRos2QosPreset Ros2Qos { get; set; } = FoxRunRos2QosPreset.Inherit;
+
+        /// <summary>
         /// Optional pinned Protobuf field number for this member. Zero uses the
         /// generated stable field number.
         /// </summary>

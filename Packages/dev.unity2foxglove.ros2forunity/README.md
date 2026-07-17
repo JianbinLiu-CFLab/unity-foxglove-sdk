@@ -82,6 +82,64 @@ symlinks, or restored artifact caches. Scripts should default to these
 repo-local paths and allow explicit overrides when a developer or CI machine
 uses a different cache location.
 
+## FoxRun Native ROS2 Subscribe
+
+The `FoxRun ROS2 Native Subscribe` Package Manager sample is the direct
+Linux/ROS2-to-Unity input route for existing compiled ROS2 message types. It
+does not use Foxglove Desktop, Foxglove WebSocket, or FoxRun Publish Data. The
+sample exposes four explicit native `SubscribeOnly` contracts. Its serialized
+topic fields retain source-defined defaults and remain visible in the Inspector:
+
+| Type | Inspector topic field | QoS |
+| --- | --- | --- |
+| `std_msgs/msg/String` | String Topic | Reliable |
+| `geometry_msgs/msg/Twist` | Twist Topic | Reliable |
+| `sensor_msgs/msg/Joy` | Joy Topic | SensorData / BestEffort |
+| `sensor_msgs/msg/Imu` | Imu Topic | SensorData / BestEffort |
+
+Resolve exactly one runtime package before entering Play Mode. After a runtime
+or communication-mode change that follows native initialization, restart the
+Editor; a loaded Windows native ROS2 runtime cannot safely be exchanged in the
+same process. The supported Player target is WindowsStandalone64.
+
+Unity and its Linux peer must use the same ROS distro, RMW implementation, ROS
+domain, discovery topology, and compatible QoS. FastDDS (`rmw_fastrtps_cpp`)
+and Zenoh (`rmw_zenoh_cpp`, Lyrical only) are separate modes, not fallback or
+bridge paths. A Player has no Inspector-time runtime switch: choose the runtime
+before building, then set `ROS_DISTRO`, `RMW_IMPLEMENTATION`,
+`ROS_DOMAIN_ID`, discovery settings, and any Zenoh configuration in the Player
+process environment before its first ROS2 initialization.
+
+The generated binding deep-copies each borrowed callback message before its
+main-thread apply. Sample Inspector fields show bounded copied scalars, strings
+and Joy arrays; do not retain callback message references.
+`FoxRunRos2NativeCopyBudgetBytes` defaults to 4 MiB and is normalized to the
+portable 1 KiB–256 MiB range. The native-copy budget is latest-wins and
+intended for the small standard messages above, not for arbitrary large payload
+benchmarks. A copied graph that exceeds it is not applied and is reported as a
+bounded `CopyFailed` diagnostic; no WebSocket or alternate-transport fallback
+is created.
+
+The Linux acceptance helper treats a ROS2 CLI publication as peer-side
+evidence only. With `--unity-log`, it accepts an applied marker only when it was
+appended after that specific publication; String runs before Twist so the latter
+can reuse the current correlation token. A full expected-negative verdict also
+requires `--unity-ready-token` to identify Unity's current READY runtime/RMW
+marker and a current positive contract baseline. Graph absence, a no-apply
+window, or a matching `ROS_DOMAIN_ID` alone are never interoperability proof.
+
+Custom asmdefs need references to `Unity.FoxgloveSDK`,
+`Unity2Foxglove.Ros2ForUnity.Native`, and the selected runtime/message
+assemblies. `FOXRUN212` means `Native generation requires the optional Native
+assembly reference`; add the Native reference and let Unity recompile instead
+of changing the contract to a WebSocket encoding.
+
+ROS domain IDs are discovery isolation, not authentication. Configure network
+controls and ROS2 security separately. Arbitrary FoxRun DTO/custom-message
+generation and native Publish Data or bidirectional support are future work;
+this sample supports existing compiled `.msg` types and native `SubscribeOnly`
+only.
+
 ## External Adapter Sample
 
 Install the adapter package and keep candidate runtime packages under the repository root `Packages/` directory:

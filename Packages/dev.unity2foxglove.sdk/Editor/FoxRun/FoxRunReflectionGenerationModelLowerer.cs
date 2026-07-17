@@ -41,7 +41,12 @@ namespace Unity.FoxgloveSDK.Editor
                     mode: member.Mode,
                     encoding: FoxRunGenerationMember.DeclaredEncodingToText(member.Encoding),
                     protobufFieldNumber: member.ProtobufFieldNumber,
-                    protobufTypeShape: member.ProtobufTypeShape))
+                    protobufTypeShape: member.ProtobufTypeShape,
+                    subscriptionProvider: FoxRunGenerationMember.DeclaredSubscriptionProviderToText(member.SubscriptionProvider),
+                    ros2Qos: FoxRunGenerationMember.DeclaredRos2QosToText(member.Ros2Qos),
+                    generatesWebSocketCodec: member.GeneratesWebSocketCodec,
+                    generatesRos2NativeRegistration: member.GeneratesRos2NativeRegistration,
+                    ros2MessageShape: member.Ros2MessageShape))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -64,6 +69,11 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly int PublishMode;
         public readonly int Mode;
         public readonly int Encoding;
+        public readonly int SubscriptionProvider;
+        public readonly int Ros2Qos;
+        public readonly bool GeneratesWebSocketCodec;
+        public readonly bool GeneratesRos2NativeRegistration;
+        public readonly FoxRunRos2MessageShape Ros2MessageShape;
         public readonly int ProtobufFieldNumber;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly float ChangeEpsilon;
@@ -100,7 +110,12 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 0,
             int encoding = 0,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null)
+            FoxRunProtobufTypeShape protobufTypeShape = null,
+            int subscriptionProvider = 0,
+            int ros2Qos = 0,
+            bool? generatesWebSocketCodec = null,
+            bool? generatesRos2NativeRegistration = null,
+            FoxRunRos2MessageShape ros2MessageShape = null)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -119,6 +134,21 @@ namespace Unity.FoxgloveSDK.Editor
             PublishMode = publishMode;
             Mode = mode;
             Encoding = encoding;
+            SubscriptionProvider = subscriptionProvider;
+            Ros2Qos = ros2Qos;
+            GeneratesWebSocketCodec = generatesWebSocketCodec
+                ?? (protobufTypeShape != null
+                    || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
+                        FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
+                            isArray && !string.IsNullOrEmpty(elementTypeName)
+                                ? elementTypeName
+                                : EmissionTypeName)));
+            GeneratesRos2NativeRegistration = generatesRos2NativeRegistration
+                ?? (ros2MessageShape != null
+                    && ros2MessageShape.HasPublicParameterlessConstructor
+                    && ros2MessageShape.ImplementsRos2Message
+                    && ros2MessageShape.Diagnostics.Count == 0);
+            Ros2MessageShape = ros2MessageShape;
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
             ChangeEpsilon = changeEpsilon;
@@ -155,7 +185,12 @@ namespace Unity.FoxgloveSDK.Editor
             int mode = 0,
             int encoding = 0,
             int protobufFieldNumber = 0,
-            FoxRunProtobufTypeShape protobufTypeShape = null)
+            FoxRunProtobufTypeShape protobufTypeShape = null,
+            int subscriptionProvider = 0,
+            int ros2Qos = 0,
+            bool? generatesWebSocketCodec = null,
+            bool? generatesRos2NativeRegistration = null,
+            FoxRunRos2MessageShape ros2MessageShape = null)
             : this(
                 ns,
                 className,
@@ -181,7 +216,12 @@ namespace Unity.FoxgloveSDK.Editor
                 mode,
                 encoding,
                 protobufFieldNumber,
-                protobufTypeShape)
+                protobufTypeShape,
+                subscriptionProvider,
+                ros2Qos,
+                generatesWebSocketCodec,
+                generatesRos2NativeRegistration,
+                ros2MessageShape)
         {
         }
     }

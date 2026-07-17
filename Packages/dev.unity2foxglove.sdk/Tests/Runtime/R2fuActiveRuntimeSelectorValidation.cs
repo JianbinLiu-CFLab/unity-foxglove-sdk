@@ -22,7 +22,11 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ReadmePath =
             "Packages/dev.unity2foxglove.ros2forunity/README.md";
         private const string ManagerInspectorPath =
-            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs";
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs";
+        private const string ManagerInspectorAsmdefPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Unity.FoxgloveSDK.Editor.asmdef";
+        private const string ManagerWorkflowPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
         private const string RegistryPath =
             "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs";
         private const string ProjectPath =
@@ -111,17 +115,43 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ManagerInspectorHostsOptionalSelector()
         {
             var source = ReadRepoText(ManagerInspectorPath);
+            var asmdef = ReadRepoText(ManagerInspectorAsmdefPath);
+            var workflow = ReadRepoText(ManagerWorkflowPath);
+            var guard = ReadRepoText(PlayModeGuardPath);
 
-            Check(source.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
-                  && source.Contains("DrawOptionalR2fuRuntimeSelector", StringComparison.Ordinal),
-                "146A-D1: Foxglove Manager Inspector hosts the runtime selector under ROS2 Native");
-            Check(source.Contains("\"Unity2Foxglove.Ros2\" + \"ForUnity.Editor.Ros2\" + \"ForUnityRuntimeSelectorInspector", StringComparison.Ordinal)
-                  && source.Contains("Unity2Foxglove.Ros2\" + \"ForUnity.Editor", StringComparison.Ordinal)
+            Check(source.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
+                  && source.Contains("HasGeneratedExplicitSubscriptionProvider", StringComparison.Ordinal)
+                  && workflow.Contains("DrawSection(\"ROS2 Runtime (R2FU)\"", StringComparison.Ordinal)
+                  && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
+                  && guard.Contains("_enableFoxRunInbound", StringComparison.Ordinal)
+                  && guard.Contains("_defaultFoxRunSubscriptionProvider", StringComparison.Ordinal),
+                "146A-D1: unified native demand surfaces one runtime selector for native output and inbound subscriptions");
+            const string selectorReflectionSeam =
+                "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor";
+            const string diagnosticsReflectionSeam =
+                "Unity2Foxglove.Ros2ForUnity.Native.Editor.FoxRunRos2SubscriptionDiagnosticsInspector, Unity2Foxglove.Ros2ForUnity.Native.Editor";
+            Check(source.Contains("\"" + selectorReflectionSeam + "\"", StringComparison.Ordinal)
+                  && source.Contains("\"" + diagnosticsReflectionSeam + "\"", StringComparison.Ordinal)
+                  && source.Contains("Type.GetType(R2fuRuntimeSelectorInspectorTypeName)", StringComparison.Ordinal)
+                  && source.Contains("Type.GetType(R2fuNativeSubscriptionDiagnosticsInspectorTypeName)", StringComparison.Ordinal)
                   && source.Contains("GetMethod", StringComparison.Ordinal),
-                "146A-D2: core SDK discovers the optional selector by reflection");
+                "146A-D2: core SDK declares its two optional R2FU Inspector reflection endpoints explicitly");
+            Check(CountOccurrences(source, "Unity2Foxglove.Ros2ForUnity") == 4
+                  && !source.Contains("using Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
+                  && !source.Contains("global::Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
+                  && !asmdef.Contains("Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal),
+                "146A-D2b: core Inspector permits only the documented reflection seam and keeps no optional R2FU assembly dependency");
             Check(source.Contains("TargetInvocationException", StringComparison.Ordinal)
-                  && source.Contains("ROS2 For Unity runtime selector failed", StringComparison.Ordinal),
+                  && source.Contains("DrawOptionalR2fuInspectorFailure", StringComparison.Ordinal),
                 "146A-D3: optional selector failures are contained inside the Inspector UI");
+            Check(!source.Contains("InnerException.Message", StringComparison.Ordinal)
+                  && !source.Contains("ex.Message", StringComparison.Ordinal),
+                "146A-D3b: optional selector failures never expose raw reflected exception messages in the Inspector");
+            Check(source.Contains("private bool HasR2fuNativeSubscriptionDemand()", StringComparison.Ordinal)
+                  && source.Contains("nativeOutputEnabled: false", StringComparison.Ordinal)
+                  && source.Contains("var subscriptionDemand = HasR2fuNativeSubscriptionDemand();", StringComparison.Ordinal)
+                  && source.Contains("if (outputDemand && subscriptionDemand)", StringComparison.Ordinal),
+                "146A-D4: Inspector distinguishes simultaneous native publish and subscription demand from WebSocket-only subscriptions");
         }
 
         private static void RuntimeSelectorUsesOneDropdown()
@@ -154,6 +184,11 @@ namespace Unity.FoxgloveSDK.Tests
             Check(guard.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal)
                   && guard.Contains("Restart Unity before entering Play Mode", StringComparison.Ordinal),
                 "146A-F2: Play Mode guard cancels unsafe mixed-runtime entry and explains the restart requirement");
+            Check(guard.Contains("HasR2fuNativeDemand()", StringComparison.Ordinal)
+                  && guard.Contains("status.SelectedRuntime == null", StringComparison.Ordinal)
+                  && guard.Contains("No selected ROS2 For Unity runtime is available", StringComparison.Ordinal)
+                  && guard.Contains("EditorApplication.isPlaying = false", StringComparison.Ordinal),
+                "146A-F2b: native demand fails closed before Play Mode when no valid runtime selection can bind RMW");
             Check(guard.Contains("CompilationPipeline.compilationStarted", StringComparison.Ordinal)
                   && guard.Contains("AssemblyReloadEvents.beforeAssemblyReload", StringComparison.Ordinal)
                   && guard.Contains("CompilationStartedWhileR2fuPlayModeKey", StringComparison.Ordinal)
@@ -162,8 +197,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(inspector.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal)
                   && inspector.Contains("Restart Unity", StringComparison.Ordinal)
                   && inspector.Contains("RestartEditor(projectDirectory)", StringComparison.Ordinal)
-                  && ReadRepoText(SelectionPath).Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal),
-                "146A-F4: Inspector surfaces conditional restart state and offers one-click relaunch");
+                  && ReadRepoText(SelectionPath).Contains("RestartEditorInCleanProcess", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("ProcessStartInfo", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("UseShellExecute = false", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("BuildCleanRestartPath", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("EditorApplication.Exit(0)", StringComparison.Ordinal)
+                  && !ReadRepoText(SelectionPath).Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal),
+                "146A-F4: Inspector restart launches a clean child Editor without inheriting an older R2FU native plugin path");
         }
 
         private static void ReadmeDocumentsActiveRuntimeSelection()
@@ -200,6 +240,19 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string RepoPath(string relativePath)
             => Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        private static int CountOccurrences(string text, string value)
+        {
+            var count = 0;
+            var index = 0;
+            while ((index = text.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                index += value.Length;
+            }
+
+            return count;
+        }
 
         private static void Check(bool condition, string message)
         {

@@ -187,11 +187,15 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             var writer = ReadRepoText(SchemaWriterPath);
-            foreach (var token in new[] { "FoxRunManifestHasher", "WriteCanonical", "SHA256", "generatedAtUtc", "MCAP", "replay", "ROS2", "typed-publisher" })
+            foreach (var token in new[] { "FoxRunManifestHasher", "WriteCanonical", "SHA256", "generatedAtUtc", "MCAP", "replay", "typed-publisher" })
             {
                 Check(!writer.Contains(token, StringComparison.OrdinalIgnoreCase),
                     "113-D2: schema writer avoids second hash path or out-of-scope token: " + token);
             }
+            Check(writer.Contains("SubscriptionManifestHash", StringComparison.Ordinal)
+                  && writer.Contains("SubscriptionBindings", StringComparison.Ordinal)
+                  && writer.Contains("SubscriptionManifestHash mismatch.", StringComparison.Ordinal),
+                "113-D2a: schema writer carries and verifies the manifest v2 subscription digest");
 
             var codegen = ReadRepoText(CodeGeneratorPath);
             Check(codegen.Contains("FoxRunSchemaInfoWriter.WriteGeneratedInfoFiles", StringComparison.Ordinal)

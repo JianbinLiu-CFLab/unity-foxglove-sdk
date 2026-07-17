@@ -45,6 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyPointCloud2PublishersPrewarmOutsideFrameCallback();
             VerifyReadyLogsAvoidEditorStackTraceExtraction();
             VerifyCameraBindingHotPathsRemainSceneFree();
+            VerifyFoxRunSubscriptionShutdownGate();
             VerifyPhase161LifecycleValidationRecognizesSharedGate();
             VerifyRegistryAndProjectWiring();
 
@@ -213,6 +214,60 @@ namespace Unity.FoxgloveSDK.Tests
             }
         }
 
+        private static void VerifyFoxRunSubscriptionShutdownGate()
+        {
+            var gate = ReadRepoText(LifecycleGateFile);
+            var hub = ReadRepoText(
+                NativeDir + "/FoxRun/FoxRunRos2SubscriptionHub.cs");
+            var backend = ReadRepoText(
+                NativeDir + "/FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
+            var update = RequiredMethod(
+                hub,
+                "private void Update()",
+                "FoxRunRos2SubscriptionHub.cs");
+            var ensureNode = RequiredMethod(
+                hub,
+                "private bool TryEnsureNodeOwner",
+                "FoxRunRos2SubscriptionHub.cs");
+            var addBinding = RequiredMethod(
+                hub,
+                "private void AddBinding<T>",
+                "FoxRunRos2SubscriptionHub.cs");
+            var backendRegister = RequiredMethod(
+                backend,
+                "public FoxRunRos2NativeBackendRegistration Register<T>",
+                "Ros2ForUnityFoxRunInboundBackend.cs");
+
+            var shutdownIndex = update.IndexOf(
+                "IsShuttingDownForBridge(gameObject.scene)",
+                StringComparison.Ordinal);
+            Check(shutdownIndex >= 0
+                  && shutdownIndex < update.IndexOf("ResolveManager();", StringComparison.Ordinal)
+                  && shutdownIndex < update.IndexOf("ScanAndReconcile();", StringComparison.Ordinal)
+                  && shutdownIndex < update.IndexOf("DrainBindings(", StringComparison.Ordinal),
+                "FoxRun inbound host fail-closes Update before any recovery or native work");
+
+            var initGateIndex = ensureNode.IndexOf(
+                "CanInitializeNativeRuntimeForBridge(gameObject.scene)",
+                StringComparison.Ordinal);
+            Check(gate.Contains("!_nativeReloadWindow", StringComparison.Ordinal)
+                  && gate.Contains("anyBackupSceneLoaded", StringComparison.Ordinal)
+                  && gate.Contains("Temp/__Backupscenes/", StringComparison.Ordinal)
+                  && initGateIndex >= 0
+                  && initGateIndex < ensureNode.IndexOf("GetComponent<", StringComparison.Ordinal)
+                  && initGateIndex < ensureNode.IndexOf(".Ok()", StringComparison.Ordinal)
+                  && initGateIndex < ensureNode.IndexOf("CreateNode(", StringComparison.Ordinal)
+                  && OccursBefore(
+                      addBinding,
+                      "CanInitializeNativeRuntimeForBridge",
+                      "binding.TryRegister()")
+                  && OccursBefore(
+                      backendRegister,
+                      "_canUseNativeRuntime()",
+                      "_driver.CreateSubscription("),
+                "backup scenes and reload windows close every Ros2cs.Init-reachable inbound initialization path");
+        }
+
         private static void VerifyPhase161LifecycleValidationRecognizesSharedGate()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuJazzyRuntimeRefreshValidation.cs");
@@ -268,6 +323,13 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(path))
                 throw new FileNotFoundException("Missing repository file: " + relativePath, path);
             return File.ReadAllText(path);
+        }
+
+        private static bool OccursBefore(string source, string first, string second)
+        {
+            var firstIndex = source.IndexOf(first, StringComparison.Ordinal);
+            var secondIndex = source.IndexOf(second, StringComparison.Ordinal);
+            return firstIndex >= 0 && secondIndex > firstIndex;
         }
 
         private static void Check(bool condition, string label)

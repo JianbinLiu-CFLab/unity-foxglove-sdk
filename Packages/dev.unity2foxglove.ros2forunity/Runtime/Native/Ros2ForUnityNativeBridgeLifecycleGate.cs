@@ -47,7 +47,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             get
             {
                 RefreshSceneStateIfNeeded();
-                return _isStablePlayModeScene
+                return !_nativeReloadWindow
+                       && _isStablePlayModeScene
                        && !_applicationQuitting
                        && !IsHardEditorShutdownWindow
                        && IsActiveSceneCacheCurrent;

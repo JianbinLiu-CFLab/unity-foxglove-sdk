@@ -87,14 +87,14 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyR2fuSelectorReflectionIsCached()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
+            var source = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs");
             var editor = Read("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             var draw = PhaseValidationSourceHelpers.SourceMethod(source, "private void DrawOptionalR2fuRuntimeSelector");
-            var resolve = PhaseValidationSourceHelpers.SourceMethod(source, "private static System.Reflection.MethodInfo ResolveR2fuRuntimeSelectorDrawMethod");
+            var resolve = PhaseValidationSourceHelpers.SourceMethod(source, "private static MethodInfo ResolveR2fuRuntimeSelectorDrawMethod");
             var reset = PhaseValidationSourceHelpers.SourceMethod(source, "private static void ResetOptionalR2fuRuntimeSelectorCache");
 
             Check(source.Contains("private static bool _r2fuRuntimeSelectorResolved;", StringComparison.Ordinal)
-                  && source.Contains("private static System.Reflection.MethodInfo _r2fuRuntimeSelectorDrawMethod;", StringComparison.Ordinal),
+                  && source.Contains("private static MethodInfo _r2fuRuntimeSelectorDrawMethod;", StringComparison.Ordinal),
                 "164-25C-1: optional R2FU selector reflection result is stored in static cache fields");
             Check(draw.Contains("var drawMethod = ResolveR2fuRuntimeSelectorDrawMethod();", StringComparison.Ordinal)
                   && !draw.Contains("Type.GetType", StringComparison.Ordinal)

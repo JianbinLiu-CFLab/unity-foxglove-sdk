@@ -223,7 +223,9 @@ namespace Unity.FoxgloveSDK.Editor
         public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
-            var manifest = FoxRunManifestBuilder.Build(scan.ManifestMembers);
+            var manifest = FoxRunManifestBuilder.Build(
+                scan.ManifestMembers,
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
             return VerifyGeneratedSchemaInfoFiles(manifest);
         }
 
@@ -313,8 +315,13 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         public static string EmitSourceFile(FoxRunGenerationType type)
+            => EmitSourceFile(type, ShouldEmitRos2NativePartial(type));
+
+        internal static string EmitSourceFile(
+            FoxRunGenerationType type,
+            bool emitRos2NativePartial)
         {
-            var core = FoxgloveSourceEmitter.EmitClass(type);
+            var core = FoxgloveSourceEmitter.EmitClass(type, emitRos2NativePartial);
 
             // Wrap with a Player-only guard so Editor compilation uses the Roslyn
             // generated in-memory source and Player builds use the physical file.
@@ -328,6 +335,43 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(core);
             sb.AppendLine("#endif");
             return sb.ToString();
+        }
+
+        private static bool ShouldEmitRos2NativePartial(FoxRunGenerationType type)
+        {
+            if (type == null || !type.Members.Any(member => member.GeneratesRos2NativeRegistration))
+                return true;
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+            const string nativeAssemblyName = "Unity2Foxglove.Ros2ForUnity.Native";
+            var sourceContract = Type.GetType(
+                "Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionSource, " + nativeAssemblyName,
+                throwOnError: false);
+            var registrarContract = Type.GetType(
+                "Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionRegistrar, " + nativeAssemblyName,
+                throwOnError: false);
+            if (sourceContract == null || registrarContract == null
+                || !sourceContract.IsPublic || !sourceContract.IsInterface
+                || !registrarContract.IsPublic || !registrarContract.IsInterface)
+                return false;
+
+            Type declaringType = null;
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                declaringType = assembly.GetType(type.DeclaringType, throwOnError: false);
+                if (declaringType != null)
+                    break;
+            }
+            if (declaringType == null)
+                return false;
+
+            return declaringType.Assembly.GetReferencedAssemblies().Any(
+                reference => string.Equals(reference.Name, nativeAssemblyName, StringComparison.Ordinal));
+#else
+            // The conditional partial is inert without the optional define, so
+            // retaining it preserves deterministic physical/Roslyn source parity.
+            return true;
+#endif
         }
 
         public static string EmitServiceSourceFile(

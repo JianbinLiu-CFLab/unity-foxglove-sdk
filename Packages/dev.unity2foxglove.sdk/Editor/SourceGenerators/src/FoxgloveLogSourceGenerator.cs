@@ -58,9 +58,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 transform: static (ctx, ct) => ExtractMember(ctx, ct))
                 .Where(static m => m != null);
 
+            var nativeCompilationEvidence = context.CompilationProvider.Select(
+                static (compilation, _) => NativeCompilationEvidence.FromCompilation(compilation));
+
             context.RegisterSourceOutput(
-                members.Collect(),
-                static (spc, items) => Generate(spc, items));
+                members.Collect().Combine(nativeCompilationEvidence),
+                static (spc, input) => Generate(spc, input.Left, input.Right));
 
             var services = context.SyntaxProvider.CreateSyntaxProvider(
                 predicate: static (node, _) => IsServiceCandidate(node),
@@ -168,6 +171,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 int publishMode = 0;
                 int mode = 0;
                 int encoding = 0;
+                int subscriptionProvider = 0;
+                int ros2Qos = 0;
                 int protobufFieldNumber = 0;
                 float changeEpsilon = 0f;
                 float forceIntervalSeconds = 0f;
@@ -180,13 +185,15 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     if (named.Key == "PublishMode" && TryReadIntConstant(named.Value, out var pm)) publishMode = pm;
                     if (named.Key == "Mode" && TryReadIntConstant(named.Value, out var flowMode)) mode = flowMode;
                     if (named.Key == "Encoding" && TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
+                    if (named.Key == "SubscriptionProvider" && TryReadIntConstant(named.Value, out var provider)) subscriptionProvider = provider;
+                    if (named.Key == "Ros2Qos" && TryReadIntConstant(named.Value, out var qos)) ros2Qos = qos;
                     if (named.Key == "ProtobufFieldNumber" && TryReadIntConstant(named.Value, out var fieldNumber)) protobufFieldNumber = fieldNumber;
                     if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
                     if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
                     if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
                     if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
                 }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode, encoding: encoding, protobufFieldNumber: protobufFieldNumber));
+                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode, encoding: encoding, protobufFieldNumber: protobufFieldNumber, subscriptionProvider: subscriptionProvider, ros2Qos: ros2Qos));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -279,7 +286,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 && ((symbol is IFieldSymbol inboundField && inboundField.IsReadOnly)
                     || (symbol is IPropertySymbol inboundProperty && inboundProperty.SetMethod == null)))
             {
-                return MemberData.ForDiagnostic(memberLocation, "FOXRUN028");
+                return MemberData.ForDiagnostic(memberLocation, "FOXRUN203");
             }
 
             var memberType = typeSymbol == null ? "object" : typeSymbol.ToDisplayString();
@@ -291,12 +298,18 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             FoxRunRoslynProtobufTypeShapeBuilder.TryBuild(
                 isArray ? elementType : typeSymbol,
                 out var protobufTypeShape);
+            var ros2MessageShape = FoxRunRoslynRos2MessageShapeBuilder.Build(
+                typeSymbol,
+                ctx.SemanticModel.Compilation);
+            var hasExplicitNativeTopic = topics.Any(topic => topic.SubscriptionProvider == 2);
+            if (!hasExplicitNativeTopic && !ros2MessageShape.ImplementsRos2Message)
+                ros2MessageShape = null;
 
             string ns = containingType.ContainingNamespace != null
                 && !containingType.ContainingNamespace.IsGlobalNamespace
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
 
-            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape);
+            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape);
         }
 
         private static string DeclaringTypeName(INamedTypeSymbol containingType)
@@ -344,7 +357,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             foreach (var topic in topics)
             {
                 if (TryGetConditionDiagnostic(containingType, topic.When, "FOXRUN015", out diagnosticId)
-                    || TryGetConditionDiagnostic(containingType, topic.Unless, "FOXRUN029", out diagnosticId))
+                    || TryGetConditionDiagnostic(containingType, topic.Unless, "FOXRUN601", out diagnosticId))
                 {
                     return true;
                 }
@@ -574,7 +587,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// Entry point for source output: reports diagnostics, groups members by
         /// enclosing class, and emits one generated partial class per valid group.
         /// </summary>
-        private static void Generate(SourceProductionContext spc, ImmutableArray<MemberData> items)
+        private static void Generate(
+            SourceProductionContext spc,
+            ImmutableArray<MemberData> items,
+            NativeCompilationEvidence nativeCompilationEvidence)
         {
             var roslynMemberCapacity = 0;
             foreach (var item in items)
@@ -585,6 +601,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 roslynMemberCapacity > 0 ? roslynMemberCapacity : items.Length);
             var memberLocations = new Dictionary<string, Location>(items.Length);
             var firstMemberByClass = new Dictionary<(string Ns, string ClassName), MemberData>();
+            var missingNativeReferenceTypes = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in items)
             {
                 if (item == null)
@@ -599,6 +616,27 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 item.AppendRoslynMembers(roslynMembers);
                 memberLocations[MemberLocationKey(item.Ns, item.ClassName, item.MemberName)] = item.MemberLocation;
 
+                if (nativeCompilationEvidence.HasNativeDefine
+                    && !nativeCompilationEvidence.HasNativeAssemblyReference
+                    && item.Ros2MessageShape != null
+                    && item.Ros2MessageShape.ImplementsRos2Message
+                    && item.Ros2MessageShape.HasPublicParameterlessConstructor
+                    && item.Ros2MessageShape.Diagnostics.Count == 0
+                    && item.Topics.Any(topic =>
+                        topic.Mode == 1
+                        && (topic.SubscriptionProvider == 0
+                            || topic.SubscriptionProvider == 2)))
+                {
+                    spc.ReportDiagnostic(Diagnostic.Create(
+                        Diags.MissingNativeAssemblyReference,
+                        item.MemberLocation,
+                        item.MemberName));
+                    missingNativeReferenceTypes.Add(
+                        string.IsNullOrEmpty(item.Ns)
+                            ? item.ClassName
+                            : item.Ns + "." + item.ClassName);
+                }
+
                 var key = (item.Ns, item.ClassName);
                 if (!firstMemberByClass.ContainsKey(key))
                     firstMemberByClass.Add(key, item);
@@ -608,10 +646,20 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             var model = FoxRunRoslynGenerationModelLowerer.Lower(roslynMembers);
             var sharedDiagnostics = FoxRunGenerationModelValidator.Validate(model);
+            // A missing optional Native reference invalidates only the dependent
+            // conditional ROS2 partial. Keep emitting the ROS-free/WebSocket
+            // portion so FOXRUN212 does not create a missing-type diagnostic
+            // cascade or erase otherwise-valid generated behavior.
             var invalidDeclaringTypes = new HashSet<string>(StringComparer.Ordinal);
             foreach (var diagnostic in sharedDiagnostics)
             {
-                spc.ReportDiagnostic(Diagnostic.Create(Diags.Shared(diagnostic.Id), LocationFor(diagnostic, memberLocations), diagnostic.Target));
+                var messageArgument = Diags.SharedUsesDetailedMessage(diagnostic.Id)
+                    ? diagnostic.Message
+                    : diagnostic.Target;
+                spc.ReportDiagnostic(Diagnostic.Create(
+                    Diags.Shared(diagnostic.Id),
+                    LocationFor(diagnostic, memberLocations),
+                    messageArgument));
                 if (diagnostic.Severity == "Error")
                     invalidDeclaringTypes.Add(DiagnosticDeclaringType(diagnostic));
             }
@@ -631,12 +679,208 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     continue;
                 }
                 emittedTypes.Add(type);
-                EmitClass(spc, type);
+                EmitClass(
+                    spc,
+                    type,
+                    emitRos2NativePartial: !missingNativeReferenceTypes.Contains(type.DeclaringType));
             }
 
             var descriptor = FoxRunGenerationDescriptorJsonWriter.Write(
                 new FoxRunGenerationModel(emittedTypes, model.DescriptorVersion, model.GeneratorVersion));
             spc.AddSource("FoxRunGeneratedDescriptorInfo.g.cs", FoxRunDescriptorCarrierEmitter.DescriptorCarrierSource(descriptor));
+        }
+
+        private readonly struct NativeCompilationEvidence
+        {
+            private const string NativeAssemblyName = "Unity2Foxglove.Ros2ForUnity.Native";
+            private const string SubscriptionSourceMetadataName =
+                "Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionSource";
+            private const string SubscriptionRegistrarMetadataName =
+                "Unity2Foxglove.Ros2ForUnity.Native.IFoxRunRos2SubscriptionRegistrar";
+            private const string GeneratedContractMetadataName =
+                "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract";
+            private const string CopyContextMetadataName =
+                "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext";
+            private const string Ros2MessageMetadataName = "ROS2.Message";
+            private const string FoxRunModeMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunMode";
+            private const string SubscriptionProviderMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider";
+            private const string Ros2QosMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset";
+
+            public NativeCompilationEvidence(bool hasNativeDefine, bool hasNativeAssemblyReference)
+            {
+                HasNativeDefine = hasNativeDefine;
+                HasNativeAssemblyReference = hasNativeAssemblyReference;
+            }
+
+            public bool HasNativeDefine { get; }
+            public bool HasNativeAssemblyReference { get; }
+
+            public static NativeCompilationEvidence FromCompilation(Compilation compilation)
+            {
+                var hasNativeDefine = compilation.SyntaxTrees.Any(
+                    tree => tree.Options is CSharpParseOptions options
+                            && options.PreprocessorSymbolNames.Contains(
+                                "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                                StringComparer.Ordinal));
+                var source = compilation.GetTypeByMetadataName(SubscriptionSourceMetadataName);
+                var registrar = compilation.GetTypeByMetadataName(SubscriptionRegistrarMetadataName);
+                var contract = compilation.GetTypeByMetadataName(GeneratedContractMetadataName);
+                var context = compilation.GetTypeByMetadataName(CopyContextMetadataName);
+                var ros2Message = compilation.GetTypeByMetadataName(Ros2MessageMetadataName);
+                var hasNativeAssemblyReference = HasPublicNativeType(source, TypeKind.Interface)
+                    && HasPublicNativeType(registrar, TypeKind.Interface)
+                    && HasPublicNativeType(contract, TypeKind.Class)
+                    && HasPublicNativeType(context, TypeKind.Class)
+                    && ros2Message != null
+                    && HasExactSourceSeam(compilation, source, registrar)
+                    && HasExactRegistrarSeam(compilation, registrar, contract, context, ros2Message)
+                    && HasExactContractConstructor(compilation, contract)
+                    && HasExactCopyContextSeam(compilation, context);
+                return new NativeCompilationEvidence(hasNativeDefine, hasNativeAssemblyReference);
+            }
+
+            private static bool HasPublicNativeType(INamedTypeSymbol symbol, TypeKind typeKind)
+                => symbol != null
+                   && symbol.TypeKind == typeKind
+                   && symbol.DeclaredAccessibility == Accessibility.Public
+                   && string.Equals(
+                       symbol.ContainingAssembly?.Identity.Name,
+                       NativeAssemblyName,
+                       StringComparison.Ordinal);
+
+            private static bool HasExactSourceSeam(
+                Compilation compilation,
+                INamedTypeSymbol source,
+                INamedTypeSymbol registrar)
+            {
+                var count = source.GetMembers("FoxRunRos2SubscriptionCount")
+                    .OfType<IPropertySymbol>()
+                    .SingleOrDefault();
+                if (count == null
+                    || count.IsStatic
+                    || count.IsIndexer
+                    || count.DeclaredAccessibility != Accessibility.Public
+                    || count.GetMethod == null
+                    || count.SetMethod != null
+                    || count.Type.SpecialType != SpecialType.System_Int32)
+                    return false;
+
+                return source.GetMembers("FoxRunRos2RegisterSubscriptions")
+                    .OfType<IMethodSymbol>()
+                    .Any(method => IsPublicInstanceOrdinaryVoid(method)
+                                   && method.Arity == 0
+                                   && method.Parameters.Length == 1
+                                   && method.Parameters[0].RefKind == RefKind.None
+                                   && SymbolEqualityComparer.Default.Equals(
+                                       method.Parameters[0].Type,
+                                       registrar));
+            }
+
+            private static bool HasExactRegistrarSeam(
+                Compilation compilation,
+                INamedTypeSymbol registrar,
+                INamedTypeSymbol contract,
+                INamedTypeSymbol context,
+                INamedTypeSymbol ros2Message)
+            {
+                var func3 = compilation.GetTypeByMetadataName("System.Func`3");
+                var func2 = compilation.GetTypeByMetadataName("System.Func`2");
+                var action1 = compilation.GetTypeByMetadataName("System.Action`1");
+                if (func3 == null || func2 == null || action1 == null)
+                    return false;
+
+                foreach (var method in registrar.GetMembers("Register").OfType<IMethodSymbol>())
+                {
+                    if (!IsPublicInstanceOrdinaryVoid(method)
+                        || method.Arity != 1
+                        || method.Parameters.Length != 5)
+                        continue;
+                    var typeParameter = method.TypeParameters[0];
+                    if (!typeParameter.HasConstructorConstraint
+                        || typeParameter.HasReferenceTypeConstraint
+                        || typeParameter.HasValueTypeConstraint
+                        || typeParameter.HasUnmanagedTypeConstraint
+                        || typeParameter.ConstraintTypes.Length != 1
+                        || !SymbolEqualityComparer.Default.Equals(
+                            typeParameter.ConstraintTypes[0],
+                            ros2Message))
+                        continue;
+                    var expected = new ITypeSymbol[]
+                    {
+                        contract,
+                        func3.Construct(typeParameter, context, typeParameter),
+                        action1.Construct(typeParameter),
+                        action1.Construct(typeParameter),
+                        func2.Construct(typeParameter, compilation.GetSpecialType(SpecialType.System_Boolean))
+                    };
+                    var matches = true;
+                    for (var i = 0; i < expected.Length; i++)
+                    {
+                        if (method.Parameters[i].RefKind != RefKind.None
+                            || !SymbolEqualityComparer.Default.Equals(method.Parameters[i].Type, expected[i]))
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if (matches)
+                        return true;
+                }
+                return false;
+            }
+
+            private static bool HasExactContractConstructor(
+                Compilation compilation,
+                INamedTypeSymbol contract)
+            {
+                var stringType = compilation.GetSpecialType(SpecialType.System_String);
+                var boolType = compilation.GetSpecialType(SpecialType.System_Boolean);
+                var mode = compilation.GetTypeByMetadataName(FoxRunModeMetadataName);
+                var provider = compilation.GetTypeByMetadataName(SubscriptionProviderMetadataName);
+                var qos = compilation.GetTypeByMetadataName(Ros2QosMetadataName);
+                if (mode == null || provider == null || qos == null)
+                    return false;
+                var expected = new ITypeSymbol[]
+                {
+                    stringType,
+                    stringType,
+                    stringType,
+                    stringType,
+                    stringType,
+                    mode,
+                    provider,
+                    qos,
+                    boolType
+                };
+                return contract.InstanceConstructors.Any(constructor =>
+                    constructor.DeclaredAccessibility == Accessibility.Public
+                    && constructor.Parameters.Length == expected.Length
+                    && constructor.Parameters.Select(parameter => parameter.Type)
+                        .SequenceEqual(expected, SymbolEqualityComparer.Default)
+                    && constructor.Parameters.All(parameter =>
+                        parameter.RefKind == RefKind.None && !parameter.IsOptional));
+            }
+
+            private static bool HasExactCopyContextSeam(
+                Compilation compilation,
+                INamedTypeSymbol context)
+                => context.GetMembers("RequireBytes")
+                    .OfType<IMethodSymbol>()
+                    .Any(method => IsPublicInstanceOrdinaryVoid(method)
+                                   && method.Arity == 0
+                                   && method.Parameters.Length == 1
+                                   && method.Parameters[0].RefKind == RefKind.None
+                                   && method.Parameters[0].Type.SpecialType == SpecialType.System_Int64);
+
+            private static bool IsPublicInstanceOrdinaryVoid(IMethodSymbol method)
+                => method != null
+                   && !method.IsStatic
+                   && method.MethodKind == MethodKind.Ordinary
+                   && method.DeclaredAccessibility == Accessibility.Public
+                   && method.ReturnsVoid;
         }
 
         private static string DiagnosticDeclaringType(FoxRunGenerationDiagnostic diagnostic)
@@ -737,11 +981,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <c>FoxgloveSourceEmitter.EmitClass</c> for output
         /// consistency with the build-time physical fallback path.
         /// </summary>
-        private static void EmitClass(SourceProductionContext spc, FoxRunGenerationType type)
+        private static void EmitClass(
+            SourceProductionContext spc,
+            FoxRunGenerationType type,
+            bool emitRos2NativePartial)
         {
             var ns = type.Namespace;
             var className = type.ClassName;
-            var source = FoxgloveSourceEmitter.EmitClass(type);
+            var source = FoxgloveSourceEmitter.EmitClass(type, emitRos2NativePartial);
             spc.AddSource(FoxgloveSourceEmitter.GeneratedSourceName(ns, className), source);
         }
 

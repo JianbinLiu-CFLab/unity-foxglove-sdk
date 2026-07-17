@@ -466,6 +466,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnEnable()
         {
+            BeginFoxRunSubscriptionSessionIfNeeded();
+
             if (_startOnEnable)
             {
                 StartServer();
@@ -480,6 +482,8 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void Update()
         {
+            SyncFoxRunSubscriptionSession();
+
             var frameStallStageStart = BeginFrameStallStageTiming();
             _runtime?.Tick();
             RecordFrameStallStageTiming(ref frameStallStageStart, FrameStallStage.RuntimeTick);
@@ -504,6 +508,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnDisable()
         {
+            EndFoxRunSubscriptionSession();
             _ros2BridgeRuntime?.Stop();
             StopServer(restoreLivePublishers: true);
             _connectionState.OutputModeWatchInitialized = false;
@@ -515,6 +520,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnDestroy()
         {
+            EndFoxRunSubscriptionSession();
             StopServer(restoreLivePublishers: true);
             _ros2BridgeRuntime?.Dispose();
             _ros2BridgeRuntime = null;

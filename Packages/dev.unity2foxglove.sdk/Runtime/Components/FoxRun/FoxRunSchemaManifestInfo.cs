@@ -19,6 +19,8 @@ namespace Unity.FoxgloveSDK.Components
         public string GlobalManifestHash { get; }
         public string FoxRunManifestHash { get; }
         public IReadOnlyList<FoxRunSchemaTypeInfo> Types { get; }
+        public string SubscriptionManifestHash { get; }
+        public IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> SubscriptionBindings { get; }
         public int TypeCount { get; }
         public int ContractCount { get; }
         public int FieldCount { get; }
@@ -30,7 +32,9 @@ namespace Unity.FoxgloveSDK.Components
             int generatorMajorVersion,
             string globalManifestHash,
             string foxRunManifestHash,
-            IReadOnlyList<FoxRunSchemaTypeInfo> types)
+            IReadOnlyList<FoxRunSchemaTypeInfo> types,
+            string subscriptionManifestHash = "",
+            IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> subscriptionBindings = null)
         {
             ManifestVersion = manifestVersion;
             PackageName = packageName ?? string.Empty;
@@ -39,6 +43,9 @@ namespace Unity.FoxgloveSDK.Components
             GlobalManifestHash = globalManifestHash ?? string.Empty;
             FoxRunManifestHash = foxRunManifestHash ?? string.Empty;
             Types = new List<FoxRunSchemaTypeInfo>(types ?? Array.Empty<FoxRunSchemaTypeInfo>()).AsReadOnly();
+            SubscriptionManifestHash = subscriptionManifestHash ?? string.Empty;
+            SubscriptionBindings = new List<FoxRunSchemaSubscriptionBindingInfo>(
+                subscriptionBindings ?? Array.Empty<FoxRunSchemaSubscriptionBindingInfo>()).AsReadOnly();
             TypeCount = Types.Count;
 
             var contractCount = 0;
@@ -59,5 +66,47 @@ namespace Unity.FoxgloveSDK.Components
             ContractCount = contractCount;
             FieldCount = fieldCount;
         }
+    }
+
+    /// <summary>Generated provider/capability metadata kept separate from WebSocket encodings.</summary>
+    public sealed class FoxRunSchemaSubscriptionBindingInfo
+    {
+        public FoxRunSchemaSubscriptionBindingInfo(
+            string declaringType,
+            string memberName,
+            string topic,
+            string flowMode,
+            FoxRunSubscriptionProvider declaredProvider,
+            FoxRunRos2QosPreset ros2Qos,
+            bool supportsWebSocket,
+            bool supportsRos2Native,
+            string nativeType,
+            string canonicalRosType,
+            string copyShapeIdentity)
+        {
+            DeclaringType = declaringType ?? string.Empty;
+            MemberName = memberName ?? string.Empty;
+            Topic = topic ?? string.Empty;
+            FlowMode = flowMode ?? string.Empty;
+            DeclaredProvider = declaredProvider;
+            Ros2Qos = ros2Qos;
+            SupportsWebSocket = supportsWebSocket;
+            SupportsRos2Native = supportsRos2Native;
+            NativeType = nativeType ?? string.Empty;
+            CanonicalRosType = canonicalRosType ?? string.Empty;
+            CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
+        }
+
+        public string DeclaringType { get; }
+        public string MemberName { get; }
+        public string Topic { get; }
+        public string FlowMode { get; }
+        public FoxRunSubscriptionProvider DeclaredProvider { get; }
+        public FoxRunRos2QosPreset Ros2Qos { get; }
+        public bool SupportsWebSocket { get; }
+        public bool SupportsRos2Native { get; }
+        public string NativeType { get; }
+        public string CanonicalRosType { get; }
+        public string CopyShapeIdentity { get; }
     }
 }

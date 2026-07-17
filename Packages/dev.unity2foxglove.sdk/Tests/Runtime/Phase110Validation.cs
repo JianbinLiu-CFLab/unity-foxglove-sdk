@@ -266,8 +266,10 @@ namespace Unity.FoxgloveSDK.Tests
                 .SelectMany(path =>
                 {
                     var text = File.ReadAllText(path);
-                    return CoreProductionForbiddenTokenList
-                        .Where(token => text.Contains(token, StringComparison.Ordinal))
+                    var forbidden = Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase)
+                        ? PhaseRos2ForUnityValidationHelpers.FindHardR2fuCSharpIdentifiers(text, CoreProductionForbiddenTokenList)
+                        : CoreProductionForbiddenTokenList.Where(token => text.Contains(token, StringComparison.Ordinal));
+                    return forbidden
                         .Select(token => Rel(path) + " -> " + token);
                 })
                 .ToList();

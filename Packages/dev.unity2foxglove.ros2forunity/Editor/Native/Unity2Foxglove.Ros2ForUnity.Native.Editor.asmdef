@@ -1,0 +1,22 @@
+{
+  "name": "Unity2Foxglove.Ros2ForUnity.Native.Editor",
+  "rootNamespace": "Unity2Foxglove.Ros2ForUnity.Native.Editor",
+  "references": [
+    "Unity.FoxgloveSDK",
+    "Unity2Foxglove.Ros2ForUnity.Editor",
+    "Unity2Foxglove.Ros2ForUnity.Native"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

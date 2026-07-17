@@ -30,10 +30,22 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append('{');
             AppendPropertyName(sb, "foxrun");
             WriteFoxRunSection(sb, manifest.Sections.FoxRun, includeHash: true);
+            if (manifest.ManifestVersion >= 2)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "subscriptions");
+                WriteSubscriptionSection(sb, manifest.Sections.Subscriptions, includeHash: true);
+            }
             sb.Append('}');
             sb.Append(',');
             AppendPropertyName(sb, "globalManifestHash");
             AppendString(sb, manifest.GlobalManifestHash);
+            if (manifest.ManifestVersion >= 2)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "subscriptionManifestHash");
+                AppendString(sb, manifest.Sections.Subscriptions.ManifestHash);
+            }
             sb.Append('}');
             return sb.ToString();
         }
@@ -140,11 +152,23 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
+        public static string WriteSubscriptionSectionHashInput(
+            IReadOnlyList<FoxRunManifestSubscriptionBinding> bindings)
+        {
+            var sb = new StringBuilder();
+            sb.Append('{');
+            AppendPropertyName(sb, "bindings");
+            WriteSubscriptionBindings(sb, bindings ?? Array.Empty<FoxRunManifestSubscriptionBinding>());
+            sb.Append('}');
+            return sb.ToString();
+        }
+
         public static string WriteGlobalHashInput(
             int manifestVersion,
             string packageName,
             FoxRunManifestGenerator generator,
-            string foxRunSectionHash)
+            string foxRunSectionHash,
+            string subscriptionSectionHash = null)
         {
             var sb = new StringBuilder();
             sb.Append('{');
@@ -161,6 +185,12 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append('{');
             AppendPropertyName(sb, "foxrun");
             AppendString(sb, foxRunSectionHash);
+            if (manifestVersion >= 2 && subscriptionSectionHash != null)
+            {
+                sb.Append(',');
+                AppendPropertyName(sb, "subscriptions");
+                AppendString(sb, subscriptionSectionHash);
+            }
             sb.Append('}');
             sb.Append('}');
             return sb.ToString();
@@ -191,6 +221,77 @@ namespace Unity.FoxgloveSDK.Editor
             }
             AppendPropertyName(sb, "types");
             WriteTypes(sb, section.Types);
+            sb.Append('}');
+        }
+
+        private static void WriteSubscriptionSection(
+            StringBuilder sb,
+            FoxRunManifestSubscriptionSection section,
+            bool includeHash)
+        {
+            sb.Append('{');
+            if (includeHash)
+            {
+                AppendPropertyName(sb, "manifestHash");
+                AppendString(sb, section.ManifestHash);
+                sb.Append(',');
+            }
+            AppendPropertyName(sb, "bindings");
+            WriteSubscriptionBindings(sb, section.Bindings);
+            sb.Append('}');
+        }
+
+        private static void WriteSubscriptionBindings(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunManifestSubscriptionBinding> bindings)
+        {
+            sb.Append('[');
+            for (var index = 0; index < bindings.Count; index++)
+            {
+                if (index > 0)
+                    sb.Append(',');
+                WriteSubscriptionBinding(sb, bindings[index]);
+            }
+            sb.Append(']');
+        }
+
+        private static void WriteSubscriptionBinding(
+            StringBuilder sb,
+            FoxRunManifestSubscriptionBinding binding)
+        {
+            sb.Append('{');
+            AppendPropertyName(sb, "declaringType");
+            AppendString(sb, binding.DeclaringType);
+            sb.Append(',');
+            AppendPropertyName(sb, "memberName");
+            AppendString(sb, binding.MemberName);
+            sb.Append(',');
+            AppendPropertyName(sb, "topic");
+            AppendString(sb, binding.Topic);
+            sb.Append(',');
+            AppendPropertyName(sb, "flowMode");
+            AppendString(sb, binding.FlowMode);
+            sb.Append(',');
+            AppendPropertyName(sb, "declaredProvider");
+            AppendString(sb, binding.DeclaredProvider);
+            sb.Append(',');
+            AppendPropertyName(sb, "ros2Qos");
+            AppendString(sb, binding.Ros2Qos);
+            sb.Append(',');
+            AppendPropertyName(sb, "supportsWebSocket");
+            sb.Append(binding.SupportsWebSocket ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "supportsRos2Native");
+            sb.Append(binding.SupportsRos2Native ? "true" : "false");
+            sb.Append(',');
+            AppendPropertyName(sb, "nativeType");
+            AppendString(sb, binding.NativeType);
+            sb.Append(',');
+            AppendPropertyName(sb, "canonicalRosType");
+            AppendString(sb, binding.CanonicalRosType);
+            sb.Append(',');
+            AppendPropertyName(sb, "copyShapeIdentity");
+            AppendString(sb, binding.CopyShapeIdentity);
             sb.Append('}');
         }
 

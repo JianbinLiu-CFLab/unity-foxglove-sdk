@@ -12,7 +12,8 @@ namespace Unity.FoxgloveSDK.Tests
             _passed = 0;
 
             VerifyRuntimeSelectionCachesFilesystemInputs();
-            VerifyRuntimeSelectionUsesStaticCommunicationArrays();
+            VerifyRuntimeSelectionUsesCachedManifestCommunicationModes();
+            VerifyRuntimeSelectionBindsManifestIdentityBeforeNativeInitialization();
             VerifyPlayModeGuardUsesCachedManifestFastPath();
             VerifyInspectorAvoidsLinqArrayChurn();
             VerifyRegistry();
@@ -48,24 +49,38 @@ namespace Unity.FoxgloveSDK.Tests
                 "164-27A-4: runtime status cache is invalidated after manifest runtime switches");
         }
 
-        private static void VerifyRuntimeSelectionUsesStaticCommunicationArrays()
+        private static void VerifyRuntimeSelectionUsesCachedManifestCommunicationModes()
         {
             var source = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
             var modes = PhaseValidationSourceHelpers.SourceMethod(source, "public static IReadOnlyList<string> GetCommunicationModeIds");
             var labels = PhaseValidationSourceHelpers.SourceMethod(source, "public static string[] GetCommunicationModeLabels");
 
-            Check(source.Contains("private static readonly string[] FastDdsOnlyCommunicationModes", StringComparison.Ordinal)
-                  && source.Contains("private static readonly string[] ZenohCommunicationModes", StringComparison.Ordinal)
-                  && source.Contains("private static readonly string[] FastDdsOnlyCommunicationLabels", StringComparison.Ordinal)
-                  && source.Contains("private static readonly string[] ZenohCommunicationLabels", StringComparison.Ordinal),
-                "164-27B-1: communication mode ids and labels are backed by static arrays");
-            Check(modes.Contains("return ZenohCommunicationModes;", StringComparison.Ordinal)
-                  && modes.Contains("return FastDdsOnlyCommunicationModes;", StringComparison.Ordinal)
+            Check(source.Contains("CommunicationModeIds = BuildCommunicationModeIds(CommunicationModes);", StringComparison.Ordinal)
+                  && source.Contains("CommunicationModeLabels = BuildCommunicationModeLabels(CommunicationModes);", StringComparison.Ordinal)
+                  && source.Contains("Ros2ForUnityRuntimeCapabilityParser.Parse", StringComparison.Ordinal),
+                "164-27B-1: runtime descriptor caches manifest-derived communication ids and labels");
+            Check(modes.Contains("runtime?.CommunicationModeIds", StringComparison.Ordinal)
                   && !modes.Contains("new[]", StringComparison.Ordinal),
                 "164-27B-2: communication mode ids do not allocate per Inspector repaint");
-            Check(labels.Contains("return ZenohCommunicationLabels;", StringComparison.Ordinal)
-                  && labels.Contains("return FastDdsOnlyCommunicationLabels;", StringComparison.Ordinal),
-                "164-27B-3: communication mode labels reuse static arrays");
+            Check(labels.Contains("runtime?.CommunicationModeLabels", StringComparison.Ordinal)
+                  && !labels.Contains("new[]", StringComparison.Ordinal),
+                "164-27B-3: communication mode labels reuse the descriptor cache");
+        }
+
+        private static void VerifyRuntimeSelectionBindsManifestIdentityBeforeNativeInitialization()
+        {
+            var source = Read("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
+            var applyEnvironment = PhaseValidationSourceHelpers.SourceMethod(source, "private static void ApplySelectedRuntimeEnvironment");
+            var applyCommunicationMode = PhaseValidationSourceHelpers.SourceMethod(source, "public static void ApplyCommunicationModeEnvironment");
+            var bindPlayMode = PhaseValidationSourceHelpers.SourceMethod(source, "public static void BindActiveRuntimeForPlayMode(Ros2ForUnityRuntimeSelectionStatus status)");
+
+            Check(applyEnvironment.Contains("Environment.SetEnvironmentVariable(\"ROS_DISTRO\", runtime.RosDistro)", StringComparison.Ordinal)
+                  && applyEnvironment.Contains("Environment.SetEnvironmentVariable(\"RMW_IMPLEMENTATION\", rmwImplementation)", StringComparison.Ordinal)
+                  && applyEnvironment.Contains("GetRmwImplementationForCommunicationMode(runtime, communicationMode)", StringComparison.Ordinal),
+                "164-27B-4: selected manifest identity and RMW are applied together without distro transport inference");
+            Check(applyCommunicationMode.Contains("ApplySelectedRuntimeEnvironment(status.SelectedRuntime, mode);", StringComparison.Ordinal)
+                  && bindPlayMode.Contains("ApplySelectedRuntimeEnvironment(status.SelectedRuntime, communicationMode);", StringComparison.Ordinal),
+                "164-27B-5: runtime selection binds manifest identity before both editor and Play Mode native initialization paths");
         }
 
         private static void VerifyPlayModeGuardUsesCachedManifestFastPath()

@@ -192,6 +192,9 @@ namespace Unity.FoxgloveSDK.Tests
                 : new List<string>();
             var expectedEditorFiles = new[]
             {
+                OptionalPackage + "/Editor/Native/FoxRunRos2SubscriptionDiagnosticsInspector.cs",
+                OptionalPackage + "/Editor/Native/Unity2Foxglove.Ros2ForUnity.Native.Editor.asmdef",
+                OptionalPackage + "/Editor/Ros2ForUnityRuntimeCapabilityModel.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeDefineInstaller.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimePlayModeGuard.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityRuntimeSelection.cs",
@@ -199,7 +202,7 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/Unity2Foxglove.Ros2ForUnity.Editor.asmdef"
             };
             Check(editorFiles.SequenceEqual(expectedEditorFiles),
-                "108-C4: optional package Editor surface is limited to runtime define management");
+                "108-C4: optional package Editor surface is limited to runtime selection and native diagnostics boundaries");
         }
 
         private static void VerifyValidationWiring()

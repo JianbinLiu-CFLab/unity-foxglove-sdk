@@ -53,6 +53,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveInputHub.cs");
+            var subscriptionSession = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunSubscriptionSession.cs");
             var authorization = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInboundAuthorization.cs");
 
             Check(clientEvents.Contains("BoundedEventQueue<ClientEvent>", StringComparison.Ordinal)
@@ -62,9 +64,16 @@ namespace Unity.FoxgloveSDK.Tests
             Check(authorization.Contains("IsLoopbackHost", StringComparison.Ordinal)
                   && authorization.Contains("remote inbound requires a configured shared token", StringComparison.Ordinal),
                 "non-loopback inbound fails closed without explicit token-backed authorization");
-            Check(hub.Contains("FoxRunSubscriptionMaxPayloadBytes", StringComparison.Ordinal)
-                  && hub.Contains("FoxRunSubscriptionMaxMessagesPerSecondPerTopic", StringComparison.Ordinal),
-                "input dispatch receives manager-owned payload and per-topic subscription rate limits");
+            Check(hub.Contains(
+                      "_router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;",
+                      StringComparison.Ordinal)
+                  && subscriptionSession.Contains(
+                      "ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic",
+                      StringComparison.Ordinal)
+                  && hub.Contains(
+                      "_router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;",
+                      StringComparison.Ordinal),
+                "input dispatch receives manager-owned live payload and session-frozen per-topic rate limits");
         }
 
         private static void VerifyExistingServiceHubExtension()

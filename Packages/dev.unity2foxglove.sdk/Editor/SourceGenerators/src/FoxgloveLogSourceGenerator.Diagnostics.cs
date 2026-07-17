@@ -13,6 +13,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     /// </summary>
     internal static class Diags
     {
+        // Legacy FoxRun diagnostic IDs 023 through 044 are permanently retired and must never be reused.
+
+        #region FoxRun publish diagnostics (FOXRUN001-199)
+
         /// <summary>FOXRUN001: class must be <c>partial</c> to host <c>[FoxRun]</c> members.</summary>
         public static readonly DiagnosticDescriptor NotPartial = new DiagnosticDescriptor(
             "FOXRUN001", "Class not partial",
@@ -83,36 +87,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun publish mode must be between 0 and 3",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor InvalidFoxRunMode = new DiagnosticDescriptor(
-            "FOXRUN023", "FoxRun mode out of range",
-            "{0}: FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor UnsupportedInboundShape = new DiagnosticDescriptor(
-            "FOXRUN024", "Unsupported FoxRun inbound shape",
-            "{0}: FoxRun inbound arrays and aggregate members are not supported",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor IgnoredSubscribePolicy = new DiagnosticDescriptor(
-            "FOXRUN025", "SubscribeOnly ignores publish policy",
-            "{0}: SubscribeOnly ignores publish timing options",
-            "FoxRun", DiagnosticSeverity.Warning, true);
-
-        public static readonly DiagnosticDescriptor BidirectionalAuthority = new DiagnosticDescriptor(
-            "FOXRUN026", "PublishAndSubscribe authority",
-            "{0}: PublishAndSubscribe requires explicit authority ownership",
-            "FoxRun", DiagnosticSeverity.Warning, true);
-
-        public static readonly DiagnosticDescriptor InboundNaming = new DiagnosticDescriptor(
-            "FOXRUN027", "FoxRun inbound naming",
-            "{0}: SubscribeOnly member name should communicate input-port authority",
-            "FoxRun", DiagnosticSeverity.Warning, true);
-
-        public static readonly DiagnosticDescriptor InboundTargetNotWritable = new DiagnosticDescriptor(
-            "FOXRUN028", "FoxRun inbound target is not writable",
-            "FoxRun inbound fields must not be readonly and properties must have a setter",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
         public static readonly DiagnosticDescriptor InvalidMemberKind = new DiagnosticDescriptor(
             "FOXRUN014", "FoxRun member kind invalid",
             "{0}: FoxRun member kind must be field or property",
@@ -132,58 +106,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "FOXRUN017", "Mixed same-topic conditional gates",
             "Topic '{0}' has mixed When or Unless values across FoxRun members",
             "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor UnlessConditionMissing = new DiagnosticDescriptor(
-            "FOXRUN029", "FoxRun Unless condition member missing",
-            "{0}: FoxRun Unless condition member could not be resolved",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor InvalidWireEncoding = new DiagnosticDescriptor(
-            "FOXRUN030", "FoxRun wire encoding invalid",
-            "{0}: FoxRun Encoding must be inherit, json, or protobuf",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor InvalidProtobufFieldNumber = new DiagnosticDescriptor(
-            "FOXRUN031", "FoxRun Protobuf field number invalid",
-            "{0}: FoxRun ProtobufFieldNumber must be 0 or a legal non-reserved Protobuf field number",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor MixedTopicWireEncoding = new DiagnosticDescriptor(
-            "FOXRUN032", "Mixed same-topic wire encoding",
-            "Topic '{0}' has mixed FoxRun Encoding declarations",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor DuplicateProtobufFieldNumber = new DiagnosticDescriptor(
-            "FOXRUN033", "Duplicate FoxRun Protobuf field number",
-            "{0}: FoxRun topic contains a duplicate ProtobufFieldNumber",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor BidirectionalInheritedWireEncoding = new DiagnosticDescriptor(
-            "FOXRUN034", "PublishAndSubscribe wire encoding",
-            "{0}: PublishAndSubscribe requires an explicit Protobuf or Json Encoding",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
-        {
-            return new DiagnosticDescriptor(
-                "FOXRUN000",
-                "Unmapped FoxRun generator diagnostic",
-                "{0}: internal FoxRun generator diagnostic '" + (id ?? string.Empty) + "' is not mapped to a public descriptor",
-                "FoxRun",
-                DiagnosticSeverity.Error,
-                true);
-        }
-
-        public static DiagnosticDescriptor UnknownFoxServiceDiagnostic(string id)
-        {
-            return new DiagnosticDescriptor(
-                "FOXSERVICE000",
-                "Unmapped FoxService generator diagnostic",
-                "{0}: internal FoxService generator diagnostic '" + (id ?? string.Empty) + "' is not mapped to a public descriptor",
-                "FoxService",
-                DiagnosticSeverity.Error,
-                true);
-        }
 
         public static readonly DiagnosticDescriptor AggregateFieldWithoutMessage = new DiagnosticDescriptor(
             "FOXRUN018", "FoxRunField requires FoxRunMessage",
@@ -209,6 +131,157 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "FOXRUN022", "Duplicate aggregate JSON field",
             "{0}: aggregate topic has duplicate JSON field names",
             "FoxRun", DiagnosticSeverity.Error, true);
+
+        #endregion
+
+        #region FoxRun SubscribeOnly diagnostics (FOXRUN200-399)
+
+        public static readonly DiagnosticDescriptor UnsupportedInboundShape = new DiagnosticDescriptor(
+            "FOXRUN200", "Unsupported FoxRun inbound shape",
+            "{0}: FoxRun inbound arrays and aggregate members are not supported",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor IgnoredSubscribePolicy = new DiagnosticDescriptor(
+            "FOXRUN201", "SubscribeOnly ignores publish policy",
+            "{0}: SubscribeOnly ignores publish timing options",
+            "FoxRun", DiagnosticSeverity.Warning, true);
+
+        public static readonly DiagnosticDescriptor InboundNaming = new DiagnosticDescriptor(
+            "FOXRUN202", "FoxRun inbound naming",
+            "{0}: SubscribeOnly member name should communicate input-port authority",
+            "FoxRun", DiagnosticSeverity.Warning, true);
+
+        public static readonly DiagnosticDescriptor InboundTargetNotWritable = new DiagnosticDescriptor(
+            "FOXRUN203", "FoxRun inbound target is not writable",
+            "FoxRun inbound fields must not be readonly and properties must have a setter",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor SharedInboundTargetNotWritable = new DiagnosticDescriptor(
+            "FOXRUN203", "FoxRun inbound target is not writable",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidSubscriptionProvider = new DiagnosticDescriptor(
+            "FOXRUN204", "FoxRun subscription provider invalid",
+            "{0}: FoxRun SubscriptionProvider must be inherit, foxglove-websocket, or ros2-native",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor NativeSubscribeOnly = new DiagnosticDescriptor(
+            "FOXRUN205", "Native ROS2 subscription mode invalid",
+            "{0}: Ros2Native subscriptions are supported only for SubscribeOnly members",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor NativeEncoding = new DiagnosticDescriptor(
+            "FOXRUN206", "Native ROS2 encoding invalid",
+            "{0}: Ros2Native subscriptions cannot declare JSON or Protobuf Encoding",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageIdentity = new DiagnosticDescriptor(
+            "FOXRUN207", "Native ROS2 message interface invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageConstructor = new DiagnosticDescriptor(
+            "FOXRUN208", "Native ROS2 message constructor missing",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageNamespace = new DiagnosticDescriptor(
+            "FOXRUN209", "Native ROS2 message namespace invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2SchemaMismatch = new DiagnosticDescriptor(
+            "FOXRUN210", "Native ROS2 schema name mismatch",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor Ros2MessageShape = new DiagnosticDescriptor(
+            "FOXRUN211", "Native ROS2 message shape unsupported",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MissingNativeAssemblyReference = new DiagnosticDescriptor(
+            "FOXRUN212", "Native ROS2 assembly reference missing",
+            "{0}: native ROS2 generation requires an assembly reference to Unity2Foxglove.Ros2ForUnity.Native",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor IgnoredRos2Qos = new DiagnosticDescriptor(
+            "FOXRUN213", "ROS2 QoS policy ignored",
+            "{0}: Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription",
+            "FoxRun", DiagnosticSeverity.Warning, true);
+
+        #endregion
+
+        #region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)
+
+        public static readonly DiagnosticDescriptor BidirectionalAuthority = new DiagnosticDescriptor(
+            "FOXRUN400", "PublishAndSubscribe authority",
+            "{0}: PublishAndSubscribe requires explicit authority ownership",
+            "FoxRun", DiagnosticSeverity.Warning, true);
+
+        public static readonly DiagnosticDescriptor BidirectionalInheritedWireEncoding = new DiagnosticDescriptor(
+            "FOXRUN401", "PublishAndSubscribe wire encoding",
+            "{0}: PublishAndSubscribe requires an explicit Protobuf or Json Encoding",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        #endregion
+
+        #region FoxRun cross-direction diagnostics (FOXRUN600+)
+
+        public static readonly DiagnosticDescriptor InvalidFoxRunMode = new DiagnosticDescriptor(
+            "FOXRUN600", "FoxRun mode out of range",
+            "{0}: FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor UnlessConditionMissing = new DiagnosticDescriptor(
+            "FOXRUN601", "FoxRun Unless condition member missing",
+            "{0}: FoxRun Unless condition member could not be resolved",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidWireEncoding = new DiagnosticDescriptor(
+            "FOXRUN602", "FoxRun wire encoding invalid",
+            "{0}: FoxRun Encoding must be inherit, json, or protobuf",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidProtobufFieldNumber = new DiagnosticDescriptor(
+            "FOXRUN603", "FoxRun Protobuf field number invalid",
+            "{0}: FoxRun ProtobufFieldNumber must be 0 or a legal non-reserved Protobuf field number",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MixedTopicWireEncoding = new DiagnosticDescriptor(
+            "FOXRUN604", "Mixed same-topic wire encoding",
+            "Topic '{0}' has mixed FoxRun Encoding declarations",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor DuplicateProtobufFieldNumber = new DiagnosticDescriptor(
+            "FOXRUN605", "Duplicate FoxRun Protobuf field number",
+            "{0}: FoxRun topic contains a duplicate ProtobufFieldNumber",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        #endregion
+
+        public static DiagnosticDescriptor UnknownFoxRunDiagnostic(string id)
+        {
+            return new DiagnosticDescriptor(
+                "FOXRUN000",
+                "Unmapped FoxRun generator diagnostic",
+                "{0}: internal FoxRun generator diagnostic '" + (id ?? string.Empty) + "' is not mapped to a public descriptor",
+                "FoxRun",
+                DiagnosticSeverity.Error,
+                true);
+        }
+
+        public static DiagnosticDescriptor UnknownFoxServiceDiagnostic(string id)
+        {
+            return new DiagnosticDescriptor(
+                "FOXSERVICE000",
+                "Unmapped FoxService generator diagnostic",
+                "{0}: internal FoxService generator diagnostic '" + (id ?? string.Empty) + "' is not mapped to a public descriptor",
+                "FoxService",
+                DiagnosticSeverity.Error,
+                true);
+        }
 
         public static readonly DiagnosticDescriptor InvalidServiceName = new DiagnosticDescriptor(
             "FOXSERVICE001", "FoxService name must be absolute",
@@ -274,24 +347,43 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN015": return ConditionMissing;
                 case "FOXRUN016": return ConditionNotBool;
                 case "FOXRUN017": return MixedTopicConditions;
-                case "FOXRUN029": return UnlessConditionMissing;
-                case "FOXRUN030": return InvalidWireEncoding;
-                case "FOXRUN031": return InvalidProtobufFieldNumber;
-                case "FOXRUN032": return MixedTopicWireEncoding;
-                case "FOXRUN033": return DuplicateProtobufFieldNumber;
-                case "FOXRUN034": return BidirectionalInheritedWireEncoding;
+                case "FOXRUN601": return UnlessConditionMissing;
+                case "FOXRUN602": return InvalidWireEncoding;
+                case "FOXRUN603": return InvalidProtobufFieldNumber;
+                case "FOXRUN604": return MixedTopicWireEncoding;
+                case "FOXRUN605": return DuplicateProtobufFieldNumber;
+                case "FOXRUN401": return BidirectionalInheritedWireEncoding;
+                case "FOXRUN204": return InvalidSubscriptionProvider;
+                case "FOXRUN205": return NativeSubscribeOnly;
+                case "FOXRUN206": return NativeEncoding;
+                case "FOXRUN207": return Ros2MessageIdentity;
+                case "FOXRUN208": return Ros2MessageConstructor;
+                case "FOXRUN209": return Ros2MessageNamespace;
+                case "FOXRUN210": return Ros2SchemaMismatch;
+                case "FOXRUN211": return Ros2MessageShape;
+                case "FOXRUN212": return MissingNativeAssemblyReference;
+                case "FOXRUN213": return IgnoredRos2Qos;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
-                case "FOXRUN023": return InvalidFoxRunMode;
-                case "FOXRUN024": return UnsupportedInboundShape;
-                case "FOXRUN025": return IgnoredSubscribePolicy;
-                case "FOXRUN026": return BidirectionalAuthority;
-                case "FOXRUN027": return InboundNaming;
+                case "FOXRUN600": return InvalidFoxRunMode;
+                case "FOXRUN200": return UnsupportedInboundShape;
+                case "FOXRUN201": return IgnoredSubscribePolicy;
+                case "FOXRUN400": return BidirectionalAuthority;
+                case "FOXRUN202": return InboundNaming;
+                case "FOXRUN203": return SharedInboundTargetNotWritable;
                 default:
                     return UnknownFoxRunDiagnostic(id);
             }
         }
+
+        public static bool SharedUsesDetailedMessage(string id)
+            => id == "FOXRUN203"
+               || id == "FOXRUN207"
+               || id == "FOXRUN208"
+               || id == "FOXRUN209"
+               || id == "FOXRUN210"
+               || id == "FOXRUN211";
 
         public static DiagnosticDescriptor Member(string id)
         {
@@ -300,10 +392,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN004": return MultiVariableDeclaration;
                 case "FOXRUN015": return ConditionMissing;
                 case "FOXRUN016": return ConditionNotBool;
-                case "FOXRUN029": return UnlessConditionMissing;
+                case "FOXRUN601": return UnlessConditionMissing;
                 case "FOXRUN018": return AggregateFieldWithoutMessage;
                 case "FOXRUN021": return StaticAggregateMember;
-                case "FOXRUN028": return InboundTargetNotWritable;
+                case "FOXRUN203": return InboundTargetNotWritable;
                 default:
                     return UnknownFoxRunDiagnostic(id);
             }

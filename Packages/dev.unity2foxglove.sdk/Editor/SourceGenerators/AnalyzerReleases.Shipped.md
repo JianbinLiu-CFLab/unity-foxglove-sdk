@@ -41,6 +41,16 @@ FOXRUN031 | FoxRun | Error | FoxRun ProtobufFieldNumber must be a legal non-rese
 FOXRUN032 | FoxRun | Error | Same-topic FoxRun members cannot mix Encoding declarations.
 FOXRUN033 | FoxRun | Error | FoxRun ProtobufFieldNumber values must be unique per topic.
 FOXRUN034 | FoxRun | Error | PublishAndSubscribe requires an explicit Protobuf or Json Encoding.
+FOXRUN035 | FoxRun | Error | FoxRun SubscriptionProvider must be a known provider value.
+FOXRUN036 | FoxRun | Error | Ros2Native is supported only for SubscribeOnly members.
+FOXRUN037 | FoxRun | Error | Ros2Native cannot declare JSON or Protobuf Encoding.
+FOXRUN038 | FoxRun | Error | Native message type must implement ROS2.Message from ros2cs_common.
+FOXRUN039 | FoxRun | Error | Native message type requires a public parameterless constructor.
+FOXRUN040 | FoxRun | Error | Native message type must be declared directly in a package msg namespace.
+FOXRUN041 | FoxRun | Error | Explicit SchemaName must match the validated canonical ROS type.
+FOXRUN042 | FoxRun | Error | Native message graph cannot be deep-copied safely.
+FOXRUN043 | FoxRun | Error | Native generation requires the optional Native assembly reference.
+FOXRUN044 | FoxRun | Warning | Ros2Qos is ignored for explicit WebSocket-only subscriptions.
 FOXSERVICE001 | FoxService | Error | FoxService name must be non-empty and absolute.
 FOXSERVICE002 | FoxService | Error | FoxService method signature is unsupported.
 FOXSERVICE003 | FoxService | Error | FoxService request type is unsupported.

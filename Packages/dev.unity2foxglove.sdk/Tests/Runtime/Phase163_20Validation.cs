@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectionManifestSourceShapeIsHardened();
             RuntimeSelectorInspectorDefersResolveHelpBox();
             RuntimePlayModeGuardDocumentsReloadResidualRisk();
+            RuntimePlayModeGuardUsesInfoForExpectedLifecycleNotifications();
             Ros2ValidationHelperReportsMissingGitClearly();
             Ros2BridgeFrameExposesNonAllocatingPayloadView();
             PhaseWiringIsPresent();
@@ -106,11 +107,30 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-20E-1: R2FU play-mode guard reports asynchronous reload residual risk");
             Check(guard.Contains("EditorApplication.LockReloadAssemblies()", StringComparison.Ordinal)
                   && guard.Contains("RequestNativeRuntimeShutdownBeforeReload", StringComparison.Ordinal)
-                  && guard.Contains("HasR2fuNativeOutputDemand()", StringComparison.Ordinal)
+                  && guard.Contains("HasR2fuNativeDemand()", StringComparison.Ordinal)
+                  && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && guard.Contains("Ros2UnityComponentSuffix", StringComparison.Ordinal)
                   && !guard.Contains("\"ROS2.ROS2UnityComponent\"", StringComparison.Ordinal)
                   && guard.Contains("ShutdownShared", StringComparison.Ordinal),
                 "163-20E-2: R2FU play-mode guard locks editor reloads and requests native shutdown before unsafe reload");
+        }
+
+        private static void RuntimePlayModeGuardUsesInfoForExpectedLifecycleNotifications()
+        {
+            var guard = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
+            var lockNotification = ExtractMethod(guard, "LockReloadAssembliesForNativePlayMode");
+            var shutdownNotification = ExtractMethod(guard, "RequestNativeRuntimeShutdownBeforeReload");
+
+            Check(lockNotification.Contains("Debug.Log(", StringComparison.Ordinal)
+                  && !lockNotification.Contains("Debug.LogWarning(", StringComparison.Ordinal),
+                "163-20E-3: expected native Play Mode reload-lock notification is informational");
+            Check(shutdownNotification.Contains("Debug.Log(", StringComparison.Ordinal)
+                  && !shutdownNotification.Contains("Debug.LogWarning(", StringComparison.Ordinal),
+                "163-20E-4: expected native shutdown-request notification is informational");
+            Check(guard.Contains("failed to unlock editor assembly reloads after Play Mode exit", StringComparison.Ordinal)
+                  && guard.Contains("native shutdown hook failed", StringComparison.Ordinal)
+                  && guard.Contains("Debug.LogWarning(", StringComparison.Ordinal),
+                "163-20E-5: actual native reload and shutdown failures remain warnings");
         }
 
         private static void Ros2ValidationHelperReportsMissingGitClearly()

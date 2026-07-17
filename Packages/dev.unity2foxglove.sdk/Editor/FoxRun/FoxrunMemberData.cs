@@ -44,6 +44,9 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly int PublishMode;
             public readonly int Mode;
             public readonly int Encoding;
+            public readonly int SubscriptionProvider;
+            public readonly int Ros2Qos;
+            public readonly FoxRunRos2MessageShape Ros2MessageShape;
             public readonly int ProtobufFieldNumber;
             public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
             /// <summary>Change epsilon.</summary>
@@ -62,7 +65,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null)
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -79,6 +82,10 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishMode = publishMode;
                 Mode = mode;
                 Encoding = encoding;
+                SubscriptionProvider = subscriptionProvider;
+                Ros2Qos = ros2Qos;
+                Ros2MessageShape = ros2MessageShape
+                    ?? TryBuildRos2MessageShape(type, subscriptionProvider);
                 ProtobufFieldNumber = protobufFieldNumber;
                 ProtobufTypeShape = TryBuildProtobufTypeShape(elementType ?? type);
                 ChangeEpsilon = changeEpsilon;
@@ -96,7 +103,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null)
             {
                 if (LooksLikeArrayType(rawType))
                     throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
@@ -116,6 +123,9 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishMode = publishMode;
                 Mode = mode;
                 Encoding = encoding;
+                SubscriptionProvider = subscriptionProvider;
+                Ros2Qos = ros2Qos;
+                Ros2MessageShape = ros2MessageShape;
                 ProtobufFieldNumber = protobufFieldNumber;
                 ProtobufTypeShape = null;
                 ChangeEpsilon = changeEpsilon;
@@ -130,27 +140,11 @@ namespace Unity.FoxgloveSDK.Editor
 
             public FoxRunManifestMember ToManifestMember()
             {
-                return new FoxRunManifestMember(
-                    Ns,
-                    ClassName,
-                    MemberName,
-                    MemberKind,
-                    RawTypeName,
-                    IsValueType,
-                    IsArray,
-                    ElementTypeName,
-                    Topic,
-                    RateHz,
-                    SchemaName,
-                    PublishMode,
-                    ChangeEpsilon,
-                    ForceIntervalSeconds,
-                    IsAggregateMember,
-                    JsonFieldName,
-                    Mode,
-                    Encoding,
-                    ProtobufFieldNumber,
-                    ProtobufTypeShape);
+                var model = FoxRunReflectionGenerationModelLowerer.Lower(
+                    new[] { ToReflectionMember() });
+                if (model.Types.Count != 1 || model.Types[0].Members.Count != 1)
+                    throw new InvalidOperationException("Expected one normalized FoxRun member for manifest projection.");
+                return FoxRunManifestMember.FromGenerationMember(model.Types[0].Members[0]);
             }
 
             public FoxRunReflectionGenerationMember ToReflectionMember()
@@ -180,7 +174,20 @@ namespace Unity.FoxgloveSDK.Editor
                     Mode,
                     Encoding,
                     ProtobufFieldNumber,
-                    ProtobufTypeShape);
+                    ProtobufTypeShape,
+                    SubscriptionProvider,
+                    Ros2Qos,
+                    ProtobufTypeShape != null
+                        || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
+                            FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
+                                IsArray && !string.IsNullOrEmpty(ElementTypeName)
+                                    ? ElementTypeName
+                                    : EmissionTypeName)),
+                    Ros2MessageShape != null
+                        && Ros2MessageShape.HasPublicParameterlessConstructor
+                        && Ros2MessageShape.ImplementsRos2Message
+                        && Ros2MessageShape.Diagnostics.Count == 0,
+                    Ros2MessageShape);
             }
         }
 
@@ -229,6 +236,14 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 return null;
             }
+        }
+
+        private static FoxRunRos2MessageShape TryBuildRos2MessageShape(Type type, int subscriptionProvider)
+        {
+            var shape = FoxRunReflectionRos2MessageShapeBuilder.Build(type);
+            return subscriptionProvider == 2 || shape.ImplementsRos2Message
+                ? shape
+                : null;
         }
     }
 }

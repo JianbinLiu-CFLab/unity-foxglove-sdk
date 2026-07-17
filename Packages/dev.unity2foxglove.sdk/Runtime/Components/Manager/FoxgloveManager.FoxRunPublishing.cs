@@ -12,6 +12,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         [SerializeField] private FoxRunWireEncoding _defaultFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
         private FoxRunWireEncoding _activeFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
+        private bool _hasActiveFoxRunPublishEncoding;
 
         /// <summary>Serialized default used by inherited PublishOnly contracts.</summary>
         public FoxRunWireEncoding DefaultFoxRunPublishEncoding
@@ -23,8 +24,20 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>Effective publish default for the active server session, or the current configuration while stopped.</summary>
-        public FoxRunWireEncoding ActiveFoxRunPublishEncoding => _hasActiveFoxRunWireEncoding
+        public FoxRunWireEncoding ActiveFoxRunPublishEncoding => _hasActiveFoxRunPublishEncoding
             ? _activeFoxRunPublishEncoding
             : DefaultFoxRunPublishEncoding;
+
+        internal void CaptureFoxRunPublishEncodingForServer()
+        {
+            _activeFoxRunPublishEncoding = DefaultFoxRunPublishEncoding;
+            _hasActiveFoxRunPublishEncoding = true;
+        }
+
+        internal void ClearFoxRunPublishEncodingForServer()
+        {
+            _hasActiveFoxRunPublishEncoding = false;
+            _activeFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
+        }
     }
 }
