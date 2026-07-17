@@ -8,6 +8,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Ros2Bridge;
 
@@ -198,9 +200,10 @@ namespace Unity.FoxgloveSDK.Tests
             var publishDataEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
-            var normalizedManagerEditor = NormalizeLineEndings(managerEditor);
+            var managerInspector = FindMethod(managerEditor, "OnInspectorGUI");
 
-            Check(!normalizedManagerEditor.Contains("DrawSection(\"ROS2 Bridge\"")
+            Check(managerInspector != null
+                  && !ContainsInvocation(managerInspector, "DrawRos2BridgeSection")
                   && publishDataEditor.Contains("DrawDataTransportSubsection(", StringComparison.Ordinal)
                   && publishDataEditor.Contains("\"ROS 2 Bridge Output\"", StringComparison.Ordinal)
                   && publishDataEditor.Contains("\"DataTransportRos2Bridge\"", StringComparison.Ordinal)
@@ -219,8 +222,33 @@ namespace Unity.FoxgloveSDK.Tests
                 "96F-6: custom publisher Inspectors show effective bridge QoS");
         }
 
-        private static string NormalizeLineEndings(string text)
-            => text.Replace("\r\n", "\n").Replace('\r', '\n');
+        private static MethodDeclarationSyntax FindMethod(string source, string methodName)
+        {
+            var methods = CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method => method.Identifier.ValueText == methodName && method.Body != null)
+                .ToArray();
+            return methods.Length == 1 ? methods[0] : null;
+        }
+
+        private static bool ContainsInvocation(MethodDeclarationSyntax method, string name)
+        {
+            return method != null
+                   && method.DescendantNodes()
+                       .OfType<InvocationExpressionSyntax>()
+                       .Any(invocation => IsInvocationNamed(invocation, name));
+        }
+
+        private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)
+        {
+            if (invocation?.Expression is IdentifierNameSyntax identifier)
+                return identifier.Identifier.ValueText == name;
+
+            return invocation?.Expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Name.Identifier.ValueText == name;
+        }
 
         private static string Resolve(string bridgeNamespace, string publisherTopic, string overrideTopic)
         {

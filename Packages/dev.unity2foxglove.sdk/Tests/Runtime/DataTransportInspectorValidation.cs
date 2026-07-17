@@ -84,6 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
             var executableSections = ExecutableInvocations(topLevel)
                 .Where(invocation => IsInvocationNamed(invocation, "DrawSection"))
                 .ToArray();
+            var allInvocations = AllInvocations(topLevel);
             var directWorkflowCalls = DirectInvocations(topLevel)
                 .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
                                      || IsInvocationNamed(invocation, "DrawRecordingReplayWarning"))
@@ -123,8 +124,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Runtime (R2FU)")
                                                         || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)")),
                 "180A-4: ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
-            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Bridge")),
-                "180A-5: ROS2 Bridge is no longer a top-level workflow section");
+            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Bridge"))
+                  && !allInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection")),
+                "180A-5: ROS2 Bridge has neither a top-level section nor a direct top-level draw");
         }
 
         private static void VerifyNestedTransportWorkflow(
