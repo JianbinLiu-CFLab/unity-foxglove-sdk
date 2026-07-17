@@ -198,13 +198,25 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInspectorSourceExpectations()
         {
             var managerEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var dataTransportEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.DataTransport.cs");
             var ros2BridgeEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.Ros2Bridge.cs");
             var publishDataEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var cameraEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxgloveCameraPublisherEditor.cs");
             var pointCloudEditor = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/FoxglovePointCloudPublisherEditor.cs");
             var managerInspector = FindMethod(managerEditor, "OnInspectorGUI");
+            var dataTransportSection = FindMethod(dataTransportEditor, "DrawDataTransportSection");
             var publishDataSection = FindMethod(publishDataEditor, "DrawPublishDataSection");
-            var topLevelInvocations = DirectInvocations(managerInspector);
+            var executableManagerInvocations = ExecutableInvocations(managerInspector);
+            var allManagerInvocations = AllInvocations(managerInspector);
+            var directPublishSubsections = DirectInvocations(dataTransportSection)
+                .Where(IsPublishDataTransportSubsection)
+                .ToArray();
+            var executablePublishSubsections = ExecutableInvocations(dataTransportSection)
+                .Where(IsPublishDataTransportSubsection)
+                .ToArray();
+            var allPublishSubsections = AllInvocations(dataTransportSection)
+                .Where(IsPublishDataTransportSubsection)
+                .ToArray();
             var bridgeEnabledBranches = DirectIfStatements(publishDataSection)
                 .Where(statement => HasGetBoolCondition(statement, "_ros2BridgeEnabled"))
                 .ToArray();
@@ -220,9 +232,15 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
 
             Check(managerInspector != null
-                  && !topLevelInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawSection")
-                                                           && HasStringArgument(invocation, 0, "ROS2 Bridge"))
-                  && !topLevelInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection"))
+                  && !executableManagerInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawSection")
+                                                                     && HasMethodGroupArgument(invocation, "DrawRos2BridgeSection"))
+                  && !allManagerInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection"))
+                  && dataTransportSection != null
+                  && directPublishSubsections.Length == 1
+                  && executablePublishSubsections.Length == 1
+                  && allPublishSubsections.Length == 1
+                  && ReferenceEquals(directPublishSubsections[0], executablePublishSubsections[0])
+                  && ReferenceEquals(directPublishSubsections[0], allPublishSubsections[0])
                   && publishDataSection != null
                   && bridgeEnabledBranches.Length == 1
                   && branchSubsections.Length == 1
@@ -267,6 +285,26 @@ namespace Unity.FoxgloveSDK.Tests
                 if (statement.Expression is InvocationExpressionSyntax invocation)
                     yield return invocation;
             }
+        }
+
+        private static InvocationExpressionSyntax[] ExecutableInvocations(MethodDeclarationSyntax method)
+        {
+            return method?.Body == null
+                ? Array.Empty<InvocationExpressionSyntax>()
+                : method.Body.Statements.SelectMany(ExecutableInvocations).ToArray();
+        }
+
+        private static IEnumerable<InvocationExpressionSyntax> ExecutableInvocations(StatementSyntax statement)
+        {
+            return statement is LocalFunctionStatementSyntax
+                ? Enumerable.Empty<InvocationExpressionSyntax>()
+                : statement.DescendantNodes(ShouldDescendIntoExecutableNode).OfType<InvocationExpressionSyntax>();
+        }
+
+        private static bool ShouldDescendIntoExecutableNode(SyntaxNode node)
+        {
+            return !(node is AnonymousFunctionExpressionSyntax)
+                   && !(node is LocalFunctionStatementSyntax);
         }
 
         private static IfStatementSyntax[] DirectIfStatements(MethodDeclarationSyntax method)
@@ -317,6 +355,15 @@ namespace Unity.FoxgloveSDK.Tests
                    && HasMethodGroupArgument(invocation, 3, "DrawRos2BridgeSection");
         }
 
+        private static bool IsPublishDataTransportSubsection(InvocationExpressionSyntax invocation)
+        {
+            return IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                   && HasStringArgument(invocation, 0, "Publish")
+                   && HasStringArgument(invocation, 1, "DataTransportPublish")
+                   && HasRefIdentifierArgument(invocation, 2, "_dataTransportPublishExpanded")
+                   && HasMethodGroupArgument(invocation, 3, "DrawPublishDataSection");
+        }
+
         private static bool HasStringArgument(InvocationExpressionSyntax invocation, int argumentIndex, string value)
         {
             return invocation != null
@@ -345,8 +392,23 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return invocation != null
                    && invocation.ArgumentList.Arguments.Count > argumentIndex
-                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax method
-                   && method.Identifier.ValueText == methodName;
+                   && IsMethodGroupNamed(invocation.ArgumentList.Arguments[argumentIndex].Expression, methodName);
+        }
+
+        private static bool HasMethodGroupArgument(InvocationExpressionSyntax invocation, string methodName)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Any(argument =>
+                       IsMethodGroupNamed(argument.Expression, methodName));
+        }
+
+        private static bool IsMethodGroupNamed(ExpressionSyntax expression, string methodName)
+        {
+            if (expression is IdentifierNameSyntax identifier)
+                return identifier.Identifier.ValueText == methodName;
+
+            return expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Name.Identifier.ValueText == methodName;
         }
 
         private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)

@@ -105,6 +105,10 @@ namespace Unity.FoxgloveSDK.Tests
             var mcap = directSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
             var allDataTransport = executableSections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
             var allMcap = executableSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
+            var bridgeSectionCallbacks = allInvocations
+                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
+                                     && HasMethodGroupArgument(invocation, "DrawRos2BridgeSection"))
+                .ToArray();
 
             Check(actualWorkflowOrder.SequenceEqual(expectedWorkflowOrder)
                   && allDataTransport.Length == 1
@@ -124,9 +128,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Runtime (R2FU)")
                                                         || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)")),
                 "180A-4: ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
-            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Bridge"))
+            Check(bridgeSectionCallbacks.Length == 0
                   && !allInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection")),
-                "180A-5: ROS2 Bridge has neither a top-level section nor a direct top-level draw");
+                "180A-5: ROS2 Bridge has neither a top-level callback section nor a direct top-level draw");
         }
 
         private static void VerifyNestedTransportWorkflow(
@@ -544,8 +548,16 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool HasMethodGroupArgument(InvocationExpressionSyntax invocation, string methodName)
         {
             return invocation != null && invocation.ArgumentList.Arguments.Any(argument =>
-                argument.Expression is IdentifierNameSyntax identifier
-                && identifier.Identifier.ValueText == methodName);
+                IsMethodGroupNamed(argument.Expression, methodName));
+        }
+
+        private static bool IsMethodGroupNamed(ExpressionSyntax expression, string methodName)
+        {
+            if (expression is IdentifierNameSyntax identifier)
+                return identifier.Identifier.ValueText == methodName;
+
+            return expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Name.Identifier.ValueText == methodName;
         }
 
         private static bool HasExactlyOneLabeledProperty(
