@@ -75,16 +75,16 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static bool HasSingleDataTransportWorkflowBeforeSiblingMcap(string source)
         {
-            var dataTransport = FindInvocation(source, "DrawSection", "Data Transport", 0);
+            var dataTransport = FindInvocation(source, "DrawSection", "Data Transport", 0, directBodyOnly: true);
             if (dataTransport == null
                 || !dataTransport.Text.Contains("DrawDataTransportSection", StringComparison.Ordinal)
-                || FindInvocation(source, "DrawSection", "Data Transport", dataTransport.StatementEnd + 1) != null)
+                || FindInvocation(source, "DrawSection", "Data Transport", dataTransport.StatementEnd + 1, directBodyOnly: true) != null)
                 return false;
 
-            var mcap = FindInvocation(source, "DrawSection", "MCAP Record & Replay", dataTransport.StatementEnd + 1);
+            var mcap = FindInvocation(source, "DrawSection", "MCAP Record & Replay", dataTransport.StatementEnd + 1, directBodyOnly: true);
             return mcap != null
                    && mcap.Text.Contains("DrawMcapSection", StringComparison.Ordinal)
-                   && FindInvocation(source, "DrawSection", "MCAP Record & Replay", mcap.StatementEnd + 1) == null;
+                   && FindInvocation(source, "DrawSection", "MCAP Record & Replay", mcap.StatementEnd + 1, directBodyOnly: true) == null;
         }
 
         private static bool HasNativeRuntimeSubsectionUnderNativeDemand(string source)
@@ -97,18 +97,51 @@ namespace Unity.FoxgloveSDK.Tests
                    && FindInvocation(source, "DrawDataTransportSubsection", heading, subsection.StatementEnd + 1) == null;
         }
 
-        private static SourceInvocation FindInvocation(string source, string methodName, string heading, int searchStart)
+        private static SourceInvocation FindInvocation(
+            string source,
+            string methodName,
+            string heading,
+            int searchStart,
+            bool directBodyOnly = false)
         {
             var anchor = methodName + "(\"" + heading + "\"";
-            var start = source.IndexOf(anchor, searchStart, StringComparison.Ordinal);
-            if (start < 0)
-                return null;
+            for (var start = source.IndexOf(anchor, searchStart, StringComparison.Ordinal);
+                 start >= 0;
+                 start = source.IndexOf(anchor, start + 1, StringComparison.Ordinal))
+            {
+                if (directBodyOnly && !IsDirectBodyInvocation(source, start))
+                    continue;
 
-            var invocationEnd = FindMatchingDelimiter(source, start + methodName.Length, '(', ')');
-            var statementEnd = invocationEnd < 0 ? -1 : source.IndexOf(';', invocationEnd);
-            return invocationEnd >= 0 && statementEnd >= invocationEnd
-                ? new SourceInvocation(start, statementEnd, source.Substring(start, invocationEnd - start + 1))
-                : null;
+                var invocationEnd = FindMatchingDelimiter(source, start + methodName.Length, '(', ')');
+                var statementEnd = invocationEnd < 0 ? -1 : source.IndexOf(';', invocationEnd);
+                if (invocationEnd >= 0 && statementEnd >= invocationEnd)
+                    return new SourceInvocation(start, statementEnd, source.Substring(start, invocationEnd - start + 1));
+            }
+
+            return null;
+        }
+
+        private static bool IsDirectBodyInvocation(string source, int start)
+        {
+            var bodyStart = source.IndexOf('{');
+            if (bodyStart < 0 || start <= bodyStart)
+                return false;
+
+            var braces = 0;
+            var parentheses = 0;
+            for (var i = bodyStart; i < start; i++)
+            {
+                if (source[i] == '{')
+                    braces++;
+                else if (source[i] == '}')
+                    braces--;
+                else if (source[i] == '(')
+                    parentheses++;
+                else if (source[i] == ')')
+                    parentheses--;
+            }
+
+            return braces == 1 && parentheses == 0;
         }
 
         private static bool IsInsideNativeDemandCondition(string source, int targetStart)
