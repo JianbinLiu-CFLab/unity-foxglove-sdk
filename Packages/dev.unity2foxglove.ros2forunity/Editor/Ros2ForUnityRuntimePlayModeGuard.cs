@@ -467,7 +467,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             _reloadAssembliesLockedForR2fu = true;
             SessionState.SetBool(ReloadAssembliesLockedForR2fuKey, true);
 
-            Debug.LogWarning(
+            Debug.Log(
                 "Unity2Foxglove ROS2 For Unity locked editor assembly reloads while native ROS2/RMW DLLs are active ("
                 + reason
                 + "). Exit Play Mode before changing scripts; pending script reloads will resume after native shutdown.");
@@ -526,7 +526,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!stoppedExecutors && !shutdownShared)
                 return;
 
-            Debug.LogWarning(
+            Debug.Log(
                 "Unity2Foxglove ROS2 For Unity requested native ROS2 shutdown before "
                 + reason
                 + " to avoid unloading ROS2/RMW DLLs while executor threads are active.");
