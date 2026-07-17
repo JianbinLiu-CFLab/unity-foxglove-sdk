@@ -432,6 +432,8 @@ namespace Unity.FoxgloveSDK.Tests
                 nativeRoot + "FoxRun/FoxRunRos2SubscriptionBinding.cs");
             var backend = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 nativeRoot + "FoxRun/Ros2ForUnityFoxRunInboundBackend.cs");
+            var lifecycleGate = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                nativeRoot + "Ros2ForUnityNativeBridgeLifecycleGate.cs");
 
             var bootstrap = PhaseValidationSourceHelpers.SourceMethod(
                 hub,
@@ -470,15 +472,43 @@ namespace Unity.FoxgloveSDK.Tests
             var backendRegister = PhaseValidationSourceHelpers.SourceMethod(
                 backend,
                 "public FoxRunRos2NativeBackendRegistration Register<T>");
+            var bootstrapGateStart = lifecycleGate.IndexOf(
+                "internal static bool CanBootstrapBridge",
+                StringComparison.Ordinal);
+            var bootstrapGateEnd = lifecycleGate.IndexOf(
+                "internal static bool CanInitializeNativeRuntimeForBridge",
+                bootstrapGateStart,
+                StringComparison.Ordinal);
+            var bootstrapGate = bootstrapGateStart >= 0 && bootstrapGateEnd > bootstrapGateStart
+                ? lifecycleGate.Substring(bootstrapGateStart, bootstrapGateEnd - bootstrapGateStart)
+                : string.Empty;
+
+            Check(bootstrapGate.Contains("!_nativeReloadWindow", StringComparison.Ordinal),
+                "native subscription bootstrap remains closed while the native reload window would immediately shut its new host down");
 
             Check(OccursBefore(bootstrap, "CanBootstrapBridge", "EnsureCreated()")
                   && OccursBefore(ensureCreated, "CanBootstrapBridge", "new GameObject"),
                 "native subscription host creation remains behind the shared bootstrap gate");
 
-            Check(OccursBefore(update, "IsShuttingDownForBridge", "ResolveManager();")
-                  && OccursBefore(update, "BeginShutdown();", "ResolveManager();")
-                  && update.Contains("return;", StringComparison.Ordinal),
-                "native subscription Update stops before manager recovery, scans, or drains during shutdown");
+            var lifecycleWindow = update.IndexOf(
+                "IsShuttingDownForBridge(gameObject.scene)",
+                StringComparison.Ordinal);
+            var lifecycleRefresh = lifecycleWindow < 0
+                ? -1
+                : update.IndexOf("CanBootstrapBridge", lifecycleWindow, StringComparison.Ordinal);
+            var lifecyclePause = lifecycleWindow < 0
+                ? -1
+                : update.IndexOf("PauseForLifecycleWindow();", lifecycleWindow, StringComparison.Ordinal);
+            var lifecycleShutdown = lifecycleWindow < 0
+                ? -1
+                : update.IndexOf("BeginShutdown();", lifecycleWindow, StringComparison.Ordinal);
+            Check(OccursBefore(update, "_stopping", "BeginShutdown();")
+                  && lifecycleWindow >= 0
+                  && lifecycleRefresh > lifecycleWindow
+                  && lifecyclePause > lifecycleRefresh
+                  && lifecycleShutdown < 0
+                  && hub.Contains("private void PauseForLifecycleWindow()", StringComparison.Ordinal),
+                "a transient dirty-scene lifecycle gate refreshes before permanent shutdown and pauses native bindings without orphaning the Hub");
 
             var nativeGate = ensureNode.IndexOf(
                 "CanInitializeNativeRuntimeForBridge(gameObject.scene)",
@@ -974,6 +1004,24 @@ namespace Unity.FoxgloveSDK.Tests
                   && phase179ScriptMetadataPaths.All(HasCompleteUnityScriptMetadata),
                 "Unity-generated Phase179 sample, scene, and manual-acceptance metadata use valid unique GUIDs and complete script importers");
 
+            var refreshReadyMarker = PhaseValidationSourceHelpers.SourceMethod(
+                acceptance,
+                "private void EmitReadyMarkerWhenRuntimeIsObserved()");
+            Check(refreshReadyMarker.Contains(
+                      "snapshot.State != FoxRunRos2SubscriptionBindingState.Ready",
+                      StringComparison.Ordinal)
+                  && refreshReadyMarker.Contains(
+                      "snapshot.State != FoxRunRos2SubscriptionBindingState.Receiving",
+                      StringComparison.Ordinal)
+                  && refreshReadyMarker.Contains("_readyMarkerEmitted = false;", StringComparison.Ordinal)
+                  && refreshReadyMarker.Contains(
+                      "Waiting for native ROS2 String subscription registration.",
+                      StringComparison.Ordinal)
+                  && refreshReadyMarker.Contains(
+                      "Native ROS2 String subscription registered: ",
+                      StringComparison.Ordinal),
+                "acceptance READY evidence requires a live String binding and clears a stale ready state when that binding disappears");
+
             Check(acceptance.Contains("PHASE179_ROS2_INBOUND_READY", StringComparison.Ordinal)
                   && acceptance.Contains("PHASE179_ROS2_INBOUND_APPLIED", StringComparison.Ordinal)
                   && acceptance.Contains("PHASE179_ROS2_INBOUND_COMPLETE", StringComparison.Ordinal)
@@ -991,12 +1039,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && acceptance.Contains("sequence == total - 1", StringComparison.Ordinal)
                   && acceptance.Contains("private string _activeCorrelationToken", StringComparison.Ordinal)
                   && acceptance.Contains("CaptureCorrelationToken(ExtractCorrelationToken(data))", StringComparison.Ordinal)
-                  && acceptance.Contains("CaptureCorrelationToken(frameId)", StringComparison.Ordinal)
-                  && acceptance.Contains("IsSafeCorrelationToken(_activeCorrelationToken)", StringComparison.Ordinal)
-                  && acceptance.Contains("+ \"|\" + markerToken + \"|\" + valueJson", StringComparison.Ordinal)
-                  && !acceptance.Contains("CreateSubscription", StringComparison.Ordinal)
-                  && !acceptance.Contains("CreateNode", StringComparison.Ordinal),
-                "acceptance receiver emits bounded redacted correlation markers, carries a current peer token to tokenless Twist evidence, preserves a terminal latest-wins burst value, and auto-quits only from its main-thread surface");
+                   && acceptance.Contains("CaptureCorrelationToken(frameId)", StringComparison.Ordinal)
+                   && acceptance.Contains("IsSafeCorrelationToken(_activeCorrelationToken)", StringComparison.Ordinal)
+                   && acceptance.Contains("private string _readyRunToken = string.Empty;", StringComparison.Ordinal)
+                   && acceptance.Contains("_readyRunToken = Guid.NewGuid().ToString(\"N\");", StringComparison.Ordinal)
+                   && acceptance.Contains("PlayerOrFallbackToken(_readyRunToken)", StringComparison.Ordinal)
+                   && acceptance.Contains("+ \"|\" + markerToken + \"|\" + valueJson", StringComparison.Ordinal)
+                   && !acceptance.Contains("CreateSubscription", StringComparison.Ordinal)
+                   && !acceptance.Contains("CreateNode", StringComparison.Ordinal),
+                "acceptance receiver emits bounded redacted correlation markers, uses a new READY token for each activation, carries a current peer token to tokenless Twist evidence, preserves a terminal latest-wins burst value, and auto-quits only from its main-thread surface");
 
             Check(playerBuilder.Contains("NewSceneSetup.EmptyScene, NewSceneMode.Additive", StringComparison.Ordinal)
                   && playerBuilder.Contains("Refusing to overwrite", StringComparison.Ordinal)

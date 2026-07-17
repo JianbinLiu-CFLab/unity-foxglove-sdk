@@ -35,6 +35,16 @@ The current native-copy policy is intentionally bounded and latest-wins. `FoxRun
 
 ## Four-row Linux interoperability acceptance
 
+### Immediate local Lyrical/FastDDS smoke
+
+For the normal Windows Unity interaction, start this command from the repository root (or run the same file directly from `Scripts/smoke/ros2/`), then click **Play** in the tracked Phase179 acceptance scene:
+
+```powershell
+python Scripts/smoke/ros2/phase179_lyrical_fastrtps_acceptance.py
+```
+
+It generates its own correlation token, reads only the fresh Editor log, uses the repo-local `ros2-windows/ros2_lyrical` CLI to discover and publish the fixed String, Twist, and Joy contracts, and ends with `PHASE179_LYRICAL_FASTRTPS_WINDOWS_LOCAL_EDITOR_PASS`. No Linux command, manual token, `--role`, or Foxglove connection is part of this local flow. It is deliberately labeled **Windows-local loopback**: it proves the selected Lyrical/FastDDS Unity runtime and the local Windows ROS2 peer, not a separate Linux host.
+
 Use one named Phase179 entry point for the whole acceptance row; do not pass a hand-selected distro or RMW flag to a generic script. The four rows are fixed:
 
 | Profile script | Unity runtime | Linux peer |

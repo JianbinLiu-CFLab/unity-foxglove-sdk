@@ -153,6 +153,10 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
 
     private readonly HashSet<string> _emittedMarkerKeys = new HashSet<string>(StringComparer.Ordinal);
     private string _activeCorrelationToken = string.Empty;
+    // Unity's Editor.log can reuse storage below its apparent EOF. A fresh,
+    // non-secret token lets the local helper distinguish this activation's
+    // READY evidence from an older matching runtime line.
+    private string _readyRunToken = string.Empty;
     private bool _readyMarkerEmitted;
     private bool _completionMarkerEmitted;
     private float _autoQuitDeadline;
@@ -179,6 +183,7 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
         _emittedMarkerCount = 0;
         _activeCorrelationToken = string.Empty;
         _readyMarkerEmitted = false;
+        _readyRunToken = Guid.NewGuid().ToString("N");
         _completionMarkerEmitted = false;
         _playerAutoQuitRequested = HasCommandLineFlag("--phase179-player-auto-quit");
         _playerToken = ReadCommandLineValue("--phase179-token") ?? string.Empty;
@@ -412,17 +417,29 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
             var snapshot = snapshots[i];
             if (!string.Equals(snapshot.Topic, StringTopic, StringComparison.Ordinal)
                 || string.IsNullOrWhiteSpace(snapshot.RosDistro)
-                || string.IsNullOrWhiteSpace(snapshot.RmwImplementation))
+                || string.IsNullOrWhiteSpace(snapshot.RmwImplementation)
+                || (snapshot.State != FoxRunRos2SubscriptionBindingState.Ready
+                    && snapshot.State != FoxRunRos2SubscriptionBindingState.Receiving))
                 continue;
 
+            if (_readyMarkerEmitted)
+                return;
+
             _readyMarkerEmitted = true;
-            _status = "Native ROS2 runtime ready: " + snapshot.RosDistro + " / " + snapshot.RmwImplementation + ".";
+            _status = "Native ROS2 String subscription registered: "
+                      + snapshot.RosDistro + " / " + snapshot.RmwImplementation + ".";
             Debug.Log(
                 "PHASE179_ROS2_INBOUND_READY runtime=" + SanitizeToken(snapshot.RosDistro)
                 + " rmw=" + SanitizeToken(snapshot.RmwImplementation)
-                + " token=" + SanitizeToken(PlayerOrFallbackToken("manual")),
+                + " token=" + SanitizeToken(PlayerOrFallbackToken(_readyRunToken)),
                 this);
             return;
+        }
+
+        if (_readyMarkerEmitted)
+        {
+            _readyMarkerEmitted = false;
+            _status = "Waiting for native ROS2 String subscription registration.";
         }
     }
 #endif

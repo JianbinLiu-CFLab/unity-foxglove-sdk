@@ -68,6 +68,18 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 self.smoke.parse_args(["--message-set", "twist"])
 
+    def test_ready_marker_can_verify_runtime_and_rmw_before_any_editor_message_exists(self) -> None:
+        """A fresh Editor READY marker may legitimately use its pre-publication manual token."""
+
+        marker = self.smoke.find_matching_unity_ready_marker(
+            "PHASE179_ROS2_INBOUND_READY runtime=lyrical rmw=rmw_fastrtps_cpp token=manual\n",
+            "lyrical",
+            "rmw_fastrtps_cpp",
+            None,
+        )
+
+        self.assertEqual("manual", marker.token)
+
     def test_main_runs_selected_contracts_in_canonical_correlation_order(self) -> None:
         """Even a user-supplied reordered set runs String before Twist and preserves the remaining canonical order."""
 
@@ -115,7 +127,8 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
         self.assertEqual(["string", "twist", "joy"], summary["messageSet"])
         self.assertEqual(["string", "twist", "joy"], [result["name"] for result in summary["messageResults"]])
         self.assertEqual("std_msgs/msg/String", command.call_args_list[0].args[0][3])
-        self.assertEqual("/foxrun/phase179/string", command.call_args_list[1].args[0][4])
+        first_publish = command.call_args_list[1].args[0]
+        self.assertIn("/foxrun/phase179/string", first_publish)
 
     def test_arguments_reject_ambiguous_zenoh_topology_and_unsafe_token(self) -> None:
         """One run must name one topology and use a marker-safe correlation token."""
@@ -298,7 +311,7 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
         self.assertEqual("ENVIRONMENT", context.exception.category)
 
     def test_publish_commands_are_argument_arrays_with_contract_qos_and_deterministic_values(self) -> None:
-        """Every message type has an explicit QoS-matched, shell-free ros2 argv."""
+        """Every message type has an explicit QoS-matched, shell-free ros2 argv usable by Lyrical."""
 
         token = "phase179-test-token"
         expected_reliability = {
@@ -320,7 +333,13 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
             self.assertIsInstance(command, list)
             self.assertEqual(str(Path("/usr/bin/ros2")), command[0])
             self.assertIn("--once", command)
+            self.assertNotIn("--no-daemon", command)
             self.assertIn("--qos-reliability", command)
+            topic_index = command.index(self.smoke.topic_for_spec("/foxrun/phase179", spec))
+            self.assertLess(command.index("--qos-reliability"), topic_index)
+            self.assertLess(command.index("--qos-history"), topic_index)
+            self.assertLess(command.index("--qos-depth"), topic_index)
+            self.assertLess(command.index("--qos-durability"), topic_index)
             self.assertEqual(reliability, command[command.index("--qos-reliability") + 1])
             self.assertEqual("keep_last", command[command.index("--qos-history") + 1])
             self.assertEqual(expected_depth[name], command[command.index("--qos-depth") + 1])
@@ -416,6 +435,37 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
         with self.assertRaises(self.smoke.AcceptanceFailure) as context:
             self.smoke.find_matching_unity_ready_marker(text, "lyrical", "rmw_fastrtps_cpp", token)
         self.assertEqual("READY_MISMATCH", context.exception.category)
+
+    def test_ready_marker_baseline_requires_a_new_unseen_token_when_editor_log_is_reused(self) -> None:
+        """A reused Editor.log may overwrite below EOF, so local acceptance must reject its pre-run READY token."""
+
+        stale_token = "phase179-ready-before-play"
+        fresh_token = "phase179-ready-after-play"
+        stale = f"PHASE179_ROS2_INBOUND_READY runtime=humble rmw=rmw_fastrtps_cpp token={stale_token}\n"
+        fresh = f"PHASE179_ROS2_INBOUND_READY runtime=humble rmw=rmw_fastrtps_cpp token={fresh_token}\n"
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "Editor.log"
+            log.write_text(stale, encoding="utf-8")
+            baseline = self.smoke.capture_unity_ready_marker_tokens(log, "humble", "rmw_fastrtps_cpp")
+
+        self.assertEqual(frozenset({stale_token}), baseline)
+        ready = self.smoke.find_matching_unity_ready_marker(
+            stale + fresh,
+            "humble",
+            "rmw_fastrtps_cpp",
+            None,
+            excluded_tokens=baseline,
+        )
+        self.assertEqual(fresh_token, ready.token)
+        with self.assertRaises(self.smoke.AcceptanceFailure) as context:
+            self.smoke.find_matching_unity_ready_marker(
+                stale,
+                "humble",
+                "rmw_fastrtps_cpp",
+                None,
+                excluded_tokens=baseline,
+            )
+        self.assertEqual("READY_STALE", context.exception.category)
 
     def test_ready_wait_after_offset_cannot_reuse_a_stale_identity(self) -> None:
         """An Editor host must not accept a READY marker written before it started observing the log."""
@@ -679,8 +729,8 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
             "type-mismatch",
         )
         self.assertIsInstance(type_mismatch, list)
-        self.assertEqual("/foxrun/phase179/string", type_mismatch[4])
-        self.assertEqual("geometry_msgs/msg/Twist", type_mismatch[5])
+        type_topic_index = type_mismatch.index("/foxrun/phase179/string")
+        self.assertEqual("geometry_msgs/msg/Twist", type_mismatch[type_topic_index + 1])
         self.assertNotIn("shell", " ".join(type_mismatch).lower())
 
         qos_mismatch = self.smoke.build_negative_publish_command(
@@ -689,7 +739,8 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
             "phase179-negative",
             "qos-incompatible",
         )
-        self.assertEqual("std_msgs/msg/String", qos_mismatch[5])
+        qos_topic_index = qos_mismatch.index("/foxrun/phase179/string")
+        self.assertEqual("std_msgs/msg/String", qos_mismatch[qos_topic_index + 1])
         self.assertEqual("best_effort", qos_mismatch[qos_mismatch.index("--qos-reliability") + 1])
         self.assertEqual("keep_last", qos_mismatch[qos_mismatch.index("--qos-history") + 1])
         self.assertEqual("volatile", qos_mismatch[qos_mismatch.index("--qos-durability") + 1])
@@ -797,7 +848,9 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
         self.assertEqual("rmw_fastrtps_cpp", wait_ready.call_args.args[2])
         self.assertEqual(101, wait_marker.call_args.kwargs["start_offset"])
         self.assertEqual(202, wait_no_apply.call_args.args[2])
-        self.assertEqual("std_msgs/msg/String", commands.call_args_list[1].args[0][5])
+        baseline_publish = commands.call_args_list[1].args[0]
+        baseline_topic_index = baseline_publish.index("/foxrun/phase179/string")
+        self.assertEqual("std_msgs/msg/String", baseline_publish[baseline_topic_index + 1])
         self.assertEqual("best_effort", commands.call_args_list[2].args[0][commands.call_args_list[2].args[0].index("--qos-reliability") + 1])
         self.assertEqual(
             "EXPECTED_NEGATIVE_QOS_INCOMPATIBLE",

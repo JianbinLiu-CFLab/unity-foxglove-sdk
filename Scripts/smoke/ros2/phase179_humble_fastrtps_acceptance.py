@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import sys
 
-from phase179_foxrun_ros2_matrix_profiles import run_profile
+from phase179_foxrun_ros2_matrix_profiles import profile_wrapper_argv, run_profile
 
 
 PROFILE_ID = "humble-fastrtps"
 
 
 if __name__ == "__main__":
-    raise SystemExit(run_profile(PROFILE_ID, sys.argv[1:]))
+    raise SystemExit(run_profile(PROFILE_ID, profile_wrapper_argv(PROFILE_ID, sys.argv[1:])))

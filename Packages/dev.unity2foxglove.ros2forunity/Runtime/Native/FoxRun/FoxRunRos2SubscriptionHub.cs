@@ -606,10 +606,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void Update()
         {
-            if (_stopping
-                || Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(gameObject.scene))
+            if (_stopping)
             {
                 BeginShutdown();
+                return;
+            }
+
+            // A hierarchy or scene notification deliberately marks the shared
+            // gate dirty before its next refresh. Do not turn that recoverable
+            // window into a permanent host shutdown: refreshing the bootstrap
+            // gate may prove that the active user scene is stable again.
+            if (Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(gameObject.scene)
+                && !Ros2ForUnityNativeBridgeLifecycleGate.CanBootstrapBridge)
+            {
+                PauseForLifecycleWindow();
                 return;
             }
 
@@ -632,6 +642,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             using (DrainMarker.Auto())
                 DrainBindings(Time.realtimeSinceStartupAsDouble);
+        }
+
+        private void PauseForLifecycleWindow()
+        {
+            StopBindingsAndNode();
+            _scanCooldown = 0f;
         }
 
         private void ResolveManager()

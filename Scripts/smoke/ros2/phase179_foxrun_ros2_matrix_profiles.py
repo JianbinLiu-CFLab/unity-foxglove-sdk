@@ -10,17 +10,22 @@
 This module deliberately separates complementary evidence.  A Linux peer proves
 that it discovered Unity's subscriptions and published the bounded messages.
 An Editor or Player host proves Unity's active runtime identity and copied
-values.  Neither half is a final interoperability PASS on its own.
+values.  Neither half is a final interoperability PASS on its own.  Each
+named profile wrapper also exposes a deliberately separate Windows-local
+loopback command for its immediate Unity manual smoke path.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
@@ -39,6 +44,12 @@ WRAPPER_FILENAMES = {
     "lyrical-fastrtps": "phase179_lyrical_fastrtps_acceptance.py",
     "lyrical-zenoh": "phase179_lyrical_zenoh_acceptance.py",
 }
+LOCAL_EDITOR_DEFAULT_PROFILE_IDS = frozenset(
+    {"humble-fastrtps", "jazzy-fastrtps", "lyrical-fastrtps", "lyrical-zenoh"}
+)
+LOCAL_ZENOH_TOPOLOGY_ID = "phase179-lyrical-zenoh-local-router"
+WINDOWS_LOCAL_PUBLISH_MAX_WAIT_DISTROS = frozenset({"jazzy", "lyrical"})
+WINDOWS_RCLPY_ENDPOINT_PROBE = pathlib.Path(__file__).with_name("phase179_windows_rclpy_endpoint_probe.py")
 
 
 class MatrixFailure(RuntimeError):
@@ -70,6 +81,28 @@ PROFILES: dict[str, MatrixProfile] = {
 }
 
 
+def profile_wrapper_argv(profile_id: str, argv: Sequence[str]) -> list[str]:
+    """Return the user-facing wrapper argv, defaulting every named row to local Editor acceptance."""
+
+    supplied = list(argv)
+    profile = PROFILES.get(profile_id)
+    if supplied or profile is None or profile_id not in LOCAL_EDITOR_DEFAULT_PROFILE_IDS:
+        return supplied
+
+    result = ["--role", "windows-local-editor"]
+    if profile.rmw == zenoh_topology.ZENOH_RMW:
+        ros2_root = ros2env.default_ros2_root(profile.distro, inbound.workspace_root())
+        result.extend(
+            [
+                "--zenoh-router",
+                str(ros2_root / "Lib" / "rmw_zenoh_cpp" / "rmw_zenohd.exe"),
+                "--zenoh-topology-id",
+                LOCAL_ZENOH_TOPOLOGY_ID,
+            ]
+        )
+    return result
+
+
 def workspace_root() -> pathlib.Path:
     """Return the repository root without traversing local ROS installation junctions."""
 
@@ -99,11 +132,12 @@ def profile_evidence_path(
     stems = {
         "linux-peer": f"linux-{surface}",
         "windows-editor": "windows-editor",
+        "windows-local-editor": "windows-local-editor",
         "windows-player": "windows-player",
         "correlate": f"combined-{surface}",
     }
     if role not in stems:
-        raise ValueError("role must be one of linux-peer, windows-editor, windows-player, correlate")
+        raise ValueError("role must be one of linux-peer, windows-editor, windows-local-editor, windows-player, correlate")
     root = workspace_root or inbound.workspace_root()
     return root / "build" / "phase179" / profile.profile_id / f"{stems[role]}.json"
 
@@ -396,66 +430,75 @@ def validate_windows_subscription_endpoints(
     *,
     timeout_seconds: float,
 ) -> list[dict[str, object]]:
-    """Validate all fixed Unity subscription contracts using array-argv repo-local Windows ROS2 commands."""
+    """Validate all fixed Unity subscription contracts using the selected repo-local Windows ROS Python."""
 
+    _ = ros2_script
     deadline = time.monotonic() + timeout_seconds
     evidence: list[dict[str, object]] = []
     for name in profile.message_set:
         spec = inbound.MESSAGE_SPECS[name]
         topic = inbound.topic_for_spec(profile.topic_prefix, spec)
-        last_failure: MatrixFailure | None = None
-        completed = False
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0.0:
-                break
-            try:
-                listed = ros2env.run_ros2(
-                    python,
-                    ros2_script,
-                    env,
-                    ["topic", "list", "-t", "--no-daemon"],
-                    check=False,
-                    timeout_seconds=max(0.05, min(5.0, remaining)),
-                )
-                if listed.returncode != 0 or not inbound.topic_list_has_type(listed.stdout, topic, spec.message_type):
-                    raise MatrixFailure("WINDOWS_DISCOVERY", "Windows ROS2 CLI did not yet expose the typed Unity subscription.")
-                details = ros2env.run_ros2(
-                    python,
-                    ros2_script,
-                    env,
-                    ["topic", "info", "-v", topic, "--no-daemon"],
-                    check=False,
-                    timeout_seconds=max(0.05, min(5.0, remaining)),
-                )
-                if details.returncode != 0:
-                    raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 CLI could not query the Unity subscription endpoint.")
-                endpoint = inbound.validate_unity_subscription_endpoint(details.stdout, spec)
-                evidence.append(
-                    {
-                        "name": name,
-                        "topic": topic,
-                        "messageType": endpoint.message_type,
-                        "subscriptionCount": endpoint.subscription_count,
-                        "qosReliability": endpoint.qos_reliability,
-                        "qosHistory": endpoint.qos_history,
-                        "qosDepth": endpoint.qos_depth,
-                        "qosDurability": endpoint.qos_durability,
-                    }
-                )
-                completed = True
-                break
-            except (MatrixFailure, inbound.AcceptanceFailure) as exc:
-                last_failure = MatrixFailure(exc.category, "Windows ROS2 endpoint evidence is not yet complete.")
-            except (OSError, subprocess.TimeoutExpired):
-                last_failure = MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint evidence command did not complete.")
-            if time.monotonic() >= deadline:
-                break
-            time.sleep(min(0.25, max(0.0, deadline - time.monotonic())))
-        if not completed:
-            if last_failure is not None:
-                raise last_failure
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.0:
             raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint evidence timed out.")
+        try:
+            probe = subprocess.run(
+                [
+                    str(python),
+                    str(WINDOWS_RCLPY_ENDPOINT_PROBE),
+                    "--topic",
+                    topic,
+                    "--timeout-seconds",
+                    str(remaining),
+                ],
+                env=dict(env),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+                timeout=remaining + 1.0,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint evidence command did not complete.") from exc
+        if probe.returncode != 0:
+            raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint evidence probe did not complete.")
+        try:
+            snapshot = json.loads(probe.stdout)
+        except json.JSONDecodeError as exc:
+            raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint evidence probe returned invalid output.") from exc
+        if not isinstance(snapshot, Mapping) or snapshot.get("topic") != topic:
+            raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint evidence did not identify the required topic.")
+        subscription_count = snapshot.get("subscriptionCount")
+        endpoints = snapshot.get("endpoints")
+        if not isinstance(subscription_count, int) or subscription_count < 1 or not isinstance(endpoints, list):
+            raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint evidence did not observe a Unity subscription.")
+        matching_endpoint = next(
+            (
+                endpoint
+                for endpoint in endpoints
+                if isinstance(endpoint, Mapping)
+                and endpoint.get("messageType") == spec.message_type
+                and endpoint.get("qosReliability") == spec.qos_reliability
+                and endpoint.get("qosHistory") == spec.qos_history
+                and endpoint.get("qosDepth") == spec.qos_depth
+                and endpoint.get("qosDurability") == spec.qos_durability
+            ),
+            None,
+        )
+        if matching_endpoint is None:
+            raise MatrixFailure("WINDOWS_ENDPOINT", "Windows ROS2 endpoint QoS evidence did not match the fixed contract.")
+        evidence.append(
+            {
+                "name": name,
+                "topic": topic,
+                "messageType": spec.message_type,
+                "subscriptionCount": subscription_count,
+                "qosReliability": spec.qos_reliability,
+                "qosHistory": spec.qos_history,
+                "qosDepth": spec.qos_depth,
+                "qosDurability": spec.qos_durability,
+            }
+        )
     return evidence
 
 
@@ -518,10 +561,14 @@ def _parser(profile: MatrixProfile) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             f"Phase179 fixed profile {profile.profile_id} ({profile.distro}/{profile.rmw}). "
-            "Use one role at a time; only correlate can emit a final PASS."
+            "Use one role at a time; the local Editor role emits a Windows-local PASS."
         )
     )
-    parser.add_argument("--role", choices=("linux-peer", "windows-editor", "windows-player", "correlate"), required=True)
+    parser.add_argument(
+        "--role",
+        choices=("linux-peer", "windows-editor", "windows-local-editor", "windows-player", "correlate"),
+        required=True,
+    )
     parser.add_argument("--surface", choices=("editor", "player"), default=None)
     parser.add_argument("--domain-id", type=inbound.parse_domain_id, default=0)
     parser.add_argument("--discovery-range", default="SUBNET")
@@ -546,6 +593,21 @@ def _parser(profile: MatrixProfile) -> argparse.ArgumentParser:
     return parser
 
 
+def _default_unity_editor_log_path() -> pathlib.Path:
+    """Return Unity's standard Windows Editor log path for the one-command local acceptance flow."""
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return pathlib.Path(local_app_data) / "Unity" / "Editor" / "Editor.log"
+    return pathlib.Path.home() / "AppData" / "Local" / "Unity" / "Editor" / "Editor.log"
+
+
+def _generated_local_token(profile: MatrixProfile) -> str:
+    """Create one bounded opaque token for a local Editor run without exposing it as operator work."""
+
+    return f"phase179-{profile.profile_id}-local-{uuid.uuid4().hex}"
+
+
 def parse_profile_args(profile: MatrixProfile, argv: Sequence[str]) -> argparse.Namespace:
     """Parse one fixed-profile command and reject role combinations that cannot yield sound evidence."""
 
@@ -560,16 +622,26 @@ def parse_profile_args(profile: MatrixProfile, argv: Sequence[str]) -> argparse.
         if args.surface not in (None, "player"):
             parser.error("--role windows-player requires --surface player when a surface is supplied")
         args.surface = "player"
+    elif args.role == "windows-local-editor":
+        if args.surface not in (None, "editor"):
+            parser.error("--role windows-local-editor requires --surface editor when a surface is supplied")
+        args.surface = "editor"
+        if args.token is None:
+            args.token = _generated_local_token(profile)
+        if args.unity_log is None:
+            args.unity_log = _default_unity_editor_log_path()
     elif args.role in ("linux-peer", "windows-editor", "correlate") and args.surface is None:
         parser.error(f"--role {args.role} requires --surface editor or player")
 
-    if args.role in ("linux-peer", "windows-editor", "windows-player") and args.token is None:
+    if args.role in ("linux-peer", "windows-editor", "windows-local-editor", "windows-player") and args.token is None:
         parser.error(f"--role {args.role} requires --token for two-sided evidence correlation")
     if args.role == "windows-editor" and args.surface != "editor":
         parser.error("--role windows-editor requires --surface editor")
+    if args.role == "windows-local-editor" and args.surface != "editor":
+        parser.error("--role windows-local-editor requires --surface editor")
     if args.role == "linux-peer" and args.surface not in ("editor", "player"):
         parser.error("--role linux-peer requires --surface editor or player")
-    if args.role == "windows-editor" and args.unity_log is None:
+    if args.role in ("windows-editor", "windows-local-editor") and args.unity_log is None:
         parser.error("--role windows-editor requires --unity-log")
     if args.role == "windows-player" and (args.player is None or args.player_log is None):
         parser.error("--role windows-player requires --player and --player-log")
@@ -735,7 +807,7 @@ def run_windows_editor_host(profile: MatrixProfile, args: argparse.Namespace) ->
             args.unity_log,
             profile.distro,
             profile.rmw,
-            args.token,
+            None,
             args.ready_timeout_seconds,
             start_offset=ready_offset,
         )
@@ -795,6 +867,206 @@ def run_windows_editor_host(profile: MatrixProfile, args: argparse.Namespace) ->
     return exit_code
 
 
+def _local_editor_pass_verdict(profile: MatrixProfile) -> str:
+    """Return the explicit Windows-loopback success label without claiming a Linux peer result."""
+
+    label = profile.profile_id.upper().replace("-", "_")
+    return f"PHASE179_{label}_WINDOWS_LOCAL_EDITOR_PASS"
+
+
+def build_windows_local_publish_command(
+    profile: MatrixProfile,
+    spec: inbound.MessageSpec,
+    args: argparse.Namespace,
+) -> list[str]:
+    """Build a bounded local publisher command without passing unavailable ROS CLI switches to Humble."""
+
+    command = inbound.build_publish_command(
+        pathlib.Path("ros2"),
+        spec,
+        args.token,
+        profile.topic_prefix,
+    )[1:]
+    once_index = command.index("--once")
+    wait_arguments = ["--wait-matching-subscriptions", "1"]
+    if profile.distro in WINDOWS_LOCAL_PUBLISH_MAX_WAIT_DISTROS:
+        wait_arguments.extend(["--max-wait-time-secs", str(args.ready_timeout_seconds)])
+    command[once_index + 1 : once_index + 1] = wait_arguments
+    return command
+
+
+@contextlib.contextmanager
+def managed_windows_local_publishers(
+    python: pathlib.Path,
+    ros2_script: pathlib.Path,
+    env: dict[str, str],
+    profile: MatrixProfile,
+    args: argparse.Namespace,
+) -> object:
+    """Keep one repo-local publisher per contract waiting until Unity registers its matching subscription."""
+
+    processes: list[tuple[str, subprocess.Popen[str]]] = []
+    try:
+        for name in profile.message_set:
+            spec = inbound.MESSAGE_SPECS[name]
+            command = build_windows_local_publish_command(profile, spec, args)
+            popen_kwargs: dict[str, object] = {
+                "env": dict(env),
+                "text": True,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+            }
+            if os.name != "nt":
+                popen_kwargs["start_new_session"] = True
+            process = subprocess.Popen(
+                [str(python), str(ros2_script), *command],
+                **popen_kwargs,
+            )
+            processes.append((name, process))
+
+        yield
+
+        completion_deadline = time.monotonic() + args.apply_timeout_seconds
+        for name, process in processes:
+            remaining = completion_deadline - time.monotonic()
+            if remaining <= 0.0:
+                raise MatrixFailure("WINDOWS_PUBLISH", "Repo-local Windows ROS2 did not complete the fixed Phase179 publication.")
+            try:
+                process.communicate(timeout=remaining)
+            except subprocess.TimeoutExpired as exc:
+                raise MatrixFailure("WINDOWS_PUBLISH", "Repo-local Windows ROS2 did not complete the fixed Phase179 publication.") from exc
+            if process.returncode != 0:
+                raise MatrixFailure("WINDOWS_PUBLISH", "Repo-local Windows ROS2 could not publish the fixed Phase179 contract.")
+    finally:
+        for _, process in processes:
+            inbound.terminate_owned_process(process)
+
+
+def _wait_for_windows_local_apply_markers(
+    profile: MatrixProfile,
+    args: argparse.Namespace,
+) -> dict[str, inbound.UnityMarker]:
+    """Require copied-value evidence for this run's generated token without assuming Editor.log appends at EOF."""
+
+    markers: dict[str, inbound.UnityMarker] = {}
+    for name in profile.message_set:
+        spec = inbound.MESSAGE_SPECS[name]
+        markers[name] = inbound.wait_for_unity_marker(
+            args.unity_log,
+            inbound.topic_for_spec(profile.topic_prefix, spec),
+            args.token,
+            spec.expected_value(args.token),
+            args.apply_timeout_seconds,
+            start_offset=None,
+        )
+    return markers
+
+
+def run_windows_local_editor(profile: MatrixProfile, args: argparse.Namespace) -> int:
+    """Turn one Unity Play click into a complete local Windows ROS2-to-Unity acceptance result."""
+
+    summary: dict[str, object] = {
+        "phase": 179,
+        "role": "windows-local-editor",
+        "transportScope": "windows-local-loopback",
+        "profileId": profile.profile_id,
+        "surface": "editor",
+        "distro": profile.distro,
+        "rmwImplementation": profile.rmw,
+        "domainId": args.domain_id,
+        "discoveryRange": args.discovery_range,
+        "token": args.token,
+        "topicPrefix": profile.topic_prefix,
+        "messageSet": list(profile.message_set),
+        "ready": False,
+        "allRequiredApplied": False,
+        "messageResults": [],
+    }
+    if profile.rmw == zenoh_topology.ZENOH_RMW:
+        summary["zenohTopologyId"] = args.zenoh_topology_id
+    topology_handle: zenoh_topology.ZenohTopologyHandle | None = None
+    failure_category: str | None = None
+    try:
+        ros2_root, python, ros2_script = resolve_windows_ros2_root(profile, args)
+        env = ros2env.build_ros_env(
+            ros2_root,
+            profile.rmw,
+            args.discovery_range,
+            str(args.domain_id),
+            profile.distro,
+        )
+        if profile.rmw == zenoh_topology.ZENOH_RMW:
+            topology_handle = zenoh_topology.start_topology(
+                _topology_options(profile, args),
+                env=env,
+                cwd=workspace_root(),
+                log_path=args.summary_json.with_name(args.summary_json.stem + "-zenoh-router.log"),
+                ready_timeout_seconds=args.ready_timeout_seconds,
+                ready_marker=args.zenoh_router_ready_marker,
+            )
+            summary["zenohTopology"] = inbound.topology_summary(topology_handle)
+        ready_tokens_before_launch = inbound.capture_unity_ready_marker_tokens(
+            args.unity_log,
+            profile.distro,
+            profile.rmw,
+        )
+        print(
+            f"[phase179:{profile.profile_id}] Repo-local publishers are waiting for Unity subscriptions; enter Play Mode now.",
+            flush=True,
+        )
+        with managed_windows_local_publishers(python, ros2_script, env, profile, args):
+            inbound.wait_for_unity_ready_marker(
+                args.unity_log,
+                profile.distro,
+                profile.rmw,
+                None,
+                args.ready_timeout_seconds,
+                start_offset=None,
+                excluded_tokens=ready_tokens_before_launch,
+            )
+            summary["ready"] = True
+            markers = _wait_for_windows_local_apply_markers(profile, args)
+            summary["messageResults"] = _editor_marker_evidence(profile, args.token, markers)
+            summary["allRequiredApplied"] = True
+        # The preceding context verifies every repo-local publisher exited successfully
+        # after it waited for Unity and each unique copied-value marker was observed.
+        # A new post-publication rclpy graph observer is deliberately not a local hard
+        # gate: on Windows/FastDDS it can time out even after the actual DDS data path
+        # has completed. The cross-host Editor role retains its separate graph proof.
+        summary["windowsLocalDataPathEvidence"] = "publisher-complete-and-unity-applied"
+        summary["verdict"] = _local_editor_pass_verdict(profile)
+        exit_code = 0
+    except MatrixFailure as exc:
+        failure_category = exc.category
+        exit_code = 1
+    except inbound.AcceptanceFailure as exc:
+        failure_category = exc.category
+        exit_code = 1
+    except zenoh_topology.ZenohTopologyError as exc:
+        failure_category = exc.category
+        exit_code = 1
+    except KeyboardInterrupt:
+        failure_category = "INTERRUPTED"
+        exit_code = 1
+    except (OSError, RuntimeError, subprocess.SubprocessError):
+        failure_category = "ENVIRONMENT"
+        exit_code = 1
+    finally:
+        if failure_category is not None:
+            summary["failureCategory"] = failure_category
+            summary["verdict"] = f"FAIL_{failure_category}"
+        elif "verdict" not in summary:
+            summary["verdict"] = "FAIL_UNKNOWN"
+        try:
+            _write_summary(args.summary_json, summary)
+            print(f"Summary: {args.summary_json}")
+            print(f"Verdict: {summary['verdict']}")
+        finally:
+            if topology_handle is not None:
+                zenoh_topology.close_topology(topology_handle)
+    return exit_code
+
+
 def run_correlation(profile: MatrixProfile, args: argparse.Namespace) -> int:
     """Read two half-summaries and write the only final matrix PASS artifact."""
 
@@ -837,6 +1109,8 @@ def run_profile(profile_id: str, argv: Sequence[str] | None = None) -> int:
     args = parse_profile_args(profile, list(argv or ()))
     if args.role == "linux-peer":
         return run_linux_peer(profile, args)
+    if args.role == "windows-local-editor":
+        return run_windows_local_editor(profile, args)
     if args.role == "windows-player":
         return run_windows_player(profile, args)
     if args.role == "windows-editor":

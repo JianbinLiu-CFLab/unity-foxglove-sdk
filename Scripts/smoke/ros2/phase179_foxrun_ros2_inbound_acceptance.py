@@ -468,8 +468,6 @@ def _build_publish_command(
         "topic",
         "pub",
         "--once",
-        topic,
-        message_type,
         "--qos-reliability",
         qos_reliability,
         "--qos-history",
@@ -478,7 +476,8 @@ def _build_publish_command(
         str(qos_depth),
         "--qos-durability",
         qos_durability,
-        "--no-daemon",
+        topic,
+        message_type,
         json.dumps(payload, separators=(",", ":"), sort_keys=True),
     ]
 
@@ -921,17 +920,26 @@ def find_matching_unity_ready_marker(
     text: str,
     runtime: str,
     rmw: str,
-    token: str,
+    token: str | None,
+    excluded_tokens: Sequence[str] = (),
 ) -> UnityReadyMarker:
-    """Return the current Unity runtime identity or a stable evidence failure."""
+    """Return the current Unity runtime identity, rejecting any READY token captured before a local run."""
 
     markers = parse_unity_ready_markers(text)
     if not markers:
         raise AcceptanceFailure("READY_TIMEOUT", "Unity did not yet emit a native runtime READY marker.")
-    for marker in reversed(markers):
-        if marker.runtime == runtime and marker.rmw == rmw and marker.token == token:
+    matching_identity = [
+        marker
+        for marker in markers
+        if marker.runtime == runtime and marker.rmw == rmw and (token is None or marker.token == token)
+    ]
+    if not matching_identity:
+        raise AcceptanceFailure("READY_MISMATCH", "Unity READY marker did not match the requested runtime, RMW, and optional token identity.")
+    excluded = frozenset(excluded_tokens)
+    for marker in reversed(matching_identity):
+        if marker.token not in excluded:
             return marker
-    raise AcceptanceFailure("READY_MISMATCH", "Unity READY marker did not match the requested runtime, RMW, and token identity.")
+    raise AcceptanceFailure("READY_STALE", "Unity READY marker was already present before this local acceptance run.")
 
 
 def _read_unity_log(log_path: pathlib.Path, start_offset: int | None) -> str:
@@ -948,6 +956,16 @@ def _read_unity_log(log_path: pathlib.Path, start_offset: int | None) -> str:
     with log_path.open("rb") as stream:
         stream.seek(start_offset)
         return stream.read().decode("utf-8", errors="replace")
+
+
+def capture_unity_ready_marker_tokens(log_path: pathlib.Path, runtime: str, rmw: str) -> frozenset[str]:
+    """Snapshot matching READY tokens before local launch without assuming Unity's Editor.log grows append-only."""
+
+    return frozenset(
+        marker.token
+        for marker in parse_unity_ready_markers(_read_unity_log(log_path, None))
+        if marker.runtime == runtime and marker.rmw == rmw
+    )
 
 
 def find_matching_unity_marker(
@@ -1000,11 +1018,12 @@ def wait_for_unity_ready_marker(
     log_path: pathlib.Path,
     runtime: str,
     rmw: str,
-    token: str,
+    token: str | None,
     timeout_seconds: float,
     start_offset: int | None = None,
+    excluded_tokens: Sequence[str] = (),
 ) -> UnityReadyMarker:
-    """Wait for an exact Unity native-runtime identity marker after an optional log offset."""
+    """Wait for a Unity native-runtime marker after an optional log offset and token check."""
 
     deadline = time.monotonic() + timeout_seconds
     last_mismatch: AcceptanceFailure | None = None
@@ -1012,10 +1031,10 @@ def wait_for_unity_ready_marker(
         if log_path.is_file():
             try:
                 return find_matching_unity_ready_marker(
-                    _read_unity_log(log_path, start_offset), runtime, rmw, token
+                    _read_unity_log(log_path, start_offset), runtime, rmw, token, excluded_tokens
                 )
             except AcceptanceFailure as exc:
-                if exc.category == "READY_MISMATCH":
+                if exc.category in ("READY_MISMATCH", "READY_STALE"):
                     last_mismatch = exc
         if time.monotonic() >= deadline:
             if last_mismatch is not None:
@@ -1242,8 +1261,9 @@ def run_negative_case(
         result["contractIdentity"] = True
         result["identitySession"] = baseline.session
     log_offset = unity_log_offset(args.unity_log) if bool(result["contractIdentity"]) else None
+    topic = topic_for_spec(args.topic_prefix, spec)
     negative_command = build_negative_publish_command(ros2_executable, spec, token, args.negative_case, args.topic_prefix)
-    result["attemptedMessageType"] = negative_command[5]
+    result["attemptedMessageType"] = negative_command[negative_command.index(topic) + 1]
     result["attemptedQosReliability"] = negative_command[negative_command.index("--qos-reliability") + 1]
     published = run_bounded_command(
         negative_command,
