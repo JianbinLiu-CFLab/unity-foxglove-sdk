@@ -276,8 +276,14 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
 
             EditorGUI.indentLevel++;
-            drawContents();
-            EditorGUI.indentLevel--;
+            try
+            {
+                drawContents();
+            }
+            finally
+            {
+                EditorGUI.indentLevel--;
+            }
         }
 
         private void LoadInspectorFoldoutState()

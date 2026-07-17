@@ -36,6 +36,16 @@ namespace Unity.FoxgloveSDK.Tests
             "DataTransportRos2Bridge",
         };
 
+        private static readonly Dictionary<string, string> DataTransportFoldoutFields =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                { "DataTransport", "_dataTransportExpanded" },
+                { "DataTransportPublish", "_dataTransportPublishExpanded" },
+                { "DataTransportSubscribe", "_dataTransportSubscribeExpanded" },
+                { "DataTransportNativeRuntime", "_dataTransportNativeRuntimeExpanded" },
+                { "DataTransportRos2Bridge", "_dataTransportRos2BridgeExpanded" },
+            };
+
         private static int _passed;
 
         /// <summary>
@@ -50,6 +60,7 @@ namespace Unity.FoxgloveSDK.Tests
             var mainInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerEditorPath);
             var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
             var topLevel = FindMethod(mainInspector, "OnInspectorGUI");
+            var section = FindMethod(mainInspector, "DrawSection");
             var foldoutState = FindMethod(mainInspector, "LoadInspectorFoldoutState");
             var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
             var subsection = FindMethod(editorSources, "DrawDataTransportSubsection");
@@ -57,6 +68,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTopLevelWorkflow(topLevel);
             VerifyNestedTransportWorkflow(dataTransport);
             VerifyFoldoutStateModel(mainInspector, foldoutState);
+            VerifyParentSectionPresentationHelper(section);
             VerifySubsectionPresentationHelper(subsection);
 
             Console.WriteLine("Phase 180: " + _passed + " checks passed.");
@@ -213,6 +225,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(migration.Length == 1
                   && LegacyTransportFoldoutKeys.All(key => legacyLocalNames.ContainsKey(key))
                   && DataTransportFoldoutKeys.All(key => newLoads.Count(invocation => HasInspectorFoldoutKeyArgument(invocation, 0, key)) == 1)
+                  && DataTransportFoldoutFields.Count == DataTransportFoldoutKeys.Length
+                  && DataTransportFoldoutKeys.All(key => DataTransportFoldoutFields.ContainsKey(key)
+                                                     && HasMatchingFoldoutLoad(foldoutState, key, DataTransportFoldoutFields[key]))
                   && HasMigratedChildSeed(migrationInvocations, "DataTransportPublish", legacyLocalNames, "PublishData")
                   && HasMigratedChildSeed(migrationInvocations, "DataTransportSubscribe", legacyLocalNames, "SubscribeData")
                   && HasMigratedChildSeed(migrationInvocations, "DataTransportNativeRuntime", legacyLocalNames, "R2fuRuntime")
@@ -221,7 +236,28 @@ namespace Unity.FoxgloveSDK.Tests
                   && markerWrites.Length == 1
                   && newLoads.All(invocation => markerWrites[0].SpanStart < invocation.SpanStart)
                   && !hasUnsupportedSessionStateProbe,
-                "180C-2: one-time SessionState migration seeds nested transport foldouts, opens the parent for any legacy child, and writes its marker before loading new state");
+                "180C-2: one-time SessionState migration assigns each persisted foldout to its matching field, seeds the parent from the four legacy children, and writes its marker before loading new state");
+        }
+
+        private static void VerifyParentSectionPresentationHelper(MethodDeclarationSyntax section)
+        {
+            var workflowSections = AllInvocations(section)
+                .Where(invocation => IsInvocationNamed(invocation, "WorkflowSection"))
+                .ToArray();
+            var closedSectionReturns = DirectIfStatements(section)
+                .Where(statement => statement.Condition is PrefixUnaryExpressionSyntax prefix
+                                    && prefix.IsKind(SyntaxKind.LogicalNotExpression)
+                                    && prefix.Operand is InvocationExpressionSyntax invocation
+                                    && IsInvocationNamed(invocation, "WorkflowSection")
+                                    && DirectThenStatements(statement).OfType<ReturnStatementSyntax>().Any())
+                .ToArray();
+
+            Check(workflowSections.Length == 1
+                  && HasInspectorFoldoutKeyIdentifierArgument(workflowSections[0], 1, "sessionStateName")
+                  && HasRefIdentifierArgument(workflowSections[0], 2, "expanded")
+                  && closedSectionReturns.Length == 1
+                  && HasExceptionSafeIndentedContents(section),
+                "180D-1: parent Inspector sections preserve collapsed behavior and restore indentation with try/finally");
         }
 
         private static void VerifySubsectionPresentationHelper(MethodDeclarationSyntax subsection)
@@ -236,9 +272,19 @@ namespace Unity.FoxgloveSDK.Tests
                                     && IsInvocationNamed(invocation, "WorkflowSubsection")
                                     && DirectThenStatements(statement).OfType<ReturnStatementSyntax>().Any())
                 .ToArray();
-            var indentationMutations = subsection == null
+            Check(workflowSubsections.Length == 1
+                  && HasInspectorFoldoutKeyIdentifierArgument(workflowSubsections[0], 1, "sessionStateName")
+                  && HasRefIdentifierArgument(workflowSubsections[0], 2, "expanded")
+                  && closedSubsectionReturns.Length == 1
+                  && HasExceptionSafeIndentedContents(subsection),
+                "180D-2: Data Transport subsection presentation persists the layout foldout and confines indentation to expanded contents with try/finally");
+        }
+
+        private static bool HasExceptionSafeIndentedContents(MethodDeclarationSyntax section)
+        {
+            var indentationMutations = section == null
                 ? Array.Empty<SyntaxNode>()
-                : subsection.DescendantNodes()
+                : section.DescendantNodes()
                     .Where(IsEditorGuiIndentMutation)
                     .ToArray();
             var increments = indentationMutations
@@ -247,7 +293,7 @@ namespace Unity.FoxgloveSDK.Tests
             var decrements = indentationMutations
                 .Where(IsEditorGuiIndentDecrement)
                 .ToArray();
-            var tryStatements = subsection?.Body?.Statements.OfType<TryStatementSyntax>().ToArray()
+            var tryStatements = section?.Body?.Statements.OfType<TryStatementSyntax>().ToArray()
                                 ?? Array.Empty<TryStatementSyntax>();
             var tryStatement = tryStatements.Length == 1 ? tryStatements[0] : null;
             var drawsContents = tryStatement != null
@@ -258,17 +304,12 @@ namespace Unity.FoxgloveSDK.Tests
                                       && tryStatement.Finally.Block.DescendantNodes()
                                           .Any(IsEditorGuiIndentDecrement);
 
-            Check(workflowSubsections.Length == 1
-                  && HasInspectorFoldoutKeyIdentifierArgument(workflowSubsections[0], 1, "sessionStateName")
-                  && HasRefIdentifierArgument(workflowSubsections[0], 2, "expanded")
-                  && closedSubsectionReturns.Length == 1
-                  && increments.Length == 1
-                  && decrements.Length == 1
-                  && tryStatement != null
-                  && increments[0].SpanStart < tryStatement.SpanStart
-                  && drawsContents
-                  && decrementsInFinally,
-                "180D-1: Data Transport subsection presentation persists the layout foldout and confines indentation to expanded contents with try/finally");
+            return increments.Length == 1
+                   && decrements.Length == 1
+                   && tryStatement != null
+                   && increments[0].SpanStart < tryStatement.SpanStart
+                   && drawsContents
+                   && decrementsInFinally;
         }
 
         private static MethodDeclarationSyntax FindMethod(string source, string methodName)
@@ -543,6 +584,28 @@ namespace Unity.FoxgloveSDK.Tests
                                                 && HasIdentifierArgument(invocation, 1, oldLocal)) == 1;
         }
 
+        private static bool HasMatchingFoldoutLoad(
+            MethodDeclarationSyntax foldoutState,
+            string key,
+            string field)
+        {
+            var matchingLoads = foldoutState?.Body?.Statements
+                                    .OfType<ExpressionStatementSyntax>()
+                                    .Select(statement => statement.Expression as AssignmentExpressionSyntax)
+                                    .Where(assignment => assignment != null
+                                                         && assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+                                                         && assignment.Left is IdentifierNameSyntax target
+                                                         && target.Identifier.ValueText == field
+                                                         && assignment.Right is InvocationExpressionSyntax read
+                                                         && IsSessionStateInvocationNamed(read, "GetBool")
+                                                         && HasInspectorFoldoutKeyArgument(read, 0, key)
+                                                         && read.ArgumentList.Arguments.Count == 2
+                                                         && read.ArgumentList.Arguments[1].Expression.IsKind(SyntaxKind.FalseLiteralExpression))
+                                    .ToArray()
+                                ?? Array.Empty<AssignmentExpressionSyntax>();
+            return matchingLoads.Length == 1;
+        }
+
         private static bool HasMigratedParentSeed(
             IEnumerable<InvocationExpressionSyntax> invocations,
             IReadOnlyDictionary<string, string> legacyLocalNames)
@@ -555,15 +618,32 @@ namespace Unity.FoxgloveSDK.Tests
                 return false;
 
             var parentExpression = parentSeeds[0].ArgumentList.Arguments[1].Expression;
-            var identifiers = parentExpression.DescendantNodesAndSelf()
-                .OfType<IdentifierNameSyntax>()
-                .Select(identifier => identifier.Identifier.ValueText)
-                .ToArray();
-            return parentExpression.DescendantNodesAndSelf()
-                       .OfType<BinaryExpressionSyntax>()
-                       .Any(expression => expression.IsKind(SyntaxKind.LogicalOrExpression))
+            var legacyOperands = new List<string>();
+            return CollectLogicalOrIdentifierOperands(parentExpression, legacyOperands)
+                   && legacyOperands.Count == LegacyTransportFoldoutKeys.Length
                    && LegacyTransportFoldoutKeys.All(key => legacyLocalNames.TryGetValue(key, out var local)
-                                                       && identifiers.Contains(local));
+                                                       && legacyOperands.Count(operand => operand == local) == 1);
+        }
+
+        private static bool CollectLogicalOrIdentifierOperands(ExpressionSyntax expression, ICollection<string> operands)
+        {
+            if (expression is ParenthesizedExpressionSyntax parenthesized)
+                return CollectLogicalOrIdentifierOperands(parenthesized.Expression, operands);
+
+            if (expression is BinaryExpressionSyntax binary
+                && binary.IsKind(SyntaxKind.LogicalOrExpression))
+            {
+                return CollectLogicalOrIdentifierOperands(binary.Left, operands)
+                       && CollectLogicalOrIdentifierOperands(binary.Right, operands);
+            }
+
+            if (expression is IdentifierNameSyntax identifier)
+            {
+                operands.Add(identifier.Identifier.ValueText);
+                return true;
+            }
+
+            return false;
         }
 
         private static bool HasIdentifierArgument(InvocationExpressionSyntax invocation, int argumentIndex, string identifier)
