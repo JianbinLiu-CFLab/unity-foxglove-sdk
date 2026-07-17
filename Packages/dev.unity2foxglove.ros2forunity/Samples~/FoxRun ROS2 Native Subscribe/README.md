@@ -33,6 +33,65 @@ Use a physical Linux host or bridged VM for FastDDS acceptance unless two-sided 
 
 The current native-copy policy is intentionally bounded and latest-wins. `FoxRunRos2NativeCopyBudgetBytes` defaults to 4 MiB and is normalized to the portable 1 KiB–256 MiB range. If a copied message graph exceeds that budget, it is not applied and the subscription reports a bounded `CopyFailed` diagnostic; it never falls back to WebSocket. Small standard messages such as this sample's String, Twist, Joy, and Imu are in the supported scope; do not use this sample as a throughput benchmark for image, point-cloud, or arbitrary large payloads.
 
+## Four-row Linux interoperability acceptance
+
+Use one named Phase179 entry point for the whole acceptance row; do not pass a hand-selected distro or RMW flag to a generic script. The four rows are fixed:
+
+| Profile script | Unity runtime | Linux peer |
+| --- | --- | --- |
+| `phase179_humble_fastrtps_acceptance.py` | Humble / FastDDS | Humble / `rmw_fastrtps_cpp` |
+| `phase179_jazzy_fastrtps_acceptance.py` | Jazzy / FastDDS | Jazzy / `rmw_fastrtps_cpp` |
+| `phase179_lyrical_fastrtps_acceptance.py` | Lyrical / FastDDS | Lyrical / `rmw_fastrtps_cpp` |
+| `phase179_lyrical_zenoh_acceptance.py` | Lyrical / Zenoh | Lyrical / `rmw_zenoh_cpp` |
+
+All evidence is written under `build/phase179/<profile-id>/`. A Linux, Editor, or Player helper exits with `2` only for its documented, validated half-evidence state; for example the Linux helper reports `PEER_PUBLISH_COMPLETE_UNITY_PROOF_PENDING`. That is deliberately **not** a pass. Only the explicit `--role correlate` command emits a final matrix `PASS` and exits `0`.
+
+### Editor surface: exact manual sequence
+
+1. In Unity, resolve exactly the runtime shown by the selected row. In the `FoxgloveManager` Inspector enable **Enable FoxRun Subscriptions**, choose **ROS2 Native (R2FU)** as the default subscription provider, and use the imported **FoxRun ROS2 Native Subscribe** acceptance scene/component with its String, Twist, and Joy contracts enabled.
+2. Before entering Play Mode, start the matching Windows Editor host. It snapshots the current Editor log offset, then waits for a *new* matching READY marker; do not reuse a stale marker or token.
+
+   ```powershell
+   $token = "phase179-humble-editor-001"
+   python Scripts/smoke/ros2/phase179_humble_fastrtps_acceptance.py `
+     --role windows-editor --surface editor --token $token `
+     --unity-log "$env:LOCALAPPDATA\Unity\Editor\Editor.log"
+   ```
+
+   The host uses the repo-local `ros2-windows/ros2_<distro>` installation only for Windows CLI graph preflight. It does **not** add Windows ROS2 DLL paths to the Unity Editor; the selected R2FU runtime package remains the owner of Unity's native DLL selection.
+3. Enter Play Mode. Wait for the host to report that the fresh READY marker and all three Unity subscription endpoints are visible. It then waits for the copied String, Twist, and Joy values after a fresh apply offset.
+4. On the matching Linux machine (or a previously proven bridged/WSL topology), source the exact ROS distribution and set the selected RMW/domain/discovery values. Then run the same named script with the same token and `editor` surface:
+
+   ```bash
+   source /opt/ros/humble/setup.bash
+   export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+   export ROS_DOMAIN_ID=0
+   export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+   python3 <repo>/Scripts/smoke/ros2/phase179_humble_fastrtps_acceptance.py \
+     --role linux-peer --surface editor --token "$token"
+   ```
+
+5. After both helpers produced their summaries, run correlation from the workspace that can read both JSON files:
+
+   ```powershell
+   python Scripts/smoke/ros2/phase179_humble_fastrtps_acceptance.py `
+     --role correlate --surface editor `
+     --linux-summary-json build/phase179/humble-fastrtps/linux-editor.json `
+     --windows-summary-json build/phase179/humble-fastrtps/windows-editor.json
+   ```
+
+The Player surface uses the same evidence contract. Build the Phase179 Player, start the matching script with `--role windows-player --player <Player.exe> --player-log <Player.log> --token <token>`, run Linux with `--role linux-peer --surface player`, then correlate `player` summaries. The Player helper never inherits `ros2-windows` PATH/DLL state; its R2FU runtime package selects the native runtime.
+
+### Lyrical Zenoh topology
+
+The Lyrical/Zenoh row requires an explicit, non-secret topology identity on every non-correlation role, for example `--zenoh-topology-id phase179-lyrical-zenoh-lab1`, and exactly one ownership choice:
+
+- `--zenoh-router <router executable>` starts a helper-owned router, records only its mode/readiness, waits for the Phase162-compatible `Started` marker, and stops only that owned process tree on exit.
+- `--zenoh-router <session.json5>` (or JSON/YAML) selects external-session mode and sets `ZENOH_SESSION_CONFIG_URI` for that helper without starting a router.
+- `--no-zenoh-router` is valid only when an external certified Zenoh topology already exists; it never tries to stop an external router.
+
+The Unity Editor or Player must itself be started with the matching Zenoh environment/session configuration **before its first `Ok()`**. The Windows acceptance helper cannot retrofit an already initialized Unity native runtime. Use the same opaque topology id in the Linux and Windows summaries; correlation rejects a mismatch. Zenoh and FastDDS are separate transports, so do not use one row to certify the other.
+
 ## Custom assemblies
 
 If the component lives in a custom asmdef, add references to:

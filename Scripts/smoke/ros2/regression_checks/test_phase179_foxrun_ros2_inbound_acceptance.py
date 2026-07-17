@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -136,6 +137,71 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
                 self.smoke.parse_args(["--token", "a" * 97])
             with self.assertRaises(SystemExit):
                 self.smoke.parse_args(["--unity-ready-token", "manual"])
+
+    def test_linux_profile_envelope_requires_a_surface_and_rejects_cross_transport_topology(self) -> None:
+        """A pending Linux half-evidence record must name its target Unity surface exactly."""
+
+        args = self.smoke.parse_args(
+            [
+                "--distro",
+                "humble",
+                "--rmw",
+                "rmw_fastrtps_cpp",
+                "--profile-id",
+                "humble-fastrtps",
+                "--surface",
+                "editor",
+                "--topic-prefix",
+                "/foxrun/phase179",
+                "--message-set",
+                "string,twist,joy",
+            ]
+        )
+
+        self.assertEqual("humble-fastrtps", args.profile_id)
+        self.assertEqual("editor", args.surface)
+        self.assertEqual("/foxrun/phase179", args.topic_prefix)
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self.smoke.parse_args(["--profile-id", "humble-fastrtps"])
+            with self.assertRaises(SystemExit):
+                self.smoke.parse_args(
+                    [
+                        "--rmw",
+                        "rmw_fastrtps_cpp",
+                        "--zenoh-topology-id",
+                        "phase179-lyrical-zenoh",
+                    ]
+                )
+
+    def test_linux_zenoh_configuration_uses_shared_ready_topology_lifecycle(self) -> None:
+        """The Linux peer may probe only after the shared owned-router helper has reported readiness."""
+
+        args = SimpleNamespace(
+            rmw="rmw_zenoh_cpp",
+            zenoh_router=Path("/certified/rmw_zenohd"),
+            no_zenoh_router=False,
+            zenoh_topology_id="phase179-lyrical-zenoh",
+            summary_json=Path("/tmp/linux-peer-summary.json"),
+            timeout_seconds=15.0,
+            zenoh_router_ready_marker="Started",
+        )
+        options = object()
+        handle = SimpleNamespace(mode="owned-router", readiness="owned-router-ready")
+
+        with mock.patch.object(self.smoke.zenoh_topology, "validate_topology_options", return_value=options) as validate:
+            with mock.patch.object(self.smoke.zenoh_topology, "start_topology", return_value=handle) as start:
+                configured = self.smoke.configure_zenoh_topology(args, {})
+
+        self.assertIs(handle, configured)
+        validate.assert_called_once_with(
+            "rmw_zenoh_cpp",
+            router=args.zenoh_router,
+            no_router=False,
+            topology_id="phase179-lyrical-zenoh",
+        )
+        self.assertEqual("Started", start.call_args.kwargs["ready_marker"])
 
     def test_timeout_arguments_reject_non_finite_values(self) -> None:
         """A bounded smoke command cannot accept NaN or infinity as a timeout or rate."""
@@ -350,6 +416,27 @@ class Phase179FoxRunRos2InboundAcceptanceTests(unittest.TestCase):
         with self.assertRaises(self.smoke.AcceptanceFailure) as context:
             self.smoke.find_matching_unity_ready_marker(text, "lyrical", "rmw_fastrtps_cpp", token)
         self.assertEqual("READY_MISMATCH", context.exception.category)
+
+    def test_ready_wait_after_offset_cannot_reuse_a_stale_identity(self) -> None:
+        """An Editor host must not accept a READY marker written before it started observing the log."""
+
+        token = "phase179-ready-reused-token"
+        stale = f"PHASE179_ROS2_INBOUND_READY runtime=humble rmw=rmw_fastrtps_cpp token={token}\n"
+        with tempfile.TemporaryDirectory() as temp:
+            log = Path(temp) / "Editor.log"
+            log.write_text(stale, encoding="utf-8")
+            offset = self.smoke.unity_log_offset(log)
+            with self.assertRaises(self.smoke.AcceptanceFailure) as context:
+                self.smoke.wait_for_unity_ready_marker(
+                    log,
+                    "humble",
+                    "rmw_fastrtps_cpp",
+                    token,
+                    timeout_seconds=0.0,
+                    start_offset=offset,
+                )
+
+        self.assertEqual("READY_TIMEOUT", context.exception.category)
 
     def test_endpoint_validation_requires_subscriber_type_and_contract_qos(self) -> None:
         """Discovery must reject an endpoint that reports the wrong native QoS."""

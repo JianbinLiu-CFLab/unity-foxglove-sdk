@@ -30,6 +30,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Callable, Mapping, Sequence
 
+import phase179_zenoh_topology as zenoh_topology
+
 
 SUPPORTED_DISTROS = ("humble", "jazzy", "lyrical")
 SUPPORTED_RMWS = ("rmw_fastrtps_cpp", "rmw_zenoh_cpp")
@@ -300,6 +302,15 @@ def parse_token(text: str) -> str:
     return value
 
 
+def parse_ready_marker(text: str) -> str:
+    """Accept a bounded one-line router readiness marker without allowing an always-match value."""
+
+    value = text.strip()
+    if not value or len(value) > 128 or "\n" in value or "\r" in value:
+        raise argparse.ArgumentTypeError("--zenoh-router-ready-marker must be a non-empty single-line marker (max 128 characters)")
+    return value
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     """Parse Linux/WSL2 peer arguments without loading ROS Python modules."""
 
@@ -344,6 +355,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Current Unity READY marker token. Required with --unity-log for a full expected-negative verdict.",
     )
     parser.add_argument("--token", type=parse_token, default=None)
+    parser.add_argument("--profile-id", type=parse_token, default=None)
+    parser.add_argument("--surface", choices=("editor", "player"), default=None)
+    parser.add_argument("--zenoh-topology-id", type=parse_token, default=None)
     parser.add_argument(
         "--zenoh-router",
         type=pathlib.Path,
@@ -351,6 +365,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Owned Zenoh router executable, or a session JSON/JSON5 configuration path for a certified topology.",
     )
     parser.add_argument("--no-zenoh-router", action="store_true", help="Use an externally managed certified Zenoh topology.")
+    parser.add_argument(
+        "--zenoh-router-ready-marker",
+        type=parse_ready_marker,
+        default="Started",
+        help="Router log marker required before an owned Zenoh router may be used. Default: Started.",
+    )
     parser.add_argument(
         "--summary-json",
         type=pathlib.Path,
@@ -365,6 +385,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.zenoh_router is not None and args.no_zenoh_router:
         parser.error("--zenoh-router and --no-zenoh-router are mutually exclusive")
+    if (args.profile_id is None) != (args.surface is None):
+        parser.error("--profile-id and --surface must be provided together")
+    if args.rmw != "rmw_zenoh_cpp" and args.zenoh_topology_id is not None:
+        parser.error("--zenoh-topology-id is valid only with --rmw rmw_zenoh_cpp")
     if args.unity_ready_token is not None and args.unity_log is None:
         parser.error("--unity-ready-token requires --unity-log")
     if args.rmw == "rmw_zenoh_cpp" and args.distro != "lyrical":
@@ -978,8 +1002,9 @@ def wait_for_unity_ready_marker(
     rmw: str,
     token: str,
     timeout_seconds: float,
+    start_offset: int | None = None,
 ) -> UnityReadyMarker:
-    """Wait for an exact, current Unity native-runtime identity marker."""
+    """Wait for an exact Unity native-runtime identity marker after an optional log offset."""
 
     deadline = time.monotonic() + timeout_seconds
     last_mismatch: AcceptanceFailure | None = None
@@ -987,7 +1012,7 @@ def wait_for_unity_ready_marker(
         if log_path.is_file():
             try:
                 return find_matching_unity_ready_marker(
-                    log_path.read_text(encoding="utf-8", errors="replace"), runtime, rmw, token
+                    _read_unity_log(log_path, start_offset), runtime, rmw, token
                 )
             except AcceptanceFailure as exc:
                 if exc.category == "READY_MISMATCH":
@@ -1274,37 +1299,43 @@ def write_summary(path: pathlib.Path, summary: Mapping[str, object]) -> None:
 def configure_zenoh_topology(
     args: argparse.Namespace,
     env: dict[str, str],
-    owned_processes: list[subprocess.Popen[str]],
-) -> str:
-    """Select an explicit Zenoh topology without leaking it into the summary."""
+) -> zenoh_topology.ZenohTopologyHandle:
+    """Start or select one explicit Zenoh topology and wait for its real ready marker."""
 
-    if args.rmw != "rmw_zenoh_cpp":
-        return "not-applicable"
-    if args.no_zenoh_router:
-        return "external-certified-topology"
-    if args.zenoh_router is None:
-        raise AcceptanceFailure("ENVIRONMENT", "Zenoh requires --zenoh-router or --no-zenoh-router for an explicit topology.")
-    topology = args.zenoh_router.expanduser()
-    if not topology.is_file():
-        raise AcceptanceFailure("ENVIRONMENT", "The requested Zenoh router/config path does not exist.")
-    if topology.suffix.lower() in {".json", ".json5", ".yaml", ".yml"}:
-        env["ZENOH_SESSION_CONFIG_URI"] = str(topology.resolve())
-        return "session-config"
+    try:
+        options = zenoh_topology.validate_topology_options(
+            args.rmw,
+            router=args.zenoh_router,
+            no_router=args.no_zenoh_router,
+            topology_id=args.zenoh_topology_id,
+        )
+        return zenoh_topology.start_topology(
+            options,
+            env=env,
+            cwd=workspace_root(),
+            log_path=args.summary_json.with_name(args.summary_json.stem + "-zenoh-router.log"),
+            ready_timeout_seconds=args.timeout_seconds,
+            ready_marker=args.zenoh_router_ready_marker,
+        )
+    except zenoh_topology.ZenohTopologyError as exc:
+        raise AcceptanceFailure(exc.category, "Zenoh topology setup did not complete.") from exc
+    except ValueError as exc:
+        raise AcceptanceFailure("ENVIRONMENT", "Zenoh topology arguments were invalid.") from exc
 
-    popen_kwargs: dict[str, object] = {
-        "env": env,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "text": True,
-    }
-    if os.name != "nt":
-        popen_kwargs["start_new_session"] = True
-    process = subprocess.Popen([str(topology.resolve())], **popen_kwargs)
-    owned_processes.append(process)
-    time.sleep(0.25)
-    if process.poll() is not None:
-        raise AcceptanceFailure("ENVIRONMENT", "The helper-owned Zenoh router exited before ROS2 probing began.")
-    return "helper-owned-router"
+
+def topology_summary(configured: zenoh_topology.ZenohTopologyHandle | str) -> dict[str, object]:
+    """Return portable topology evidence without leaking router or session-config paths."""
+
+    if isinstance(configured, str):
+        return {"mode": configured, "readiness": configured}
+    return {"mode": configured.mode, "readiness": configured.readiness}
+
+
+def close_configured_topology(configured: zenoh_topology.ZenohTopologyHandle | str | None) -> None:
+    """Release only a topology process actually owned by this helper."""
+
+    if isinstance(configured, zenoh_topology.ZenohTopologyHandle):
+        zenoh_topology.close_topology(configured)
 
 
 def collect_optional_windows_peer_diagnostic(args: argparse.Namespace) -> str:
@@ -1346,20 +1377,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         "domainId": args.domain_id,
         "discoveryRange": args.discovery_range,
         "token": token,
+        "topicPrefix": args.topic_prefix,
         "messageSet": list(args.message_set),
         "unityLogProvided": args.unity_log is not None,
         "negativeCase": args.negative_case,
         "messageResults": message_results,
     }
+    if args.profile_id is not None:
+        summary["profileId"] = args.profile_id
+        summary["surface"] = args.surface
+    if args.zenoh_topology_id is not None:
+        summary["zenohTopologyId"] = args.zenoh_topology_id
     if args.negative_peer_rmw is not None:
         summary["negativePeerRmw"] = args.negative_peer_rmw
-    owned_processes: list[subprocess.Popen[str]] = []
+    configured_topology: zenoh_topology.ZenohTopologyHandle | str | None = None
     failure: AcceptanceFailure | None = None
     exit_code = 1
     try:
         env = build_linux_environment(args)
         summary["optionalWindowsPeerDiagnostic"] = collect_optional_windows_peer_diagnostic(args)
-        summary["zenohTopology"] = configure_zenoh_topology(args, env, owned_processes)
+        configured_topology = configure_zenoh_topology(args, env)
+        summary["zenohTopology"] = topology_summary(configured_topology)
         ros2_executable = find_ros2_executable(env)
 
         if args.negative_case is not None:
@@ -1484,8 +1522,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         failure = AcceptanceFailure("ENVIRONMENT", "A helper-owned ROS2 process could not be started or completed.")
         summary["failureCategory"] = failure.category
     finally:
-        for process in reversed(owned_processes):
-            terminate_owned_process(process)
         if failure is not None:
             if args.negative_case is not None:
                 negative_result = message_results[0] if message_results else {}
@@ -1504,9 +1540,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     message_results=message_results,
                     failure=failure,
                 )
-        write_summary(args.summary_json, summary)
-        print(f"Summary: {args.summary_json}")
-        print(f"Verdict: {summary['verdict']}")
+        try:
+            write_summary(args.summary_json, summary)
+            print(f"Summary: {args.summary_json}")
+            print(f"Verdict: {summary['verdict']}")
+        finally:
+            close_configured_topology(configured_topology)
     return exit_code
 
 

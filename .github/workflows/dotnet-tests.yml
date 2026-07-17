@@ -48,6 +48,8 @@ jobs:
         run: |
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_matrix_profiles
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology
 
       - name: Run official MCAP differential conformance
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json

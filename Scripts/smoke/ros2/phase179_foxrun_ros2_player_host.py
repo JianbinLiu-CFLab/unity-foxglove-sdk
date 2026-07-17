@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 import phase179_foxrun_ros2_inbound_acceptance as inbound
+import phase179_zenoh_topology as zenoh_topology
 
 
 SUPPORTED_DISTROS = inbound.SUPPORTED_DISTROS
@@ -79,6 +80,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--domain-id", type=parse_domain_id, default=0)
     parser.add_argument("--discovery-range", default="SUBNET")
     parser.add_argument("--token", type=inbound.parse_token, required=True)
+    parser.add_argument("--profile-id", type=inbound.parse_token, default=None)
+    parser.add_argument("--surface", choices=("editor", "player"), default=None)
+    parser.add_argument("--message-set", type=inbound.parse_message_set, default=REQUIRED_MESSAGE_NAMES)
+    parser.add_argument("--topic-prefix", type=inbound.parse_topic_prefix, default="/foxrun/phase179")
+    parser.add_argument("--zenoh-topology-id", type=inbound.parse_token, default=None)
     parser.add_argument(
         "--string-burst-final-sequence",
         type=inbound.nonnegative_sequence,
@@ -96,6 +102,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--no-zenoh-router", action="store_true", help="Use an externally managed certified Zenoh topology.")
     parser.add_argument(
+        "--zenoh-router-ready-marker",
+        type=inbound.parse_ready_marker,
+        default="Started",
+        help="Router log marker required before an owned Zenoh router may be used. Default: Started.",
+    )
+    parser.add_argument(
         "--summary-json",
         type=pathlib.Path,
         default=root / "build" / "phase179" / "windows-player-host-summary.json",
@@ -103,6 +115,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.zenoh_router is not None and args.no_zenoh_router:
         parser.error("--zenoh-router and --no-zenoh-router are mutually exclusive")
+    if (args.profile_id is None) != (args.surface is None):
+        parser.error("--profile-id and --surface must be provided together")
+    if args.profile_id is not None and args.surface != "player":
+        parser.error("Phase179 Player host profile evidence requires --surface player")
+    if tuple(args.message_set) != REQUIRED_MESSAGE_NAMES:
+        parser.error("Phase179 Player host requires --message-set string,twist,joy")
+    if args.topic_prefix != "/foxrun/phase179":
+        parser.error("Phase179 Player host requires --topic-prefix /foxrun/phase179")
+    if args.rmw != "rmw_zenoh_cpp" and args.zenoh_topology_id is not None:
+        parser.error("--zenoh-topology-id is valid only with --rmw rmw_zenoh_cpp")
     if args.rmw == "rmw_zenoh_cpp" and args.distro != "lyrical":
         parser.error("rmw_zenoh_cpp is certified only with --distro lyrical in Phase179")
     return args
@@ -377,28 +399,28 @@ def write_summary(path: pathlib.Path, summary: Mapping[str, object]) -> None:
 def configure_zenoh_topology(
     args: argparse.Namespace,
     env: dict[str, str],
-    owned_processes: list[subprocess.Popen[str]],
-) -> str:
-    """Start only an explicitly owned router, or select an external session config."""
+) -> zenoh_topology.ZenohTopologyHandle:
+    """Start or select one explicit Zenoh topology before launching the Player."""
 
-    if args.rmw != "rmw_zenoh_cpp":
-        return "not-applicable"
-    if args.no_zenoh_router:
-        return "external-certified-topology"
-    if args.zenoh_router is None:
-        raise PlayerHostFailure("ENVIRONMENT", "Zenoh requires --zenoh-router or --no-zenoh-router for an explicit topology.")
-    topology = args.zenoh_router.expanduser()
-    if not topology.is_file():
-        raise PlayerHostFailure("ENVIRONMENT", "The requested Zenoh router/config path does not exist.")
-    if topology.suffix.lower() in {".json", ".json5", ".yaml", ".yml"}:
-        env["ZENOH_SESSION_CONFIG_URI"] = str(topology.resolve())
-        return "external-router-session-config"
-    process = launch_owned_process([str(topology.resolve())], topology.parent, env)
-    owned_processes.append(process)
-    time.sleep(0.25)
-    if process.poll() is not None:
-        raise PlayerHostFailure("ENVIRONMENT", "The helper-owned Zenoh router exited before Player launch.")
-    return "helper-owned-router"
+    try:
+        options = zenoh_topology.validate_topology_options(
+            args.rmw,
+            router=args.zenoh_router,
+            no_router=args.no_zenoh_router,
+            topology_id=args.zenoh_topology_id,
+        )
+        return zenoh_topology.start_topology(
+            options,
+            env=env,
+            cwd=inbound.workspace_root(),
+            log_path=args.summary_json.with_name(args.summary_json.stem + "-zenoh-router.log"),
+            ready_timeout_seconds=args.ready_timeout_seconds,
+            ready_marker=args.zenoh_router_ready_marker,
+        )
+    except zenoh_topology.ZenohTopologyError as exc:
+        raise PlayerHostFailure(exc.category, "Zenoh topology setup did not complete.") from exc
+    except ValueError as exc:
+        raise PlayerHostFailure("ENVIRONMENT", "Zenoh topology arguments were invalid.") from exc
 
 
 def validate_player_path(player: pathlib.Path) -> pathlib.Path:
@@ -423,9 +445,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         "domainId": args.domain_id,
         "discoveryRange": args.discovery_range,
         "token": args.token,
+        "topicPrefix": args.topic_prefix,
+        "messageSet": list(args.message_set),
         "ready": False,
         "allRequiredApplied": False,
     }
+    if args.profile_id is not None:
+        summary["profileId"] = args.profile_id
+        summary["surface"] = args.surface
+    if args.zenoh_topology_id is not None:
+        summary["zenohTopologyId"] = args.zenoh_topology_id
+    configured_topology: zenoh_topology.ZenohTopologyHandle | str | None = None
     owned_processes: list[subprocess.Popen[str]] = []
     player: subprocess.Popen[str] | None = None
     failure: PlayerHostFailure | None = None
@@ -434,7 +464,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         player_path = validate_player_path(args.player)
         args.player_log.parent.mkdir(parents=True, exist_ok=True)
         env = build_player_environment(args)
-        summary["zenohTopology"] = configure_zenoh_topology(args, env, owned_processes)
+        configured_topology = configure_zenoh_topology(args, env)
+        summary["zenohTopology"] = inbound.topology_summary(configured_topology)
         player = launch_owned_process(
             build_player_command(
                 player_path,
@@ -489,9 +520,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             exit_code=exit_code,
             failure=failure,
         )
-        write_summary(args.summary_json, summary)
-        print(f"Summary: {args.summary_json}")
-        print(f"Verdict: {summary['verdict']}")
+        try:
+            write_summary(args.summary_json, summary)
+            print(f"Summary: {args.summary_json}")
+            print(f"Verdict: {summary['verdict']}")
+        finally:
+            inbound.close_configured_topology(configured_topology)
     return 2 if summary["verdict"] == "PLAYER_PROOF_COMPLETE_LINUX_PEER_CORRELATION_PENDING" else 1
 
 

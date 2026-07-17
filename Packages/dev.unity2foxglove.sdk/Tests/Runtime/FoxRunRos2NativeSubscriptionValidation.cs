@@ -873,6 +873,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/Phase179FoxRunRos2NativeSubscribe.cs");
             var sampleReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun ROS2 Native Subscribe/README.md");
+            var importedSampleReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                "Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/FoxRun ROS2 Native Subscribe/README.md");
             var packageReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 "Packages/dev.unity2foxglove.ros2forunity/README.md");
             var packageJson = PhaseValidationSourceHelpers.ReadRequiredRepoText(
@@ -893,6 +895,24 @@ namespace Unity.FoxgloveSDK.Tests
                   && sample.Contains("CopyBounded", StringComparison.Ordinal)
                   && packageJson.Contains("FoxRun ROS2 Native Subscribe", StringComparison.Ordinal),
                 "public sample exposes four existing typed native SubscribeOnly contracts with bounded Inspector copies");
+
+            Check(sampleReadme.Contains("phase179_humble_fastrtps_acceptance.py", StringComparison.Ordinal)
+                  && sampleReadme.Contains("phase179_jazzy_fastrtps_acceptance.py", StringComparison.Ordinal)
+                  && sampleReadme.Contains("phase179_lyrical_fastrtps_acceptance.py", StringComparison.Ordinal)
+                  && sampleReadme.Contains("phase179_lyrical_zenoh_acceptance.py", StringComparison.Ordinal)
+                  && sampleReadme.Contains("ros2-windows/ros2_<distro>", StringComparison.Ordinal)
+                  && sampleReadme.Contains("PEER_PUBLISH_COMPLETE_UNITY_PROOF_PENDING", StringComparison.Ordinal)
+                  && sampleReadme.Contains("ZENOH_SESSION_CONFIG_URI", StringComparison.Ordinal)
+                  && sampleReadme.Contains("first `Ok()`", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("phase179_humble_fastrtps_acceptance.py", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("phase179_jazzy_fastrtps_acceptance.py", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("phase179_lyrical_fastrtps_acceptance.py", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("phase179_lyrical_zenoh_acceptance.py", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("ros2-windows/ros2_<distro>", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("PEER_PUBLISH_COMPLETE_UNITY_PROOF_PENDING", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("ZENOH_SESSION_CONFIG_URI", StringComparison.Ordinal)
+                  && importedSampleReadme.Contains("first `Ok()`", StringComparison.Ordinal),
+                "source and imported native-subscribe samples document the four named Linux interop profiles, pending half-evidence, repo-local Windows CLI, and Zenoh first-initialization boundary");
 
             Check(playerBuilder.Contains("PackageAssetPathToAbsolutePath", StringComparison.Ordinal)
                   && playerBuilder.Contains("ProjectAssetPathToAbsolutePath", StringComparison.Ordinal)
@@ -1036,6 +1056,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance";
             const string playerHostRegression =
                 "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host";
+            const string matrixProfilesRegression =
+                "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_matrix_profiles";
+            const string zenohTopologyRegression =
+                "Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology";
 
             Check(localCi.Contains("UNIT_ADAPTER_TEST_PROPS", StringComparison.Ordinal)
                   && localCi.Contains("UNIT_NATIVE_TEST_PROPS", StringComparison.Ordinal)
@@ -1054,9 +1078,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(localCi.Contains("phase179-ros2-regression", StringComparison.Ordinal)
                   && localCi.Contains(inboundAcceptanceRegression, StringComparison.Ordinal)
                   && localCi.Contains(playerHostRegression, StringComparison.Ordinal)
+                  && localCi.Contains(matrixProfilesRegression, StringComparison.Ordinal)
+                  && localCi.Contains(zenohTopologyRegression, StringComparison.Ordinal)
                   && workflow.Contains("python3 -m unittest " + inboundAcceptanceRegression, StringComparison.Ordinal)
-                  && workflow.Contains("python3 -m unittest " + playerHostRegression, StringComparison.Ordinal),
-                "local and GitHub CI run the pure Phase179 Linux helper regression modules");
+                  && workflow.Contains("python3 -m unittest " + playerHostRegression, StringComparison.Ordinal)
+                  && workflow.Contains("python3 -m unittest " + matrixProfilesRegression, StringComparison.Ordinal)
+                  && workflow.Contains("python3 -m unittest " + zenohTopologyRegression, StringComparison.Ordinal),
+                "local and GitHub CI run the pure Phase179 Linux, Windows, profile, and Zenoh helper regression modules");
         }
 
         private static void VerifyRegistryAndProjectWiring()

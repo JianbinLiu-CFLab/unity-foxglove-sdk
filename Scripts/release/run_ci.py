@@ -43,6 +43,12 @@ PHASE179_ROS2_INBOUND_ACCEPTANCE_REGRESSION = (
 PHASE179_ROS2_PLAYER_HOST_REGRESSION = (
     "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host"
 )
+PHASE179_ROS2_MATRIX_PROFILES_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_matrix_profiles"
+)
+PHASE179_ZENOH_TOPOLOGY_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology"
+)
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
 DEFAULT_PARALLEL_JOBS = 2
@@ -630,6 +636,14 @@ def main() -> int:
         results["phase179-ros2-player-host"] = run(
             [sys.executable, "-m", "unittest", PHASE179_ROS2_PLAYER_HOST_REGRESSION],
             "Phase179 Windows Player host helper regressions",
+        )
+        results["phase179-ros2-matrix-profiles"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ROS2_MATRIX_PROFILES_REGRESSION],
+            "Phase179 named four-row interop profile regressions",
+        )
+        results["phase179-zenoh-topology"] = run(
+            [sys.executable, "-m", "unittest", PHASE179_ZENOH_TOPOLOGY_REGRESSION],
+            "Phase179 Zenoh topology ownership and readiness regressions",
         )
 
     # --- official MCAP differential conformance ---

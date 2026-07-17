@@ -94,6 +94,86 @@ class Phase179FoxRunRos2PlayerHostTests(unittest.TestCase):
                     ]
                 )
 
+    def test_player_profile_envelope_is_pinned_to_its_required_contracts(self) -> None:
+        """Player proof cannot claim a profile or topic set different from the auto-quit contract."""
+
+        args = self.smoke.parse_args(
+            [
+                "--player",
+                "C:/build/Phase179.exe",
+                "--distro",
+                "humble",
+                "--rmw",
+                "rmw_fastrtps_cpp",
+                "--token",
+                "phase179-token",
+                "--player-log",
+                "C:/logs/player.log",
+                "--profile-id",
+                "humble-fastrtps",
+                "--surface",
+                "player",
+                "--message-set",
+                "string,twist,joy",
+                "--topic-prefix",
+                "/foxrun/phase179",
+            ]
+        )
+
+        self.assertEqual("humble-fastrtps", args.profile_id)
+        self.assertEqual("player", args.surface)
+        self.assertEqual(("string", "twist", "joy"), args.message_set)
+        self.assertEqual("/foxrun/phase179", args.topic_prefix)
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self.smoke.parse_args(
+                    [
+                        "--player",
+                        "C:/build/Phase179.exe",
+                        "--distro",
+                        "humble",
+                        "--rmw",
+                        "rmw_fastrtps_cpp",
+                        "--token",
+                        "phase179-token",
+                        "--player-log",
+                        "C:/logs/player.log",
+                        "--profile-id",
+                        "humble-fastrtps",
+                        "--surface",
+                        "editor",
+                    ]
+                )
+
+    def test_player_zenoh_configuration_uses_shared_ready_topology_lifecycle(self) -> None:
+        """The Player cannot launch until its helper-owned Zenoh router has reached the shared ready marker."""
+
+        args = SimpleNamespace(
+            rmw="rmw_zenoh_cpp",
+            zenoh_router=Path("C:/certified/rmw_zenohd.exe"),
+            no_zenoh_router=False,
+            zenoh_topology_id="phase179-lyrical-zenoh",
+            summary_json=Path("C:/evidence/windows-player-summary.json"),
+            ready_timeout_seconds=15.0,
+            zenoh_router_ready_marker="Started",
+        )
+        options = object()
+        handle = SimpleNamespace(mode="owned-router", readiness="owned-router-ready")
+
+        with mock.patch.object(self.smoke.zenoh_topology, "validate_topology_options", return_value=options) as validate:
+            with mock.patch.object(self.smoke.zenoh_topology, "start_topology", return_value=handle) as start:
+                configured = self.smoke.configure_zenoh_topology(args, {})
+
+        self.assertIs(handle, configured)
+        validate.assert_called_once_with(
+            "rmw_zenoh_cpp",
+            router=args.zenoh_router,
+            no_router=False,
+            topology_id="phase179-lyrical-zenoh",
+        )
+        self.assertEqual("Started", start.call_args.kwargs["ready_marker"])
+
     def test_player_launch_command_is_explicit_batchmode_and_carries_shared_token(self) -> None:
         """The helper uses a direct argv and forwards the single Linux/Player correlation token."""
 
