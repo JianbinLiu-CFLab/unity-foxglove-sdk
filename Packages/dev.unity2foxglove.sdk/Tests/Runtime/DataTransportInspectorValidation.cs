@@ -44,69 +44,128 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyTopLevelWorkflow(string topLevel)
         {
-            const string dataTransport = "DrawSection(\"Data Transport\"";
-            const string mcap = "DrawSection(\"MCAP Record & Replay\"";
-
-            Check(CountOccurrences(topLevel, dataTransport) == 1,
-                "180A-1: Manager Inspector exposes exactly one top-level Data Transport workflow section");
-            Check(IsOrdered(topLevel, dataTransport, mcap),
-                "180A-2: Data Transport precedes the top-level MCAP Record & Replay workflow");
+            Check(HasSingleDataTransportWorkflowBeforeSiblingMcap(topLevel),
+                "180A-1: Manager Inspector directly wires one Data Transport workflow before sibling MCAP Record & Replay");
             Check(!topLevel.Contains("DrawSection(\"Publish Data\"", StringComparison.Ordinal),
-                "180A-3: Publish Data is no longer a top-level workflow section");
+                "180A-2: Publish Data is no longer a top-level workflow section");
             Check(!topLevel.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal),
-                "180A-4: Subscribe Data is no longer a top-level workflow section");
+                "180A-3: Subscribe Data is no longer a top-level workflow section");
             Check(!topLevel.Contains("DrawSection(\"ROS2 Runtime (R2FU)\"", StringComparison.Ordinal)
                   && !topLevel.Contains("DrawSection(\"ROS 2 Native Runtime (R2FU)\"", StringComparison.Ordinal),
-                "180A-5: ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
+                "180A-4: ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
             Check(!topLevel.Contains("DrawSection(\"ROS2 Bridge\"", StringComparison.Ordinal),
-                "180A-6: ROS2 Bridge is no longer a top-level workflow section");
+                "180A-5: ROS2 Bridge is no longer a top-level workflow section");
         }
 
         private static void VerifyNestedTransportWorkflow(string dataTransport)
         {
-            Check(!dataTransport.Contains("MCAP Record & Replay", StringComparison.Ordinal),
+            Check(!dataTransport.Contains("MCAP Record & Replay", StringComparison.Ordinal)
+                  && !dataTransport.Contains("DrawMcapSection", StringComparison.Ordinal),
                 "180B-1: Data Transport contains no MCAP Record & Replay child workflow");
             Check(ContainsPublicHeading(dataTransport, "Publish"),
                 "180B-2: Data Transport nests the public Publish workflow");
             Check(ContainsPublicHeading(dataTransport, "Subscribe"),
                 "180B-3: Data Transport nests the public Subscribe workflow");
-            Check(ContainsConditionalPublicHeading(dataTransport, "ROS 2 Native Runtime (R2FU)"),
-                "180B-4: Data Transport conditionally nests ROS 2 Native Runtime (R2FU)");
+            Check(HasNativeRuntimeSubsectionUnderNativeDemand(dataTransport),
+                "180B-4: Data Transport nests ROS 2 Native Runtime (R2FU) only under native demand");
         }
 
         private static bool ContainsPublicHeading(string source, string heading)
             => source.Contains("\"" + heading + "\"", StringComparison.Ordinal);
 
-        private static bool ContainsConditionalPublicHeading(string source, string heading)
+        private static bool HasSingleDataTransportWorkflowBeforeSiblingMcap(string source)
         {
-            var headingIndex = source.IndexOf("\"" + heading + "\"", StringComparison.Ordinal);
-            if (headingIndex < 0)
+            var dataTransport = FindInvocation(source, "DrawSection", "Data Transport", 0);
+            if (dataTransport == null
+                || !dataTransport.Text.Contains("DrawDataTransportSection", StringComparison.Ordinal)
+                || FindInvocation(source, "DrawSection", "Data Transport", dataTransport.StatementEnd + 1) != null)
                 return false;
 
-            var conditionalIndex = source.LastIndexOf("if (", headingIndex, StringComparison.Ordinal);
-            return conditionalIndex >= 0 && headingIndex - conditionalIndex <= 400;
+            var mcap = FindInvocation(source, "DrawSection", "MCAP Record & Replay", dataTransport.StatementEnd + 1);
+            return mcap != null
+                   && mcap.Text.Contains("DrawMcapSection", StringComparison.Ordinal)
+                   && FindInvocation(source, "DrawSection", "MCAP Record & Replay", mcap.StatementEnd + 1) == null;
         }
 
-        private static bool IsOrdered(string source, string before, string after)
+        private static bool HasNativeRuntimeSubsectionUnderNativeDemand(string source)
         {
-            var beforeIndex = source.IndexOf(before, StringComparison.Ordinal);
-            var afterIndex = source.IndexOf(after, StringComparison.Ordinal);
-            return beforeIndex >= 0 && afterIndex >= 0 && beforeIndex < afterIndex;
+            const string heading = "ROS 2 Native Runtime (R2FU)";
+            var subsection = FindInvocation(source, "DrawDataTransportSubsection", heading, 0);
+            return subsection != null
+                   && subsection.Text.Contains("DrawR2fuRuntimeSection", StringComparison.Ordinal)
+                   && IsInsideNativeDemandCondition(source, subsection.Start)
+                   && FindInvocation(source, "DrawDataTransportSubsection", heading, subsection.StatementEnd + 1) == null;
         }
 
-        private static int CountOccurrences(string source, string value)
+        private static SourceInvocation FindInvocation(string source, string methodName, string heading, int searchStart)
         {
-            var count = 0;
-            var start = 0;
-            while (true)
+            var anchor = methodName + "(\"" + heading + "\"";
+            var start = source.IndexOf(anchor, searchStart, StringComparison.Ordinal);
+            if (start < 0)
+                return null;
+
+            var invocationEnd = FindMatchingDelimiter(source, start + methodName.Length, '(', ')');
+            var statementEnd = invocationEnd < 0 ? -1 : source.IndexOf(';', invocationEnd);
+            return invocationEnd >= 0 && statementEnd >= invocationEnd
+                ? new SourceInvocation(start, statementEnd, source.Substring(start, invocationEnd - start + 1))
+                : null;
+        }
+
+        private static bool IsInsideNativeDemandCondition(string source, int targetStart)
+        {
+            const string condition = "if (HasR2fuNativeRuntimeDemand())";
+            var conditionStart = source.IndexOf(condition, StringComparison.Ordinal);
+            if (conditionStart < 0)
+                return false;
+
+            var bodyStart = SkipWhitespace(source, conditionStart + condition.Length);
+            var bodyEnd = bodyStart < 0
+                ? -1
+                : source[bodyStart] == '{'
+                    ? FindMatchingDelimiter(source, bodyStart, '{', '}')
+                    : source.IndexOf(';', bodyStart);
+            return bodyEnd >= bodyStart && targetStart >= bodyStart && targetStart <= bodyEnd;
+        }
+
+        private static int FindMatchingDelimiter(string source, int openIndex, char open, char close)
+        {
+            var depth = 0;
+            for (var i = openIndex; i < source.Length; i++)
             {
-                var index = source.IndexOf(value, start, StringComparison.Ordinal);
-                if (index < 0)
-                    return count;
-
-                count++;
-                start = index + value.Length;
+                if (source[i] == open)
+                    depth++;
+                else if (source[i] == close && --depth == 0)
+                    return i;
             }
+
+            return -1;
+        }
+
+        private static int SkipWhitespace(string source, int start)
+        {
+            for (var i = start; i < source.Length; i++)
+            {
+                if (!char.IsWhiteSpace(source[i]))
+                    return i;
+            }
+
+            return -1;
+        }
+
+        private sealed class SourceInvocation
+        {
+            public SourceInvocation(int start, int statementEnd, string text)
+            {
+                Start = start;
+                StatementEnd = statementEnd;
+                Text = text;
+            }
+
+            public int Start { get; }
+
+            public int StatementEnd { get; }
+
+            public string Text { get; }
         }
 
         private static void Check(bool condition, string name)
