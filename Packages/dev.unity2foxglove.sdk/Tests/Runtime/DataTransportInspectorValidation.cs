@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -47,26 +48,32 @@ namespace Unity.FoxgloveSDK.Tests
             var directSections = DirectInvocations(topLevel)
                 .Where(invocation => IsInvocationNamed(invocation, "DrawSection"))
                 .ToArray();
-            var workflowSections = DirectAndImmediateIfBranchInvocations(topLevel)
+            var executableSections = ExecutableInvocations(topLevel)
                 .Where(invocation => IsInvocationNamed(invocation, "DrawSection"))
                 .ToArray();
             var dataTransport = directSections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
             var mcap = directSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
+            var allDataTransport = executableSections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
+            var allMcap = executableSections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
 
-            Check(dataTransport.Length == 1
+            Check(allDataTransport.Length == 1
+                  && dataTransport.Length == 1
+                  && ReferenceEquals(allDataTransport[0], dataTransport[0])
                   && HasMethodGroupArgument(dataTransport[0], "DrawDataTransportSection")
+                  && allMcap.Length == 1
                   && mcap.Length == 1
+                  && ReferenceEquals(allMcap[0], mcap[0])
                   && HasMethodGroupArgument(mcap[0], "DrawMcapSection")
                   && Array.IndexOf(directSections, dataTransport[0]) < Array.IndexOf(directSections, mcap[0]),
                 "180A-1: Manager Inspector directly wires one Data Transport workflow before sibling MCAP Record & Replay");
-            Check(!workflowSections.Any(invocation => HasStringHeading(invocation, "Publish Data")),
+            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "Publish Data")),
                 "180A-2: Publish Data is no longer a top-level workflow section");
-            Check(!workflowSections.Any(invocation => HasStringHeading(invocation, "Subscribe Data")),
+            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "Subscribe Data")),
                 "180A-3: Subscribe Data is no longer a top-level workflow section");
-            Check(!workflowSections.Any(invocation => HasStringHeading(invocation, "ROS2 Runtime (R2FU)")
-                                                      || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)")),
+            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Runtime (R2FU)")
+                                                        || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)")),
                 "180A-4: ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
-            Check(!workflowSections.Any(invocation => HasStringHeading(invocation, "ROS2 Bridge")),
+            Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Bridge")),
                 "180A-5: ROS2 Bridge is no longer a top-level workflow section");
         }
 
@@ -141,30 +148,24 @@ namespace Unity.FoxgloveSDK.Tests
                 : method.Body.Statements.OfType<IfStatementSyntax>();
         }
 
-        private static IEnumerable<InvocationExpressionSyntax> DirectAndImmediateIfBranchInvocations(
-            MethodDeclarationSyntax method)
+        private static IEnumerable<InvocationExpressionSyntax> ExecutableInvocations(MethodDeclarationSyntax method)
         {
-            return DirectInvocations(method).Concat(DirectIfStatements(method).SelectMany(ImmediateIfBranchInvocations));
+            return method?.Body == null
+                ? Enumerable.Empty<InvocationExpressionSyntax>()
+                : method.Body.Statements.SelectMany(ExecutableInvocations);
         }
 
-        private static IEnumerable<InvocationExpressionSyntax> ImmediateIfBranchInvocations(IfStatementSyntax statement)
+        private static IEnumerable<InvocationExpressionSyntax> ExecutableInvocations(StatementSyntax statement)
         {
-            foreach (var invocation in DirectInvocations(DirectBranchStatements(statement.Statement)))
-                yield return invocation;
+            return statement is LocalFunctionStatementSyntax
+                ? Enumerable.Empty<InvocationExpressionSyntax>()
+                : statement.DescendantNodes(ShouldDescendIntoExecutableNode).OfType<InvocationExpressionSyntax>();
+        }
 
-            if (statement.Else == null)
-                yield break;
-
-            if (statement.Else.Statement is IfStatementSyntax elseIf)
-            {
-                foreach (var invocation in ImmediateIfBranchInvocations(elseIf))
-                    yield return invocation;
-
-                yield break;
-            }
-
-            foreach (var invocation in DirectInvocations(DirectBranchStatements(statement.Else.Statement)))
-                yield return invocation;
+        private static bool ShouldDescendIntoExecutableNode(SyntaxNode node)
+        {
+            return !(node is AnonymousFunctionExpressionSyntax)
+                   && !(node is LocalFunctionStatementSyntax);
         }
 
         private static IEnumerable<StatementSyntax> DirectThenStatements(IfStatementSyntax statement)
