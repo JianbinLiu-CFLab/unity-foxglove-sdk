@@ -7,6 +7,7 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -179,6 +180,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string SessionCommunicationModeKey = "Unity2Foxglove.R2FU.SessionCommunicationMode";
         private const string CommunicationModeEditorUserSettingsKey =
             "Unity2Foxglove.R2FU.CommunicationMode";
+        private const string WindowsNativePluginRelativeDirectory =
+            "Runtime/Ros2ForUnity/Plugins/Windows/x86_64";
         private static string _cachedCandidatesProjectDirectory;
         private static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> _cachedCandidates;
         private static string _cachedManifestProjectDirectory;
@@ -445,8 +448,131 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
                 return;
 
-            EditorApplication.OpenProject(projectDirectory);
+            var status = GetStatus(projectDirectory);
+            if (status.SelectedRuntime == null)
+                throw new InvalidOperationException("Cannot restart Unity without one selected ROS2 For Unity runtime package.");
+
+            RestartEditorInCleanProcess(projectDirectory, status.SelectedRuntime);
         }
+
+        private static void RestartEditorInCleanProcess(
+            string projectDirectory,
+            Ros2ForUnityRuntimeDescriptor runtime)
+        {
+            var editorExecutable = EditorApplication.applicationPath;
+            if (string.IsNullOrWhiteSpace(editorExecutable) || !File.Exists(editorExecutable))
+                throw new InvalidOperationException("Could not resolve the current Unity Editor executable for a clean restart.");
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = editorExecutable,
+                Arguments = "-projectPath " + QuoteEditorArgument(projectDirectory),
+                WorkingDirectory = projectDirectory,
+                UseShellExecute = false,
+            };
+
+            startInfo.EnvironmentVariables[NativeLibraryPathVariableName()] =
+                BuildCleanRestartPath(projectDirectory, runtime);
+            if (!string.IsNullOrWhiteSpace(runtime.RosDistro))
+                startInfo.EnvironmentVariables["ROS_DISTRO"] = runtime.RosDistro;
+
+            var communicationMode = GetCommunicationModeForRuntime(runtime);
+            var rmwImplementation = GetRmwImplementationForCommunicationMode(runtime, communicationMode);
+            if (!string.IsNullOrWhiteSpace(rmwImplementation))
+                startInfo.EnvironmentVariables["RMW_IMPLEMENTATION"] = rmwImplementation;
+
+            try
+            {
+                if (Process.Start(startInfo) == null)
+                    throw new InvalidOperationException("Unity did not start a replacement Editor process.");
+            }
+            catch (Exception ex) when (!(ex is InvalidOperationException))
+            {
+                throw new InvalidOperationException("Could not start a clean Unity Editor replacement process.", ex);
+            }
+
+            EditorApplication.Exit(0);
+        }
+
+        private static string BuildCleanRestartPath(
+            string projectDirectory,
+            Ros2ForUnityRuntimeDescriptor selectedRuntime)
+        {
+            var comparison = Path.DirectorySeparatorChar == '\\'
+                ? StringComparer.OrdinalIgnoreCase
+                : StringComparer.Ordinal;
+            var blockedRuntimePluginPaths = new HashSet<string>(comparison);
+            foreach (var runtime in DiscoverCandidateRuntimes(projectDirectory))
+                blockedRuntimePluginPaths.Add(NormalizeRestartPath(RuntimePluginDirectory(projectDirectory, runtime)));
+
+            var cleanEntries = new List<string>();
+            var seen = new HashSet<string>(comparison);
+            AddRestartPathEntry(
+                cleanEntries,
+                seen,
+                RuntimePluginDirectory(projectDirectory, selectedRuntime));
+
+            var inheritedPath = Environment.GetEnvironmentVariable(NativeLibraryPathVariableName());
+            if (!string.IsNullOrWhiteSpace(inheritedPath))
+            {
+                foreach (var rawEntry in inheritedPath.Split(new[] { Path.PathSeparator }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var entry = rawEntry.Trim();
+                    if (blockedRuntimePluginPaths.Contains(NormalizeRestartPath(entry)))
+                        continue;
+
+                    AddRestartPathEntry(cleanEntries, seen, entry);
+                }
+            }
+
+            return string.Join(Path.PathSeparator.ToString(), cleanEntries);
+        }
+
+        private static void AddRestartPathEntry(
+            ICollection<string> entries,
+            ISet<string> seen,
+            string entry)
+        {
+            if (string.IsNullOrWhiteSpace(entry))
+                return;
+
+            var normalized = NormalizeRestartPath(entry);
+            if (!seen.Add(normalized))
+                return;
+
+            entries.Add(entry.Trim());
+        }
+
+        private static string RuntimePluginDirectory(
+            string projectDirectory,
+            Ros2ForUnityRuntimeDescriptor runtime)
+        {
+            return Path.Combine(
+                RepositoryPackagesDirectory(projectDirectory),
+                runtime?.PackageName ?? string.Empty,
+                WindowsNativePluginRelativeDirectory);
+        }
+
+        private static string NormalizeRestartPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            try
+            {
+                return TrimDirectorySeparators(Path.GetFullPath(path.Trim()));
+            }
+            catch (Exception)
+            {
+                return TrimDirectorySeparators(path.Trim());
+            }
+        }
+
+        private static string NativeLibraryPathVariableName()
+            => Application.platform == RuntimePlatform.WindowsEditor ? "PATH" : "LD_LIBRARY_PATH";
+
+        private static string QuoteEditorArgument(string value)
+            => "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
 
         public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes(string projectDirectory)
         {

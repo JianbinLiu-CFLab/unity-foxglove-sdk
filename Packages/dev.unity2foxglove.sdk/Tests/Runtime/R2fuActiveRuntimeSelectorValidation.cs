@@ -197,8 +197,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(inspector.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal)
                   && inspector.Contains("Restart Unity", StringComparison.Ordinal)
                   && inspector.Contains("RestartEditor(projectDirectory)", StringComparison.Ordinal)
-                  && ReadRepoText(SelectionPath).Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal),
-                "146A-F4: Inspector surfaces conditional restart state and offers one-click relaunch");
+                  && ReadRepoText(SelectionPath).Contains("RestartEditorInCleanProcess", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("ProcessStartInfo", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("UseShellExecute = false", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("BuildCleanRestartPath", StringComparison.Ordinal)
+                  && ReadRepoText(SelectionPath).Contains("EditorApplication.Exit(0)", StringComparison.Ordinal)
+                  && !ReadRepoText(SelectionPath).Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal),
+                "146A-F4: Inspector restart launches a clean child Editor without inheriting an older R2FU native plugin path");
         }
 
         private static void ReadmeDocumentsActiveRuntimeSelection()

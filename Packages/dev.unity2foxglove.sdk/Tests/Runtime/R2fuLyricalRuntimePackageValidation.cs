@@ -188,10 +188,15 @@ namespace Unity.FoxgloveSDK.Tests
             var guard = ReadRepoText(AdapterPackage + "/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
             Check(selector.Contains("SessionState", StringComparison.Ordinal)
                   && selector.Contains("GetRuntimePackageRequiringEditorRestart", StringComparison.Ordinal)
-                  && selector.Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal)
+                  && selector.Contains("RestartEditorInCleanProcess", StringComparison.Ordinal)
+                  && selector.Contains("BuildCleanRestartPath", StringComparison.Ordinal)
+                  && selector.Contains("ProcessStartInfo", StringComparison.Ordinal)
+                  && selector.Contains("UseShellExecute = false", StringComparison.Ordinal)
+                  && selector.Contains("EditorApplication.Exit(0)", StringComparison.Ordinal)
+                  && !selector.Contains("EditorApplication.OpenProject(projectDirectory)", StringComparison.Ordinal)
                   && guard.Contains("PlayModeStateChange.ExitingEditMode", StringComparison.Ordinal)
                   && guard.Contains("BindActiveRuntimeForPlayMode", StringComparison.Ordinal),
-                "146B-D3: runtime switching uses a per-session Play Mode guard and one-click restart");
+                "146B-D3: runtime switching uses a per-session Play Mode guard and a clean-process restart");
         }
 
         private static void UnityProjectResolvesOnlyOneRuntime()
