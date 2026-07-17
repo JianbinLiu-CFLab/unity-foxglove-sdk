@@ -140,7 +140,11 @@ def terminate_owned_process(process: subprocess.Popen[str]) -> None:
 
     try:
         os.killpg(process.pid, signal.SIGTERM)
-    except (OSError, ProcessLookupError):
+    except ProcessLookupError:
+        # The child may have exited between poll() and killpg(). It is already
+        # gone, so do not invoke a second termination API on a stale process.
+        return
+    except OSError:
         try:
             process.terminate()
         except OSError:

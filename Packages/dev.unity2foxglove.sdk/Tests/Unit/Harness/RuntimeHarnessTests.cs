@@ -315,7 +315,9 @@ namespace Unity.FoxgloveSDK.UnitTests
             var repoRoot = FindRepoRoot();
             var project = Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Runtime", "FoxgloveSdk.Tests.csproj");
             await EnsureHarnessBuiltAsync(repoRoot, project);
-            var harnessDll = Path.Combine(repoRoot, "build", "Tests", "Debug", "net10.0", "FoxgloveSdk.Tests.dll");
+            // The Phase179 lane split deliberately isolates all test outputs. The child
+            // harness build has no optional-lane property, so it always uses `default`.
+            var harnessDll = Path.Combine(repoRoot, "build", "Tests", "default", "Debug", "net10.0", "FoxgloveSdk.Tests.dll");
             if (!File.Exists(harnessDll))
                 throw new FileNotFoundException("Runtime harness build did not produce the expected DLL.", harnessDll);
 

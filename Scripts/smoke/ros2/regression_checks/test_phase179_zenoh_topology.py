@@ -156,9 +156,9 @@ class Phase179ZenohTopologyTests(unittest.TestCase):
                 no_router=False,
                 topology_id="phase179-lyrical-zenoh",
             )
-            with mock.patch.object(self.topology.subprocess, "Popen", side_effect=fake_popen), mock.patch.object(
-                self.topology.subprocess, "run"
-            ) as taskkill:
+            with mock.patch.object(self.topology.os, "name", "nt"), mock.patch.object(
+                self.topology.subprocess, "Popen", side_effect=fake_popen
+            ), mock.patch.object(self.topology.subprocess, "run") as taskkill:
                 handle = self.topology.start_topology(
                     options,
                     env={},
@@ -237,6 +237,30 @@ class Phase179ZenohTopologyTests(unittest.TestCase):
                     )
 
         self.assertEqual("ROUTER_EXITED", failure.exception.category)
+
+    def test_cleanup_tolerates_a_posix_router_that_exits_before_its_process_group_is_signaled(self) -> None:
+        """A router that exits during teardown must not require a fallback process API call."""
+
+        class ExitedBetweenPollAndSignal:
+            """Minimal Popen double that disappears after the initial liveness check."""
+
+            pid = 4244
+
+            def poll(self):
+                """Appear live at the start of teardown so killpg is attempted."""
+
+                return None
+
+            def terminate(self):
+                """Fail loudly if a stale POSIX process reaches the fallback path."""
+
+                raise AssertionError("stale process must not receive terminate()")
+
+        process = ExitedBetweenPollAndSignal()
+        with mock.patch.object(self.topology.os, "name", "posix"), mock.patch.object(
+            self.topology.os, "killpg", side_effect=ProcessLookupError(), create=True
+        ):
+            self.topology.terminate_owned_process(process)
 
 
 if __name__ == "__main__":
