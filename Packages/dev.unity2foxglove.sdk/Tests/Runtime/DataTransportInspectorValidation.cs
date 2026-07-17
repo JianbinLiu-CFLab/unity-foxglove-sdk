@@ -5,6 +5,10 @@
 // Purpose: Structural guard for the public Data Transport Inspector hierarchy.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -29,12 +33,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             var mainInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerEditorPath);
             var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
-            var topLevel = PhaseValidationSourceHelpers.SourceMethod(
-                mainInspector,
-                "public override void OnInspectorGUI()");
-            var dataTransport = PhaseValidationSourceHelpers.SourceMethod(
-                editorSources,
-                "private void DrawDataTransportSection()");
+            var topLevel = FindMethod(mainInspector, "OnInspectorGUI");
+            var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
 
             VerifyTopLevelWorkflow(topLevel);
             VerifyNestedTransportWorkflow(dataTransport);
@@ -42,163 +42,170 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine("Phase 180: " + _passed + " checks passed.");
         }
 
-        private static void VerifyTopLevelWorkflow(string topLevel)
+        private static void VerifyTopLevelWorkflow(MethodDeclarationSyntax topLevel)
         {
-            Check(HasSingleDataTransportWorkflowBeforeSiblingMcap(topLevel),
+            var sections = DirectInvocations(topLevel)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawSection"))
+                .ToArray();
+            var dataTransport = sections.Where(invocation => HasStringHeading(invocation, "Data Transport")).ToArray();
+            var mcap = sections.Where(invocation => HasStringHeading(invocation, "MCAP Record & Replay")).ToArray();
+
+            Check(dataTransport.Length == 1
+                  && HasMethodGroupArgument(dataTransport[0], "DrawDataTransportSection")
+                  && mcap.Length == 1
+                  && HasMethodGroupArgument(mcap[0], "DrawMcapSection")
+                  && Array.IndexOf(sections, dataTransport[0]) < Array.IndexOf(sections, mcap[0]),
                 "180A-1: Manager Inspector directly wires one Data Transport workflow before sibling MCAP Record & Replay");
-            Check(!topLevel.Contains("DrawSection(\"Publish Data\"", StringComparison.Ordinal),
+            Check(!sections.Any(invocation => HasStringHeading(invocation, "Publish Data")),
                 "180A-2: Publish Data is no longer a top-level workflow section");
-            Check(!topLevel.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal),
+            Check(!sections.Any(invocation => HasStringHeading(invocation, "Subscribe Data")),
                 "180A-3: Subscribe Data is no longer a top-level workflow section");
-            Check(!topLevel.Contains("DrawSection(\"ROS2 Runtime (R2FU)\"", StringComparison.Ordinal)
-                  && !topLevel.Contains("DrawSection(\"ROS 2 Native Runtime (R2FU)\"", StringComparison.Ordinal),
+            Check(!sections.Any(invocation => HasStringHeading(invocation, "ROS2 Runtime (R2FU)")
+                                             || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)")),
                 "180A-4: ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
-            Check(!topLevel.Contains("DrawSection(\"ROS2 Bridge\"", StringComparison.Ordinal),
+            Check(!sections.Any(invocation => HasStringHeading(invocation, "ROS2 Bridge")),
                 "180A-5: ROS2 Bridge is no longer a top-level workflow section");
         }
 
-        private static void VerifyNestedTransportWorkflow(string dataTransport)
+        private static void VerifyNestedTransportWorkflow(MethodDeclarationSyntax dataTransport)
         {
-            Check(!dataTransport.Contains("MCAP Record & Replay", StringComparison.Ordinal)
-                  && !dataTransport.Contains("DrawMcapSection", StringComparison.Ordinal),
+            var subsections = DirectInvocations(dataTransport)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection"))
+                .ToArray();
+            var allInvocations = AllInvocations(dataTransport);
+            var nativeSubsections = allInvocations
+                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)"))
+                .ToArray();
+            var nativeDemandBranches = DirectIfStatements(dataTransport)
+                .Where(HasNativeDemandCondition)
+                .ToArray();
+            var branchNativeSubsections = nativeDemandBranches
+                .SelectMany(DirectThenStatements)
+                .OfType<ExpressionStatementSyntax>()
+                .Select(statement => statement.Expression as InvocationExpressionSyntax)
+                .Where(invocation => invocation != null
+                                     && IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)"))
+                .ToArray();
+
+            Check(!ContainsStringLiteral(dataTransport, "MCAP Record & Replay")
+                  && !ContainsIdentifier(dataTransport, "DrawMcapSection"),
                 "180B-1: Data Transport contains no MCAP Record & Replay child workflow");
-            Check(ContainsPublicHeading(dataTransport, "Publish"),
+            Check(HasExactlyOneSubsection(subsections, "Publish", "DrawPublishDataSection"),
                 "180B-2: Data Transport nests the public Publish workflow");
-            Check(ContainsPublicHeading(dataTransport, "Subscribe"),
+            Check(HasExactlyOneSubsection(subsections, "Subscribe", "DrawSubscribeDataSection"),
                 "180B-3: Data Transport nests the public Subscribe workflow");
-            Check(HasNativeRuntimeSubsectionUnderNativeDemand(dataTransport),
+            Check(nativeSubsections.Length == 1
+                  && HasMethodGroupArgument(nativeSubsections[0], "DrawR2fuRuntimeSection")
+                  && nativeDemandBranches.Length == 1
+                  && branchNativeSubsections.Length == 1
+                  && ReferenceEquals(nativeSubsections[0], branchNativeSubsections[0]),
                 "180B-4: Data Transport nests ROS 2 Native Runtime (R2FU) only under native demand");
         }
 
-        private static bool ContainsPublicHeading(string source, string heading)
-            => source.Contains("\"" + heading + "\"", StringComparison.Ordinal);
-
-        private static bool HasSingleDataTransportWorkflowBeforeSiblingMcap(string source)
+        private static MethodDeclarationSyntax FindMethod(string source, string methodName)
         {
-            var dataTransport = FindInvocation(source, "DrawSection", "Data Transport", 0, directBodyOnly: true);
-            if (dataTransport == null
-                || !dataTransport.Text.Contains("DrawDataTransportSection", StringComparison.Ordinal)
-                || FindInvocation(source, "DrawSection", "Data Transport", dataTransport.StatementEnd + 1, directBodyOnly: true) != null)
-                return false;
-
-            var mcap = FindInvocation(source, "DrawSection", "MCAP Record & Replay", dataTransport.StatementEnd + 1, directBodyOnly: true);
-            return mcap != null
-                   && mcap.Text.Contains("DrawMcapSection", StringComparison.Ordinal)
-                   && FindInvocation(source, "DrawSection", "MCAP Record & Replay", mcap.StatementEnd + 1, directBodyOnly: true) == null;
+            var methods = CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method => method.Identifier.ValueText == methodName && method.Body != null)
+                .ToArray();
+            return methods.Length == 1 ? methods[0] : null;
         }
 
-        private static bool HasNativeRuntimeSubsectionUnderNativeDemand(string source)
+        private static IEnumerable<InvocationExpressionSyntax> DirectInvocations(MethodDeclarationSyntax method)
         {
-            const string heading = "ROS 2 Native Runtime (R2FU)";
-            var subsection = FindInvocation(source, "DrawDataTransportSubsection", heading, 0);
-            return subsection != null
-                   && subsection.Text.Contains("DrawR2fuRuntimeSection", StringComparison.Ordinal)
-                   && IsInsideNativeDemandCondition(source, subsection.Start)
-                   && FindInvocation(source, "DrawDataTransportSubsection", heading, subsection.StatementEnd + 1) == null;
+            return method?.Body == null
+                ? Enumerable.Empty<InvocationExpressionSyntax>()
+                : DirectInvocations(method.Body.Statements);
         }
 
-        private static SourceInvocation FindInvocation(
-            string source,
-            string methodName,
+        private static IEnumerable<InvocationExpressionSyntax> DirectInvocations(IEnumerable<StatementSyntax> statements)
+        {
+            foreach (var statement in statements.OfType<ExpressionStatementSyntax>())
+            {
+                if (statement.Expression is InvocationExpressionSyntax invocation)
+                    yield return invocation;
+            }
+        }
+
+        private static IEnumerable<IfStatementSyntax> DirectIfStatements(MethodDeclarationSyntax method)
+        {
+            return method?.Body == null
+                ? Enumerable.Empty<IfStatementSyntax>()
+                : method.Body.Statements.OfType<IfStatementSyntax>();
+        }
+
+        private static IEnumerable<StatementSyntax> DirectThenStatements(IfStatementSyntax statement)
+        {
+            if (statement.Statement is BlockSyntax block)
+                return block.Statements;
+
+            return new[] { statement.Statement };
+        }
+
+        private static InvocationExpressionSyntax[] AllInvocations(MethodDeclarationSyntax method)
+        {
+            return method == null
+                ? Array.Empty<InvocationExpressionSyntax>()
+                : method.DescendantNodes().OfType<InvocationExpressionSyntax>().ToArray();
+        }
+
+        private static bool HasExactlyOneSubsection(
+            IEnumerable<InvocationExpressionSyntax> subsections,
             string heading,
-            int searchStart,
-            bool directBodyOnly = false)
+            string callback)
         {
-            var anchor = methodName + "(\"" + heading + "\"";
-            for (var start = source.IndexOf(anchor, searchStart, StringComparison.Ordinal);
-                 start >= 0;
-                 start = source.IndexOf(anchor, start + 1, StringComparison.Ordinal))
-            {
-                if (directBodyOnly && !IsDirectBodyInvocation(source, start))
-                    continue;
-
-                var invocationEnd = FindMatchingDelimiter(source, start + methodName.Length, '(', ')');
-                var statementEnd = invocationEnd < 0 ? -1 : source.IndexOf(';', invocationEnd);
-                if (invocationEnd >= 0 && statementEnd >= invocationEnd)
-                    return new SourceInvocation(start, statementEnd, source.Substring(start, invocationEnd - start + 1));
-            }
-
-            return null;
+            var matches = subsections.Where(invocation => HasStringHeading(invocation, heading)).ToArray();
+            return matches.Length == 1 && HasMethodGroupArgument(matches[0], callback);
         }
 
-        private static bool IsDirectBodyInvocation(string source, int start)
+        private static bool HasNativeDemandCondition(IfStatementSyntax statement)
         {
-            var bodyStart = source.IndexOf('{');
-            if (bodyStart < 0 || start <= bodyStart)
-                return false;
-
-            var braces = 0;
-            var parentheses = 0;
-            for (var i = bodyStart; i < start; i++)
-            {
-                if (source[i] == '{')
-                    braces++;
-                else if (source[i] == '}')
-                    braces--;
-                else if (source[i] == '(')
-                    parentheses++;
-                else if (source[i] == ')')
-                    parentheses--;
-            }
-
-            return braces == 1 && parentheses == 0;
+            return statement.Condition is InvocationExpressionSyntax invocation
+                   && IsInvocationNamed(invocation, "HasR2fuNativeRuntimeDemand")
+                   && invocation.ArgumentList.Arguments.Count == 0;
         }
 
-        private static bool IsInsideNativeDemandCondition(string source, int targetStart)
+        private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)
         {
-            const string condition = "if (HasR2fuNativeRuntimeDemand())";
-            var conditionStart = source.IndexOf(condition, StringComparison.Ordinal);
-            if (conditionStart < 0)
-                return false;
+            if (invocation.Expression is IdentifierNameSyntax identifier)
+                return identifier.Identifier.ValueText == name;
 
-            var bodyStart = SkipWhitespace(source, conditionStart + condition.Length);
-            var bodyEnd = bodyStart < 0
-                ? -1
-                : source[bodyStart] == '{'
-                    ? FindMatchingDelimiter(source, bodyStart, '{', '}')
-                    : source.IndexOf(';', bodyStart);
-            return bodyEnd >= bodyStart && targetStart >= bodyStart && targetStart <= bodyEnd;
+            return invocation.Expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Name.Identifier.ValueText == name;
         }
 
-        private static int FindMatchingDelimiter(string source, int openIndex, char open, char close)
+        private static bool HasStringHeading(InvocationExpressionSyntax invocation, string heading)
         {
-            var depth = 0;
-            for (var i = openIndex; i < source.Length; i++)
-            {
-                if (source[i] == open)
-                    depth++;
-                else if (source[i] == close && --depth == 0)
-                    return i;
-            }
-
-            return -1;
+            return invocation.ArgumentList.Arguments.Count > 0
+                   && invocation.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax literal
+                   && literal.RawKind == (int)SyntaxKind.StringLiteralExpression
+                   && literal.Token.ValueText == heading;
         }
 
-        private static int SkipWhitespace(string source, int start)
+        private static bool HasMethodGroupArgument(InvocationExpressionSyntax invocation, string methodName)
         {
-            for (var i = start; i < source.Length; i++)
-            {
-                if (!char.IsWhiteSpace(source[i]))
-                    return i;
-            }
-
-            return -1;
+            return invocation.ArgumentList.Arguments.Any(argument =>
+                argument.Expression is IdentifierNameSyntax identifier
+                && identifier.Identifier.ValueText == methodName);
         }
 
-        private sealed class SourceInvocation
+        private static bool ContainsStringLiteral(MethodDeclarationSyntax method, string value)
         {
-            public SourceInvocation(int start, int statementEnd, string text)
-            {
-                Start = start;
-                StatementEnd = statementEnd;
-                Text = text;
-            }
+            return method != null
+                   && method.DescendantNodes().OfType<LiteralExpressionSyntax>().Any(literal =>
+                       literal.RawKind == (int)SyntaxKind.StringLiteralExpression
+                       && literal.Token.ValueText == value);
+        }
 
-            public int Start { get; }
-
-            public int StatementEnd { get; }
-
-            public string Text { get; }
+        private static bool ContainsIdentifier(MethodDeclarationSyntax method, string identifier)
+        {
+            return method != null
+                   && method.DescendantNodes().OfType<IdentifierNameSyntax>().Any(name =>
+                       name.Identifier.ValueText == identifier);
         }
 
         private static void Check(bool condition, string name)
