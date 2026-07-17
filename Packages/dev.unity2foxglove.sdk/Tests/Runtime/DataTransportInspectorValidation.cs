@@ -64,11 +64,16 @@ namespace Unity.FoxgloveSDK.Tests
             var foldoutState = FindMethod(mainInspector, "LoadInspectorFoldoutState");
             var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
             var publishData = FindMethod(editorSources, "DrawPublishDataSection");
+            var subscribeData = FindMethod(editorSources, "DrawSubscribeDataSection");
+            var nativeQos = FindMethod(editorSources, "DrawRos2NativeSubscriptionQos");
+            var nativeBudget = FindMethod(editorSources, "DrawRos2NativeCopyBudget");
+            var nativeBudgetUnit = FindMethod(editorSources, "GetNativeCopyBudgetDisplayUnit");
             var subsection = FindMethod(editorSources, "DrawDataTransportSubsection");
 
             VerifyTopLevelWorkflow(topLevel);
             VerifyNestedTransportWorkflow(dataTransport, publishData);
             VerifyPublishPresentation(publishData);
+            VerifySubscribePresentation(subscribeData, nativeQos, nativeBudget, nativeBudgetUnit);
             VerifyFoldoutStateModel(mainInspector, foldoutState);
             VerifyParentSectionPresentationHelper(section);
             VerifySubsectionPresentationHelper(subsection);
@@ -265,6 +270,96 @@ namespace Unity.FoxgloveSDK.Tests
             Check(nativeOutputBranches.Length == 1
                   && nativeQosHelp.Length == 1,
                 "180E-3: selected ROS 2 Native output explains that Manager has no global publish QoS override");
+        }
+
+        private static void VerifySubscribePresentation(
+            MethodDeclarationSyntax subscribeData,
+            MethodDeclarationSyntax nativeQos,
+            MethodDeclarationSyntax nativeBudget,
+            MethodDeclarationSyntax nativeBudgetUnit)
+        {
+            var allInvocations = AllInvocations(subscribeData);
+            var directInvocations = DirectInvocations(subscribeData).ToArray();
+            var webSocketBranches = subscribeData.DescendantNodes()
+                .OfType<IfStatementSyntax>()
+                .Where(statement => HasIdentifierCondition(statement, "showWebSocket"))
+                .ToArray();
+            var nativeBranches = subscribeData.DescendantNodes()
+                .OfType<IfStatementSyntax>()
+                .Where(statement => HasIdentifierCondition(statement, "showRos2Native"))
+                .ToArray();
+            var webSocketBranchInvocations = webSocketBranches
+                .SelectMany(DirectThenStatements)
+                .SelectMany(AllInvocations)
+                .ToArray();
+            var nativeBranchInvocations = nativeBranches
+                .SelectMany(DirectThenStatements)
+                .SelectMany(AllInvocations)
+                .ToArray();
+
+            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                && HasStringHeading(invocation, "Input Transport")) == 1
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "Draw")
+                                                && HasStringArgument(invocation, 2, "Default Input Transport")) == 1
+                  && !ContainsStringLiteral(subscribeData, "Subscription Protocol")
+                  && !ContainsStringLiteral(subscribeData, "Default Subscription Protocol"),
+                "180F-1: Subscribe names its provider and encoding selector Input Transport without the obsolete protocol terminology");
+            Check(HasExactlyOneLabeledProperty(directInvocations, "_enableFoxRunInbound", "Enable FoxRun Subscriptions")
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                && HasStringHeading(invocation, "Subscription Delivery")) == 1
+                  && HasExactlyOneLabeledProperty(
+                      allInvocations,
+                      "_foxRunInboundMaxMessagesPerSecondPerTopic",
+                      "Subscription Rate Limit Hz (per Topic)")
+                  && ContainsStringLiteralFragment(
+                      subscribeData,
+                      "captured provider, WebSocket encoding, QoS, copy budget, and rate."),
+                "180F-2: Subscribe keeps its enable gate, delivery rate, and complete frozen-session policy boundary");
+            Check(webSocketBranches.Length == 1
+                  && HasProviderVisibilityRule(
+                      subscribeData,
+                      "showWebSocket",
+                      "FoxgloveWebSocket")
+                  && webSocketBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                         && HasStringHeading(invocation, "Foxglove WebSocket Input")) == 1
+                  && HasExactlyOneLabeledProperty(
+                      webSocketBranchInvocations,
+                      "_allowRemoteFoxRunInboundWithSharedToken",
+                      "Allow Remote FoxRun Subscriptions With Shared Token")
+                  && HasExactlyOneLabeledProperty(
+                      webSocketBranchInvocations,
+                      "_foxRunInboundMaxPayloadBytes",
+                      "Subscription Max Payload Bytes"),
+                "180F-3: WebSocket input remains visible for a selected or explicit generated WebSocket contract");
+            Check(nativeBranches.Length == 1
+                  && HasProviderVisibilityRule(
+                      subscribeData,
+                      "showRos2Native",
+                      "Ros2Native")
+                  && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                      && HasStringHeading(invocation, "ROS 2 Native Input")) == 1
+                  && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeSubscriptionQos")) == 1
+                  && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeCopyBudget")) == 1
+                  && !ContainsStringLiteral(subscribeData, "Native Copied-Data Budget Bytes"),
+                "180F-4: native input remains visible for a selected or explicit generated native contract and uses dedicated QoS and budget controls");
+            Check(nativeQos != null
+                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "NormalizeSerializedManagerDefault")) == 1
+                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "Popup")) == 1
+                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "HelpBox")) == 1
+                  && !ContainsStringLiteral(nativeQos, "Inherit"),
+                "180F-5: native QoS normalizes malformed serialized defaults and displays only the concrete portable choices");
+            Check(nativeBudget != null
+                  && nativeBudgetUnit != null
+                  && AllInvocations(nativeBudgetUnit).Count(invocation => IsInvocationNamed(invocation, "GetInt")) == 1
+                  && AllInvocations(nativeBudget).Count(invocation => IsInvocationNamed(invocation, "SetInt")) == 1,
+                "180F-6: native copied-message budget keeps its display unit in SessionState instead of Manager serialization");
+            Check(nativeBudget != null
+                  && AllInvocations(nativeBudget).Any(invocation => IsInvocationNamed(invocation, "ToDisplayValue"))
+                  && AllInvocations(nativeBudget).Count(invocation => IsInvocationNamed(invocation, "ToClampedBytes")) == 1
+                  && AllInvocations(nativeBudget).Count(invocation => IsInvocationNamed(invocation, "NormalizeSerializedBytes")) == 1
+                  && ContainsStringLiteralFragment(nativeBudget, "Native Copied-Message Budget")
+                  && ContainsStringLiteralFragment(nativeBudget, "bytes"),
+                "180F-7: native copied-message budget converts KiB or MiB deterministically and renders its exact stored-byte equivalent");
         }
 
         private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)
@@ -517,6 +612,68 @@ namespace Unity.FoxgloveSDK.Tests
             return statement?.Condition is InvocationExpressionSyntax invocation
                    && IsInvocationNamed(invocation, "GetBool")
                    && HasStringArgument(invocation, 0, propertyName);
+        }
+
+        private static bool HasIdentifierCondition(IfStatementSyntax statement, string identifier)
+        {
+            return statement?.Condition is IdentifierNameSyntax condition
+                   && condition.Identifier.ValueText == identifier;
+        }
+
+        private static bool HasProviderVisibilityRule(
+            MethodDeclarationSyntax method,
+            string localName,
+            string providerMemberName)
+        {
+            return method?.DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .Any(variable => variable.Identifier.ValueText == localName
+                                 && variable.Initializer?.Value.DescendantNodesAndSelf()
+                                     .OfType<InvocationExpressionSyntax>()
+                                     .Any(invocation => IsInvocationNamed(invocation, "HasExplicitSubscriptionProvider")
+                                                        && HasProviderMemberArgument(invocation, providerMemberName)) == true
+                                 && variable.Initializer.Value.DescendantNodesAndSelf()
+                                     .OfType<BinaryExpressionSyntax>()
+                                     .Any(comparison => comparison.IsKind(SyntaxKind.EqualsExpression)
+                                                        && HasSelectedProviderComparison(
+                                                            comparison,
+                                                            providerMemberName))) == true;
+        }
+
+        private static bool HasSelectedProviderComparison(
+            BinaryExpressionSyntax comparison,
+            string providerMemberName)
+        {
+            return (IsIdentifierNamed(comparison.Left, "selectedProvider")
+                    && IsProviderMember(comparison.Right, providerMemberName))
+                   || (IsProviderMember(comparison.Left, providerMemberName)
+                       && IsIdentifierNamed(comparison.Right, "selectedProvider"));
+        }
+
+        private static bool IsIdentifierNamed(ExpressionSyntax expression, string identifier)
+        {
+            return expression is IdentifierNameSyntax name
+                   && name.Identifier.ValueText == identifier;
+        }
+
+        private static bool IsProviderMember(ExpressionSyntax expression, string memberName)
+        {
+            return expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Expression is IdentifierNameSyntax receiver
+                   && receiver.Identifier.ValueText == "FoxRunSubscriptionProvider"
+                   && memberAccess.Name.Identifier.ValueText == memberName;
+        }
+
+        private static bool HasProviderMemberArgument(
+            InvocationExpressionSyntax invocation,
+            string memberName)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count == 1
+                   && invocation.ArgumentList.Arguments[0].Expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Expression is IdentifierNameSyntax receiver
+                   && receiver.Identifier.ValueText == "FoxRunSubscriptionProvider"
+                   && memberAccess.Name.Identifier.ValueText == memberName;
         }
 
         private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string name)
@@ -841,6 +998,14 @@ namespace Unity.FoxgloveSDK.Tests
                    && method.DescendantNodes().OfType<LiteralExpressionSyntax>().Any(literal =>
                        literal.RawKind == (int)SyntaxKind.StringLiteralExpression
                        && literal.Token.ValueText == value);
+        }
+
+        private static bool ContainsStringLiteralFragment(MethodDeclarationSyntax method, string value)
+        {
+            return method != null
+                   && method.DescendantNodes().OfType<LiteralExpressionSyntax>().Any(literal =>
+                       literal.RawKind == (int)SyntaxKind.StringLiteralExpression
+                       && literal.Token.ValueText.Contains(value, StringComparison.Ordinal));
         }
 
         private static bool ContainsIdentifier(MethodDeclarationSyntax method, string identifier)

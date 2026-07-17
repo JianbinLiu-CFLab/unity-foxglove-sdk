@@ -4,6 +4,7 @@
 // Module: Editor/Manager
 // Purpose: Inspector controls for Unity subscriptions to client-published FoxRun data.
 
+using System.Globalization;
 using Unity.FoxgloveSDK.Components;
 using UnityEditor;
 using UnityEngine;
@@ -12,23 +13,16 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public partial class FoxgloveManagerEditor
     {
+        private const string NativeCopyBudgetUnitSessionStateName =
+            "DataTransportNativeCopyBudgetUnit";
+
+        private static readonly string[] NativeCopyBudgetUnitLabels = { "KiB", "MiB" };
+
         private void DrawSubscribeDataSection()
         {
             var manager = target as FoxgloveManager;
             var providerProperty = FindCachedProperty("_defaultFoxRunSubscriptionProvider");
             var encodingProperty = FindCachedProperty("_defaultFoxRunSubscriptionEncoding");
-
-            FoxgloveManagerInspectorLayout.Subheader("Subscription Protocol");
-            FoxRunSubscriptionProtocolEditorLabels.Draw(
-                providerProperty,
-                encodingProperty,
-                "Default Subscription Protocol");
-            if (manager != null && manager.ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled)
-            {
-                EditorGUILayout.HelpBox(
-                    "Subscription-policy changes apply after subscriptions are re-enabled. The active FoxRun session keeps its captured provider, WebSocket encoding, QoS, and copy budget.",
-                    MessageType.Info);
-            }
 
             FoxgloveManagerInspectorLayout.Subheader("FoxRun Subscription Control");
             DrawProperty("_enableFoxRunInbound", "Enable FoxRun Subscriptions");
@@ -37,8 +31,11 @@ namespace Unity.FoxgloveSDK.Editor
                 MessageType.Info);
             using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
             {
-                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Subscription Rate Limit Hz (per Topic)");
-
+                FoxgloveManagerInspectorLayout.Subheader("Input Transport");
+                FoxRunSubscriptionProtocolEditorLabels.Draw(
+                    providerProperty,
+                    encodingProperty,
+                    "Default Input Transport");
                 var selectedProvider = providerProperty != null
                     && providerProperty.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
                     ? FoxRunSubscriptionProvider.Ros2Native
@@ -47,19 +44,29 @@ namespace Unity.FoxgloveSDK.Editor
                                     || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.FoxgloveWebSocket);
                 var showRos2Native = selectedProvider == FoxRunSubscriptionProvider.Ros2Native
                                      || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.Ros2Native);
+                if (manager != null && manager.ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled)
+                {
+                    EditorGUILayout.HelpBox(
+                        "Subscription-policy changes apply after subscriptions are re-enabled. The active FoxRun session keeps its captured provider, WebSocket encoding, QoS, copy budget, and rate.",
+                        MessageType.Info);
+                }
+
+                FoxgloveManagerInspectorLayout.Subheader("Subscription Delivery");
+                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Subscription Rate Limit Hz (per Topic)");
 
                 if (showWebSocket)
                 {
-                    FoxgloveManagerInspectorLayout.Subheader("Foxglove WebSocket Subscription Settings");
+                    FoxgloveManagerInspectorLayout.Subheader("Foxglove WebSocket Input");
                     DrawProperty("_allowRemoteFoxRunInboundWithSharedToken", "Allow Remote FoxRun Subscriptions With Shared Token");
                     DrawProperty("_foxRunInboundMaxPayloadBytes", "Subscription Max Payload Bytes");
                 }
 
                 if (showRos2Native)
                 {
-                    FoxgloveManagerInspectorLayout.Subheader("ROS2 Native Subscription Settings");
-                    DrawProperty("_defaultFoxRunRos2Qos", "Default ROS2 QoS");
-                    DrawProperty("_foxRunRos2NativeCopyBudgetBytes", "Native Copied-Data Budget Bytes");
+                    FoxgloveManagerInspectorLayout.Subheader("ROS 2 Native Input");
+                    DrawRos2NativeSubscriptionQos();
+                    DrawRos2NativeCopyBudget();
+                    DrawOptionalR2fuNativeSubscriptionDiagnostics();
                 }
             }
             if (HasR2fuNativeRuntimeDemand())
@@ -81,12 +88,103 @@ namespace Unity.FoxgloveSDK.Editor
                     MessageType.Warning);
             }
 
-            if (HasR2fuNativeRuntimeDemand()
-                || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.Ros2Native))
+        }
+
+        private void DrawRos2NativeSubscriptionQos()
+        {
+            var qosProperty = FindCachedProperty("_defaultFoxRunRos2Qos");
+            if (qosProperty == null)
             {
-                FoxgloveManagerInspectorLayout.Subheader("ROS2 Native Subscription Diagnostics");
-                DrawOptionalR2fuNativeSubscriptionDiagnostics();
+                DrawMissingProperty("_defaultFoxRunRos2Qos");
+                return;
             }
+
+            var normalizedPreset = FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(
+                (FoxRunRos2QosPreset)qosProperty.enumValueIndex);
+            if (qosProperty.enumValueIndex != (int)normalizedPreset)
+                qosProperty.enumValueIndex = (int)normalizedPreset;
+
+            var choices = FoxRunRos2SubscriptionInspectorPresentation.ManagerQosChoices;
+            var labels = new string[choices.Count];
+            var selectedIndex = 0;
+            for (var i = 0; i < choices.Count; i++)
+            {
+                labels[i] = choices[i].Label;
+                if (choices[i].Preset == normalizedPreset)
+                    selectedIndex = i;
+            }
+
+            var changedIndex = EditorGUILayout.Popup(
+                "ROS 2 Native Subscription QoS",
+                selectedIndex,
+                labels);
+            var selectedChoice = choices[changedIndex];
+            if (selectedChoice.Preset != normalizedPreset)
+                qosProperty.enumValueIndex = (int)selectedChoice.Preset;
+
+            EditorGUILayout.HelpBox(selectedChoice.Summary, MessageType.Info);
+        }
+
+        private void DrawRos2NativeCopyBudget()
+        {
+            var budgetProperty = FindCachedProperty("_foxRunRos2NativeCopyBudgetBytes");
+            if (budgetProperty == null)
+            {
+                DrawMissingProperty("_foxRunRos2NativeCopyBudgetBytes");
+                return;
+            }
+
+            var displayUnit = GetNativeCopyBudgetDisplayUnit();
+            var selectedUnitIndex = EditorGUILayout.Popup(
+                "Native Copied-Message Budget Unit",
+                (int)displayUnit,
+                NativeCopyBudgetUnitLabels);
+            if (selectedUnitIndex != (int)displayUnit)
+            {
+                displayUnit = (FoxRunRos2NativeCopyBudgetUnit)selectedUnitIndex;
+                SessionState.SetInt(
+                    InspectorFoldoutKey(NativeCopyBudgetUnitSessionStateName),
+                    selectedUnitIndex);
+            }
+
+            var normalizedBytes = FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(
+                budgetProperty.intValue);
+            if (budgetProperty.intValue != normalizedBytes)
+                budgetProperty.intValue = normalizedBytes;
+
+            var displayValue = FoxRunRos2SubscriptionInspectorPresentation.ToDisplayValue(
+                normalizedBytes,
+                displayUnit);
+            EditorGUI.BeginChangeCheck();
+            var editedDisplayValue = EditorGUILayout.DoubleField(
+                "Native Copied-Message Budget (" + NativeCopyBudgetUnitLabels[(int)displayUnit] + ")",
+                displayValue);
+            if (EditorGUI.EndChangeCheck())
+            {
+                budgetProperty.intValue = FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
+                    editedDisplayValue,
+                    displayUnit);
+                normalizedBytes = budgetProperty.intValue;
+                displayValue = FoxRunRos2SubscriptionInspectorPresentation.ToDisplayValue(
+                    normalizedBytes,
+                    displayUnit);
+            }
+
+            EditorGUILayout.LabelField(
+                "Stored Native Budget",
+                displayValue.ToString("0.###", CultureInfo.InvariantCulture)
+                + " " + NativeCopyBudgetUnitLabels[(int)displayUnit]
+                + " = " + normalizedBytes.ToString("N0", CultureInfo.InvariantCulture) + " bytes");
+        }
+
+        private static FoxRunRos2NativeCopyBudgetUnit GetNativeCopyBudgetDisplayUnit()
+        {
+            var storedUnit = SessionState.GetInt(
+                InspectorFoldoutKey(NativeCopyBudgetUnitSessionStateName),
+                (int)FoxRunRos2NativeCopyBudgetUnit.MiB);
+            return storedUnit == (int)FoxRunRos2NativeCopyBudgetUnit.KiB
+                ? FoxRunRos2NativeCopyBudgetUnit.KiB
+                : FoxRunRos2NativeCopyBudgetUnit.MiB;
         }
 
         private static bool HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider provider)
