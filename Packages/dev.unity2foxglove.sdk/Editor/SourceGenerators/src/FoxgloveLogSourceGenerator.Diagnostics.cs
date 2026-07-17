@@ -13,6 +13,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     /// </summary>
     internal static class Diags
     {
+        // Legacy FoxRun diagnostic IDs 023 through 044 are permanently retired and must never be reused.
+
         #region FoxRun publish diagnostics (FOXRUN001-199)
 
         /// <summary>FOXRUN001: class must be <c>partial</c> to host <c>[FoxRun]</c> members.</summary>

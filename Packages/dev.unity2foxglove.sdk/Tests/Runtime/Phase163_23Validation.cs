@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Tests
             DescriptorCarrierChunksLargeJson();
             UnknownGeneratorDiagnosticsFailClosed();
             ReflectionBuildErrorsAreActionable();
-            AnalyzerReleaseTrackingIsShipped();
+            AnalyzerReleaseTrackingPreservesHistory();
             PhaseWiringIsPresent();
 
             Console.WriteLine($"Phase 163-23: {_passed} checks passed.");
@@ -114,18 +114,25 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-23E-2: FOXRUN203 reflection failure message includes member kind and unsupported shape");
         }
 
-        private static void AnalyzerReleaseTrackingIsShipped()
+        private static void AnalyzerReleaseTrackingPreservesHistory()
         {
             var shipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
             var unshipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
 
-            foreach (var id in new[] { "FOXRUN006", "FOXRUN014", "FOXRUN018", "FOXRUN203" })
+            foreach (var id in new[] { "FOXRUN006", "FOXRUN014", "FOXRUN018" })
             {
                 Check(shipped.Contains(id + " | FoxRun |", StringComparison.Ordinal),
                     "163-23F-1: shipped analyzer release notes include " + id);
                 Check(!unshipped.Contains(id + " | FoxRun |", StringComparison.Ordinal),
                     "163-23F-2: unshipped analyzer release notes no longer list shipped " + id);
             }
+
+            Check(shipped.Contains("FOXRUN028 | FoxRun |", StringComparison.Ordinal)
+                  && unshipped.Contains("FOXRUN203 | FoxRun |", StringComparison.Ordinal)
+                  && unshipped.Contains(
+                      "FOXRUN028 | FoxRun | Error | Retired; renumbered as FOXRUN203 and permanently reserved.",
+                      StringComparison.Ordinal),
+                "163-23F-3: analyzer release tracking preserves the retired FOXRUN028 history and records its replacement");
         }
 
         private static void PhaseWiringIsPresent()

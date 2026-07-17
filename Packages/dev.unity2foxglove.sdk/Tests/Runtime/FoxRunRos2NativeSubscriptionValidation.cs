@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyExistingR2fuSinkRemainsOutboundOnly();
             VerifyTypedGenerationAndNativeCatalogExclusion();
             VerifyDiagnosticIdSemanticRanges();
+            VerifyDiagnosticIdLegacyLedger();
             VerifyOptionalCompilationLanes();
             VerifyNativeHostLifecycleBoundary();
             VerifyRuntimeDiagnosticsSurface();
@@ -285,6 +286,8 @@ namespace Unity.FoxgloveSDK.Tests
                 CorePackageRoot + "/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
             var shipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
+            var unshipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
             var subscribeOnly = new[]
             {
                 new KeyValuePair<string, string>("UnsupportedInboundShape", "FOXRUN200"),
@@ -329,10 +332,55 @@ namespace Unity.FoxgloveSDK.Tests
 
             var expected = subscribeOnly.Concat(bidirectional).Concat(infrastructure).ToArray();
             Check(expected.All(pair => HasDiagnosticDescriptorId(diagnostics, pair.Key, pair.Value))
-                  && expected.All(pair => shipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
-                  && retired.All(id => !diagnostics.Contains(id, StringComparison.Ordinal))
-                  && retired.All(id => !shipped.Contains(id + " | FoxRun |", StringComparison.Ordinal)),
-                "FoxRun diagnostics map inbound, bidirectional, and cross-direction rules into their stable ID ranges without retired 023-044 entries");
+                  && expected.All(pair => unshipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
+                  && retired.All(id => !diagnostics.Contains(id, StringComparison.Ordinal)),
+                "FoxRun diagnostics map inbound, bidirectional, and cross-direction rules into their stable unshipped ID ranges without retired descriptors");
+        }
+
+        private static void VerifyDiagnosticIdLegacyLedger()
+        {
+            var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
+            var shipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
+            var unshipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
+                CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
+            var retired = new[]
+            {
+                new KeyValuePair<string, string>("FOXRUN023", "FOXRUN600"),
+                new KeyValuePair<string, string>("FOXRUN024", "FOXRUN200"),
+                new KeyValuePair<string, string>("FOXRUN025", "FOXRUN201"),
+                new KeyValuePair<string, string>("FOXRUN026", "FOXRUN400"),
+                new KeyValuePair<string, string>("FOXRUN027", "FOXRUN202"),
+                new KeyValuePair<string, string>("FOXRUN028", "FOXRUN203"),
+                new KeyValuePair<string, string>("FOXRUN029", "FOXRUN601"),
+                new KeyValuePair<string, string>("FOXRUN030", "FOXRUN602"),
+                new KeyValuePair<string, string>("FOXRUN031", "FOXRUN603"),
+                new KeyValuePair<string, string>("FOXRUN032", "FOXRUN604"),
+                new KeyValuePair<string, string>("FOXRUN033", "FOXRUN605"),
+                new KeyValuePair<string, string>("FOXRUN034", "FOXRUN401"),
+                new KeyValuePair<string, string>("FOXRUN035", "FOXRUN204"),
+                new KeyValuePair<string, string>("FOXRUN036", "FOXRUN205"),
+                new KeyValuePair<string, string>("FOXRUN037", "FOXRUN206"),
+                new KeyValuePair<string, string>("FOXRUN038", "FOXRUN207"),
+                new KeyValuePair<string, string>("FOXRUN039", "FOXRUN208"),
+                new KeyValuePair<string, string>("FOXRUN040", "FOXRUN209"),
+                new KeyValuePair<string, string>("FOXRUN041", "FOXRUN210"),
+                new KeyValuePair<string, string>("FOXRUN042", "FOXRUN211"),
+                new KeyValuePair<string, string>("FOXRUN043", "FOXRUN212"),
+                new KeyValuePair<string, string>("FOXRUN044", "FOXRUN213"),
+            };
+
+            Check(diagnostics.Contains(
+                      "Legacy FoxRun diagnostic IDs 023 through 044 are permanently retired and must never be reused.",
+                      StringComparison.Ordinal)
+                  && retired.All(pair => shipped.Contains(pair.Key + " | FoxRun |", StringComparison.Ordinal))
+                  && retired.All(pair => unshipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
+                  && retired.All(pair => HasReleaseTrackingRow(
+                      unshipped,
+                      pair.Key,
+                      "Retired; renumbered as " + pair.Value + " and permanently reserved.")),
+                "FoxRun diagnostic migration retains shipped history and permanently reserves every retired ID with its replacement");
         }
 
         private static void VerifyOptionalCompilationLanes()
@@ -1181,6 +1229,14 @@ namespace Unity.FoxgloveSDK.Tests
                 StringComparison.Ordinal);
             var descriptor = next < 0 ? source.Substring(start) : source.Substring(start, next - start);
             return descriptor.Contains("\"" + id + "\"", StringComparison.Ordinal);
+        }
+
+        private static bool HasReleaseTrackingRow(string releaseTracking, string id, string note)
+        {
+            return releaseTracking
+                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)
+                .Any(line => line.StartsWith(id + " | FoxRun |", StringComparison.Ordinal)
+                             && line.Contains(note, StringComparison.Ordinal));
         }
 
         private static bool HasCompleteUnityScriptMetadata(string metaPath)
