@@ -29,6 +29,10 @@ namespace Unity.FoxgloveSDK.Editor
             EditorGUILayout.HelpBox(
                 "Unity subscribes to data published by a ROS2 or Foxglove client. This is independent from Unity publish output.",
                 MessageType.Info);
+
+            FoxRunSubscriptionProvider selectedProvider;
+            bool showWebSocket;
+            bool showRos2Native;
             using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
             {
                 FoxgloveManagerInspectorLayout.Subheader("Input Transport");
@@ -36,14 +40,14 @@ namespace Unity.FoxgloveSDK.Editor
                     providerProperty,
                     encodingProperty,
                     "Default Input Transport");
-                var selectedProvider = providerProperty != null
+                selectedProvider = providerProperty != null
                     && providerProperty.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
                     ? FoxRunSubscriptionProvider.Ros2Native
                     : FoxRunSubscriptionProvider.FoxgloveWebSocket;
-                var showWebSocket = selectedProvider == FoxRunSubscriptionProvider.FoxgloveWebSocket
-                                    || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.FoxgloveWebSocket);
-                var showRos2Native = selectedProvider == FoxRunSubscriptionProvider.Ros2Native
-                                     || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.Ros2Native);
+                showWebSocket = selectedProvider == FoxRunSubscriptionProvider.FoxgloveWebSocket
+                                || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.FoxgloveWebSocket);
+                showRos2Native = selectedProvider == FoxRunSubscriptionProvider.Ros2Native
+                                 || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.Ros2Native);
                 if (manager != null && manager.ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled)
                 {
                     EditorGUILayout.HelpBox(
@@ -61,13 +65,18 @@ namespace Unity.FoxgloveSDK.Editor
                     DrawProperty("_foxRunInboundMaxPayloadBytes", "Subscription Max Payload Bytes");
                 }
 
-                if (showRos2Native)
+            }
+
+            if (showRos2Native)
+            {
+                using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
                 {
                     FoxgloveManagerInspectorLayout.Subheader("ROS 2 Native Input");
                     DrawRos2NativeSubscriptionQos();
                     DrawRos2NativeCopyBudget();
-                    DrawOptionalR2fuNativeSubscriptionDiagnostics();
                 }
+
+                DrawOptionalR2fuNativeSubscriptionDiagnostics();
             }
             if (HasR2fuNativeRuntimeDemand())
             {
@@ -105,11 +114,9 @@ namespace Unity.FoxgloveSDK.Editor
                 qosProperty.enumValueIndex = (int)normalizedPreset;
 
             var choices = FoxRunRos2SubscriptionInspectorPresentation.ManagerQosChoices;
-            var labels = new string[choices.Count];
             var selectedIndex = 0;
             for (var i = 0; i < choices.Count; i++)
             {
-                labels[i] = choices[i].Label;
                 if (choices[i].Preset == normalizedPreset)
                     selectedIndex = i;
             }
@@ -117,7 +124,7 @@ namespace Unity.FoxgloveSDK.Editor
             var changedIndex = EditorGUILayout.Popup(
                 "ROS 2 Native Subscription QoS",
                 selectedIndex,
-                labels);
+                FoxRunRos2SubscriptionInspectorPresentation.ManagerQosLabels);
             var selectedChoice = choices[changedIndex];
             if (selectedChoice.Preset != normalizedPreset)
                 qosProperty.enumValueIndex = (int)selectedChoice.Preset;

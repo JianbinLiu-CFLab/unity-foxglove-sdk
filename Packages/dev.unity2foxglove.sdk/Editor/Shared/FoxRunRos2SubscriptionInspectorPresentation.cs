@@ -38,29 +38,40 @@ namespace Unity.FoxgloveSDK.Editor
     /// <summary>Pure presentation model for native ROS2 subscription Inspector controls.</summary>
     internal static class FoxRunRos2SubscriptionInspectorPresentation
     {
+        private static readonly string[] ConcreteManagerQosLabels =
+        {
+            "ROS 2 Default (R2FU)",
+            "Reliable",
+            "Sensor Data",
+            "Transient Local"
+        };
+
         private static readonly FoxRunRos2QosInspectorChoice[] ConcreteManagerQosChoices =
         {
             new(
                 FoxRunRos2QosPreset.Default,
-                "ROS 2 Default (R2FU)",
+                ConcreteManagerQosLabels[0],
                 "R2FU default / Keep Last 10"),
             new(
                 FoxRunRos2QosPreset.Reliable,
-                "Reliable",
+                ConcreteManagerQosLabels[1],
                 "Reliable / Volatile / Keep Last 10"),
             new(
                 FoxRunRos2QosPreset.SensorData,
-                "Sensor Data",
+                ConcreteManagerQosLabels[2],
                 "Best Effort / Volatile / Keep Last 5"),
             new(
                 FoxRunRos2QosPreset.TransientLocal,
-                "Transient Local",
+                ConcreteManagerQosLabels[3],
                 "Reliable / Transient Local / Keep Last 1")
         };
 
         /// <summary>Concrete Manager choices; source-only Inherit is deliberately omitted.</summary>
         internal static IReadOnlyList<FoxRunRos2QosInspectorChoice> ManagerQosChoices =>
             ConcreteManagerQosChoices;
+
+        /// <summary>Stable Popup labels paired positionally with <see cref="ManagerQosChoices"/>.</summary>
+        internal static string[] ManagerQosLabels => ConcreteManagerQosLabels;
 
         /// <summary>Converts a serialized budget to the selected display unit.</summary>
         internal static double ToDisplayValue(

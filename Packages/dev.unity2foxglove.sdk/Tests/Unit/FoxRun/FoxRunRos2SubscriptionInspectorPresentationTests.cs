@@ -45,6 +45,19 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ManagerQosPopupLabelsReuseTheStableChoiceLabelsWithoutReallocation()
+        {
+            var choices = FoxRunRos2SubscriptionInspectorPresentation.ManagerQosChoices;
+            var labels = FoxRunRos2SubscriptionInspectorPresentation.ManagerQosLabels;
+
+            Assert.Same(labels, FoxRunRos2SubscriptionInspectorPresentation.ManagerQosLabels);
+            Assert.Equal(choices.Count, labels.Length);
+            Assert.Equal(new[] { "ROS 2 Default (R2FU)", "Reliable", "Sensor Data", "Transient Local" }, labels);
+            for (var index = 0; index < choices.Count; index++)
+                Assert.Equal(choices[index].Label, labels[index]);
+        }
+
+        [Fact]
         public void CopyBudgetConversionRepresentsTheDefaultAsFourMiB()
         {
             Assert.Equal(

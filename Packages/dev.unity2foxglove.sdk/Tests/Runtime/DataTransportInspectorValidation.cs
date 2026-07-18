@@ -296,6 +296,9 @@ namespace Unity.FoxgloveSDK.Tests
                 .SelectMany(DirectThenStatements)
                 .SelectMany(AllInvocations)
                 .ToArray();
+            var nativeDiagnostics = allInvocations
+                .Where(invocation => IsInvocationNamed(invocation, "DrawOptionalR2fuNativeSubscriptionDiagnostics"))
+                .ToArray();
 
             Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
                                                 && HasStringHeading(invocation, "Input Transport")) == 1
@@ -340,14 +343,22 @@ namespace Unity.FoxgloveSDK.Tests
                                                       && HasStringHeading(invocation, "ROS 2 Native Input")) == 1
                   && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeSubscriptionQos")) == 1
                   && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeCopyBudget")) == 1
+                  && nativeDiagnostics.Length == 1
+                  && nativeDiagnostics.All(invocation => HasShowRos2NativeAncestor(invocation)
+                                                      && !HasInboundDisabledScopeAncestor(invocation))
                   && !ContainsStringLiteral(subscribeData, "Native Copied-Data Budget Bytes"),
-                "180F-4: native input remains visible for a selected or explicit generated native contract and uses dedicated QoS and budget controls");
+                "180F-4: native input remains visible for a selected or explicit generated native contract, keeps diagnostics readable, and uses dedicated QoS and budget controls");
             Check(nativeQos != null
                   && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "NormalizeSerializedManagerDefault")) == 1
                   && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "Popup")) == 1
                   && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "HelpBox")) == 1
+                  && nativeQos.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+                      .Count(memberAccess => memberAccess.Name.Identifier.ValueText == "ManagerQosLabels") == 1
+                  && !nativeQos.DescendantNodes().OfType<ArrayCreationExpressionSyntax>().Any(
+                      array => array.Type.ElementType is PredefinedTypeSyntax type
+                               && type.Keyword.IsKind(SyntaxKind.StringKeyword))
                   && !ContainsStringLiteral(nativeQos, "Inherit"),
-                "180F-5: native QoS normalizes malformed serialized defaults and displays only the concrete portable choices");
+                "180F-5: native QoS normalizes malformed serialized defaults, uses cached presentation labels, and displays only the concrete portable choices");
             Check(nativeBudget != null
                   && nativeBudgetUnit != null
                   && AllInvocations(nativeBudgetUnit).Count(invocation => IsInvocationNamed(invocation, "GetInt")) == 1
@@ -625,29 +636,92 @@ namespace Unity.FoxgloveSDK.Tests
             string localName,
             string providerMemberName)
         {
-            return method?.DescendantNodes()
+            var declarationMatches = method?.DescendantNodes()
                 .OfType<VariableDeclaratorSyntax>()
-                .Any(variable => variable.Identifier.ValueText == localName
-                                 && variable.Initializer?.Value.DescendantNodesAndSelf()
-                                     .OfType<InvocationExpressionSyntax>()
-                                     .Any(invocation => IsInvocationNamed(invocation, "HasExplicitSubscriptionProvider")
-                                                        && HasProviderMemberArgument(invocation, providerMemberName)) == true
-                                 && variable.Initializer.Value.DescendantNodesAndSelf()
-                                     .OfType<BinaryExpressionSyntax>()
-                                     .Any(comparison => comparison.IsKind(SyntaxKind.EqualsExpression)
-                                                        && HasSelectedProviderComparison(
-                                                            comparison,
-                                                            providerMemberName))) == true;
+                .Where(variable => variable.Identifier.ValueText == localName
+                                   && HasExactProviderVisibilityExpression(
+                                       variable.Initializer?.Value,
+                                       providerMemberName))
+                .ToArray()
+                ?? Array.Empty<VariableDeclaratorSyntax>();
+            var assignmentMatches = method?.DescendantNodes()
+                .OfType<AssignmentExpressionSyntax>()
+                .Where(assignment => assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+                                     && IsIdentifierNamed(assignment.Left, localName)
+                                     && HasExactProviderVisibilityExpression(
+                                         assignment.Right,
+                                         providerMemberName))
+                .ToArray()
+                ?? Array.Empty<AssignmentExpressionSyntax>();
+            return declarationMatches.Length + assignmentMatches.Length == 1;
+        }
+
+        private static bool HasExactProviderVisibilityExpression(
+            ExpressionSyntax expression,
+            string providerMemberName)
+        {
+            if (expression is ParenthesizedExpressionSyntax parenthesized)
+                return HasExactProviderVisibilityExpression(parenthesized.Expression, providerMemberName);
+
+            if (!(expression is BinaryExpressionSyntax binary)
+                || !binary.IsKind(SyntaxKind.LogicalOrExpression))
+            {
+                return false;
+            }
+
+            return (HasSelectedProviderComparison(binary.Left, providerMemberName)
+                    && HasExplicitSubscriptionProviderInvocation(binary.Right, providerMemberName))
+                   || (HasExplicitSubscriptionProviderInvocation(binary.Left, providerMemberName)
+                       && HasSelectedProviderComparison(binary.Right, providerMemberName));
+        }
+
+        private static bool HasExplicitSubscriptionProviderInvocation(
+            ExpressionSyntax expression,
+            string providerMemberName)
+        {
+            return expression is InvocationExpressionSyntax invocation
+                   && IsInvocationNamed(invocation, "HasExplicitSubscriptionProvider")
+                   && HasProviderMemberArgument(invocation, providerMemberName);
+        }
+
+        private static bool HasShowRos2NativeAncestor(InvocationExpressionSyntax invocation)
+        {
+            return invocation?.Ancestors().OfType<IfStatementSyntax>()
+                .Any(statement => HasIdentifierCondition(statement, "showRos2Native")) == true;
+        }
+
+        private static bool HasInboundDisabledScopeAncestor(InvocationExpressionSyntax invocation)
+        {
+            return invocation?.Ancestors().OfType<UsingStatementSyntax>()
+                .Any(IsInboundDisabledScope) == true;
+        }
+
+        private static bool IsInboundDisabledScope(UsingStatementSyntax statement)
+        {
+            if (!(statement?.Expression is ObjectCreationExpressionSyntax construction)
+                || construction.Type.ToString() != "EditorGUI.DisabledScope"
+                || construction.ArgumentList?.Arguments.Count != 1)
+            {
+                return false;
+            }
+
+            return construction.ArgumentList.Arguments[0].Expression is PrefixUnaryExpressionSyntax negation
+                   && negation.IsKind(SyntaxKind.LogicalNotExpression)
+                   && negation.Operand is InvocationExpressionSyntax invocation
+                   && IsInvocationNamed(invocation, "GetBool")
+                   && HasStringArgument(invocation, 0, "_enableFoxRunInbound");
         }
 
         private static bool HasSelectedProviderComparison(
-            BinaryExpressionSyntax comparison,
+            ExpressionSyntax comparison,
             string providerMemberName)
         {
-            return (IsIdentifierNamed(comparison.Left, "selectedProvider")
-                    && IsProviderMember(comparison.Right, providerMemberName))
-                   || (IsProviderMember(comparison.Left, providerMemberName)
-                       && IsIdentifierNamed(comparison.Right, "selectedProvider"));
+            return comparison is BinaryExpressionSyntax binary
+                   && binary.IsKind(SyntaxKind.EqualsExpression)
+                   && ((IsIdentifierNamed(binary.Left, "selectedProvider")
+                        && IsProviderMember(binary.Right, providerMemberName))
+                       || (IsProviderMember(binary.Left, providerMemberName)
+                           && IsIdentifierNamed(binary.Right, "selectedProvider")));
         }
 
         private static bool IsIdentifierNamed(ExpressionSyntax expression, string identifier)
