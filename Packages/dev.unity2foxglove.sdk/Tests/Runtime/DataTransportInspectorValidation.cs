@@ -68,12 +68,14 @@ namespace Unity.FoxgloveSDK.Tests
             var nativeQos = FindMethod(editorSources, "DrawRos2NativeSubscriptionQos");
             var nativeBudget = FindMethod(editorSources, "DrawRos2NativeCopyBudget");
             var nativeBudgetUnit = FindMethod(editorSources, "GetNativeCopyBudgetDisplayUnit");
+            var nativeRuntime = FindMethod(editorSources, "DrawR2fuRuntimeSection");
             var subsection = FindMethod(editorSources, "DrawDataTransportSubsection");
 
             VerifyTopLevelWorkflow(topLevel);
             VerifyNestedTransportWorkflow(dataTransport, publishData);
             VerifyPublishPresentation(publishData);
             VerifySubscribePresentation(subscribeData, nativeQos, nativeBudget, nativeBudgetUnit);
+            VerifyNativeRuntimePresentation(nativeRuntime);
             VerifyFoldoutStateModel(mainInspector, foldoutState);
             VerifyParentSectionPresentationHelper(section);
             VerifySubsectionPresentationHelper(subsection);
@@ -373,6 +375,35 @@ namespace Unity.FoxgloveSDK.Tests
                 "180F-7: native copied-message budget converts KiB or MiB deterministically and renders its exact stored-byte equivalent");
         }
 
+        private static void VerifyNativeRuntimePresentation(MethodDeclarationSyntax nativeRuntime)
+        {
+            const string combinedDemandMessage =
+                "ROS 2 Native (R2FU) Publish and Subscribe share this runtime/RMW selection. Subscribe does not enable Publish.";
+            const string subscribeOnlyMessage =
+                "ROS 2 Native (R2FU) Subscribe requires this runtime/RMW selection. Subscribe does not enable Publish.";
+            const string publishOnlyMessage =
+                "ROS 2 Native (R2FU) Publish requires this runtime/RMW selection.";
+
+            var demandBranches = DirectIfStatements(nativeRuntime).ToArray();
+            var combinedDemandBranch = demandBranches.Length == 1
+                && HasIdentifierConjunctionCondition(demandBranches[0], "outputDemand", "subscriptionDemand")
+                ? demandBranches[0]
+                : null;
+            var subscribeOnlyBranch = combinedDemandBranch?.Else?.Statement as IfStatementSyntax;
+            var publishOnlyBranch = subscribeOnlyBranch?.Else?.Statement;
+
+            Check(nativeRuntime != null
+                  && combinedDemandBranch != null
+                  && HasIdentifierCondition(subscribeOnlyBranch, "subscriptionDemand")
+                  && publishOnlyBranch != null
+                  && HasExactlyOneInfoHelpBox(DirectThenStatements(combinedDemandBranch), combinedDemandMessage)
+                  && HasExactlyOneInfoHelpBox(DirectThenStatements(subscribeOnlyBranch), subscribeOnlyMessage)
+                  && HasExactlyOneInfoHelpBox(DirectBranchStatements(publishOnlyBranch), publishOnlyMessage)
+                  && !ContainsStringLiteralFragment(nativeRuntime, "Publish Data")
+                  && !ContainsStringLiteralFragment(nativeRuntime, "Subscribe Data"),
+                "180G-1: ROS 2 Native Runtime (R2FU) distinguishes combined, Subscribe-only, and Publish-only demand without implying that Subscribe enables Publish");
+        }
+
         private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)
         {
             var expectedFields = new[]
@@ -629,6 +660,27 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return statement?.Condition is IdentifierNameSyntax condition
                    && condition.Identifier.ValueText == identifier;
+        }
+
+        private static bool HasIdentifierConjunctionCondition(
+            IfStatementSyntax statement,
+            string leftIdentifier,
+            string rightIdentifier)
+        {
+            return statement?.Condition is BinaryExpressionSyntax condition
+                   && condition.IsKind(SyntaxKind.LogicalAndExpression)
+                   && IsIdentifierNamed(condition.Left, leftIdentifier)
+                   && IsIdentifierNamed(condition.Right, rightIdentifier);
+        }
+
+        private static bool HasExactlyOneInfoHelpBox(
+            IEnumerable<StatementSyntax> statements,
+            string message)
+        {
+            return statements.SelectMany(AllInvocations)
+                .Count(invocation => IsInvocationNamed(invocation, "HelpBox")
+                                     && HasStringArgument(invocation, 0, message)
+                                     && HasMessageTypeInfoArgument(invocation, 1)) == 1;
         }
 
         private static bool HasProviderVisibilityRule(

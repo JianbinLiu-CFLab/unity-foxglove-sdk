@@ -6,6 +6,9 @@
 
 using System;
 using System.IO;
+using System.Linq;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -27,6 +30,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Editor/Unity.FoxgloveSDK.Editor.asmdef";
         private const string ManagerWorkflowPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
+        private const string ManagerDataTransportPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.DataTransport.cs";
         private const string RegistryPath =
             "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs";
         private const string ProjectPath =
@@ -117,15 +122,66 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText(ManagerInspectorPath);
             var asmdef = ReadRepoText(ManagerInspectorAsmdefPath);
             var workflow = ReadRepoText(ManagerWorkflowPath);
+            var dataTransportSource = ReadRepoText(ManagerDataTransportPath);
             var guard = ReadRepoText(PlayModeGuardPath);
+            var topLevel = FindMethod(workflow, "OnInspectorGUI");
+            var dataTransport = FindMethod(dataTransportSource, "DrawDataTransportSection");
+            var allManagerEditorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
+            var allNativeRuntimeSubsections = FindInvocations(allManagerEditorSources)
+                .Where(invocation => IsNativeRuntimeSubsection(invocation))
+                .ToArray();
+            var allNativeRuntimeCallbacks = FindInvocations(allManagerEditorSources)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                                     && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection"))
+                .ToArray();
+            var nativeRuntimeSubsections = FindInvocations(dataTransport)
+                .Where(invocation => IsNativeRuntimeSubsection(invocation))
+                .ToArray();
+            var nativeRuntimeCallbacks = FindInvocations(dataTransport)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                                     && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection"))
+                .ToArray();
+            var nativeDemandBranches = dataTransport?.Body?.Statements
+                .OfType<IfStatementSyntax>()
+                .Where(HasNativeDemandCondition)
+                .ToArray()
+                ?? Array.Empty<IfStatementSyntax>();
+            var branchNativeRuntimeSubsections = nativeDemandBranches
+                .SelectMany(DirectThenStatements)
+                .OfType<ExpressionStatementSyntax>()
+                .Select(statement => statement.Expression as InvocationExpressionSyntax)
+                .Where(invocation => invocation != null && IsNativeRuntimeSubsection(invocation))
+                .ToArray();
+            var legacyTopLevelRuntimeSections = FindInvocations(topLevel)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
+                                     && (HasStringArgument(invocation, 0, "ROS2 Runtime (R2FU)")
+                                         || HasStringArgument(invocation, 0, "ROS 2 Native Runtime (R2FU)")))
+                .ToArray();
+            var topLevelRuntimeCallbacks = FindInvocations(topLevel)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawSection")
+                                     && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection"))
+                .ToArray();
+            var directRuntimeDraws = FindInvocations(allManagerEditorSources)
+                .Where(invocation => IsInvocationNamed(invocation, "DrawR2fuRuntimeSection"))
+                .ToArray();
 
             Check(source.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && source.Contains("HasGeneratedExplicitSubscriptionProvider", StringComparison.Ordinal)
-                  && workflow.Contains("DrawSection(\"ROS2 Runtime (R2FU)\"", StringComparison.Ordinal)
+                  && topLevel != null
+                  && allNativeRuntimeSubsections.Length == 1
+                  && allNativeRuntimeCallbacks.Length == 1
+                  && nativeRuntimeSubsections.Length == 1
+                  && nativeRuntimeCallbacks.Length == 1
+                  && nativeDemandBranches.Length == 1
+                  && branchNativeRuntimeSubsections.Length == 1
+                  && ReferenceEquals(nativeRuntimeSubsections[0], branchNativeRuntimeSubsections[0])
+                  && legacyTopLevelRuntimeSections.Length == 0
+                  && topLevelRuntimeCallbacks.Length == 0
+                  && directRuntimeDraws.Length == 0
                   && guard.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && guard.Contains("_enableFoxRunInbound", StringComparison.Ordinal)
                   && guard.Contains("_defaultFoxRunSubscriptionProvider", StringComparison.Ordinal),
-                "146A-D1: unified native demand surfaces one runtime selector for native output and inbound subscriptions");
+                "146A-D1: unified native demand reaches one optional runtime selector only through the conditional Data Transport native-runtime subsection");
             const string selectorReflectionSeam =
                 "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor";
             const string diagnosticsReflectionSeam =
@@ -252,6 +308,96 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return count;
+        }
+
+        private static MethodDeclarationSyntax FindMethod(string source, string methodName)
+        {
+            var methods = CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method => method.Identifier.ValueText == methodName && method.Body != null)
+                .ToArray();
+            return methods.Length == 1 ? methods[0] : null;
+        }
+
+        private static InvocationExpressionSyntax[] FindInvocations(string source)
+        {
+            return CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .ToArray();
+        }
+
+        private static InvocationExpressionSyntax[] FindInvocations(MethodDeclarationSyntax method)
+        {
+            return method == null
+                ? Array.Empty<InvocationExpressionSyntax>()
+                : method.DescendantNodes().OfType<InvocationExpressionSyntax>().ToArray();
+        }
+
+        private static bool IsNativeRuntimeSubsection(InvocationExpressionSyntax invocation)
+        {
+            return IsInvocationNamed(invocation, "DrawDataTransportSubsection")
+                   && HasStringArgument(invocation, 0, "ROS 2 Native Runtime (R2FU)")
+                   && HasStringArgument(invocation, 1, "DataTransportNativeRuntime")
+                   && HasRefIdentifierArgument(invocation, 2, "_dataTransportNativeRuntimeExpanded")
+                   && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection");
+        }
+
+        private static bool HasNativeDemandCondition(IfStatementSyntax statement)
+        {
+            return statement?.Condition is InvocationExpressionSyntax invocation
+                   && IsInvocationNamed(invocation, "HasR2fuNativeRuntimeDemand")
+                   && invocation.ArgumentList.Arguments.Count == 0;
+        }
+
+        private static bool IsInvocationNamed(InvocationExpressionSyntax invocation, string methodName)
+        {
+            if (invocation?.Expression is IdentifierNameSyntax identifier)
+                return identifier.Identifier.ValueText == methodName;
+
+            return invocation?.Expression is MemberAccessExpressionSyntax memberAccess
+                   && memberAccess.Name.Identifier.ValueText == methodName;
+        }
+
+        private static bool HasStringArgument(InvocationExpressionSyntax invocation, int argumentIndex, string value)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is LiteralExpressionSyntax literal
+                   && literal.RawKind == (int)SyntaxKind.StringLiteralExpression
+                   && literal.Token.ValueText == value;
+        }
+
+        private static bool HasRefIdentifierArgument(
+            InvocationExpressionSyntax invocation,
+            int argumentIndex,
+            string identifier)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].RefKindKeyword.RawKind == (int)SyntaxKind.RefKeyword
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is IdentifierNameSyntax argument
+                   && argument.Identifier.ValueText == identifier;
+        }
+
+        private static bool HasMethodGroupArgument(InvocationExpressionSyntax invocation, string methodName)
+        {
+            return invocation != null && invocation.ArgumentList.Arguments.Any(argument =>
+                argument.Expression is IdentifierNameSyntax identifier
+                    && identifier.Identifier.ValueText == methodName);
+        }
+
+        private static System.Collections.Generic.IEnumerable<StatementSyntax> DirectThenStatements(IfStatementSyntax statement)
+        {
+            if (statement?.Statement is BlockSyntax block)
+                return block.Statements;
+
+            return statement == null
+                ? Array.Empty<StatementSyntax>()
+                : new[] { statement.Statement };
         }
 
         private static void Check(bool condition, string message)
