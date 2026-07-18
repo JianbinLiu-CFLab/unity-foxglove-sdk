@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -120,6 +121,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ManagerInspectorHostsOptionalSelector()
         {
             var source = ReadRepoText(ManagerInspectorPath);
+            var managerInspectorSyntaxErrors = CSharpSyntaxTree.ParseText(source)
+                .GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
             var asmdef = ReadRepoText(ManagerInspectorAsmdefPath);
             var workflow = ReadRepoText(ManagerWorkflowPath);
             var dataTransportSource = ReadRepoText(ManagerDataTransportPath);
@@ -165,6 +170,9 @@ namespace Unity.FoxgloveSDK.Tests
                 .Where(invocation => IsInvocationNamed(invocation, "DrawR2fuRuntimeSection"))
                 .ToArray();
 
+            Check(managerInspectorSyntaxErrors.Length == 0,
+                "146A-D0: the core optional R2FU Inspector seam remains valid C# source for Unity compilation");
+
             Check(source.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && source.Contains("HasGeneratedExplicitSubscriptionProvider", StringComparison.Ordinal)
                   && topLevel != null
@@ -186,13 +194,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "Unity2Foxglove.Ros2ForUnity.Editor.Ros2ForUnityRuntimeSelectorInspector, Unity2Foxglove.Ros2ForUnity.Editor";
             const string diagnosticsReflectionSeam =
                 "Unity2Foxglove.Ros2ForUnity.Native.Editor.FoxRunRos2SubscriptionDiagnosticsInspector, Unity2Foxglove.Ros2ForUnity.Native.Editor";
+            const string customTypesupportReflectionSeam =
+                "Unity2Foxglove.Ros2ForUnity.Editor.FoxRunRos2CustomTypesupportInspector, Unity2Foxglove.Ros2ForUnity.Editor";
             Check(source.Contains("\"" + selectorReflectionSeam + "\"", StringComparison.Ordinal)
                   && source.Contains("\"" + diagnosticsReflectionSeam + "\"", StringComparison.Ordinal)
+                  && source.Contains("\"" + customTypesupportReflectionSeam + "\"", StringComparison.Ordinal)
                   && source.Contains("Type.GetType(R2fuRuntimeSelectorInspectorTypeName)", StringComparison.Ordinal)
                   && source.Contains("Type.GetType(R2fuNativeSubscriptionDiagnosticsInspectorTypeName)", StringComparison.Ordinal)
+                  && source.Contains("Type.GetType(R2fuCustomTypesupportInspectorTypeName)", StringComparison.Ordinal)
                   && source.Contains("GetMethod", StringComparison.Ordinal),
-                "146A-D2: core SDK declares its two optional R2FU Inspector reflection endpoints explicitly");
-            Check(CountOccurrences(source, "Unity2Foxglove.Ros2ForUnity") == 4
+                "146A-D2: core SDK declares its three optional R2FU Inspector reflection endpoints explicitly");
+            Check(CountOccurrences(source, "Unity2Foxglove.Ros2ForUnity") == 6
                   && !source.Contains("using Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
                   && !source.Contains("global::Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal)
                   && !asmdef.Contains("Unity2Foxglove.Ros2ForUnity", StringComparison.Ordinal),
@@ -205,7 +217,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "146A-D3b: optional selector failures never expose raw reflected exception messages in the Inspector");
             Check(source.Contains("private bool HasR2fuNativeSubscriptionDemand()", StringComparison.Ordinal)
                   && source.Contains("nativeOutputEnabled: false", StringComparison.Ordinal)
-                  && source.Contains("var subscriptionDemand = HasR2fuNativeSubscriptionDemand();", StringComparison.Ordinal)
+                  && source.Contains(
+                      "var subscriptionDemand = HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand();",
+                      StringComparison.Ordinal)
                   && source.Contains("if (outputDemand && subscriptionDemand)", StringComparison.Ordinal),
                 "146A-D4: Inspector distinguishes simultaneous native publish and subscription demand from WebSocket-only subscriptions");
         }

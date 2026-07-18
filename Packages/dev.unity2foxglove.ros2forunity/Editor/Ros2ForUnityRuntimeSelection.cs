@@ -787,6 +787,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         public static void InvalidateStatusCache()
         {
+            Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
             _cachedCandidatesProjectDirectory = null;
             _cachedCandidates = null;
             _cachedManifestProjectDirectory = null;

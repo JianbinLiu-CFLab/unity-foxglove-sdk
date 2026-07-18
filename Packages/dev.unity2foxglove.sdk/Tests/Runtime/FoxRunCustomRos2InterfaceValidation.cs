@@ -70,6 +70,14 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
         private const string PlayModeGuardPath =
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs";
+        private const string TypesupportDiscoveryPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs";
+        private const string TypesupportPreflightPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs";
+        private const string TypesupportInspectorPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/FoxRunRos2CustomTypesupportInspector.cs";
+        private const string ManagerR2fuRuntimeInspectorPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs";
         private const string CustomTransportHostPath =
             "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomNativeTransportHost.cs";
         private const string CustomPublisherHubPath =
@@ -122,6 +130,10 @@ namespace Unity.FoxgloveSDK.Tests
             var runtimeSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(RuntimeSelectionPath);
             var defineInstaller = PhaseValidationSourceHelpers.ReadRequiredRepoText(DefineInstallerPath);
             var playModeGuard = PhaseValidationSourceHelpers.ReadRequiredRepoText(PlayModeGuardPath);
+            var typesupportDiscovery = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportDiscoveryPath);
+            var typesupportPreflight = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportPreflightPath);
+            var typesupportInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportInspectorPath);
+            var managerR2fuRuntimeInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerR2fuRuntimeInspectorPath);
             var customTransportHost = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomTransportHostPath);
             var customPublisherHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherHubPath);
             var customPublisherBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherBindingPath);
@@ -156,6 +168,12 @@ namespace Unity.FoxgloveSDK.Tests
                 runtimeSelection,
                 defineInstaller,
                 playModeGuard);
+            VerifyTypesupportPreflightPresentation(
+                typesupportDiscovery,
+                typesupportPreflight,
+                typesupportInspector,
+                managerR2fuRuntimeInspector,
+                interfaceCommand);
             VerifyTypedNativeTransport(
                 customTransportHost,
                 customPublisherHub,
@@ -488,6 +506,77 @@ namespace Unity.FoxgloveSDK.Tests
                   && foxgloveLogHub.Contains("busSource.FoxgloveLog_PublishToBus", StringComparison.Ordinal)
                   && !legacyR2fuTopicSink.Contains("FoxRunRos2Custom", StringComparison.Ordinal),
                 "181D-6: WebSocket and typed-bus routes fan out independently while the legacy byte/CDR sink remains separate");
+        }
+
+        private static void VerifyTypesupportPreflightPresentation(
+            string discovery,
+            string preflight,
+            string inspector,
+            string managerR2fuRuntimeInspector,
+            string interfaceCommand)
+        {
+            var requiredStates = new[]
+            {
+                "NotRequired", "MissingSource", "StaleSource", "MissingAddOn", "MultipleAddOns",
+                "DistributionMismatch", "DigestMismatch", "InvalidManifest", "InvalidInventory",
+                "MissingManagedType", "MissingCatalog", "DuplicateCatalog", "UnsupportedRmw", "Settling", "Ready",
+            };
+            Check(requiredStates.All(state => preflight.Contains(state, StringComparison.Ordinal))
+                  && discovery.Contains("InvalidateCache", StringComparison.Ordinal)
+                  && !discovery.Contains("Client.Resolve", StringComparison.Ordinal)
+                  && !discovery.Contains("Assembly.Load", StringComparison.Ordinal)
+                  && !discovery.Contains("NativeLibrary.Load", StringComparison.Ordinal)
+                  && !discovery.Contains("Ros2cs.Init", StringComparison.Ordinal)
+                  && !discovery.Contains("CreateNode", StringComparison.Ordinal)
+                  && !discovery.Contains("using ROS2", StringComparison.Ordinal),
+                "181E-1: metadata-only preflight has distinct bounded readiness states and no resolver or native load path");
+
+            Check(inspector.Contains("Custom FoxRun ROS 2 Interface", StringComparison.Ordinal)
+                  && inspector.Contains("Select Matching Typesupport Add-On", StringComparison.Ordinal)
+                  && inspector.Contains("Generate ROS2 Interface Source Package", StringComparison.Ordinal)
+                  && inspector.Contains("Validate ROS2 Interface Source Package", StringComparison.Ordinal)
+                  && inspector.Contains("Open ROS2 Interface Source Package", StringComparison.Ordinal)
+                  && !inspector.Contains("Client.Resolve", StringComparison.Ordinal)
+                  && !inspector.Contains("packages-lock.json", StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "Unity2Foxglove.Ros2ForUnity.Editor.FoxRunRos2CustomTypesupportInspector, Unity2Foxglove.Ros2ForUnity.Editor",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains("DrawOptionalR2fuCustomTypesupportInspector", StringComparison.Ordinal)
+                  && interfaceCommand.Contains("ValidateFromMenu", StringComparison.Ordinal)
+                   && interfaceCommand.Contains("OpenSourcePackageFromMenu", StringComparison.Ordinal),
+                "181E-2: Data Transport reaches one optional custom-interface inspector through an auditable reflection seam");
+
+            var runtimeDemandStart = managerR2fuRuntimeInspector.IndexOf(
+                "private bool HasR2fuNativeRuntimeDemand()",
+                StringComparison.Ordinal);
+            var runtimeDemandEnd = managerR2fuRuntimeInspector.IndexOf(
+                "private bool HasR2fuNativeSubscriptionDemand()",
+                StringComparison.Ordinal);
+            var runtimeDemandBody = runtimeDemandStart >= 0 && runtimeDemandEnd > runtimeDemandStart
+                ? managerR2fuRuntimeInspector.Substring(runtimeDemandStart, runtimeDemandEnd - runtimeDemandStart)
+                : string.Empty;
+            Check(runtimeDemandBody.Contains("HasCustomNativeSubscriptionDemand()", StringComparison.Ordinal),
+                "181E-3: custom native input independently creates shared R2FU Runtime demand");
+
+            var runtimeSectionStart = managerR2fuRuntimeInspector.IndexOf(
+                "private void DrawR2fuRuntimeSection()",
+                StringComparison.Ordinal);
+            var runtimeSectionEnd = managerR2fuRuntimeInspector.IndexOf(
+                "private void DrawOptionalR2fuRuntimeSelector()",
+                StringComparison.Ordinal);
+            var runtimeSectionBody = runtimeSectionStart >= 0 && runtimeSectionEnd > runtimeSectionStart
+                ? managerR2fuRuntimeInspector.Substring(runtimeSectionStart, runtimeSectionEnd - runtimeSectionStart)
+                : string.Empty;
+            Check(runtimeSectionBody.Contains(
+                      "HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand()",
+                      StringComparison.Ordinal)
+                  && runtimeSectionBody.Contains(
+                      "if (HasCustomNativeContractDemand())",
+                      StringComparison.Ordinal)
+                  && runtimeSectionBody.Contains(
+                      "DrawOptionalR2fuCustomTypesupportInspector();",
+                      StringComparison.Ordinal),
+                "181E-4: shared Runtime direction text includes custom native input demand and conditionally renders the custom preflight");
         }
 
         private static void Check(bool condition, string label)

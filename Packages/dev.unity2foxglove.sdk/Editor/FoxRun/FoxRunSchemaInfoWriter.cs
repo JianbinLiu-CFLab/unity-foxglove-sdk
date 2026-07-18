@@ -104,6 +104,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("        public const int ContractCount = " + counts.ContractCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int FieldCount = " + counts.FieldCount.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine("        public const int SubscriptionBindingCount = " + manifest.Sections.Subscriptions.Bindings.Count.ToString(CultureInfo.InvariantCulture) + ";");
+            sb.AppendLine("        public const int CustomNativeContractCount = " + manifest.CustomNativeContracts.Count.ToString(CultureInfo.InvariantCulture) + ";");
             sb.AppendLine();
             sb.AppendLine("        public static readonly FoxRunSchemaTypeInfo[] Types =");
             WriteTypesArray(sb, types, 3);
@@ -111,6 +112,10 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine();
             sb.AppendLine("        public static readonly FoxRunSchemaSubscriptionBindingInfo[] SubscriptionBindings =");
             WriteSubscriptionBindingsArray(sb, manifest.Sections.Subscriptions.Bindings, 3);
+            sb.AppendLine(";");
+            sb.AppendLine();
+            sb.AppendLine("        public static readonly FoxRunSchemaCustomNativeContractInfo[] CustomNativeContracts =");
+            WriteCustomNativeContractsArray(sb, manifest.CustomNativeContracts, 3);
             sb.AppendLine(";");
             sb.AppendLine();
             sb.AppendLine("        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.BeforeSceneLoad)]");
@@ -126,7 +131,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine("                    FoxRunManifestHash,");
             sb.AppendLine("                    Types,");
             sb.AppendLine("                    SubscriptionManifestHash,");
-            sb.AppendLine("                    SubscriptionBindings));");
+            sb.AppendLine("                    SubscriptionBindings,");
+            sb.AppendLine("                    CustomNativeContracts));");
             sb.AppendLine("        }");
             sb.AppendLine("    }");
             sb.AppendLine("}");
@@ -172,6 +178,8 @@ namespace Unity.FoxgloveSDK.Editor
                 result.AddError("ContractCount mismatch.");
             if (result.ExpectedFieldCount != result.ActualFieldCount)
                 result.AddError("FieldCount mismatch.");
+            if (manifest.CustomNativeContracts.Count != ExtractIntConstant(generatedSource, "CustomNativeContractCount"))
+                result.AddError("CustomNativeContractCount mismatch.");
 
             return result;
         }
@@ -247,6 +255,33 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.CustomDtoIdentity, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.CustomPayloadIdentity, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, string.Empty);
+                sb.AppendLine(inner + "),");
+            }
+            sb.Append(indent + "}");
+        }
+
+        private static void WriteCustomNativeContractsArray(
+            StringBuilder sb,
+            IReadOnlyList<FoxRunManifestCustomNativeContract> contracts,
+            int indentLevel)
+        {
+            var indent = Indent(indentLevel);
+            var inner = Indent(indentLevel + 1);
+            sb.AppendLine(indent + "new FoxRunSchemaCustomNativeContractInfo[]");
+            sb.AppendLine(indent + "{");
+            foreach (var contract in contracts)
+            {
+                sb.AppendLine(inner + "new FoxRunSchemaCustomNativeContractInfo(");
+                AppendIndentedStringLiteralLine(sb, inner, contract.DeclaringType, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.MemberName, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.Topic, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.FlowMode, ",");
+                sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(contract.DeclaredProvider) + ",");
+                sb.AppendLine(inner + "    " + Ros2QosLiteral(contract.Ros2Qos) + ",");
+                sb.AppendLine(inner + "    " + BoolLiteral(contract.SupportsRos2Native) + ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.CustomDtoIdentity, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.CustomPayloadIdentity, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.CustomEnvelopeIdentity, string.Empty);
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");

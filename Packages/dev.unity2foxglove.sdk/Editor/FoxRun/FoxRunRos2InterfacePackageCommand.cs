@@ -26,6 +26,32 @@ namespace Unity.FoxgloveSDK.Editor
             Run(generate: true, checkOnly: false, nextRevision: null, exitWhenBatch: false);
         }
 
+        [MenuItem("Foxglove/FoxRun/Validate ROS2 Interface Source Package")]
+        public static void ValidateFromMenu()
+        {
+            Run(generate: false, checkOnly: true, nextRevision: null, exitWhenBatch: false);
+        }
+
+        [MenuItem("Foxglove/FoxRun/Open ROS2 Interface Source Package")]
+        public static void OpenSourcePackageFromMenu()
+        {
+            try
+            {
+                var packageRoot = GetSourcePackageRoot();
+                if (!Directory.Exists(packageRoot))
+                {
+                    Debug.LogError("[FoxRun ROS2 interfaces] Static source package is not available.");
+                    return;
+                }
+
+                EditorUtility.RevealInFinder(packageRoot);
+            }
+            catch (Exception)
+            {
+                Debug.LogError("[FoxRun ROS2 interfaces] Could not open the static source package.");
+            }
+        }
+
         /// <summary>
         /// Unity batch entry point. Accepts exactly one of <c>--check</c> or
         /// <c>--generate</c>, plus the optional explicit

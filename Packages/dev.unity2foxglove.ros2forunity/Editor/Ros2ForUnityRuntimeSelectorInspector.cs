@@ -46,7 +46,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var customTypesupport = status.SelectedRuntime == null
                 ? null
                 : Ros2ForUnityRuntimeSelection.GetActiveCustomTypesupportSelection(projectDirectory);
-            DrawCustomTypesupportStatus(customTypesupport);
             DrawRestartStatus(projectDirectory, status, customTypesupport);
 
             if (status.SelectedRuntime != null)
@@ -143,30 +142,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                         "Switching runtime packages or communication modes is safe before this Editor session enters Play Mode. A restart is required only after native ROS2 DLLs have already loaded in this session.",
                         MessageType.Info);
                 }
-            }
-        }
-
-        private static void DrawCustomTypesupportStatus(
-            Ros2ForUnityCustomTypesupportSelectionResult customTypesupport)
-        {
-            if (customTypesupport == null)
-                return;
-
-            if (customTypesupport.IsReady)
-            {
-                using (new EditorGUI.DisabledScope(true))
-                {
-                    EditorGUILayout.TextField("Custom ROS2 Typesupport", customTypesupport.ActiveAddOnPackage);
-                    EditorGUILayout.TextField("Interface Digest", customTypesupport.InterfaceDigest);
-                }
-                return;
-            }
-
-            if (customTypesupport.Code != Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly)
-            {
-                EditorGUILayout.HelpBox(
-                    "FoxRun custom ROS2 typesupport is not ready: " + customTypesupport.Code + ".",
-                    MessageType.Warning);
             }
         }
 

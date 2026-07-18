@@ -38,6 +38,7 @@ namespace Unity.FoxgloveSDK.Editor
             var subscriptions = new FoxRunManifestSubscriptionSection(
                 subscriptionHash,
                 subscriptionBindings);
+            var customNativeContracts = BuildCustomNativeContracts(source);
             var sections = new FoxRunManifestSections(section, subscriptions);
             var generator = new FoxRunManifestGenerator(GeneratorName, generatorMajorVersion);
             var globalHash = FoxRunManifestHasher.Sha256Hex(
@@ -52,7 +53,8 @@ namespace Unity.FoxgloveSDK.Editor
                 PackageName,
                 generator,
                 sections,
-                globalHash);
+                globalHash,
+                customNativeContracts);
         }
 
         private static IReadOnlyList<FoxRunManifestType> BuildTypes(IReadOnlyList<FoxRunManifestMember> members)
@@ -100,6 +102,30 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
+                .ToList()
+                .AsReadOnly();
+        }
+
+        private static IReadOnlyList<FoxRunManifestCustomNativeContract> BuildCustomNativeContracts(
+            IReadOnlyList<FoxRunManifestMember> members)
+        {
+            return members
+                .Where(member => member.GeneratesRos2NativeRegistration
+                                 && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto)
+                .Select(member => new FoxRunManifestCustomNativeContract(
+                    DeclaringType(member),
+                    member.MemberName,
+                    member.Topic,
+                    FoxRunGenerationMember.ModeToName(member.FlowMode),
+                    member.SubscriptionProvider,
+                    member.Ros2Qos,
+                    true,
+                    member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
+                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
+                    ResolveCustomEnvelopeIdentity(member)))
+                .OrderBy(contract => contract.DeclaringType, StringComparer.Ordinal)
+                .ThenBy(contract => contract.Topic, StringComparer.Ordinal)
+                .ThenBy(contract => contract.MemberName, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
         }

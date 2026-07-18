@@ -32,6 +32,8 @@
     <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Link="NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportDiscovery.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportPreflight.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -59,8 +59,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         internal const string CustomTypesupportPackagePrefix =
             "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.";
         private const string RuntimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
-        private const string StaticInterfacePackageId = "dev.unity2foxglove.foxrun.ros2.interfaces";
-        private const string RosPackageName = "unity2foxglove_foxrun_interfaces_v1";
+        internal const string StaticInterfacePackageId = "dev.unity2foxglove.foxrun.ros2.interfaces";
+        internal const string StaticRosPackageName = "unity2foxglove_foxrun_interfaces_v1";
         private const string OptionalFacadePackageId = "dev.unity2foxglove.ros2forunity";
         private const string NativePluginRelativeDirectory =
             "Runtime/Ros2ForUnity/Plugins/Windows/x86_64";
@@ -231,19 +231,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         internal static string GetActiveAddOnPackageId(string projectDirectory)
         {
+            var active = GetActiveAddOnPackageIds(projectDirectory);
+            return active.Count == 1 ? active[0] : string.Empty;
+        }
+
+        /// <summary>
+        /// Returns the manifest-resolved custom add-on package IDs only. This
+        /// is intentionally a bounded metadata query for Inspector/preflight
+        /// presentation; it does not inspect candidate directories, mutate a
+        /// manifest, resolve packages, or initialize ROS2.
+        /// </summary>
+        internal static IReadOnlyList<string> GetActiveAddOnPackageIds(string projectDirectory)
+        {
             var manifestPath = Path.Combine(projectDirectory ?? string.Empty, "Packages", "manifest.json");
             try
             {
                 var dependencies = JObject.Parse(File.ReadAllText(manifestPath))["dependencies"] as JObject;
-                var active = dependencies?.Properties()
+                return dependencies?.Properties()
                     .Where(property => property.Name.StartsWith(CustomTypesupportPackagePrefix, StringComparison.Ordinal))
                     .Select(property => property.Name)
+                    .OrderBy(packageId => packageId, StringComparer.Ordinal)
                     .ToArray() ?? Array.Empty<string>();
-                return active.Length == 1 ? active[0] : string.Empty;
             }
             catch (Exception)
             {
-                return string.Empty;
+                return Array.Empty<string>();
             }
         }
 
@@ -329,7 +341,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 var baseRuntimeToken = manifest["baseRuntime"] as JObject;
                 if (source == null || baseRuntimeToken == null
                     || !StringEquals(Text(source["upmPackageId"]), StaticInterfacePackageId)
-                    || !StringEquals(Text(source["rosPackageName"]), RosPackageName)
+                    || !StringEquals(Text(source["rosPackageName"]), StaticRosPackageName)
                     || !IsSha256(Text(source["interfaceDigest"]))
                     || !StringEquals(Text(manifest["distro"]), baseRuntime.Distro)
                     || !StringEquals(Text(manifest["platform"]), "win64")
@@ -373,7 +385,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (!TryReadObject(staticLock, out var sourceLock))
                 return false;
             return StringEquals(Text(sourceLock["unityPackageId"]), StaticInterfacePackageId)
-                   && StringEquals(Text(sourceLock["rosPackageName"]), RosPackageName)
+                   && StringEquals(Text(sourceLock["rosPackageName"]), StaticRosPackageName)
                    && sourceLock["interfaceRevision"]?.Value<int?>() == 1
                    && StringEquals(Text(sourceLock["interfaceDigest"]), interfaceDigest);
         }

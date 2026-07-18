@@ -99,6 +99,34 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void CustomInterfaceDefineRequiresTheVerified181CSelectionAndSettledReload()
+        {
+            var defineInstaller = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs");
+            var preflight = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs");
+
+            Assert.Contains("GetActiveCustomTypesupportSelection", defineInstaller, StringComparison.Ordinal);
+            Assert.Contains("if (customTypesupport?.IsReady == true)", defineInstaller, StringComparison.Ordinal);
+            Assert.Contains(
+                "EnsureSymbol(parts, Ros2ForUnityRuntimeSelection.CustomTypesupportCompileSymbol)",
+                defineInstaller,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "RemoveSymbol(parts, Ros2ForUnityRuntimeSelection.CustomTypesupportCompileSymbol)",
+                defineInstaller,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "input.Selection == null || !input.Selection.IsReady",
+                preflight,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "!input.EditorReloadSettled || !input.CustomCompileSymbolDefined",
+                preflight,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedNativePartialCompilesForPredefinedAndReferencedCustomAssemblies()
         {
             var predefined = CompileGeneratedFixture("Assembly-CSharp", includeNativeReference: true);

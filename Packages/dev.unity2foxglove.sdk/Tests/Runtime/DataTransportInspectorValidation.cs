@@ -482,21 +482,33 @@ namespace Unity.FoxgloveSDK.Tests
                 "This shared runtime/RMW selection is currently required by Publish Data.";
 
             var demandBranches = DirectIfStatements(nativeRuntime).ToArray();
-            var combinedDemandBranch = demandBranches.Length == 1
-                && HasIdentifierConjunctionCondition(demandBranches[0], "outputDemand", "subscriptionDemand")
-                ? demandBranches[0]
+            var combinedDemandBranches = demandBranches
+                .Where(branch => HasIdentifierConjunctionCondition(branch, "outputDemand", "subscriptionDemand"))
+                .ToArray();
+            var combinedDemandBranch = combinedDemandBranches.Length == 1
+                ? combinedDemandBranches[0]
                 : null;
             var subscribeOnlyBranch = combinedDemandBranch?.Else?.Statement as IfStatementSyntax;
             var publishOnlyBranch = subscribeOnlyBranch?.Else?.Statement;
+            var customNativeInputDemand = HasCustomNativeSubscriptionDemandAssignment(nativeRuntime);
 
             Check(nativeRuntime != null
+                  && combinedDemandBranches.Length == 1
                   && combinedDemandBranch != null
                   && HasIdentifierCondition(subscribeOnlyBranch, "subscriptionDemand")
                   && publishOnlyBranch != null
+                  && customNativeInputDemand
                   && HasExactlyOneInfoHelpBox(DirectThenStatements(combinedDemandBranch), combinedDemandMessage)
                   && HasExactlyOneInfoHelpBox(DirectThenStatements(subscribeOnlyBranch), subscribeOnlyMessage)
                   && HasExactlyOneInfoHelpBox(DirectBranchStatements(publishOnlyBranch), publishOnlyMessage),
-                "180G-1: shared ROS 2 Native Runtime (R2FU) distinguishes combined, Subscribe-only, and Publish-only demand without implying that Subscribe enables Publish");
+                "180G-1: shared ROS 2 Native Runtime (R2FU) distinguishes combined, Subscribe-only, and Publish-only demand, including custom native input, without implying that Subscribe enables Publish");
+        }
+
+        private static bool HasCustomNativeSubscriptionDemandAssignment(MethodDeclarationSyntax method)
+        {
+            return method?.ToFullString().Contains(
+                       "var subscriptionDemand = HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand();",
+                       StringComparison.Ordinal) == true;
         }
 
         private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)

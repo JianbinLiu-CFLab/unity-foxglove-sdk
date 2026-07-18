@@ -153,6 +153,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             Assert.Contains("public const int ManifestVersion = 2;", source, StringComparison.Ordinal);
             Assert.Contains("public const int SubscriptionBindingCount = 1;", source, StringComparison.Ordinal);
+            Assert.Contains("public const int CustomNativeContractCount = 0;", source, StringComparison.Ordinal);
             Assert.Contains("public const string SubscriptionManifestHash =", source, StringComparison.Ordinal);
             Assert.Contains("new FoxRunSchemaSubscriptionBindingInfo(", source, StringComparison.Ordinal);
             Assert.Contains("FoxRunSubscriptionProvider.Ros2Native", source, StringComparison.Ordinal);
@@ -160,7 +161,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("\"std_msgs.msg.String\"", source, StringComparison.Ordinal);
             Assert.Contains("\"std_msgs/msg/String\"", source, StringComparison.Ordinal);
             Assert.Contains("\"std-string-copy-v1\"", source, StringComparison.Ordinal);
-            Assert.Contains("SubscriptionBindings));", source, StringComparison.Ordinal);
+            Assert.Contains("SubscriptionBindings,", source, StringComparison.Ordinal);
+            Assert.Contains("CustomNativeContracts));", source, StringComparison.Ordinal);
         }
 
         [Fact]

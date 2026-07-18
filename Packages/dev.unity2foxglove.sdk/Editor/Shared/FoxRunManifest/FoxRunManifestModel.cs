@@ -193,19 +193,29 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunManifestGenerator Generator { get; }
         public FoxRunManifestSections Sections { get; }
         public string GlobalManifestHash { get; }
+        /// <summary>
+        /// Generated-code metadata for supported custom native contracts.
+        /// This is intentionally outside the WebSocket manifest sections:
+        /// custom interface source/add-on coherence is authenticated by the
+        /// Phase181 interface digest rather than by a Foxglove wire hash.
+        /// </summary>
+        public IReadOnlyList<FoxRunManifestCustomNativeContract> CustomNativeContracts { get; }
 
         public FoxRunCanonicalManifest(
             int manifestVersion,
             string packageName,
             FoxRunManifestGenerator generator,
             FoxRunManifestSections sections,
-            string globalManifestHash)
+            string globalManifestHash,
+            IReadOnlyList<FoxRunManifestCustomNativeContract> customNativeContracts = null)
         {
             ManifestVersion = manifestVersion;
             Package = packageName ?? string.Empty;
             Generator = generator ?? throw new ArgumentNullException(nameof(generator));
             Sections = sections ?? throw new ArgumentNullException(nameof(sections));
             GlobalManifestHash = globalManifestHash ?? string.Empty;
+            CustomNativeContracts = new List<FoxRunManifestCustomNativeContract>(
+                customNativeContracts ?? Array.Empty<FoxRunManifestCustomNativeContract>()).AsReadOnly();
         }
     }
 
@@ -302,6 +312,49 @@ namespace Unity.FoxgloveSDK.Editor
             CanonicalRosType = canonicalRosType ?? string.Empty;
             CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
             Ros2ContractKind = ros2ContractKind;
+            CustomDtoIdentity = customDtoIdentity ?? string.Empty;
+            CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
+            CustomEnvelopeIdentity = customEnvelopeIdentity ?? string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Direction-neutral manifest metadata for a supported custom DTO that has
+    /// a generated ROS2 native registration. This is intentionally not named a
+    /// subscription binding because PublishOnly custom contracts are included.
+    /// </summary>
+    public sealed class FoxRunManifestCustomNativeContract
+    {
+        public string DeclaringType { get; }
+        public string MemberName { get; }
+        public string Topic { get; }
+        public string FlowMode { get; }
+        public string DeclaredProvider { get; }
+        public string Ros2Qos { get; }
+        public bool SupportsRos2Native { get; }
+        public string CustomDtoIdentity { get; }
+        public string CustomPayloadIdentity { get; }
+        public string CustomEnvelopeIdentity { get; }
+
+        public FoxRunManifestCustomNativeContract(
+            string declaringType,
+            string memberName,
+            string topic,
+            string flowMode,
+            string declaredProvider,
+            string ros2Qos,
+            bool supportsRos2Native,
+            string customDtoIdentity,
+            string customPayloadIdentity,
+            string customEnvelopeIdentity)
+        {
+            DeclaringType = declaringType ?? string.Empty;
+            MemberName = memberName ?? string.Empty;
+            Topic = topic ?? string.Empty;
+            FlowMode = flowMode ?? string.Empty;
+            DeclaredProvider = declaredProvider ?? string.Empty;
+            Ros2Qos = ros2Qos ?? string.Empty;
+            SupportsRos2Native = supportsRos2Native;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;
             CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
             CustomEnvelopeIdentity = customEnvelopeIdentity ?? string.Empty;
