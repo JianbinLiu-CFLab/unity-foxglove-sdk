@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTopLevelWorkflow(topLevel);
             VerifyNestedTransportWorkflow(dataTransport, publishData);
             VerifyPublishPresentation(publishData);
-            VerifySubscribePresentation(subscribeData, nativeQos, nativeBudget, nativeBudgetUnit);
+            VerifySubscribePresentation(dataTransport, subscribeData, nativeQos, nativeBudget, nativeBudgetUnit);
             VerifyNativeRuntimePresentation(nativeRuntime);
             VerifyFoldoutStateModel(mainInspector, foldoutState);
             VerifyParentSectionPresentationHelper(section);
@@ -275,11 +275,14 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static void VerifySubscribePresentation(
+            MethodDeclarationSyntax dataTransport,
             MethodDeclarationSyntax subscribeData,
             MethodDeclarationSyntax nativeQos,
             MethodDeclarationSyntax nativeBudget,
             MethodDeclarationSyntax nativeBudgetUnit)
         {
+            const string nativeSubscriptionRuntimeMessage =
+                "ROS 2 Native Subscribe requires the shared ROS 2 Native Runtime (R2FU). Subscribe does not enable Publish.";
             var allInvocations = AllInvocations(subscribeData);
             var directInvocations = DirectInvocations(subscribeData).ToArray();
             var webSocketBranches = subscribeData.DescendantNodes()
@@ -300,6 +303,18 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
             var nativeDiagnostics = allInvocations
                 .Where(invocation => IsInvocationNamed(invocation, "DrawOptionalR2fuNativeSubscriptionDiagnostics"))
+                .ToArray();
+            var nativeSubscriptionRuntimeBranches = DirectIfStatements(subscribeData)
+                .Where(HasNativeSubscriptionDemandCondition)
+                .ToArray();
+            var nativeSubscriptionRuntimeDemandCalls = allInvocations
+                .Where(invocation => IsInvocationNamed(invocation, "HasR2fuNativeSubscriptionDemand"))
+                .ToArray();
+            var generalizedRuntimeDemandCalls = allInvocations
+                .Where(invocation => IsInvocationNamed(invocation, "HasR2fuNativeRuntimeDemand"))
+                .ToArray();
+            var nativeRuntimePlacementBranches = DirectIfStatements(dataTransport)
+                .Where(HasNativeDemandCondition)
                 .ToArray();
 
             Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
@@ -373,6 +388,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && ContainsStringLiteralFragment(nativeBudget, "Native Copied-Message Budget")
                   && ContainsStringLiteralFragment(nativeBudget, "bytes"),
                 "180F-7: native copied-message budget converts KiB or MiB deterministically and renders its exact stored-byte equivalent");
+            Check(nativeSubscriptionRuntimeBranches.Length == 1
+                  && nativeSubscriptionRuntimeDemandCalls.Length == 1
+                  && generalizedRuntimeDemandCalls.Length == 0
+                  && HasExactlyOneInfoHelpBox(
+                      DirectThenStatements(nativeSubscriptionRuntimeBranches[0]),
+                      nativeSubscriptionRuntimeMessage)
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "HelpBox")
+                                                && HasStringArgument(
+                                                    invocation,
+                                                    0,
+                                                    nativeSubscriptionRuntimeMessage)) == 1
+                  && !ContainsStringLiteralFragment(subscribeData, "ROS2 Runtime")
+                  && !ContainsStringLiteralFragment(subscribeData, "ROS2 Publish Data")
+                  && nativeRuntimePlacementBranches.Length == 1,
+                "180F-8: only native input demand shows its shared ROS 2 Native Runtime context; Subscribe retains no generalized runtime condition or obsolete ROS2 labels");
         }
 
         private static void VerifyNativeRuntimePresentation(MethodDeclarationSyntax nativeRuntime)
@@ -646,6 +676,13 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return statement.Condition is InvocationExpressionSyntax invocation
                    && IsInvocationNamed(invocation, "HasR2fuNativeRuntimeDemand")
+                   && invocation.ArgumentList.Arguments.Count == 0;
+        }
+
+        private static bool HasNativeSubscriptionDemandCondition(IfStatementSyntax statement)
+        {
+            return statement.Condition is InvocationExpressionSyntax invocation
+                   && IsInvocationNamed(invocation, "HasR2fuNativeSubscriptionDemand")
                    && invocation.ArgumentList.Arguments.Count == 0;
         }
 

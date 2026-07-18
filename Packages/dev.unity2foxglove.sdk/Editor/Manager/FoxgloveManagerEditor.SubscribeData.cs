@@ -78,10 +78,10 @@ namespace Unity.FoxgloveSDK.Editor
 
                 DrawOptionalR2fuNativeSubscriptionDiagnostics();
             }
-            if (HasR2fuNativeRuntimeDemand())
+            if (HasR2fuNativeSubscriptionDemand())
             {
                 EditorGUILayout.HelpBox(
-                    "Native subscription demand uses the shared ROS2 Runtime (R2FU) section below; it does not enable ROS2 Publish Data output.",
+                    "ROS 2 Native Subscribe requires the shared ROS 2 Native Runtime (R2FU). Subscribe does not enable Publish.",
                     MessageType.Info);
             }
             if (GetBool("_enableFoxRunInbound")
