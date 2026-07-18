@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Dictionary<(uint clientId, uint chId), ChannelWriteState> _clientChannelWriteState = new();
         private readonly HashSet<(uint clientId, uint chId)> _skippedClientChannels = new();
         private readonly Dictionary<uint, ChannelWriteState> _serverChannelWriteStates = new();
-        private readonly Dictionary<string, ChannelWriteState> _topicChannelWriteState = new();
+        private readonly Dictionary<(string topic, McapChannelDirection direction), ChannelWriteState> _topicChannelWriteState = new();
         private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
         private readonly HashSet<ushort> _seenChannelIds = new();
         private readonly List<ChannelWriteState> _allChannelWriteStates = new();
@@ -103,10 +103,31 @@ namespace Unity.FoxgloveSDK.IO
             }
         }
 
+        /// <summary>Metadata key for the external coordinate convention of a channel payload.</summary>
+        public const string CoordinateModeMetadataKey = "coordinate_mode";
+
+        /// <summary>Metadata key for the data direction represented by a channel payload.</summary>
+        public const string DataDirectionMetadataKey = "unity2foxglove.direction";
+
         /// <summary>
-        /// Coordinate mode metadata value applied to new channels (e.g. "ros2", "fixed_frame").
+        /// Compatibility coordinate setting. Reading returns the output convention;
+        /// assigning it configures both directions for legacy one-value callers.
         /// </summary>
-        public string CoordinateMode { get; set; }
+        public string CoordinateMode
+        {
+            get => OutputCoordinateMode;
+            set
+            {
+                OutputCoordinateMode = value;
+                InputCoordinateMode = value;
+            }
+        }
+
+        /// <summary>Coordinate convention of new Unity-to-external output channels.</summary>
+        public string OutputCoordinateMode { get; set; }
+
+        /// <summary>Coordinate convention of new external-to-Unity input channels.</summary>
+        public string InputCoordinateMode { get; set; }
 
         /// <summary>
         /// Register a server-side channel and write its MCAP channel record immediately.
@@ -161,12 +182,12 @@ namespace Unity.FoxgloveSDK.IO
                     if (_nextChannelId == 0) { Fail("Channel ID overflow"); return; }
                     mCid = _nextChannelId++;
                 }
-                var state = new ChannelWriteState { McapId = mCid, Topic = topic };
+                var state = new ChannelWriteState { McapId = mCid, SchemaId = sid, Topic = topic };
                 _serverChannelWriteStates[fId] = state;
-                if (!_topicChannelWriteState.ContainsKey(topic))
-                    _topicChannelWriteState[topic] = state;
+                if (!_topicChannelWriteState.ContainsKey((topic, McapChannelDirection.Output)))
+                    _topicChannelWriteState[(topic, McapChannelDirection.Output)] = state;
 
-                var meta = CreateChannelMetadata();
+                var meta = CreateChannelMetadata(McapChannelDirection.Output);
                 _writer.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
                 _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = SnapshotChannelMetadata(meta) });
                 RecordTopicSignature(topic, signature);
@@ -200,13 +221,19 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     var messageEncoding = NormalizeMessageEncoding(enc);
                     var signature = CreateTopicSignature(messageEncoding, sName, sEnc, sContent);
-                    if (TryReuseExistingTopicChannel(topic, signature, sContent, out map))
+                    if (TryReuseExistingTopicChannel(
+                            topic,
+                            McapChannelDirection.Input,
+                            signature,
+                            sContent,
+                            out map))
                     {
                         _clientChannelWriteState[key] = map;
                     }
                     else
                     {
-                        if (WouldMixTopicSignature(topic, signature))
+                        if (WouldMixTopicSignature(topic, signature)
+                            && !TryGetCompatibleTopicSchemaId(topic, signature, sContent, out _))
                         {
                             _skippedClientChannels.Add(key);
                             _log.LogWarning(
@@ -214,13 +241,17 @@ namespace Unity.FoxgloveSDK.IO
                             return;
                         }
 
-                        var sid = GetOrCreateSchema(sName, sEnc, sContent);
+                        var sid = TryGetCompatibleTopicSchemaId(topic, signature, sContent, out var compatibleSchemaId)
+                            ? compatibleSchemaId
+                            : GetOrCreateSchema(sName, sEnc, sContent);
                         if (_recordingFailed) return;
                         if (_nextChannelId == 0) { Fail("Channel ID overflow"); return; }
                         var mcapId = _nextChannelId++;
-                        map = new ChannelWriteState { McapId = mcapId, Topic = topic };
+                        map = new ChannelWriteState { McapId = mcapId, SchemaId = sid, Topic = topic };
                         _clientChannelWriteState[key] = map;
-                        var meta = CreateChannelMetadata();
+                        if (!_topicChannelWriteState.ContainsKey((topic, McapChannelDirection.Input)))
+                            _topicChannelWriteState[(topic, McapChannelDirection.Input)] = map;
+                        var meta = CreateChannelMetadata(McapChannelDirection.Input);
                         _writer.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
                         _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = SnapshotChannelMetadata(meta) });
                         RecordTopicSignature(topic, signature);
@@ -710,11 +741,18 @@ namespace Unity.FoxgloveSDK.IO
             return counts;
         }
 
-        private Dictionary<string, string> CreateChannelMetadata()
+        private Dictionary<string, string> CreateChannelMetadata(McapChannelDirection direction)
         {
-            return string.IsNullOrEmpty(CoordinateMode)
-                ? CreateEmptyChannelMetadata()
-                : new Dictionary<string, string> { ["coordinate_mode"] = CoordinateMode };
+            var coordinateMode = direction == McapChannelDirection.Output
+                ? OutputCoordinateMode
+                : InputCoordinateMode;
+            var metadata = new Dictionary<string, string>
+            {
+                [DataDirectionMetadataKey] = direction == McapChannelDirection.Output ? "output" : "input"
+            };
+            if (!string.IsNullOrEmpty(coordinateMode))
+                metadata[CoordinateModeMetadataKey] = coordinateMode;
+            return metadata;
         }
 
         private static Dictionary<string, string> SnapshotChannelMetadata(Dictionary<string, string> metadata)

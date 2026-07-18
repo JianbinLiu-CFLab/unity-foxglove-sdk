@@ -12,27 +12,58 @@ namespace Unity.FoxgloveSDK.IO
     {
         bool TryReuseExistingTopicChannel(
             string topic,
+            McapChannelDirection direction,
             TopicSignature incoming,
             string sContent,
             out ChannelWriteState state)
         {
             state = null;
             if (string.IsNullOrEmpty(topic)) return false;
-            if (!_topicChannelWriteState.TryGetValue(topic, out var existingState)) return false;
-            if (!_topicSignatures.TryGetValue(topic, out var existing)) return false;
-
-            if (!string.IsNullOrEmpty(incoming.SchemaName) &&
-                string.IsNullOrEmpty(sContent) &&
-                existing.Encoding == incoming.Encoding &&
-                existing.SchemaName == incoming.SchemaName &&
-                (string.IsNullOrEmpty(incoming.SchemaEncoding) || existing.SchemaEncoding == incoming.SchemaEncoding) &&
-                !string.IsNullOrEmpty(existing.Hash))
+            if (!_topicChannelWriteState.TryGetValue((topic, direction), out var existingState)) return false;
+            if (IsIncompleteSchemaDeclarationCompatible(topic, incoming, sContent))
             {
                 state = existingState;
                 return true;
             }
 
             return false;
+        }
+
+        bool TryGetCompatibleTopicSchemaId(
+            string topic,
+            TopicSignature incoming,
+            string sContent,
+            out ushort schemaId)
+        {
+            schemaId = 0;
+            if (!IsIncompleteSchemaDeclarationCompatible(topic, incoming, sContent))
+                return false;
+
+            foreach (var entry in _topicChannelWriteState)
+            {
+                if (entry.Key.topic == topic && entry.Value.SchemaId != 0)
+                {
+                    schemaId = entry.Value.SchemaId;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool IsIncompleteSchemaDeclarationCompatible(string topic, TopicSignature incoming, string sContent)
+        {
+            if (string.IsNullOrEmpty(topic)
+                || string.IsNullOrEmpty(incoming.SchemaName)
+                || !string.IsNullOrEmpty(sContent)
+                || !_topicSignatures.TryGetValue(topic, out var existing))
+                return false;
+
+            return existing.Encoding == incoming.Encoding
+                   && existing.SchemaName == incoming.SchemaName
+                   && (string.IsNullOrEmpty(incoming.SchemaEncoding)
+                       || existing.SchemaEncoding == incoming.SchemaEncoding)
+                   && !string.IsNullOrEmpty(existing.Hash);
         }
 
         /// <summary>

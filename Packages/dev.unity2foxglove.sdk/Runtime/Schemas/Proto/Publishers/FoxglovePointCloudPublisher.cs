@@ -372,7 +372,7 @@ namespace Unity.FoxgloveSDK.Components
                     _includeInactiveChildren,
                     _includeSyntheticIntensity,
                     _maxPoints,
-                    Manager != null ? Manager.ActiveCoordinateMode : CoordinateMode.LeftHand),
+                    Manager != null ? Manager.ActiveOutputCoordinateMode : CoordinateMode.LeftHand),
                     unixNs,
                     out packedLayout);
             _pendingFrameSlot.ResetReplacementWarning();

@@ -521,12 +521,37 @@ namespace Unity.FoxgloveSDK.Core
         public void EnableRecording(string filePath, int chunkSizeBytes = McapRecorder.DefaultChunkSizeBytes, string compression = "", string coordinateMode = "")
             => _recording.Enable(filePath, chunkSizeBytes, compression, coordinateMode);
 
+        /// <summary>Enable MCAP recording with explicit output and input coordinate conventions.</summary>
+        public void EnableRecording(
+            string filePath,
+            int chunkSizeBytes,
+            string compression,
+            string outputCoordinateMode,
+            string inputCoordinateMode)
+            => _recording.Enable(
+                filePath,
+                chunkSizeBytes,
+                compression,
+                outputCoordinateMode,
+                inputCoordinateMode);
+
         /// <summary>Enable MCAP recording with advanced writer options for the next session start.</summary>
         public void EnableRecording(string filePath, McapWriterOptions options, string coordinateMode = "")
             => _recording.Enable(filePath, options, coordinateMode);
 
+        /// <summary>Enable MCAP recording with paired coordinate conventions.</summary>
+        public void EnableRecording(
+            string filePath,
+            McapWriterOptions options,
+            string outputCoordinateMode,
+            string inputCoordinateMode)
+            => _recording.Enable(filePath, options, outputCoordinateMode, inputCoordinateMode);
+
         /// <summary>Set the coordinate mode on the recording controller.</summary>
         public void SetRecordingCoordinateMode(string mode) => _recording.SetCoordinateMode(mode);
+        /// <summary>Set paired coordinate conventions on the recording controller.</summary>
+        public void SetRecordingCoordinateModes(string outputMode, string inputMode)
+            => _recording.SetCoordinateModes(outputMode, inputMode);
         /// <summary>Disable recording.</summary>
         public void DisableRecording() => _recording.Disable();
 
@@ -582,6 +607,14 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Enable MCAP replay using the selected schema identity policy.</summary>
         public void EnableReplay(string filePath, SchemaIdentityMode identityMode)
             => _replay.Enable(filePath, identityMode);
+
+        /// <summary>Enable MCAP replay with explicit output and input coordinate conventions.</summary>
+        public void EnableReplay(
+            string filePath,
+            SchemaIdentityMode identityMode,
+            string outputCoordinateMode,
+            string inputCoordinateMode)
+            => _replay.Enable(filePath, outputCoordinateMode, inputCoordinateMode, identityMode);
         /// <summary>Disable replay and dispose the engine.</summary>
         public void DisableReplay()
             => _tickCoordinator.DisableReplay(_replay);

@@ -59,16 +59,6 @@ namespace Unity.FoxgloveSDK.Components
         private const string NoCompressionName = "";
 
         /// <summary>
-        /// Runtime coordinate mode label for converted right-handed data.
-        /// </summary>
-        private const string RightHandCoordinateModeName = "RightHand";
-
-        /// <summary>
-        /// Runtime coordinate mode label for Unity-native left-handed data.
-        /// </summary>
-        private const string LeftHandCoordinateModeName = "LeftHand";
-
-        /// <summary>
         /// Unix epoch used for playback-control wall-clock conversion.
         /// </summary>
         private static readonly System.DateTime UnixEpochUtc = new System.DateTime(1970, 1, 1);
@@ -191,11 +181,17 @@ namespace Unity.FoxgloveSDK.Components
                 McapCompressionMode.Zstd => ZstdCompressionName,
                 _ => NoCompressionName
             };
-            var coord = _coordinateMode == CoordinateMode.RightHand ? RightHandCoordinateModeName : LeftHandCoordinateModeName;
+            var outputCoordinateMode = CoordinateTransportPolicy.ToMcapCoordinateMode(ActiveOutputCoordinateMode);
+            var inputCoordinateMode = CoordinateTransportPolicy.ToMcapCoordinateMode(ActiveInputCoordinateMode);
             try
             {
                 var chunkSizeBytes = checked(Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB) * RecordingBytesPerKilobyte);
-                _runtime.EnableRecording(path, chunkSizeBytes, comp, coord);
+                _runtime.EnableRecording(
+                    path,
+                    chunkSizeBytes,
+                    comp,
+                    outputCoordinateMode,
+                    inputCoordinateMode);
             }
             catch
             {
@@ -253,10 +249,14 @@ namespace Unity.FoxgloveSDK.Components
                 DisableLivePublishers();
             }
 
-            var coord = _coordinateMode == CoordinateMode.RightHand ? RightHandCoordinateModeName : LeftHandCoordinateModeName;
-            _runtime.SetRecordingCoordinateMode(coord);
+            var outputCoordinateMode = CoordinateTransportPolicy.ToMcapCoordinateMode(ActiveOutputCoordinateMode);
+            var inputCoordinateMode = CoordinateTransportPolicy.ToMcapCoordinateMode(ActiveInputCoordinateMode);
             var identityMode = EffectiveSchemaIdentityMode;
-            _runtime.EnableReplay(ResolveProjectPath(_replayFilePath), identityMode);
+            _runtime.EnableReplay(
+                ResolveProjectPath(_replayFilePath),
+                identityMode,
+                outputCoordinateMode,
+                inputCoordinateMode);
             if (!_runtime.ReplayEnabled)
             {
                 if (_runtime.ReplayStartBlockedBySchemaMismatch)

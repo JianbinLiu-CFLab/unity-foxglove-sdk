@@ -239,7 +239,7 @@ namespace Unity.FoxgloveSDK.Components
             var localPos = _useLocalTransform ? transform.localPosition : transform.position;
             var localRot = _useLocalTransform ? transform.localRotation : transform.rotation;
 
-            if (Manager?.ActiveCoordinateMode == CoordinateMode.RightHand)
+            if (Manager?.ActiveOutputCoordinateMode == CoordinateMode.RightHand)
             {
                 position = CoordinateConverter.UnityToFoxglovePosition(localPos);
                 rotation = CoordinateConverter.UnityToFoxgloveRotation(localRot);

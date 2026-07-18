@@ -69,6 +69,7 @@ namespace Unity.FoxgloveSDK.Tests
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
             var migration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
             var helper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunWireEncodingPolicyMigration.cs");
+            var copyBudgetPolicy = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2NativeCopyBudgetPolicy.cs");
 
             Check(policy.Contains("public sealed class FoxRunSubscriptionSessionPolicy", StringComparison.Ordinal)
                   && policy.Contains("public ulong SessionGeneration { get; }", StringComparison.Ordinal)
@@ -168,9 +169,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && migration.Contains("ref _defaultFoxRunRos2Qos", StringComparison.Ordinal)
                   && migration.Contains("ref _foxRunRos2NativeCopyBudgetBytes", StringComparison.Ordinal)
                   && helper.Contains("CurrentSerializationVersion = 2", StringComparison.Ordinal)
-                  && helper.Contains("MinRos2NativeCopyBudgetBytes = 1024", StringComparison.Ordinal)
-                  && helper.Contains("MaxRos2NativeCopyBudgetBytes = 256 * 1024 * 1024", StringComparison.Ordinal)
-                  && helper.Contains("DefaultRos2NativeCopyBudgetBytes = 4 * 1024 * 1024", StringComparison.Ordinal)
+                  && copyBudgetPolicy.Contains("public const int MinBytes = 1024", StringComparison.Ordinal)
+                  && copyBudgetPolicy.Contains("public const int MaxBytes = 256 * 1024 * 1024", StringComparison.Ordinal)
+                  && copyBudgetPolicy.Contains("public const int DefaultBytes = 4 * 1024 * 1024", StringComparison.Ordinal)
+                  && helper.Contains("MinRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MinBytes", StringComparison.Ordinal)
+                  && helper.Contains("MaxRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MaxBytes", StringComparison.Ordinal)
+                  && helper.Contains("DefaultRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes", StringComparison.Ordinal)
+                  && helper.Contains("=> FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configuredBytes)", StringComparison.Ordinal)
+                  && helper.Contains("FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(qos)", StringComparison.Ordinal)
                   && compatibilitySetter.Contains("_foxRunPolicySerializationVersion = FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion", StringComparison.Ordinal)
                   && !inbound.Contains("FormerlySerializedAs", StringComparison.Ordinal)
                   && !onValidate.Contains("FoxRunWireEncodingPolicyMigration.Migrate", StringComparison.Ordinal)
@@ -200,15 +206,19 @@ namespace Unity.FoxgloveSDK.Tests
             var inspector = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.SubscribeData.cs");
             var labels = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunEncodingEditorLabels.cs");
             var main = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
+            var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
 
-            Check(main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
-                  && main.IndexOf("DrawSection(\"Publish Data\"", StringComparison.Ordinal)
+            Check(main.Contains("DrawSection(\"Data Transport\"", StringComparison.Ordinal)
+                  && !main.Contains("DrawSection(\"Publish Data\"", StringComparison.Ordinal)
+                  && !main.Contains("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
+                  && main.IndexOf("DrawSection(\"Data Transport\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
                   && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
-                     < main.IndexOf("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
-                  && main.IndexOf("DrawSection(\"Subscribe Data\"", StringComparison.Ordinal)
-                     < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal),
-                "175C-7: Subscribe Data Inspector section sits between MCAP and FoxServices");
+                     < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal)
+                  && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Publish\"", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Subscribe\"", StringComparison.Ordinal),
+                "175C-7: Data Transport contains Publish and Subscribe before sibling MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex = selected == 0", StringComparison.Ordinal)
@@ -217,10 +227,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && !labels.Contains("MsgPack", StringComparison.Ordinal)
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
-            Check(inspector.Contains("Default Subscription Protocol", StringComparison.Ordinal)
+            Check(inspector.Contains("Default Input Transport", StringComparison.Ordinal)
                   && inspector.Contains("Subscription Rate Limit Hz (per Topic)", StringComparison.Ordinal)
                   && inspector.Contains("Subscription-policy changes apply after subscriptions are re-enabled.", StringComparison.Ordinal)
-                  && inspector.Contains("captured provider, WebSocket encoding, QoS, and copy budget", StringComparison.Ordinal),
+                  && inspector.Contains("captured provider, WebSocket encoding, QoS, copy budget, and rate", StringComparison.Ordinal),
                 "175C-9: Inspector exposes subscription controls and the session re-enable boundary");
         }
 

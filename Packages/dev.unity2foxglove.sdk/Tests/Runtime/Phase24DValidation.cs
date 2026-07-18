@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestSameSchemaNameDifferentContentIsSkipped();
             TestDifferentEncodingIsSkipped();
             TestServerDuplicateTopicWithIncompatibleSchemaIsSkipped();
-            TestClientCanReuseAdvertisedTopicSchemaWithoutContent();
+            TestClientUsesDirectionSpecificChannelWithAdvertisedTopicSchemaWithoutContent();
             TestEmptyEncodingEquivalentToJson();
             Console.WriteLine($"Phase 24D: {_passCount} checks passed.");
         }
@@ -226,11 +226,11 @@ namespace Unity.FoxgloveSDK.Tests
         /// <summary>
         /// Foxglove Publish can advertise a known schema name without sending
         /// the full schema content back to the server. If Unity already
-        /// advertised the same topic/schema, the recorder should reuse that
-        /// channel instead of treating the missing client schema content as a
-        /// mixed-schema conflict.
+        /// advertised the same topic/schema, the recorder must reuse the
+        /// validated schema while keeping the input record on a separate
+        /// direction-specific channel.
         /// </summary>
-        static void TestClientCanReuseAdvertisedTopicSchemaWithoutContent()
+        static void TestClientUsesDirectionSpecificChannelWithAdvertisedTopicSchemaWithoutContent()
         {
             var ms = new MemoryStream();
             var recorder = new McapRecorder(ms);
@@ -243,8 +243,18 @@ namespace Unity.FoxgloveSDK.Tests
             recorder.Close();
             ms.Position = 0;
             var summary = new McapReader(ms).ReadSummary();
-            Assert(summary.Channels.Count == 1,
-                "Client schema name only: reused existing /unity/client_log channel");
+            Assert(summary.Channels.Count == 2,
+                "Client schema name only: output and input use distinct /unity/client_log channels");
+            Assert(summary.Channels.All(channel => channel.SchemaId == summary.Channels[0].SchemaId),
+                "Client schema name only: input reuses the advertised schema");
+            Assert(summary.Channels.Count(channel =>
+                    channel.Metadata.TryGetValue(McapRecorder.DataDirectionMetadataKey, out var direction)
+                    && direction == "output") == 1,
+                "Client schema name only: one output channel is labeled");
+            Assert(summary.Channels.Count(channel =>
+                    channel.Metadata.TryGetValue(McapRecorder.DataDirectionMetadataKey, out var direction)
+                    && direction == "input") == 1,
+                "Client schema name only: one input channel is labeled");
             Assert(summary.Statistics.MessageCount == 1,
                 "Client schema name only: client message recorded");
         }
@@ -264,15 +274,16 @@ namespace Unity.FoxgloveSDK.Tests
             recorder.AddChannel(1, "/enc_test", "json", "foxglove.Log", "jsonschema", @"{""title"":""foxglove.Log""}");
             recorder.WriteMessage(1, 0, new byte[] { 1 });
 
-            // Client publishes with empty encoding — should reuse, not create conflict
+            // Client publishes with empty encoding. It must be schema-compatible
+            // with JSON without reusing the output-direction channel.
             recorder.WriteClientMessage(2, 70, 100, Encoding.UTF8.GetBytes(@"{""message"":""hello""}"),
                 "/enc_test", enc: "", sName: "foxglove.Log", sEnc: "", sContent: "");
 
             recorder.Close();
             ms.Position = 0;
             var summary = new McapReader(ms).ReadSummary();
-            Assert(summary.Channels.Count == 1,
-                "Empty encoding: reused existing channel (empty == json)");
+            Assert(summary.Channels.Count == 2,
+                "Empty encoding: output and input stay distinct while empty == json");
             Assert(summary.Statistics.MessageCount == 2,
                 "Empty encoding: server and client messages both recorded");
 
@@ -288,10 +299,10 @@ namespace Unity.FoxgloveSDK.Tests
             recorder.Close();
             ms.Position = 0;
             summary = new McapReader(ms).ReadSummary();
-            Assert(summary.Channels.Count == 1,
-                "Empty encoding reverse: reused existing channel (json == empty)");
-            Assert(summary.Channels[0].MessageEncoding == "json",
-                "Empty encoding reverse: stored encoding normalized to json");
+            Assert(summary.Channels.Count == 2,
+                "Empty encoding reverse: output and input stay distinct while json == empty");
+            Assert(summary.Channels.All(channel => channel.MessageEncoding == "json"),
+                "Empty encoding reverse: stored encodings normalized to json");
         }
     }
 }

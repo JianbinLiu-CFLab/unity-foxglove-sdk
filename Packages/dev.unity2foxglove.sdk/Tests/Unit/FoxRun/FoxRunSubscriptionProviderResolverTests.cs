@@ -318,6 +318,35 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunRos2QosDiagnosticCode.None, result.DiagnosticCode);
         }
 
+        [Theory]
+        [InlineData(FoxRunRos2QosPreset.Inherit, FoxRunRos2QosPreset.Default)]
+        [InlineData(FoxRunRos2QosPreset.Default, FoxRunRos2QosPreset.Default)]
+        [InlineData(FoxRunRos2QosPreset.Reliable, FoxRunRos2QosPreset.Reliable)]
+        [InlineData(FoxRunRos2QosPreset.SensorData, FoxRunRos2QosPreset.SensorData)]
+        [InlineData(FoxRunRos2QosPreset.TransientLocal, FoxRunRos2QosPreset.TransientLocal)]
+        [InlineData((FoxRunRos2QosPreset)99, FoxRunRos2QosPreset.Default)]
+        public void SerializedManagerQosNormalizerRecoversInspectorValuesWithoutWeakeningRuntimeResolution(
+            FoxRunRos2QosPreset serialized,
+            FoxRunRos2QosPreset expected)
+        {
+            Assert.Equal(
+                expected,
+                FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(serialized));
+        }
+
+        [Fact]
+        public void StrictManagerQosNormalizerStillRejectsCorruption()
+        {
+            Assert.Equal(
+                FoxRunRos2QosPreset.Default,
+                FoxRunRos2QosResolver.NormalizeManagerDefault(FoxRunRos2QosPreset.Inherit));
+
+            var exception = Assert.Throws<ArgumentOutOfRangeException>(() =>
+                FoxRunRos2QosResolver.NormalizeManagerDefault((FoxRunRos2QosPreset)99));
+
+            Assert.Equal("managerDefault", exception.ParamName);
+        }
+
         [Fact]
         public void ExplicitQosPresetIgnoresAnInvalidUnusedManagerDefault()
         {

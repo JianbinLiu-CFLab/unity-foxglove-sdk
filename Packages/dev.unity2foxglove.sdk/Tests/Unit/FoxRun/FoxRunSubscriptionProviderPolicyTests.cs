@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunWireEncoding.Json, migrated.SubscriptionDefault);
             Assert.Equal(FoxRunSubscriptionProvider.FoxgloveWebSocket, migrated.ProviderDefault);
             Assert.Equal(FoxRunRos2QosPreset.Default, migrated.QosDefault);
-            Assert.Equal(4 * 1024 * 1024, migrated.NativeCopyBudgetBytes);
+            Assert.Equal(FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes, migrated.NativeCopyBudgetBytes);
         }
 
         [Fact]
@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunWireEncoding.Json, migrated.SubscriptionDefault);
             Assert.Equal(FoxRunSubscriptionProvider.FoxgloveWebSocket, migrated.ProviderDefault);
             Assert.Equal(FoxRunRos2QosPreset.Default, migrated.QosDefault);
-            Assert.Equal(4 * 1024 * 1024, migrated.NativeCopyBudgetBytes);
+            Assert.Equal(FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes, migrated.NativeCopyBudgetBytes);
         }
 
         [Theory]
@@ -127,21 +127,59 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunWireEncoding.Json, migrated.SubscriptionDefault);
             Assert.Equal(FoxRunSubscriptionProvider.FoxgloveWebSocket, migrated.ProviderDefault);
             Assert.Equal(FoxRunRos2QosPreset.Default, migrated.QosDefault);
-            Assert.Equal(4 * 1024 * 1024, migrated.NativeCopyBudgetBytes);
+            Assert.Equal(FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes, migrated.NativeCopyBudgetBytes);
+        }
+
+        [Fact]
+        public void NativeCopyBudgetPolicyPublishesThePortableRangeAndMigrationKeepsCompatibilityAliases()
+        {
+            Assert.Equal(1024, FoxRunRos2NativeCopyBudgetPolicy.MinBytes);
+            Assert.Equal(256 * 1024 * 1024, FoxRunRos2NativeCopyBudgetPolicy.MaxBytes);
+            Assert.Equal(4 * 1024 * 1024, FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes);
+            Assert.Equal(
+                FoxRunRos2NativeCopyBudgetPolicy.MinBytes,
+                FoxRunWireEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes);
+            Assert.Equal(
+                FoxRunRos2NativeCopyBudgetPolicy.MaxBytes,
+                FoxRunWireEncodingPolicyMigration.MaxRos2NativeCopyBudgetBytes);
+            Assert.Equal(
+                FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes,
+                FoxRunWireEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes);
         }
 
         [Theory]
-        [InlineData(-1, 4 * 1024 * 1024)]
-        [InlineData(0, 4 * 1024 * 1024)]
-        [InlineData(1, 1024)]
-        [InlineData(1024, 1024)]
-        [InlineData(256 * 1024 * 1024, 256 * 1024 * 1024)]
-        [InlineData(int.MaxValue, 256 * 1024 * 1024)]
-        public void NativeCopyBudgetDefaultsOrClampsToThePortableRange(int configured, int expected)
+        [InlineData(-1, FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes)]
+        [InlineData(0, FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes)]
+        [InlineData(1, FoxRunRos2NativeCopyBudgetPolicy.MinBytes)]
+        [InlineData(1024, FoxRunRos2NativeCopyBudgetPolicy.MinBytes)]
+        [InlineData(256 * 1024 * 1024, FoxRunRos2NativeCopyBudgetPolicy.MaxBytes)]
+        [InlineData(int.MaxValue, FoxRunRos2NativeCopyBudgetPolicy.MaxBytes)]
+        public void SerializedNativeCopyBudgetDefaultsOrClampsToThePortableRange(
+            int configured,
+            int expected)
         {
             Assert.Equal(
                 expected,
+                FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configured));
+            Assert.Equal(
+                expected,
                 FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(configured));
+        }
+
+        [Theory]
+        [InlineData(-1, FoxRunRos2NativeCopyBudgetPolicy.MinBytes)]
+        [InlineData(0, FoxRunRos2NativeCopyBudgetPolicy.MinBytes)]
+        [InlineData(1, FoxRunRos2NativeCopyBudgetPolicy.MinBytes)]
+        [InlineData(1024, FoxRunRos2NativeCopyBudgetPolicy.MinBytes)]
+        [InlineData(256 * 1024 * 1024, FoxRunRos2NativeCopyBudgetPolicy.MaxBytes)]
+        [InlineData(int.MaxValue, FoxRunRos2NativeCopyBudgetPolicy.MaxBytes)]
+        public void UserEditedNativeCopyBudgetClampsToThePortableRange(
+            int configured,
+            int expected)
+        {
+            Assert.Equal(
+                expected,
+                FoxRunRos2NativeCopyBudgetPolicy.ClampUserEditedBytes(configured));
         }
 
         private static MigrationResult Migrate(

@@ -34,6 +34,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Normalizer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Validator.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*State.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/Coordinate*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Profiling/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
@@ -64,6 +65,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/SourceGenerators/src/**/*.cs" LinkBase="SourceGenerators" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunManifest/**/*.cs" LinkBase="Shared/FoxRunManifest" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunSubscriptionProtocolEditorLabels.cs" Link="Shared/FoxRunSubscriptionProtocolEditorLabels.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunRos2SubscriptionInspectorPresentation.cs" Link="Shared/FoxRunRos2SubscriptionInspectorPresentation.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeCapabilityModel.cs" Link="Ros2ForUnityEditor/Ros2ForUnityRuntimeCapabilityModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />

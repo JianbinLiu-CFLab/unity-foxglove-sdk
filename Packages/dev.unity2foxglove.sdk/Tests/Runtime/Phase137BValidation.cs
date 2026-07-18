@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -130,10 +131,31 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyReplayCoordinateModeGuard()
         {
             var type = Type.GetType("Unity.FoxgloveSDK.Core.ReplayCoordinateModeGuard");
+            const System.Reflection.BindingFlags flags =
+                System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Public;
             Check(type != null, "137B-21: ReplayCoordinateModeGuard class exists");
-            Check(type.GetMethod("FindMismatch",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public) != null,
-                "137B-22: ReplayCoordinateModeGuard.FindMismatch exists");
+            Check(type?.GetMethod(
+                      "FindMismatch",
+                      flags,
+                      binder: null,
+                      types: new[] { typeof(System.Collections.Generic.IEnumerable<McapChannel>), typeof(string), typeof(string) },
+                      modifiers: null) != null,
+                "137B-22: ReplayCoordinateModeGuard keeps the legacy one-mode FindMismatch signature");
+            Check(type?.GetMethod(
+                      "FindMismatch",
+                      flags,
+                      binder: null,
+                      types: new[]
+                      {
+                          typeof(System.Collections.Generic.IEnumerable<McapChannel>),
+                          typeof(string),
+                          typeof(string),
+                          typeof(string)
+                      },
+                      modifiers: null) != null,
+                "137B-22a: ReplayCoordinateModeGuard exposes the directional FindMismatch signature");
         }
 
         private static void VerifyFoxgloveRuntimeWiring()

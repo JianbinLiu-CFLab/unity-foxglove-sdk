@@ -11,6 +11,7 @@ namespace Unity.FoxgloveSDK.Components
     public partial class FoxgloveManager : ISerializationCallbackReceiver
     {
         [SerializeField, HideInInspector] private int _foxRunPolicySerializationVersion;
+        [SerializeField, HideInInspector] private int _coordinateTransportPolicySerializationVersion;
 
         void ISerializationCallbackReceiver.OnBeforeSerialize()
         {
@@ -18,6 +19,12 @@ namespace Unity.FoxgloveSDK.Components
 
         void ISerializationCallbackReceiver.OnAfterDeserialize()
         {
+            CoordinateTransportPolicy.Migrate(
+                ref _coordinateTransportPolicySerializationVersion,
+                _coordinateMode,
+                ref _outputCoordinateMode,
+                ref _inputCoordinateMode);
+
 #pragma warning disable CS0618
             FoxRunWireEncodingPolicyMigration.Migrate(
                 ref _foxRunPolicySerializationVersion,

@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static readonly string[] PartialFiles =
         {
             "FoxgloveManagerEditor.cs",
+            "FoxgloveManagerEditor.DataTransport.cs",
             "FoxgloveManagerEditor.PublishData.cs",
             "FoxgloveManagerEditor.SubscribeData.cs",
             "FoxgloveManagerEditor.R2fuRuntime.cs",
@@ -34,10 +35,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static readonly string[] FoldoutStatics =
         {
             "_connectionSecurityExpanded",
-            "_publishDataExpanded",
-            "_subscribeDataExpanded",
-            "_r2fuRuntimeExpanded",
-            "_ros2BridgeExpanded",
+            "_dataTransportExpanded",
+            "_dataTransportPublishExpanded",
+            "_dataTransportSubscribeExpanded",
+            "_dataTransportNativeRuntimeExpanded",
+            "_dataTransportRos2BridgeExpanded",
             "_mcapExpanded",
             "_schemaEvidenceAdvancedExpanded",
             "_diagnosticsExpanded",
@@ -124,6 +126,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySectionMethodCounts()
         {
             var methods = new[] {
+                "DrawDataTransportSection",
                 "DrawPublishDataSection",
                 "DrawSubscribeDataSection",
                 "DrawMcapSection",

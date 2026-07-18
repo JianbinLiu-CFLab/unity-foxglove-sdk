@@ -178,7 +178,7 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void ClientCanReuseAdvertisedTopicSchemaWithoutContent()
+        public void ClientWithAdvertisedTopicSchemaWithoutContentUsesDistinctInputChannel()
         {
             using var ms = new MemoryStream();
             using var recorder = new McapRecorder(ms);
@@ -192,8 +192,8 @@ namespace Unity.FoxgloveSDK.UnitTests
             ms.Position = 0;
             using var reader = new McapReader(ms);
             var summary = reader.ReadSummary();
-            Assert.True(summary.Channels.Count == 1,
-                "Client schema name only: reused existing /unity/client_log channel");
+            Assert.True(summary.Channels.Count == 2,
+                "Client schema name only: output and input use distinct /unity/client_log channels");
             Assert.True(summary.Statistics.MessageCount == 1,
                 "Client schema name only: client message recorded");
         }
@@ -217,8 +217,8 @@ namespace Unity.FoxgloveSDK.UnitTests
                 ms.Position = 0;
                 using var reader = new McapReader(ms);
                 var summary = reader.ReadSummary();
-                Assert.True(summary.Channels.Count == 1,
-                    "Empty encoding: reused existing channel (empty == json)");
+                Assert.True(summary.Channels.Count == 2,
+                    "Empty encoding: output and input stay distinct while empty == json");
                 Assert.True(summary.Statistics.MessageCount == 2,
                     "Empty encoding: server and client messages both recorded");
             }
@@ -238,10 +238,10 @@ namespace Unity.FoxgloveSDK.UnitTests
                 ms.Position = 0;
                 using var reader = new McapReader(ms);
                 var summary = reader.ReadSummary();
-                Assert.True(summary.Channels.Count == 1,
-                    "Empty encoding reverse: reused existing channel (json == empty)");
-                Assert.True(summary.Channels[0].MessageEncoding == "json",
-                    "Empty encoding reverse: stored encoding normalized to json");
+                Assert.True(summary.Channels.Count == 2,
+                    "Empty encoding reverse: output and input stay distinct while json == empty");
+                Assert.True(summary.Channels.All(channel => channel.MessageEncoding == "json"),
+                    "Empty encoding reverse: stored encodings normalized to json");
             }
         }
     }

@@ -66,19 +66,19 @@ namespace Unity.FoxgloveSDK.Editor
             if (outputDemand && subscriptionDemand)
             {
                 EditorGUILayout.HelpBox(
-                    "This runtime/RMW selection is shared by ROS2 Native Publish Data and Subscribe Data.",
+                    "This shared runtime/RMW selection is used by native Publish Data and Subscribe Data. Subscribe Data does not enable Publish Data.",
                     MessageType.Info);
             }
             else if (subscriptionDemand)
             {
                 EditorGUILayout.HelpBox(
-                    "ROS2 Native Subscribe Data requires this runtime/RMW selection even when native Publish Data output is off.",
+                    "This shared runtime/RMW selection is currently required by Subscribe Data. Subscribe Data does not enable Publish Data.",
                     MessageType.Info);
             }
             else
             {
                 EditorGUILayout.HelpBox(
-                    "ROS2 Native Publish Data requires this runtime/RMW selection.",
+                    "This shared runtime/RMW selection is currently required by Publish Data.",
                     MessageType.Info);
             }
 

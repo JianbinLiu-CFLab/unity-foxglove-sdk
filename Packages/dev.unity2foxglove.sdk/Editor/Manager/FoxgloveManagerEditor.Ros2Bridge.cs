@@ -18,7 +18,6 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawRos2BridgeSection()
         {
-            DrawProperty("_ros2BridgeEnabled", "Enabled");
             DrawProperty("_ros2BridgeHost", "Host");
             DrawProperty("_ros2BridgePort", "Port");
             DrawProperty("_ros2BridgeAutoConnect", "Auto Connect");
@@ -27,7 +26,7 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_ros2BridgeNamespace", "Bridge Namespace");
 
             var qosPreset = serializedObject.FindProperty("_ros2BridgeQosPreset");
-            PublisherEncodingEditorLabels.DrawRos2BridgeQosPreset(qosPreset, "QoS Preset");
+            PublisherEncodingEditorLabels.DrawRos2BridgeQosPreset(qosPreset, "Publish QoS Profile");
             var custom = qosPreset != null && qosPreset.enumValueIndex == (int)Ros2BridgeQosPreset.Custom;
             if (custom)
             {
