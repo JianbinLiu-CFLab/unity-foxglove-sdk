@@ -1,0 +1,4 @@
+string foxrun_origin_id
+uint64 foxrun_sequence
+builtin_interfaces/Time foxrun_stamp
+Phase181State_79A0742B2553 payload

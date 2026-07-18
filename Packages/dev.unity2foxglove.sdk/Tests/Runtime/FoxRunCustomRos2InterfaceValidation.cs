@@ -33,6 +33,30 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs";
         private const string ManifestBuilderPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest/FoxRunManifestBuilder.cs";
+        private const string ManifestModelPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest/FoxRunManifestModel.cs";
+        private const string ManifestJsonWriterPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest/FoxRunManifestJsonWriter.cs";
+        private const string DescriptorWriterPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationDescriptorJsonWriter.cs";
+        private const string InterfaceIdentityPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2InterfaceIdentity.cs";
+        private const string InterfaceRendererPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackageRenderer.cs";
+        private const string InterfaceWriterPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackageWriter.cs";
+        private const string InterfacePreflightPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackagePreflight.cs";
+        private const string InterfaceCommandPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxRunRos2InterfacePackageCommand.cs";
+        private const string SourceGeneratorProjectPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLogSourceGenerator.csproj";
+        private const string StaticInterfacePackageJsonPath =
+            "Packages/dev.unity2foxglove.foxrun.ros2.interfaces/package.json";
+        private const string StaticInterfaceLockPath =
+            "Packages/dev.unity2foxglove.foxrun.ros2.interfaces/RuntimeSupport/foxrun-ros2-interface-lock.json";
+        private const string StaticInterfaceCmakePath =
+            "Packages/dev.unity2foxglove.foxrun.ros2.interfaces/Ros2Package~/CMakeLists.txt";
         private const string DiagnosticsPath =
             "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs";
         private const string UnshippedLedgerPath =
@@ -54,6 +78,18 @@ namespace Unity.FoxgloveSDK.Tests
             var validator = PhaseValidationSourceHelpers.ReadRequiredRepoText(ValidatorPath);
             var emitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(EmitterPath);
             var manifestBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManifestBuilderPath);
+            var manifestModel = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManifestModelPath);
+            var manifestJsonWriter = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManifestJsonWriterPath);
+            var descriptorWriter = PhaseValidationSourceHelpers.ReadRequiredRepoText(DescriptorWriterPath);
+            var interfaceIdentity = PhaseValidationSourceHelpers.ReadRequiredRepoText(InterfaceIdentityPath);
+            var interfaceRenderer = PhaseValidationSourceHelpers.ReadRequiredRepoText(InterfaceRendererPath);
+            var interfaceWriter = PhaseValidationSourceHelpers.ReadRequiredRepoText(InterfaceWriterPath);
+            var interfacePreflight = PhaseValidationSourceHelpers.ReadRequiredRepoText(InterfacePreflightPath);
+            var interfaceCommand = PhaseValidationSourceHelpers.ReadRequiredRepoText(InterfaceCommandPath);
+            var sourceGeneratorProject = PhaseValidationSourceHelpers.ReadRequiredRepoText(SourceGeneratorProjectPath);
+            var staticPackageJson = PhaseValidationSourceHelpers.ReadRequiredRepoText(StaticInterfacePackageJsonPath);
+            var staticLock = PhaseValidationSourceHelpers.ReadRequiredRepoText(StaticInterfaceLockPath);
+            var staticCmake = PhaseValidationSourceHelpers.ReadRequiredRepoText(StaticInterfaceCmakePath);
             var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(DiagnosticsPath);
             var unshippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(UnshippedLedgerPath);
             var shippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(ShippedLedgerPath);
@@ -63,6 +99,20 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyDirectionalProviderPolicy();
             VerifyNoImplicitWebSocketInputFallback(validator, emitter, manifestBuilder);
             VerifyDiagnosticRanges(diagnostics, unshippedLedger, shippedLedger);
+            VerifyStaticSourcePackageBoundary(
+                interfaceIdentity,
+                interfaceRenderer,
+                interfaceWriter,
+                interfacePreflight,
+                interfaceCommand,
+                sourceGeneratorProject,
+                staticPackageJson,
+                staticLock,
+                staticCmake,
+                manifestBuilder,
+                manifestModel,
+                manifestJsonWriter,
+                descriptorWriter);
             VerifyRegistryEntry();
 
             Console.WriteLine("FoxRun custom ROS2 interface boundary: " + _passed + " checks passed.\n");
@@ -194,6 +244,84 @@ namespace Unity.FoxgloveSDK.Tests
                   && shippedLedger.Contains("FOXRUN036 | FoxRun |", StringComparison.Ordinal)
                   && unshippedLedger.Contains("FOXRUN036 | FoxRun | Error | Retired;", StringComparison.Ordinal),
                 "181A-9: new diagnostics use subscribe, bidirectional, and system ranges while retired FOXRUN036 remains reserved");
+        }
+
+        private static void VerifyStaticSourcePackageBoundary(
+            string interfaceIdentity,
+            string interfaceRenderer,
+            string interfaceWriter,
+            string interfacePreflight,
+            string interfaceCommand,
+            string sourceGeneratorProject,
+            string staticPackageJson,
+            string staticLock,
+            string staticCmake,
+            string manifestBuilder,
+            string manifestModel,
+            string manifestJsonWriter,
+            string descriptorWriter)
+        {
+            Check(interfaceIdentity.Contains("UnityPackageId = \"dev.unity2foxglove.foxrun.ros2.interfaces\"", StringComparison.Ordinal)
+                  && interfaceIdentity.Contains("BuildRosPackageName(string currentPackageName", StringComparison.Ordinal)
+                  && interfaceIdentity.Contains("TryParseRosPackageRevision", StringComparison.Ordinal)
+                  && !interfaceIdentity.Contains("ROS2.", StringComparison.Ordinal),
+                "181B-1: one ROS-free static interface identity freezes a chosen package stem across explicit revisions");
+
+            Check(interfaceRenderer.Contains("rosidl_generate_interfaces", StringComparison.Ordinal)
+                  && interfaceRenderer.Contains("ament_cmake", StringComparison.Ordinal)
+                  && interfaceRenderer.Contains("rosidl_default_generators", StringComparison.Ordinal)
+                  && interfaceRenderer.Contains("builtin_interfaces/Time foxrun_stamp", StringComparison.Ordinal)
+                  && interfaceRenderer.Contains("foxrun_origin_id", StringComparison.Ordinal)
+                  && interfaceRenderer.Contains("foxrun_sequence", StringComparison.Ordinal)
+                  && !interfaceRenderer.Contains("Typesupport", StringComparison.Ordinal),
+                "181B-2: renderer emits deterministic source-only ROS interfaces with envelope origin sequence and stamp fields");
+
+            Check(interfaceWriter.Contains("build", StringComparison.Ordinal)
+                  && interfaceWriter.Contains("phase181", StringComparison.Ordinal)
+                  && interfaceWriter.Contains("interface-generation", StringComparison.Ordinal)
+                  && interfaceWriter.Contains("File.Replace", StringComparison.Ordinal)
+                  && interfaceWriter.Contains("RestoreBackup", StringComparison.Ordinal)
+                  && interfaceWriter.Contains("RevisionRequired", StringComparison.Ordinal)
+                  && !interfaceWriter.Contains("ROS2.", StringComparison.Ordinal),
+                "181B-3: writer stages outside Packages and preserves the prior source package on cancellation or failure");
+
+            Check(interfacePreflight.Contains("NotRequired", StringComparison.Ordinal)
+                  && interfacePreflight.Contains("ReadyForBuild", StringComparison.Ordinal)
+                  && interfacePreflight.Contains("MissingSource", StringComparison.Ordinal)
+                  && interfacePreflight.Contains("StaleSource", StringComparison.Ordinal)
+                  && interfacePreflight.Contains("InvalidSource", StringComparison.Ordinal)
+                  && interfacePreflight.Contains("RevisionRequired", StringComparison.Ordinal)
+                  && interfacePreflight.Contains("intentionally does not share", StringComparison.Ordinal)
+                  && !interfacePreflight.Contains("using ROS2", StringComparison.Ordinal)
+                  && !interfacePreflight.Contains("Ros2ForUnity", StringComparison.Ordinal),
+                "181B-4: source preflight has independent typed states and performs no RMW or native loading");
+
+            Check(interfaceCommand.Contains("--check", StringComparison.Ordinal)
+                  && interfaceCommand.Contains("--generate", StringComparison.Ordinal)
+                  && interfaceCommand.Contains("--next-revision", StringComparison.Ordinal)
+                  && interfaceCommand.Contains("ExecuteFromCommandLine", StringComparison.Ordinal)
+                  && interfaceCommand.Contains("CollectReflectionGenerationModelForRos2InterfacePackage", StringComparison.Ordinal)
+                  && interfaceCommand.Contains("EditorApplication.Exit", StringComparison.Ordinal),
+                "181B-5: explicit Editor and batch command never lets Play Mode or source generation mutate the package");
+
+            Check(staticPackageJson.Contains("\"name\": \"dev.unity2foxglove.foxrun.ros2.interfaces\"", StringComparison.Ordinal)
+                  && staticLock.Contains("\"lockSchemaVersion\":1", StringComparison.Ordinal)
+                  && staticLock.Contains("\"interfaceDigest\":\"", StringComparison.Ordinal)
+                  && staticCmake.Contains("project(unity2foxglove_foxrun_interfaces_v1)", StringComparison.Ordinal)
+                  && staticCmake.Contains("rosidl_generate_interfaces", StringComparison.Ordinal),
+                "181B-6: tracked static UPM package contains only locked portable ROS source metadata and message build inputs");
+
+            Check(manifestBuilder.Contains("ResolveCustomEnvelopeIdentity", StringComparison.Ordinal)
+                  && manifestModel.Contains("CustomEnvelopeIdentity", StringComparison.Ordinal)
+                  && manifestJsonWriter.Contains("customEnvelopeIdentity", StringComparison.Ordinal)
+                  && descriptorWriter.Contains("ros2CustomEnvelopeMessageName", StringComparison.Ordinal),
+                "181B-7: manifest and descriptor evidence carry custom DTO capability plus the expected envelope identity");
+
+            Check(sourceGeneratorProject.Contains("FoxRunRos2InterfaceDigest.cs", StringComparison.Ordinal)
+                  && sourceGeneratorProject.Contains("FoxRunRos2InterfaceLock.cs", StringComparison.Ordinal)
+                  && sourceGeneratorProject.Contains("FoxRunRos2InterfaceJsonWriter.cs", StringComparison.Ordinal)
+                  && !descriptorWriter.Contains("using Unity.FoxgloveSDK.Components;", StringComparison.Ordinal),
+                "181B-8: static-package editor helpers stay out of the analyzer compile surface");
         }
 
         private static void VerifyRegistryEntry()

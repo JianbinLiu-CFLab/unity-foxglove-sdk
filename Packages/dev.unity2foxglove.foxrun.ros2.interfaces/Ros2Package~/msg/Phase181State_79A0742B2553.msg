@@ -1,0 +1,14 @@
+uint8[] bytes
+bool foxrun_has_bytes
+int32 count
+uint16 kind
+string message
+bool foxrun_has_message
+Phase181NestedState_3281D0E21244 nested
+bool foxrun_has_nested
+int32 optional_count
+bool foxrun_has_optional_count
+string optional_text
+bool foxrun_has_optional_text
+int64[] values
+bool foxrun_has_values

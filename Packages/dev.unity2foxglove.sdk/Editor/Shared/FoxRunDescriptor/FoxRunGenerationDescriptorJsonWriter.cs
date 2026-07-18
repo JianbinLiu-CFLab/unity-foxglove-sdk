@@ -110,6 +110,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteName(sb, "ros2CustomDtoShape");
             WriteRos2CustomDtoShape(sb, member.Ros2CustomDtoShape);
+            sb.Append(',');
+            WriteStringField(
+                sb,
+                "ros2CustomEnvelopeMessageName",
+                member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto
+                && !string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape?.PayloadIdentity)
+                    ? member.Ros2CustomDtoShape.PayloadIdentity + "Envelope"
+                    : string.Empty);
             if (member.ProtobufFieldNumber > 0)
             {
                 sb.Append(',');

@@ -10,6 +10,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
+using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -241,7 +242,11 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsRos2Native) + ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.NativeType, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.CanonicalRosType, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CopyShapeIdentity, string.Empty);
+                AppendIndentedStringLiteralLine(sb, inner, binding.CopyShapeIdentity, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.Ros2ContractKind.ToString(), ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.CustomDtoIdentity, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.CustomPayloadIdentity, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, string.Empty);
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");

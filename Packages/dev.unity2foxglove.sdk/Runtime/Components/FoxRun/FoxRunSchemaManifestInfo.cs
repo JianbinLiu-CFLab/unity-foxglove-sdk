@@ -82,7 +82,11 @@ namespace Unity.FoxgloveSDK.Components
             bool supportsRos2Native,
             string nativeType,
             string canonicalRosType,
-            string copyShapeIdentity)
+            string copyShapeIdentity,
+            string ros2ContractKind = "Unsupported",
+            string customDtoIdentity = "",
+            string customPayloadIdentity = "",
+            string customEnvelopeIdentity = "")
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -95,6 +99,10 @@ namespace Unity.FoxgloveSDK.Components
             NativeType = nativeType ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
             CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
+            Ros2ContractKind = ros2ContractKind ?? string.Empty;
+            CustomDtoIdentity = customDtoIdentity ?? string.Empty;
+            CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
+            CustomEnvelopeIdentity = customEnvelopeIdentity ?? string.Empty;
         }
 
         public string DeclaringType { get; }
@@ -108,5 +116,14 @@ namespace Unity.FoxgloveSDK.Components
         public string NativeType { get; }
         public string CanonicalRosType { get; }
         public string CopyShapeIdentity { get; }
+        /// <summary>
+        /// Descriptor-side contract-kind name. This remains a string because
+        /// the authoritative DTO-shape enum lives in the Editor generation
+        /// model and the runtime SDK must remain ROS-free.
+        /// </summary>
+        public string Ros2ContractKind { get; }
+        public string CustomDtoIdentity { get; }
+        public string CustomPayloadIdentity { get; }
+        public string CustomEnvelopeIdentity { get; }
     }
 }

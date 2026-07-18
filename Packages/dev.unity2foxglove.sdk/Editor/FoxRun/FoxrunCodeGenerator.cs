@@ -220,6 +220,20 @@ namespace Unity.FoxgloveSDK.Editor
             return ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: false).ManifestMembers;
         }
 
+        /// <summary>
+        /// Collects the same reflection-lowered model used by the manifest and
+        /// descriptor paths without writing generated source or package files.
+        /// The explicit Phase181 interface command is the only caller that
+        /// consumes this model for a static source-package transaction.
+        /// </summary>
+        internal static FoxRunGenerationModel CollectReflectionGenerationModelForRos2InterfacePackage()
+        {
+            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            var model = LowerReflectionMembers(scan.ReflectionMembers);
+            ValidateGenerationModel(model);
+            return model;
+        }
+
         public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);

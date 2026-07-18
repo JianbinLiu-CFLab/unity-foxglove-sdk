@@ -136,6 +136,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunRos2ContractKind.CustomDto, binding.Ros2ContractKind);
             Assert.Equal(shape.CanonicalIdentity, binding.CustomDtoIdentity);
             Assert.Equal(shape.PayloadIdentity, binding.CustomPayloadIdentity);
+            Assert.Equal(string.Empty, binding.CustomEnvelopeIdentity);
         }
 
         [Fact]
@@ -171,6 +172,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(string.Empty, binding.CopyShapeIdentity);
             Assert.Equal(shape.CanonicalIdentity, binding.CustomDtoIdentity);
             Assert.Equal(shape.PayloadIdentity, binding.CustomPayloadIdentity);
+            Assert.Equal(
+                Unity.FoxgloveSDK.Components.FoxRunRos2InterfaceIdentity.BuildEnvelopeMessageName(shape.PayloadIdentity),
+                binding.CustomEnvelopeIdentity);
+            Assert.Contains(
+                "\"customEnvelopeIdentity\":\"" + binding.CustomEnvelopeIdentity + "\"",
+                FoxRunManifestJsonWriter.WriteCanonical(FoxRunManifestBuilder.Build(new[] { member }, manifestVersion: 2)),
+                StringComparison.Ordinal);
         }
 
         private static FoxRunGenerationMember CreateMember(

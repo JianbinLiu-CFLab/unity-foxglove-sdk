@@ -271,6 +271,7 @@ namespace Unity.FoxgloveSDK.Editor
         public FoxRunRos2ContractKind Ros2ContractKind { get; }
         public string CustomDtoIdentity { get; }
         public string CustomPayloadIdentity { get; }
+        public string CustomEnvelopeIdentity { get; }
 
         public FoxRunManifestSubscriptionBinding(
             string declaringType,
@@ -286,7 +287,8 @@ namespace Unity.FoxgloveSDK.Editor
             string copyShapeIdentity,
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             string customDtoIdentity = "",
-            string customPayloadIdentity = "")
+            string customPayloadIdentity = "",
+            string customEnvelopeIdentity = "")
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -302,6 +304,7 @@ namespace Unity.FoxgloveSDK.Editor
             Ros2ContractKind = ros2ContractKind;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;
             CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
+            CustomEnvelopeIdentity = customEnvelopeIdentity ?? string.Empty;
         }
     }
 

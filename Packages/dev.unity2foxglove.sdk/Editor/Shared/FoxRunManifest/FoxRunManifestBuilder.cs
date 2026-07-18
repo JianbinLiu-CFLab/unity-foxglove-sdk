@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.Editor
 {
@@ -94,7 +95,8 @@ namespace Unity.FoxgloveSDK.Editor
                     ResolvePackagedCopyShapeIdentity(member),
                     member.Ros2ContractKind,
                     member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
-                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty))
+                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
+                    ResolveCustomEnvelopeIdentity(member)))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
@@ -125,6 +127,18 @@ namespace Unity.FoxgloveSDK.Editor
                && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
                 ? member.Ros2MessageShape?.CopyShapeIdentity ?? string.Empty
                 : string.Empty;
+
+        private static string ResolveCustomEnvelopeIdentity(FoxRunManifestMember member)
+        {
+            if (!member.GeneratesRos2NativeRegistration
+                || member.Ros2ContractKind != FoxRunRos2ContractKind.CustomDto
+                || string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape?.PayloadIdentity))
+            {
+                return string.Empty;
+            }
+
+            return FoxRunRos2InterfaceIdentity.BuildEnvelopeMessageName(member.Ros2CustomDtoShape.PayloadIdentity);
+        }
 
         private static IReadOnlyList<FoxRunManifestContract> BuildContracts(
             string declaringType,

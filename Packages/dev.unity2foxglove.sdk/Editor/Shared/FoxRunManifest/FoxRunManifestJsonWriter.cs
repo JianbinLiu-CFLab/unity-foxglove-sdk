@@ -301,6 +301,9 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "customPayloadIdentity");
             AppendString(sb, binding.CustomPayloadIdentity);
+            sb.Append(',');
+            AppendPropertyName(sb, "customEnvelopeIdentity");
+            AppendString(sb, binding.CustomEnvelopeIdentity);
             sb.Append('}');
         }
 
