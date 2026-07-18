@@ -79,8 +79,36 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyFoldoutStateModel(mainInspector, foldoutState);
             VerifyParentSectionPresentationHelper(section);
             VerifySubsectionPresentationHelper(subsection);
+            VerifyValidationRegistryEntry();
 
             Console.WriteLine("Phase 180: " + _passed + " checks passed.");
+        }
+
+        private static void VerifyValidationRegistryEntry()
+        {
+            var flaggedEntries = PhaseValidationRegistry.All
+                .Where(item => string.Equals(item.Flag, "--phase180", StringComparison.Ordinal))
+                .ToArray();
+            var handlerEntries = PhaseValidationRegistry.All
+                .Where(item => item.Run == (Action)Validate)
+                .ToArray();
+            var defaultEntries = PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false)
+                .Where(item => string.Equals(item.Flag, "--phase180", StringComparison.Ordinal))
+                .ToArray();
+            var selected = PhaseValidationRegistry.Find(new[] { "--phase180" });
+            var expectedEvidence = ValidationEvidence.Behavior | ValidationEvidence.Structural;
+
+            Check(flaggedEntries.Length == 1
+                  && handlerEntries.Length == 1
+                  && ReferenceEquals(flaggedEntries[0], handlerEntries[0])
+                  && ReferenceEquals(selected, flaggedEntries[0])
+                  && defaultEntries.Length == 1
+                  && ReferenceEquals(defaultEntries[0], flaggedEntries[0])
+                  && flaggedEntries[0].Category == ValidationCategory.CiSafe
+                  && flaggedEntries[0].IncludeInDefault
+                  && flaggedEntries[0].Evidence == expectedEvidence
+                  && string.Equals(flaggedEntries[0].Name, "Data Transport Inspector information architecture", StringComparison.Ordinal),
+                "180H-1: Phase 180 has one default CI registry entry with the data-transport handler and Behavior | Structural evidence");
         }
 
         private static void VerifyTopLevelWorkflow(MethodDeclarationSyntax topLevel)
