@@ -266,8 +266,12 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2MessageShape packagedShape,
             int subscriptionProvider)
         {
-            return subscriptionProvider != 2
-                   || packagedShape != null
+            // Native output is selected at the Manager route.  A custom DTO
+            // therefore needs a stable shape even when its subscription
+            // provider remains Inherit or WebSocket-only.  Packaged message
+            // collections remain a distinct unsupported top-level contract.
+            return packagedShape != null
+                   || IsTopLevelPackagedRos2MessageCollection(type)
                 ? null
                 : FoxRunReflectionRos2CustomDtoShapeBuilder.Build(type);
         }

@@ -216,6 +216,98 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return applied;
         }
 
+        /// <summary>
+        /// Applies a candidate only when the consumer accepts ownership. A
+        /// <c>false</c> return disposes the owned candidate without placing it
+        /// in the applied slot. Custom P&amp;S uses this to drop a local-origin
+        /// envelope after its callback-thread copy but before DTO conversion.
+        /// </summary>
+        public bool TryApplyLatest(Func<T, bool> applyAndRetain, Func<T, bool> clearIfOwned)
+        {
+            if (applyAndRetain == null)
+                throw new ArgumentNullException(nameof(applyAndRetain));
+            if (clearIfOwned == null)
+                throw new ArgumentNullException(nameof(clearIfOwned));
+
+            if (Volatile.Read(ref _stopState) != StopStateRunning)
+                return false;
+
+            Interlocked.Increment(ref _activeAppliers);
+            if (Volatile.Read(ref _stopState) != StopStateRunning)
+            {
+                Interlocked.Decrement(ref _activeAppliers);
+                return false;
+            }
+
+            var operationMarker = EnterCurrentOperation();
+            ExceptionDispatchInfo primaryFailure = null;
+            var applied = false;
+            try
+            {
+                var candidate = Interlocked.Exchange(ref _pending, null);
+                if (candidate != null)
+                {
+                    var retain = false;
+                    try
+                    {
+                        retain = applyAndRetain(candidate);
+                    }
+                    catch (Exception exception)
+                    {
+                        TryClear(clearIfOwned, candidate);
+                        TryDispose(candidate);
+                        primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                    }
+
+                    if (primaryFailure == null && !retain)
+                    {
+                        try
+                        {
+                            _dispose(candidate);
+                        }
+                        catch (Exception exception)
+                        {
+                            primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                        }
+                    }
+
+                    if (primaryFailure == null && retain)
+                    {
+                        try
+                        {
+                            var previous = Interlocked.Exchange(ref _applied, candidate);
+                            Interlocked.Increment(ref _appliedCount);
+                            if (previous != null && !ReferenceEquals(previous, candidate))
+                                _dispose(previous);
+                            applied = true;
+                        }
+                        catch (Exception exception)
+                        {
+                            primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeAppliers);
+                ExitCurrentOperation(operationMarker);
+                try
+                {
+                    TryCompleteDeferredStop();
+                }
+                catch (Exception exception)
+                {
+                    if (primaryFailure == null)
+                        primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            if (primaryFailure != null)
+                primaryFailure.Throw();
+            return applied;
+        }
+
         public void Stop(Func<T, bool> clearIfOwned)
         {
             var reentrant = IsCurrentOperation()

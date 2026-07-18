@@ -365,12 +365,25 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static bool RequiresNativeShapeValidation(FoxRunGenerationMember member)
-            => IsNativeProvider(member.SubscriptionProvider)
-               || (string.Equals(
-                       member.SubscriptionProvider,
-                       FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-                       StringComparison.Ordinal)
-                   && !member.GeneratesWebSocketCodec);
+        {
+            // Phase181 builds a custom DTO shape for every ordinary DTO so a
+            // PublishOnly contract can later participate in the Manager-owned
+            // native output route.  That output capability must not turn an
+            // inherited subscription declaration into an explicit native-input
+            // contract, or a normal unsupported WebSocket field would acquire
+            // a second, unrelated custom-ROS diagnostic.  Keep the Phase179
+            // packaged-message behavior: an inherited contract with no
+            // WebSocket codec can still resolve only through native input and
+            // must surface its packaged shape failure.  A custom DTO keeps
+            // targeted native diagnostics until its provider is explicit.
+            return IsNativeProvider(member?.SubscriptionProvider)
+                   || (member?.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
+                       && string.Equals(
+                           member.SubscriptionProvider,
+                           FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                           StringComparison.Ordinal)
+                       && !member.GeneratesWebSocketCodec);
+        }
 
         private static bool RequiresWebSocketShapeValidation(
             FoxRunGenerationMember member,
@@ -390,6 +403,15 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
                 StringComparison.Ordinal))
             {
+                // PublishOnly has no inbound provider to resolve.  A valid
+                // custom interface may therefore be selected solely by the
+                // Manager's native output route, even when its ordinary DTO
+                // shape is not a canonical WebSocket field shape.  Keep the
+                // existing validation for every inbound/P&S declaration: an
+                // inherited provider there can still resolve to WebSocket.
+                if (IsNativeCustomPublishOnlyOutputContract(member, hasValidNativeCapability))
+                    return false;
+
                 return member.GeneratesWebSocketCodec || !hasValidNativeCapability;
             }
 
@@ -451,6 +473,14 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool IsNativeCustomBidirectionalOutputContract(FoxRunGenerationMember member)
             => IsNativeProvider(member?.SubscriptionProvider)
                && AllowsNativeBidirectionalOutputEncoding(member);
+
+        private static bool IsNativeCustomPublishOnlyOutputContract(
+            FoxRunGenerationMember member,
+            bool hasValidNativeCapability)
+            => hasValidNativeCapability
+               && member != null
+               && member.Mode == 0
+               && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto;
 
         private static bool HasCompleteCustomBidirectionalContract(FoxRunGenerationMember member)
         {

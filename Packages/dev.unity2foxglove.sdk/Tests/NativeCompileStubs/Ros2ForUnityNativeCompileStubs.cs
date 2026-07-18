@@ -30,7 +30,14 @@ namespace ROS2
             => throw new NotSupportedException("Compile-only stub.");
 
         public bool RemoveSubscription(ISubscriptionBase subscription) => false;
+
+        public Publisher<T> CreatePublisher<T>(string topicName)
+            where T : Message, new()
+            => throw new NotSupportedException("Compile-only stub.");
+
+        public bool RemovePublisher(IPublisherBase publisher) => false;
         public void Dispose() { }
     }
+
 }
 #endif

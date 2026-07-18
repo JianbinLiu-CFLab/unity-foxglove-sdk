@@ -11,9 +11,8 @@ using Unity.FoxgloveSDK.Components;
 namespace Unity.FoxgloveSDK.Tests
 {
     /// <summary>
-    /// Locks the ROS-free custom DTO model and its directional native policy.
-    /// Endpoint generation and R2FU activation deliberately belong to later
-    /// Phase181 waves.
+    /// Locks the ROS-free custom DTO model, the selected typesupport boundary,
+    /// and the closed-generic Phase181 native transport seams.
     /// </summary>
     internal static class FoxRunCustomRos2InterfaceValidation
     {
@@ -71,6 +70,24 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
         private const string PlayModeGuardPath =
             "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs";
+        private const string CustomTransportHostPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomNativeTransportHost.cs";
+        private const string CustomPublisherHubPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherHub.cs";
+        private const string CustomPublisherBindingPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomPublisherBinding.cs";
+        private const string SubscriptionBindingPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2SubscriptionBinding.cs";
+        private const string CustomOutboundPolicyPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomOutboundMappingPolicy.cs";
+        private const string CustomMapperEmitterPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2CustomDtoMapperEmitter.cs";
+        private const string CustomPublishEmitterPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2CustomPublishEmitter.cs";
+        private const string FoxgloveLogHubPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs";
+        private const string LegacyR2fuTopicSinkPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs";
         private static int _passed;
 
         public static void Validate()
@@ -105,6 +122,15 @@ namespace Unity.FoxgloveSDK.Tests
             var runtimeSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(RuntimeSelectionPath);
             var defineInstaller = PhaseValidationSourceHelpers.ReadRequiredRepoText(DefineInstallerPath);
             var playModeGuard = PhaseValidationSourceHelpers.ReadRequiredRepoText(PlayModeGuardPath);
+            var customTransportHost = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomTransportHostPath);
+            var customPublisherHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherHubPath);
+            var customPublisherBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherBindingPath);
+            var subscriptionBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(SubscriptionBindingPath);
+            var customOutboundPolicy = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomOutboundPolicyPath);
+            var customMapperEmitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomMapperEmitterPath);
+            var customPublishEmitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublishEmitterPath);
+            var foxgloveLogHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(FoxgloveLogHubPath);
+            var legacyR2fuTopicSink = PhaseValidationSourceHelpers.ReadRequiredRepoText(LegacyR2fuTopicSinkPath);
 
             VerifyDistinctRosFreeDtoModel(customShape, reflectionBuilder, roslynBuilder);
             VerifyStableIdentityAndNaming(customIdentity, customNaming);
@@ -130,6 +156,16 @@ namespace Unity.FoxgloveSDK.Tests
                 runtimeSelection,
                 defineInstaller,
                 playModeGuard);
+            VerifyTypedNativeTransport(
+                customTransportHost,
+                customPublisherHub,
+                customPublisherBinding,
+                subscriptionBinding,
+                customOutboundPolicy,
+                customMapperEmitter,
+                customPublishEmitter,
+                foxgloveLogHub,
+                legacyR2fuTopicSink);
             VerifyRegistryEntry();
 
             Console.WriteLine("FoxRun custom ROS2 interface boundary: " + _passed + " checks passed.\n");
@@ -397,6 +433,61 @@ namespace Unity.FoxgloveSDK.Tests
                   && playModeGuard.Contains("GetCustomTypesupportRequiringEditorRestart", StringComparison.Ordinal)
                   && playModeGuard.Contains("custom ROS2 typesupport is not ready", StringComparison.Ordinal),
                 "181C-4: Play Mode rechecks custom add-on readiness before native initialization");
+        }
+
+        private static void VerifyTypedNativeTransport(
+            string customTransportHost,
+            string customPublisherHub,
+            string customPublisherBinding,
+            string subscriptionBinding,
+            string customOutboundPolicy,
+            string customMapperEmitter,
+            string customPublishEmitter,
+            string foxgloveLogHub,
+            string legacyR2fuTopicSink)
+        {
+            Check(customTransportHost.Contains("TryAcquireSubscriptionBackend", StringComparison.Ordinal)
+                  && customTransportHost.Contains("TryAcquirePublisherBackend", StringComparison.Ordinal)
+                  && customTransportHost.Contains("unity2foxglove_foxrun_custom", StringComparison.Ordinal)
+                  && customTransportHost.Contains("ReleaseLease", StringComparison.Ordinal),
+                "181D-1: custom typed input and output retain one demand-created node lease host");
+
+            Check(customPublisherHub.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal)
+                  && customPublisherHub.Contains("IFoxRunRos2CustomPublisherSource", StringComparison.Ordinal)
+                  && customPublisherHub.Contains("TryAcquirePublisherBackend", StringComparison.Ordinal)
+                  && customPublisherHub.Contains("FoxRunRos2CustomOriginRegistry.BeginPublisher", StringComparison.Ordinal)
+                  && customPublisherHub.Contains("!readiness.IsReady", StringComparison.Ordinal),
+                "181D-2: custom output demand is independent of subscription sessions and fails closed before endpoint creation");
+
+            var unsubscribe = customPublisherBinding.IndexOf("_bus.Unsubscribe", StringComparison.Ordinal);
+            var removePublisher = customPublisherBinding.IndexOf("_backend.RemovePublisher", StringComparison.Ordinal);
+            var releaseNode = customPublisherBinding.IndexOf("_backend.ReleaseNodeOwnership", StringComparison.Ordinal);
+            Check(customPublisherBinding.Contains("FoxTopicBus", StringComparison.Ordinal)
+                  && customPublisherBinding.Contains("_bus.Subscribe", StringComparison.Ordinal)
+                  && customPublisherBinding.Contains("FoxRunRos2CustomSequenceSource", StringComparison.Ordinal)
+                  && customPublisherBinding.Contains("FoxRunRos2CustomOutboundMappingPolicy.CreateContext", StringComparison.Ordinal)
+                  && unsubscribe >= 0
+                  && removePublisher > unsubscribe
+                  && releaseNode > removePublisher,
+                "181D-3: typed publisher unsubscribes before endpoint/node release and never reuses an origin sequence pair");
+
+            Check(subscriptionBinding.Contains("dropBeforeApply", StringComparison.Ordinal)
+                  && subscriptionBinding.Contains("SameOriginDropCount", StringComparison.Ordinal)
+                  && subscriptionBinding.Contains("_slot.TryApplyLatest(_tryApplyOwned", StringComparison.Ordinal),
+                "181D-4: custom P&S drops its own origin only after bounded callback copying and before DTO construction");
+
+            Check(customOutboundPolicy.Contains("MaximumBytes = 4L * 1024L * 1024L", StringComparison.Ordinal)
+                  && !customOutboundPolicy.Contains("foxRunRos2NativeCopyBudget", StringComparison.Ordinal)
+                  && customMapperEmitter.Contains("FoxRunRos2CustomEnvelopeTimestamp.TryFromUnixNanoseconds", StringComparison.Ordinal)
+                  && customMapperEmitter.Contains("__FoxRunRos2CustomDisposeEnvelope", StringComparison.Ordinal)
+                  && customPublishEmitter.Contains("__FoxRunRos2CustomMapDtoToEnvelope", StringComparison.Ordinal),
+                "181D-5: outbound mapping uses its fixed 4 MiB cap, timestamp bounds, and exact-once generated disposal");
+
+            Check(foxgloveLogHub.Contains("TryResolvePublishRoutes", StringComparison.Ordinal)
+                  && foxgloveLogHub.Contains("publishLive || publishBus", StringComparison.Ordinal)
+                  && foxgloveLogHub.Contains("busSource.FoxgloveLog_PublishToBus", StringComparison.Ordinal)
+                  && !legacyR2fuTopicSink.Contains("FoxRunRos2Custom", StringComparison.Ordinal),
+                "181D-6: WebSocket and typed-bus routes fan out independently while the legacy byte/CDR sink remains separate");
         }
 
         private static void Check(bool condition, string label)

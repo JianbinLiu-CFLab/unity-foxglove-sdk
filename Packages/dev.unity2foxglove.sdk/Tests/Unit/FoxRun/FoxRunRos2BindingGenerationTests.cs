@@ -23,6 +23,26 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     [Trait("Domain", "FoxRun")]
     public sealed class FoxRunRos2BindingGenerationTests
     {
+        [Fact]
+        public void WebSocketOnlyGeneratedSourceDoesNotEmitNativeBusDemandProbe()
+        {
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Phase181",
+                "WebSocketOnlySource",
+                new[]
+                {
+                    new FoxgloveSourceEmitter.TopicMember(
+                        "Value",
+                        "int",
+                        "/phase181/websocket-only",
+                        10f,
+                        "phase181.WebSocketOnly"),
+                });
+
+            Assert.DoesNotContain("IFoxgloveTopicBusDemandSource", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxgloveLog_HasBusSubscribers", source, StringComparison.Ordinal);
+        }
+
         [Theory]
         [InlineData("invalid", "inherit", 1, "FOXRUN204")]
         [InlineData("ros2-native", "inherit", 0, "FOXRUN214")]
@@ -968,6 +988,61 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Assert.True(member.GeneratesRos2NativeRegistration);
             Assert.NotNull(member.Ros2MessageShape);
             Assert.True(member.GeneratesWebSocketCodec);
+        }
+
+        [Fact]
+        public void PublishOnlyCustomDtoBuildsNativeContractAcrossReflectionAndRoslyn()
+        {
+            const string source = @"
+namespace Demo
+{
+    public sealed class CustomPayload
+    {
+        public int Count { get; set; }
+    }
+}";
+            var fixture = CompileFixture(source, "Demo.CustomPayload");
+            var roslynShape = FoxRunRoslynRos2CustomDtoShapeBuilder.Build(
+                fixture.Symbol,
+                fixture.Compilation);
+            Assert.True(roslynShape.IsSupported, string.Join(Environment.NewLine, roslynShape.Diagnostics));
+            Assert.True(FoxRunRos2ContractCapability.IsNativeRegistrationCapable(null, roslynShape));
+
+            var data = new FoxrunCodeGenerator.MemberData(
+                "Payload",
+                fixture.RuntimeType,
+                "field",
+                "Demo",
+                "Publisher",
+                "/custom",
+                10f,
+                "Demo.CustomPayload",
+                mode: 0,
+                subscriptionProvider: 0);
+            var reflected = Assert.Single(
+                FoxRunReflectionGenerationModelLowerer.Lower(new[] { data.ToReflectionMember() }).Types.Single().Members);
+
+            Assert.NotNull(reflected.Ros2CustomDtoShape);
+            Assert.Equal(FoxRunRos2ContractKind.CustomDto, reflected.Ros2ContractKind);
+            Assert.True(reflected.GeneratesRos2NativeRegistration);
+
+            var generated = RunGenerator(
+                source,
+                "Demo.CustomPayload",
+                messageTypeName: "CustomPayload",
+                subscriptionProvider: "Inherit",
+                mode: "PublishOnly",
+                encoding: "Json");
+            var descriptor = generated.Results.Single().GeneratedSources
+                .Single(item => item.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+
+            Assert.True(
+                !generated.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error),
+                string.Join(Environment.NewLine, generated.Diagnostics) + Environment.NewLine + descriptor);
+            Assert.Contains("\\\"ros2ContractKind\\\":\\\"CustomDto\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"generatesRos2NativeRegistration\\\":true", descriptor, StringComparison.Ordinal);
         }
 
         private static void AssertHostParity(
@@ -2485,7 +2560,8 @@ namespace Demo
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 new[] { new FoxgloveLogSourceGenerator().AsSourceGenerator() },
-                parseOptions: parseOptions);
+                parseOptions: parseOptions,
+                driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None));
             return driver.RunGenerators(compilation).GetRunResult();
         }
 

@@ -22,11 +22,11 @@
       "sha256": "613a5d6d4182c53d443a65cc5f91d6d1e29c0b0e041f026885cd0fc142d15b8e"
     },
     {
-      "byteLength": 2287,
+      "byteLength": 3020,
       "classification": "metadata",
       "path": "Runtime/FoxRun/Generated/FoxRunCustomTypesupportCatalog.g.cs",
       "role": "catalog",
-      "sha256": "1690fdf9a81829c1acde8494e584f3e2b58724055ecb7fc0eb07ade1259bd788"
+      "sha256": "eda7657519b806b19504f2f3e83a4ae97631cf903bf8a3bb36f69693f716805b"
     },
     {
       "byteLength": 596,

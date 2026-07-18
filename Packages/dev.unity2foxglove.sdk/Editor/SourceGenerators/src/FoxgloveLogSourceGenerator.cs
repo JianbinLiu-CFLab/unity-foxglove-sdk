@@ -298,16 +298,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             FoxRunRoslynProtobufTypeShapeBuilder.TryBuild(
                 isArray ? elementType : typeSymbol,
                 out var protobufTypeShape);
-            var hasExplicitNativeTopic = topics.Any(topic => topic.SubscriptionProvider == 2);
             var ros2MessageShape = FoxRunRoslynRos2MessageShapeBuilder.Build(
                 typeSymbol,
                 ctx.SemanticModel.Compilation);
-            var isTopLevelPackagedCollection = hasExplicitNativeTopic
-                                                && IsTopLevelPackagedRos2MessageCollection(
-                                                    typeSymbol,
-                                                    ctx.SemanticModel.Compilation);
-            var ros2CustomDtoShape = hasExplicitNativeTopic
-                                     && !ros2MessageShape.ImplementsRos2Message
+            var isTopLevelPackagedCollection = IsTopLevelPackagedRos2MessageCollection(
+                typeSymbol,
+                ctx.SemanticModel.Compilation);
+            // Native output is a Manager route, not a subscription-provider
+            // declaration.  Build the portable custom DTO shape for every
+            // ordinary FoxRun DTO so PublishOnly contracts can opt into the
+            // custom native publisher without pretending to be native input.
+            var ros2CustomDtoShape = !ros2MessageShape.ImplementsRos2Message
                                      && !isTopLevelPackagedCollection
                 ? FoxRunRoslynRos2CustomDtoShapeBuilder.Build(
                     typeSymbol,

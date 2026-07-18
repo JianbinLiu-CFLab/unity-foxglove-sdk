@@ -22,7 +22,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         StaleGeneration = 7,
         Stopped = 8,
         TeardownFailure = 9,
-        ApplyFailure = 10
+        ApplyFailure = 10,
+        InvalidPublisherToken = 11,
+        PublisherBackendFailure = 12,
+        PublishFailure = 13,
+        TypesupportUnavailable = 14
     }
 
     /// <summary>
@@ -58,6 +62,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return "The native ROS2 subscription did not complete teardown.";
                 case FoxRunRos2RegistrationError.ApplyFailure:
                     return "The native ROS2 subscription could not apply the copied message.";
+                case FoxRunRos2RegistrationError.InvalidPublisherToken:
+                    return "The native ROS2 publisher returned an invalid ownership token.";
+                case FoxRunRos2RegistrationError.PublisherBackendFailure:
+                    return "The native ROS2 backend failed while operating the publisher.";
+                case FoxRunRos2RegistrationError.PublishFailure:
+                    return "The native ROS2 publisher could not publish the mapped message.";
+                case FoxRunRos2RegistrationError.TypesupportUnavailable:
+                    return "The selected custom ROS2 typesupport add-on is not ready.";
                 default:
                     return "The native ROS2 subscription failed.";
             }
@@ -106,6 +118,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         bool IsUsable { get; }
     }
 
+    /// <summary>
+    /// Opaque transport publisher ownership. The custom typed publisher host
+    /// never exposes a raw R2FU publisher to generated DTO code.
+    /// </summary>
+    internal interface IFoxRunRos2NativePublisherToken
+    {
+        bool IsUsable { get; }
+    }
+
     /// <summary>Backend-only result that carries the transport ownership token.</summary>
     internal readonly struct FoxRunRos2NativeBackendRegistration
     {
@@ -140,6 +161,40 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             => new FoxRunRos2NativeBackendRegistration(false, null, error, diagnostic);
     }
 
+    /// <summary>Backend-only result that carries a typed publisher token.</summary>
+    internal readonly struct FoxRunRos2NativePublisherRegistration
+    {
+        private FoxRunRos2NativePublisherRegistration(
+            bool succeeded,
+            IFoxRunRos2NativePublisherToken token,
+            FoxRunRos2RegistrationError error,
+            string diagnostic)
+        {
+            Succeeded = succeeded;
+            Token = token;
+            Error = error;
+            Diagnostic = diagnostic ?? string.Empty;
+        }
+
+        public bool Succeeded { get; }
+        public IFoxRunRos2NativePublisherToken Token { get; }
+        public FoxRunRos2RegistrationError Error { get; }
+        public string Diagnostic { get; }
+
+        public static FoxRunRos2NativePublisherRegistration Success(
+            IFoxRunRos2NativePublisherToken token)
+            => new FoxRunRos2NativePublisherRegistration(
+                true,
+                token,
+                FoxRunRos2RegistrationError.None,
+                string.Empty);
+
+        public static FoxRunRos2NativePublisherRegistration Failure(
+            FoxRunRos2RegistrationError error,
+            string diagnostic)
+            => new FoxRunRos2NativePublisherRegistration(false, null, error, diagnostic);
+    }
+
     /// <summary>
     /// Typed R2FU endpoint seam. Production code adapts an already-owned node;
     /// tests can inject a managed backend without creating a live ROS graph.
@@ -159,6 +214,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             where T : ROS2.Message, new();
 
         void RemoveSubscription(IFoxRunRos2NativeSubscriptionToken token);
+
+        void ReleaseNodeOwnership();
+    }
+
+    /// <summary>
+    /// Typed R2FU publisher seam for Phase181 custom ROS2 interfaces. Endpoint
+    /// creation is closed-generic; no byte serialization or runtime type lookup
+    /// is permitted on this path.
+    /// </summary>
+    internal interface IFoxRunRos2NativePublisherBackend
+    {
+        FoxRunRos2NativePublisherRegistration Register<T>(
+            FoxRunRos2CustomPublisherContract contract)
+            where T : ROS2.Message, new();
+
+        bool TryPublish<T>(IFoxRunRos2NativePublisherToken token, T message)
+            where T : ROS2.Message, new();
+
+        void RemovePublisher(IFoxRunRos2NativePublisherToken token);
 
         void ReleaseNodeOwnership();
     }

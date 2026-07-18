@@ -71,13 +71,26 @@ namespace Unity.FoxgloveSDK.Components
 
     /// <summary>
     /// Optional side-channel implemented by generated sources that can publish
-    /// typed envelopes to the process-local topic bus after live publish
-    /// succeeds. The live Foxglove path remains the primary path.
+    /// typed envelopes to the process-local topic bus. The hub evaluates this
+    /// route independently from the live WebSocket route so native output does
+    /// not depend on a running WebSocket server.
     /// </summary>
     public interface IFoxgloveTopicBusSource
     {
         /// <summary>Publish one topic value to the local topic bus.</summary>
         void FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs);
+    }
+
+    /// <summary>
+    /// Optional demand probe for generated typed-bus sources. It lets the hub
+    /// avoid asking a source to build a payload when no local consumer is
+    /// subscribed. Legacy generated sources that predate this probe retain their
+    /// established side-channel behavior for binary compatibility.
+    /// </summary>
+    public interface IFoxgloveTopicBusDemandSource
+    {
+        /// <summary>Returns whether the specified topic has an interested local bus consumer.</summary>
+        bool FoxgloveLog_HasBusSubscribers(int topicIndex, FoxTopicBus bus);
     }
 
     /// <summary>
@@ -303,9 +316,6 @@ namespace Unity.FoxgloveSDK.Components
                 if (_mgr == null) return;
             }
             DrainPendingRegistrations();
-            if (!_mgr.IsRunning) return;
-            if (_mgr.SuppressLivePublishersForReplay) return;
-
             if (_enableFallbackSceneScan)
             {
                 _scanTimer -= Time.deltaTime;
@@ -361,6 +371,9 @@ namespace Unity.FoxgloveSDK.Components
                     return false;
 
                 var rateHz = info.RateHz;
+                if (!TryResolvePublishRoutes(source, topicIndex, "scheduled publish", out var publishLive, out var publishBus))
+                    return false;
+
                 if (!FixedRatePublishScheduler.ShouldPublish(
                         nowSec,
                         rateHz,
@@ -375,10 +388,10 @@ namespace Unity.FoxgloveSDK.Components
                 if (policySource != null && !policySource.FoxgloveLog_ShouldPublish(topicIndex, nowSec))
                     return false;
 
-                source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
-                PublishTopicBusSideChannel(source, topicIndex, nowNs, "scheduled publish");
-                policySource?.FoxgloveLog_MarkPublished(topicIndex, nowSec);
-                return true;
+                var published = DispatchTopic(source, topicIndex, nowNs, "scheduled publish", publishLive, publishBus);
+                if (published)
+                    policySource?.FoxgloveLog_MarkPublished(topicIndex, nowSec);
+                return published;
             }
             catch (Exception ex) when (IsRecoverableSourceException(ex))
             {
@@ -391,14 +404,16 @@ namespace Unity.FoxgloveSDK.Components
         {
             try
             {
+                if (!TryResolvePublishRoutes(source, topicIndex, "trigger publish", out var publishLive, out var publishBus))
+                    return false;
+
                 if (!CanPublishSourceTopic(source, topicIndex, "trigger publish"))
                     return false;
 
-                source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
-                PublishTopicBusSideChannel(source, topicIndex, nowNs, "trigger publish");
-                if (source is IFoxgloveLogPolicySource policySource)
+                var published = DispatchTopic(source, topicIndex, nowNs, "trigger publish", publishLive, publishBus);
+                if (published && source is IFoxgloveLogPolicySource policySource)
                     policySource.FoxgloveLog_MarkPublished(topicIndex, nowSec);
-                return true;
+                return published;
             }
             catch (Exception ex) when (IsRecoverableSourceException(ex))
             {
@@ -435,17 +450,77 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        private void PublishTopicBusSideChannel(
+        private bool TryResolvePublishRoutes(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            string operation,
+            out bool publishLive,
+            out bool publishBus)
+        {
+            publishLive = _mgr != null
+                          && _mgr.IsRunning
+                          && !_mgr.SuppressLivePublishersForReplay;
+            publishBus = false;
+            if (source is IFoxgloveTopicBusSource)
+            {
+                if (source is IFoxgloveTopicBusDemandSource demandSource)
+                {
+                    try
+                    {
+                        publishBus = demandSource.FoxgloveLog_HasBusSubscribers(topicIndex, _topicBus);
+                    }
+                    catch (Exception ex) when (IsRecoverableSourceException(ex))
+                    {
+                        LogSourceFailure(source, topicIndex, operation + " bus demand", ex);
+                    }
+                }
+                else
+                {
+                    // Keep the legacy bus fanout coupled to its successful live
+                    // publish. Only Phase181 custom sources opt into a native
+                    // demand probe that can keep the bus route alive by itself.
+                    publishBus = publishLive;
+                }
+
+                // Existing live fanout remains intact even for a source that
+                // also owns one or more custom native topics. The demand probe
+                // only adds the stopped-WebSocket custom-native path.
+                if (!publishBus && publishLive)
+                    publishBus = true;
+            }
+
+            return publishLive || publishBus;
+        }
+
+        private bool DispatchTopic(
             IFoxgloveLogSource source,
             int topicIndex,
             ulong nowNs,
-            string operation)
+            string operation,
+            bool publishLive,
+            bool publishBus)
         {
-            if (source is IFoxgloveTopicBusSource busSource)
+            var emitted = false;
+            if (publishLive)
+            {
+                try
+                {
+                    source.FoxgloveLog_Publish(topicIndex, _mgr, nowNs);
+                    emitted = true;
+                    PublishTopicSinkSideChannel(source, topicIndex, nowNs, operation);
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, topicIndex, operation, ex);
+                }
+            }
+
+            if (publishBus && source is IFoxgloveTopicBusSource busSource)
             {
                 try
                 {
                     busSource.FoxgloveLog_PublishToBus(topicIndex, _topicBus, nowNs);
+                    emitted = true;
                 }
                 catch (Exception ex) when (IsRecoverableSourceException(ex))
                 {
@@ -453,6 +528,15 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
+            return emitted;
+        }
+
+        private void PublishTopicSinkSideChannel(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            ulong nowNs,
+            string operation)
+        {
             if (_sinkRouter.HasSinks && source is IFoxgloveTopicSinkSource sinkSource)
             {
                 try
@@ -650,9 +734,7 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             if (_mgr == null)
                 TryRefreshManagerForTrigger();
-            if (_mgr == null || !_mgr.IsRunning)
-                return false;
-            if (_mgr.SuppressLivePublishersForReplay)
+            if (_mgr == null)
                 return false;
 
             return TryPublishTriggeredTopic(source, topicIndex, _mgr.NowNs, Time.realtimeSinceStartupAsDouble);

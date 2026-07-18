@@ -584,11 +584,17 @@ namespace Unity.FoxgloveSDK.Tests
                   && backendRegister.Contains("callback,", StringComparison.Ordinal),
                 "executor callbacks retain only binding-owned managed state and never reacquire Unity or R2FU runtime services");
 
+            var dispatchesLegacySource = scan.Contains(
+                "source.Native.FoxRunRos2RegisterSubscriptions(registrar);",
+                StringComparison.Ordinal)
+                || scan.Contains(
+                    "source.Native?.FoxRunRos2RegisterSubscriptions(registrar);",
+                    StringComparison.Ordinal);
             Check(applySessionPolicy.Contains("_activeSession.Activate", StringComparison.Ordinal)
                   && !applySessionPolicy.Contains("TryEnsureNodeOwner", StringComparison.Ordinal)
                   && scan.Contains("_sources.Clear();", StringComparison.Ordinal)
                   && scan.Contains("FoxRunRos2SourceDiscovery.TryGet", StringComparison.Ordinal)
-                  && scan.Contains("source.Native.FoxRunRos2RegisterSubscriptions(registrar);", StringComparison.Ordinal),
+                  && dispatchesLegacySource,
                 "default-native session demand is admitted for preflight while zero discovered native sources create no subscription binding");
         }
 

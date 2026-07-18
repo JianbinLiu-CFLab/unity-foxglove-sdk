@@ -180,12 +180,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Action<T> _apply;
         private readonly Action<T> _dispose;
         private readonly Func<T, bool> _clearIfOwned;
+        private readonly Func<T, bool> _dropBeforeApply;
         private readonly IFoxRunRos2NativeBackend _backend;
         private readonly FoxRunRos2QosPreset _qosPreset;
         private readonly IFoxRunRos2NativeQosProfileFactory _qosFactory;
         private readonly FoxRunRos2OwnedLatestSlot<object> _slot;
         private readonly Func<T, object> _copyBorrowed;
         private readonly Action<object> _applyOwned;
+        private readonly Func<object, bool> _tryApplyOwned;
         private readonly Action<object> _disposeOwned;
         private readonly Func<object, bool> _clearOwned;
         private IFoxRunRos2NativeSubscriptionToken _token;
@@ -196,6 +198,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private long _staleCallbacks;
         private long _lastReceiveStopwatchTimestamp;
         private long _lastApplyStopwatchTimestamp;
+        private long _sameOriginDrops;
         private bool _registrationInFlight;
         private bool _stopCleanupInProgress;
         private bool _slotCleanupComplete;
@@ -224,7 +227,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<T, bool> clearIfOwned,
             IFoxRunRos2NativeBackend backend,
             FoxRunRos2QosPreset qosPreset = FoxRunRos2QosPreset.Default,
-            IFoxRunRos2NativeQosProfileFactory qosFactory = null)
+            IFoxRunRos2NativeQosProfileFactory qosFactory = null,
+            Func<T, bool> dropBeforeApply = null)
         {
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
             if (sessionGeneration < 0)
@@ -237,12 +241,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _copy = copy ?? throw new ArgumentNullException(nameof(copy));
             _apply = apply ?? throw new ArgumentNullException(nameof(apply));
             _clearIfOwned = clearIfOwned ?? throw new ArgumentNullException(nameof(clearIfOwned));
+            _dropBeforeApply = dropBeforeApply;
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
             _qosPreset = qosPreset;
             _qosFactory = qosFactory;
             _dispose = dispose ?? throw new ArgumentNullException(nameof(dispose));
             _copyBorrowed = CopyBorrowed;
             _applyOwned = ApplyOwned;
+            _tryApplyOwned = TryApplyOwned;
             _disposeOwned = DisposeOwned;
             _clearOwned = ClearOwned;
             _slot = new FoxRunRos2OwnedLatestSlot<object>(_disposeOwned);
@@ -263,6 +269,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long RejectedAfterStopCount => _slot.RejectedAfterStopCount;
         public long CopyFailedCount => _slot.CopyFailedCount;
         public long StaleCallbackCount => Interlocked.Read(ref _staleCallbacks);
+        internal long SameOriginDropCount => Interlocked.Read(ref _sameOriginDrops);
 
         public void WaitForRuntime()
         {
@@ -488,7 +495,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 : acceptanceAdmission == AcceptanceCompleting
                     ? Volatile.Read(ref _acceptanceCompletingEpoch)
                     : 0;
-            var applied = _slot.TryApplyLatest(_applyOwned, _clearOwned);
+            var applied = _dropBeforeApply == null
+                ? _slot.TryApplyLatest(_applyOwned, _clearOwned)
+                : _slot.TryApplyLatest(_tryApplyOwned, _clearOwned);
             if (applied)
                 Interlocked.Exchange(ref _lastApplyStopwatchTimestamp, Stopwatch.GetTimestamp());
             // A generated main-thread apply delegate can synchronously stop its
@@ -966,6 +975,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         private void ApplyOwned(object owned) => _apply((T)owned);
+
+        private bool TryApplyOwned(object owned)
+        {
+            var value = (T)owned;
+            if (_dropBeforeApply != null && _dropBeforeApply(value))
+            {
+                Interlocked.Increment(ref _sameOriginDrops);
+                return false;
+            }
+
+            _apply(value);
+            return true;
+        }
 
         private void DisposeOwned(object owned) => _dispose((T)owned);
 

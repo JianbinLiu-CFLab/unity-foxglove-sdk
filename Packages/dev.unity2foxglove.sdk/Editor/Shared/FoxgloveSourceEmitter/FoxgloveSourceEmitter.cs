@@ -265,6 +265,9 @@ namespace Unity.FoxgloveSDK.Editor
                                      FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
                                      StringComparison.Ordinal))
                 .ToList();
+            var customNativeInputMembers = inputMembers
+                .Where(IsCustomNativeMember)
+                .ToList();
 
             foreach (var m in inputMembers)
             {
@@ -295,6 +298,18 @@ namespace Unity.FoxgloveSDK.Editor
 
             var topics = topicMap.Keys.OrderBy(topic => topic, StringComparer.Ordinal).ToList();
             var topicModes = topicMap.ToDictionary(kvp => kvp.Key, kvp => TopicPublishMode(kvp.Value));
+            // A custom ROS2 contract is one ordinary DTO member per topic. A
+            // field-level aggregate has a dictionary-shaped legacy bus payload
+            // and must never be handed to the closed generic native publisher.
+            var nativeBusMembers = topicMap
+                .Where(pair => pair.Value.Count == 1
+                               && pair.Value[0].Mode != 1
+                               && IsCustomNativeMember(pair.Value[0]))
+                .ToDictionary(pair => pair.Key, pair => pair.Value[0], StringComparer.Ordinal);
+            var customNativePublishMembers = nativeBusMembers
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => pair.Value)
+                .ToList();
             var hasPolicy = publishMembers.Any(m => m.PublishMode != 0);
             var hasConditions = publishMembers.Any(m => !string.IsNullOrWhiteSpace(m.When) || !string.IsNullOrWhiteSpace(m.Unless));
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
@@ -307,6 +322,7 @@ namespace Unity.FoxgloveSDK.Editor
                 topics.Count,
                 hasPolicy,
                 hasConditions,
+                nativeBusMembers.Count > 0,
                 webSocketInputMembers.Count > 0,
                 pad);
             if (topics.Count > 0)
@@ -314,7 +330,14 @@ namespace Unity.FoxgloveSDK.Editor
                 TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
                 TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
                 PublishDispatchEmitter.EmitPublish(sb, ns, className, topics, topicMap, pad);
-                PublishDispatchEmitter.EmitPublishToBus(sb, ns, className, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitPublishToBus(
+                    sb,
+                    ns,
+                    className,
+                    topics,
+                    topicMap,
+                    nativeBusMembers,
+                    pad);
                 PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
                 ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
             }
@@ -330,9 +353,25 @@ namespace Unity.FoxgloveSDK.Editor
             if (!string.IsNullOrEmpty(ns)) sb.AppendLine("}");
 
             if (emitRos2NativePartial)
+            {
                 Ros2InputDispatchEmitter.EmitConditionalPartial(sb, ns, className, nativeInputMembers);
+                Ros2CustomDtoMapperEmitter.EmitConditionalPartial(sb, ns, className, customNativeInputMembers);
+                Ros2CustomPublishEmitter.EmitConditionalPartial(sb, ns, className, customNativePublishMembers);
+            }
 
             return sb.ToString();
+        }
+
+        private static bool IsCustomNativeMember(TopicMember member)
+        {
+            return member != null
+                   && member.GeneratesRos2NativeRegistration
+                   && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto
+                   && member.Ros2CustomDtoShape != null
+                   && member.Ros2CustomDtoShape.IsSupported
+                   && member.Ros2CustomDtoShape.HasPublicParameterlessConstructor
+                   && member.Ros2CustomDtoShape.Diagnostics.Count == 0
+                   && !string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape.PayloadIdentity);
         }
 
         private static int TopicPublishMode(IReadOnlyList<TopicMember> fields)

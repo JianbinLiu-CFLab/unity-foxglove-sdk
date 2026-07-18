@@ -122,9 +122,37 @@ namespace Unity.FoxgloveSDK.Editor
         /// existing live path does not allocate extra dictionaries when no
         /// local consumers are attached.
         /// </summary>
-        internal static void EmitPublishToBus(StringBuilder sb, string ns, string className, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
+        internal static void EmitPublishToBus(
+            StringBuilder sb,
+            string ns,
+            string className,
+            IReadOnlyList<string> topics,
+            Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap,
+            IReadOnlyDictionary<string, FoxgloveSourceEmitter.TopicMember> nativeBusMembers,
+            string pad)
         {
             var origin = string.IsNullOrEmpty(ns) ? className : ns + "." + className;
+            if (nativeBusMembers != null && nativeBusMembers.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"{pad}    [Preserve]");
+                sb.AppendLine($"{pad}    bool IFoxgloveTopicBusDemandSource.FoxgloveLog_HasBusSubscribers(int topicIndex, FoxTopicBus bus)");
+                sb.AppendLine($"{pad}    {{");
+                sb.AppendLine($"{pad}        if (bus == null)");
+                sb.AppendLine($"{pad}            return false;");
+                sb.AppendLine($"{pad}        switch (topicIndex)");
+                sb.AppendLine($"{pad}        {{");
+                for (int i = 0; i < topics.Count; i++)
+                {
+                    if (!nativeBusMembers.ContainsKey(topics[i]))
+                        continue;
+                    var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
+                    sb.AppendLine($"{pad}            case {i}: return bus.HasSubscribers(\"{topic}\");");
+                }
+                sb.AppendLine($"{pad}            default: return false;");
+                sb.AppendLine($"{pad}        }}");
+                sb.AppendLine($"{pad}    }}");
+            }
             sb.AppendLine();
             sb.AppendLine($"{pad}    [Preserve]");
             sb.AppendLine($"{pad}    void IFoxgloveTopicBusSource.FoxgloveLog_PublishToBus(int topicIndex, FoxTopicBus bus, ulong nowNs)");
@@ -139,7 +167,14 @@ namespace Unity.FoxgloveSDK.Editor
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
                 sb.AppendLine($"{pad}            case {i}:");
                 sb.AppendLine($"{pad}                if (!bus.HasSubscribers(\"{topic}\")) break;");
-                if (IsAggregateTopic(fields))
+                if (nativeBusMembers != null && nativeBusMembers.TryGetValue(topics[i], out var customMember))
+                {
+                    var dtoType = GlobalTypeName(customMember.TypeName);
+                    var access = TypeExprEmitter.MemberAccess(customMember.MemberName);
+                    sb.AppendLine($"{pad}                var __foxRunNativePayload_{i} = {access};");
+                    sb.AppendLine($"{pad}                bus.Publish<{dtoType}>(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), nowNs, in __foxRunNativePayload_{i}, \"{StringLiteralEmitter.CSharpStringLiteral(origin)}\");");
+                }
+                else if (IsAggregateTopic(fields))
                 {
                     EnsurePureAggregateTopic(fields, topics[i]);
                     sb.AppendLine($"{pad}                var __payload = __foxRunLastJson_{i} ?? __BuildFoxRunJson_{i}();");
@@ -205,6 +240,11 @@ namespace Unity.FoxgloveSDK.Editor
             dict.Append(" }");
             return dict.ToString();
         }
+
+        private static string GlobalTypeName(string typeName)
+            => string.IsNullOrWhiteSpace(typeName) || typeName.StartsWith("global::", System.StringComparison.Ordinal)
+                ? typeName
+                : "global::" + typeName;
 
         private static void EmitAggregateJsonWriters(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, string pad)
         {

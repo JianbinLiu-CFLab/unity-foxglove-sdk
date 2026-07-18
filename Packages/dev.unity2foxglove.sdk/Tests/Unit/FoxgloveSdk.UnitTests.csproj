@@ -64,7 +64,14 @@
       <_Phase181CustomCatalogContract Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomTypesupportCatalog'" />
       <_Phase181CustomCatalogRegistry Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomTypesupportCatalogRegistry'" />
       <_Phase181CustomCatalogReadiness Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomTypesupportReadiness'" />
+      <_Phase181CustomTransportHost Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomNativeTransportHost'" />
+      <_Phase181CustomPublisherHub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomPublisherHub'" />
+      <_Phase181CustomPublisherBinding Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomPublisherBinding'" />
+      <_Phase181CustomPublisherSource Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomPublisherSource'" />
+      <_Phase181CustomSubscriptionSource Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomSubscriptionSource'" />
+      <_Phase181CustomMapperEmitter Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2CustomDtoMapperEmitter'" />
+      <_Phase181CustomPublishEmitter Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2CustomPublishEmitter'" />
     </ItemGroup>
-    <Error Condition="'@(_Phase181CustomInterfaceStub)' == '' or '@(_Phase181CustomCatalogContract)' == '' or '@(_Phase181CustomCatalogRegistry)' == '' or '@(_Phase181CustomCatalogReadiness)' == ''" Text="Phase181 Native lane compiled no custom interface/catalog/stub surface (vacuous green)." />
+    <Error Condition="'@(_Phase181CustomInterfaceStub)' == '' or '@(_Phase181CustomCatalogContract)' == '' or '@(_Phase181CustomCatalogRegistry)' == '' or '@(_Phase181CustomCatalogReadiness)' == '' or '@(_Phase181CustomTransportHost)' == '' or '@(_Phase181CustomPublisherHub)' == '' or '@(_Phase181CustomPublisherBinding)' == '' or '@(_Phase181CustomPublisherSource)' == '' or '@(_Phase181CustomSubscriptionSource)' == '' or '@(_Phase181CustomMapperEmitter)' == '' or '@(_Phase181CustomPublishEmitter)' == ''" Text="Phase181 Native lane compiled no named custom interface/catalog/transport/generator surface (vacuous green)." />
   </Target>
 </Project>

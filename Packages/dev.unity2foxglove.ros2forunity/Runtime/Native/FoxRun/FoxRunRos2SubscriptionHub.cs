@@ -258,6 +258,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             source = behaviour as IFoxRunRos2SubscriptionSource;
             return behaviour != null && behaviour.isActiveAndEnabled && source != null;
         }
+
+        internal static bool TryGetCustom(
+            MonoBehaviour behaviour,
+            out IFoxRunRos2CustomSubscriptionSource source)
+        {
+            source = behaviour as IFoxRunRos2CustomSubscriptionSource;
+            return behaviour != null && behaviour.isActiveAndEnabled && source != null;
+        }
     }
 
     internal static class FoxRunRos2ContractActivation
@@ -288,6 +296,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 diagnostic = "Generated ROS2 contract does not carry complete native metadata.";
                 return false;
             }
+            if (contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface
+                && !contract.HasCompleteCustomMetadata)
+            {
+                diagnostic = "Generated custom ROS2 contract does not carry complete interface metadata.";
+                return false;
+            }
             if (policy == null || !policy.SubscriptionsEnabled)
             {
                 diagnostic = "FoxRun subscriptions are disabled for the captured session.";
@@ -309,7 +323,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 diagnostic = "Generated ROS2 contract has an invalid mode declaration.";
                 return false;
             }
-            if (contract.Mode != FoxRunMode.SubscribeOnly)
+            var permitsCustomNativePublishAndSubscribe =
+                contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface
+                && contract.HasCompleteCustomMetadata
+                && contract.Mode == FoxRunMode.PublishAndSubscribe;
+            if (contract.Mode != FoxRunMode.SubscribeOnly
+                && !permitsCustomNativePublishAndSubscribe)
             {
                 diagnostic = "Native ROS2 subscriptions require SubscribeOnly mode.";
                 return false;
@@ -325,9 +344,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 contract.SubscriptionProvider,
                 policy.DefaultProvider,
                 contract.Mode,
-                FoxRunWireEncoding.Inherit,
+                contract.DeclaredSubscriptionEncoding,
                 supportsWebSocket: false,
-                supportsRos2Native: contract.SupportsRos2Native);
+                supportsRos2Native: contract.SupportsRos2Native,
+                allowsNativePublishAndSubscribe: permitsCustomNativePublishAndSubscribe);
             if (!provider.Success || provider.Provider != FoxRunSubscriptionProvider.Ros2Native)
             {
                 error = provider.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.Unsupported
@@ -708,9 +728,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             for (var i = 0; i < behaviours.Length && _sources.Count < MaximumContracts; i++)
             {
                 var behaviour = behaviours[i];
-                if (FoxRunRos2SourceDiscovery.TryGet(behaviour, out var nativeSource))
+                var hasNative = FoxRunRos2SourceDiscovery.TryGet(behaviour, out var nativeSource);
+                var hasCustom = FoxRunRos2SourceDiscovery.TryGetCustom(behaviour, out var customSource);
+                if (hasNative || hasCustom)
                 {
-                    _sources.Add(new SourceCandidate(behaviour, nativeSource));
+                    _sources.Add(new SourceCandidate(behaviour, nativeSource, customSource));
                 }
             }
             _sources.Sort((left, right) => left.Key.CompareTo(right.Key));
@@ -727,7 +749,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 try
                 {
                     var registrar = new CollectingRegistrar(this, source);
-                    source.Native.FoxRunRos2RegisterSubscriptions(registrar);
+                    source.Native?.FoxRunRos2RegisterSubscriptions(registrar);
+                    source.Custom?.FoxRunRos2RegisterCustomSubscriptions(registrar);
                 }
                 catch (Exception exception)
                 {
@@ -865,15 +888,56 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 RecordUnsupported(identity, contract, activationError, activationDiagnostic);
                 return;
             }
-            if (!TryEnsureNodeOwner(out var owner))
+            IFoxRunRos2NativeBackend backend;
+            if (contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface)
             {
-                RecordWaiting(identity, contract, qos, "The selected ROS2 runtime or RMW is not ready.");
-                return;
+                var readiness = FoxRunRos2CustomTypesupportCatalogRegistry.Evaluate(
+                    contract.BaseRuntimePackageId,
+                    contract.InterfaceDigest,
+                    Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION"));
+                if (!readiness.IsReady)
+                {
+                    RecordUnsupported(
+                        identity,
+                        contract,
+                        FoxRunRos2RegistrationError.TypesupportUnavailable,
+                        FoxRunRos2PublicDiagnostic.Describe(
+                            FoxRunRos2RegistrationError.TypesupportUnavailable));
+                    return;
+                }
+                if (!FoxRunRos2CustomNativeTransportHost.TryAcquireSubscriptionBackend(out backend))
+                {
+                    RecordWaiting(identity, contract, qos, "The selected ROS2 runtime or RMW is not ready.");
+                    return;
+                }
+                _runtimeDiagnosticContext =
+                    FoxRunRos2RuntimeDiagnosticContext.CaptureAfterRuntimeReady(
+                        Environment.GetEnvironmentVariable("ROS_DISTRO"),
+                        Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION"));
+            }
+            else
+            {
+                if (!TryEnsureNodeOwner(out var owner))
+                {
+                    RecordWaiting(identity, contract, qos, "The selected ROS2 runtime or RMW is not ready.");
+                    return;
+                }
+                backend = owner.AcquireBackend();
             }
 
             var generation = CheckedGeneration(_policy.SessionGeneration);
-            var backend = owner.AcquireBackend();
             FoxRunRos2SubscriptionBinding<T> binding = null;
+            Func<T, bool> dropBeforeApply = null;
+            if (contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface)
+            {
+                // The callback has already deep-copied this envelope when the
+                // predicate runs. Do not construct/apply a DTO for a message
+                // emitted by this exact active Unity publisher origin.
+                dropBeforeApply = owned => contract.TryGetCustomEnvelopeOrigin(
+                        owned,
+                        out var origin)
+                    && FoxRunRos2CustomOriginRegistry.IsCurrentOrigin(identity, origin);
+            }
             try
             {
                 binding = new FoxRunRos2SubscriptionBinding<T>(
@@ -886,7 +950,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     apply,
                     clearIfOwned,
                     backend,
-                    qos);
+                    qos,
+                    qosFactory: null,
+                    dropBeforeApply: dropBeforeApply);
                 binding.WaitForRuntime();
                 if (Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
                         gameObject.scene))
@@ -1055,10 +1121,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             internal SourceCandidate(
                 MonoBehaviour behaviour,
-                IFoxRunRos2SubscriptionSource native)
+                IFoxRunRos2SubscriptionSource native,
+                IFoxRunRos2CustomSubscriptionSource custom)
             {
                 Behaviour = behaviour;
                 Native = native;
+                Custom = custom;
                 TypeName = behaviour.GetType().FullName ?? string.Empty;
                 InstanceId = behaviour.GetInstanceID();
                 Key = new FoxRunRos2DiscoveryKey(TypeName, InstanceId, string.Empty, string.Empty);
@@ -1066,6 +1134,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             internal MonoBehaviour Behaviour { get; }
             internal IFoxRunRos2SubscriptionSource Native { get; }
+            internal IFoxRunRos2CustomSubscriptionSource Custom { get; }
             internal string TypeName { get; }
             internal int InstanceId { get; }
             internal FoxRunRos2DiscoveryKey Key { get; }

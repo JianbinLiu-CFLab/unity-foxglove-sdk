@@ -7,6 +7,18 @@ using Unity2Foxglove.Ros2ForUnity.Native;
 
 namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
 {
+    // This public, compile-time-only seam is consumed by generated user
+    // code. It deliberately carries only the immutable source lock, not
+    // mutable runtime selection or credential data.
+    public static class FoxRunRos2CustomTypesupportMetadata
+    {
+        public const string SourcePackageId = "dev.unity2foxglove.foxrun.ros2.interfaces";
+        public const string RosPackageName = "unity2foxglove_foxrun_interfaces_v1";
+        public const int InterfaceRevision = 1;
+        public const string InterfaceDigest = "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd";
+        public const string BaseRuntimePackageId = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64";
+    }
+
     internal sealed class FoxRunCustomTypesupportCatalog : IFoxRunRos2CustomTypesupportCatalog
     {
         private static readonly string[] s_rmws = { "rmw_fastrtps_cpp", "rmw_zenoh_cpp" };
