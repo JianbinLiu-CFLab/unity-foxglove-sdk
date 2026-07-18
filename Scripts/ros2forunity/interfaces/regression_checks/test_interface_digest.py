@@ -69,7 +69,7 @@ class InterfaceDigestTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[4]
         package_root = root / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces"
         self.assertEqual(
-            "1ae7503693aa5312cc0d68731585b5b60c183210fdcbb5d56b9efa7b5c811bcb",
+            "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
             verify_package(package_root),
         )
 

@@ -43,7 +43,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (status.SelectedRuntime != null && status.SelectedRuntime.CommunicationModes.Count > 1)
                 DrawCommunicationModePopup(projectDirectory, status);
 
-            DrawRestartStatus(projectDirectory, status);
+            var customTypesupport = status.SelectedRuntime == null
+                ? null
+                : Ros2ForUnityRuntimeSelection.GetActiveCustomTypesupportSelection(projectDirectory);
+            DrawCustomTypesupportStatus(customTypesupport);
+            DrawRestartStatus(projectDirectory, status, customTypesupport);
 
             if (status.SelectedRuntime != null)
             {
@@ -76,13 +80,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 : selectedRuntime.DisplayName + " / " + selectedRuntime.RuntimeId;
         }
 
-        private static void DrawRestartStatus(string projectDirectory, Ros2ForUnityRuntimeSelectionStatus status)
+        private static void DrawRestartStatus(
+            string projectDirectory,
+            Ros2ForUnityRuntimeSelectionStatus status,
+            Ros2ForUnityCustomTypesupportSelectionResult customTypesupport)
         {
             if (status.SelectedRuntime != null)
             {
                 var sessionRuntime = Ros2ForUnityRuntimeSelection.GetSessionRuntimePackage();
                 var restartPackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
                 var restartCommunicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
+                var restartCustomTypesupport = Ros2ForUnityRuntimeSelection.GetCustomTypesupportRequiringEditorRestart(status);
                 if (!string.IsNullOrWhiteSpace(restartPackage))
                 {
                     EditorGUILayout.HelpBox(
@@ -115,12 +123,50 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                             Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
                     }
                 }
+                else if (!string.IsNullOrWhiteSpace(restartCustomTypesupport))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Restart Unity before entering Play Mode. This Editor session already loaded native ROS2 typesupport, and the active custom typesupport selection is now "
+                        + restartCustomTypesupport
+                        + ". Unity cannot safely unload native custom typesupport DLLs mid-session.",
+                        MessageType.Error);
+
+                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    {
+                        if (GUILayout.Button("Restart Unity"))
+                            Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
+                    }
+                }
                 else if (string.IsNullOrWhiteSpace(sessionRuntime))
                 {
                     EditorGUILayout.HelpBox(
                         "Switching runtime packages or communication modes is safe before this Editor session enters Play Mode. A restart is required only after native ROS2 DLLs have already loaded in this session.",
                         MessageType.Info);
                 }
+            }
+        }
+
+        private static void DrawCustomTypesupportStatus(
+            Ros2ForUnityCustomTypesupportSelectionResult customTypesupport)
+        {
+            if (customTypesupport == null)
+                return;
+
+            if (customTypesupport.IsReady)
+            {
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    EditorGUILayout.TextField("Custom ROS2 Typesupport", customTypesupport.ActiveAddOnPackage);
+                    EditorGUILayout.TextField("Interface Digest", customTypesupport.InterfaceDigest);
+                }
+                return;
+            }
+
+            if (customTypesupport.Code != Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly)
+            {
+                EditorGUILayout.HelpBox(
+                    "FoxRun custom ROS2 typesupport is not ready: " + customTypesupport.Code + ".",
+                    MessageType.Warning);
             }
         }
 

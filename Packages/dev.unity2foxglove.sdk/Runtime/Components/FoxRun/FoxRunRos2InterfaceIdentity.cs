@@ -20,7 +20,10 @@ namespace Unity.FoxgloveSDK.Components
         public const string DefaultRosPackageName = "unity2foxglove_foxrun_interfaces_v1";
         public const int LockSchemaVersion = 1;
         public const int InterfaceSchemaVersion = 1;
-        public const int NamingPolicyVersion = 1;
+        // ROS 2 message identifiers use the UpperCamelCase grammar and cannot
+        // contain the underscore delimiter that an early static-package draft
+        // used before its first real rosidl build.
+        public const int NamingPolicyVersion = 2;
 
         public static string BuildRosPackageName(int revision)
         {

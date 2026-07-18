@@ -340,7 +340,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool IsNativeRuntimeSubsection(InvocationExpressionSyntax invocation)
         {
             return IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                   && HasStringArgument(invocation, 0, "ROS 2 Native Runtime (R2FU)")
+                   && HasStringArgument(invocation, 0, "ROS 2 Native Runtime (R2FU) — Shared")
                    && HasStringArgument(invocation, 1, "DataTransportNativeRuntime")
                    && HasRefIdentifierArgument(invocation, 2, "_dataTransportNativeRuntimeExpanded")
                    && HasMethodGroupArgument(invocation, "DrawR2fuRuntimeSection");

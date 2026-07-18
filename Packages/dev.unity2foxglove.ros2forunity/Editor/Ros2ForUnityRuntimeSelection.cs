@@ -169,7 +169,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     internal static class Ros2ForUnityRuntimeSelection
     {
         public const string BaseCompileSymbol = "UNITY2FOXGLOVE_ROS2_FOR_UNITY";
+        public const string CustomTypesupportCompileSymbol =
+            "UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES";
         public const string RuntimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
+        public const string CustomTypesupportPackagePrefix =
+            Ros2ForUnityCustomTypesupportSelectionTransaction.CustomTypesupportPackagePrefix;
         public const string FastDdsCommunicationMode = Ros2ForUnityRuntimeCapabilityParser.FastDdsCommunicationMode;
         public const string ZenohCommunicationMode = Ros2ForUnityRuntimeCapabilityParser.ZenohCommunicationMode;
         public const string FastDdsRmwImplementation = Ros2ForUnityRuntimeCapabilityParser.FastDdsRmwImplementation;
@@ -178,6 +182,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static readonly IReadOnlyList<string> NoCommunicationModeIds = Array.Empty<string>();
         private const string SessionRuntimeKey = "Unity2Foxglove.R2FU.SessionRuntime";
         private const string SessionCommunicationModeKey = "Unity2Foxglove.R2FU.SessionCommunicationMode";
+        private const string SessionCustomTypesupportIdentityKey =
+            "Unity2Foxglove.R2FU.SessionCustomTypesupportIdentity";
         private const string CommunicationModeEditorUserSettingsKey =
             "Unity2Foxglove.R2FU.CommunicationMode";
         private const string WindowsNativePluginRelativeDirectory =
@@ -265,27 +271,53 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (string.IsNullOrWhiteSpace(projectDirectory))
                 throw new InvalidOperationException("Could not resolve the Unity project directory.");
 
-            if (EditorApplication.isPlayingOrWillChangePlaymode)
-                throw new InvalidOperationException("Cannot switch ROS2 For Unity runtime while Play Mode is active or changing.");
+            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                throw new InvalidOperationException(
+                    "Cannot switch ROS2 For Unity runtime while Play Mode, compilation, or package refresh is active.");
+            }
 
             var candidate = DiscoverCandidateRuntimes(projectDirectory)
                 .FirstOrDefault(runtime => string.Equals(runtime.PackageName, packageName, StringComparison.Ordinal));
             if (candidate == null)
                 throw new InvalidOperationException("Runtime package is not a repository candidate: " + packageName);
 
-            var manifestPath = ManifestPath(projectDirectory);
-            if (!File.Exists(manifestPath))
-                throw new FileNotFoundException("Unity package manifest was not found.", manifestPath);
-
-            var manifest = File.ReadAllText(manifestPath);
-            ValidateManifestJson(manifest, manifestPath);
-            manifest = RemoveRuntimePackageDependencies(manifest);
-            manifest = AddRuntimePackageDependency(manifest, candidate.PackageName, projectDirectory);
-            ValidateManifestJson(manifest, manifestPath);
-            WriteManifestAtomically(manifestPath, manifest);
+            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+                projectDirectory,
+                candidate.PackageName,
+                requestedAddOnPackage: null,
+                resolve: () => Client.Resolve());
+            ThrowIfCustomTypesupportTransactionFailed(result, "switching ROS2 For Unity runtime");
             InvalidateStatusCache();
             ApplyCommunicationModeEnvironment(projectDirectory);
-            Client.Resolve();
+        }
+
+        /// <summary>
+        /// Changes only the custom typesupport member of the active runtime/add-on
+        /// pair. Callers are intentionally required to use this transaction rather
+        /// than editing manifest.json or packages-lock.json directly.
+        /// </summary>
+        public static void SwitchActiveCustomTypesupportPackage(string projectDirectory, string packageName)
+        {
+            if (string.IsNullOrWhiteSpace(projectDirectory))
+                throw new InvalidOperationException("Could not resolve the Unity project directory.");
+            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                throw new InvalidOperationException(
+                    "Cannot switch FoxRun custom ROS2 typesupport while Play Mode, compilation, or package refresh is active.");
+            }
+
+            var status = GetStatus(projectDirectory);
+            if (status.SelectedRuntime == null)
+                throw new InvalidOperationException("Select one valid ROS2 For Unity runtime before selecting custom ROS2 typesupport.");
+
+            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+                projectDirectory,
+                status.SelectedRuntime.PackageName,
+                packageName,
+                () => Client.Resolve());
+            ThrowIfCustomTypesupportTransactionFailed(result, "selecting FoxRun custom ROS2 typesupport");
+            InvalidateStatusCache();
         }
 
         public static string GetSessionRuntimePackage()
@@ -293,6 +325,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         public static string GetSessionCommunicationMode()
             => SessionState.GetString(SessionCommunicationModeKey, string.Empty);
+
+        public static string GetSessionCustomTypesupportIdentity()
+            => SessionState.GetString(SessionCustomTypesupportIdentityKey, string.Empty);
+
+        public static Ros2ForUnityCustomTypesupportSelectionResult GetActiveCustomTypesupportSelection(
+            string projectDirectory)
+        {
+            var status = GetStatus(projectDirectory);
+            return status?.SelectedRuntime == null
+                ? new Ros2ForUnityCustomTypesupportSelectionResult(
+                    Ros2ForUnityCustomTypesupportSelectionCode.InvalidBaseRuntime,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty)
+                : Ros2ForUnityCustomTypesupportSelectionTransaction.EvaluateActive(
+                    projectDirectory,
+                    status.SelectedRuntime.PackageName);
+        }
 
         public static IReadOnlyList<string> GetCommunicationModeIds(Ros2ForUnityRuntimeDescriptor runtime)
             => runtime?.CommunicationModeIds ?? NoCommunicationModeIds;
@@ -367,6 +418,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (status == null || status.SelectedRuntime == null)
                 return;
 
+            var projectDirectory = ProjectDirectoryFromApplication();
+            var customTypesupport = Ros2ForUnityCustomTypesupportSelectionTransaction.EvaluateActive(
+                projectDirectory,
+                status.SelectedRuntime.PackageName);
+            ThrowIfCustomTypesupportTransactionFailed(customTypesupport, "binding ROS2 For Unity for Play Mode");
+
             var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
             ApplySelectedRuntimeEnvironment(status.SelectedRuntime, communicationMode);
 
@@ -375,6 +432,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             if (string.IsNullOrWhiteSpace(GetSessionCommunicationMode()))
                 SessionState.SetString(SessionCommunicationModeKey, communicationMode);
+
+            if (string.IsNullOrWhiteSpace(GetSessionCustomTypesupportIdentity()))
+                SessionState.SetString(SessionCustomTypesupportIdentityKey, BuildCustomTypesupportIdentity(customTypesupport));
         }
 
         private static void ApplySelectedRuntimeEnvironment(
@@ -437,6 +497,27 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 : communicationMode;
         }
 
+        public static string GetCustomTypesupportRequiringEditorRestart(Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            if (string.IsNullOrWhiteSpace(GetSessionRuntimePackage()) || status?.SelectedRuntime == null)
+                return string.Empty;
+
+            var selection = Ros2ForUnityCustomTypesupportSelectionTransaction.EvaluateActive(
+                ProjectDirectoryFromApplication(),
+                status.SelectedRuntime.PackageName);
+            if (!selection.IsReady && selection.Code != Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly)
+                return "invalid custom typesupport selection";
+
+            return string.Equals(
+                GetSessionCustomTypesupportIdentity(),
+                BuildCustomTypesupportIdentity(selection),
+                StringComparison.Ordinal)
+                ? string.Empty
+                : (string.IsNullOrWhiteSpace(selection.ActiveAddOnPackage)
+                    ? "base-only"
+                    : selection.ActiveAddOnPackage);
+        }
+
         public static void RestartEditor(string projectDirectory)
         {
             if (string.IsNullOrWhiteSpace(projectDirectory))
@@ -452,12 +533,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (status.SelectedRuntime == null)
                 throw new InvalidOperationException("Cannot restart Unity without one selected ROS2 For Unity runtime package.");
 
-            RestartEditorInCleanProcess(projectDirectory, status.SelectedRuntime);
+            var customTypesupport = Ros2ForUnityCustomTypesupportSelectionTransaction.EvaluateActive(
+                projectDirectory,
+                status.SelectedRuntime.PackageName);
+            ThrowIfCustomTypesupportTransactionFailed(customTypesupport, "restarting Unity with custom ROS2 typesupport");
+            RestartEditorInCleanProcess(projectDirectory, status.SelectedRuntime, customTypesupport);
         }
 
         private static void RestartEditorInCleanProcess(
             string projectDirectory,
-            Ros2ForUnityRuntimeDescriptor runtime)
+            Ros2ForUnityRuntimeDescriptor runtime,
+            Ros2ForUnityCustomTypesupportSelectionResult customTypesupport)
         {
             var editorExecutable = EditorApplication.applicationPath;
             if (string.IsNullOrWhiteSpace(editorExecutable) || !File.Exists(editorExecutable))
@@ -472,7 +558,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             };
 
             startInfo.EnvironmentVariables[NativeLibraryPathVariableName()] =
-                BuildCleanRestartPath(projectDirectory, runtime);
+                BuildCleanRestartPath(projectDirectory, runtime, customTypesupport);
             if (!string.IsNullOrWhiteSpace(runtime.RosDistro))
                 startInfo.EnvironmentVariables["ROS_DISTRO"] = runtime.RosDistro;
 
@@ -496,7 +582,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static string BuildCleanRestartPath(
             string projectDirectory,
-            Ros2ForUnityRuntimeDescriptor selectedRuntime)
+            Ros2ForUnityRuntimeDescriptor selectedRuntime,
+            Ros2ForUnityCustomTypesupportSelectionResult selectedCustomTypesupport)
         {
             var comparison = Path.DirectorySeparatorChar == '\\'
                 ? StringComparer.OrdinalIgnoreCase
@@ -504,6 +591,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var blockedRuntimePluginPaths = new HashSet<string>(comparison);
             foreach (var runtime in DiscoverCandidateRuntimes(projectDirectory))
                 blockedRuntimePluginPaths.Add(NormalizeRestartPath(RuntimePluginDirectory(projectDirectory, runtime)));
+            foreach (var customPackage in Ros2ForUnityCustomTypesupportSelectionTransaction.DiscoverCandidatePackageIds(projectDirectory))
+            {
+                blockedRuntimePluginPaths.Add(NormalizeRestartPath(
+                    Ros2ForUnityCustomTypesupportSelectionTransaction.PluginDirectory(projectDirectory, customPackage)));
+            }
 
             var cleanEntries = new List<string>();
             var seen = new HashSet<string>(comparison);
@@ -511,6 +603,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 cleanEntries,
                 seen,
                 RuntimePluginDirectory(projectDirectory, selectedRuntime));
+            if (selectedCustomTypesupport?.IsReady == true)
+            {
+                AddRestartPathEntry(
+                    cleanEntries,
+                    seen,
+                    selectedCustomTypesupport.NativePluginDirectory);
+            }
 
             var inheritedPath = Environment.GetEnvironmentVariable(NativeLibraryPathVariableName());
             if (!string.IsNullOrWhiteSpace(inheritedPath))
@@ -551,6 +650,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 RepositoryPackagesDirectory(projectDirectory),
                 runtime?.PackageName ?? string.Empty,
                 WindowsNativePluginRelativeDirectory);
+        }
+
+        private static string BuildCustomTypesupportIdentity(
+            Ros2ForUnityCustomTypesupportSelectionResult selection)
+        {
+            if (selection == null || selection.Code == Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly)
+                return string.Empty;
+
+            return selection.ActiveAddOnPackage
+                   + "|" + selection.InterfaceDigest
+                   + "|" + selection.BaseRuntimeAbiDigest
+                   + "|" + NormalizeRestartPath(selection.NativePluginDirectory);
+        }
+
+        private static void ThrowIfCustomTypesupportTransactionFailed(
+            Ros2ForUnityCustomTypesupportSelectionResult result,
+            string operation)
+        {
+            if (result != null
+                && (result.Code == Ros2ForUnityCustomTypesupportSelectionCode.Ready
+                    || result.Code == Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly))
+            {
+                return;
+            }
+
+            var code = result == null ? "Unknown" : result.Code.ToString();
+            throw new InvalidOperationException(
+                "FoxRun custom ROS2 typesupport preflight failed while " + operation + ": " + code + ".");
         }
 
         private static string NormalizeRestartPath(string path)

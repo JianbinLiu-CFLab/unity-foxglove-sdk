@@ -82,6 +82,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 changed |= RemoveSymbol(parts, Ros2ForUnityRuntimeSelection.BaseCompileSymbol);
             }
 
+            var customTypesupport = status.HasSelection
+                ? Ros2ForUnityRuntimeSelection.GetActiveCustomTypesupportSelection(
+                    Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication())
+                : null;
+            if (customTypesupport?.IsReady == true)
+            {
+                changed |= EnsureSymbol(parts, Ros2ForUnityRuntimeSelection.CustomTypesupportCompileSymbol);
+            }
+            else
+            {
+                changed |= RemoveSymbol(parts, Ros2ForUnityRuntimeSelection.CustomTypesupportCompileSymbol);
+            }
+
             if (!changed)
                 return;
 
@@ -89,7 +102,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Debug.Log(status.HasSelection
                 ? "Unity2Foxglove enabled " + Ros2ForUnityRuntimeSelection.BaseCompileSymbol
                   + " for active ROS2 For Unity runtime "
-                  + status.SelectedRuntime.PackageName + "."
+                  + status.SelectedRuntime.PackageName
+                  + (customTypesupport?.IsReady == true
+                      ? " and " + Ros2ForUnityRuntimeSelection.CustomTypesupportCompileSymbol
+                      + " for " + customTypesupport.ActiveAddOnPackage + "."
+                      : ".")
                 : "Unity2Foxglove removed " + Ros2ForUnityRuntimeSelection.BaseCompileSymbol
                   + ": " + status.Diagnostic);
         }

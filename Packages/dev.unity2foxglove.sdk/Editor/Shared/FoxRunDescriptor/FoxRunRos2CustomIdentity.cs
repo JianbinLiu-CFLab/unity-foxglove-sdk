@@ -45,7 +45,7 @@ namespace Unity.FoxgloveSDK.Editor
             // Hash the case-folded canonical type identity. This prevents a
             // Windows path/casing variation from producing a second payload
             // identity while retaining the original canonical descriptor text.
-            return pascal + "_" + Fnv1a64Hex((fullyQualifiedTypeName ?? string.Empty).ToUpperInvariant()
+            return pascal + Fnv1a64Hex((fullyQualifiedTypeName ?? string.Empty).ToUpperInvariant()
                 + "|" + (canonicalIdentity ?? string.Empty));
         }
 

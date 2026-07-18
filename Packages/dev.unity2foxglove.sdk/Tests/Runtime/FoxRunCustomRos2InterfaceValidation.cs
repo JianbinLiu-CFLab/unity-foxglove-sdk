@@ -63,6 +63,14 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md";
         private const string ShippedLedgerPath =
             "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md";
+        private const string TypesupportSelectionPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs";
+        private const string RuntimeSelectionPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs";
+        private const string DefineInstallerPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeDefineInstaller.cs";
+        private const string PlayModeGuardPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs";
         private static int _passed;
 
         public static void Validate()
@@ -93,6 +101,10 @@ namespace Unity.FoxgloveSDK.Tests
             var diagnostics = PhaseValidationSourceHelpers.ReadRequiredRepoText(DiagnosticsPath);
             var unshippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(UnshippedLedgerPath);
             var shippedLedger = PhaseValidationSourceHelpers.ReadRequiredRepoText(ShippedLedgerPath);
+            var typesupportSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportSelectionPath);
+            var runtimeSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(RuntimeSelectionPath);
+            var defineInstaller = PhaseValidationSourceHelpers.ReadRequiredRepoText(DefineInstallerPath);
+            var playModeGuard = PhaseValidationSourceHelpers.ReadRequiredRepoText(PlayModeGuardPath);
 
             VerifyDistinctRosFreeDtoModel(customShape, reflectionBuilder, roslynBuilder);
             VerifyStableIdentityAndNaming(customIdentity, customNaming);
@@ -113,6 +125,11 @@ namespace Unity.FoxgloveSDK.Tests
                 manifestModel,
                 manifestJsonWriter,
                 descriptorWriter);
+            VerifyTypesupportAddOnActivation(
+                typesupportSelection,
+                runtimeSelection,
+                defineInstaller,
+                playModeGuard);
             VerifyRegistryEntry();
 
             Console.WriteLine("FoxRun custom ROS2 interface boundary: " + _passed + " checks passed.\n");
@@ -345,6 +362,41 @@ namespace Unity.FoxgloveSDK.Tests
                   && defaultEntries.Length == 0
                   && string.Equals(entries[0].Name, "FoxRun custom ROS2 interface boundary", StringComparison.Ordinal),
                 "181A-10: Phase181 has one non-default structural registry entry");
+        }
+
+        private static void VerifyTypesupportAddOnActivation(
+            string transaction,
+            string runtimeSelection,
+            string defineInstaller,
+            string playModeGuard)
+        {
+            Check(transaction.Contains("EvaluateActive", StringComparison.Ordinal)
+                  && transaction.Contains("WriteAtomically", StringComparison.Ordinal)
+                  && transaction.Contains("File.Replace", StringComparison.Ordinal)
+                  && transaction.Contains("Client.Resolve", StringComparison.Ordinal) == false
+                  // The transaction documents Unity ownership of the lock;
+                  // reject an actual packages-lock.json write path instead of
+                  // treating that explanatory text as a violation.
+                  && transaction.Contains("packages-lock.json", StringComparison.Ordinal) == false
+                  && transaction.Contains("NativePluginRelativeDirectory", StringComparison.Ordinal),
+                "181C-1: add-on transaction validates manifest-owned candidates and never writes Unity lock state");
+
+            Check(runtimeSelection.Contains("CustomTypesupportPackagePrefix", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("SwitchActiveCustomTypesupportPackage", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("BuildCleanRestartPath", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("GetCustomTypesupportRequiringEditorRestart", StringComparison.Ordinal)
+                  && runtimeSelection.Contains("SessionCustomTypesupportIdentityKey", StringComparison.Ordinal),
+                "181C-2: runtime selection treats the add-on identity and plugin path as restart-sensitive native state");
+
+            Check(defineInstaller.Contains("CustomTypesupportCompileSymbol", StringComparison.Ordinal)
+                  && defineInstaller.Contains("GetActiveCustomTypesupportSelection", StringComparison.Ordinal)
+                  && defineInstaller.Contains("RemoveSymbol(parts, Ros2ForUnityRuntimeSelection.CustomTypesupportCompileSymbol)", StringComparison.Ordinal),
+                "181C-3: custom compile symbol is enabled only for one validated active add-on");
+
+            Check(playModeGuard.Contains("GetActiveCustomTypesupportSelection", StringComparison.Ordinal)
+                  && playModeGuard.Contains("GetCustomTypesupportRequiringEditorRestart", StringComparison.Ordinal)
+                  && playModeGuard.Contains("custom ROS2 typesupport is not ready", StringComparison.Ordinal),
+                "181C-4: Play Mode rechecks custom add-on readiness before native initialization");
         }
 
         private static void Check(bool condition, string label)

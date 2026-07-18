@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Contains("rosidl_default_generators", rendered.GetText("Ros2Package~/CMakeLists.txt"), StringComparison.Ordinal);
             Assert.Contains("ament_cmake", rendered.GetText("Ros2Package~/package.xml"), StringComparison.Ordinal);
             Assert.Contains(
-                "\"ros2CustomEnvelopeMessageName\":\"Phase181State_79A0742B2553Envelope\"",
+                "\"ros2CustomEnvelopeMessageName\":\"Phase181State48D288ED82F1Envelope\"",
                 FoxRunGenerationDescriptorJsonWriter.Write(BuildModel(typeof(Phase181State))),
                 StringComparison.Ordinal);
         }
@@ -254,7 +254,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
         private static void AssertGoldenEquals(string root, IReadOnlyList<FoxRunRos2InterfaceRenderedFile> files)
         {
-            var expected = Snapshot(root);
+            // Unity may generate importer sidecars for fixture/package files.
+            // They are intentionally retained by the writer, but are outside
+            // the source-only ROS interface payload rendered by this test.
+            var expected = Snapshot(root)
+                .Where(pair => !pair.Key.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
+                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
             var actual = files.ToDictionary(
                 file => file.RelativePath,
                 file => FoxRunRos2InterfaceDigest.EncodeText(file.Text),

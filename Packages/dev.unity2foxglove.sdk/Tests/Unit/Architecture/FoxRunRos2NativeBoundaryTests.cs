@@ -80,6 +80,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("registrar.Register<", emitter, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void CustomTypesupportCatalogHasOnlyTheDocumentedOptionalFacadeSeam()
+        {
+            var root = FindRepoRoot();
+            var nativeRoot = Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.ros2forunity",
+                "Runtime",
+                "Native",
+                "FoxRun");
+            var contract = File.ReadAllText(Path.Combine(nativeRoot, "IFoxRunRos2CustomTypesupportCatalog.cs"));
+            var readiness = File.ReadAllText(Path.Combine(nativeRoot, "FoxRunRos2CustomTypesupportReadiness.cs"));
+            var registry = File.ReadAllText(Path.Combine(nativeRoot, "FoxRunRos2CustomTypesupportCatalogRegistry.cs"));
+            var candidateBuilder = File.ReadAllText(Path.Combine(
+                root,
+                "Scripts",
+                "ros2forunity",
+                "interfaces",
+                "build_foxrun_custom_typesupport_addon.py"));
+
+            Assert.Contains("public interface IFoxRunRos2CustomTypesupportCatalog", contract, StringComparison.Ordinal);
+            Assert.Contains("public static void Register(IFoxRunRos2CustomTypesupportCatalog catalog)", registry, StringComparison.Ordinal);
+            Assert.Contains("internal enum FoxRunRos2CustomTypesupportReadinessCode", readiness, StringComparison.Ordinal);
+            Assert.DoesNotContain("using ROS2", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("ROS2.", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("Ros2cs.Init", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("CreateNode", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("LoadLibrary", registry, StringComparison.Ordinal);
+            Assert.DoesNotContain("AppDomain", registry, StringComparison.Ordinal);
+            Assert.Contains("FoxRunRos2CustomTypesupportCatalogRegistry.Register", candidateBuilder, StringComparison.Ordinal);
+            Assert.DoesNotContain("Ros2cs.Init", candidateBuilder, StringComparison.Ordinal);
+            Assert.DoesNotContain("CreateNode", candidateBuilder, StringComparison.Ordinal);
+
+            var coreRuntimeAsmdef = File.ReadAllText(Path.Combine(
+                root,
+                "Packages",
+                "dev.unity2foxglove.sdk",
+                "Runtime",
+                "Unity.FoxgloveSDK.asmdef"));
+            Assert.DoesNotContain("CustomTypesupport", coreRuntimeAsmdef, StringComparison.Ordinal);
+            Assert.DoesNotContain("ROS2", coreRuntimeAsmdef, StringComparison.Ordinal);
+        }
+
         private static string FindRepoRoot()
         {
             var directory = new DirectoryInfo(AppContext.BaseDirectory);

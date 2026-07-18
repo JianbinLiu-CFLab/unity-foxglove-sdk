@@ -32,6 +32,17 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal("project_interfaces_v2", FoxRunRos2InterfaceIdentity.BuildRosPackageName("project_interfaces_v1", 2));
         }
 
+        [Fact]
+        public void PayloadIdentityUsesTheRos2UpperCamelMessageGrammar()
+        {
+            var identity = FoxRunRos2CustomIdentity.BuildPayloadIdentity(
+                "Example.Namespace.PayloadState",
+                "canonical-shape");
+
+            Assert.Matches("^[A-Z][A-Za-z0-9]*$", identity);
+            Assert.DoesNotContain("_", identity, StringComparison.Ordinal);
+        }
+
         [Theory]
         [InlineData("unity2foxglove_foxrun_interfaces_v1", true)]
         [InlineData("a", true)]

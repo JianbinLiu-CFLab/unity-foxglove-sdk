@@ -4,7 +4,7 @@ int32 count
 uint16 kind
 string message
 bool foxrun_has_message
-Phase181NestedState_3281D0E21244 nested
+Phase181NestedState3281D0E21244 nested
 bool foxrun_has_nested
 int32 optional_count
 bool foxrun_has_optional_count

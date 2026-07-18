@@ -55,18 +55,23 @@ namespace Unity.FoxgloveSDK.Tests
         private static void RuntimeSelectionValidatesManifestJson()
         {
             var selection = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
+            var transaction = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs");
             var switchMethod = ExtractMethod(selection, "SwitchActiveRuntimePackage");
+            var applyMethod = ExtractMethod(transaction, "Apply");
 
             Check(selection.Contains("JObject.Parse", StringComparison.Ordinal)
                   && selection.Contains("ReadManifestJson(", StringComparison.Ordinal)
                   && selection.Contains("ValidateManifestJson(", StringComparison.Ordinal),
                 "163-29C-1: runtime selector has JSON parsing and validation helpers for manifest governance");
-            Check(Count(switchMethod, "ValidateManifestJson(manifest, manifestPath);") >= 2
-                  && switchMethod.IndexOf("ValidateManifestJson(manifest, manifestPath);", StringComparison.Ordinal)
-                     < switchMethod.IndexOf("RemoveRuntimePackageDependencies(manifest)", StringComparison.Ordinal)
-                  && switchMethod.LastIndexOf("ValidateManifestJson(manifest, manifestPath);", StringComparison.Ordinal)
-                     < switchMethod.IndexOf("WriteManifestAtomically(manifestPath, manifest)", StringComparison.Ordinal),
-                "163-29C-2: runtime package switching validates manifest JSON before and after modification");
+            Check(switchMethod.Contains("Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(", StringComparison.Ordinal)
+                  && Count(applyMethod, "ParseManifestJson(") >= 3
+                  && applyMethod.IndexOf("ParseManifestJson(originalManifest)", StringComparison.Ordinal)
+                     < applyMethod.IndexOf("SerializeManifest(updated", StringComparison.Ordinal)
+                  && applyMethod.IndexOf("ParseManifestJson(rendered)", StringComparison.Ordinal)
+                     < applyMethod.IndexOf("WriteAtomically(manifestPath, rendered)", StringComparison.Ordinal)
+                  && applyMethod.IndexOf("WriteAtomically(manifestPath, rendered)", StringComparison.Ordinal)
+                     < applyMethod.IndexOf("ParseManifestJson(File.ReadAllText(manifestPath))", StringComparison.Ordinal),
+                "163-29C-2: runtime package switching validates manifest JSON before mutation, before write, and after atomic persistence");
         }
 
         private static void RuntimeSelectionReadsManifestDependenciesAsJson()
@@ -134,7 +139,13 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ExtractMethod(string source, string methodName)
         {
             var signature = -1;
-            foreach (var prefix in new[] { "public static void ", "public static IReadOnlyList<string> ", "private static string " })
+            foreach (var prefix in new[]
+            {
+                "public static void ",
+                "public static IReadOnlyList<string> ",
+                "public static Ros2ForUnityCustomTypesupportSelectionResult ",
+                "private static string ",
+            })
             {
                 signature = source.IndexOf(prefix + methodName + "(", StringComparison.Ordinal);
                 if (signature >= 0)
