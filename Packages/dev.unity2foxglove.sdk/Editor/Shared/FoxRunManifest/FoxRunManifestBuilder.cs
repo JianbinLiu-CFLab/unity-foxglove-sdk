@@ -58,10 +58,16 @@ namespace Unity.FoxgloveSDK.Editor
         {
             return members
                 .Where(member => member.GeneratesWebSocketCodec
-                                 && !string.Equals(
-                                     member.SubscriptionProvider,
-                                     FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
-                                     StringComparison.Ordinal))
+                                 // A custom DTO P&S contract has native input
+                                 // but still deliberately exposes its selected
+                                 // JSON/Protobuf contract as WebSocket output.
+                                 // SubscribeOnly native contracts remain absent
+                                 // so this never creates a fallback input path.
+                                 && (!string.Equals(
+                                         member.SubscriptionProvider,
+                                         FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                                         StringComparison.Ordinal)
+                                     || member.FlowMode == 2))
                 .GroupBy(DeclaringType)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .Select(group => new FoxRunManifestType(group.Key, BuildContracts(group.Key, group.ToList())))
@@ -83,21 +89,42 @@ namespace Unity.FoxgloveSDK.Editor
                     member.Ros2Qos,
                     member.GeneratesWebSocketCodec,
                     member.GeneratesRos2NativeRegistration,
-                    member.GeneratesRos2NativeRegistration
-                        ? member.Ros2MessageShape?.FullyQualifiedTypeName ?? member.TypeName
-                        : string.Empty,
-                    member.GeneratesRos2NativeRegistration
-                        ? member.Ros2MessageShape?.CanonicalRosType ?? member.SchemaName
-                        : string.Empty,
-                    member.GeneratesRos2NativeRegistration
-                        ? member.Ros2MessageShape?.CopyShapeIdentity ?? string.Empty
-                        : string.Empty))
+                    ResolveNativeType(member),
+                    ResolvePackagedCanonicalRosType(member),
+                    ResolvePackagedCopyShapeIdentity(member),
+                    member.Ros2ContractKind,
+                    member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
+                    member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToList()
                 .AsReadOnly();
         }
+
+        private static string ResolveNativeType(FoxRunManifestMember member)
+        {
+            if (!member.GeneratesRos2NativeRegistration)
+                return string.Empty;
+
+            return member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
+                ? member.Ros2MessageShape?.FullyQualifiedTypeName ?? member.TypeName
+                : member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto
+                    ? member.Ros2CustomDtoShape?.FullyQualifiedTypeName ?? member.TypeName
+                    : member.TypeName;
+        }
+
+        private static string ResolvePackagedCanonicalRosType(FoxRunManifestMember member)
+            => member.GeneratesRos2NativeRegistration
+               && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
+                ? member.Ros2MessageShape?.CanonicalRosType ?? string.Empty
+                : string.Empty;
+
+        private static string ResolvePackagedCopyShapeIdentity(FoxRunManifestMember member)
+            => member.GeneratesRos2NativeRegistration
+               && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
+                ? member.Ros2MessageShape?.CopyShapeIdentity ?? string.Empty
+                : string.Empty;
 
         private static IReadOnlyList<FoxRunManifestContract> BuildContracts(
             string declaringType,

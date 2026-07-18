@@ -91,7 +91,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal)
                   && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
-                  && editorSources.Contains("\"Subscribe\"", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal)
                   && !main.Contains("DrawSection(\"FoxRun\"", StringComparison.Ordinal)
                   && subscribe.Contains("Default Input Transport", StringComparison.Ordinal)
                   && subscriptionProtocolLabels.Contains("ProtocolLabels", StringComparison.Ordinal)

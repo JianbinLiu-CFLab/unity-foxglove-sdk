@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     {
         [Theory]
         [InlineData("invalid", "inherit", 1, "FOXRUN204")]
-        [InlineData("ros2-native", "inherit", 0, "FOXRUN205")]
+        [InlineData("ros2-native", "inherit", 0, "FOXRUN214")]
         [InlineData("ros2-native", "json", 1, "FOXRUN206")]
         [InlineData("ros2-native", "protobuf", 1, "FOXRUN206")]
         [InlineData("ros2-native", "inherit", 2, "FOXRUN205")]
@@ -700,12 +700,68 @@ namespace Demo { public partial class Receiver { private sensor_msgs.msg.Imu _in
         }
 
         [Fact]
-        public void SourceGeneratorReportsTargetedNativeShapeDiagnostics()
+        public void SourceGeneratorMarksCustomDtoNativePublishAndSubscribeAsNativeCapable()
+        {
+            var result = RunGenerator(
+                @"namespace vendor_msgs.msg
+{
+    public sealed class Command
+    {
+        public Command() { }
+        public int Value { get; set; }
+    }
+}",
+                "vendor_msgs/msg/Command",
+                subscriptionProvider: "Ros2Native",
+                mode: "PublishAndSubscribe",
+                encoding: "Json");
+
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            var descriptor = result.Results.Single().GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText.ToString();
+            Assert.Contains("\\\"generatesRos2NativeRegistration\\\":true", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"ros2ContractKind\\\":\\\"CustomDto\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"ros2MessageShape\\\":null", descriptor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SourceGeneratorKeepsCustomAndPackagedNativeFailuresInTheirOwnDiagnosticFamilies()
+        {
+            var customInvalid = RunGenerator(
+                @"namespace custom_msgs.msg
+{
+    public sealed class Command
+    {
+        public Command() { }
+        public char Value { get; set; }
+    }
+}",
+                "custom_msgs/msg/Command",
+                messageTypeName: "custom_msgs.msg.Command",
+                subscriptionProvider: "Ros2Native",
+                mode: "PublishAndSubscribe",
+                encoding: "Json");
+            var packagedInvalid = RunGenerator(
+                ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", publicConstructor: false),
+                "vendor_msgs/msg/Command",
+                subscriptionProvider: "Ros2Native",
+                mode: "PublishAndSubscribe",
+                encoding: "Json");
+
+            Assert.Contains(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN606");
+            Assert.Contains(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN402");
+            Assert.DoesNotContain(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
+            Assert.DoesNotContain(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN205");
+            Assert.Contains(packagedInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN205");
+            Assert.DoesNotContain(packagedInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN402");
+        }
+
+        [Fact]
+        public void SourceGeneratorReportsTargetedPackagedNativeShapeDiagnostics()
         {
             var cases = new[]
             {
-                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", true, interfaceName: "User.Message")
-                    .Replace("namespace vendor_msgs.msg", "namespace User { public interface Message { } } namespace vendor_msgs.msg"), "vendor_msgs/msg/Command", "FOXRUN207", "vendor_msgs.msg.Command"),
                 (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", false), "vendor_msgs/msg/Command", "FOXRUN208", "vendor_msgs.msg.Command"),
                 (ValidMessageSource("vendor_msgs.srv", "public int Value { get; set; }", true), "vendor_msgs/srv/Command", "FOXRUN209", "vendor_msgs.srv.Command"),
                 (ValidMessageSource("vendor_msgs.msg", "public int Value { get; }", true), "vendor_msgs/msg/Command", "FOXRUN203", "vendor_msgs.msg.Command"),
@@ -755,7 +811,7 @@ namespace Demo { public partial class Receiver { private sensor_msgs.msg.Imu _in
                 nativeReference: false,
                 subscriptionProvider: "Inherit",
                 encoding: "Protobuf");
-            var invalidNativeShape = RunGenerator(
+            var customNativeDto = RunGenerator(
                 ValidMessageSource(
                         "vendor_msgs.msg",
                         "public int Value { get; set; }",
@@ -812,8 +868,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Assert.DoesNotContain(webSocketOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.DoesNotContain(publishOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.DoesNotContain(ordinaryDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
-            Assert.DoesNotContain(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
-            Assert.Contains(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
+            Assert.DoesNotContain(customNativeDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(customNativeDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
+            Assert.DoesNotContain(customNativeDto.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
             Assert.Contains(sameNameEmptyShell.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Contains(missingRegistrar.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Contains(wrongVisibility.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");

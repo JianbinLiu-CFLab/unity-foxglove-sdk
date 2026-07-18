@@ -46,7 +46,9 @@ namespace Unity.FoxgloveSDK.Editor
                     ros2Qos: FoxRunGenerationMember.DeclaredRos2QosToText(member.Ros2Qos),
                     generatesWebSocketCodec: member.GeneratesWebSocketCodec,
                     generatesRos2NativeRegistration: member.GeneratesRos2NativeRegistration,
-                    ros2MessageShape: member.Ros2MessageShape))
+                    ros2MessageShape: member.Ros2MessageShape,
+                    ros2CustomDtoShape: member.Ros2CustomDtoShape,
+                    ros2ContractKind: member.Ros2ContractKind))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -74,6 +76,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
+        public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
+        public readonly FoxRunRos2ContractKind Ros2ContractKind;
         public readonly int ProtobufFieldNumber;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly float ChangeEpsilon;
@@ -115,7 +119,9 @@ namespace Unity.FoxgloveSDK.Editor
             int ros2Qos = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
-            FoxRunRos2MessageShape ros2MessageShape = null)
+            FoxRunRos2MessageShape ros2MessageShape = null,
+            FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -144,11 +150,12 @@ namespace Unity.FoxgloveSDK.Editor
                                 ? elementTypeName
                                 : EmissionTypeName)));
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration
-                ?? (ros2MessageShape != null
-                    && ros2MessageShape.HasPublicParameterlessConstructor
-                    && ros2MessageShape.ImplementsRos2Message
-                    && ros2MessageShape.Diagnostics.Count == 0);
+                ?? FoxRunRos2ContractCapability.IsNativeRegistrationCapable(
+                    ros2MessageShape,
+                    ros2CustomDtoShape);
             Ros2MessageShape = ros2MessageShape;
+            Ros2CustomDtoShape = ros2CustomDtoShape;
+            Ros2ContractKind = ros2ContractKind;
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
             ChangeEpsilon = changeEpsilon;
@@ -190,7 +197,9 @@ namespace Unity.FoxgloveSDK.Editor
             int ros2Qos = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
-            FoxRunRos2MessageShape ros2MessageShape = null)
+            FoxRunRos2MessageShape ros2MessageShape = null,
+            FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             : this(
                 ns,
                 className,
@@ -221,7 +230,9 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2Qos,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
-                ros2MessageShape)
+                ros2MessageShape,
+                ros2CustomDtoShape,
+                ros2ContractKind)
         {
         }
     }

@@ -105,6 +105,11 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteName(sb, "ros2MessageShape");
             WriteRos2MessageShape(sb, member.Ros2MessageShape);
+            sb.Append(',');
+            WriteStringField(sb, "ros2ContractKind", member.Ros2ContractKind.ToString());
+            sb.Append(',');
+            WriteName(sb, "ros2CustomDtoShape");
+            WriteRos2CustomDtoShape(sb, member.Ros2CustomDtoShape);
             if (member.ProtobufFieldNumber > 0)
             {
                 sb.Append(',');
@@ -194,6 +199,78 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.Append(',');
                 WriteName(sb, "fixedSize");
                 sb.Append(member.FixedSize.ToString(CultureInfo.InvariantCulture));
+                sb.Append('}');
+            }
+            sb.Append(']');
+            sb.Append(',');
+            WriteName(sb, "diagnostics");
+            sb.Append('[');
+            for (var i = 0; i < shape.Diagnostics.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                WriteString(sb, shape.Diagnostics[i]);
+            }
+            sb.Append(']');
+            sb.Append('}');
+        }
+
+        private static void WriteRos2CustomDtoShape(StringBuilder sb, FoxRunRos2CustomDtoShape shape)
+        {
+            if (shape == null)
+            {
+                sb.Append("null");
+                return;
+            }
+
+            sb.Append('{');
+            WriteStringField(sb, "fullyQualifiedTypeName", shape.FullyQualifiedTypeName);
+            sb.Append(',');
+            WriteStringField(sb, "canonicalIdentity", shape.CanonicalIdentity);
+            sb.Append(',');
+            WriteStringField(sb, "payloadIdentity", shape.PayloadIdentity);
+            sb.Append(',');
+            WriteName(sb, "hasPublicParameterlessConstructor");
+            sb.Append(shape.HasPublicParameterlessConstructor ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "isSupported");
+            sb.Append(shape.IsSupported ? "true" : "false");
+            sb.Append(',');
+            WriteName(sb, "members");
+            sb.Append('[');
+            for (var i = 0; i < shape.Members.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var member = shape.Members[i];
+                sb.Append('{');
+                WriteStringField(sb, "name", member.Name);
+                sb.Append(',');
+                WriteStringField(sb, "rosFieldName", member.RosFieldName);
+                sb.Append(',');
+                WriteStringField(sb, "presenceFieldName", member.PresenceFieldName);
+                sb.Append(',');
+                WriteStringField(sb, "kind", member.Kind.ToString());
+                sb.Append(',');
+                WriteStringField(sb, "fullyQualifiedTypeName", member.FullyQualifiedTypeName);
+                sb.Append(',');
+                WriteStringField(sb, "rosType", member.RosType);
+                sb.Append(',');
+                WriteStringField(sb, "sequenceElementTypeName", member.SequenceElementTypeName);
+                sb.Append(',');
+                WriteStringField(sb, "nestedShapeIdentity", member.NestedShapeIdentity);
+                sb.Append(',');
+                WriteName(sb, "nestedShape");
+                WriteRos2CustomDtoShape(sb, member.NestedShape);
+                sb.Append(',');
+                WriteName(sb, "hasPresence");
+                sb.Append(member.HasPresence ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "canRead");
+                sb.Append(member.CanRead ? "true" : "false");
+                sb.Append(',');
+                WriteName(sb, "canWrite");
+                sb.Append(member.CanWrite ? "true" : "false");
+                sb.Append(',');
+                WriteStringField(sb, "sequenceRepresentation", member.SequenceRepresentation.ToString());
                 sb.Append('}');
             }
             sb.Append(']');

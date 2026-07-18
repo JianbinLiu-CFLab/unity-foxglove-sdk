@@ -109,6 +109,53 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void RoslynAndReflectionLowerersPreserveCustomDtoContractKindAndSchema()
+        {
+            var customShape = new FoxRunRos2CustomDtoShape(
+                "global::Demo.CustomPayload",
+                "Demo.CustomPayload|Count:int32",
+                "CustomPayload_12ab34cd56ef",
+                hasPublicParameterlessConstructor: true,
+                isSupported: true,
+                members: new[]
+                {
+                    new FoxRunRos2CustomDtoMemberShape(
+                        "Count", "count", FoxRunRos2CustomDtoMemberKind.Scalar,
+                        "int", "int32", "", "", hasPresence: false,
+                        canRead: true, canWrite: true)
+                },
+                diagnostics: Array.Empty<string>());
+            var roslyn = FoxRunRoslynGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunRoslynGenerationMember(
+                    "Demo", "Host", "Payload", "field", "Demo.CustomPayload", "global::Demo.CustomPayload",
+                    false, false, "", "/custom", "", 10f, 0, 0f, 0f, 1, "", mode: 2,
+                    encoding: 2, subscriptionProvider: 2, ros2Qos: 0,
+                    generatesWebSocketCodec: true, generatesRos2NativeRegistration: false,
+                    ros2CustomDtoShape: customShape,
+                    ros2ContractKind: FoxRunRos2ContractKind.CustomDto)
+            });
+            var reflection = FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo", "Host", "Payload", "field", "Demo.CustomPayload", "global::Demo.CustomPayload",
+                    false, false, "", "/custom", "", 10f, 0, 0f, 0f, 1, "", mode: 2,
+                    encoding: 2, subscriptionProvider: 2, ros2Qos: 0,
+                    generatesWebSocketCodec: true, generatesRos2NativeRegistration: false,
+                    ros2CustomDtoShape: customShape,
+                    ros2ContractKind: FoxRunRos2ContractKind.CustomDto)
+            });
+
+            Assert.True(FoxRunGenerationDescriptorComparer.Compare(roslyn, reflection).IsSemanticEqual);
+            using var document = JsonDocument.Parse(FoxRunGenerationDescriptorJsonWriter.Write(roslyn));
+            var member = document.RootElement.GetProperty("types")[0].GetProperty("members")[0];
+            Assert.Equal("CustomDto", member.GetProperty("ros2ContractKind").GetString());
+            Assert.Equal(
+                "CustomPayload_12ab34cd56ef",
+                member.GetProperty("ros2CustomDtoShape").GetProperty("payloadIdentity").GetString());
+        }
+
+        [Fact]
         public void ReadOnlyFixedSequenceShapeRoundTripsAcrossHostsAndDescriptor()
         {
             var shape = BuildImuShape(canWrite: false);

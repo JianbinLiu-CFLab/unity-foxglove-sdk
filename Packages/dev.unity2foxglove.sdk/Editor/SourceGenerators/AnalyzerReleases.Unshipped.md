@@ -19,14 +19,19 @@ FOXRUN210 | FoxRun | Error | Explicit SchemaName must match the validated canoni
 FOXRUN211 | FoxRun | Error | Native message graph cannot be deep-copied safely.
 FOXRUN212 | FoxRun | Error | Native generation requires the optional Native assembly reference.
 FOXRUN213 | FoxRun | Warning | Ros2Qos is ignored for explicit WebSocket-only subscriptions.
+FOXRUN214 | FoxRun | Error | Ros2Native SubscriptionProvider is invalid for PublishOnly; use the Manager native output route.
 FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
 FOXRUN401 | FoxRun | Error | PublishAndSubscribe requires an explicit Protobuf or Json Encoding.
+FOXRUN402 | FoxRun | Error | Native PublishAndSubscribe requires a complete custom DTO interface contract.
 FOXRUN600 | FoxRun | Error | FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe.
 FOXRUN601 | FoxRun | Error | FoxRun Unless conditional gate member is missing or invalid.
 FOXRUN602 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
 FOXRUN603 | FoxRun | Error | FoxRun ProtobufFieldNumber must be a legal non-reserved tag or zero for automatic assignment.
 FOXRUN604 | FoxRun | Error | Same-topic FoxRun members cannot mix Encoding declarations.
 FOXRUN605 | FoxRun | Error | FoxRun ProtobufFieldNumber values must be unique per topic.
+FOXRUN606 | FoxRun | Error | Custom ROS2 DTO member graph contains an unsupported or lossy type.
+FOXRUN607 | FoxRun | Error | Custom ROS2 DTO root or nested value lacks a public parameterless constructor.
+FOXRUN608 | FoxRun | Error | Custom ROS2 DTO inbound member is not readable and writable.
 
 ### Removed Rules
 

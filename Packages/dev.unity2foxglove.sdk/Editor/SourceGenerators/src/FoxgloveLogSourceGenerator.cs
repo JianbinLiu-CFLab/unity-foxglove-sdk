@@ -298,18 +298,35 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             FoxRunRoslynProtobufTypeShapeBuilder.TryBuild(
                 isArray ? elementType : typeSymbol,
                 out var protobufTypeShape);
+            var hasExplicitNativeTopic = topics.Any(topic => topic.SubscriptionProvider == 2);
             var ros2MessageShape = FoxRunRoslynRos2MessageShapeBuilder.Build(
                 typeSymbol,
                 ctx.SemanticModel.Compilation);
-            var hasExplicitNativeTopic = topics.Any(topic => topic.SubscriptionProvider == 2);
-            if (!hasExplicitNativeTopic && !ros2MessageShape.ImplementsRos2Message)
+            var isTopLevelPackagedCollection = hasExplicitNativeTopic
+                                                && IsTopLevelPackagedRos2MessageCollection(
+                                                    typeSymbol,
+                                                    ctx.SemanticModel.Compilation);
+            var ros2CustomDtoShape = hasExplicitNativeTopic
+                                     && !ros2MessageShape.ImplementsRos2Message
+                                     && !isTopLevelPackagedCollection
+                ? FoxRunRoslynRos2CustomDtoShapeBuilder.Build(
+                    typeSymbol,
+                    ctx.SemanticModel.Compilation)
+                : null;
+            if (!ros2MessageShape.ImplementsRos2Message && !isTopLevelPackagedCollection)
                 ros2MessageShape = null;
+
+            var ros2ContractKind = ros2MessageShape != null
+                ? FoxRunRos2ContractKind.PackagedRos2Message
+                : ros2CustomDtoShape != null
+                    ? FoxRunRos2ContractKind.CustomDto
+                    : FoxRunRos2ContractKind.Unsupported;
 
             string ns = containingType.ContainingNamespace != null
                 && !containingType.ContainingNamespace.IsGlobalNamespace
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
 
-            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape);
+            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind);
         }
 
         private static string DeclaringTypeName(INamedTypeSymbol containingType)
@@ -1039,6 +1056,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
             elementType = null;
             return false;
+        }
+
+        private static bool IsTopLevelPackagedRos2MessageCollection(
+            ITypeSymbol type,
+            Compilation compilation)
+        {
+            if (!TryGetArrayElementType(type, out var elementType))
+                return false;
+
+            return FoxRunRoslynRos2MessageShapeBuilder.Build(elementType, compilation)
+                .ImplementsRos2Message;
         }
     }
 }

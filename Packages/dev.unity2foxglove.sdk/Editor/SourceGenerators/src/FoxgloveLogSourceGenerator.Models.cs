@@ -120,6 +120,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly string ElementTypeName;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
+        public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
+        public readonly FoxRunRos2ContractKind Ros2ContractKind;
         public readonly int RawMemberOrder;
         public readonly Location MemberLocation;
         /// <summary>Whether the containing class is declared <c>partial</c>.</summary>
@@ -139,8 +141,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>
         /// Creates a valid member-data record with no diagnostic.
         /// </summary>
-        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape, ros2MessageShape)
+        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind)
         {
         }
 
@@ -153,7 +155,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
         }
 
-        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null)
+        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
         {
             Ns = ns;
             ClassName = cn;
@@ -167,6 +169,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             ElementTypeName = elementTypeName;
             ProtobufTypeShape = protobufTypeShape;
             Ros2MessageShape = ros2MessageShape;
+            Ros2CustomDtoShape = ros2CustomDtoShape;
+            Ros2ContractKind = ResolveRos2ContractKind(
+                ros2ContractKind,
+                ros2MessageShape,
+                ros2CustomDtoShape);
             RawMemberOrder = rawMemberOrder;
             MemberLocation = memberLocation;
             Topics = t;
@@ -226,11 +233,33 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             IsArray && !string.IsNullOrEmpty(ElementTypeName)
                                 ? ElementTypeName
                                 : EmissionTypeName)),
-                Ros2MessageShape != null
-                    && Ros2MessageShape.HasPublicParameterlessConstructor
-                    && Ros2MessageShape.ImplementsRos2Message
-                    && Ros2MessageShape.Diagnostics.Count == 0,
-                Ros2MessageShape);
+                FoxRunRos2ContractCapability.IsNativeRegistrationCapable(
+                    Ros2MessageShape,
+                    Ros2CustomDtoShape),
+                Ros2MessageShape,
+                Ros2CustomDtoShape,
+                Ros2ContractKind);
+        }
+
+        private static FoxRunRos2ContractKind ResolveRos2ContractKind(
+            FoxRunRos2ContractKind declared,
+            FoxRunRos2MessageShape packagedShape,
+            FoxRunRos2CustomDtoShape customShape)
+        {
+            if (declared != FoxRunRos2ContractKind.Unsupported)
+                return declared;
+
+            // This is a family classification, not a readiness predicate.
+            // Keeping those concerns separate preserves legacy packaged-message
+            // diagnostics and gives unsupported DTOs their custom diagnostics.
+            if (packagedShape != null)
+            {
+                return FoxRunRos2ContractKind.PackagedRos2Message;
+            }
+
+            return customShape != null
+                ? FoxRunRos2ContractKind.CustomDto
+                : FoxRunRos2ContractKind.Unsupported;
         }
     }
 

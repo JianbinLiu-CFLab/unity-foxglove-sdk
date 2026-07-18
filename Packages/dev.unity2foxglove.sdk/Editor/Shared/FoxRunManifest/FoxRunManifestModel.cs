@@ -36,6 +36,8 @@ namespace Unity.FoxgloveSDK.Editor
         public bool GeneratesWebSocketCodec { get; }
         public bool GeneratesRos2NativeRegistration { get; }
         public FoxRunRos2MessageShape Ros2MessageShape { get; }
+        public FoxRunRos2ContractKind Ros2ContractKind { get; }
+        public FoxRunRos2CustomDtoShape Ros2CustomDtoShape { get; }
 
         public FoxRunManifestMember(
             string ns,
@@ -62,7 +64,9 @@ namespace Unity.FoxgloveSDK.Editor
             string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
-            FoxRunRos2MessageShape ros2MessageShape = null)
+            FoxRunRos2MessageShape ros2MessageShape = null,
+            FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -89,6 +93,30 @@ namespace Unity.FoxgloveSDK.Editor
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
             Ros2MessageShape = ros2MessageShape;
+            Ros2CustomDtoShape = ros2CustomDtoShape;
+            Ros2ContractKind = ResolveRos2ContractKind(
+                ros2ContractKind,
+                ros2MessageShape,
+                ros2CustomDtoShape);
+        }
+
+        private static FoxRunRos2ContractKind ResolveRos2ContractKind(
+            FoxRunRos2ContractKind declared,
+            FoxRunRos2MessageShape packagedShape,
+            FoxRunRos2CustomDtoShape customShape)
+        {
+            if (declared != FoxRunRos2ContractKind.Unsupported)
+                return declared;
+
+            // The pre-181 constructor accepted a packaged message shape but
+            // had no contract-kind argument. Preserve that public call shape
+            // instead of silently erasing its canonical ROS metadata.
+            if (packagedShape != null)
+                return FoxRunRos2ContractKind.PackagedRos2Message;
+
+            return customShape != null
+                ? FoxRunRos2ContractKind.CustomDto
+                : FoxRunRos2ContractKind.Unsupported;
         }
 
         /// <summary>
@@ -126,7 +154,9 @@ namespace Unity.FoxgloveSDK.Editor
                 member.Ros2Qos,
                 member.GeneratesWebSocketCodec,
                 member.GeneratesRos2NativeRegistration,
-                member.Ros2MessageShape);
+                member.Ros2MessageShape,
+                member.Ros2CustomDtoShape,
+                member.Ros2ContractKind);
         }
 
         private static int EncodingValue(string encoding)
@@ -238,6 +268,9 @@ namespace Unity.FoxgloveSDK.Editor
         public string NativeType { get; }
         public string CanonicalRosType { get; }
         public string CopyShapeIdentity { get; }
+        public FoxRunRos2ContractKind Ros2ContractKind { get; }
+        public string CustomDtoIdentity { get; }
+        public string CustomPayloadIdentity { get; }
 
         public FoxRunManifestSubscriptionBinding(
             string declaringType,
@@ -250,7 +283,10 @@ namespace Unity.FoxgloveSDK.Editor
             bool supportsRos2Native,
             string nativeType,
             string canonicalRosType,
-            string copyShapeIdentity)
+            string copyShapeIdentity,
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            string customDtoIdentity = "",
+            string customPayloadIdentity = "")
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -263,6 +299,9 @@ namespace Unity.FoxgloveSDK.Editor
             NativeType = nativeType ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
             CopyShapeIdentity = copyShapeIdentity ?? string.Empty;
+            Ros2ContractKind = ros2ContractKind;
+            CustomDtoIdentity = customDtoIdentity ?? string.Empty;
+            CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
         }
     }
 

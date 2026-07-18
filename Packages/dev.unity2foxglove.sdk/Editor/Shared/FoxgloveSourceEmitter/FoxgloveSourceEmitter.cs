@@ -84,6 +84,10 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly bool GeneratesRos2NativeRegistration;
             /// <summary>Validated host-neutral recursive native message shape.</summary>
             public readonly FoxRunRos2MessageShape Ros2MessageShape;
+            /// <summary>Explicit native contract category; never infer this from a type name.</summary>
+            public readonly FoxRunRos2ContractKind Ros2ContractKind;
+            /// <summary>Schema for a generated custom ROS2 interface, if applicable.</summary>
+            public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
 
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
@@ -128,7 +132,9 @@ namespace Unity.FoxgloveSDK.Editor
                 string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
                 bool generatesWebSocketCodec = true,
                 bool generatesRos2NativeRegistration = false,
-                FoxRunRos2MessageShape ros2MessageShape = null)
+                FoxRunRos2MessageShape ros2MessageShape = null,
+                FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
+                FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -158,6 +164,8 @@ namespace Unity.FoxgloveSDK.Editor
                 GeneratesWebSocketCodec = generatesWebSocketCodec;
                 GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
                 Ros2MessageShape = ros2MessageShape;
+                Ros2CustomDtoShape = ros2CustomDtoShape;
+                Ros2ContractKind = ros2ContractKind;
             }
         }
 

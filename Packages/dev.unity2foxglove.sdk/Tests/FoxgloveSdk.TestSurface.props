@@ -76,6 +76,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunMemberData.cs" Link="Editor/FoxRun/FoxrunMemberData.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
   </ItemGroup>

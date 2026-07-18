@@ -292,6 +292,15 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "copyShapeIdentity");
             AppendString(sb, binding.CopyShapeIdentity);
+            sb.Append(',');
+            AppendPropertyName(sb, "ros2ContractKind");
+            AppendString(sb, binding.Ros2ContractKind.ToString());
+            sb.Append(',');
+            AppendPropertyName(sb, "customDtoIdentity");
+            AppendString(sb, binding.CustomDtoIdentity);
+            sb.Append(',');
+            AppendPropertyName(sb, "customPayloadIdentity");
+            AppendString(sb, binding.CustomPayloadIdentity);
             sb.Append('}');
         }
 
