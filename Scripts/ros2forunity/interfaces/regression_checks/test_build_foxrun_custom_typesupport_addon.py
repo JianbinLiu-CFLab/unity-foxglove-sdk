@@ -10,6 +10,8 @@ from pathlib import Path
 from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
     CandidateBuildError,
     CandidateBuildRequest,
+    _catalog_source,
+    _repair_tracked_addon_catalog,
     _runtime_rmws,
     candidate_package_root,
     select_candidate_native_libraries,
@@ -17,6 +19,8 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
 )
 from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     ROS_PACKAGE_NAME,
+    STATIC_INTERFACE_PACKAGE_ID,
+    addon_package_id,
     compute_static_interface_digest,
 )
 
@@ -88,6 +92,88 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         )
         with self.assertRaises(CandidateBuildError):
             _runtime_rmws({"supportedRmwImplementations": []}, "jazzy")
+
+    def test_generated_catalog_embeds_resolved_static_interface_metadata(self) -> None:
+        interface_digest = "a" * 64
+        catalog = _catalog_source(
+            distro="lyrical",
+            interface_digest=interface_digest,
+            type_map=(
+                {
+                    "canonicalRosType": ROS_PACKAGE_NAME + "/msg/State",
+                    "managedType": ROS_PACKAGE_NAME + ".msg.State",
+                },
+            ),
+        )
+
+        self.assertIn('return "' + STATIC_INTERFACE_PACKAGE_ID + '";', catalog)
+        self.assertIn('return "' + ROS_PACKAGE_NAME + '";', catalog)
+        self.assertIn('return "' + interface_digest + '";', catalog)
+        self.assertIn('return "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64";', catalog)
+        self.assertNotIn("STATIC_INTERFACE_PACKAGE_ID", catalog)
+        self.assertNotIn("interface_digest", catalog)
+        self.assertNotIn("base_runtime", catalog)
+        self.assertEqual(1, catalog.count("public string Platform"))
+
+    def test_catalog_repair_regenerates_only_the_tracked_catalog_and_inventory(self) -> None:
+        with self._fixture() as fixture:
+            target = fixture.root / "Packages" / addon_package_id("humble")
+            generated = target / "Runtime" / "FoxRun" / "Generated"
+            generated.mkdir(parents=True)
+            (target / "RuntimeSupport").mkdir()
+            (target / "RuntimeSupport" / "typesupport-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "source": {
+                            "upmPackageId": STATIC_INTERFACE_PACKAGE_ID,
+                            "rosPackageName": ROS_PACKAGE_NAME,
+                            "interfaceRevision": 1,
+                            "interfaceDigest": fixture.digest,
+                        },
+                        "baseRuntime": {
+                            "packageId": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                        },
+                        "managed": {
+                            "typeMap": [
+                                {
+                                    "canonicalRosType": ROS_PACKAGE_NAME + "/msg/State",
+                                    "managedType": ROS_PACKAGE_NAME + ".msg.State",
+                                },
+                            ],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            stale_catalog = generated / "FoxRunCustomTypesupportCatalog.g.cs"
+            stale_catalog.write_text("stale catalog", encoding="utf-8")
+            request = CandidateBuildRequest(
+                distro="humble",
+                static_interface_package=fixture.static,
+                base_runtime_package=fixture.root / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                ros2_root=fixture.root / "ros2-windows" / "ros2_humble",
+                ros2cs_source=fixture.root / "ros2cs",
+                ros2cs_install=fixture.root / "ros2cs" / "install-humble",
+                r2fu_source=fixture.root / "ros2-for-unity",
+                build_root=fixture.root / "build",
+                repo_root=fixture.root,
+            )
+
+            repaired = _repair_tracked_addon_catalog(request)
+
+            self.assertEqual(stale_catalog, repaired)
+            catalog = repaired.read_text(encoding="utf-8")
+            self.assertIn('return "' + STATIC_INTERFACE_PACKAGE_ID + '";', catalog)
+            self.assertIn('return "dev.unity2foxglove.ros2forunity.runtime.humble.win64";', catalog)
+            inventory = json.loads(
+                (target / "RuntimeSupport" / "typesupport-inventory.json").read_text(encoding="utf-8")
+            )
+            catalog_entry = next(
+                entry
+                for entry in inventory["entries"]
+                if entry["path"] == "Runtime/FoxRun/Generated/FoxRunCustomTypesupportCatalog.g.cs"
+            )
+            self.assertEqual(repaired.stat().st_size, catalog_entry["byteLength"])
 
     def _request(self) -> CandidateBuildRequest:
         root = Path("D:/phase181-test")

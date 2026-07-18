@@ -17,11 +17,11 @@ namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
                 new FoxRunRos2CustomTypesupportTypeMapEntry("unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope", typeof(unity2foxglove_foxrun_interfaces_v1.msg.Phase181State48D288ED82F1Envelope).FullName)
         };
 
-        public string SourcePackageId { get { return """ + STATIC_INTERFACE_PACKAGE_ID + ""; } }
-        public string RosPackageName { get { return "" + ROS_PACKAGE_NAME + ""; } }
+        public string SourcePackageId { get { return "dev.unity2foxglove.foxrun.ros2.interfaces"; } }
+        public string RosPackageName { get { return "unity2foxglove_foxrun_interfaces_v1"; } }
         public int InterfaceRevision { get { return 1; } }
-        public string InterfaceDigest { get { return "" + interface_digest + ""; } }
-        public string BaseRuntimePackageId { get { return "" + base_runtime + ""; } }
+        public string InterfaceDigest { get { return "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd"; } }
+        public string BaseRuntimePackageId { get { return "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"; } }
         public string Platform { get { return "win64"; } }
         public IReadOnlyList<string> SupportedRmwImplementations { get { return s_rmws; } }
         public IReadOnlyList<FoxRunRos2CustomTypesupportTypeMapEntry> TypeMap { get { return s_typeMap; } }

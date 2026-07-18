@@ -22,11 +22,11 @@
       "sha256": "5067dc823bf7108c45bbc78b2c12fc735a78abf54c40fc490af1902f59bfc51c"
     },
     {
-      "byteLength": 2217,
+      "byteLength": 2306,
       "classification": "metadata",
       "path": "Runtime/FoxRun/Generated/FoxRunCustomTypesupportCatalog.g.cs",
       "role": "catalog",
-      "sha256": "0dada6f2bbb0748e256f77bd7614d248554aa573d2be69e29476cbf7cd91ec48"
+      "sha256": "17560224f76d01dbaf06f39654851d9fb7402ae8849d845aceb491cad455771e"
     },
     {
       "byteLength": 596,
@@ -92,11 +92,11 @@
       "sha256": "458252ef7a70e4209cb1260a8b1c46378bc5a45a54ba001a509e86c2d056cc2f"
     },
     {
-      "byteLength": 699,
+      "byteLength": 696,
       "classification": "metadata",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_assembly.dll.meta",
       "role": "importer",
-      "sha256": "e0ac0537e0fb5263b81b64a9a0fc68a37ce259a87fbe059d058f5e91928f4233"
+      "sha256": "325ea7cd2f7fd05f889ffc090a2e40bf5fc5b209accbc6fe82208ac30cbec8e1"
     },
     {
       "byteLength": 16384,
