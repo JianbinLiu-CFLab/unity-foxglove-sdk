@@ -43,43 +43,38 @@ namespace Unity.FoxgloveSDK.Tests
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs");
             Check(source.Contains("DrawSection(\"Connection & Security\""),
                 "70A-1: Inspector has Connection & Security workflow section");
-            Check(source.Contains("DrawSection(\"Publish Data\""),
-                "70A-2: Inspector has Publish Data workflow section");
-            Check(source.Contains("DrawSection(\"Subscribe Data\""),
-                "70A-2b: Inspector has Subscribe Data workflow section");
+            Check(source.Contains("DrawSection(\"Data Transport\""),
+                "70A-2: Inspector has Data Transport workflow section");
+            Check(!source.Contains("DrawSection(\"Publish Data\"")
+                  && !source.Contains("DrawSection(\"Subscribe Data\""),
+                "70A-2b: Publish Data and Subscribe Data remain nested under Data Transport");
             Check(source.Contains("DrawSection(\"MCAP Record & Replay\""),
                 "70A-3: Inspector has MCAP Record & Replay workflow section");
             Check(source.Contains("DrawSection(\"Diagnostics\""),
                 "70A-4: Inspector has Diagnostics workflow section");
             CheckOrdered(source,
                 "DrawSection(\"Connection & Security\"",
-                "DrawSection(\"Publish Data\"",
-                "70A-4b: main workflow order starts with Connection & Security before Publish Data");
+                "DrawSection(\"Data Transport\"",
+                "70A-4b: main workflow order starts with Connection & Security before Data Transport");
             CheckOrdered(source,
-                "DrawSection(\"Publish Data\"",
+                "DrawSection(\"Data Transport\"",
                 "DrawSection(\"MCAP Record & Replay\"",
-                "70A-4c: MCAP follows Publish Data before Subscribe Data");
+                "70A-4c: MCAP follows Data Transport");
             CheckOrdered(source,
                 "DrawSection(\"MCAP Record & Replay\"",
-                "DrawSection(\"Subscribe Data\"",
-                "70A-4d: Subscribe Data follows MCAP before FoxServices");
-            CheckOrdered(source,
-                "DrawSection(\"Subscribe Data\"",
                 "DrawSection(\"FoxServices\"",
-                "70A-4d1: FoxServices follows Subscribe Data");
+                "70A-4d: FoxServices follows MCAP Record & Replay");
             CheckOrdered(source,
-                "DrawSection(\"MCAP Record & Replay\"",
-                "DrawSection(\"ROS2 Bridge\"",
-                "70A-4e: ROS2 Bridge follows MCAP Record & Replay");
-            CheckOrdered(source,
-                "DrawSection(\"ROS2 Bridge\"",
+                "DrawSection(\"FoxServices\"",
                 "DrawSection(\"Diagnostics\"",
-                "70A-4f: Diagnostics remains last after ROS2 Bridge");
+                "70A-4e: Diagnostics remains last after FoxServices");
 
             Check(!source.Contains("DrawSection(\"Server\""),
                 "70A-5: Server is no longer a top-level section");
             Check(!source.Contains("DrawSection(\"Publisher Encoding\""),
                 "70A-6: Publisher Encoding is no longer a top-level section");
+            Check(!source.Contains("DrawSection(\"ROS2 Bridge\""),
+                "70A-6b: ROS2 Bridge is no longer a top-level section");
             Check(!source.Contains("DrawSection(\"Coordinate System\""),
                 "70A-7: Coordinate System is no longer a top-level section");
             Check(!source.Contains("Subheader(\"Coordinates\""),
@@ -108,7 +103,9 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var editorSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.PublishData.cs");
             var managerSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var section = Slice(editorSource, "private void DrawPublishDataSection()", "}");
+            var section = PhaseValidationSourceHelpers.SourceMethod(
+                editorSource,
+                "private void DrawPublishDataSection");
 
             Check(section.Contains("Subheader(\"Publish Rate\")"),
                 "70A-14: Publish Data labels rate settings as Publish Rate");
@@ -150,7 +147,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "_defaultFoxRunSubscriptionEncoding",
                 "_defaultPublisherEncoding",
                 "_allowPublisherOverride",
-                "_coordinateMode",
+                "_outputCoordinateMode",
+                "_inputCoordinateMode",
                 "_assetRoots",
                 "_enablePlaybackControl",
                 "_playbackStartOffsetSeconds",

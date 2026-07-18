@@ -16,8 +16,6 @@ namespace Unity.FoxgloveSDK.Editor
         private const string NativeCopyBudgetUnitSessionStateName =
             "DataTransportNativeCopyBudgetUnit";
 
-        private static readonly string[] NativeCopyBudgetUnitLabels = { "KiB", "MiB" };
-
         private void DrawSubscribeDataSection()
         {
             var manager = target as FoxgloveManager;
@@ -66,6 +64,12 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
             }
+
+            FoxgloveManagerInspectorLayout.Subheader("Coordinate System");
+            DrawProperty("_inputCoordinateMode", "Input Coordinate Mode");
+            EditorGUILayout.HelpBox(
+                "Defines the coordinate convention expected from supported external publishers. MCAP records original external input first; Unity converts an owned value only when applying it.",
+                MessageType.Info);
 
             if (showRos2Native)
             {
@@ -145,7 +149,7 @@ namespace Unity.FoxgloveSDK.Editor
             var selectedUnitIndex = EditorGUILayout.Popup(
                 "Native Copied-Message Budget Unit",
                 (int)displayUnit,
-                NativeCopyBudgetUnitLabels);
+                FoxRunRos2SubscriptionInspectorPresentation.NativeCopyBudgetLabels);
             if (selectedUnitIndex != (int)displayUnit)
             {
                 displayUnit = (FoxRunRos2NativeCopyBudgetUnit)selectedUnitIndex;
@@ -164,7 +168,9 @@ namespace Unity.FoxgloveSDK.Editor
                 displayUnit);
             EditorGUI.BeginChangeCheck();
             var editedDisplayValue = EditorGUILayout.DoubleField(
-                "Native Copied-Message Budget (" + NativeCopyBudgetUnitLabels[(int)displayUnit] + ")",
+                "Native Copied-Message Budget ("
+                + FoxRunRos2SubscriptionInspectorPresentation.NativeCopyBudgetLabels[(int)displayUnit]
+                + ")",
                 displayValue);
             if (EditorGUI.EndChangeCheck())
             {
@@ -179,8 +185,8 @@ namespace Unity.FoxgloveSDK.Editor
 
             EditorGUILayout.LabelField(
                 "Stored Native Budget",
-                displayValue.ToString("0.###", CultureInfo.InvariantCulture)
-                + " " + NativeCopyBudgetUnitLabels[(int)displayUnit]
+                displayValue.ToString("0.######", CultureInfo.InvariantCulture)
+                + " " + FoxRunRos2SubscriptionInspectorPresentation.NativeCopyBudgetLabels[(int)displayUnit]
                 + " = " + normalizedBytes.ToString("N0", CultureInfo.InvariantCulture) + " bytes");
         }
 
@@ -188,10 +194,10 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var storedUnit = SessionState.GetInt(
                 InspectorFoldoutKey(NativeCopyBudgetUnitSessionStateName),
-                (int)FoxRunRos2NativeCopyBudgetUnit.MiB);
-            return storedUnit == (int)FoxRunRos2NativeCopyBudgetUnit.KiB
-                ? FoxRunRos2NativeCopyBudgetUnit.KiB
-                : FoxRunRos2NativeCopyBudgetUnit.MiB;
+                (int)FoxRunRos2NativeCopyBudgetUnit.MB);
+            return storedUnit == (int)FoxRunRos2NativeCopyBudgetUnit.KB
+                ? FoxRunRos2NativeCopyBudgetUnit.KB
+                : FoxRunRos2NativeCopyBudgetUnit.MB;
         }
 
         private static bool HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider provider)

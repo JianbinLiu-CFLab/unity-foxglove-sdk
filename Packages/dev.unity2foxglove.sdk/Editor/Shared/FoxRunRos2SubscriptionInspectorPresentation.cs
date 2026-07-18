@@ -13,8 +13,8 @@ namespace Unity.FoxgloveSDK.Editor
     /// <summary>Units available when editing a native ROS2 copied-data budget.</summary>
     internal enum FoxRunRos2NativeCopyBudgetUnit
     {
-        KiB = 0,
-        MiB = 1
+        KB = 0,
+        MB = 1
     }
 
     /// <summary>One concrete portable QoS choice displayed by the Manager Inspector.</summary>
@@ -38,6 +38,8 @@ namespace Unity.FoxgloveSDK.Editor
     /// <summary>Pure presentation model for native ROS2 subscription Inspector controls.</summary>
     internal static class FoxRunRos2SubscriptionInspectorPresentation
     {
+        private static readonly string[] NativeCopyBudgetUnitLabels = { "KB", "MB" };
+
         private static readonly string[] ConcreteManagerQosLabels =
         {
             "ROS 2 Default (R2FU)",
@@ -72,6 +74,11 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>Stable Popup labels paired positionally with <see cref="ManagerQosChoices"/>.</summary>
         internal static string[] ManagerQosLabels => ConcreteManagerQosLabels;
+
+        /// <summary>
+        /// Human-facing decimal unit labels. The stored budget remains an exact byte count.
+        /// </summary>
+        internal static string[] NativeCopyBudgetLabels => NativeCopyBudgetUnitLabels;
 
         /// <summary>Converts a serialized budget to the selected display unit.</summary>
         internal static double ToDisplayValue(
@@ -108,10 +115,10 @@ namespace Unity.FoxgloveSDK.Editor
         {
             switch (unit)
             {
-                case FoxRunRos2NativeCopyBudgetUnit.KiB:
-                    return 1024;
-                case FoxRunRos2NativeCopyBudgetUnit.MiB:
-                    return 1024 * 1024;
+                case FoxRunRos2NativeCopyBudgetUnit.KB:
+                    return 1_000;
+                case FoxRunRos2NativeCopyBudgetUnit.MB:
+                    return 1_000_000;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(unit));
             }

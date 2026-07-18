@@ -418,7 +418,7 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>True when coordinate conversion is needed (RightHand mode).</summary>
         private bool ShouldConvert =>
-            _manager != null && _manager.ActiveCoordinateMode == CoordinateMode.RightHand;
+            _manager != null && _manager.ActiveInputCoordinateMode == CoordinateMode.RightHand;
 
         private void HandleFrameTransform(JObject message, ReplayMessageContext context)
         {

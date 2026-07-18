@@ -49,7 +49,11 @@ namespace Unity.FoxgloveSDK.Editor
                 "Component publishers and generated FoxRun contracts use independent default encodings.",
                 MessageType.Info);
 
-            DrawProperty("_coordinateMode");
+            FoxgloveManagerInspectorLayout.Subheader("Coordinate System");
+            DrawProperty("_outputCoordinateMode", "Output Coordinate Mode");
+            EditorGUILayout.HelpBox(
+                "Defines the coordinate convention of supported data published from Unity. MCAP records the same converted external payload and labels output channels with this mode.",
+                MessageType.Info);
 
             FoxgloveManagerInspectorLayout.Subheader("Assets");
             DrawProperty("_assetRoots");

@@ -34,6 +34,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Normalizer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Validator.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*State.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/Coordinate*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Profiling/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />

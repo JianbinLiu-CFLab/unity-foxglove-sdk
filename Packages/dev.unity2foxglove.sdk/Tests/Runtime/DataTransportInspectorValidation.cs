@@ -20,6 +20,14 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private const string ManagerEditorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.cs";
+        private const string ManagerRuntimePath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
+        private const string ManagerCoordinateMigrationPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs";
+        private const string McapRecorderPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Recording/McapRecorder.cs";
+        private const string SessionClientPublishHandlerPath =
+            "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/SessionClientPublishHandler.cs";
         private static readonly string[] LegacyTransportFoldoutKeys =
         {
             "PublishData",
@@ -59,6 +67,10 @@ namespace Unity.FoxgloveSDK.Tests
 
             var mainInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerEditorPath);
             var editorSources = PhaseValidationSourceHelpers.ReadFoxgloveManagerEditorSources();
+            var managerRuntime = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerRuntimePath);
+            var managerCoordinateMigration = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerCoordinateMigrationPath);
+            var mcapRecorder = PhaseValidationSourceHelpers.ReadRequiredRepoText(McapRecorderPath);
+            var sessionClientPublishHandler = PhaseValidationSourceHelpers.ReadRequiredRepoText(SessionClientPublishHandlerPath);
             var topLevel = FindMethod(mainInspector, "OnInspectorGUI");
             var section = FindMethod(mainInspector, "DrawSection");
             var foldoutState = FindMethod(mainInspector, "LoadInspectorFoldoutState");
@@ -79,6 +91,11 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyFoldoutStateModel(mainInspector, foldoutState);
             VerifyParentSectionPresentationHelper(section);
             VerifySubsectionPresentationHelper(subsection);
+            VerifyDirectionalCoordinateRuntimePolicy(
+                managerRuntime,
+                managerCoordinateMigration,
+                mcapRecorder,
+                sessionClientPublishHandler);
             VerifyValidationRegistryEntry();
 
             Console.WriteLine("Phase 180: " + _passed + " checks passed.");
@@ -161,8 +178,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!executableSections.Any(invocation => HasStringHeading(invocation, "Subscribe Data")),
                 "180A-3: Subscribe Data is no longer a top-level workflow section");
             Check(!executableSections.Any(invocation => HasStringHeading(invocation, "ROS2 Runtime (R2FU)")
-                                                        || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)")),
-                "180A-4: ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
+                                                        || HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU) — Shared")),
+                "180A-4: the shared ROS 2 Native Runtime (R2FU) is no longer a top-level workflow section");
             Check(bridgeSectionCallbacks.Length == 0
                   && !allInvocations.Any(invocation => IsInvocationNamed(invocation, "DrawRos2BridgeSection")),
                 "180A-5: ROS2 Bridge has neither a top-level callback section nor a direct top-level draw");
@@ -178,7 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
             var allInvocations = AllInvocations(dataTransport);
             var nativeSubsections = allInvocations
                 .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)"))
+                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU) — Shared"))
                 .ToArray();
             var nativeDemandBranches = DirectIfStatements(dataTransport)
                 .Where(HasNativeDemandCondition)
@@ -189,7 +206,7 @@ namespace Unity.FoxgloveSDK.Tests
                 .Select(statement => statement.Expression as InvocationExpressionSyntax)
                 .Where(invocation => invocation != null
                                      && IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU)"))
+                                     && HasStringHeading(invocation, "ROS 2 Native Runtime (R2FU) — Shared"))
                 .ToArray();
             var bridgeSubsections = AllInvocations(publishData)
                 .Where(invocation => IsInvocationNamed(invocation, "DrawDataTransportSubsection")
@@ -214,30 +231,30 @@ namespace Unity.FoxgloveSDK.Tests
             Check(subsections.Length == 2
                   && HasExactlyOneSubsection(
                       subsections,
-                      "Publish",
+                      "Publish Data",
                       "DataTransportPublish",
                       "_dataTransportPublishExpanded",
                       "DrawPublishDataSection")
                   && HasExactlyOneSubsection(
                       subsections,
-                      "Subscribe",
+                      "Subscribe Data",
                       "DataTransportSubscribe",
                       "_dataTransportSubscribeExpanded",
                       "DrawSubscribeDataSection")
-                  && HasStringHeading(subsections[0], "Publish")
-                  && HasStringHeading(subsections[1], "Subscribe"),
+                  && HasStringHeading(subsections[0], "Publish Data")
+                  && HasStringHeading(subsections[1], "Subscribe Data"),
                 "180B-2: Data Transport nests the public Publish workflow");
             Check(nativeSubsections.Length == 1
                   && HasSubsectionArguments(
                       nativeSubsections[0],
-                      "ROS 2 Native Runtime (R2FU)",
+                      "ROS 2 Native Runtime (R2FU) — Shared",
                       "DataTransportNativeRuntime",
                       "_dataTransportNativeRuntimeExpanded",
                       "DrawR2fuRuntimeSection")
                   && nativeDemandBranches.Length == 1
                   && branchNativeSubsections.Length == 1
                   && ReferenceEquals(nativeSubsections[0], branchNativeSubsections[0]),
-                "180B-3: Data Transport nests ROS 2 Native Runtime (R2FU) only under native demand");
+                "180B-3: Data Transport nests the shared ROS 2 Native Runtime (R2FU) only under native demand");
             Check(bridgeSubsections.Length == 1
                   && HasSubsectionArguments(
                       bridgeSubsections[0],
@@ -253,6 +270,8 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyPublishPresentation(MethodDeclarationSyntax publishData)
         {
+            const string publishCoordinateMessage =
+                "Defines the coordinate convention of supported data published from Unity. MCAP records the same converted external payload and labels output channels with this mode.";
             var directInvocations = DirectInvocations(publishData).ToArray();
             var allInvocations = AllInvocations(publishData);
             var nativeOutputBranches = DirectIfStatements(publishData)
@@ -300,6 +319,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(nativeOutputBranches.Length == 1
                   && nativeQosHelp.Length == 1,
                 "180E-3: selected ROS 2 Native output explains that Manager has no global publish QoS override");
+            Check(HasExactlyOneLabeledProperty(
+                      directInvocations,
+                      "_outputCoordinateMode",
+                      "Output Coordinate Mode")
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "HelpBox")
+                                                && HasStringArgument(invocation, 0, publishCoordinateMessage)
+                                                && HasMessageTypeInfoArgument(invocation, 1)) == 1,
+                "180E-4: Publish exposes its output coordinate convention and truthful MCAP representation scope");
         }
 
         private static void VerifySubscribePresentation(
@@ -311,6 +338,8 @@ namespace Unity.FoxgloveSDK.Tests
         {
             const string nativeSubscriptionRuntimeMessage =
                 "ROS 2 Native Subscribe requires the shared ROS 2 Native Runtime (R2FU). Subscribe does not enable Publish.";
+            const string subscribeCoordinateMessage =
+                "Defines the coordinate convention expected from supported external publishers. MCAP records original external input first; Unity converts an owned value only when applying it.";
             var allInvocations = AllInvocations(subscribeData);
             var directInvocations = DirectInvocations(subscribeData).ToArray();
             var webSocketBranches = subscribeData.DescendantNodes()
@@ -363,6 +392,16 @@ namespace Unity.FoxgloveSDK.Tests
                       subscribeData,
                       "captured provider, WebSocket encoding, QoS, copy budget, and rate."),
                 "180F-2: Subscribe keeps its enable gate, delivery rate, and complete frozen-session policy boundary");
+            Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                && HasStringHeading(invocation, "Coordinate System")) == 1
+                  && HasExactlyOneLabeledProperty(
+                      directInvocations,
+                      "_inputCoordinateMode",
+                      "Input Coordinate Mode")
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "HelpBox")
+                                                && HasStringArgument(invocation, 0, subscribeCoordinateMessage)
+                                                && HasMessageTypeInfoArgument(invocation, 1)) == 1,
+                "180F-2A: Subscribe exposes its input coordinate convention and explains raw external MCAP capture before Unity application");
             Check(webSocketBranches.Length == 1
                   && HasProviderVisibilityRule(
                       subscribeData,
@@ -415,7 +454,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && AllInvocations(nativeBudget).Count(invocation => IsInvocationNamed(invocation, "NormalizeSerializedBytes")) == 1
                   && ContainsStringLiteralFragment(nativeBudget, "Native Copied-Message Budget")
                   && ContainsStringLiteralFragment(nativeBudget, "bytes"),
-                "180F-7: native copied-message budget converts KiB or MiB deterministically and renders its exact stored-byte equivalent");
+                "180F-7: native copied-message budget converts decimal KB or MB deterministically and renders its exact stored-byte equivalent");
             Check(nativeSubscriptionRuntimeBranches.Length == 1
                   && nativeSubscriptionRuntimeDemandCalls.Length == 1
                   && generalizedRuntimeDemandCalls.Length == 0
@@ -436,11 +475,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNativeRuntimePresentation(MethodDeclarationSyntax nativeRuntime)
         {
             const string combinedDemandMessage =
-                "ROS 2 Native (R2FU) Publish and Subscribe share this runtime/RMW selection. Subscribe does not enable Publish.";
+                "This shared runtime/RMW selection is used by native Publish Data and Subscribe Data. Subscribe Data does not enable Publish Data.";
             const string subscribeOnlyMessage =
-                "ROS 2 Native (R2FU) Subscribe requires this runtime/RMW selection. Subscribe does not enable Publish.";
+                "This shared runtime/RMW selection is currently required by Subscribe Data. Subscribe Data does not enable Publish Data.";
             const string publishOnlyMessage =
-                "ROS 2 Native (R2FU) Publish requires this runtime/RMW selection.";
+                "This shared runtime/RMW selection is currently required by Publish Data.";
 
             var demandBranches = DirectIfStatements(nativeRuntime).ToArray();
             var combinedDemandBranch = demandBranches.Length == 1
@@ -456,10 +495,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && publishOnlyBranch != null
                   && HasExactlyOneInfoHelpBox(DirectThenStatements(combinedDemandBranch), combinedDemandMessage)
                   && HasExactlyOneInfoHelpBox(DirectThenStatements(subscribeOnlyBranch), subscribeOnlyMessage)
-                  && HasExactlyOneInfoHelpBox(DirectBranchStatements(publishOnlyBranch), publishOnlyMessage)
-                  && !ContainsStringLiteralFragment(nativeRuntime, "Publish Data")
-                  && !ContainsStringLiteralFragment(nativeRuntime, "Subscribe Data"),
-                "180G-1: ROS 2 Native Runtime (R2FU) distinguishes combined, Subscribe-only, and Publish-only demand without implying that Subscribe enables Publish");
+                  && HasExactlyOneInfoHelpBox(DirectBranchStatements(publishOnlyBranch), publishOnlyMessage),
+                "180G-1: shared ROS 2 Native Runtime (R2FU) distinguishes combined, Subscribe-only, and Publish-only demand without implying that Subscribe enables Publish");
         }
 
         private static void VerifyFoldoutStateModel(string mainInspector, MethodDeclarationSyntax foldoutState)
@@ -558,8 +595,71 @@ namespace Unity.FoxgloveSDK.Tests
                   && HasInspectorFoldoutKeyIdentifierArgument(workflowSubsections[0], 1, "sessionStateName")
                   && HasRefIdentifierArgument(workflowSubsections[0], 2, "expanded")
                   && closedSubsectionReturns.Length == 1
+                  && subsection.ToFullString().Contains("EditorStyles.foldoutHeader", StringComparison.Ordinal)
                   && HasExceptionSafeIndentedContents(subsection),
-                "180D-2: Data Transport subsection presentation persists the layout foldout and confines indentation to expanded contents with try/finally");
+                "180D-2: Data Transport primary subsections persist bold foldout headings and confine indentation to expanded contents with try/finally");
+        }
+
+        private static void VerifyDirectionalCoordinateRuntimePolicy(
+            string managerRuntime,
+            string managerCoordinateMigration,
+            string mcapRecorder,
+            string sessionClientPublishHandler)
+        {
+            var managerSyntax = CSharpSyntaxTree.ParseText(managerRuntime);
+            var syntaxErrors = managerSyntax.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+            var managerRoot = managerSyntax.GetRoot();
+            var fields = managerRoot.DescendantNodes()
+                .OfType<FieldDeclarationSyntax>()
+                .SelectMany(field => field.Declaration.Variables)
+                .Select(variable => variable.Identifier.ValueText)
+                .ToArray();
+            var outputPosition = FindAnyMethod(managerRoot, "UnityToFoxglovePosition");
+            var outputRotation = FindAnyMethod(managerRoot, "UnityToFoxgloveRotation");
+            var inputPosition = FindAnyMethod(managerRoot, "FoxgloveToUnityPosition");
+            var inputRotation = FindAnyMethod(managerRoot, "FoxgloveToUnityRotation");
+            var recorderWrite = sessionClientPublishHandler.IndexOf(
+                "recorder?.WriteClientMessage",
+                StringComparison.Ordinal);
+            var callbackWrite = sessionClientPublishHandler.IndexOf(
+                "_messageCallback",
+                recorderWrite < 0 ? 0 : recorderWrite,
+                StringComparison.Ordinal);
+
+            Check(syntaxErrors.Length == 0
+                  && fields.Count(field => field == "_coordinateMode") == 1
+                  && fields.Count(field => field == "_outputCoordinateMode") == 1
+                  && fields.Count(field => field == "_inputCoordinateMode") == 1
+                  && MethodReferencesIdentifier(outputPosition, "ActiveOutputCoordinateMode")
+                  && MethodReferencesIdentifier(outputRotation, "ActiveOutputCoordinateMode")
+                  && MethodReferencesIdentifier(inputPosition, "ActiveInputCoordinateMode")
+                  && MethodReferencesIdentifier(inputRotation, "ActiveInputCoordinateMode")
+                  && managerCoordinateMigration.Contains("CoordinateTransportPolicy.Migrate", StringComparison.Ordinal)
+                  && mcapRecorder.Contains("DataDirectionMetadataKey", StringComparison.Ordinal)
+                  && mcapRecorder.Contains("McapChannelDirection.Output", StringComparison.Ordinal)
+                  && mcapRecorder.Contains("McapChannelDirection.Input", StringComparison.Ordinal)
+                  && recorderWrite >= 0
+                  && callbackWrite > recorderWrite,
+                "180I-1: directional coordinates preserve migration, named conversion paths, directional MCAP metadata, and raw inbound recording order");
+        }
+
+        private static MethodDeclarationSyntax FindAnyMethod(SyntaxNode root, string methodName)
+        {
+            var methods = root.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Where(method => method.Identifier.ValueText == methodName)
+                .ToArray();
+            return methods.Length == 1 ? methods[0] : null;
+        }
+
+        private static bool MethodReferencesIdentifier(MethodDeclarationSyntax method, string identifier)
+        {
+            return method != null
+                   && method.DescendantNodes()
+                       .OfType<IdentifierNameSyntax>()
+                       .Any(name => name.Identifier.ValueText == identifier);
         }
 
         private static bool HasExceptionSafeIndentedContents(MethodDeclarationSyntax section)

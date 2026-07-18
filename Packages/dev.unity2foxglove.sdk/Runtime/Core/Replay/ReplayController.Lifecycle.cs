@@ -24,7 +24,26 @@ namespace Unity.FoxgloveSDK.Core
         {
             var recordingEnabled = _recordingState != null && _recordingState.IsEnabled;
             var coordinateMode = _recordingState?.CoordinateMode ?? "";
-            EnableCore(filePath, recordingEnabled, coordinateMode, identityMode);
+            EnableCore(filePath, recordingEnabled, coordinateMode, coordinateMode, identityMode);
+        }
+
+        /// <summary>
+        /// Load an MCAP file using explicit current coordinate conventions for
+        /// output and input data paths.
+        /// </summary>
+        public void Enable(
+            string filePath,
+            string currentOutputCoordinateMode,
+            string currentInputCoordinateMode,
+            SchemaIdentityMode identityMode = SchemaIdentityMode.Strict)
+        {
+            var recordingEnabled = _recordingState != null && _recordingState.IsEnabled;
+            EnableCore(
+                filePath,
+                recordingEnabled,
+                currentOutputCoordinateMode ?? "",
+                currentInputCoordinateMode ?? "",
+                identityMode);
         }
 
         /// <summary>
@@ -39,13 +58,14 @@ namespace Unity.FoxgloveSDK.Core
             string currentCoordinateMode = "",
             SchemaIdentityMode identityMode = SchemaIdentityMode.Strict)
         {
-            EnableCore(filePath, recordingEnabled, currentCoordinateMode, identityMode);
+            EnableCore(filePath, recordingEnabled, currentCoordinateMode, currentCoordinateMode, identityMode);
         }
 
         private void EnableCore(
             string filePath,
             bool recordingEnabled,
-            string currentCoordinateMode,
+            string currentOutputCoordinateMode,
+            string currentInputCoordinateMode,
             SchemaIdentityMode identityMode)
         {
             McapReplayEngine loadedEngine = null;
@@ -110,7 +130,10 @@ namespace Unity.FoxgloveSDK.Core
                     if (summary?.Channels != null)
                     {
                         var modeWarning = ReplayCoordinateModeGuard.FindMismatch(
-                            summary.Channels, currentCoordinateMode, filePath);
+                            summary.Channels,
+                            currentOutputCoordinateMode,
+                            currentInputCoordinateMode,
+                            filePath);
                         if (modeWarning != null)
                             _logger.LogWarning(modeWarning);
                     }

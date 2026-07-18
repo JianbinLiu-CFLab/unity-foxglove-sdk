@@ -11,6 +11,12 @@ namespace Unity.FoxgloveSDK.IO
 {
     public partial class McapRecorder
     {
+        private enum McapChannelDirection
+        {
+            Output,
+            Input
+        }
+
         /// <summary>
         /// Immutable signature combining encoding, schema name, schema encoding,
         /// and content hash. Used to detect incompatible topic schema conflicts.
@@ -49,6 +55,8 @@ namespace Unity.FoxgloveSDK.IO
         {
             /// <summary>MCAP channel ID.</summary>
             public ushort McapId;
+            /// <summary>Schema referenced by this MCAP channel.</summary>
+            public ushort SchemaId;
             /// <summary>Topic name.</summary>
             public string Topic;
             /// <summary>Per-channel MCAP message sequence number. Wrap-around is allowed by MCAP.</summary>

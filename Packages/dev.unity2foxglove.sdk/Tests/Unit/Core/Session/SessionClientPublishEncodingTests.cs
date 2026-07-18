@@ -6,8 +6,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Core;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
 using Xunit;
@@ -45,6 +48,30 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
                     Assert.Equal("protobuf", message.encoding);
                     Assert.Equal("protobuf-payload", message.payload);
                 });
+        }
+
+        [Fact]
+        public void RecorderPersistsOriginalInboundPayloadBeforeSubscriberMutation()
+        {
+            var transport = new ClientPublishTransport();
+            using var stream = new MemoryStream();
+            using var recorder = new McapRecorder(stream);
+            using var session = new FoxgloveSession("session-client-record-order", transport);
+            session.SetRecorder(recorder);
+            session.OnClientMessageWithEncoding += (_, _, _, _, payload) => payload[0] = (byte)'X';
+
+            transport.ReceiveText(11,
+                "{\"op\":\"advertise\",\"channels\":[{\"id\":1,\"topic\":\"/phase180/input\",\"encoding\":\"json\"}]}");
+            transport.ReceiveBinary(11, ClientMessageFrame(1, "original"));
+            session.SetRecorder(null);
+            recorder.Close();
+
+            stream.Position = 0;
+            using var reader = new McapStreamingReader(stream, leaveOpen: true);
+            var result = reader.Read();
+
+            Assert.Equal("original", Encoding.UTF8.GetString(Assert.Single(result.Messages).Data));
+            Assert.Equal("input", Assert.Single(result.Summary.Channels).Metadata["unity2foxglove.direction"]);
         }
 
         private static byte[] ClientMessageFrame(uint channelId, string payload)

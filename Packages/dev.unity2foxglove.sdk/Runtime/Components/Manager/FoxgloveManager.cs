@@ -17,18 +17,6 @@ using UnityEngine;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Unity-to-Foxglove coordinate conversion mode.
-    /// </summary>
-    public enum CoordinateMode
-    {
-        /// <summary>Unity native left-handed coordinates with X right, Y up, and Z forward.</summary>
-        LeftHand,
-
-        /// <summary>ROS/Foxglove right-handed coordinates with X forward, Y left, and Z up.</summary>
-        RightHand
-    }
-
-    /// <summary>
     /// Compression algorithm for MCAP recording output.
     /// </summary>
     public enum McapCompressionMode
@@ -105,8 +93,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(1)] private int _ros2BridgeReconnectIntervalMs = 1000;
         [SerializeField, Min(1)] private int _ros2BridgeSendTimeoutMs = 1000;
 
-        [Header("Coordinate System")]
-        [SerializeField] private CoordinateMode _coordinateMode = CoordinateMode.LeftHand;
+        [SerializeField, HideInInspector] private CoordinateMode _coordinateMode = CoordinateMode.RightHand;
+        [SerializeField] private CoordinateMode _outputCoordinateMode = CoordinateMode.RightHand;
+        [SerializeField] private CoordinateMode _inputCoordinateMode = CoordinateMode.RightHand;
 
         [SerializeField] private AssetRootDefinition[] _assetRoots = { };
 
@@ -227,8 +216,20 @@ namespace Unity.FoxgloveSDK.Components
         private System.Action<ReplayBatchContext> _replayBatchForwarder;
         private System.Action<uint, uint, string, string, byte[]> _clientMessageForwarder;
 
-        /// <summary>Current coordinate mode, read from Inspector or code.</summary>
-        public CoordinateMode ActiveCoordinateMode => _coordinateMode;
+        /// <summary>
+        /// Compatibility alias for the coordinate convention used by Manager-owned output.
+        /// Prefer <see cref="ActiveOutputCoordinateMode"/> or
+        /// <see cref="ActiveInputCoordinateMode"/> at directional call sites.
+        /// </summary>
+        public CoordinateMode ActiveCoordinateMode => ActiveOutputCoordinateMode;
+
+        /// <summary>Coordinate convention used for Manager-owned Unity-to-external output.</summary>
+        public CoordinateMode ActiveOutputCoordinateMode =>
+            CoordinateTransportPolicy.NormalizeSerializedCoordinateMode(_outputCoordinateMode);
+
+        /// <summary>Coordinate convention expected by Manager-owned external-to-Unity input.</summary>
+        public CoordinateMode ActiveInputCoordinateMode =>
+            CoordinateTransportPolicy.NormalizeSerializedCoordinateMode(_inputCoordinateMode);
 
         /// <summary>True when the Inspector's optional Unity Profiler marker hook is enabled.</summary>
         public bool ProfilingEnabled => _profilingEnabled;
@@ -239,7 +240,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="p">Position in Unity coordinates.</param>
         /// <returns>The converted position, or the original value in left-handed mode.</returns>
         public Vector3 UnityToFoxglovePosition(Vector3 p)
-            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxglovePosition(p) : p;
+            => ActiveOutputCoordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxglovePosition(p) : p;
 
         /// <summary>
         /// Converts a Unity rotation to Foxglove coordinates.
@@ -247,7 +248,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="q">Rotation in Unity coordinates.</param>
         /// <returns>The converted rotation, or the original value in left-handed mode.</returns>
         public Quaternion UnityToFoxgloveRotation(Quaternion q)
-            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxgloveRotation(q) : q;
+            => ActiveOutputCoordinateMode == CoordinateMode.RightHand ? CoordinateConverter.UnityToFoxgloveRotation(q) : q;
 
         /// <summary>
         /// Converts a Foxglove position to Unity coordinates.
@@ -255,7 +256,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="p">Position in Foxglove coordinates.</param>
         /// <returns>The converted position, or the original value in left-handed mode.</returns>
         public Vector3 FoxgloveToUnityPosition(Vector3 p)
-            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityPosition(p) : p;
+            => ActiveInputCoordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityPosition(p) : p;
 
         /// <summary>
         /// Converts a Foxglove rotation to Unity coordinates.
@@ -263,7 +264,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <param name="q">Rotation in Foxglove coordinates.</param>
         /// <returns>The converted rotation, or the original value in left-handed mode.</returns>
         public Quaternion FoxgloveToUnityRotation(Quaternion q)
-            => _coordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityRotation(q) : q;
+            => ActiveInputCoordinateMode == CoordinateMode.RightHand ? CoordinateConverter.FoxgloveToUnityRotation(q) : q;
 
         /// <summary>The backing Foxglove runtime, or null after disposal.</summary>
         public Core.FoxgloveRuntime Runtime => _runtime;

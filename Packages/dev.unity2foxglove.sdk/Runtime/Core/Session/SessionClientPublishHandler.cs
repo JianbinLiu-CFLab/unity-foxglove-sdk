@@ -243,10 +243,10 @@ namespace Unity.FoxgloveSDK.Core
                     return;
             }
 
-            _messageCallback(clientId, chId, ch.Topic, ch.Encoding, payload);
             var recorder = _recorderProvider();
             recorder?.WriteClientMessage(clientId, chId, _clock.NowNs, payload,
                 ch.Topic, ch.Encoding, ch.SchemaName, ch.SchemaEncoding, ch.Schema);
+            _messageCallback(clientId, chId, ch.Topic, ch.Encoding, payload);
         }
     }
 }

@@ -13,12 +13,12 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawDataTransportSection()
         {
             DrawDataTransportSubsection(
-                "Publish",
+                "Publish Data",
                 "DataTransportPublish",
                 ref _dataTransportPublishExpanded,
                 DrawPublishDataSection);
             DrawDataTransportSubsection(
-                "Subscribe",
+                "Subscribe Data",
                 "DataTransportSubscribe",
                 ref _dataTransportSubscribeExpanded,
                 DrawSubscribeDataSection);
@@ -26,7 +26,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (HasR2fuNativeRuntimeDemand())
             {
                 DrawDataTransportSubsection(
-                    "ROS 2 Native Runtime (R2FU)",
+                    "ROS 2 Native Runtime (R2FU) — Shared",
                     "DataTransportNativeRuntime",
                     ref _dataTransportNativeRuntimeExpanded,
                     DrawR2fuRuntimeSection);
@@ -42,7 +42,8 @@ namespace Unity.FoxgloveSDK.Editor
             if (!FoxgloveManagerInspectorLayout.WorkflowSubsection(
                     title,
                     InspectorFoldoutKey(sessionStateName),
-                    ref expanded))
+                    ref expanded,
+                    EditorStyles.foldoutHeader))
                 return;
 
             EditorGUI.indentLevel++;

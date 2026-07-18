@@ -58,45 +58,46 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void CopyBudgetConversionRepresentsTheDefaultAsFourMiB()
+        public void CopyBudgetConversionUsesDecimalMegabytesWithoutChangingTheStoredBytes()
         {
+            Assert.Equal(new[] { "KB", "MB" }, FoxRunRos2SubscriptionInspectorPresentation.NativeCopyBudgetLabels);
             Assert.Equal(
-                4d,
+                4.194304d,
                 FoxRunRos2SubscriptionInspectorPresentation.ToDisplayValue(
                     FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes,
-                    FoxRunRos2NativeCopyBudgetUnit.MiB));
+                    FoxRunRos2NativeCopyBudgetUnit.MB));
             Assert.Equal(
                 FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
-                    4d,
-                    FoxRunRos2NativeCopyBudgetUnit.MiB));
+                    4.194304d,
+                    FoxRunRos2NativeCopyBudgetUnit.MB));
         }
 
         [Fact]
-        public void CopyBudgetUnitSwitchesPreserve1536KiBAndOnePointFiveMiB()
+        public void CopyBudgetUnitSwitchesPreserveDecimalKBAndMB()
         {
-            const int bytes = 1536 * 1024;
+            const int bytes = 1_536_000;
 
             Assert.Equal(
                 1536d,
                 FoxRunRos2SubscriptionInspectorPresentation.ToDisplayValue(
                     bytes,
-                    FoxRunRos2NativeCopyBudgetUnit.KiB));
+                    FoxRunRos2NativeCopyBudgetUnit.KB));
             Assert.Equal(
-                1.5d,
+                1.536d,
                 FoxRunRos2SubscriptionInspectorPresentation.ToDisplayValue(
                     bytes,
-                    FoxRunRos2NativeCopyBudgetUnit.MiB));
+                    FoxRunRos2NativeCopyBudgetUnit.MB));
             Assert.Equal(
                 bytes,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
                     1536d,
-                    FoxRunRos2NativeCopyBudgetUnit.KiB));
+                    FoxRunRos2NativeCopyBudgetUnit.KB));
             Assert.Equal(
                 bytes,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
-                    1.5d,
-                    FoxRunRos2NativeCopyBudgetUnit.MiB));
+                    1.536d,
+                    FoxRunRos2NativeCopyBudgetUnit.MB));
         }
 
         [Fact]
@@ -106,22 +107,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunRos2NativeCopyBudgetPolicy.MinBytes,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
                     double.NaN,
-                    FoxRunRos2NativeCopyBudgetUnit.KiB));
+                    FoxRunRos2NativeCopyBudgetUnit.KB));
             Assert.Equal(
                 FoxRunRos2NativeCopyBudgetPolicy.MinBytes,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
                     -1d,
-                    FoxRunRos2NativeCopyBudgetUnit.MiB));
+                    FoxRunRos2NativeCopyBudgetUnit.MB));
             Assert.Equal(
                 FoxRunRos2NativeCopyBudgetPolicy.MaxBytes,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
                     double.PositiveInfinity,
-                    FoxRunRos2NativeCopyBudgetUnit.KiB));
+                    FoxRunRos2NativeCopyBudgetUnit.KB));
             Assert.Equal(
                 FoxRunRos2NativeCopyBudgetPolicy.MaxBytes,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
                     double.MaxValue,
-                    FoxRunRos2NativeCopyBudgetUnit.MiB));
+                    FoxRunRos2NativeCopyBudgetUnit.MB));
         }
 
         [Fact]
@@ -130,8 +131,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(
                 1537,
                 FoxRunRos2SubscriptionInspectorPresentation.ToClampedBytes(
-                    1536.5d / 1024d,
-                    FoxRunRos2NativeCopyBudgetUnit.KiB));
+                    1536.5d / 1000d,
+                    FoxRunRos2NativeCopyBudgetUnit.KB));
         }
 
         private static void AssertChoice(

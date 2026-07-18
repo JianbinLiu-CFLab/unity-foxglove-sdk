@@ -51,9 +51,19 @@ namespace Unity.FoxgloveSDK.Editor
         /// for the current Editor session.
         /// </summary>
         internal static bool WorkflowSubsection(string title, string sessionStateKey, ref bool expanded)
+            => WorkflowSubsection(title, sessionStateKey, ref expanded, EditorStyles.foldout);
+
+        /// <summary>
+        /// Draws a persisted nested workflow subsection with an explicit heading style.
+        /// </summary>
+        internal static bool WorkflowSubsection(
+            string title,
+            string sessionStateKey,
+            ref bool expanded,
+            GUIStyle headingStyle)
         {
             EditorGUILayout.Space();
-            expanded = PersistedFoldout(expanded, title, sessionStateKey, EditorStyles.foldout);
+            expanded = PersistedFoldout(expanded, title, sessionStateKey, headingStyle);
             return expanded;
         }
 
