@@ -247,7 +247,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && branchBridgeSubsections.Length == 1
                   && allBridgeOutputSubsections.Length == 1
                   && ReferenceEquals(branchBridgeSubsections[0], allBridgeOutputSubsections[0]),
-                "96F-1: Manager Inspector nests ROS 2 Bridge Output under Data Transport Publish");
+                "96F-1: Manager Inspector nests ROS 2 Bridge Output under Data Transport Publish Data");
             Check(ros2BridgeEditor.Contains("\"Bridge Namespace\"") && ros2BridgeEditor.Contains("\"Publish QoS Profile\"") && ros2BridgeEditor.Contains("\"Effective QoS\""),
                 "96F-2: Manager Inspector exposes topic namespace and QoS preset");
             Check(ros2BridgeEditor.Contains("\"Host\"") && ros2BridgeEditor.Contains("\"Default Output\"") && ros2BridgeEditor.Contains("\"Allow Publisher Override\""),
@@ -358,7 +358,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static bool IsPublishDataTransportSubsection(InvocationExpressionSyntax invocation)
         {
             return IsInvocationNamed(invocation, "DrawDataTransportSubsection")
-                   && HasStringArgument(invocation, 0, "Publish")
+                   && HasStringArgument(invocation, 0, "Publish Data")
                    && HasStringArgument(invocation, 1, "DataTransportPublish")
                    && HasRefIdentifierArgument(invocation, 2, "_dataTransportPublishExpanded")
                    && HasMethodGroupArgument(invocation, 3, "DrawPublishDataSection");
