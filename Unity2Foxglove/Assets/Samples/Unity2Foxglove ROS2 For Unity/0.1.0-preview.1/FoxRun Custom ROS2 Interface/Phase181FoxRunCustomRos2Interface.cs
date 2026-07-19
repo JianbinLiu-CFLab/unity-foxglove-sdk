@@ -74,7 +74,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             Mode = FoxRunMode.SubscribeOnly,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
-        [SerializeField] private Phase181State _nativeSubscribeOnly;
+        [SerializeField] private Phase181State _inputPort;
+
+        /// <summary>
+        /// Gets the latest custom DTO applied through the native SubscribeOnly input port.
+        /// Keeping this observable makes the sample's ownership boundary explicit.
+        /// </summary>
+        public Phase181State NativeInputPort => _inputPort;
 
         [Tooltip("Native ROS2 is the inbound provider while this member keeps an explicit JSON WebSocket output contract.")]
 #pragma warning disable FOXRUN400 // The sample deliberately documents its bidirectional ownership and peer protocol.
@@ -90,7 +96,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         private void Reset()
         {
             _nativePublishOnly = CreateState("publish-only", 1);
-            _nativeSubscribeOnly = null;
+            _inputPort = null;
             _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
         }
 

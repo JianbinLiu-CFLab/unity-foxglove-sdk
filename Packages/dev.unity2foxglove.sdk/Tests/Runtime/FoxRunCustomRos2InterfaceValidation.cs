@@ -676,6 +676,16 @@ namespace Unity.FoxgloveSDK.Tests
                   && importedSample.IndexOf(authorityWarningRestore, StringComparison.Ordinal) > importedSample.IndexOf(bidirectionalField, StringComparison.Ordinal),
                 "181F-14: the sample suppression spans the member declaration where the authority diagnostic is reported");
 
+            const string inputPortField = "[SerializeField] private Phase181State _inputPort";
+            const string inputPortView = "public Phase181State NativeInputPort => _inputPort;";
+            Check(sample.Contains(inputPortField, StringComparison.Ordinal)
+                  && sample.Contains(inputPortView, StringComparison.Ordinal)
+                  && importedSample.Contains(inputPortField, StringComparison.Ordinal)
+                  && importedSample.Contains(inputPortView, StringComparison.Ordinal)
+                  && !sample.Contains("_nativeSubscribeOnly", StringComparison.Ordinal)
+                  && !importedSample.Contains("_nativeSubscribeOnly", StringComparison.Ordinal),
+                "181F-15: the SubscribeOnly sample member communicates input-port authority and is observably consumed");
+
             Check(sampleReadme.Contains("static interface lock", StringComparison.OrdinalIgnoreCase)
                   && sampleReadme.Contains("Windows-local", StringComparison.Ordinal)
                   && r2fuPackageJson.Contains("FoxRun Custom ROS2 Interface", StringComparison.Ordinal)
