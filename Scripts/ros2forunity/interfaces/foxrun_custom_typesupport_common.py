@@ -39,6 +39,7 @@ class AddonValidationError(ValueError):
     code = "FOXRUN_TYPESUPPORT001"
 
     def __init__(self, remediation: str):
+        """Initialize this object."""
         self.remediation = remediation
         super().__init__(self.code + ": " + remediation)
 
@@ -138,6 +139,7 @@ def compute_static_interface_digest(static_interface_package: Path) -> str:
 
 
 def _append_interface_digest_frame(digest: "hashlib._Hash", content: bytes) -> None:
+    """Implement the internal append interface digest frame step."""
     digest.update(len(content).to_bytes(8, byteorder="big", signed=False))
     digest.update(content)
 
@@ -193,6 +195,7 @@ def validate_addon(request: AddonValidationRequest) -> AddonValidationResult:
 
 
 def _validate_static_source(static_root: Path, static_lock: Mapping[str, Any]) -> None:
+    """Implement the internal validate static source step."""
     if static_lock.get("unityPackageId") != STATIC_INTERFACE_PACKAGE_ID:
         raise AddonValidationError("repair-static-interface-source")
     if static_lock.get("rosPackageName") != ROS_PACKAGE_NAME:
@@ -215,6 +218,7 @@ def validate_addon_set(requests: Sequence[AddonValidationRequest]) -> tuple[Addo
 
 
 def _normalize_distro(value: str) -> str:
+    """Implement the internal normalize distro step."""
     normalized = (value or "").strip().lower()
     if normalized not in SUPPORTED_DISTROS:
         raise AddonValidationError("select-supported-ros-distro")
@@ -222,6 +226,7 @@ def _normalize_distro(value: str) -> str:
 
 
 def _load_json(path: Path, remediation: str) -> dict[str, Any]:
+    """Implement the internal load json step."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -232,6 +237,7 @@ def _load_json(path: Path, remediation: str) -> dict[str, Any]:
 
 
 def _require_text(mapping: Mapping[str, Any], key: str, remediation: str) -> str:
+    """Implement the internal require text step."""
     value = mapping.get(key)
     if not isinstance(value, str) or not value:
         raise AddonValidationError(remediation)
@@ -239,6 +245,7 @@ def _require_text(mapping: Mapping[str, Any], key: str, remediation: str) -> str
 
 
 def _require_sha256(mapping: Mapping[str, Any], key: str, remediation: str) -> str:
+    """Implement the internal require sha256 step."""
     value = _require_text(mapping, key, remediation)
     if _SHA256.fullmatch(value) is None:
         raise AddonValidationError(remediation)
@@ -246,6 +253,7 @@ def _require_sha256(mapping: Mapping[str, Any], key: str, remediation: str) -> s
 
 
 def _validate_package_metadata(package: Mapping[str, Any], distro: str, runtime_manifest: Mapping[str, Any]) -> None:
+    """Implement the internal validate package metadata step."""
     if _require_text(package, "name", "repair-addon-package-name") != addon_package_id(distro):
         raise AddonValidationError("repair-addon-package-name")
     if package.get("unity2foxgloveFoxRunCustomTypesupportAddOn") is not True:
@@ -277,6 +285,7 @@ def _validate_manifest(
     static_lock: Mapping[str, Any],
     runtime_manifest: Mapping[str, Any],
 ) -> None:
+    """Implement the internal validate manifest step."""
     if manifest.get("schemaVersion") != 1:
         raise AddonValidationError("repair-typesupport-manifest")
     if _require_text(manifest, "distro", "repair-addon-distro") != distro:
@@ -323,6 +332,7 @@ def _validate_manifest(
 
 
 def _validate_notices(addon_root: Path) -> None:
+    """Implement the internal validate notices step."""
     for relative in REQUIRED_LICENSE_FILES:
         path = addon_root / relative
         if not path.is_file() or not path.read_text(encoding="utf-8", errors="replace").strip():
@@ -333,6 +343,7 @@ def _base_ros2_message_identity(
     base_runtime_root: Path,
     supplied: Mapping[str, str] | None,
 ) -> Mapping[str, str]:
+    """Implement the internal base ros2 message identity step."""
     if supplied is not None:
         return _validate_managed_identity(supplied, "repair-ros2cs-common-identity")
 
@@ -393,6 +404,7 @@ def _validate_managed_identity(
     identity: Mapping[str, Any],
     remediation: str,
 ) -> Mapping[str, str]:
+    """Implement the internal validate managed identity step."""
     assembly_name = _require_text(identity, "assemblyName", remediation)
     version = _require_text(identity, "version", remediation)
     public_key_token = identity.get("publicKeyToken")
@@ -421,6 +433,7 @@ def _validate_managed_payload(
     manifest: Mapping[str, Any],
     base_ros2_identity: Mapping[str, str],
 ) -> None:
+    """Implement the internal validate managed payload step."""
     managed = manifest.get("managed")
     if not isinstance(managed, dict):
         raise AddonValidationError("repair-managed-typesupport-payload")
@@ -534,6 +547,7 @@ def _validate_native_payload(
     manifest: Mapping[str, Any],
     base_runtime_root: Path,
 ) -> None:
+    """Implement the internal validate native payload step."""
     libraries = manifest.get("nativeLibraries")
     if not isinstance(libraries, list) or not libraries:
         raise AddonValidationError("repair-native-typesupport-closure")
@@ -614,6 +628,7 @@ def _validate_rmw_closures(
 
 
 def _validated_closure_library_names(value: object, remediation: str) -> tuple[str, ...]:
+    """Implement the internal validated closure library names step."""
     if not isinstance(value, list) or not value:
         raise AddonValidationError(remediation)
     names = tuple(value)
@@ -632,6 +647,7 @@ def _validated_closure_library_names(value: object, remediation: str) -> tuple[s
 
 
 def _validated_closure_addon_paths(value: object, remediation: str) -> tuple[str, ...]:
+    """Implement the internal validated closure addon paths step."""
     if not isinstance(value, list) or not value:
         raise AddonValidationError(remediation)
     paths = tuple(
@@ -703,6 +719,7 @@ def _validate_payload_entry(
     expected_name: str | None,
     remediation: str,
 ) -> Path:
+    """Implement the internal validate payload entry step."""
     relative = _safe_relative_path(_require_text(entry, "path", remediation))
     path = addon_root / relative
     if not path.is_file() or file_sha256(path) != _require_sha256(entry, "sha256", remediation):
@@ -713,6 +730,7 @@ def _validate_payload_entry(
 
 
 def _validate_inventory(addon_root: Path, inventory: Mapping[str, Any]) -> None:
+    """Implement the internal validate inventory step."""
     if inventory.get("schemaVersion") != 1:
         raise AddonValidationError("repair-typesupport-inventory")
     entries = inventory.get("entries")
@@ -761,6 +779,7 @@ def _validate_inventory(addon_root: Path, inventory: Mapping[str, Any]) -> None:
 
 
 def _safe_relative_path(value: str) -> PurePosixPath:
+    """Implement the internal safe relative path step."""
     if _ABSOLUTE_PATH.match(value) or "\\" in value:
         raise AddonValidationError("remove-machine-private-path")
     path = PurePosixPath(value)
@@ -770,6 +789,7 @@ def _safe_relative_path(value: str) -> PurePosixPath:
 
 
 def _reject_absolute_values(value: object) -> None:
+    """Implement the internal reject absolute values step."""
     if isinstance(value, str):
         if _ABSOLUTE_PATH.match(value):
             raise AddonValidationError("remove-machine-private-path")

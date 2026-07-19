@@ -15,6 +15,11 @@
       "path": "Samples~/FoxRun ROS2 Native Subscribe"
     },
     {
+      "displayName": "FoxRun Custom ROS2 Interface",
+      "description": "Imports a source-only Phase181 sample for locked custom FoxRun DTO native ROS2 PublishOnly, SubscribeOnly, and bidirectional contracts.",
+      "path": "Samples~/FoxRun Custom ROS2 Interface"
+    },
+    {
       "displayName": "ROS2 For Unity External Adapter",
       "description": "Imports a source-only adapter sample that connects the Unity2Foxglove ROS2 facade to a ROS2 For Unity runtime package or external runtime.",
       "path": "Samples~/ROS2 For Unity External Adapter"

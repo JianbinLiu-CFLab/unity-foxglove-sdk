@@ -243,6 +243,9 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool IsConcreteDto(Type type)
             => type != null
                && type.IsClass
+               // CLR arrays report IsClass=true, but a transport sequence is
+               // a DTO member shape, never a DTO root or nested DTO.
+               && !type.IsArray
                && !type.IsAbstract
                && !type.IsInterface
                // A closed generic type is still a generic DTO declaration.  It

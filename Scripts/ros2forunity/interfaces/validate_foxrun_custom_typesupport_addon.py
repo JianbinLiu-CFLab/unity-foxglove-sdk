@@ -28,10 +28,12 @@ except ModuleNotFoundError:  # pragma: no cover - package import test path
 
 
 def repository_root() -> Path:
+    """Run repository root."""
     return Path(__file__).resolve().parents[3]
 
 
 def parse_args(argv: Sequence[str] | None = None) -> AddonValidationRequest:
+    """Parse command-line arguments."""
     root = repository_root()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--distro", required=True, choices=SUPPORTED_DISTROS)
@@ -51,6 +53,7 @@ def parse_args(argv: Sequence[str] | None = None) -> AddonValidationRequest:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line entry point."""
     try:
         result = validate_addon(parse_args(argv))
     except AddonValidationError as exc:

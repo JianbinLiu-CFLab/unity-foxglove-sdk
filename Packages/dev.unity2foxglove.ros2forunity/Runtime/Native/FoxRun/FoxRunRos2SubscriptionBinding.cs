@@ -46,6 +46,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 copyFailed,
                 staleCallbacks,
                 0,
+                0,
                 0)
         {
         }
@@ -70,7 +71,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             long copyFailed,
             long staleCallbacks,
             long lastReceiveStopwatchTimestamp,
-            long lastApplyStopwatchTimestamp)
+            long lastApplyStopwatchTimestamp,
+            long sameOriginDrops = 0)
             : this(
                 RequireContract(contract).Id,
                 contract.Topic,
@@ -90,7 +92,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 copyFailed,
                 staleCallbacks,
                 lastReceiveStopwatchTimestamp,
-                lastApplyStopwatchTimestamp)
+                lastApplyStopwatchTimestamp,
+                sameOriginDrops)
         {
         }
 
@@ -113,7 +116,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             long copyFailed,
             long staleCallbacks,
             long lastReceiveStopwatchTimestamp,
-            long lastApplyStopwatchTimestamp)
+            long lastApplyStopwatchTimestamp,
+            long sameOriginDrops)
         {
             ContractId = contractId ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -134,6 +138,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             StaleCallbacks = staleCallbacks;
             LastReceiveStopwatchTimestamp = lastReceiveStopwatchTimestamp;
             LastApplyStopwatchTimestamp = lastApplyStopwatchTimestamp;
+            SameOriginDrops = sameOriginDrops;
         }
 
         public string ContractId { get; }
@@ -155,6 +160,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long StaleCallbacks { get; }
         public long LastReceiveStopwatchTimestamp { get; }
         public long LastApplyStopwatchTimestamp { get; }
+        public long SameOriginDrops { get; }
 
         private static FoxRunRos2GeneratedContract RequireContract(
             FoxRunRos2GeneratedContract contract)
@@ -709,6 +715,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var rejectedAfterStop = RejectedAfterStopCount;
             var copyFailed = CopyFailedCount;
             var staleCallbacks = StaleCallbackCount;
+            var sameOriginDrops = SameOriginDropCount;
             var lastReceiveStopwatchTimestamp = Interlocked.Read(ref _lastReceiveStopwatchTimestamp);
             var lastApplyStopwatchTimestamp = Interlocked.Read(ref _lastApplyStopwatchTimestamp);
             lock (_lifecycleLock)
@@ -729,7 +736,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     copyFailed,
                     staleCallbacks,
                     lastReceiveStopwatchTimestamp,
-                    lastApplyStopwatchTimestamp);
+                    lastApplyStopwatchTimestamp,
+                    sameOriginDrops);
             }
             if (!TryReadActiveGeneration(out var generationAfter)
                 || generationAfter != SessionGeneration

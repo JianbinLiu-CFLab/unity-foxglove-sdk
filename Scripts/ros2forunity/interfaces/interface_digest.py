@@ -30,11 +30,13 @@ _FIXED_GENERATED_PATHS = (
 
 @dataclass(frozen=True)
 class DigestInput:
+    """Represent DigestInput."""
     relative_path: str
     content: Union[str, bytes]
 
 
 def normalize_relative_path(relative_path: str) -> str:
+    """Run normalize relative path."""
     normalized = (relative_path or "").replace("\\", "/")
     if (
         not normalized
@@ -49,10 +51,12 @@ def normalize_relative_path(relative_path: str) -> str:
 
 
 def encode_text(value: str) -> bytes:
+    """Run encode text."""
     return (value or "").replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
 
 
 def compute(schema_version: int, inputs: Iterable[DigestInput]) -> str:
+    """Run compute."""
     if schema_version != INTERFACE_SCHEMA_VERSION:
         raise ValueError("the digest framing accepts only the current interface schema version")
 
@@ -79,6 +83,7 @@ def compute(schema_version: int, inputs: Iterable[DigestInput]) -> str:
 
 
 def _append_frame(stream: bytearray, value: bytes) -> None:
+    """Implement the internal append frame step."""
     stream.extend(len(value).to_bytes(8, byteorder="big", signed=False))
     stream.extend(value)
 
@@ -149,10 +154,12 @@ def verify_package(package_root: Union[str, Path]) -> str:
 
 
 def _default_package_root() -> Path:
+    """Implement the internal default package root step."""
     return Path(__file__).resolve().parents[3] / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces"
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the command-line entry point."""
     parser = argparse.ArgumentParser(description="Verify a locked FoxRun ROS2 interface source package.")
     parser.add_argument(
         "--package-root",

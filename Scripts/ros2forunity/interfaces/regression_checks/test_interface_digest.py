@@ -1,9 +1,10 @@
 """Public regression checks for the Phase181 source-package digest contract."""
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
+
+from Scripts.test_support.phase181_scratch import temporary_directory
 
 from Scripts.ros2forunity.interfaces.interface_digest import (
     DigestInput,
@@ -15,7 +16,9 @@ from Scripts.ros2forunity.interfaces.interface_digest import (
 
 
 class InterfaceDigestTests(unittest.TestCase):
+    """Represent InterfaceDigestTests."""
     def test_cross_host_vector_is_stable(self) -> None:
+        """Verify cross host vector is stable."""
         value = compute(
             INTERFACE_SCHEMA_VERSION,
             (
@@ -39,6 +42,7 @@ class InterfaceDigestTests(unittest.TestCase):
         )
 
     def test_single_byte_and_duplicate_path_are_not_ignored(self) -> None:
+        """Verify single byte and duplicate path are not ignored."""
         baseline = compute(
             INTERFACE_SCHEMA_VERSION,
             (DigestInput("msg/Example.msg", "int32 count\n"),),
@@ -60,12 +64,14 @@ class InterfaceDigestTests(unittest.TestCase):
             )
 
     def test_path_and_version_rejections_are_explicit(self) -> None:
+        """Verify path and version rejections are explicit."""
         with self.assertRaises(ValueError):
             normalize_relative_path("../escape.msg")
         with self.assertRaises(ValueError):
             compute(99, (DigestInput("msg/Example.msg", "a\n"),))
 
     def test_checked_in_source_package_matches_its_lock(self) -> None:
+        """Verify checked in source package matches its lock."""
         root = Path(__file__).resolve().parents[4]
         package_root = root / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces"
         self.assertEqual(
@@ -74,7 +80,8 @@ class InterfaceDigestTests(unittest.TestCase):
         )
 
     def test_nested_message_bytes_are_part_of_the_source_package_digest(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify nested message bytes are part of the source package digest."""
+        with temporary_directory("interface-digest-") as temporary_root:
             root = Path(temporary_root)
             files = {
                 "package.json": "{}\n",

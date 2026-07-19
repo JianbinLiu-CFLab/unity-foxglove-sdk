@@ -213,6 +213,24 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal(reflection.Diagnostics, roslyn.Diagnostics);
         }
 
+        [Fact]
+        public void RoslynAndReflectionBuildersPreserveUnsupportedRootArrayIdentity()
+        {
+            var compilation = CSharpCompilation.Create(
+                "CustomDtoRootArrayParity",
+                references: TrustedPlatformReferences(),
+                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            var roslynArray = compilation.CreateArrayTypeSymbol(compilation.GetSpecialType(SpecialType.System_Single));
+
+            var roslyn = FoxRunRoslynRos2CustomDtoShapeBuilder.Build(roslynArray, compilation);
+            var reflection = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(typeof(float[]));
+
+            Assert.False(roslyn.IsSupported);
+            Assert.False(reflection.IsSupported);
+            Assert.Equal(reflection.FullyQualifiedTypeName, roslyn.FullyQualifiedTypeName);
+            Assert.Equal(reflection.Diagnostics, roslyn.Diagnostics);
+        }
+
         private static object BuildReflectionShape(Type dtoType)
         {
             var assembly = typeof(FoxRunGenerationModel).Assembly;

@@ -44,6 +44,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FixtureScratchStaysInsideTheRepositoryBuildRoot()
+        {
+            using var fixture = new SelectionFixture();
+
+            Assert.StartsWith(
+                RepositoryBuildTestRoot() + Path.DirectorySeparatorChar,
+                fixture.ScratchDirectory + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void ExactMatchingAddOnIsActivatedWithItsBaseRuntimeOnly()
         {
             using var fixture = new SelectionFixture();
@@ -84,6 +95,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.EndsWith(
                 "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
                 result.NativePluginDirectory.Replace('\\', '/'));
+        }
+
+        [Fact]
+        public void RevisionedStaticSourceLockSelectsItsMatchingV2AddOn()
+        {
+            using var fixture = new SelectionFixture();
+            fixture.SetStaticSourceIdentity("unity2foxglove_foxrun_interfaces_v2", 2);
+            var addOn = fixture.WriteAddOn("humble", valid: true);
+            fixture.WriteManifest(fixture.HumbleRuntimePackage, addOn);
+
+            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.EvaluateActive(
+                fixture.ProjectDirectory,
+                fixture.HumbleRuntimePackage);
+
+            Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.Ready, result.Code);
+            Assert.Equal(addOn, result.ActiveAddOnPackage);
         }
 
         [Fact]
@@ -143,7 +170,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             public SelectionFixture()
             {
-                _root = Path.Combine(Path.GetTempPath(), "u2f-phase181-" + Guid.NewGuid().ToString("N"));
+                _root = Path.Combine(
+                    RepositoryBuildTestRoot(),
+                    "u2f-phase181-" + Guid.NewGuid().ToString("N"));
                 ProjectDirectory = Path.Combine(_root, "Unity2Foxglove");
                 PackagesDirectory = Path.Combine(_root, "Packages");
                 Directory.CreateDirectory(Path.Combine(ProjectDirectory, "Packages"));
@@ -156,10 +185,20 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             public string ProjectDirectory { get; }
             public string PackagesDirectory { get; }
+            public string ScratchDirectory => _root;
             public string ManifestPath => Path.Combine(ProjectDirectory, "Packages", "manifest.json");
             public string PackagesLockPath => Path.Combine(ProjectDirectory, "Packages", "packages-lock.json");
             public string HumbleRuntimePackage => "dev.unity2foxglove.ros2forunity.runtime.humble.win64";
             public string JazzyRuntimePackage => "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
+            private string StaticRosPackageName { get; set; } = "unity2foxglove_foxrun_interfaces_v1";
+            private int StaticInterfaceRevision { get; set; } = 1;
+
+            public void SetStaticSourceIdentity(string rosPackageName, int interfaceRevision)
+            {
+                StaticRosPackageName = rosPackageName;
+                StaticInterfaceRevision = interfaceRevision;
+                WriteStaticSourceLock();
+            }
 
             public string WriteAddOn(string suffix, bool valid, string baseRuntime = null)
             {
@@ -191,8 +230,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     ["source"] = new JObject
                     {
                         ["upmPackageId"] = "dev.unity2foxglove.foxrun.ros2.interfaces",
-                        ["rosPackageName"] = "unity2foxglove_foxrun_interfaces_v1",
-                        ["interfaceRevision"] = 1,
+                        ["rosPackageName"] = StaticRosPackageName,
+                        ["interfaceRevision"] = StaticInterfaceRevision,
                         ["interfaceDigest"] = sourceDigest,
                         ["generatorSchemaVersion"] = 1
                     },
@@ -309,8 +348,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     new JObject
                     {
                         ["unityPackageId"] = "dev.unity2foxglove.foxrun.ros2.interfaces",
-                        ["rosPackageName"] = "unity2foxglove_foxrun_interfaces_v1",
-                        ["interfaceRevision"] = 1,
+                        ["rosPackageName"] = StaticRosPackageName,
+                        ["interfaceRevision"] = StaticInterfaceRevision,
                         ["interfaceDigest"] = StaticInterfaceDigest()
                     }.ToString(Formatting.Indented));
             }
@@ -391,6 +430,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
                 return token.ToString(Formatting.None);
             }
+        }
+
+        private static string RepositoryBuildTestRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "README.md"))
+                    && Directory.Exists(Path.Combine(directory.FullName, "Packages")))
+                {
+                    return Path.Combine(directory.FullName, "build", "Tests", "Phase181");
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root.");
         }
     }
 }

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-import tempfile
 import unittest
 from pathlib import Path
+
+from Scripts.test_support.phase181_scratch import temporary_directory
 
 from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     AddonValidationError,
@@ -18,7 +19,9 @@ from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
 
 
 class CustomTypesupportAddonValidationTests(unittest.TestCase):
+    """Represent CustomTypesupportAddonValidationTests."""
     def test_valid_matching_addon_passes(self) -> None:
+        """Verify valid matching addon passes."""
         with self._fixture() as fixture:
             result = validate_addon(fixture.request)
 
@@ -29,6 +32,7 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             )
 
     def test_source_identity_distro_and_digest_mismatches_fail_closed(self) -> None:
+        """Verify source identity distro and digest mismatches fail closed."""
         for path, value in (
             (("source", "upmPackageId"), "other.source"),
             (("source", "rosPackageName"), "other_ros_package"),
@@ -44,6 +48,7 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def test_inventory_hash_drift_missing_native_and_unexpected_file_fail_closed(self) -> None:
+        """Verify inventory hash drift missing native and unexpected file fail closed."""
         with self.subTest("hash drift"), self._fixture() as fixture:
             fixture.write("Runtime/Ros2ForUnity/Plugins/custom.dll", b"changed")
             self._assert_invalid(fixture)
@@ -55,6 +60,7 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def test_package_conflicts_runtime_abi_and_ros2cs_mvid_drift_fail_closed(self) -> None:
+        """Verify package conflicts runtime abi and ros2cs mvid drift fail closed."""
         with self.subTest("conflict omission"), self._fixture() as fixture:
             package = fixture.package_json()
             package["unity2foxgloveConflicts"] = []
@@ -76,6 +82,7 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def test_managed_type_map_native_location_and_pe_closure_fail_closed(self) -> None:
+        """Verify managed type map native location and pe closure fail closed."""
         with self.subTest("wrong managed type"), self._fixture() as fixture:
             fixture.manifest_at(("managed", "typeMap", 0, "managedType"), "other.Message")
             fixture.refresh_inventory()
@@ -88,12 +95,14 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def test_forbidden_absolute_path_and_plugin_importer_scope_fail_closed(self) -> None:
+        """Verify forbidden absolute path and plugin importer scope fail closed."""
         with self.subTest("absolute path"), self._fixture() as fixture:
             fixture.manifest_at(("managed", "assembly", "path"), r"C:\private\custom.dll")
             fixture.refresh_inventory()
             self._assert_invalid(fixture)
 
     def test_unity_6000_win64_plugin_importer_shape_is_accepted(self) -> None:
+        """Verify unity 6000 win64 plugin importer shape is accepted."""
         with self._fixture() as fixture:
             fixture.write(
                 "Runtime/Ros2ForUnity/Plugins/unity2foxglove_foxrun_interfaces_v1_assembly.dll.meta",
@@ -110,6 +119,7 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def test_invalid_json_and_missing_license_notice_fail_closed(self) -> None:
+        """Verify invalid json and missing license notice fail closed."""
         with self.subTest("invalid json"), self._fixture() as fixture:
             (fixture.addon / "RuntimeSupport/typesupport-manifest.json").write_text("{", encoding="utf-8")
             self._assert_invalid(fixture)
@@ -121,6 +131,7 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def test_duplicate_addons_and_lyrical_rmw_policy_fail_closed(self) -> None:
+        """Verify duplicate addons and lyrical rmw policy fail closed."""
         with self._fixture() as first, self._fixture() as second:
             self._assert_invalid_set((first.request, second.request))
         with self._fixture(distro="lyrical") as fixture:
@@ -129,6 +140,7 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def test_lyrical_requires_explicit_fastdds_and_zenoh_closure_evidence(self) -> None:
+        """Verify lyrical requires explicit fastdds and zenoh closure evidence."""
         with self.subTest("missing-zenoh-closure"), self._fixture(distro="lyrical") as fixture:
             fixture.manifest_at(("rmwClosures", "rmw_zenoh_cpp"), {})
             fixture.refresh_inventory()
@@ -138,20 +150,25 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             self._assert_invalid(fixture)
 
     def _assert_invalid(self, fixture: "_Fixture") -> None:
+        """Implement the internal assert invalid step."""
         with self.assertRaises(AddonValidationError):
             validate_addon(fixture.request)
 
     def _assert_invalid_set(self, requests: tuple[AddonValidationRequest, ...]) -> None:
+        """Implement the internal assert invalid set step."""
         with self.assertRaises(AddonValidationError):
             validate_addon_set(requests)
 
     def _fixture(self, distro: str = "humble") -> "_Fixture":
+        """Implement the internal fixture step."""
         return _Fixture(distro)
 
 
 class _Fixture:
+    """Represent Fixture."""
     def __init__(self, distro: str) -> None:
-        self._temporary = tempfile.TemporaryDirectory()
+        """Initialize this object."""
+        self._temporary = temporary_directory("typesupport-validate-")
         self.root = Path(self._temporary.name)
         self.distro = distro
         self.static = self.root / "Packages/dev.unity2foxglove.foxrun.ros2.interfaces"
@@ -177,12 +194,15 @@ class _Fixture:
         )
 
     def __enter__(self) -> "_Fixture":
+        """Enter this fixture scope."""
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
+        """Release this fixture scope."""
         self._temporary.cleanup()
 
     def _create(self) -> None:
+        """Implement the internal create step."""
         self.write_static("package.json", "{\"name\":\"dev.unity2foxglove.foxrun.ros2.interfaces\"}\n")
         self.write_static("README.md", "fixture\n")
         self.write_static("RuntimeSupport/foxrun-ros2-interface-settings.json", "{\"locked\":true}\n")
@@ -329,6 +349,7 @@ class _Fixture:
         self._write_inventory()
 
     def _write_inventory(self) -> None:
+        """Implement the internal write inventory step."""
         entries = []
         excluded = {"RuntimeSupport/typesupport-inventory.json"}
         for path in sorted(self.addon.rglob("*"), key=lambda item: item.as_posix().lower()):
@@ -349,36 +370,44 @@ class _Fixture:
         self.write_json("RuntimeSupport/typesupport-inventory.json", {"schemaVersion": 1, "entries": entries})
 
     def refresh_inventory(self) -> None:
+        """Run refresh inventory."""
         self._write_inventory()
 
     def write(self, relative: str | Path, data: bytes | str) -> None:
+        """Run write."""
         path = self.addon / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
 
     def write_base(self, relative: str | Path, data: bytes | str) -> None:
+        """Run write base."""
         path = self.base_runtime / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
 
     def write_static(self, relative: str | Path, data: bytes | str) -> None:
+        """Run write static."""
         path = self.static / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
 
     def write_json(self, relative: str | Path, payload: object) -> None:
+        """Run write json."""
         relative_path = Path(relative)
         path = self.root / relative_path if relative_path.parts and relative_path.parts[0] == "Packages" else self.addon / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
     def package_json(self) -> dict:
+        """Run package json."""
         return json.loads((self.addon / "package.json").read_text(encoding="utf-8"))
 
     def runtime_manifest(self) -> dict:
+        """Run runtime manifest."""
         return json.loads((self.base_runtime / "RuntimeSupport/runtime-manifest.json").read_text(encoding="utf-8"))
 
     def manifest_at(self, path: tuple[str, ...], value: object) -> None:
+        """Run manifest at."""
         manifest_path = self.addon / "RuntimeSupport/typesupport-manifest.json"
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
         target = payload
@@ -389,14 +418,17 @@ class _Fixture:
 
 
 def _sha256(path: Path) -> str:
+    """Implement the internal sha256 step."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _normalized_json_sha256(payload: object) -> str:
+    """Implement the internal normalized json sha256 step."""
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def _role_for(path: str) -> str:
+    """Implement the internal role for step."""
     if path.endswith(".dll"):
         return "managed" if path.endswith("_assembly.dll") else "native"
     if path.endswith(".cs"):
@@ -409,10 +441,12 @@ def _role_for(path: str) -> str:
 
 
 def _classification_for(path: str) -> str:
+    """Implement the internal classification for step."""
     return "direct" if path.endswith("custom.dll") else "metadata"
 
 
 def _plugin_importer_meta() -> str:
+    """Implement the internal plugin importer meta step."""
     return """fileFormatVersion: 2
 PluginImporter:
   platformData:
@@ -438,6 +472,7 @@ PluginImporter:
 
 
 def _unity6000_plugin_importer_meta() -> str:
+    """Implement the internal unity6000 plugin importer meta step."""
     return """fileFormatVersion: 2
 PluginImporter:
   platformData:

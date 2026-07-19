@@ -60,7 +60,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.";
         private const string RuntimePackagePrefix = "dev.unity2foxglove.ros2forunity.runtime.";
         internal const string StaticInterfacePackageId = "dev.unity2foxglove.foxrun.ros2.interfaces";
-        internal const string StaticRosPackageName = "unity2foxglove_foxrun_interfaces_v1";
         private const string OptionalFacadePackageId = "dev.unity2foxglove.ros2forunity";
         private const string NativePluginRelativeDirectory =
             "Runtime/Ros2ForUnity/Plugins/Windows/x86_64";
@@ -340,16 +339,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 var source = manifest["source"] as JObject;
                 var baseRuntimeToken = manifest["baseRuntime"] as JObject;
                 if (source == null || baseRuntimeToken == null
+                    || !TryReadStaticSourceLock(directory, out var staticSource)
                     || !StringEquals(Text(source["upmPackageId"]), StaticInterfacePackageId)
-                    || !StringEquals(Text(source["rosPackageName"]), StaticRosPackageName)
-                    || !IsSha256(Text(source["interfaceDigest"]))
+                    || !StringEquals(Text(source["rosPackageName"]), staticSource.RosPackageName)
+                    || source["interfaceRevision"]?.Value<int?>() != staticSource.InterfaceRevision
+                    || !StringEquals(Text(source["interfaceDigest"]), staticSource.InterfaceDigest)
                     || !StringEquals(Text(manifest["distro"]), baseRuntime.Distro)
                     || !StringEquals(Text(manifest["platform"]), "win64")
                     || !StringEquals(Text(manifest["architecture"]), "x86_64")
                     || !StringEquals(Text(baseRuntimeToken["packageId"]), baseRuntime.PackageId)
                     || !StringEquals(Text(baseRuntimeToken["runtimeManifestSha256"]), baseRuntime.ManifestDigest)
-                    || baseRuntimeToken["runtimeManifestVersion"]?.Value<int?>() != 1
-                    || !MatchesStaticSourceLock(directory, Text(source["interfaceDigest"])))
+                    || baseRuntimeToken["runtimeManifestVersion"]?.Value<int?>() != 1)
                 {
                     return false;
                 }
@@ -374,8 +374,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
         }
 
-        private static bool MatchesStaticSourceLock(string candidateDirectory, string interfaceDigest)
+        private static bool TryReadStaticSourceLock(string candidateDirectory, out StaticSourceLock staticSource)
         {
+            staticSource = null;
             var packagesDirectory = Directory.GetParent(candidateDirectory)?.FullName;
             var staticLock = Path.Combine(
                 packagesDirectory ?? string.Empty,
@@ -384,10 +385,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 "foxrun-ros2-interface-lock.json");
             if (!TryReadObject(staticLock, out var sourceLock))
                 return false;
-            return StringEquals(Text(sourceLock["unityPackageId"]), StaticInterfacePackageId)
-                   && StringEquals(Text(sourceLock["rosPackageName"]), StaticRosPackageName)
-                   && sourceLock["interfaceRevision"]?.Value<int?>() == 1
-                   && StringEquals(Text(sourceLock["interfaceDigest"]), interfaceDigest);
+            var rosPackageName = Text(sourceLock["rosPackageName"]);
+            var interfaceRevision = sourceLock["interfaceRevision"]?.Value<int?>() ?? 0;
+            var interfaceDigest = Text(sourceLock["interfaceDigest"]);
+            if (!StringEquals(Text(sourceLock["unityPackageId"]), StaticInterfacePackageId)
+                || !IsRevisionedRosPackageName(rosPackageName, interfaceRevision)
+                || !IsSha256(interfaceDigest))
+            {
+                return false;
+            }
+
+            staticSource = new StaticSourceLock(rosPackageName, interfaceRevision, interfaceDigest);
+            return true;
         }
 
         private static bool HasMatchingRos2csIdentity(string candidateDirectory, JObject manifest, BaseRuntime baseRuntime)
@@ -807,6 +816,50 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static bool IsSha256(string value)
             => value?.Length == 64 && value.All(character => (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f'));
 
+        internal static bool IsRevisionedRosPackageName(string value, int interfaceRevision)
+        {
+            if (string.IsNullOrWhiteSpace(value) || interfaceRevision <= 0)
+                return false;
+
+            var versionMarker = value.LastIndexOf("_v", StringComparison.Ordinal);
+            if (versionMarker <= 0 || versionMarker + 2 >= value.Length || !IsRosPackageStem(value, versionMarker))
+                return false;
+
+            var parsedRevision = 0;
+            for (var index = versionMarker + 2; index < value.Length; index++)
+            {
+                var character = value[index];
+                if (character < '0' || character > '9'
+                    || parsedRevision > (Int32.MaxValue - (character - '0')) / 10)
+                {
+                    return false;
+                }
+
+                parsedRevision = parsedRevision * 10 + (character - '0');
+            }
+
+            return parsedRevision == interfaceRevision;
+        }
+
+        private static bool IsRosPackageStem(string value, int length)
+        {
+            if (value[0] < 'a' || value[0] > 'z')
+                return false;
+
+            for (var index = 1; index < length; index++)
+            {
+                var character = value[index];
+                if (!((character >= 'a' && character <= 'z')
+                      || (character >= '0' && character <= '9')
+                      || character == '_'))
+                {
+                    return false;
+                }
+            }
+
+            return value[length - 1] != '_';
+        }
+
         private static bool IsGuid(string value)
             => Guid.TryParseExact(value, "D", out _);
 
@@ -883,6 +936,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             public string PackageId { get; }
             public string InterfaceDigest { get; }
             public string NativePluginDirectory { get; }
+        }
+
+        private sealed class StaticSourceLock
+        {
+            public StaticSourceLock(string rosPackageName, int interfaceRevision, string interfaceDigest)
+            {
+                RosPackageName = rosPackageName;
+                InterfaceRevision = interfaceRevision;
+                InterfaceDigest = interfaceDigest;
+            }
+
+            public string RosPackageName { get; }
+            public int InterfaceRevision { get; }
+            public string InterfaceDigest { get; }
         }
     }
 }

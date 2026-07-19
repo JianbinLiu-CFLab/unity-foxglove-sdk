@@ -457,11 +457,16 @@ namespace Unity.FoxgloveSDK.Components
             out bool publishLive,
             out bool publishBus)
         {
+            // Replay must not emit a second real-time external stream. Native
+            // custom output is independent of WebSocket availability, but not
+            // of the replay-output suppression boundary.
+            var suppressExternalOutputForReplay = _mgr != null
+                                                  && _mgr.SuppressLivePublishersForReplay;
             publishLive = _mgr != null
                           && _mgr.IsRunning
-                          && !_mgr.SuppressLivePublishersForReplay;
+                          && !suppressExternalOutputForReplay;
             publishBus = false;
-            if (source is IFoxgloveTopicBusSource)
+            if (!suppressExternalOutputForReplay && source is IFoxgloveTopicBusSource)
             {
                 if (source is IFoxgloveTopicBusDemandSource demandSource)
                 {

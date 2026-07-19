@@ -38,6 +38,7 @@ class AddonSyncError(RuntimeError):
     """A bounded failure for an add-on sync transaction."""
 
     def __init__(self, remediation: str):
+        """Initialize this object."""
         self.code = ERROR_CODE
         self.remediation = remediation
         super().__init__(self.code + ": " + remediation)
@@ -45,6 +46,7 @@ class AddonSyncError(RuntimeError):
 
 @dataclass(frozen=True)
 class AddonSyncRequest:
+    """Represent AddonSyncRequest."""
     distro: str
     candidate_package: Path
     target_package: Path
@@ -52,6 +54,7 @@ class AddonSyncRequest:
 
 
 def _candidate_root(request: AddonSyncRequest) -> Path:
+    """Implement the internal candidate root step."""
     candidate = Path(request.candidate_package).resolve()
     if candidate.name != "package" or candidate.parent.name != "candidate":
         raise AddonSyncError("use-phase181-candidate-package")
@@ -64,6 +67,7 @@ def _candidate_root(request: AddonSyncRequest) -> Path:
 
 
 def _safe_inventory_path(value: object) -> str:
+    """Implement the internal safe inventory path step."""
     if not isinstance(value, str) or not value or "\\" in value:
         raise AddonSyncError("repair-typesupport-inventory")
     path = PurePosixPath(value)
@@ -94,10 +98,12 @@ def allowed_inventory_paths(request: AddonSyncRequest) -> tuple[str, ...]:
 
 
 def _candidate_evidence_path(request: AddonSyncRequest) -> Path:
+    """Implement the internal candidate evidence path step."""
     return _candidate_root(request) / "e" / "candidate-validation.json"
 
 
 def _validate_candidate_evidence(request: AddonSyncRequest) -> None:
+    """Implement the internal validate candidate evidence step."""
     try:
         evidence = json.loads(_candidate_evidence_path(request).read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -112,6 +118,7 @@ def _validate_candidate_evidence(request: AddonSyncRequest) -> None:
 
 
 def _validate_candidate_files(candidate: Path, allowed: Sequence[str]) -> None:
+    """Implement the internal validate candidate files step."""
     actual = {
         path.relative_to(candidate).as_posix()
         for path in candidate.rglob("*")
@@ -144,12 +151,14 @@ def verify_sync_ready(
 
 
 def _validate_target_path(request: AddonSyncRequest) -> None:
+    """Implement the internal validate target path step."""
     target = Path(request.target_package)
     if target.name != addon_package_id(request.distro) or target.parent.name != "Packages":
         raise AddonSyncError("use-matching-addon-package-target")
 
 
 def _target_has_only_expected_payload(target: Path, allowed: Sequence[str]) -> bool:
+    """Implement the internal target has only expected payload step."""
     if not target.exists():
         return True
     actual = {
@@ -190,10 +199,12 @@ def sync_addon(request: AddonSyncRequest) -> Path:
 
 
 def _default_repo_root() -> Path:
+    """Implement the internal default repo root step."""
     return Path(__file__).resolve().parents[3]
 
 
 def parse_args(argv: Sequence[str] | None = None) -> AddonSyncRequest:
+    """Parse command-line arguments."""
     root = _default_repo_root()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--distro", required=True, choices=SUPPORTED_DISTROS)
@@ -221,6 +232,7 @@ def parse_args(argv: Sequence[str] | None = None) -> AddonSyncRequest:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line entry point."""
     request = parse_args(argv)
     try:
         target = sync_addon(request)

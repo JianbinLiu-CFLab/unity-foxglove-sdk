@@ -433,6 +433,7 @@
     <Compile Include="../../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunSchemaInfoWriter.cs" Link="Editor/FoxRun/FoxRunSchemaInfoWriter.cs" />
     <Compile Include="../../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
+    <Compile Include="../../Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" />
     <Compile Include="../../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
   </ItemGroup>
   <ItemGroup Condition="'$(IncludeRos2ForUnityNative)' == 'true'">

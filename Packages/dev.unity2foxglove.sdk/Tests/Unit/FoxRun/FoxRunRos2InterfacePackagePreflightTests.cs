@@ -16,7 +16,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         public void NoCustomContractIsExplicitlyNotRequired()
         {
             var result = FoxRunRos2InterfacePackagePreflight.Evaluate(
-                Path.Combine(Path.GetTempPath(), "unity2foxglove-phase181-missing-" + Guid.NewGuid().ToString("N")),
+                Path.Combine(
+                    FindRepoRoot(),
+                    "build",
+                    "Tests",
+                    "Phase181",
+                    "preflight-missing-" + Guid.NewGuid().ToString("N")),
                 FoxRunGenerationModel.FromMembers(Array.Empty<FoxRunGenerationMember>()));
 
             Assert.Equal(FoxRunRos2InterfaceSourcePreflightState.NotRequired, result.State);
@@ -142,7 +147,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
         private static void WithTempPackage(Action<string, string> action)
         {
-            var root = Path.Combine(Path.GetTempPath(), "unity2foxglove-phase181-preflight-" + Guid.NewGuid().ToString("N"));
+            var root = Path.Combine(
+                FindRepoRoot(),
+                "build",
+                "Tests",
+                "Phase181",
+                "preflight-" + Guid.NewGuid().ToString("N"));
             var packageRoot = Path.Combine(root, "Packages", FoxRunRos2InterfaceIdentity.UnityPackageId);
             try
             {
@@ -153,6 +163,16 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 if (Directory.Exists(root))
                     Directory.Delete(root, recursive: true);
             }
+        }
+
+        [Fact]
+        public void TemporaryPackageFixtureStaysInsideTheRepositoryBuildRoot()
+        {
+            WithTempPackage((root, _) =>
+            {
+                var expectedRoot = Path.Combine(FindRepoRoot(), "build", "Tests", "Phase181");
+                Assert.StartsWith(expectedRoot, root, StringComparison.OrdinalIgnoreCase);
+            });
         }
 
         private static string FindRepoRoot()

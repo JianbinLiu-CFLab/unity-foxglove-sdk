@@ -29,3 +29,10 @@ jobs:
 
       - name: Validate ROS2 For Unity adapter package
         run: python3 Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py
+
+      - name: Validate Phase181 custom ROS2 typesupport add-ons
+        run: |
+          python3 Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro humble --require-rmw rmw_fastrtps_cpp
+          python3 Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro jazzy --require-rmw rmw_fastrtps_cpp
+          python3 Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_fastrtps_cpp
+          python3 Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_zenoh_cpp

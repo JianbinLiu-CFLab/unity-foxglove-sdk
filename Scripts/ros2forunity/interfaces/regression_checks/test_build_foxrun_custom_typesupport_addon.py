@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
+
+from Scripts.test_support.phase181_scratch import temporary_directory
 
 from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
     CandidateBuildError,
@@ -13,7 +15,9 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
     _catalog_source,
     _repair_tracked_addon_catalog,
     _runtime_rmws,
+    build_candidate,
     candidate_package_root,
+    parse_args,
     select_candidate_native_libraries,
     verify_candidate_source_lock,
 )
@@ -22,11 +26,37 @@ from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     STATIC_INTERFACE_PACKAGE_ID,
     addon_package_id,
     compute_static_interface_digest,
+    file_sha256,
 )
 
 
 class CustomTypesupportCandidateBuildTests(unittest.TestCase):
+    """Represent CustomTypesupportCandidateBuildTests."""
+    def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
+        """Verify check source cli does not invent machine specific toolchain sources."""
+        request, check_source, repair_catalog = parse_args(("--distro", "humble", "--check-source"))
+
+        self.assertTrue(check_source)
+        self.assertFalse(repair_catalog)
+        self.assertIsNone(request.ros2cs_source)
+        self.assertIsNone(request.ros2cs_install)
+        self.assertIsNone(request.r2fu_source)
+
+    def test_full_candidate_build_requires_explicit_toolchain_sources(self) -> None:
+        """Verify full candidate build requires explicit toolchain sources."""
+        with self._fixture() as fixture:
+            request = replace(
+                fixture.request,
+                ros2cs_source=None,
+                ros2cs_install=None,
+                r2fu_source=None,
+            )
+
+            with self.assertRaisesRegex(CandidateBuildError, "provide-ros2cs-source"):
+                build_candidate(request)
+
     def test_candidate_package_is_constrained_to_its_distro_build_root(self) -> None:
+        """Verify candidate package is constrained to its distro build root."""
         request = self._request()
         self.assertEqual(
             request.build_root / "phase181" / "humble" / "candidate" / "package",
@@ -47,6 +77,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             candidate_package_root(unsafe)
 
     def test_source_lock_drift_fails_before_build(self) -> None:
+        """Verify source lock drift fails before build."""
         with self._fixture() as fixture:
             request = fixture.request
             self.assertEqual(fixture.digest, verify_candidate_source_lock(request))
@@ -55,6 +86,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
                 verify_candidate_source_lock(request)
 
     def test_native_allowlist_excludes_python_generator_and_preserves_required_closure(self) -> None:
+        """Verify native allowlist excludes python generator and preserves required closure."""
         root = Path("candidate") / "i" / "bin"
         paths = (
             root / (ROS_PACKAGE_NAME + "__rosidl_generator_c.dll"),
@@ -74,6 +106,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         )
 
     def test_runtime_rmw_capability_uses_explicit_modes_then_legacy_manifest_fields(self) -> None:
+        """Verify runtime rmw capability uses explicit modes then legacy manifest fields."""
         self.assertEqual(
             ("rmw_fastrtps_cpp",),
             _runtime_rmws({"rmwImplementation": "rmw_fastrtps_cpp"}, "humble"),
@@ -94,6 +127,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             _runtime_rmws({"supportedRmwImplementations": []}, "jazzy")
 
     def test_generated_catalog_embeds_resolved_static_interface_metadata(self) -> None:
+        """Verify generated catalog embeds resolved static interface metadata."""
         interface_digest = "a" * 64
         catalog = _catalog_source(
             distro="lyrical",
@@ -119,6 +153,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         self.assertEqual(1, catalog.count("public string Platform"))
 
     def test_catalog_repair_regenerates_only_the_tracked_catalog_and_inventory(self) -> None:
+        """Verify catalog repair regenerates only the tracked catalog and inventory."""
         with self._fixture() as fixture:
             target = fixture.root / "Packages" / addon_package_id("humble")
             generated = target / "Runtime" / "FoxRun" / "Generated"
@@ -177,9 +212,12 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
                 if entry["path"] == "Runtime/FoxRun/Generated/FoxRunCustomTypesupportCatalog.g.cs"
             )
             self.assertEqual(repaired.stat().st_size, catalog_entry["byteLength"])
+            self.assertEqual(file_sha256(repaired), catalog_entry["sha256"])
+            self.assertNotIn(b"\r", repaired.read_bytes())
 
     def _request(self) -> CandidateBuildRequest:
-        root = Path("D:/phase181-test")
+        """Implement the internal request step."""
+        root = Path(__file__).resolve().parents[4] / "build" / "Tests" / "Phase181" / "request"
         return CandidateBuildRequest(
             distro="humble",
             static_interface_package=root / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces",
@@ -192,12 +230,15 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         )
 
     def _fixture(self) -> "_Fixture":
+        """Implement the internal fixture step."""
         return _Fixture()
 
 
 class _Fixture:
+    """Represent Fixture."""
     def __init__(self) -> None:
-        self._temporary = tempfile.TemporaryDirectory()
+        """Initialize this object."""
+        self._temporary = temporary_directory("typesupport-build-")
         self.root = Path(self._temporary.name)
         self.static = self.root / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces"
         (self.static / "Ros2Package~" / "msg").mkdir(parents=True)
@@ -227,9 +268,11 @@ class _Fixture:
         )
 
     def __enter__(self) -> "_Fixture":
+        """Enter this fixture scope."""
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
+        """Release this fixture scope."""
         self._temporary.cleanup()
 
 

@@ -51,6 +51,19 @@ jobs:
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_matrix_profiles
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology
 
+      - name: Run Phase181 custom ROS2 acceptance helper regressions
+        run: |
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer_protocol
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_matrix_profiles
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_linux_peer
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_build_foxrun_custom_typesupport_addon
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
+
       - name: Run official MCAP differential conformance
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
 

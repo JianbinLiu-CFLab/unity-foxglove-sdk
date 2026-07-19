@@ -135,10 +135,42 @@ assembly reference`; add the Native reference and let Unity recompile instead
 of changing the contract to a WebSocket encoding.
 
 ROS domain IDs are discovery isolation, not authentication. Configure network
-controls and ROS2 security separately. Arbitrary FoxRun DTO/custom-message
-generation and native Publish Data or bidirectional support are future work;
-this sample supports existing compiled `.msg` types and native `SubscribeOnly`
-only.
+controls and ROS2 security separately. This packaged-message sample supports
+existing compiled `.msg` types and native `SubscribeOnly`; generated custom
+FoxRun DTO interfaces use the separate workflow below.
+
+## FoxRun Custom ROS2 Interfaces
+
+The `FoxRun Custom ROS2 Interface` sample supports a locked, generated custom
+ROS2 interface for native `PublishOnly`, `SubscribeOnly`, and
+`PublishAndSubscribe` contracts. It is an optional R2FU path: the core SDK
+remains ROS-free and no custom typesupport is inferred or downloaded at
+runtime.
+
+Generate/revise the source package through the Manager's **Data Transport >
+ROS 2 Native Runtime (R2FU) — Shared > Custom FoxRun ROS 2 Interface**
+preflight controls. Resolve exactly one matching runtime package and exactly
+one matching distro-specific typesupport add-on before entering Play Mode. The
+source lock digest must match the selected add-on; a stale, multiple, missing,
+or incompatible add-on fails closed and creates no custom endpoint.
+
+Use the matching `Scripts/smoke/ros2/phase181_*_acceptance.py` no-argument
+helper for a Windows-local Editor bring-up row. It waits for a correlated custom
+String subscription before probing nested DTO, sequence, and null/empty values.
+Its result is not Linux or Player certification. Matching Linux and Player
+rows must be executed with the exact locked source/digest and the same ROS
+distro, RMW, domain, discovery configuration, and (for Lyrical Zenoh) explicit
+topology.
+
+Custom P&S is deliberately echo-on-apply: same-origin native envelopes drop;
+different or empty remote origins apply and may re-publish through the member's
+normal policy with a new Unity origin. `FixedRate` feedback topologies are an
+operator choice, not a hidden loop-prevention guarantee. Native custom inbound
+receipts are not individually recorded to MCAP; they appear in MCAP only when
+the normal publish policy later emits the external-facing output representation.
+During MCAP replay, the replay-output suppression boundary stops both the live
+WebSocket route and custom native ROS2 bus route, so replay does not emit a
+second real-time ROS2 stream.
 
 ## External Adapter Sample
 

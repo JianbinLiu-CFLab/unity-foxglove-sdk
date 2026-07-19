@@ -54,6 +54,7 @@ class ToolchainPreflightRequest:
 
 @dataclass(frozen=True)
 class ToolchainPreflightResult:
+    """Represent ToolchainPreflightResult."""
     ready: bool
     distro: str
     generator: str
@@ -64,6 +65,7 @@ class ToolchainPreflightError(RuntimeError):
     """A bounded, operator-actionable preflight failure without local paths."""
 
     def __init__(self, remediation: str):
+        """Initialize this object."""
         self.code = ERROR_CODE
         self.remediation = remediation
         super().__init__(self.code + ": " + remediation)
@@ -162,6 +164,7 @@ def build_toolchain_environment(request: ToolchainPreflightRequest) -> dict[str,
 
 
 def _normalize_request(request: ToolchainPreflightRequest) -> ToolchainPreflightRequest:
+    """Implement the internal normalize request step."""
     distro = (request.distro or "").strip().lower()
     if distro not in SUPPORTED_DISTROS:
         raise ToolchainPreflightError("select-supported-ros-distro")
@@ -180,18 +183,21 @@ def _normalize_request(request: ToolchainPreflightRequest) -> ToolchainPreflight
 
 
 def _require_directory(path: Path, remediation: str, rows: list[dict[str, str]], label: str) -> None:
+    """Implement the internal require directory step."""
     if not path.is_dir():
         raise ToolchainPreflightError(remediation)
     rows.append(_ready(label, "declared"))
 
 
 def _require_source_root(path: Path, remediation: str, rows: list[dict[str, str]], label: str) -> None:
+    """Implement the internal require source root step."""
     if not path.is_dir() or not (path / "src").is_dir():
         raise ToolchainPreflightError(remediation)
     rows.append(_ready(label, "declared-source"))
 
 
 def _resolve_pixi_tools(ros2_root: Path, rows: list[dict[str, str]]) -> tuple[Path, Path, Path]:
+    """Implement the internal resolve pixi tools step."""
     pixi = ros2_root / ".pixi" / "envs" / "default"
     python = pixi / "python.exe"
     colcon = pixi / "Scripts" / "colcon.exe"
@@ -221,6 +227,7 @@ def _require_pinned_openssl(ros2_root: Path, rows: list[dict[str, str]]) -> None
 
 
 def _resolve_dotnet(request: ToolchainPreflightRequest, rows: list[dict[str, str]]) -> Path:
+    """Implement the internal resolve dotnet step."""
     candidate = request.dotnet or Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "dotnet" / "dotnet.exe"
     if not candidate.is_file():
         raise ToolchainPreflightError("install-dotnet-sdk-for-ros2cs")
@@ -229,6 +236,7 @@ def _resolve_dotnet(request: ToolchainPreflightRequest, rows: list[dict[str, str
 
 
 def _resolve_vswhere(request: ToolchainPreflightRequest, rows: list[dict[str, str]]) -> Path:
+    """Implement the internal resolve vswhere step."""
     if request.vswhere:
         candidate = request.vswhere
     else:
@@ -246,6 +254,7 @@ def _probe_visual_studio(
     environment: Mapping[str, str],
     rows: list[dict[str, str]],
 ) -> Path:
+    """Implement the internal probe visual studio step."""
     result = runner(
         (
             str(vswhere),
@@ -269,6 +278,7 @@ def _probe_visual_studio(
 
 
 def _resolve_msvc_tools(visual_studio_root: Path) -> tuple[Path, Path]:
+    """Implement the internal resolve msvc tools step."""
     tool_root = visual_studio_root / "VC" / "Tools" / "MSVC"
     versions = sorted((path for path in tool_root.iterdir() if path.is_dir()), key=lambda path: path.name)
     compiler = versions[-1] / "bin" / "Hostx64" / "x64" / "cl.exe" if versions else Path()
@@ -285,6 +295,7 @@ def _probe_compiler(
     environment: Mapping[str, str],
     rows: list[dict[str, str]],
 ) -> None:
+    """Verify explicit MSVC and MSBuild commands without sourcing a profile."""
     # MSVC's ``cl /Bv`` reports version data but returns 2 without a source
     # filename. Probe the explicit compiler path directly, then independently
     # require a successful explicit MSBuild version command. ``VsDevCmd`` is
@@ -308,6 +319,7 @@ def _probe_cmake(
     environment: Mapping[str, str],
     rows: list[dict[str, str]],
 ) -> None:
+    """Implement the internal probe cmake step."""
     version = runner((str(cmake), "--version"), environment)
     if version.return_code != 0 or not version.stdout.strip():
         raise ToolchainPreflightError("repair-pinned-cmake")
@@ -329,6 +341,7 @@ def _probe_colcon(
     environment: Mapping[str, str],
     rows: list[dict[str, str]],
 ) -> None:
+    """Implement the internal probe colcon step."""
     result = runner((str(colcon), "--help"), environment)
     if result.return_code != 0 or "usage:" not in result.stdout.lower():
         raise ToolchainPreflightError("repair-pinned-colcon")
@@ -341,6 +354,7 @@ def _probe_dotnet(
     environment: Mapping[str, str],
     rows: list[dict[str, str]],
 ) -> None:
+    """Implement the internal probe dotnet step."""
     result = runner((str(dotnet), "--version"), environment)
     if result.return_code != 0 or not result.stdout.strip():
         raise ToolchainPreflightError("install-dotnet-sdk-for-ros2cs")
@@ -353,6 +367,7 @@ def _probe_rosidl_modules(
     environment: Mapping[str, str],
     rows: list[dict[str, str]],
 ) -> None:
+    """Implement the internal probe rosidl modules step."""
     names = json.dumps(REQUIRED_ROSIDL_MODULES)
     command = (
         "import importlib.util,json; "
@@ -370,6 +385,7 @@ def _probe_rosidl_modules(
 
 
 def _write_provenance(request: ToolchainPreflightRequest, result: ToolchainPreflightResult) -> None:
+    """Implement the internal write provenance step."""
     target = request.build_root / "phase181" / request.distro / "provenance" / "toolchain.json"
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -384,18 +400,22 @@ def _write_provenance(request: ToolchainPreflightRequest, result: ToolchainPrefl
 
 
 def _ready(label: str, detail: str) -> dict[str, str]:
+    """Implement the internal ready step."""
     return {"label": label, "status": "ready", "detail": _bounded(detail)}
 
 
 def _first_line(value: str) -> str:
+    """Implement the internal first line step."""
     return _bounded((value or "").strip().splitlines()[0] if (value or "").strip() else "available")
 
 
 def _bounded(value: str) -> str:
+    """Implement the internal bounded step."""
     return " ".join((value or "").split())[:160]
 
 
 def _default_runner(argv: Sequence[str], environment: Mapping[str, str]) -> ProcessResult:
+    """Implement the internal default runner step."""
     completed = subprocess.run(
         tuple(str(value) for value in argv),
         capture_output=True,
@@ -409,10 +429,12 @@ def _default_runner(argv: Sequence[str], environment: Mapping[str, str]) -> Proc
 
 
 def _repository_root() -> Path:
+    """Implement the internal repository root step."""
     return Path(__file__).resolve().parents[3]
 
 
 def parse_args(argv: Sequence[str] | None = None) -> ToolchainPreflightRequest:
+    """Parse command-line arguments."""
     root = _repository_root()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--distro", choices=SUPPORTED_DISTROS, required=True)
@@ -438,6 +460,7 @@ def parse_args(argv: Sequence[str] | None = None) -> ToolchainPreflightRequest:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line entry point."""
     try:
         result = preflight_toolchain(parse_args(argv))
     except ToolchainPreflightError as error:

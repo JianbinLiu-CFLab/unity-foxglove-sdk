@@ -113,7 +113,8 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var text = File.ReadAllText(path);
                 tokenHits.AddRange(OptionalEditorForbiddenTokens()
-                    .Where(token => text.Contains(token, StringComparison.Ordinal))
+                    .Where(token => text.Contains(token, StringComparison.Ordinal)
+                                    && !IsSanctionedOptionalEditorMetadataToken(path, token, text))
                     .Select(token => Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/') + " -> " + token));
             }
             var installer = Path.Combine(editorRoot, "Ros2ForUnityRuntimeDefineInstaller.cs");
@@ -134,6 +135,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "107-A8d: runtime selection discovers candidate runtimes");
             Check(compileSymbolSurface.Contains("UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal),
                 "107-A8e: optional package Editor surface auto-enables only the R2FU compile symbol");
+            Check(HasMetadataOnlyRos2csIdentityVerifier(editorRoot),
+                "107-A8f: custom typesupport selector reads ros2cs identity as metadata without loading a ROS2 assembly");
             Check(installerText.Contains("Ros2ForUnityRuntimeSelection.GetStatus()", StringComparison.Ordinal),
                 "107-A8f: compile-symbol installer reads runtime selection status");
             Check(!installerText.Contains("RuntimeCompileSymbols", StringComparison.Ordinal),
@@ -396,6 +399,44 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static IReadOnlyList<string> OptionalEditorForbiddenTokens()
             => OptionalEditorForbiddenTokenList;
+
+        private static bool IsSanctionedOptionalEditorMetadataToken(string path, string token, string text)
+        {
+            if (!String.Equals(token, "ros2cs", StringComparison.Ordinal)
+                || !HasMetadataOnlyRos2csIdentityVerifier(Path.GetDirectoryName(path) ?? string.Empty, path, text))
+            {
+                return false;
+            }
+
+            var relative = Path.GetRelativePath(RepoRoot(), path).Replace('\\', '/');
+            return String.Equals(
+                relative,
+                OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
+                StringComparison.Ordinal);
+        }
+
+        private static bool HasMetadataOnlyRos2csIdentityVerifier(string editorRoot)
+        {
+            var selectionTransaction = Path.Combine(editorRoot, "Ros2ForUnityCustomTypesupportSelectionTransaction.cs");
+            return File.Exists(selectionTransaction)
+                   && HasMetadataOnlyRos2csIdentityVerifier(
+                       editorRoot,
+                       selectionTransaction,
+                       File.ReadAllText(selectionTransaction));
+        }
+
+        private static bool HasMetadataOnlyRos2csIdentityVerifier(string editorRoot, string path, string text)
+        {
+            var expected = Path.Combine(editorRoot, "Ros2ForUnityCustomTypesupportSelectionTransaction.cs");
+            return String.Equals(Path.GetFullPath(path), Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase)
+                   && text.Contains("Ros2csCommonRelativePath", StringComparison.Ordinal)
+                   && text.Contains("TryReadAssemblyMvid(baseAssembly", StringComparison.Ordinal)
+                   && text.Contains("FileSha256(baseAssembly)", StringComparison.Ordinal)
+                   && !text.Contains("using ROS2;", StringComparison.Ordinal)
+                   && !text.Contains("ROS2UnityComponent", StringComparison.Ordinal)
+                   && !text.Contains("ROS2Node", StringComparison.Ordinal)
+                   && !text.Contains("Assembly.Load", StringComparison.Ordinal);
+        }
 
         private static bool IsForbiddenR2fuArtifact(string path)
         {

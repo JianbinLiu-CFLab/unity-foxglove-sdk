@@ -41,6 +41,19 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void TriggerDuringReplaySuppressesBothLiveAndTypedBusRoutes()
+        {
+            var fixture = new HubFixture(isRunning: true, suppressLivePublishersForReplay: true);
+            fixture.Subscribe();
+
+            Assert.False(fixture.Trigger());
+            Assert.Equal(0, fixture.Source.LivePublishes);
+            Assert.Equal(0, fixture.Source.BusPublishes);
+            Assert.Equal(0, fixture.BusDeliveries);
+            Assert.Equal(0, fixture.Source.MarkPublishedCalls);
+        }
+
+        [Fact]
         public void RecoverableLiveFailureDoesNotBlockTypedBusDispatch()
         {
             var fixture = new HubFixture(isRunning: true);
@@ -96,13 +109,14 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             private readonly FoxgloveLogHub _hub = new FoxgloveLogHub();
             private readonly FoxgloveManager _manager;
 
-            public HubFixture(bool isRunning)
+            public HubFixture(bool isRunning, bool suppressLivePublishersForReplay = false)
             {
                 Assert.NotNull(ManagerField);
                 Assert.NotNull(TriggerMethod);
                 _manager = new FoxgloveManager
                 {
                     IsRunning = isRunning,
+                    SuppressLivePublishersForReplay = suppressLivePublishersForReplay,
                     NowNs = 123_456_789UL
                 };
                 ManagerField.SetValue(_hub, _manager);

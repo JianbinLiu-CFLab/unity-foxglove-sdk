@@ -988,7 +988,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             => UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
                 contract, contract.QosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Unsupported,
                 error, diagnostic,
-                0, 0, 0, 0, 0, 0, 0, 0, 0));
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 
         private void RecordWaiting(
             string endpointIdentity,
@@ -998,7 +998,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             => UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
                 contract, qosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.WaitingForRuntime,
                 FoxRunRos2RegistrationError.RuntimeUnavailable, diagnostic,
-                0, 0, 0, 0, 0, 0, 0, 0, 0));
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 
         private void RecordFailed(
             string endpointIdentity,
@@ -1009,7 +1009,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 contract, contract.QosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Failed,
                 FoxRunRos2RegistrationError.BackendFailure,
                 FoxRunRos2PublicDiagnostic.Describe(FoxRunRos2RegistrationError.BackendFailure),
-                0, 0, 0, 0, 0, 0, 0, 0, 0));
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
         }
 
         private void UpdateDiagnostic(

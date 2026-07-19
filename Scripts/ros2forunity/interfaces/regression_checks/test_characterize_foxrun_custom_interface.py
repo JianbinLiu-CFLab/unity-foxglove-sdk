@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
+
+from Scripts.test_support.phase181_scratch import temporary_directory
 
 from Scripts.ros2forunity.interfaces import characterize_foxrun_custom_interface as characterization
 from Scripts.ros2forunity.interfaces.characterize_foxrun_custom_interface import (
@@ -24,12 +25,15 @@ from Scripts.ros2forunity.interfaces.characterize_foxrun_custom_interface import
 
 
 class CustomInterfaceCharacterizationTests(unittest.TestCase):
+    """Represent CustomInterfaceCharacterizationTests."""
     def test_windows_build_alias_is_required_only_for_an_overlong_projected_object_path(self) -> None:
+        """Verify windows build alias is required only for an overlong projected object path."""
         self.assertFalse(requires_short_windows_build_alias(Path("T:/")))
         self.assertTrue(requires_short_windows_build_alias(Path("D:/") / ("very-long-root-" * 20)))
 
     def test_candidate_workspace_uses_a_separate_out_of_tree_root(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify candidate workspace uses a separate out of tree root."""
+        with temporary_directory("characterize-") as temporary_root:
             root = Path(temporary_root)
             request = replace(
                 self._make_request(root, self._make_static_package(root)),
@@ -42,7 +46,8 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             )
 
     def test_workspace_is_out_of_tree_and_colcon_command_uses_explicit_bases(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify workspace is out of tree and colcon command uses explicit bases."""
+        with temporary_directory("characterize-") as temporary_root:
             root = Path(temporary_root)
             static_package = self._make_static_package(root)
             request = self._make_request(root, static_package)
@@ -64,7 +69,8 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             self.assertIn("Ninja", command)
 
     def test_colcon_command_uses_cmake_safe_forward_slash_python_paths(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify colcon command uses cmake safe forward slash python paths."""
+        with temporary_directory("characterize-") as temporary_root:
             root = Path(temporary_root)
             static_package = self._make_static_package(root)
             request = self._make_request(root, static_package)
@@ -84,7 +90,8 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             )
 
     def test_wrong_ros2_message_identity_fails_closed(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify wrong ros2 message identity fails closed."""
+        with temporary_directory("characterize-") as temporary_root:
             root = Path(temporary_root)
             payload = {
                 "managedAssembly": {"name": "unity2foxglove_foxrun_interfaces_v1_assembly"},
@@ -113,7 +120,8 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             self.assertEqual("repair-ros2cs-message-identity", raised.exception.remediation)
 
     def test_environment_keeps_declared_dotnet_after_msvc_capture(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify environment keeps declared dotnet after msvc capture."""
+        with temporary_directory("characterize-") as temporary_root:
             root = Path(temporary_root)
             static_package = self._make_static_package(root)
             request = self._make_request(root, static_package)
@@ -143,7 +151,8 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             self.assertEqual(os.environ["ProgramFiles"], environment["ProgramFiles"])
 
     def test_environment_forces_utf8_for_rosidl_template_expansion(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify environment forces utf8 for rosidl template expansion."""
+        with temporary_directory("characterize-") as temporary_root:
             root = Path(temporary_root)
             static_package = self._make_static_package(root)
             request = self._make_request(root, static_package)
@@ -166,6 +175,7 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
 
     @staticmethod
     def _make_static_package(root: Path) -> Path:
+        """Implement the internal make static package step."""
         package = root / "interfaces"
         ros_package = package / "Ros2Package~"
         (ros_package / "msg").mkdir(parents=True)
@@ -176,6 +186,7 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
 
     @staticmethod
     def _make_request(root: Path, static_package: Path) -> CharacterizationRequest:
+        """Implement the internal make request step."""
         return CharacterizationRequest(
             distro="humble",
             static_package=static_package,

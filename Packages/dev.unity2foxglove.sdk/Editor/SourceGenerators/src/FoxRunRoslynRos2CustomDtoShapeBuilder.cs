@@ -15,7 +15,24 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     internal static class FoxRunRoslynRos2CustomDtoShapeBuilder
     {
         public static FoxRunRos2CustomDtoShape Build(ITypeSymbol type, Compilation compilation)
-            => BuildDto(type as INamedTypeSymbol, MetadataTypeName(type), new HashSet<string>(StringComparer.Ordinal));
+        {
+            var typeName = MetadataTypeName(type);
+            if (!(type is INamedTypeSymbol named))
+            {
+                // Arrays, pointers, and type parameters are not DTO roots.  Do
+                // not lose their identity by casting to INamedTypeSymbol: the
+                // reflection fallback keeps that identity in its stable
+                // FOXRUN606 shape, and descriptor parity relies on it.
+                var diagnostics = new List<string>();
+                AddUnsupported(
+                    typeName,
+                    "Custom ROS2 DTO roots and nested values must be concrete, non-generic classes.",
+                    diagnostics);
+                return Unsupported(typeName, false, diagnostics);
+            }
+
+            return BuildDto(named, typeName, new HashSet<string>(StringComparer.Ordinal));
+        }
 
         private static FoxRunRos2CustomDtoShape BuildDto(
             INamedTypeSymbol type,

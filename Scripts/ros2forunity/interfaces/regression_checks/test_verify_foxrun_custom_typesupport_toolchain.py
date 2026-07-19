@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
+
+from Scripts.test_support.phase181_scratch import temporary_directory
 
 from Scripts.ros2forunity.interfaces.verify_foxrun_custom_typesupport_toolchain import (
     ProcessResult,
@@ -16,7 +17,9 @@ from Scripts.ros2forunity.interfaces.verify_foxrun_custom_typesupport_toolchain 
 
 
 class _FakeRunner:
+    """Represent FakeRunner."""
     def __init__(self, visual_studio_root: Path, generators: tuple[str, ...] = ("Visual Studio 17 2022",), modules=None):
+        """Initialize this object."""
         self.visual_studio_root = visual_studio_root
         self.generators = generators
         self.modules = modules or {
@@ -28,6 +31,7 @@ class _FakeRunner:
         self.calls: list[tuple[tuple[str, ...], dict[str, str]]] = []
 
     def __call__(self, argv, environment):
+        """Implement the internal call step."""
         argv = tuple(str(value) for value in argv)
         self.calls.append((argv, dict(environment)))
         joined = " ".join(argv)
@@ -51,8 +55,10 @@ class _FakeRunner:
 
 
 class ToolchainPreflightTests(unittest.TestCase):
+    """Represent ToolchainPreflightTests."""
     def test_explicit_roots_select_pinned_tools_and_write_redacted_provenance(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify explicit roots select pinned tools and write redacted provenance."""
+        with temporary_directory("toolchain-") as temporary_root:
             root = Path(temporary_root)
             request, visual_studio_root = self._make_request(root)
             runner = _FakeRunner(visual_studio_root)
@@ -78,7 +84,8 @@ class ToolchainPreflightTests(unittest.TestCase):
             self.assertTrue(all("label" in item and "status" in item for item in payload["requirements"]))
 
     def test_unavailable_generator_fails_with_one_bounded_code_and_remediation(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify unavailable generator fails with one bounded code and remediation."""
+        with temporary_directory("toolchain-") as temporary_root:
             root = Path(temporary_root)
             request, visual_studio_root = self._make_request(root)
             runner = _FakeRunner(visual_studio_root, generators=("NMake Makefiles",))
@@ -91,7 +98,8 @@ class ToolchainPreflightTests(unittest.TestCase):
             self.assertNotIn(str(root), str(raised.exception))
 
     def test_missing_rosidl_module_fails_before_any_candidate_build(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify missing rosidl module fails before any candidate build."""
+        with temporary_directory("toolchain-") as temporary_root:
             root = Path(temporary_root)
             request, visual_studio_root = self._make_request(root)
             modules = {
@@ -108,7 +116,8 @@ class ToolchainPreflightTests(unittest.TestCase):
             self.assertEqual("repair-rosidl-python-modules", raised.exception.remediation)
 
     def test_missing_pinned_openssl_fails_before_candidate_build(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify missing pinned openssl fails before candidate build."""
+        with temporary_directory("toolchain-") as temporary_root:
             root = Path(temporary_root)
             request, visual_studio_root = self._make_request(root)
             (request.ros2_root / ".pixi/envs/default/Library/include/openssl/ssl.h").unlink()
@@ -120,7 +129,8 @@ class ToolchainPreflightTests(unittest.TestCase):
             self.assertEqual("repair-pinned-openssl", raised.exception.remediation)
 
     def test_missing_explicit_source_input_is_bounded_and_does_not_write_provenance(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_root:
+        """Verify missing explicit source input is bounded and does not write provenance."""
+        with temporary_directory("toolchain-") as temporary_root:
             root = Path(temporary_root)
             request, visual_studio_root = self._make_request(root)
             request = ToolchainPreflightRequest(
@@ -142,6 +152,7 @@ class ToolchainPreflightTests(unittest.TestCase):
 
     @staticmethod
     def _make_request(root: Path) -> tuple[ToolchainPreflightRequest, Path]:
+        """Implement the internal make request step."""
         ros2_root = root / "ros2_humble"
         for relative_path in (
             ".pixi/envs/default/python.exe",

@@ -287,7 +287,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
         private static void WithTempPackage(Action<string, string> action)
         {
-            var root = Path.Combine(Path.GetTempPath(), "unity2foxglove-phase181-" + Guid.NewGuid().ToString("N"));
+            var root = Path.Combine(
+                FindRepoRoot(),
+                "build",
+                "Tests",
+                "Phase181",
+                "writer-" + Guid.NewGuid().ToString("N"));
             var packageRoot = Path.Combine(root, "Packages", FoxRunRos2InterfaceIdentity.UnityPackageId);
             try
             {
@@ -298,6 +303,16 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 if (Directory.Exists(root))
                     Directory.Delete(root, recursive: true);
             }
+        }
+
+        [Fact]
+        public void TemporaryPackageFixtureStaysInsideTheRepositoryBuildRoot()
+        {
+            WithTempPackage((root, _) =>
+            {
+                var expectedRoot = Path.Combine(FindRepoRoot(), "build", "Tests", "Phase181");
+                Assert.StartsWith(expectedRoot, root, StringComparison.OrdinalIgnoreCase);
+            });
         }
     }
 }

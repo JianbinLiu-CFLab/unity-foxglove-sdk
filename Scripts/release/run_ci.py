@@ -49,6 +49,27 @@ PHASE179_ROS2_MATRIX_PROFILES_REGRESSION = (
 PHASE179_ZENOH_TOPOLOGY_REGRESSION = (
     "Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology"
 )
+PHASE181_ROS2_PEER_PROTOCOL_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer_protocol"
+)
+PHASE181_ROS2_PEER_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer"
+)
+PHASE181_ROS2_MATRIX_PROFILES_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_matrix_profiles"
+)
+PHASE181_ROS2_LINUX_PEER_REGRESSION = (
+    "Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_linux_peer"
+)
+PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
+    "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_build_foxrun_custom_typesupport_addon",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain",
+)
+PHASE181_TYPESUPPORT_VALIDATOR = "Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py"
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
 DEFAULT_PARALLEL_JOBS = 2
@@ -280,6 +301,10 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
                 [sys.executable, script, "--only", "phase179-ros2-regression"],
             ),
             CiJob(
+                "phase181-ros2-regression",
+                [sys.executable, script, "--only", "phase181-ros2-regression"],
+            ),
+            CiJob(
                 "mcap-conformance",
                 [sys.executable, script, "--only", "mcap-conformance"],
                 disable_timeout=True,
@@ -461,7 +486,7 @@ def main() -> int:
         "--only",
         type=str,
         help=(
-            "Run only one suite: dotnet, phase179-ros2-regression, "
+            "Run only one suite: dotnet, phase179-ros2-regression, phase181-ros2-regression, "
             "mcap-conformance, packages, boundary, analyzer"
         ),
     )
@@ -645,6 +670,46 @@ def main() -> int:
             [sys.executable, "-m", "unittest", PHASE179_ZENOH_TOPOLOGY_REGRESSION],
             "Phase179 Zenoh topology ownership and readiness regressions",
         )
+
+    # --- pure Phase181 custom-interface helper and source-package regressions ---
+    if args.only in (None, "phase181-ros2-regression"):
+        results["phase181-ros2-peer-protocol"] = run(
+            [sys.executable, "-m", "unittest", PHASE181_ROS2_PEER_PROTOCOL_REGRESSION],
+            "Phase181 custom ROS2 peer protocol regressions",
+        )
+        results["phase181-ros2-peer"] = run(
+            [sys.executable, "-m", "unittest", PHASE181_ROS2_PEER_REGRESSION],
+            "Phase181 Windows Editor and Player custom ROS2 peer regressions",
+        )
+        results["phase181-ros2-matrix-profiles"] = run(
+            [sys.executable, "-m", "unittest", PHASE181_ROS2_MATRIX_PROFILES_REGRESSION],
+            "Phase181 named custom ROS2 matrix profile regressions",
+        )
+        results["phase181-ros2-linux-peer"] = run(
+            [sys.executable, "-m", "unittest", PHASE181_ROS2_LINUX_PEER_REGRESSION],
+            "Phase181 caller-owned Linux custom ROS2 peer regressions",
+        )
+        results["phase181-interface-tooling"] = run(
+            [sys.executable, "-m", "unittest", *PHASE181_INTERFACE_TOOLING_REGRESSIONS],
+            "Phase181 static custom ROS2 interface tooling regressions",
+        )
+        for distro, rmw in (
+            ("humble", "rmw_fastrtps_cpp"),
+            ("jazzy", "rmw_fastrtps_cpp"),
+            ("lyrical", "rmw_fastrtps_cpp"),
+            ("lyrical", "rmw_zenoh_cpp"),
+        ):
+            results["phase181-typesupport-" + distro + "-" + rmw] = run(
+                [
+                    sys.executable,
+                    PHASE181_TYPESUPPORT_VALIDATOR,
+                    "--distro",
+                    distro,
+                    "--require-rmw",
+                    rmw,
+                ],
+                "Phase181 " + distro + " " + rmw + " custom ROS2 typesupport validation",
+            )
 
     # --- official MCAP differential conformance ---
     if args.only in (None, "mcap-conformance"):

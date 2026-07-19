@@ -73,6 +73,7 @@ class CandidateBuildError(RuntimeError):
     """A bounded candidate-build failure that exposes no machine-private data."""
 
     def __init__(self, remediation: str):
+        """Initializes the stable public code and operator remediation."""
         self.code = ERROR_CODE
         self.remediation = remediation
         super().__init__(self.code + ": " + remediation)
@@ -80,13 +81,15 @@ class CandidateBuildError(RuntimeError):
 
 @dataclass(frozen=True)
 class CandidateBuildRequest:
+    """Immutable operator input for one disposable custom-typesupport candidate build."""
+
     distro: str
     static_interface_package: Path
     base_runtime_package: Path
     ros2_root: Path
-    ros2cs_source: Path
-    ros2cs_install: Path
-    r2fu_source: Path
+    ros2cs_source: Path | None
+    ros2cs_install: Path | None
+    r2fu_source: Path | None
     build_root: Path
     generator: str = "Ninja"
     unity_executable: Path | None = None
@@ -95,12 +98,15 @@ class CandidateBuildRequest:
 
 @dataclass(frozen=True)
 class CandidateBuildResult:
+    """Successful candidate package identity and the static interface digest it embeds."""
+
     distro: str
     candidate_package: Path
     interface_digest: str
 
 
 def _phase181_distro_root(request: CandidateBuildRequest) -> Path:
+    """Return the bounded per-distribution candidate root below the repository build directory."""
     build_root = Path(request.build_root)
     if build_root.name.lower() != "build":
         raise CandidateBuildError("use-repository-build-root")
@@ -163,12 +169,14 @@ def select_candidate_native_libraries(paths: Iterable[Path]) -> tuple[Path, ...]
 
 
 def _repo_root(request: CandidateBuildRequest) -> Path:
+    """Resolve the repository root supplied by a test or the checked-in script location."""
     if request.repo_root is not None:
         return Path(request.repo_root)
     return Path(__file__).resolve().parents[3]
 
 
 def _load_json(path: Path, remediation: str) -> Mapping[str, Any]:
+    """Load one object-shaped JSON document or raise a bounded remediation error."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -234,17 +242,35 @@ def _rmw_closures(
 
 
 def _candidate_assembly_path(request: CandidateBuildRequest) -> Path:
+    """Return the managed assembly emitted by the controlled candidate characterization."""
     return _phase181_distro_root(request) / "candidate" / "i" / "lib" / "dotnet" / MANAGED_ASSEMBLY_FILE
 
 
 def _candidate_native_paths(request: CandidateBuildRequest) -> tuple[Path, ...]:
+    """Return the deterministic native custom-message closure from the candidate output."""
     native_root = _phase181_distro_root(request) / "candidate" / "i" / "bin"
     return select_candidate_native_libraries(sorted(native_root.glob("*.dll"), key=lambda item: item.name.lower()))
 
 
 def _copy_file(source: Path, target: Path) -> None:
+    """Copy one candidate artifact after creating only its target parent directory."""
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, target)
+
+
+def _write_utf8_lf(target: Path, content: str) -> None:
+    """Write generated package text as exact LF bytes on every host.
+
+    The typesupport inventory is byte-exact and the repository checkout policy
+    is LF.  ``Path.write_text`` delegates newline conversion to the host text
+    mode, which would make an inventory generated on Windows disagree with the
+    same package after Git's LF checkout normalization.  Generated text must
+    therefore bypass text-mode newline translation.
+    """
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    target.write_bytes(normalized.encode("utf-8"))
 
 
 def _write_candidate_texts(package_root: Path, repo_root: Path, distro: str) -> None:
@@ -255,32 +281,34 @@ def _write_candidate_texts(package_root: Path, repo_root: Path, distro: str) -> 
     if not license_source.is_file() or not notice_source.is_file():
         raise CandidateBuildError("provide-repository-license-notices")
     _copy_file(license_source, package_root / "LICENSE")
-    (package_root / "README.md").write_text(
+    _write_utf8_lf(
+        package_root / "README.md",
         "# Unity2Foxglove FoxRun Custom ROS2 Typesupport - " + distro.title() + " Win64\n\n"
         "This generated add-on carries the validated custom-message closure for the locked "
         "`dev.unity2foxglove.foxrun.ros2.interfaces` source package. It must be selected "
         "with its exact matching ROS2 For Unity runtime; it is not a standalone ROS runtime.\n",
-        encoding="utf-8",
     )
-    (package_root / "THIRD_PARTY_NOTICES.md").write_text(
+    _write_utf8_lf(
+        package_root / "THIRD_PARTY_NOTICES.md",
         "# Third-Party Notices\n\n"
         "This add-on redistributes generated ROSIDL C#/native custom-message support built "
         "from the locked Unity2Foxglove FoxRun interface package through ros2cs and ROS2 For Unity. "
         "The selected base runtime package owns the ROS2/RMW runtime closure and its full notices.\n\n"
         "The repository-wide third-party notice is included below for license continuity.\n\n"
         + notice_source.read_text(encoding="utf-8"),
-        encoding="utf-8",
     )
 
 
 def _package_metadata(request: CandidateBuildRequest, package_root: Path) -> None:
+    """Copy normalized add-on package metadata into the disposable candidate package."""
     source = _repo_root(request) / "Packages" / addon_package_id(request.distro) / "package.json"
     payload = _load_json(source, "repair-addon-package-json")
     package_root.mkdir(parents=True, exist_ok=True)
-    (package_root / "package.json").write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    _write_utf8_lf(package_root / "package.json", json.dumps(payload, sort_keys=True, indent=2) + "\n")
 
 
 def _typesupport_type_map(managed_evidence: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Extract the generated ROS2.Message map from characterized managed evidence."""
     messages = managed_evidence.get("messages")
     if not isinstance(messages, list):
         raise CandidateBuildError("repair-managed-characterization-evidence")
@@ -317,6 +345,7 @@ def _catalog_source(
     interface_digest: str,
     type_map: Sequence[Mapping[str, str]],
 ) -> str:
+    """Render the deterministic compile-time catalog for one distro add-on."""
     base_runtime = base_runtime_package_id(distro)
     supported_rmws = ", ".join(
         '"' + item + '"'
@@ -402,6 +431,7 @@ namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
 
 
 def _catalog_asmdef() -> Mapping[str, Any]:
+    """Return the narrow Unity assembly definition for a generated typesupport catalog."""
     return {
         "name": "Unity2Foxglove.FoxRun.CustomRos2Typesupport",
         "rootNamespace": "Unity2Foxglove.FoxRun.CustomRos2Typesupport",
@@ -428,6 +458,7 @@ def _write_candidate_manifest(
     managed_evidence: Mapping[str, Any],
     native_libraries: Sequence[Path],
 ) -> None:
+    """Write the candidate provenance, managed map, and native/RMW closure manifest."""
     runtime_manifest = _load_json(
         Path(request.base_runtime_package) / "RuntimeSupport" / "runtime-manifest.json",
         "repair-base-runtime-manifest",
@@ -498,21 +529,24 @@ def _write_candidate_manifest(
     }
     support = package_root / "RuntimeSupport"
     support.mkdir(parents=True, exist_ok=True)
-    (support / "typesupport-manifest.json").write_text(
-        json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    _write_utf8_lf(
+        support / "typesupport-manifest.json",
+        json.dumps(manifest, sort_keys=True, indent=2) + "\n",
     )
     generated = package_root / "Runtime" / "FoxRun" / "Generated"
     generated.mkdir(parents=True, exist_ok=True)
-    (generated / GENERATED_CATALOG_FILE).write_text(
+    _write_utf8_lf(
+        generated / GENERATED_CATALOG_FILE,
         _catalog_source(distro=request.distro, interface_digest=interface_digest, type_map=type_map),
-        encoding="utf-8",
     )
-    (generated / GENERATED_CATALOG_ASMDEF).write_text(
-        json.dumps(_catalog_asmdef(), sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    _write_utf8_lf(
+        generated / GENERATED_CATALOG_ASMDEF,
+        json.dumps(_catalog_asmdef(), sort_keys=True, indent=2) + "\n",
     )
 
 
 def _inventory_role(relative: str) -> str:
+    """Classify one candidate file by its public typesupport role."""
     if relative.endswith(".dll"):
         return "managed" if relative.endswith(MANAGED_ASSEMBLY_FILE) else "native"
     if relative.endswith(".cs"):
@@ -525,6 +559,7 @@ def _inventory_role(relative: str) -> str:
 
 
 def _inventory_classification(relative: str) -> str:
+    """Classify native libraries as direct generated support or transitive closure."""
     if relative.endswith("_native.dll"):
         return "direct"
     if relative.endswith(".dll"):
@@ -533,6 +568,7 @@ def _inventory_classification(relative: str) -> str:
 
 
 def _write_inventory(package_root: Path) -> None:
+    """Write a sorted byte-exact inventory for the disposable add-on package."""
     excluded = {"RuntimeSupport/typesupport-inventory.json"}
     entries = []
     for path in sorted(package_root.rglob("*"), key=lambda item: item.as_posix().lower()):
@@ -552,9 +588,9 @@ def _write_inventory(package_root: Path) -> None:
         )
     support = package_root / "RuntimeSupport"
     support.mkdir(parents=True, exist_ok=True)
-    (support / "typesupport-inventory.json").write_text(
+    _write_utf8_lf(
+        support / "typesupport-inventory.json",
         json.dumps({"schemaVersion": 1, "entries": entries}, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
     )
 
 
@@ -619,19 +655,20 @@ def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
     if not generated_root.is_dir() or not catalog_path.is_file():
         raise CandidateBuildError("repair-typesupport-catalog-source")
 
-    catalog_path.write_text(
+    _write_utf8_lf(
+        catalog_path,
         _catalog_source(
             distro=request.distro,
             interface_digest=interface_digest,
             type_map=tuple(type_map),
         ),
-        encoding="utf-8",
     )
     _write_inventory(package_root)
     return catalog_path
 
 
 def _unity_executable(request: CandidateBuildRequest) -> Path:
+    """Return the explicitly supplied Unity executable or the supported Unity 6000 location."""
     if request.unity_executable is not None:
         return Path(request.unity_executable)
     return Path(os.environ.get("ProgramFiles", r"C:\\Program Files")) / "Unity" / "Hub" / "Editor" / "6000.3.14f1" / "Editor" / "Unity.exe"
@@ -694,15 +731,17 @@ def build_candidate(request: CandidateBuildRequest, *, check_source_only: bool =
     if check_source_only:
         return CandidateBuildResult(request.distro, candidate_package_root(request), interface_digest)
 
+    ros2cs_source, ros2cs_install, r2fu_source = _require_explicit_toolchain_sources(request)
+
     try:
         result = characterize(
             CharacterizationRequest(
                 distro=request.distro,
                 static_package=Path(request.static_interface_package),
                 ros2_root=Path(request.ros2_root),
-                ros2cs_source=Path(request.ros2cs_source),
-                ros2cs_install=Path(request.ros2cs_install),
-                r2fu_source=Path(request.r2fu_source),
+                ros2cs_source=ros2cs_source,
+                ros2cs_install=ros2cs_install,
+                r2fu_source=r2fu_source,
                 build_root=Path(request.build_root),
                 generator=request.generator,
                 workspace_name="candidate",
@@ -748,7 +787,8 @@ def build_candidate(request: CandidateBuildRequest, *, check_source_only: bool =
     except Exception as exc:
         raise CandidateBuildError("repair-candidate-typesupport-validation") from exc
     evidence = _phase181_distro_root(request) / "candidate" / "e" / "candidate-validation.json"
-    evidence.write_text(
+    _write_utf8_lf(
+        evidence,
         json.dumps(
             {
                 "schemaVersion": 1,
@@ -762,25 +802,36 @@ def build_candidate(request: CandidateBuildRequest, *, check_source_only: bool =
             sort_keys=True,
             indent=2,
         ) + "\n",
-        encoding="utf-8",
     )
     return CandidateBuildResult(request.distro, candidate_root, interface_digest)
 
 
 def _default_repo_root() -> Path:
+    """Return the repository root inferred from this checked-in interface tool."""
     return Path(__file__).resolve().parents[3]
 
 
+def _require_explicit_toolchain_sources(request: CandidateBuildRequest) -> tuple[Path, Path, Path]:
+    """Returns explicit build-toolchain paths without inventing machine-local defaults."""
+    if request.ros2cs_source is None:
+        raise CandidateBuildError("provide-ros2cs-source")
+    if request.r2fu_source is None:
+        raise CandidateBuildError("provide-r2fu-source")
+    ros2cs_install = request.ros2cs_install or request.ros2cs_source / ("install-" + request.distro)
+    return request.ros2cs_source, ros2cs_install, request.r2fu_source
+
+
 def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest, bool, bool]:
+    """Parse a candidate command without inventing external operator toolchain paths."""
     root = _default_repo_root()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--distro", required=True, choices=("humble", "jazzy", "lyrical"))
     parser.add_argument("--static-interface-package", type=Path, default=root / "Packages" / STATIC_INTERFACE_PACKAGE_ID)
     parser.add_argument("--base-runtime-package", type=Path)
     parser.add_argument("--ros2-root", type=Path)
-    parser.add_argument("--ros2cs-source", type=Path, default=Path(r"D:\ros2unity\third-party\ros2cs"))
+    parser.add_argument("--ros2cs-source", type=Path)
     parser.add_argument("--ros2cs-install", type=Path)
-    parser.add_argument("--r2fu-source", type=Path, default=Path(r"D:\ros2unity\third-party\ros2-for-unity"))
+    parser.add_argument("--r2fu-source", type=Path)
     parser.add_argument("--build-root", type=Path, default=root / "build")
     parser.add_argument("--generator", default="Ninja")
     parser.add_argument("--unity", type=Path)
@@ -790,7 +841,9 @@ def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest
     if args.check_source and args.repair_tracked_catalog:
         parser.error("--check-source and --repair-tracked-catalog are mutually exclusive")
     ros2_root = args.ros2_root or root / "ros2-windows" / ("ros2_" + args.distro)
-    ros2cs_install = args.ros2cs_install or args.ros2cs_source / ("install-" + args.distro)
+    ros2cs_install = args.ros2cs_install
+    if ros2cs_install is None and args.ros2cs_source is not None:
+        ros2cs_install = args.ros2cs_source / ("install-" + args.distro)
     return (
         CandidateBuildRequest(
             distro=args.distro,
@@ -811,6 +864,7 @@ def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run source-only validation, catalog repair, or a controlled candidate build."""
     request, check_source_only, repair_tracked_catalog = parse_args(argv)
     try:
         if repair_tracked_catalog:

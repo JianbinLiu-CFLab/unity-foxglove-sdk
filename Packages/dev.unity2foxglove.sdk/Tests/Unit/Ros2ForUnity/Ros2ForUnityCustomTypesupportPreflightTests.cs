@@ -30,6 +30,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FixtureScratchStaysInsideTheRepositoryBuildRoot()
+        {
+            using var fixture = new PreflightFixture();
+
+            Assert.StartsWith(
+                RepositoryBuildTestRoot() + Path.DirectorySeparatorChar,
+                fixture.Root + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void MissingStaticSourcePackageIsReportedWithoutExposingPaths()
         {
             using var fixture = new PreflightFixture();
@@ -194,7 +205,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             public PreflightFixture()
             {
-                Root = Path.Combine(Path.GetTempPath(), "u2f-phase181-e-" + Guid.NewGuid().ToString("N"));
+                Root = Path.Combine(
+                    RepositoryBuildTestRoot(),
+                    "u2f-phase181-e-" + Guid.NewGuid().ToString("N"));
                 ProjectDirectory = Path.Combine(Root, "Unity2Foxglove");
                 PackagesDirectory = Path.Combine(Root, "Packages");
                 Directory.CreateDirectory(Path.Combine(ProjectDirectory, "Packages"));
@@ -417,6 +430,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 if (Directory.Exists(Root))
                     Directory.Delete(Root, recursive: true);
             }
+        }
+
+        private static string RepositoryBuildTestRoot()
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "README.md"))
+                    && Directory.Exists(Path.Combine(directory.FullName, "Packages")))
+                {
+                    return Path.Combine(directory.FullName, "build", "Tests", "Phase181");
+                }
+
+                directory = directory.Parent;
+            }
+
+            throw new DirectoryNotFoundException("Could not locate repository root.");
         }
     }
 }

@@ -6,6 +6,7 @@
 
 using System;
 using System.Linq;
+using System.Text.Json;
 using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -96,6 +97,32 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs";
         private const string LegacyR2fuTopicSinkPath =
             "Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs";
+        private const string AcceptanceSamplePath =
+            "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun Custom ROS2 Interface/Phase181FoxRunCustomRos2Interface.cs";
+        private const string AcceptanceSampleReadmePath =
+            "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun Custom ROS2 Interface/README.md";
+        private const string R2fuPackageJsonPath =
+            "Packages/dev.unity2foxglove.ros2forunity/package.json";
+        private const string AcceptanceComponentPath =
+            "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase181FoxRunCustomRos2InterfaceAcceptance.cs";
+        private const string AcceptancePlayerBuilderPath =
+            "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase181CustomRos2InterfacePlayerBuilder.cs";
+        private const string PeerProtocolPath =
+            "Scripts/smoke/ros2/phase181_custom_ros2_peer_protocol.py";
+        private const string PeerHelperPath =
+            "Scripts/smoke/ros2/phase181_custom_ros2_peer.py";
+        private const string LinuxPeerPath =
+            "Scripts/smoke/ros2/phase181_custom_ros2_linux_peer.py";
+        private const string MatrixProfilesPath =
+            "Scripts/smoke/ros2/phase181_custom_ros2_matrix_profiles.py";
+        private const string RunCiPath =
+            "Scripts/release/run_ci.py";
+        private const string DotnetWorkflowPath =
+            ".github/workflows/dotnet-tests.yml";
+        private const string PackageWorkflowPath =
+            ".github/workflows/package-check.yml";
+        private const string Ros2SmokeReadmePath =
+            "Scripts/smoke/ros2/README.md";
         private static int _passed;
 
         public static void Validate()
@@ -143,6 +170,19 @@ namespace Unity.FoxgloveSDK.Tests
             var customPublishEmitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublishEmitterPath);
             var foxgloveLogHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(FoxgloveLogHubPath);
             var legacyR2fuTopicSink = PhaseValidationSourceHelpers.ReadRequiredRepoText(LegacyR2fuTopicSinkPath);
+            var acceptanceSample = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceSamplePath);
+            var acceptanceSampleReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceSampleReadmePath);
+            var r2fuPackageJson = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuPackageJsonPath);
+            var acceptanceComponent = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceComponentPath);
+            var acceptancePlayerBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptancePlayerBuilderPath);
+            var peerProtocol = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerProtocolPath);
+            var peerHelper = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerHelperPath);
+            var linuxPeer = PhaseValidationSourceHelpers.ReadRequiredRepoText(LinuxPeerPath);
+            var matrixProfiles = PhaseValidationSourceHelpers.ReadRequiredRepoText(MatrixProfilesPath);
+            var runCi = PhaseValidationSourceHelpers.ReadRequiredRepoText(RunCiPath);
+            var dotnetWorkflow = PhaseValidationSourceHelpers.ReadRequiredRepoText(DotnetWorkflowPath);
+            var packageWorkflow = PhaseValidationSourceHelpers.ReadRequiredRepoText(PackageWorkflowPath);
+            var ros2SmokeReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(Ros2SmokeReadmePath);
 
             VerifyDistinctRosFreeDtoModel(customShape, reflectionBuilder, roslynBuilder);
             VerifyStableIdentityAndNaming(customIdentity, customNaming);
@@ -184,6 +224,24 @@ namespace Unity.FoxgloveSDK.Tests
                 customPublishEmitter,
                 foxgloveLogHub,
                 legacyR2fuTopicSink);
+            VerifyAcceptanceSurface(
+                acceptanceSample,
+                acceptanceSampleReadme,
+                r2fuPackageJson,
+                acceptanceComponent,
+                acceptancePlayerBuilder);
+            VerifyInteropAutomationReleaseGate(
+                peerProtocol,
+                peerHelper,
+                linuxPeer,
+                matrixProfiles,
+                runCi,
+                dotnetWorkflow,
+                packageWorkflow);
+            VerifyPublicOperationalDocumentation(
+                acceptanceSampleReadme,
+                ros2SmokeReadme,
+                r2fuPackageJson);
             VerifyRegistryEntry();
 
             Console.WriteLine("FoxRun custom ROS2 interface boundary: " + _passed + " checks passed.\n");
@@ -375,12 +433,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && interfaceCommand.Contains("EditorApplication.Exit", StringComparison.Ordinal),
                 "181B-5: explicit Editor and batch command never lets Play Mode or source generation mutate the package");
 
+            var staticRosPackageName = ReadRequiredJsonString(staticLock, "rosPackageName");
             Check(staticPackageJson.Contains("\"name\": \"dev.unity2foxglove.foxrun.ros2.interfaces\"", StringComparison.Ordinal)
                   && staticLock.Contains("\"lockSchemaVersion\":1", StringComparison.Ordinal)
                   && staticLock.Contains("\"interfaceDigest\":\"", StringComparison.Ordinal)
-                  && staticCmake.Contains("project(unity2foxglove_foxrun_interfaces_v1)", StringComparison.Ordinal)
+                  && staticCmake.Contains("project(" + staticRosPackageName + ")", StringComparison.Ordinal)
                   && staticCmake.Contains("rosidl_generate_interfaces", StringComparison.Ordinal),
-                "181B-6: tracked static UPM package contains only locked portable ROS source metadata and message build inputs");
+                "181B-6: tracked static UPM package CMake identity follows the lock-selected portable ROS package revision");
 
             Check(manifestBuilder.Contains("ResolveCustomEnvelopeIdentity", StringComparison.Ordinal)
                   && manifestModel.Contains("CustomEnvelopeIdentity", StringComparison.Ordinal)
@@ -411,11 +470,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && handlerEntries.Length == 1
                   && ReferenceEquals(entries[0], handlerEntries[0])
                   && entries[0].Category == ValidationCategory.CiSafe
-                  && !entries[0].IncludeInDefault
-                  && entries[0].Evidence == ValidationEvidence.Structural
-                  && defaultEntries.Length == 0
-                  && string.Equals(entries[0].Name, "FoxRun custom ROS2 interface boundary", StringComparison.Ordinal),
-                "181A-10: Phase181 has one non-default structural registry entry");
+                  && entries[0].IncludeInDefault
+                  && entries[0].Evidence == (ValidationEvidence.Behavior | ValidationEvidence.Structural)
+                  && defaultEntries.Length == 1
+                  && string.Equals(entries[0].Name, "FoxRun custom ROS2 interface interop release gate", StringComparison.Ordinal),
+                "181F-9: Phase181 updates its one registry entry to the default behavior and structural release gate");
         }
 
         private static void VerifyTypesupportAddOnActivation(
@@ -577,6 +636,157 @@ namespace Unity.FoxgloveSDK.Tests
                       "DrawOptionalR2fuCustomTypesupportInspector();",
                       StringComparison.Ordinal),
                 "181E-4: shared Runtime direction text includes custom native input demand and conditionally renders the custom preflight");
+        }
+
+        private static void VerifyAcceptanceSurface(
+            string sample,
+            string sampleReadme,
+            string r2fuPackageJson,
+            string acceptanceComponent,
+            string playerBuilder)
+        {
+            Check(sample.Contains("FoxRunMode.PublishOnly", StringComparison.Ordinal)
+                  && sample.Contains("FoxRunMode.SubscribeOnly", StringComparison.Ordinal)
+                  && sample.Contains("FoxRunMode.PublishAndSubscribe", StringComparison.Ordinal)
+                  && sample.Contains("SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native", StringComparison.Ordinal)
+                  && sample.Contains("Encoding = FoxRunWireEncoding.Json", StringComparison.Ordinal)
+                  && sample.Contains("byte[]", StringComparison.Ordinal)
+                  && sample.Contains("List<long>", StringComparison.Ordinal)
+                  && sample.Contains("int?", StringComparison.Ordinal),
+                "181F-1: source-only sample exercises locked custom DTO output, input, and directional P&S contracts");
+
+            Check(sampleReadme.Contains("static interface lock", StringComparison.OrdinalIgnoreCase)
+                  && sampleReadme.Contains("Windows-local", StringComparison.Ordinal)
+                  && r2fuPackageJson.Contains("FoxRun Custom ROS2 Interface", StringComparison.Ordinal)
+                  && r2fuPackageJson.Contains("Samples~/FoxRun Custom ROS2 Interface", StringComparison.Ordinal),
+                "181F-2: package sample documents its immutable interface identity and has a discoverable import entry");
+
+            var requiredMarkers = new[]
+            {
+                "PHASE181_CUSTOM_ROS2_READY",
+                "PHASE181_CUSTOM_INTERFACE_READY",
+                "PHASE181_CUSTOM_ROS2_PUBLISHED",
+                "PHASE181_CUSTOM_ROS2_APPLIED",
+                "PHASE181_CUSTOM_ROS2_SAME_ORIGIN_DROPPED",
+                "PHASE181_CUSTOM_ROS2_PASS",
+                "PHASE181_CUSTOM_ROS2_FAIL",
+                "PHASE181_CUSTOM_ROS2_UNAVAILABLE",
+            };
+            Check(requiredMarkers.All(marker => acceptanceComponent.Contains(marker, StringComparison.Ordinal))
+                  && acceptanceComponent.Contains("FoxRunRos2SubscriptionAcceptanceDiagnostics", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("GenerateRunToken", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("IsCorrelatedInitialPayload", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("IsNullEmptyRemotePayload", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("_correlatedSubscribeApplied", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("_correlatedBidirectionalFinalApplied", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("boundedFields + \" token=\" + SanitizeToken(_runToken)", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("10f,\n                600f", StringComparison.Ordinal)
+                  && !acceptanceComponent.Contains("using ROS2", StringComparison.Ordinal)
+                  && !acceptanceComponent.Contains("CreateNode", StringComparison.Ordinal)
+                  && !acceptanceComponent.Contains("Ros2cs.Init", StringComparison.Ordinal),
+                "181F-3: acceptance component correlates the exact custom DTO proof through bounded diagnostics without creating a ROS2 node");
+
+            Check(playerBuilder.Contains("CreateAcceptanceScene", StringComparison.Ordinal)
+                  && playerBuilder.Contains("BuildWindowsStandalone64", StringComparison.Ordinal)
+                  && playerBuilder.Contains("--phase181-custom-ros2-player-auto-quit", StringComparison.Ordinal)
+                  && playerBuilder.Contains("EnsurePathWithinBuildRoot", StringComparison.Ordinal)
+                  && playerBuilder.Contains("PlayerEnvironmentKeys", StringComparison.Ordinal)
+                  && playerBuilder.Contains("ResolveStaticInterfaceLock", StringComparison.Ordinal)
+                  && playerBuilder.Contains("UNITY2FOXGLOVE_FOXRUN_INTERFACE_DIGEST", StringComparison.Ordinal)
+                  && playerBuilder.Contains(
+                      "Application.isBatchMode ? NewSceneMode.Single : NewSceneMode.Additive",
+                      StringComparison.Ordinal),
+                "181F-4: acceptance builder preserves interactive scenes and creates a batch-safe bounded Player artifact below the repository build root");
+        }
+
+        private static void VerifyInteropAutomationReleaseGate(
+            string peerProtocol,
+            string peerHelper,
+            string linuxPeer,
+            string matrixProfiles,
+            string runCi,
+            string dotnetWorkflow,
+            string packageWorkflow)
+        {
+            Check(peerProtocol.Contains("SUMMARY_SCHEMA_VERSION", StringComparison.Ordinal)
+                  && peerProtocol.Contains("write_summary_atomic", StringComparison.Ordinal)
+                  && peerProtocol.Contains("FAIL_INTERFACE_DIGEST", StringComparison.Ordinal)
+                  && !peerProtocol.Contains("shell=True", StringComparison.Ordinal)
+                  && !peerProtocol.Contains("os.system", StringComparison.Ordinal),
+                "181F-5: common peer protocol persists redacted correlated evidence without shell execution");
+
+            Check(peerHelper.Contains("build_player_environment", StringComparison.Ordinal)
+                  && peerHelper.Contains("require_player_exit_code", StringComparison.Ordinal)
+                  && peerHelper.Contains("--probe-role", StringComparison.Ordinal)
+                  && peerHelper.Contains("--surface", StringComparison.Ordinal)
+                  && peerHelper.Contains("FAIL_GRAPH_EVIDENCE", StringComparison.Ordinal)
+                  && peerHelper.Contains("create_typed_worker_endpoints", StringComparison.Ordinal)
+                  && peerHelper.Contains("observe_no_late_unity_apply", StringComparison.Ordinal)
+                  && peerHelper.Contains("FAIL_LATE_APPLY", StringComparison.Ordinal)
+                  && peerHelper.Contains("FAIL_PEER_RUNTIME", StringComparison.Ordinal)
+                  && !peerHelper.Contains("shell=True", StringComparison.Ordinal)
+                  && !peerHelper.Contains("os.system", StringComparison.Ordinal),
+                "181F-6: Windows Editor and Player paths reuse the strict generated-envelope protocol and bounded endpoint teardown");
+
+            Check(linuxPeer.Contains("stage_or_verify_locked_ros_source", StringComparison.Ordinal)
+                  && linuxPeer.Contains("build_linux_worker_environment", StringComparison.Ordinal)
+                  && linuxPeer.Contains("--role", StringComparison.Ordinal)
+                  && linuxPeer.Contains("--surface", StringComparison.Ordinal)
+                  && !linuxPeer.Contains("shell=True", StringComparison.Ordinal)
+                  && !linuxPeer.Contains("os.system", StringComparison.Ordinal),
+                "181F-7: Linux peer keeps source/workspace ownership explicit and imports only its built generated package");
+
+            Check(matrixProfiles.Contains("DEFAULT_READY_TIMEOUT_SECONDS = 300", StringComparison.Ordinal)
+                  && matrixProfiles.Contains("PHASE181_HUMBLE_FASTRTPS_WINDOWS_LOCAL_EDITOR_PASS", StringComparison.Ordinal)
+                  && matrixProfiles.Contains("PHASE181_LYRICAL_ZENOH_WINDOWS_LOCAL_EDITOR_PASS", StringComparison.Ordinal)
+                  && matrixProfiles.Contains("write_profile_failure_summary", StringComparison.Ordinal)
+                  && !matrixProfiles.Contains("shell=True", StringComparison.Ordinal),
+                "181F-8: four named Windows-local wrappers preserve a bounded String-first and owned-Zenoh path");
+
+            Check(runCi.Contains("phase181-ros2-regression", StringComparison.Ordinal)
+                  && runCi.Contains("PHASE181_ROS2_PEER_REGRESSION", StringComparison.Ordinal)
+                  && runCi.Contains("validate_foxrun_custom_typesupport_addon.py", StringComparison.Ordinal)
+                  && dotnetWorkflow.Contains("Run Phase181 custom ROS2 acceptance helper regressions", StringComparison.Ordinal)
+                  && packageWorkflow.Contains("Validate Phase181 custom ROS2 typesupport add-ons", StringComparison.Ordinal),
+                "181F-10: public CI runs protocol regressions and all tracked custom typesupport preflight validators");
+        }
+
+        private static void VerifyPublicOperationalDocumentation(
+            string acceptanceSampleReadme,
+            string ros2SmokeReadme,
+            string r2fuPackageJson)
+        {
+            Check(acceptanceSampleReadme.Contains("exactly one matching", StringComparison.OrdinalIgnoreCase)
+                  && acceptanceSampleReadme.Contains("static interface lock", StringComparison.OrdinalIgnoreCase)
+                  && acceptanceSampleReadme.Contains("PublishAndSubscribe", StringComparison.Ordinal)
+                  && r2fuPackageJson.Contains("FoxRun Custom ROS2 Interface", StringComparison.Ordinal),
+                "181F-11: package sample exposes the locked custom DTO workflow without treating typesupport as an implicit runtime fallback");
+
+            Check(ros2SmokeReadme.Contains("Phase181 Windows-local Editor bring-up", StringComparison.Ordinal)
+                  && ros2SmokeReadme.Contains("phase181_humble_fastrtps_acceptance.py", StringComparison.Ordinal)
+                  && ros2SmokeReadme.Contains("phase181_lyrical_zenoh_acceptance.py", StringComparison.Ordinal)
+                  && ros2SmokeReadme.Contains("exactly one matching add-on", StringComparison.OrdinalIgnoreCase)
+                  && ros2SmokeReadme.Contains("echo-on-apply", StringComparison.OrdinalIgnoreCase)
+                  && ros2SmokeReadme.Contains("same-origin", StringComparison.OrdinalIgnoreCase)
+                  && ros2SmokeReadme.Contains("FixedRate", StringComparison.Ordinal)
+                  && ros2SmokeReadme.Contains("not individually recorded to MCAP", StringComparison.OrdinalIgnoreCase)
+                  && ros2SmokeReadme.Contains("Linux", StringComparison.Ordinal)
+                  && ros2SmokeReadme.Contains("Player", StringComparison.Ordinal),
+                "181F-12: public custom-interface instructions distinguish local bring-up, certification, origin policy, and MCAP semantics");
+        }
+
+        private static string ReadRequiredJsonString(string json, string propertyName)
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty(propertyName, out var property)
+                || property.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(property.GetString()))
+            {
+                throw new InvalidOperationException(
+                    "[FAIL] Phase181 static interface lock lacks a non-empty string property: " + propertyName);
+            }
+
+            return property.GetString();
         }
 
         private static void Check(bool condition, string label)

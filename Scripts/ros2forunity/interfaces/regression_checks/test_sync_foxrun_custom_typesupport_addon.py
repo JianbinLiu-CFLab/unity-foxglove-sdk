@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
+
+from Scripts.test_support.phase181_scratch import temporary_directory
 
 from Scripts.ros2forunity.interfaces.sync_foxrun_custom_typesupport_addon import (
     AddonSyncError,
@@ -20,12 +21,15 @@ from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
 
 
 class CustomTypesupportSyncTests(unittest.TestCase):
+    """Represent CustomTypesupportSyncTests."""
     def test_sync_refuses_candidate_without_validation_proof(self) -> None:
+        """Verify sync refuses candidate without validation proof."""
         with self._fixture() as fixture:
             with self.assertRaises(AddonSyncError):
                 verify_sync_ready(fixture.request, validator=lambda _request: None)
 
     def test_sync_accepts_only_validated_inventory_paths(self) -> None:
+        """Verify sync accepts only validated inventory paths."""
         with self._fixture(validated=True) as fixture:
             paths = allowed_inventory_paths(fixture.request)
             self.assertEqual(
@@ -40,18 +44,22 @@ class CustomTypesupportSyncTests(unittest.TestCase):
             )
 
     def test_sync_rejects_unexpected_candidate_payload(self) -> None:
+        """Verify sync rejects unexpected candidate payload."""
         with self._fixture(validated=True) as fixture:
             (fixture.candidate / "unexpected.dll").write_bytes(b"unexpected")
             with self.assertRaises(AddonSyncError):
                 verify_sync_ready(fixture.request, validator=lambda _request: None)
 
     def _fixture(self, *, validated: bool = False) -> "_Fixture":
+        """Implement the internal fixture step."""
         return _Fixture(validated=validated)
 
 
 class _Fixture:
+    """Represent Fixture."""
     def __init__(self, *, validated: bool = False) -> None:
-        self._temporary = tempfile.TemporaryDirectory()
+        """Initialize this object."""
+        self._temporary = temporary_directory("typesupport-sync-")
         self.root = Path(self._temporary.name)
         self.static = self.root / "Packages/dev.unity2foxglove.foxrun.ros2.interfaces"
         self.base = self.root / "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64"
@@ -108,9 +116,11 @@ class _Fixture:
         )
 
     def __enter__(self) -> "_Fixture":
+        """Enter this fixture scope."""
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
+        """Release this fixture scope."""
         self._temporary.cleanup()
 
 

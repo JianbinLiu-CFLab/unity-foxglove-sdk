@@ -50,6 +50,7 @@ class CharacterizationError(RuntimeError):
     """A bounded, actionable custom-interface characterization failure."""
 
     def __init__(self, remediation: str):
+        """Initialize this object."""
         self.code = ERROR_CODE
         self.remediation = remediation
         super().__init__(self.code + ": " + remediation)
@@ -57,6 +58,7 @@ class CharacterizationError(RuntimeError):
 
 @dataclass(frozen=True)
 class CharacterizationRequest:
+    """Represent CharacterizationRequest."""
     distro: str
     static_package: Path
     ros2_root: Path
@@ -71,6 +73,7 @@ class CharacterizationRequest:
 
 @dataclass(frozen=True)
 class CharacterizationResult:
+    """Represent CharacterizationResult."""
     distro: str
     evidence_path: Path
     managed_assembly: Path
@@ -78,6 +81,7 @@ class CharacterizationResult:
 
 
 def _require_under(path: Path, root: Path) -> Path:
+    """Implement the internal require under step."""
     resolved = path.resolve()
     try:
         resolved.relative_to(root.resolve())
@@ -87,6 +91,7 @@ def _require_under(path: Path, root: Path) -> Path:
 
 
 def characterization_root(request: CharacterizationRequest) -> Path:
+    """Select the short, private build root for one characterization run."""
     # rosidl target names are deliberately descriptive and can otherwise push
     # MSVC object/PDB paths past the Windows limit. Keep this private build
     # layout short while retaining the public evidence boundary below
@@ -98,6 +103,7 @@ def characterization_root(request: CharacterizationRequest) -> Path:
 
 
 def _characterization_parent(request: CharacterizationRequest) -> Path:
+    """Implement the internal characterization parent step."""
     return request.build_root / "phase181" / request.distro
 
 
@@ -430,6 +436,7 @@ def build_characterization_environment(request: CharacterizationRequest) -> dict
 
 
 def _run(command: Sequence[str], *, cwd: Path, environment: Mapping[str, str], log_path: Path) -> None:
+    """Implement the internal run step."""
     result = subprocess.run(
         tuple(command),
         shell=False,
@@ -489,6 +496,7 @@ Console.Write(JsonSerializer.Serialize(new {
 
 
 def _inspect_managed_assembly(workspace: Path, assembly: Path, ros2cs_dotnet: Path, environment: Mapping[str, str]) -> Path:
+    """Implement the internal inspect managed assembly step."""
     dotnet = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "dotnet" / "dotnet.exe"
     if not dotnet.is_file():
         raise CharacterizationError("install-dotnet-sdk-for-ros2cs")
@@ -513,6 +521,7 @@ def _inspect_managed_assembly(workspace: Path, assembly: Path, ros2cs_dotnet: Pa
 
 
 def _sha256(path: Path) -> str:
+    """Implement the internal sha256 step."""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
@@ -521,6 +530,7 @@ def _sha256(path: Path) -> str:
 
 
 def _rva_offset(data: bytes, rva: int, section_offset: int, section_count: int, optional_size: int) -> int | None:
+    """Implement the internal rva offset step."""
     for index in range(section_count):
         offset = section_offset + index * 40
         virtual_size = int.from_bytes(data[offset + 8:offset + 12], "little")
@@ -577,6 +587,7 @@ def pe_imports(path: Path) -> tuple[str, ...]:
 
 
 def _native_evidence(workspace: Path) -> list[dict[str, object]]:
+    """Implement the internal native evidence step."""
     native_root = workspace / "i"
     return [
         {
@@ -650,10 +661,12 @@ def characterize(request: CharacterizationRequest, *, replace_existing: bool = F
 
 
 def _default_repo_root() -> Path:
+    """Implement the internal default repo root step."""
     return Path(__file__).resolve().parents[3]
 
 
 def parse_args(argv: Sequence[str]) -> tuple[CharacterizationRequest, bool]:
+    """Parse command-line arguments."""
     root = _default_repo_root()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--distro", required=True, choices=("humble", "jazzy", "lyrical"))
@@ -686,6 +699,7 @@ def parse_args(argv: Sequence[str]) -> tuple[CharacterizationRequest, bool]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the command-line entry point."""
     request, replace_existing = parse_args(argv or sys.argv[1:])
     try:
         result = characterize(request, replace_existing=replace_existing)

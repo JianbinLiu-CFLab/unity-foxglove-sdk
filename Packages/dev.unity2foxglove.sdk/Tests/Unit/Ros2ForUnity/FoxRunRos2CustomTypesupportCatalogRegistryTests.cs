@@ -30,6 +30,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void RevisionedCatalogUsesItsOwnVersionedRosPackageName()
+        {
+            Reset();
+            const string rosPackageName = "unity2foxglove_foxrun_interfaces_v2";
+            FoxRunRos2CustomTypesupportCatalogRegistry.Register(new Catalog(
+                sourcePackageId: "dev.unity2foxglove.foxrun.ros2.interfaces",
+                rosPackageName: rosPackageName,
+                interfaceRevision: 2,
+                interfaceDigest: Digest,
+                baseRuntime: Runtime,
+                platform: "win64",
+                rmws: new[] { "rmw_fastrtps_cpp" },
+                typeMap: new[]
+                {
+                    new FoxRunRos2CustomTypesupportTypeMapEntry(
+                        rosPackageName + "/msg/Phase181State48D288ED82F1Envelope",
+                        rosPackageName + ".msg.Phase181State48D288ED82F1Envelope")
+                }));
+
+            Assert.Equal(
+                FoxRunRos2CustomTypesupportReadinessCode.Ready,
+                FoxRunRos2CustomTypesupportCatalogRegistry.Evaluate(Runtime, Digest, "rmw_fastrtps_cpp").Code);
+        }
+
+        [Fact]
         public void MissingDuplicateMismatchAndMalformedCatalogsFailClosed()
         {
             Reset();
