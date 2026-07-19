@@ -51,7 +51,6 @@ namespace Unity2Foxglove.ManualAcceptance
         [Tooltip("The Manager that owns the custom native ROS2 session.")]
         [SerializeField] private FoxgloveManager _manager;
 
-#if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunMode.PublishOnly,
@@ -63,7 +62,7 @@ namespace Unity2Foxglove.ManualAcceptance
             Mode = FoxRunMode.SubscribeOnly,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
-        [SerializeField] private Phase181State _nativeSubscribeOnly;
+        [SerializeField] private Phase181State _inputPort;
 
 #pragma warning disable FOXRUN400 // The peer protocol explicitly owns the native inbound/output-loop evidence.
         [FoxRun(
@@ -72,9 +71,18 @@ namespace Unity2Foxglove.ManualAcceptance
             Encoding = FoxRunWireEncoding.Json,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
-#pragma warning restore FOXRUN400
         [SerializeField] private Phase181State _nativeInputWebSocketOutput;
-#else
+#pragma warning restore FOXRUN400
+
+        // Keep the declarations source-generator-visible before an add-on is
+        // selected. Generated native bindings remain conditionally compiled,
+        // while this public read-only surface prevents bootstrap builds from
+        // treating the locked sample values as unused fields.
+        public Phase181State NativePublishValue => _nativePublishOnly;
+        public Phase181State InputPort => _inputPort;
+        public Phase181State NativeInputWebSocketOutput => _nativeInputWebSocketOutput;
+
+#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES)
         [Header("Custom Interface Availability")]
         [TextArea(2, 3)]
         [SerializeField] private string _unavailableReason =
@@ -256,17 +264,17 @@ namespace Unity2Foxglove.ManualAcceptance
                     ref _observedSubscribeSession,
                     ref _observedSubscribeApplied,
                     out var snapshot)
-                || _nativeSubscribeOnly == null)
+            || _inputPort == null)
             {
                 return;
             }
 
-            CopySafeState(_nativeSubscribeOnly);
+            CopySafeState(_inputPort);
             _subscribeReceived = snapshot.Received;
             _subscribeApplied = snapshot.Applied;
             _subscribeReplaced = snapshot.Replaced;
             _sessionGeneration = snapshot.SessionGeneration;
-            if (!IsCorrelatedInitialPayload(_nativeSubscribeOnly))
+            if (!IsCorrelatedInitialPayload(_inputPort))
             {
                 _status = "Ignored a custom native SubscribeOnly DTO that did not match this acceptance run.";
                 return;

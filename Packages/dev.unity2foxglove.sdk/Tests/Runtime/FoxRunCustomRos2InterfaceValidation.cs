@@ -717,6 +717,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && !acceptanceComponent.Contains("Ros2cs.Init", StringComparison.Ordinal),
                 "181F-3: acceptance component correlates the exact custom DTO proof through bounded diagnostics without creating a ROS2 node");
 
+            const string acceptanceInputPort = "[SerializeField] private Phase181State _inputPort";
+            const string unavailableGuard = "#if !(UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES)";
+            Check(acceptanceComponent.IndexOf(acceptanceInputPort, StringComparison.Ordinal) >= 0
+                  && acceptanceComponent.IndexOf(acceptanceInputPort, StringComparison.Ordinal)
+                     < acceptanceComponent.IndexOf(unavailableGuard, StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("public Phase181State InputPort => _inputPort;", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("#pragma warning restore FOXRUN400", StringComparison.Ordinal),
+                "181F-16: acceptance contracts stay generator-visible before add-on selection, while native bindings remain conditional");
+
             Check(playerBuilder.Contains("CreateAcceptanceScene", StringComparison.Ordinal)
                   && playerBuilder.Contains("BuildWindowsStandalone64", StringComparison.Ordinal)
                   && playerBuilder.Contains("--phase181-custom-ros2-player-auto-quit", StringComparison.Ordinal)
