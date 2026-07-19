@@ -100,7 +100,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 || !StringEquals(
                     Text(sourceLock["unityPackageId"]),
                     Ros2ForUnityCustomTypesupportSelectionTransaction.StaticInterfacePackageId)
-                || !Ros2ForUnityCustomTypesupportSelectionTransaction.IsRevisionedRosPackageName(
+                || !Ros2ForUnityCustomTypesupportSelectionTransaction.HasMatchingRosPackageRevision(
                     rosPackageName,
                     revision)
                 || !IsSha256(interfaceDigest)
@@ -165,7 +165,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                                 && StringEquals(
                                     Text(source["upmPackageId"]),
                                     Ros2ForUnityCustomTypesupportSelectionTransaction.StaticInterfacePackageId)
-                                && Ros2ForUnityCustomTypesupportSelectionTransaction.IsRevisionedRosPackageName(
+                                && Ros2ForUnityCustomTypesupportSelectionTransaction.HasMatchingRosPackageRevision(
                                     Text(source["rosPackageName"]),
                                     source["interfaceRevision"]?.Value<int?>() ?? 0)
                                 && IsSha256(Text(source["interfaceDigest"]))

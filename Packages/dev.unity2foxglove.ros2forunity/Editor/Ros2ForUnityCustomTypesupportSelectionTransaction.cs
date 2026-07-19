@@ -11,6 +11,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2ForUnity.Editor
 {
@@ -389,7 +390,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var interfaceRevision = sourceLock["interfaceRevision"]?.Value<int?>() ?? 0;
             var interfaceDigest = Text(sourceLock["interfaceDigest"]);
             if (!StringEquals(Text(sourceLock["unityPackageId"]), StaticInterfacePackageId)
-                || !IsRevisionedRosPackageName(rosPackageName, interfaceRevision)
+                || !HasMatchingRosPackageRevision(rosPackageName, interfaceRevision)
                 || !IsSha256(interfaceDigest))
             {
                 return false;
@@ -816,48 +817,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static bool IsSha256(string value)
             => value?.Length == 64 && value.All(character => (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f'));
 
-        internal static bool IsRevisionedRosPackageName(string value, int interfaceRevision)
+        internal static bool HasMatchingRosPackageRevision(string value, int interfaceRevision)
         {
-            if (string.IsNullOrWhiteSpace(value) || interfaceRevision <= 0)
-                return false;
-
-            var versionMarker = value.LastIndexOf("_v", StringComparison.Ordinal);
-            if (versionMarker <= 0 || versionMarker + 2 >= value.Length || !IsRosPackageStem(value, versionMarker))
-                return false;
-
-            var parsedRevision = 0;
-            for (var index = versionMarker + 2; index < value.Length; index++)
-            {
-                var character = value[index];
-                if (character < '0' || character > '9'
-                    || parsedRevision > (Int32.MaxValue - (character - '0')) / 10)
-                {
-                    return false;
-                }
-
-                parsedRevision = parsedRevision * 10 + (character - '0');
-            }
-
-            return parsedRevision == interfaceRevision;
-        }
-
-        private static bool IsRosPackageStem(string value, int length)
-        {
-            if (value[0] < 'a' || value[0] > 'z')
-                return false;
-
-            for (var index = 1; index < length; index++)
-            {
-                var character = value[index];
-                if (!((character >= 'a' && character <= 'z')
-                      || (character >= '0' && character <= '9')
-                      || character == '_'))
-                {
-                    return false;
-                }
-            }
-
-            return value[length - 1] != '_';
+            return FoxRunRos2InterfaceIdentity.TryParseRosPackageRevision(value, out var parsedRevision)
+                   && parsedRevision == interfaceRevision;
         }
 
         private static bool IsGuid(string value)
