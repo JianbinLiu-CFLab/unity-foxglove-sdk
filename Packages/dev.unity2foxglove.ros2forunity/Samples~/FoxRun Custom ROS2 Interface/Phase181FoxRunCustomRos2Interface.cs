@@ -84,8 +84,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             Encoding = FoxRunWireEncoding.Json,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
-#pragma warning restore FOXRUN400
         [SerializeField] private Phase181State _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
+#pragma warning restore FOXRUN400
 
         private void Reset()
         {

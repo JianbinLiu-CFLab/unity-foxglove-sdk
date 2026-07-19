@@ -99,6 +99,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Runtime/Ros2R2FUTopicSink.cs";
         private const string AcceptanceSamplePath =
             "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun Custom ROS2 Interface/Phase181FoxRunCustomRos2Interface.cs";
+        private const string ImportedAcceptanceSamplePath =
+            "Unity2Foxglove/Assets/Samples/Unity2Foxglove ROS2 For Unity/0.1.0-preview.1/FoxRun Custom ROS2 Interface/Phase181FoxRunCustomRos2Interface.cs";
         private const string AcceptanceSampleReadmePath =
             "Packages/dev.unity2foxglove.ros2forunity/Samples~/FoxRun Custom ROS2 Interface/README.md";
         private const string R2fuPackageJsonPath =
@@ -171,6 +173,7 @@ namespace Unity.FoxgloveSDK.Tests
             var foxgloveLogHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(FoxgloveLogHubPath);
             var legacyR2fuTopicSink = PhaseValidationSourceHelpers.ReadRequiredRepoText(LegacyR2fuTopicSinkPath);
             var acceptanceSample = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceSamplePath);
+            var importedAcceptanceSample = PhaseValidationSourceHelpers.ReadRequiredRepoText(ImportedAcceptanceSamplePath);
             var acceptanceSampleReadme = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceSampleReadmePath);
             var r2fuPackageJson = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuPackageJsonPath);
             var acceptanceComponent = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceComponentPath);
@@ -226,6 +229,7 @@ namespace Unity.FoxgloveSDK.Tests
                 legacyR2fuTopicSink);
             VerifyAcceptanceSurface(
                 acceptanceSample,
+                importedAcceptanceSample,
                 acceptanceSampleReadme,
                 r2fuPackageJson,
                 acceptanceComponent,
@@ -640,6 +644,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyAcceptanceSurface(
             string sample,
+            string importedSample,
             string sampleReadme,
             string r2fuPackageJson,
             string acceptanceComponent,
@@ -654,6 +659,22 @@ namespace Unity.FoxgloveSDK.Tests
                   && sample.Contains("List<long>", StringComparison.Ordinal)
                   && sample.Contains("int?", StringComparison.Ordinal),
                 "181F-1: source-only sample exercises locked custom DTO output, input, and directional P&S contracts");
+
+            Check(importedSample.Contains("public sealed class Phase181State", StringComparison.Ordinal)
+                  && importedSample.Contains("public sealed class Phase181NestedState", StringComparison.Ordinal)
+                  && acceptanceComponent.Contains("using Unity.FoxgloveSDK.Tests.FoxRun.Fixtures", StringComparison.Ordinal)
+                  && !acceptanceComponent.Contains("public sealed class Phase181State", StringComparison.Ordinal)
+                  && !acceptanceComponent.Contains("public sealed class Phase181NestedState", StringComparison.Ordinal),
+                "181F-13: the imported sample is the sole Unity compile-surface owner of the locked custom DTO identity");
+
+            const string authorityWarningDisable = "#pragma warning disable FOXRUN400";
+            const string authorityWarningRestore = "#pragma warning restore FOXRUN400";
+            const string bidirectionalField = "[SerializeField] private Phase181State _nativeInputWebSocketOutput";
+            Check(sample.IndexOf(authorityWarningDisable, StringComparison.Ordinal) < sample.IndexOf(bidirectionalField, StringComparison.Ordinal)
+                  && sample.IndexOf(authorityWarningRestore, StringComparison.Ordinal) > sample.IndexOf(bidirectionalField, StringComparison.Ordinal)
+                  && importedSample.IndexOf(authorityWarningDisable, StringComparison.Ordinal) < importedSample.IndexOf(bidirectionalField, StringComparison.Ordinal)
+                  && importedSample.IndexOf(authorityWarningRestore, StringComparison.Ordinal) > importedSample.IndexOf(bidirectionalField, StringComparison.Ordinal),
+                "181F-14: the sample suppression spans the member declaration where the authority diagnostic is reported");
 
             Check(sampleReadme.Contains("static interface lock", StringComparison.OrdinalIgnoreCase)
                   && sampleReadme.Contains("Windows-local", StringComparison.Ordinal)

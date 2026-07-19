@@ -14,39 +14,6 @@ using UnityEngine;
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
 
-// This identity is deliberately locked to the selected Phase181 static
-// interface package. Altering the namespace, public names, or member shape
-// requires an explicit interface revision and a rebuilt typesupport add-on.
-namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
-{
-    [Serializable]
-    public enum Phase181StateKind : ushort
-    {
-        Unknown = 0,
-        Active = 1,
-    }
-
-    [Serializable]
-    public sealed class Phase181NestedState
-    {
-        public bool Enabled { get; set; }
-        public string Label { get; set; }
-    }
-
-    [Serializable]
-    public sealed class Phase181State
-    {
-        public int Count { get; set; }
-        public Phase181StateKind Kind { get; set; }
-        public string Message { get; set; }
-        public byte[] Bytes { get; set; }
-        public List<long> Values { get; set; }
-        public Phase181NestedState Nested { get; set; }
-        public int? OptionalCount { get; set; }
-        public string OptionalText { get; set; }
-    }
-}
-
 namespace Unity2Foxglove.ManualAcceptance
 {
     using Unity.FoxgloveSDK.Tests.FoxRun.Fixtures;
