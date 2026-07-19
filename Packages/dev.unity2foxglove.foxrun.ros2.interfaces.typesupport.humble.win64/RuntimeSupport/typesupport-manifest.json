@@ -9,7 +9,7 @@
   "managed": {
     "assembly": {
       "name": "unity2foxglove_foxrun_interfaces_v1_assembly",
-      "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_assembly.dll",
+      "path": "Runtime/Ros2ForUnity/Plugins/unity2foxglove_foxrun_interfaces_v1_assembly.dll",
       "sha256": "458252ef7a70e4209cb1260a8b1c46378bc5a45a54ba001a509e86c2d056cc2f"
     },
     "pluginImporter": {
@@ -17,7 +17,7 @@
         "Editor",
         "WindowsStandalone64"
       ],
-      "metaPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_assembly.dll.meta"
+      "metaPath": "Runtime/Ros2ForUnity/Plugins/unity2foxglove_foxrun_interfaces_v1_assembly.dll.meta"
     },
     "ros2Message": {
       "assemblyName": "ros2cs_common",
@@ -45,82 +45,82 @@
     {
       "classification": "transitive",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1__rosidl_generator_c.dll",
-      "sha256": "12a29cf2c6f4dff2ec2cb74c86d69734a6335ef2ac6cc9ab7bb1dbb36fb34210"
+      "sha256": "78f7cc60d3e4a7c0b65699f3f3265dfc4ddf34c29aa37c9f31bbd55462563589"
     },
     {
       "classification": "transitive",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1__rosidl_typesupport_c.dll",
-      "sha256": "0d2ac11ac02fcad11687e4948233f64457c25d18829adf110c8f1fd35720e8ab"
+      "sha256": "4e9e0fd223e60aa23712f4e52726df38b2e0c174cc0ba0a03834a7a0691e81b9"
     },
     {
       "classification": "transitive",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1__rosidl_typesupport_cpp.dll",
-      "sha256": "ef189c3fb14f6ed0f80e13138d87657f82c921965d14e3dee7b6d9cdba0cb17e"
+      "sha256": "8e26cc64fe4550bebfcd5817e8e465a6287c18eb790512d150260b4433c240eb"
     },
     {
       "classification": "transitive",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1__rosidl_typesupport_fastrtps_c.dll",
-      "sha256": "0eedc8a4bd8ec0f23649c83403265f2c16d7f6baa30706080bf43ffc6214017b"
+      "sha256": "71663d75b6fdad1f6adc135936dffe2011a41b3724fe26d670a0ddadbce84db8"
     },
     {
       "classification": "transitive",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1__rosidl_typesupport_fastrtps_cpp.dll",
-      "sha256": "3c737284d87858ebbbc53a419bd71f6394aa5726e6ef46f6e1bb1a9c08738ef6"
+      "sha256": "d32475dc7cc2c4e3065b7a918f8a2dec286eb76c810ba7453d6185aeff1c7315"
     },
     {
       "classification": "transitive",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1__rosidl_typesupport_introspection_c.dll",
-      "sha256": "5c13fe42896c5c3f2f08de02edfb78fcc384e7566a9799e9fbb28a06af0be9e9"
+      "sha256": "347f11095d66247aa8525fa8ee84fb2706a14dbb3ea8e13f80913476402da20d"
     },
     {
       "classification": "transitive",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1__rosidl_typesupport_introspection_cpp.dll",
-      "sha256": "99acac066f31eb993ec59c81cfcc252ed8f4ece1bbaf7fa38268bafe07cdcc11"
+      "sha256": "649329eb6fcec8b2f91f5dd012e0c434bc1129a41682f8c5a786ad4fb837af5a"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_nested_state3281_d0_e21244__rosidl_typesupport_c_native.dll",
-      "sha256": "9eee5707da325f2889da7027d40c5524ac5cbf432f6ba7d38d727c69bbd4fdf8"
+      "sha256": "25fd48c8c9f04fa76a70d8f558bf68559b44b9fc149bbf65c03718ddb6a5e14a"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_nested_state3281_d0_e21244__rosidl_typesupport_fastrtps_c_native.dll",
-      "sha256": "3359bde696b4d0b8154294b296cead566841ad531e9146cd8ab2ddaa8a6fdf0a"
+      "sha256": "eb7aa940a046b9370bad9b0bd25ace57048da3d30f9e3df5862a561b983c9a75"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_nested_state3281_d0_e21244__rosidl_typesupport_introspection_c_native.dll",
-      "sha256": "bd0a3662c841301232f426109520bc760816ba821e2514f03ff24a133055a852"
+      "sha256": "474b026e58834b8a89c82689ec4188921ea4857a5ee931c908138d47a348b68c"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_state48_d288_ed82_f1__rosidl_typesupport_c_native.dll",
-      "sha256": "871efe972c8af8b5bdfda99d11285975036ccd74cb4dbbdc17552ea42dfe3808"
+      "sha256": "230cece174b30d008971bb2dee0f0709077979dc93f9f64f8f1685ebd194a632"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_state48_d288_ed82_f1__rosidl_typesupport_fastrtps_c_native.dll",
-      "sha256": "5757e588c89c027ac4efeac3dc8bef4e482aacaa49173077bfc15d5db706ce90"
+      "sha256": "190a791b10347590881f439331ee0ca7990621407d443ad2798e735b651d721d"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_state48_d288_ed82_f1__rosidl_typesupport_introspection_c_native.dll",
-      "sha256": "751519ee9134e531e3c32aa1424ea9a855d4b93ba27d4a7acdd9221cadfcb4de"
+      "sha256": "9f3125ed8259ee4f740a92bfbebb1ca83965a80f28323214bd6603253c396c3b"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_state48_d288_ed82_f1_envelope__rosidl_typesupport_c_native.dll",
-      "sha256": "9a70a0a2d9ff2b2e568c7232f99ae98400dac7b0fdc76870932e8150aa1614ec"
+      "sha256": "3b9c4902bcb7f7efd7ae87ae1d98c50b0bbe1aafa6fbde5410725be0fc586f3c"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_state48_d288_ed82_f1_envelope__rosidl_typesupport_fastrtps_c_native.dll",
-      "sha256": "1d379455018ea914054e0d87a61c719713787cdf49857fab62572e34eed299ad"
+      "sha256": "18f2ad6cd9cd7092a1176d72e66eb26150e2f08fd20f6cd51d1cae17ed5e7332"
     },
     {
       "classification": "direct",
       "path": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_phase181_state48_d288_ed82_f1_envelope__rosidl_typesupport_introspection_c_native.dll",
-      "sha256": "9509d1b474f82d9040662adbc2340df2d28b7a339d39a799e6cecc204e9d3c3c"
+      "sha256": "dfa6564ed310e0c793434b2d8bde084bb949c624462c04321e1b89f5ab9cb14f"
     }
   ],
   "platform": "win64",

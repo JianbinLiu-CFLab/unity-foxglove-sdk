@@ -170,9 +170,9 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
-  _transportMode: 0
+  _transportMode: 2
   _transportModeBeforeOutputDisabled: 0
-  _foxgloveOutputEnabled: 1
+  _foxgloveOutputEnabled: 0
   _ros2NativeEnabled: 1
   _profilingEnabled: 0
   _defaultPublishRateHz: 10
@@ -275,9 +275,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Unity2Foxglove.ManualAcceptance.Phase181FoxRunCustomRos2InterfaceAcceptance
   _manager: {fileID: 976954319}
-  _unavailableReason: Phase181 custom ROS2 typesupport is unavailable. Install the
-    matching static interface package and exactly one matching distro add-on.
   _status: Waiting for custom native ROS2 registration.
+  _emittedMarkerCount: 0
   _runtime: 
   _rmwImplementation: 
   _interfaceDigestPrefix: 120864853239
@@ -300,7 +299,6 @@ MonoBehaviour:
   _localOriginDrops: 0
   _sessionGeneration: 0
   _lastErrorCode: 
-  _emittedMarkerCount: 0
   _playerAutoQuitRequested: 0
   _playerToken: 
   _playerAutoQuitTimeoutSeconds: 120

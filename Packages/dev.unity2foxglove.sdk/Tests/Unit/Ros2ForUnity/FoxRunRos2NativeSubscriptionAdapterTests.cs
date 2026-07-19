@@ -394,6 +394,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void InternalFailureKindRetainsOnlyTheBackendExceptionClass()
+        {
+            const string sensitiveDetail = "zenoh-password=phase181-secret";
+
+            var failure = FoxRunRos2RegistrationResult.Failure(
+                FoxRunRos2RegistrationError.PublisherBackendFailure,
+                "ObjectDisposedException: " + sensitiveDetail);
+
+            Assert.Equal(
+                "The native ROS2 backend failed while operating the publisher.",
+                failure.Diagnostic);
+            Assert.Equal("ObjectDisposedException", failure.FailureKind);
+            Assert.DoesNotContain(sensitiveDetail, failure.FailureKind, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void OnlyTheCurrentSuccessfulRegistrationAttemptCanPublish()
         {
             var backend = new FakeBackend();

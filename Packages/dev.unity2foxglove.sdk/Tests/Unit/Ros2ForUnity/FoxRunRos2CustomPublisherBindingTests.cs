@@ -145,6 +145,25 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
         }
 
+        [Fact]
+        public void StopSuppressesPublisherRemovalFailureAndStillReleasesTheNodeLease()
+        {
+            var bus = new FoxTopicBus();
+            var backend = new FakePublisherBackend
+            {
+                RemoveFailure = new InvalidOperationException("native runtime already shut down")
+            };
+            var binding = CreateBinding(bus, backend, initialSequence: 0UL);
+
+            Assert.True(binding.TryStart().Succeeded);
+
+            binding.Stop();
+
+            Assert.False(bus.HasSubscribers("/phase181/custom"));
+            Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
+            Assert.Equal(1, backend.ReleaseCount);
+        }
+
         private static FoxRunRos2CustomPublisherBinding<TestDto, TestEnvelope> CreateBinding(
             FoxTopicBus bus,
             FakePublisherBackend backend,
@@ -220,6 +239,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public List<TestEnvelope> Published { get; } = new List<TestEnvelope>();
             public List<string> StopOrder { get; } = new List<string>();
             public bool PublishSucceeds { get; set; } = true;
+            public Exception RemoveFailure { get; set; }
             public int RegisterCount { get; private set; }
             public int ReleaseCount { get; private set; }
 
@@ -243,6 +263,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             {
                 Assert.Same(_token, token);
                 StopOrder.Add("remove");
+                if (RemoveFailure != null)
+                    throw RemoveFailure;
             }
 
             public void ReleaseNodeOwnership()

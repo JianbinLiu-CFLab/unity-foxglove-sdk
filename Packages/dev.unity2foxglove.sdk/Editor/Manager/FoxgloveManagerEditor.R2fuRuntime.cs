@@ -36,9 +36,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool _generatedFoxRunSubscriptionBindingsResolved;
         private static FieldInfo _generatedFoxRunSubscriptionBindingsField;
         private static IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> _generatedFoxRunSubscriptionBindings;
-        private static bool _generatedFoxRunCustomNativeContractsResolved;
-        private static FieldInfo _generatedFoxRunCustomNativeContractsField;
-        private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> _generatedFoxRunCustomNativeContracts;
+        private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> _currentFoxRunCustomNativeContracts;
 
         private static void ResetOptionalR2fuRuntimeSelectorCache()
         {
@@ -51,9 +49,7 @@ namespace Unity.FoxgloveSDK.Editor
             _generatedFoxRunSubscriptionBindingsResolved = false;
             _generatedFoxRunSubscriptionBindingsField = null;
             _generatedFoxRunSubscriptionBindings = null;
-            _generatedFoxRunCustomNativeContractsResolved = false;
-            _generatedFoxRunCustomNativeContractsField = null;
-            _generatedFoxRunCustomNativeContracts = null;
+            _currentFoxRunCustomNativeContracts = null;
         }
 
         private bool HasR2fuNativeRuntimeDemand()
@@ -151,7 +147,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
-                drawMethod.Invoke(null, new object[] { GetGeneratedCustomNativeContracts() });
+                drawMethod.Invoke(null, new object[] { GetCurrentCustomNativeContractsForInspector() });
             }
             catch (TargetInvocationException ex) when (ex.InnerException != null)
             {
@@ -238,14 +234,14 @@ namespace Unity.FoxgloveSDK.Editor
 
         private bool HasCustomNativeContractDemand()
             => FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                GetGeneratedCustomNativeContracts(),
+                GetCurrentCustomNativeContractsForInspector(),
                 nativeOutputEnabled: GetBool("_ros2NativeEnabled"),
                 subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
                 defaultSubscriptionProvider: GetDefaultSubscriptionProvider());
 
         private bool HasCustomNativeSubscriptionDemand()
             => FoxRunCustomNativeContractDemandPolicy.HasDemand(
-                GetGeneratedCustomNativeContracts(),
+                GetCurrentCustomNativeContractsForInspector(),
                 nativeOutputEnabled: false,
                 subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
                 defaultSubscriptionProvider: GetDefaultSubscriptionProvider());
@@ -313,48 +309,16 @@ namespace Unity.FoxgloveSDK.Editor
             return _generatedFoxRunSubscriptionBindings;
         }
 
-        private static FieldInfo ResolveGeneratedFoxRunCustomNativeContractsField()
+        private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> GetCurrentCustomNativeContractsForInspector()
         {
-            if (_generatedFoxRunCustomNativeContractsResolved)
-                return _generatedFoxRunCustomNativeContractsField;
+            if (_currentFoxRunCustomNativeContracts != null)
+                return _currentFoxRunCustomNativeContracts;
 
-            _generatedFoxRunCustomNativeContractsResolved = true;
-            foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var generatedType = assembly.GetType(GeneratedFoxRunSchemaInfoTypeName, throwOnError: false);
-                if (generatedType == null)
-                    continue;
-
-                _generatedFoxRunCustomNativeContractsField = generatedType.GetField(
-                    "CustomNativeContracts",
-                    BindingFlags.Public | BindingFlags.Static);
-                break;
-            }
-
-            return _generatedFoxRunCustomNativeContractsField;
-        }
-
-        private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> GetGeneratedCustomNativeContracts()
-        {
-            if (_generatedFoxRunCustomNativeContracts != null)
-                return _generatedFoxRunCustomNativeContracts;
-
-            var current = FoxRunSchemaInfoRegistry.Current;
-            if (current?.CustomNativeContracts != null)
-            {
-                _generatedFoxRunCustomNativeContracts = current.CustomNativeContracts;
-                return _generatedFoxRunCustomNativeContracts;
-            }
-
-            if (ResolveGeneratedFoxRunCustomNativeContractsField()?.GetValue(null)
-                is IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> contracts)
-            {
-                _generatedFoxRunCustomNativeContracts = contracts;
-                return _generatedFoxRunCustomNativeContracts;
-            }
-
-            _generatedFoxRunCustomNativeContracts = System.Array.Empty<FoxRunSchemaCustomNativeContractInfo>();
-            return _generatedFoxRunCustomNativeContracts;
+            // Edit Mode readiness must not depend on FoxRunSchemaInfo.g.cs: that
+            // evidence is refreshed before Play Mode, while this preflight is how
+            // an operator chooses the add-on required to enter Play Mode.
+            _currentFoxRunCustomNativeContracts = FoxrunCodeGenerator.CollectCustomNativeContractsForInspector();
+            return _currentFoxRunCustomNativeContracts;
         }
     }
 }

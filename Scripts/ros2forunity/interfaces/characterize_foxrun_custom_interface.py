@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Mapping, Sequence
@@ -44,6 +45,8 @@ ENVELOPE_TYPE_NAME = ROS_PACKAGE_NAME + ".msg.Phase181State48D288ED82F1Envelope"
 ROS2_MESSAGE_IDENTITY = "ROS2.Message"
 _LONGEST_NATIVE_TARGET = "unity2foxglove_foxrun_interfaces_v1__rosidl_typesupport_introspection_c__pyext.dir"
 _LONGEST_NATIVE_OBJECT = "95441c87d059a3e1deffafe69425029c/_unity2foxglove_foxrun_interfaces_v1_s.ep.rosidl_typesupport_introspection_c.c.obj"
+_WORKSPACE_DELETE_ATTEMPTS = 5
+_WORKSPACE_DELETE_RETRY_SECONDS = 1.0
 
 
 class CharacterizationError(RuntimeError):
@@ -126,6 +129,20 @@ def requires_short_windows_build_alias(characterization_parent: Path) -> bool:
     return len(str(projected)) > 250
 
 
+def _remove_prior_workspace(root: Path) -> None:
+    """Remove a build-owned workspace, tolerating a short-lived Ninja lock."""
+
+    for attempt in range(_WORKSPACE_DELETE_ATTEMPTS):
+        try:
+            shutil.rmtree(root)
+            return
+        except PermissionError as exc:
+            is_transient_windows_lock = getattr(exc, "winerror", None) == 32
+            if not is_transient_windows_lock or attempt + 1 == _WORKSPACE_DELETE_ATTEMPTS:
+                raise CharacterizationError("close-build-handles-and-retry-characterization") from exc
+            time.sleep(_WORKSPACE_DELETE_RETRY_SECONDS)
+
+
 def prepare_characterization_workspace(
     request: CharacterizationRequest,
     *,
@@ -143,7 +160,7 @@ def prepare_characterization_workspace(
     if root.exists():
         if not replace_existing:
             raise CharacterizationError("remove-or-replace-prior-characterization")
-        shutil.rmtree(root)
+        _remove_prior_workspace(root)
     workspace = root
     destination = workspace / "s" / ROS_PACKAGE_NAME
     destination.parent.mkdir(parents=True, exist_ok=True)

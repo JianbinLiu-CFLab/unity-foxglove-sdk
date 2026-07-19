@@ -144,6 +144,39 @@ class Phase181CustomRos2PeerProtocolTests(unittest.TestCase):
         self.assertGreater(end_offset, offset)
         self.assertEqual(["PHASE181_CUSTOM_ROS2_APPLIED", "PHASE181_CUSTOM_ROS2_READY"], [item.name for item in markers])
 
+    def test_marker_offset_scanning_recovers_when_unity_truncates_the_batch_log(self):
+        """Verify Phase181 behavior: a fresh Batch log is observed after Unity replaces an older log file."""
+        protocol = load_protocol_module()
+        with temporary_directory("peer-protocol-") as temporary:
+            log = pathlib.Path(temporary) / "unity-editor-batch.log"
+            log.write_text("previous batch output\n" * 64, encoding="utf-8")
+            offset = protocol.log_offset(log)
+            log.write_text(
+                "PHASE181_CUSTOM_ROS2_READY runtime=lyrical rmw=rmw_fastrtps_cpp token=opaque\n"
+                "PHASE181_CUSTOM_INTERFACE_READY interface=v1 digest=120864853239 token=opaque\n",
+                encoding="utf-8",
+            )
+
+            markers, end_offset = protocol.read_new_markers(log, offset)
+
+        self.assertEqual(
+            ["PHASE181_CUSTOM_ROS2_READY", "PHASE181_CUSTOM_INTERFACE_READY"],
+            [item.name for item in markers],
+        )
+        self.assertLess(end_offset, offset)
+
+    def test_interface_ready_marker_is_recognized_for_custom_correlation(self):
+        """Verify Phase181 behavior: custom-interface readiness is a protocol marker."""
+        protocol = load_protocol_module()
+
+        marker = protocol.parse_marker_line(
+            "PHASE181_CUSTOM_INTERFACE_READY interface=v1 digest=120864853239 token=opaque"
+        )
+
+        self.assertIsNotNone(marker)
+        self.assertEqual("PHASE181_CUSTOM_INTERFACE_READY", marker.name)
+        self.assertEqual("opaque", marker.fields["token"])
+
     def test_nullable_empty_payload_and_envelope_metadata_are_verified(self):
         """Verify Phase181 behavior: nullable empty payload and envelope metadata are verified."""
         protocol = load_protocol_module()

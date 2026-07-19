@@ -220,7 +220,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (!result.Succeeded)
                 {
                     binding.Stop();
-                    WarnOnce(identity + "|" + result.Error, result.Diagnostic);
+                    var failureKind = result.FailureKind;
+                    WarnOnce(
+                        identity + "|" + result.Error + "|" + failureKind,
+                        string.IsNullOrEmpty(failureKind)
+                            ? result.Diagnostic
+                            : result.Diagnostic + " [failureKind=" + failureKind + "]");
                     return;
                 }
 

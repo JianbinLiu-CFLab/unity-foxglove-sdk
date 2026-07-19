@@ -281,6 +281,16 @@ namespace Unity.FoxgloveSDK.Editor
         {
             foreach (var file in expected.Files)
             {
+                // The lock records the provenance that created the static wire
+                // package. New contracts may reuse an already locked DTO shape,
+                // which leaves every wire artifact and the interface digest
+                // unchanged while legitimately adding authoring-only metadata.
+                // ValidateRecordedMessageDigests above verifies the persisted
+                // lock against the generated message files; do not compare it
+                // to the current authoring model here.
+                if (string.Equals(file.RelativePath, LockRelativePath, StringComparison.Ordinal))
+                    continue;
+
                 var path = GetPath(packageRoot, file.RelativePath);
                 if (!File.Exists(path))
                     return new StalePath(FoxRunRos2InterfaceSourcePreflightDiagnosticCode.SourceFileMissing);

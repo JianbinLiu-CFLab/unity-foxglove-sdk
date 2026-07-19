@@ -93,7 +93,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     registration.Succeeded
                         ? FoxRunRos2RegistrationError.InvalidPublisherToken
                         : registration.Error,
-                    registration.Diagnostic);
+                    registration.FailureKind);
             }
 
             _token = registration.Token;
@@ -133,7 +133,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 var token = Interlocked.Exchange(ref _token, null);
                 if (token != null)
-                    _backend.RemovePublisher(token);
+                    TryRemovePublisher(token);
             }
             finally
             {
@@ -219,9 +219,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             catch (Exception)
             {
-                // Registration has already failed. The backend's own lease
-                // release below remains mandatory; do not throw into a bus or
-                // lifecycle callback while reporting the bounded failure.
+                // The native runtime can already be shut down when a Unity
+                // lifecycle callback reaches this endpoint teardown. The
+                // token was detached before this call, and the lease release
+                // below remains mandatory; never throw into that callback.
             }
         }
     }

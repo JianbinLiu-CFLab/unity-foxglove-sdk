@@ -26,8 +26,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string GenerateSourceMenuItem = "Foxglove/FoxRun/Generate ROS2 Interface Source Package";
         private const string ValidateSourceMenuItem = "Foxglove/FoxRun/Validate ROS2 Interface Source Package";
         private const string OpenSourceMenuItem = "Foxglove/FoxRun/Open ROS2 Interface Source Package";
-        private static readonly Dictionary<string, string> PendingAddOnByProject =
-            new Dictionary<string, string>(StringComparer.Ordinal);
 
         /// <summary>
         /// Late-bound from the ROS-free Manager Inspector. Contracts are a
@@ -160,29 +158,56 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             EditorGUILayout.LabelField("Typesupport Add-On", EditorStyles.boldLabel);
-            PendingAddOnByProject.TryGetValue(projectDirectory, out var pendingAddOn);
-            var options = new string[candidates.Count + 1];
-            options[0] = "Select a matching add-on";
-            for (var index = 0; index < candidates.Count; index++)
-                options[index + 1] = candidates[index];
-            var selectedIndex = string.IsNullOrWhiteSpace(pendingAddOn)
-                ? 0
-                : Array.IndexOf(options, pendingAddOn);
-            if (selectedIndex < 0)
-                selectedIndex = 0;
-
-            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+            var matchingCandidates = FilterCandidatesForRuntime(candidates, runtime);
+            if (matchingCandidates.Count != 1)
             {
-                var changedIndex = EditorGUILayout.Popup("Matching Add-On", selectedIndex, options);
-                pendingAddOn = changedIndex <= 0 ? string.Empty : options[changedIndex];
-                PendingAddOnByProject[projectDirectory] = pendingAddOn;
-
-                using (new EditorGUI.DisabledScope(runtime == null || string.IsNullOrWhiteSpace(pendingAddOn)))
-                {
-                    if (GUILayout.Button("Select Matching Typesupport Add-On"))
-                        SelectMatchingAddOn(projectDirectory, runtime, pendingAddOn);
-                }
+                EditorGUILayout.HelpBox(
+                    "No unique typesupport add-on matches the active ROS2 For Unity runtime. "
+                    + "Keep exactly one validated add-on for its distribution and platform in the repository Packages directory.",
+                    MessageType.Warning);
+                return;
             }
+
+            var matchingAddOn = matchingCandidates[0];
+            using (new EditorGUI.DisabledScope(true))
+                EditorGUILayout.TextField("Matching Add-On", matchingAddOn);
+            EditorGUILayout.HelpBox(
+                "Install and Select writes this matching add-on into Unity's package manifest and then reloads packages. "
+                + "It is required before custom native ROS2 contracts can enter Play Mode.",
+                MessageType.Info);
+
+            var selectionChangeBlocked = EditorApplication.isPlayingOrWillChangePlaymode
+                || EditorApplication.isCompiling
+                || EditorApplication.isUpdating;
+            if (selectionChangeBlocked)
+            {
+                EditorGUILayout.HelpBox(
+                    "Exit Play Mode and wait for Unity compilation and package refresh to finish before changing custom typesupport.",
+                    MessageType.Info);
+            }
+
+            using (new EditorGUI.DisabledScope(selectionChangeBlocked))
+            {
+                if (GUILayout.Button("Install and Select Matching Typesupport Add-On"))
+                    SelectMatchingAddOn(projectDirectory, runtime, matchingAddOn);
+            }
+        }
+
+        private static IReadOnlyList<string> FilterCandidatesForRuntime(
+            IReadOnlyList<string> candidates,
+            Ros2ForUnityRuntimeDescriptor runtime)
+        {
+            if (runtime == null
+                || string.IsNullOrWhiteSpace(runtime.RosDistro)
+                || string.IsNullOrWhiteSpace(runtime.Platform))
+            {
+                return Array.Empty<string>();
+            }
+
+            var packageSuffix = "." + runtime.RosDistro + "." + runtime.Platform;
+            return candidates
+                .Where(candidate => candidate.EndsWith(packageSuffix, StringComparison.Ordinal))
+                .ToArray();
         }
 
         private static void ExecuteSourceMenuItem(string menuItem)
@@ -208,6 +233,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     packageName);
                 Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();
                 Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
+            }
+            catch (InvalidOperationException exception)
+            {
+                Debug.LogError(
+                    "Unity2Foxglove could not select the requested custom ROS2 typesupport add-on: "
+                    + exception.Message);
             }
             catch (Exception)
             {

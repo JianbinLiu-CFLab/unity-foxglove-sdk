@@ -79,6 +79,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Packages/dev.unity2foxglove.ros2forunity/Editor/FoxRunRos2CustomTypesupportInspector.cs";
         private const string ManagerR2fuRuntimeInspectorPath =
             "Packages/dev.unity2foxglove.sdk/Editor/Manager/FoxgloveManagerEditor.R2fuRuntime.cs";
+        private const string FoxRunCodeGeneratorPath =
+            "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs";
         private const string CustomTransportHostPath =
             "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/FoxRunRos2CustomNativeTransportHost.cs";
         private const string CustomPublisherHubPath =
@@ -109,6 +111,8 @@ namespace Unity.FoxgloveSDK.Tests
             "Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase181FoxRunCustomRos2InterfaceAcceptance.cs";
         private const string AcceptancePlayerBuilderPath =
             "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase181CustomRos2InterfacePlayerBuilder.cs";
+        private const string AcceptanceBatchProbePath =
+            "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase181BatchModeCustomRos2InteropProbe.cs";
         private const string PeerProtocolPath =
             "Scripts/smoke/ros2/phase181_custom_ros2_peer_protocol.py";
         private const string PeerHelperPath =
@@ -163,6 +167,7 @@ namespace Unity.FoxgloveSDK.Tests
             var typesupportPreflight = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportPreflightPath);
             var typesupportInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportInspectorPath);
             var managerR2fuRuntimeInspector = PhaseValidationSourceHelpers.ReadRequiredRepoText(ManagerR2fuRuntimeInspectorPath);
+            var foxRunCodeGenerator = PhaseValidationSourceHelpers.ReadRequiredRepoText(FoxRunCodeGeneratorPath);
             var customTransportHost = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomTransportHostPath);
             var customPublisherHub = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherHubPath);
             var customPublisherBinding = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomPublisherBindingPath);
@@ -178,6 +183,7 @@ namespace Unity.FoxgloveSDK.Tests
             var r2fuPackageJson = PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuPackageJsonPath);
             var acceptanceComponent = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceComponentPath);
             var acceptancePlayerBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptancePlayerBuilderPath);
+            var acceptanceBatchProbe = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceBatchProbePath);
             var peerProtocol = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerProtocolPath);
             var peerHelper = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerHelperPath);
             var linuxPeer = PhaseValidationSourceHelpers.ReadRequiredRepoText(LinuxPeerPath);
@@ -217,6 +223,9 @@ namespace Unity.FoxgloveSDK.Tests
                 typesupportInspector,
                 managerR2fuRuntimeInspector,
                 interfaceCommand);
+            VerifyEditModeCustomContractSnapshot(
+                foxRunCodeGenerator,
+                managerR2fuRuntimeInspector);
             VerifyTypedNativeTransport(
                 customTransportHost,
                 customPublisherHub,
@@ -233,7 +242,8 @@ namespace Unity.FoxgloveSDK.Tests
                 acceptanceSampleReadme,
                 r2fuPackageJson,
                 acceptanceComponent,
-                acceptancePlayerBuilder);
+                acceptancePlayerBuilder,
+                acceptanceBatchProbe);
             VerifyInteropAutomationReleaseGate(
                 peerProtocol,
                 peerHelper,
@@ -540,17 +550,31 @@ namespace Unity.FoxgloveSDK.Tests
                   && customPublisherHub.Contains("!readiness.IsReady", StringComparison.Ordinal),
                 "181D-2: custom output demand is independent of subscription sessions and fails closed before endpoint creation");
 
-            var unsubscribe = customPublisherBinding.IndexOf("_bus.Unsubscribe", StringComparison.Ordinal);
-            var removePublisher = customPublisherBinding.IndexOf("_backend.RemovePublisher", StringComparison.Ordinal);
-            var releaseNode = customPublisherBinding.IndexOf("_backend.ReleaseNodeOwnership", StringComparison.Ordinal);
+            var stopStart = customPublisherBinding.IndexOf("internal void Stop()", StringComparison.Ordinal);
+            var stopEnd = customPublisherBinding.IndexOf("private void OnBusEnvelope", StringComparison.Ordinal);
+            var stopBody = stopStart >= 0 && stopEnd > stopStart
+                ? customPublisherBinding.Substring(stopStart, stopEnd - stopStart)
+                : string.Empty;
+            var unsubscribe = stopBody.IndexOf("_bus.Unsubscribe", StringComparison.Ordinal);
+            var detachToken = stopBody.IndexOf("Interlocked.Exchange(ref _token, null)", StringComparison.Ordinal);
+            var removePublisher = stopBody.IndexOf("TryRemovePublisher(token)", StringComparison.Ordinal);
+            var releaseNode = stopBody.IndexOf("_backend.ReleaseNodeOwnership", StringComparison.Ordinal);
+            var removeHelper = customPublisherBinding.IndexOf(
+                "private void TryRemovePublisher", StringComparison.Ordinal);
+            var backendRemove = removeHelper >= 0
+                ? customPublisherBinding.IndexOf("_backend.RemovePublisher(token)", removeHelper, StringComparison.Ordinal)
+                : -1;
             Check(customPublisherBinding.Contains("FoxTopicBus", StringComparison.Ordinal)
                   && customPublisherBinding.Contains("_bus.Subscribe", StringComparison.Ordinal)
                   && customPublisherBinding.Contains("FoxRunRos2CustomSequenceSource", StringComparison.Ordinal)
                   && customPublisherBinding.Contains("FoxRunRos2CustomOutboundMappingPolicy.CreateContext", StringComparison.Ordinal)
                   && unsubscribe >= 0
-                  && removePublisher > unsubscribe
-                  && releaseNode > removePublisher,
-                "181D-3: typed publisher unsubscribes before endpoint/node release and never reuses an origin sequence pair");
+                  && detachToken > unsubscribe
+                  && removePublisher > detachToken
+                  && releaseNode > removePublisher
+                  && backendRemove > removeHelper
+                  && customPublisherBinding.IndexOf("catch (Exception)", removeHelper, StringComparison.Ordinal) > backendRemove,
+                "181D-3: typed publisher unsubscribes, detaches its endpoint token, and protects native teardown before node release");
 
             Check(subscriptionBinding.Contains("dropBeforeApply", StringComparison.Ordinal)
                   && subscriptionBinding.Contains("SameOriginDropCount", StringComparison.Ordinal)
@@ -595,7 +619,17 @@ namespace Unity.FoxgloveSDK.Tests
                 "181E-1: metadata-only preflight has distinct bounded readiness states and no resolver or native load path");
 
             Check(inspector.Contains("Custom FoxRun ROS 2 Interface", StringComparison.Ordinal)
-                  && inspector.Contains("Select Matching Typesupport Add-On", StringComparison.Ordinal)
+                  && inspector.Contains("Install and Select Matching Typesupport Add-On", StringComparison.Ordinal)
+                  && inspector.Contains("FilterCandidatesForRuntime", StringComparison.Ordinal)
+                  && inspector.Contains("runtime.RosDistro", StringComparison.Ordinal)
+                  && inspector.Contains("runtime.Platform", StringComparison.Ordinal)
+                  && !inspector.Contains("PendingAddOnByProject", StringComparison.Ordinal)
+                  && !inspector.Contains("EditorGUILayout.Popup(\"Matching Add-On\"", StringComparison.Ordinal)
+                  && inspector.Contains("var selectionChangeBlocked = EditorApplication.isPlayingOrWillChangePlaymode", StringComparison.Ordinal)
+                  && inspector.Contains("|| EditorApplication.isCompiling", StringComparison.Ordinal)
+                  && inspector.Contains("|| EditorApplication.isUpdating", StringComparison.Ordinal)
+                  && inspector.Contains("catch (InvalidOperationException exception)", StringComparison.Ordinal)
+                  && inspector.Contains("+ exception.Message", StringComparison.Ordinal)
                   && inspector.Contains("Generate ROS2 Interface Source Package", StringComparison.Ordinal)
                   && inspector.Contains("Validate ROS2 Interface Source Package", StringComparison.Ordinal)
                   && inspector.Contains("Open ROS2 Interface Source Package", StringComparison.Ordinal)
@@ -642,13 +676,66 @@ namespace Unity.FoxgloveSDK.Tests
                 "181E-4: shared Runtime direction text includes custom native input demand and conditionally renders the custom preflight");
         }
 
+        private static void VerifyEditModeCustomContractSnapshot(
+            string foxRunCodeGenerator,
+            string managerR2fuRuntimeInspector)
+        {
+            var snapshotStart = foxRunCodeGenerator.IndexOf(
+                "internal static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> CollectCustomNativeContractsForInspector()",
+                StringComparison.Ordinal);
+            var snapshotEnd = snapshotStart >= 0
+                ? foxRunCodeGenerator.IndexOf("        public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()", snapshotStart, StringComparison.Ordinal)
+                : -1;
+            var snapshotBody = snapshotStart >= 0 && snapshotEnd > snapshotStart
+                ? foxRunCodeGenerator.Substring(snapshotStart, snapshotEnd - snapshotStart)
+                : string.Empty;
+            Check(snapshotBody.Contains("ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true)", StringComparison.Ordinal)
+                  && snapshotBody.Contains("FoxRunManifestBuilder.Build", StringComparison.Ordinal)
+                  && snapshotBody.Contains("manifest.CustomNativeContracts", StringComparison.Ordinal)
+                  && snapshotBody.Contains(".Select(ToSchemaCustomNativeContractInfo)", StringComparison.Ordinal)
+                  && snapshotBody.Contains("private static FoxRunSchemaCustomNativeContractInfo ToSchemaCustomNativeContractInfo(", StringComparison.Ordinal)
+                  && !snapshotBody.Contains("WriteManifestFiles", StringComparison.Ordinal)
+                  && !snapshotBody.Contains("WriteSchemaInfoFiles", StringComparison.Ordinal),
+                "181F-17: Edit Mode preflight derives custom contracts from the current reflection snapshot without rewriting generated schema evidence");
+
+            var sourcePackageModelStart = foxRunCodeGenerator.IndexOf(
+                "internal static FoxRunGenerationModel CollectReflectionGenerationModelForRos2InterfacePackage()",
+                StringComparison.Ordinal);
+            var sourcePackageModelEnd = sourcePackageModelStart >= 0
+                ? foxRunCodeGenerator.IndexOf(
+                    "internal static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> CollectCustomNativeContractsForInspector()",
+                    sourcePackageModelStart,
+                    StringComparison.Ordinal)
+                : -1;
+            var sourcePackageModelBody = sourcePackageModelStart >= 0 && sourcePackageModelEnd > sourcePackageModelStart
+                ? foxRunCodeGenerator.Substring(sourcePackageModelStart, sourcePackageModelEnd - sourcePackageModelStart)
+                : string.Empty;
+            Check(sourcePackageModelBody.Contains("ValidateGenerationModel(model, logWarnings: false);", StringComparison.Ordinal)
+                  && foxRunCodeGenerator.Contains(
+                      "private static void ValidateGenerationModel(FoxRunGenerationModel model, bool logWarnings = true)",
+                      StringComparison.Ordinal),
+                "181F-19: source-package validation preserves blocking diagnostics without replaying suppressible advisory warnings into the Unity Console");
+
+            Check(managerR2fuRuntimeInspector.Contains(
+                      "private static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> GetCurrentCustomNativeContractsForInspector()",
+                      StringComparison.Ordinal)
+                  && managerR2fuRuntimeInspector.Contains(
+                      "FoxrunCodeGenerator.CollectCustomNativeContractsForInspector()",
+                      StringComparison.Ordinal)
+                  && !managerR2fuRuntimeInspector.Contains(
+                      "GetGeneratedCustomNativeContracts()",
+                      StringComparison.Ordinal),
+                "181F-18: custom preflight reads the current contract snapshot instead of caching an empty stale generated-schema list");
+        }
+
         private static void VerifyAcceptanceSurface(
             string sample,
             string importedSample,
             string sampleReadme,
             string r2fuPackageJson,
             string acceptanceComponent,
-            string playerBuilder)
+            string playerBuilder,
+            string batchProbe)
         {
             Check(sample.Contains("FoxRunMode.PublishOnly", StringComparison.Ordinal)
                   && sample.Contains("FoxRunMode.SubscribeOnly", StringComparison.Ordinal)
@@ -737,6 +824,16 @@ namespace Unity.FoxgloveSDK.Tests
                       "Application.isBatchMode ? NewSceneMode.Single : NewSceneMode.Additive",
                       StringComparison.Ordinal),
                 "181F-4: acceptance builder preserves interactive scenes and creates a batch-safe bounded Player artifact below the repository build root");
+
+            Check(batchProbe.Contains("Phase181BatchModeCustomRos2InteropProbe", StringComparison.Ordinal)
+                  && batchProbe.Contains("Phase181CustomRos2InterfacePlayerBuilder.AcceptanceSceneAssetPath", StringComparison.Ordinal)
+                  && batchProbe.Contains("Application.logMessageReceived", StringComparison.Ordinal)
+                  && batchProbe.Contains("PHASE181_CUSTOM_ROS2_SAME_ORIGIN_DROPPED", StringComparison.Ordinal)
+                  && batchProbe.Contains("EditorApplication.ExitPlaymode", StringComparison.Ordinal)
+                  && batchProbe.Contains("EditorApplication.Exit", StringComparison.Ordinal)
+                  && !batchProbe.Contains("using ROS2", StringComparison.Ordinal)
+                  && !batchProbe.Contains("CreateNode", StringComparison.Ordinal),
+                "181F-19: the Batch-only Editor probe drives the tracked custom-interface scene and accepts only its bounded terminal evidence markers");
         }
 
         private static void VerifyInteropAutomationReleaseGate(

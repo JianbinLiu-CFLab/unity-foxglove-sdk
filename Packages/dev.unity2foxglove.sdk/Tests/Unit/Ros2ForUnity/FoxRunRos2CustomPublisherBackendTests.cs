@@ -7,6 +7,7 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -42,6 +43,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void PublisherBackendRefusesLatePublishWhenNativeRuntimeCloses()
+        {
+            var driver = new FakeNodeDriver();
+            var nativeRuntimeAvailable = true;
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => nativeRuntimeAvailable);
+            var publisher = owner.AcquirePublisherBackend();
+            var registration = publisher.Register<TestEnvelope>(Contract());
+
+            nativeRuntimeAvailable = false;
+
+            Assert.False(publisher.TryPublish(registration.Token, new TestEnvelope()));
+            Assert.Equal(0, driver.PublishCount);
+
+            publisher.RemovePublisher(registration.Token);
+            publisher.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
         public void InvalidPublisherTokenRollsBackTheEndpointAndFailsClosed()
         {
             var driver = new FakeNodeDriver { PublisherUsable = false };
@@ -56,6 +79,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             publisher.ReleaseNodeOwnership();
             owner.ReleaseHostOwnership();
             Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void PublisherFailureUsesTheInnermostExceptionClassWithoutLeakingItsMessage()
+        {
+            var driver = new FakeNodeDriver
+            {
+                PublisherFailure = new TargetInvocationException(
+                    new DllNotFoundException("ros2-native-path=phase181-secret"))
+            };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var publisher = owner.AcquirePublisherBackend();
+
+            var registration = publisher.Register<TestEnvelope>(Contract());
+
+            Assert.False(registration.Succeeded);
+            Assert.Equal(FoxRunRos2RegistrationError.PublisherBackendFailure, registration.Error);
+            Assert.Equal("DllNotFoundException", registration.FailureKind);
+            Assert.DoesNotContain("phase181-secret", registration.Diagnostic, StringComparison.Ordinal);
+            Assert.DoesNotContain("phase181-secret", registration.FailureKind, StringComparison.Ordinal);
+            publisher.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
         }
 
         [Fact]
@@ -118,6 +163,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public int PublishCount { get; private set; }
             public int ReleaseNodeCount { get; private set; }
             public bool PublisherUsable { get; set; } = true;
+            public Exception PublisherFailure { get; set; }
 
             public object CreateSubscription<T>(string topic, Action<T> callback, ROS2.QualityOfServiceProfile qos)
                 where T : ROS2.Message, new()
@@ -130,6 +176,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 where T : ROS2.Message, new()
             {
                 CreatePublisherCount++;
+                if (PublisherFailure != null)
+                    throw PublisherFailure;
                 return new object();
             }
 

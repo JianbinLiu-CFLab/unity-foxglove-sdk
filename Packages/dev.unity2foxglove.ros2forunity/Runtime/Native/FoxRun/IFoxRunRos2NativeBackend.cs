@@ -36,6 +36,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// </summary>
     internal static class FoxRunRos2PublicDiagnostic
     {
+        private const int MaximumFailureKindLength = 96;
+
         internal static string Describe(FoxRunRos2RegistrationError error)
         {
             switch (error)
@@ -74,6 +76,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return "The native ROS2 subscription failed.";
             }
         }
+
+        internal static string ExtractFailureKind(string diagnostic)
+        {
+            if (string.IsNullOrEmpty(diagnostic))
+                return string.Empty;
+            var separator = diagnostic.IndexOf(':');
+            var length = separator >= 0 ? separator : diagnostic.Length;
+            if (length == 0 || length > MaximumFailureKindLength)
+                return string.Empty;
+            for (var index = 0; index < length; index++)
+            {
+                var character = diagnostic[index];
+                if (!(char.IsLetterOrDigit(character) || character == '.' || character == '_'))
+                    return string.Empty;
+            }
+            return diagnostic.Substring(0, length);
+        }
     }
 
     /// <summary>Bounded, transport-independent registration outcome.</summary>
@@ -89,11 +108,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Succeeded = succeeded;
             Error = error;
             Diagnostic = FoxRunRos2PublicDiagnostic.Describe(error);
+            FailureKind = FoxRunRos2PublicDiagnostic.ExtractFailureKind(diagnostic);
         }
 
         public bool Succeeded { get; }
         public FoxRunRos2RegistrationError Error { get; }
         public string Diagnostic { get; }
+        /// <summary>Bounded exception-class hint for local diagnostics; never carries backend message text.</summary>
+        public string FailureKind { get; }
 
         public static FoxRunRos2RegistrationResult Success()
             => new FoxRunRos2RegistrationResult(true, FoxRunRos2RegistrationError.None, string.Empty);
@@ -173,13 +195,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Succeeded = succeeded;
             Token = token;
             Error = error;
-            Diagnostic = diagnostic ?? string.Empty;
+            Diagnostic = FoxRunRos2PublicDiagnostic.Describe(error);
+            FailureKind = FoxRunRos2PublicDiagnostic.ExtractFailureKind(diagnostic);
         }
 
         public bool Succeeded { get; }
         public IFoxRunRos2NativePublisherToken Token { get; }
         public FoxRunRos2RegistrationError Error { get; }
         public string Diagnostic { get; }
+        /// <summary>Bounded exception-class hint for local diagnostics; never carries backend message text.</summary>
+        public string FailureKind { get; }
 
         public static FoxRunRos2NativePublisherRegistration Success(
             IFoxRunRos2NativePublisherToken token)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
@@ -136,5 +137,61 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal("ExamplePayloadEnvelope", reparsed.Contracts[0].EnvelopeMessageName);
             Assert.Throws<FormatException>(() => FoxRunRos2InterfaceLock.Parse("{\"lockSchemaVersion\":1}"));
         }
+
+        [Fact]
+        public void LockAllowsDistinctContractsToShareOneIdenticalRosMessagePair()
+        {
+            var inbound = CreateContract("Inbound", "/example/inbound");
+            var outbound = CreateContract("Outbound", "/example/outbound");
+
+            var value = CreateLock(inbound, outbound);
+
+            Assert.Equal(2, value.Contracts.Count);
+            Assert.Single(value.Contracts.Select(contract => contract.PayloadMessageName).Distinct(StringComparer.Ordinal));
+            Assert.Single(value.Contracts.Select(contract => contract.EnvelopeMessageName).Distinct(StringComparer.Ordinal));
+            Assert.Equal(
+                FoxRunRos2InterfaceJsonWriter.WriteLock(value),
+                FoxRunRos2InterfaceJsonWriter.WriteLock(FoxRunRos2InterfaceLock.Parse(FoxRunRos2InterfaceJsonWriter.WriteLock(value))));
+        }
+
+        [Fact]
+        public void LockRejectsCaseCollidingSharedRosMessagePair()
+        {
+            var inbound = CreateContract("Inbound", "/example/inbound");
+            var outbound = new FoxRunRos2InterfaceContractLock(
+                "Example.Component",
+                "Outbound",
+                "/example/outbound",
+                "dto-canonical",
+                "examplepayload",
+                "examplepayloadenvelope",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+
+            Assert.Throws<ArgumentException>(() => CreateLock(inbound, outbound));
+        }
+
+        private static FoxRunRos2InterfaceLock CreateLock(params FoxRunRos2InterfaceContractLock[] contracts)
+            => new FoxRunRos2InterfaceLock(
+                FoxRunRos2InterfaceIdentity.LockSchemaVersion,
+                FoxRunRos2InterfaceIdentity.InterfaceSchemaVersion,
+                FoxRunRos2InterfaceIdentity.UnityPackageId,
+                FoxRunRos2InterfaceIdentity.DefaultRosPackageName,
+                1,
+                "2.0.0",
+                FoxRunRos2InterfaceIdentity.NamingPolicyVersion,
+                "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+                contracts);
+
+        private static FoxRunRos2InterfaceContractLock CreateContract(string memberName, string topic)
+            => new FoxRunRos2InterfaceContractLock(
+                "Example.Component",
+                memberName,
+                topic,
+                "dto-canonical",
+                "ExamplePayload",
+                "ExamplePayloadEnvelope",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
     }
 }

@@ -77,6 +77,22 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void AdditionalContractsReusingTheLockedDtoDoNotInvalidateStaticSourceFiles()
+        {
+            WithTempPackage((repoRoot, packageRoot) =>
+            {
+                FoxRunRos2InterfacePackageWriter.Generate(repoRoot, packageRoot, BuildModel(typeof(Phase181State)));
+
+                var result = FoxRunRos2InterfacePackagePreflight.Evaluate(
+                    packageRoot,
+                    BuildModelWithSharedDtoContracts(typeof(Phase181State)));
+
+                Assert.Equal(FoxRunRos2InterfaceSourcePreflightState.ReadyForBuild, result.State);
+                Assert.Equal(FoxRunRos2InterfaceSourcePreflightDiagnosticCode.None, result.DiagnosticCode);
+            });
+        }
+
+        [Fact]
         public void MissingMessageAndTamperedDigestAreDistinguished()
         {
             WithTempPackage((repoRoot, packageRoot) =>
@@ -116,23 +132,45 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         private static FoxRunGenerationModel BuildModel(Type dtoType)
         {
             var shape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(dtoType);
-            var member = new FoxRunGenerationMember(
+            return FoxRunGenerationModel.FromMembers(new[]
+            {
+                CreateMember(shape, "State", "/phase181/custom_state", 0)
+            });
+        }
+
+        private static FoxRunGenerationModel BuildModelWithSharedDtoContracts(Type dtoType)
+        {
+            var shape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(dtoType);
+            return FoxRunGenerationModel.FromMembers(new[]
+            {
+                CreateMember(shape, "NativePublish", "/phase181/custom/publish", 0),
+                CreateMember(shape, "NativeSubscribe", "/phase181/custom/subscribe", 1),
+                CreateMember(shape, "NativeBidirectional", "/phase181/custom/bidirectional", 2),
+            });
+        }
+
+        private static FoxRunGenerationMember CreateMember(
+            FoxRunRos2CustomDtoShape shape,
+            string memberName,
+            string topic,
+            int rawMemberOrder)
+            => new FoxRunGenerationMember(
                 typeof(Phase181CustomInterfaceFixture).Namespace,
                 nameof(Phase181CustomInterfaceFixture),
-                "State",
+                memberName,
                 "property",
-                dtoType.FullName,
+                shape.FullyQualifiedTypeName,
                 isValueType: false,
                 isArray: false,
                 elementTypeName: string.Empty,
-                topic: "/phase181/custom_state",
+                topic,
                 rateHz: 10f,
                 schemaName: string.Empty,
                 publishMode: 0,
                 changeEpsilon: 0f,
                 forceIntervalSeconds: 0f,
                 hostKind: "fixture",
-                rawMemberOrder: 0,
+                rawMemberOrder,
                 conditionalSymbols: string.Empty,
                 mode: (int)FoxRunMode.PublishAndSubscribe,
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
@@ -142,8 +180,6 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 generatesRos2NativeRegistration: true,
                 ros2CustomDtoShape: shape,
                 ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
-            return FoxRunGenerationModel.FromMembers(new[] { member });
-        }
 
         private static void WithTempPackage(Action<string, string> action)
         {

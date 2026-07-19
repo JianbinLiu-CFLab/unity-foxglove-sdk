@@ -169,12 +169,47 @@ def _target_has_only_expected_payload(target: Path, allowed: Sequence[str]) -> b
     return actual.issubset(set(allowed))
 
 
-def sync_addon(request: AddonSyncRequest) -> Path:
+def _remove_legacy_platform_managed_assembly(target: Path, allowed: Sequence[str]) -> None:
+    """Remove only the known pre-layout managed assembly and its importer metadata.
+
+    The Phase181 add-on originally placed its ros2cs managed assembly beside the
+    Windows native closure.  The repaired layout keeps that assembly directly
+    under ``Plugins/`` like the base R2FU runtime.  It is build-owned payload,
+    so a previously synced copy must not make the corrected candidate require
+    operator cleanup.  Unity-generated metadata for every other asset remains
+    untouched.
+    """
+
+    plugins_root = "Runtime/Ros2ForUnity/Plugins/"
+    managed = [
+        PurePosixPath(relative)
+        for relative in allowed
+        if relative.startswith(plugins_root)
+        and PurePosixPath(relative).parent.as_posix() == plugins_root.rstrip("/")
+        and PurePosixPath(relative).name.endswith("_assembly.dll")
+    ]
+    if len(managed) != 1:
+        raise AddonSyncError("repair-candidate-managed-assembly-layout")
+
+    legacy = target / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / managed[0].name
+    if legacy.is_file():
+        legacy.unlink()
+    legacy_meta = legacy.with_name(legacy.name + ".meta")
+    if legacy_meta.is_file():
+        legacy_meta.unlink()
+
+
+def sync_addon(
+    request: AddonSyncRequest,
+    *,
+    validator: Callable[[AddonValidationRequest], AddonValidationResult] = validate_addon,
+) -> Path:
     """Copy just the verified candidate inventory into its exact sibling package."""
 
-    allowed = verify_sync_ready(request)
+    allowed = verify_sync_ready(request, validator=validator)
     candidate = Path(request.candidate_package)
     target = Path(request.target_package)
+    _remove_legacy_platform_managed_assembly(target, allowed)
     if not _target_has_only_expected_payload(target, allowed):
         raise AddonSyncError("remove-stale-addon-payload-before-sync")
 

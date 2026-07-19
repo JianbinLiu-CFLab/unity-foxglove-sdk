@@ -17,6 +17,7 @@ the selected ROS2 distribution after the exact interface source is built.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import importlib
 import json
@@ -29,7 +30,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Mapping, Sequence
+from typing import Iterator, Mapping, Sequence
 
 import _ros2_windows_env as ros2env
 import phase181_custom_ros2_peer_protocol as protocol
@@ -49,6 +50,11 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 OWNERSHIP_MARKER_NAME = ".phase181-peer-owned"
 _OWNERSHIP_MARKER_CONTENT = "phase181-peer-workspace-v1\n"
+_PEER_BUILD_TIMEOUT_SECONDS = 600.0
+_LONGEST_WINDOWS_ROSIDL_OBJECT = (
+    "95441c87d059a3e1deffafe69425029c/"
+    "_unity2foxglove_foxrun_interfaces_v1_s.ep.rosidl_typesupport_introspection_c.c.obj"
+)
 
 
 class PeerFailure(protocol.ProtocolFailure):
@@ -73,6 +79,120 @@ class WindowsPeerToolchain:
     ros2_root: pathlib.Path
     python_executable: pathlib.Path
     colcon_executable: pathlib.Path
+
+
+def capture_windows_msvc_environment(base_environment: Mapping[str, str]) -> dict[str, str]:
+    """Capture only the discovered Visual Studio x64 build variables for the owned peer build."""
+
+    vswhere = pathlib.Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.is_file():
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Windows peer build requires the Visual Studio C++ x64 toolset.")
+    discovery = subprocess.run(
+        (
+            str(vswhere),
+            "-latest",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-property",
+            "installationPath",
+        ),
+        shell=False,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        env=dict(base_environment),
+        check=False,
+    )
+    roots = discovery.stdout.strip().splitlines()
+    if discovery.returncode != 0 or not roots:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Windows peer build requires the Visual Studio C++ x64 toolset.")
+    command = pathlib.Path(roots[0].strip()) / "Common7" / "Tools" / "VsDevCmd.bat"
+    if not command.is_file() or '"' in str(command) or "%" in str(command):
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The discovered Visual Studio x64 tool activator is not usable.")
+    command_line = (
+        f'"{os.environ.get("ComSpec", r"C:\Windows\System32\cmd.exe")}" '
+        f'/d /s /c call "{command}" -arch=x64 -host_arch=x64 >nul && set'
+    )
+    result = subprocess.run(
+        command_line,
+        shell=False,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        env=dict(base_environment),
+        check=False,
+    )
+    if result.returncode != 0:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Visual Studio x64 tool activator could not prepare a build environment.")
+    allowed_names = {
+        "DevEnvDir",
+        "Framework40Version",
+        "FrameworkDir",
+        "FrameworkDir32",
+        "FrameworkDir64",
+        "FrameworkVersion",
+        "FrameworkVersion32",
+        "FrameworkVersion64",
+        "INCLUDE",
+        "LIB",
+        "LIBPATH",
+        "NETFXSDKDir",
+        "UCRTVersion",
+        "VCIDEInstallDir",
+        "VCINSTALLDIR",
+        "VCToolsInstallDir",
+        "VCToolsRedistDir",
+        "VCToolsVersion",
+        "VisualStudioVersion",
+        "VSINSTALLDIR",
+        "WindowsLibPath",
+        "WindowsSdkBinPath",
+        "WindowsSdkDir",
+        "WindowsSDKLibVersion",
+        "WindowsSDKVersion",
+    }
+    captured: dict[str, str] = {}
+    visual_path: str | None = None
+    for line in result.stdout.splitlines():
+        if "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        if name in allowed_names:
+            captured[name] = value
+        elif name.lower() == "path":
+            visual_path = value
+    if not captured.get("INCLUDE") or not captured.get("LIB") or not visual_path:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Visual Studio x64 tool activator returned an incomplete build environment.")
+    visual_entries = [
+        entry
+        for entry in visual_path.split(os.pathsep)
+        if "microsoft visual studio" in entry.lower() or "windows kits" in entry.lower()
+    ]
+    if not visual_entries:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Visual Studio x64 tool activator returned no approved build paths.")
+    captured["PATH"] = os.pathsep.join(visual_entries)
+    return captured
+
+
+def merge_windows_peer_build_environment(
+    ros_environment: Mapping[str, str],
+    msvc_environment: Mapping[str, str],
+) -> dict[str, str]:
+    """Keep explicit ROS tool paths while adding a captured Visual Studio x64 environment."""
+
+    environment = ros2env.sanitized_subprocess_env(dict(ros_environment))
+    ros_path = environment.get("PATH", "")
+    visual_path = str(msvc_environment.get("PATH", "")).strip()
+    if not ros_path or not visual_path:
+        raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The Windows peer build environment is incomplete.")
+    environment.update(dict(msvc_environment))
+    environment["PATH"] = os.pathsep.join((visual_path, ros_path))
+    # rosidl templates are UTF-8. Do not let the host active code page choose
+    # the decoder used by the selected ROS2 Python.
+    environment["PYTHONUTF8"] = "1"
+    return environment
 
 
 def workspace_root() -> pathlib.Path:
@@ -135,6 +255,26 @@ def require_selected_typesupport_addon(repository: pathlib.Path, distro: str) ->
     if runtime not in dependencies or active != [expected]:
         raise PeerFailure("FAIL_TYPESUPPORT_SELECTION", "Unity has not selected exactly one matching custom typesupport add-on.")
     return expected
+
+
+def resolve_editor_batch_native_plugin_directories(
+    repository: pathlib.Path,
+    distro: str,
+    selected_addon: str,
+) -> tuple[pathlib.Path, pathlib.Path]:
+    """Resolve only the selected runtime and custom add-on native plugin directories below this repository."""
+
+    runtime_package = "dev.unity2foxglove.ros2forunity.runtime." + distro + ".win64"
+    expected_addon = "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport." + distro + ".win64"
+    if selected_addon != expected_addon:
+        raise PeerFailure("FAIL_TYPESUPPORT_SELECTION", "The selected custom typesupport add-on does not match the requested Editor Batch runtime.")
+    suffix = pathlib.Path("Runtime") / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
+    root = pathlib.Path(repository).resolve()
+    runtime_plugins = root / "Packages" / runtime_package / suffix
+    custom_plugins = root / "Packages" / selected_addon / suffix
+    if not runtime_plugins.is_dir() or not custom_plugins.is_dir():
+        raise PeerFailure("FAIL_EDITOR_BATCH", "The selected Unity native runtime or custom-interface plugin directory is unavailable.")
+    return runtime_plugins, custom_plugins
 
 
 def run_logged_owned_command(
@@ -370,12 +510,156 @@ def cleanup_owned_workspace(workspace: pathlib.Path, build_root: pathlib.Path) -
         raise PeerFailure("FAIL_PEER_WORKSPACE", "The owned peer workspace could not be cleaned up.") from exc
 
 
-def build_colcon_command(colcon: pathlib.Path, ros_package_name: str) -> list[str]:
+def preserve_failure_log(
+    workspace: pathlib.Path,
+    output_directory: pathlib.Path,
+    source_name: str,
+    destination_name: str,
+) -> None:
+    """Retain one owned diagnostic log below the profile build root before cleanup."""
+
+    source = pathlib.Path(workspace) / source_name
+    destination = pathlib.Path(output_directory) / destination_name
+    if not source.is_file():
+        return
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+    except OSError:
+        # The stable summary remains authoritative; diagnostics are best effort.
+        return
+
+
+def requires_short_windows_peer_workspace_alias(workspace: pathlib.Path, platform_name: str | None = None) -> bool:
+    """Return whether the projected ROSIDL native object would exceed CMake's Windows path margin."""
+
+    if (platform_name or os.name) != "nt":
+        return False
+    projected = (
+        pathlib.Path(workspace)
+        / "build"
+        / ROS_PACKAGE_NAME
+        / "CMakeFiles"
+        / (ROS_PACKAGE_NAME + "_s__rosidl_typesupport_introspection_c.dir")
+        / _LONGEST_WINDOWS_ROSIDL_OBJECT
+    )
+    return len(str(projected)) > 250
+
+
+@contextlib.contextmanager
+def temporary_short_windows_peer_workspace(workspace: pathlib.Path) -> Iterator[tuple[pathlib.Path, pathlib.Path]]:
+    """Map only a verified owned ``build`` workspace when native ROSIDL path length requires it."""
+
+    physical_workspace = pathlib.Path(workspace).resolve()
+    if not requires_short_windows_peer_workspace_alias(physical_workspace):
+        yield physical_workspace, physical_workspace
+        return
+    subst = pathlib.Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "subst.exe"
+    if not subst.is_file():
+        raise PeerFailure("FAIL_PEER_WORKSPACE", "The Windows peer build requires a short workspace alias but subst is unavailable.")
+    mapped_drive: str | None = None
+    for letter in "ZYXWVUTSRQPONMLKJIHGFED":
+        candidate = pathlib.Path(letter + ":\\")
+        if candidate.exists():
+            continue
+        result = subprocess.run(
+            (str(subst), letter + ":", str(physical_workspace)),
+            shell=False,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        if result.returncode == 0 and candidate.exists():
+            mapped_drive = letter
+            break
+    if mapped_drive is None:
+        raise PeerFailure("FAIL_PEER_WORKSPACE", "The Windows peer build could not reserve a short workspace alias.")
+    mapped_workspace = pathlib.Path(mapped_drive + ":\\")
+    try:
+        yield physical_workspace, mapped_workspace
+    finally:
+        subprocess.run(
+            (str(subst), mapped_drive + ":", "/D"),
+            shell=False,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+
+
+@contextlib.contextmanager
+def temporary_short_windows_plugin_alias(plugin_directory: pathlib.Path) -> Iterator[pathlib.Path]:
+    """Map one verified native plugin directory for the lifetime of an owned Unity child process."""
+
+    directory = pathlib.Path(plugin_directory).resolve()
+    if not directory.is_dir():
+        raise PeerFailure("FAIL_EDITOR_BATCH", "The selected native custom-interface plugin directory is unavailable.")
+    if os.name != "nt":
+        yield directory
+        return
+    subst = pathlib.Path(os.environ.get("SystemRoot", r"C:\\Windows")) / "System32" / "subst.exe"
+    if not subst.is_file():
+        raise PeerFailure("FAIL_EDITOR_BATCH", "The Unity Editor Batch native loader requires subst.exe for its short plugin path.")
+    mapped_drive: str | None = None
+    for letter in "ZYXWVUTSRQPONMLKJIHGFED":
+        candidate = pathlib.Path(letter + ":\\")
+        if candidate.exists():
+            continue
+        result = subprocess.run(
+            (str(subst), letter + ":", str(directory)),
+            shell=False,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+        if result.returncode == 0 and candidate.exists():
+            mapped_drive = letter
+            break
+    if mapped_drive is None:
+        raise PeerFailure("FAIL_EDITOR_BATCH", "The Unity Editor Batch could not reserve a short native plugin path.")
+    try:
+        yield pathlib.Path(mapped_drive + ":\\")
+    finally:
+        subprocess.run(
+            (str(subst), mapped_drive + ":", "/D"),
+            shell=False,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=False,
+        )
+
+
+def build_colcon_command(
+    colcon: pathlib.Path,
+    ros_package_name: str,
+) -> list[str]:
     """Build only the locked interface package with an explicit colcon executable."""
 
     if not ros_package_name or "/" in ros_package_name or "\\" in ros_package_name:
         raise PeerFailure("FAIL_PEER_SOURCE", "The ROS package name is not safe for an explicit colcon selection.")
     return [str(pathlib.Path(colcon)), "build", "--merge-install", "--packages-select", ros_package_name]
+
+
+def build_windows_colcon_command(
+    colcon: pathlib.Path,
+    ros_package_name: str,
+    python_executable: pathlib.Path,
+) -> list[str]:
+    """Build the locked interface package with the Windows ROS2 native toolchain contract."""
+
+    return [
+        *build_colcon_command(colcon, ros_package_name),
+        "--cmake-args",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DPython3_EXECUTABLE=" + pathlib.Path(python_executable).as_posix(),
+        "-DPYTHON_EXECUTABLE=" + pathlib.Path(python_executable).as_posix(),
+    ]
 
 
 def stage_locked_ros_source(
@@ -493,6 +777,23 @@ def build_player_environment(
     return env
 
 
+def build_editor_batch_environment(
+    source: Mapping[str, str],
+    runtime_plugins: pathlib.Path,
+    custom_plugin_alias: pathlib.Path,
+) -> dict[str, str]:
+    """Put the short custom native-plugin alias before the selected runtime and ROS loader paths."""
+
+    env = ros2env.sanitized_subprocess_env(dict(source))
+    existing_path = env.get("PATH", "")
+    env["PATH"] = os.pathsep.join(
+        entry
+        for entry in (str(pathlib.Path(custom_plugin_alias)), str(pathlib.Path(runtime_plugins)), existing_path)
+        if entry
+    )
+    return env
+
+
 def build_player_command(
     player: pathlib.Path,
     player_log: pathlib.Path,
@@ -518,11 +819,38 @@ def build_player_command(
     ]
 
 
+def build_editor_batch_command(
+    editor: pathlib.Path,
+    project: pathlib.Path,
+    editor_log: pathlib.Path,
+) -> list[str]:
+    """Build a direct Editor Batch argv that lets the Phase181 probe own its terminal exit."""
+
+    return [
+        str(pathlib.Path(editor)),
+        "-batchmode",
+        "-nographics",
+        "-projectPath",
+        str(pathlib.Path(project)),
+        "-executeMethod",
+        "Phase181BatchModeCustomRos2InteropProbe.Run",
+        "-logFile",
+        str(pathlib.Path(editor_log)),
+    ]
+
+
 def require_player_exit_code(exit_code: int | None) -> None:
     """Accept only the Player's explicit zero success exit after terminal proof."""
 
     if exit_code != 0:
         raise PeerFailure("FAIL_PLAYER_EXIT", "The Player did not exit with its required zero success code.")
+
+
+def require_editor_batch_exit_code(exit_code: int | None) -> None:
+    """Accept only the Batch probe's explicit zero exit after its complete evidence dwell."""
+
+    if exit_code != 0:
+        raise PeerFailure("FAIL_EDITOR_BATCH_EXIT", "The Unity Editor Batch probe did not exit with its required zero success code.")
 
 
 def build_worker_command(
@@ -644,6 +972,21 @@ def can_complete_live_evidence(evidence: Mapping[str, object], probe_role: str =
     completion_view = dict(evidence)
     completion_view["cleanStop"] = True
     return classify_evidence(completion_view, probe_role) == "PASS"
+
+
+def should_publish_final_bidirectional_probe(
+    *,
+    requires_bidirectional: bool,
+    same_origin_dropped: bool,
+    remote_origin_applied: bool,
+    now: float,
+    next_publish_time: float | None,
+) -> bool:
+    """Keep the final nullable probe live until Unity proves the post-replay apply."""
+
+    if not requires_bidirectional or not same_origin_dropped or remote_origin_applied:
+        return False
+    return next_publish_time is None or now >= next_publish_time
 
 
 def has_role_transport_evidence(evidence: Mapping[str, object], probe_role: str) -> bool:
@@ -926,6 +1269,98 @@ def external_endpoint_has_reliability(
     return False
 
 
+def evaluate_graph_evidence(
+    publish_publishers,
+    subscribe_subscriptions,
+    bidirectional_publishers,
+    bidirectional_subscriptions,
+    node_name: str,
+    expected_type: str,
+    expected_reliability: int,
+    requires_outbound: bool,
+    requires_bidirectional: bool,
+) -> dict[str, bool]:
+    """Return bounded, per-direction graph evidence without exposing endpoint identities."""
+
+    checks = {
+        "subscribeReliable": external_endpoint_has_reliability(
+            subscribe_subscriptions,
+            node_name,
+            expected_type,
+            expected_reliability,
+        ),
+    }
+    if requires_outbound:
+        checks["publishPublisher"] = _external_endpoint_exists(
+            publish_publishers,
+            node_name,
+            expected_type,
+        )
+    if requires_bidirectional:
+        checks["bidirectionalPublisher"] = _external_endpoint_exists(
+            bidirectional_publishers,
+            node_name,
+            expected_type,
+        )
+        checks["bidirectionalReliable"] = external_endpoint_has_reliability(
+            bidirectional_subscriptions,
+            node_name,
+            expected_type,
+            expected_reliability,
+        )
+    return checks
+
+
+def summarize_graph_endpoints(
+    infos,
+    node_name: str,
+    expected_type: str,
+    expected_reliability: int,
+) -> dict[str, int]:
+    """Return bounded endpoint counts that distinguish discovery delay from mismatch."""
+
+    summary = {
+        "total": 0,
+        "matchingType": 0,
+        "externalMatchingType": 0,
+        "externalMatchingReliable": 0,
+    }
+    for info in infos:
+        summary["total"] += 1
+        if getattr(info, "topic_type", "") != expected_type:
+            continue
+        summary["matchingType"] += 1
+        if getattr(info, "node_name", "") == node_name:
+            continue
+        summary["externalMatchingType"] += 1
+        qos = getattr(info, "qos_profile", None)
+        reliability = getattr(qos, "reliability", None)
+        try:
+            actual = int(getattr(reliability, "value", reliability))
+        except (TypeError, ValueError):
+            continue
+        if actual == int(getattr(expected_reliability, "value", expected_reliability)):
+            summary["externalMatchingReliable"] += 1
+    return summary
+
+
+def merge_graph_observations(
+    observed: dict[str, bool],
+    current: dict[str, bool],
+) -> dict[str, bool]:
+    """Accumulate positive graph observations for one bounded peer run.
+
+    Unity intentionally exits after its proof dwell.  Endpoint discovery evidence
+    gathered while it was alive remains evidence for that same correlated run;
+    a later post-exit query must not erase it.
+    """
+
+    return {
+        name: bool(observed.get(name, False)) or bool(current.get(name, False))
+        for name in current
+    }
+
+
 def _worker_result_base(lock: StaticInterfaceLock, verdict: str, **values: object) -> dict[str, object]:
     """Return summary-safe worker evidence without exposing raw process commands."""
 
@@ -998,7 +1433,8 @@ def run_typed_worker(args: argparse.Namespace) -> int:
     first_inbound_sent = False
     first_bidirectional_sent = False
     replay_sent = False
-    final_bidirectional_sent = False
+    next_final_bidirectional_publish_time: float | None = None
+    final_bidirectional_send_count = 0
     next_publish_time = 0.0
     observed_outbound_messages: set[int] = set()
     observed_bidirectional_messages: set[int] = set()
@@ -1017,6 +1453,7 @@ def run_typed_worker(args: argparse.Namespace) -> int:
         "sameOriginDropped": False,
         "remoteOriginApplied": False,
         "nullableEmptyObserved": False,
+        "finalBidirectionalSends": 0,
         "unityTerminalPass": False,
         "cleanStop": False,
     }
@@ -1050,30 +1487,37 @@ def run_typed_worker(args: argparse.Namespace) -> int:
             subscribe_subscriptions = node.get_subscriptions_info_by_topic(DEFAULT_TOPICS["subscribe"])
             bidirectional_publishers = node.get_publishers_info_by_topic(DEFAULT_TOPICS["bidirectional"])
             bidirectional_subscriptions = node.get_subscriptions_info_by_topic(DEFAULT_TOPICS["bidirectional"])
-            graph_checks = [
-                external_endpoint_has_reliability(
-                    subscribe_subscriptions,
-                    node.get_name(),
-                    expected_type,
-                    ReliabilityPolicy.RELIABLE,
+            graph_checks = evaluate_graph_evidence(
+                publish_publishers,
+                subscribe_subscriptions,
+                bidirectional_publishers,
+                bidirectional_subscriptions,
+                node.get_name(),
+                expected_type,
+                ReliabilityPolicy.RELIABLE,
+                requires_outbound,
+                requires_bidirectional,
+            )
+            observed_graph_checks = merge_graph_observations(
+                evidence.get("graphChecks", {}),
+                graph_checks,
+            )
+            evidence["graphEvidence"] = bool(all(observed_graph_checks.values()))
+            evidence["graphChecks"] = observed_graph_checks
+            evidence["graphEndpointCounts"] = {
+                "publish": summarize_graph_endpoints(
+                    publish_publishers, node.get_name(), expected_type, ReliabilityPolicy.RELIABLE
                 ),
-            ]
-            if requires_outbound:
-                graph_checks.append(_external_endpoint_exists(publish_publishers, node.get_name(), expected_type))
-            if requires_bidirectional:
-                graph_checks.extend(
-                    (
-                        _external_endpoint_exists(bidirectional_publishers, node.get_name(), expected_type),
-                        external_endpoint_has_reliability(
-                            bidirectional_subscriptions,
-                            node.get_name(),
-                            expected_type,
-                            ReliabilityPolicy.RELIABLE,
-                        ),
-                    )
-                )
-            external_graph = all(graph_checks)
-            evidence["graphEvidence"] = bool(external_graph)
+                "subscribe": summarize_graph_endpoints(
+                    subscribe_subscriptions, node.get_name(), expected_type, ReliabilityPolicy.RELIABLE
+                ),
+                "bidirectionalPublish": summarize_graph_endpoints(
+                    bidirectional_publishers, node.get_name(), expected_type, ReliabilityPolicy.RELIABLE
+                ),
+                "bidirectionalSubscribe": summarize_graph_endpoints(
+                    bidirectional_subscriptions, node.get_name(), expected_type, ReliabilityPolicy.RELIABLE
+                ),
+            }
 
             now = time.monotonic()
             subscribe_applied = _matching_marker(
@@ -1162,7 +1606,13 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                 DEFAULT_TOPICS["bidirectional"],
             ) is not None
             evidence["sameOriginDropped"] = bool(same_origin_dropped)
-            if requires_bidirectional and same_origin_dropped and not final_bidirectional_sent:
+            if should_publish_final_bidirectional_probe(
+                requires_bidirectional=requires_bidirectional,
+                same_origin_dropped=same_origin_dropped,
+                remote_origin_applied=evidence["remoteOriginApplied"] is True,
+                now=now,
+                next_publish_time=next_final_bidirectional_publish_time,
+            ):
                 bidirectional_publisher.publish(
                     _make_envelope(
                         node,
@@ -1175,7 +1625,9 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                     )
                 )
                 sequence += 1
-                final_bidirectional_sent = True
+                final_bidirectional_send_count += 1
+                evidence["finalBidirectionalSends"] = final_bidirectional_send_count
+                next_final_bidirectional_publish_time = now + 0.75
 
             nullable_echo = next(
                 (
@@ -1239,7 +1691,11 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                 terminal_error = PeerFailure(classify_evidence(evidence, probe_role), "The typed custom envelope proof did not complete.")
     except PeerFailure as exc:
         terminal_error = exc
+    except protocol.ProtocolFailure as exc:
+        print("FAIL_PEER_PROTOCOL code=" + exc.code, file=sys.stderr)
+        terminal_error = PeerFailure(exc.code, "The typed peer rejected one bounded protocol invariant.")
     except Exception as exc:  # noqa: BLE001 - a peer must return a bounded failure instead of leaking a stack into summary.
+        print("FAIL_PEER_RUNTIME exception=" + type(exc).__name__, file=sys.stderr)
         terminal_error = PeerFailure("FAIL_PEER_RUNTIME", "The typed worker stopped before completing its bounded probe.")
     finally:
         teardown_failed = False
@@ -1318,6 +1774,12 @@ def _require_positive_timeout(value: float, name: str) -> float:
     return value
 
 
+def peer_build_timeout_seconds() -> float:
+    """Return the bounded cold-build allowance, independent from Unity readiness."""
+
+    return _PEER_BUILD_TIMEOUT_SECONDS
+
+
 def _terminate_owned_child(process: subprocess.Popen[str]) -> None:
     """Terminate just one helper-created process tree on the current host."""
 
@@ -1347,6 +1809,17 @@ def _require_player_path(player: pathlib.Path | None) -> pathlib.Path:
     candidate = pathlib.Path(player)
     if not candidate.is_absolute() or not candidate.is_file():
         raise PeerFailure("FAIL_PLAYER_BUILD", "The Windows Player path must identify an existing absolute executable.")
+    return candidate.resolve()
+
+
+def _require_unity_editor_path(editor: pathlib.Path | None) -> pathlib.Path:
+    """Accept one explicit installed Unity Editor executable for a helper-owned Batch process."""
+
+    if editor is None:
+        raise PeerFailure("FAIL_EDITOR_BATCH", "Editor Batch acceptance requires an explicit Unity Editor executable path.")
+    candidate = pathlib.Path(editor)
+    if not candidate.is_absolute() or not candidate.is_file():
+        raise PeerFailure("FAIL_EDITOR_BATCH", "The Unity Editor path must identify an existing absolute executable.")
     return candidate.resolve()
 
 
@@ -1395,11 +1868,15 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
     workspace: pathlib.Path | None = None
     worker_process: subprocess.Popen[str] | None = None
     player_process: subprocess.Popen[str] | None = None
+    editor_process: subprocess.Popen[str] | None = None
+    editor_plugin_alias_stack = contextlib.ExitStack()
     worker_stream = None
     exit_code = 1
     try:
         if args.workspace is not None:
             raise PeerFailure("FAIL_PEER_WORKSPACE", "The profile helper owns its peer workspace and does not accept an external workspace.")
+        if args.unity_batch and surface != "editor":
+            raise PeerFailure("FAIL_ARGUMENTS", "Unity Editor Batch acceptance is valid only for the Editor surface.")
         ready_timeout = _require_positive_timeout(args.ready_timeout_seconds, "The Unity readiness timeout")
         apply_timeout = _require_positive_timeout(args.apply_timeout_seconds, "The Unity apply timeout")
         if args.rmw == "rmw_zenoh_cpp" and not args.zenoh_topology_id:
@@ -1420,7 +1897,16 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
                 "interfaceDigestPrefix": protocol.digest_prefix(lock.interface_digest),
             }
         )
-        summary["selectedTypesupportAddon"] = require_selected_typesupport_addon(repository, args.distro)
+        selected_addon = require_selected_typesupport_addon(repository, args.distro)
+        summary["selectedTypesupportAddon"] = selected_addon
+        editor_runtime_plugins: pathlib.Path | None = None
+        editor_custom_plugins: pathlib.Path | None = None
+        if args.unity_batch:
+            editor_runtime_plugins, editor_custom_plugins = resolve_editor_batch_native_plugin_directories(
+                repository,
+                args.distro,
+                selected_addon,
+            )
 
         ros2_root = pathlib.Path(args.ros2_root or ros2env.default_ros2_root(args.distro, repository))
         toolchain = resolve_windows_peer_toolchain(ros2_root)
@@ -1439,7 +1925,6 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
         )
         summary["typesupportPreflight"] = "passed"
 
-        stage_locked_ros_source(static_package, workspace, lock.ros_package_name)
         build_environment = ros2env.build_ros_env(
             toolchain.ros2_root,
             args.rmw,
@@ -1447,19 +1932,29 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             str(args.domain_id),
             args.distro,
         )
-        colcon_command = build_colcon_command(toolchain.colcon_executable, lock.ros_package_name)
+        build_environment = merge_windows_peer_build_environment(
+            build_environment,
+            capture_windows_msvc_environment(build_environment),
+        )
+        colcon_command = build_windows_colcon_command(
+            toolchain.colcon_executable,
+            lock.ros_package_name,
+            toolchain.python_executable,
+        )
         summary["commandLabels"] = {
             **summary["commandLabels"],
             "colcon": protocol.bounded_command_label(colcon_command),
         }
-        run_logged_owned_command(
-            colcon_command,
-            cwd=workspace,
-            env=build_environment,
-            log_path=workspace / "colcon-build.log",
-            timeout_seconds=min(300.0, ready_timeout),
-            failure_code="FAIL_PEER_BUILD",
-        )
+        with temporary_short_windows_peer_workspace(workspace) as (_, build_workspace):
+            stage_locked_ros_source(static_package, build_workspace, lock.ros_package_name)
+            run_logged_owned_command(
+                colcon_command,
+                cwd=build_workspace,
+                env=build_environment,
+                log_path=workspace / "colcon-build.log",
+                timeout_seconds=peer_build_timeout_seconds(),
+                failure_code="FAIL_PEER_BUILD",
+            )
 
         peer_environment = build_peer_environment(
             build_environment,
@@ -1471,6 +1966,8 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             topology_id=args.zenoh_topology_id or None,
         )
         run_token = "phase181-peer-" + uuid.uuid4().hex
+        editor_command: list[str] | None = None
+        editor_environment: dict[str, str] | None = None
         if surface == "player":
             player = _require_player_path(args.player)
             unity_log = pathlib.Path(args.player_log or output_directory / "windows-player.log")
@@ -1507,7 +2004,27 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             }
             worker_role = "windows-player"
         else:
-            unity_log = pathlib.Path(args.unity_log or default_unity_editor_log_path())
+            if args.unity_batch:
+                editor = _require_unity_editor_path(args.unity_editor)
+                unity_log = pathlib.Path(args.unity_log or output_directory / "unity-editor-batch.log")
+                unity_log.parent.mkdir(parents=True, exist_ok=True)
+                editor_command = build_editor_batch_command(editor, repository / "Unity2Foxglove", unity_log)
+                editor_environment = build_player_environment(
+                    build_environment,
+                    distro=args.distro,
+                    rmw=args.rmw,
+                    domain_id=args.domain_id,
+                    interface_revision=lock.interface_revision,
+                    interface_digest=lock.interface_digest,
+                    topology_id=args.zenoh_topology_id or None,
+                    discovery_range=args.discovery_range,
+                )
+                summary["commandLabels"] = {
+                    **summary["commandLabels"],
+                    "unityBatch": protocol.bounded_command_label(editor_command),
+                }
+            else:
+                unity_log = pathlib.Path(args.unity_log or default_unity_editor_log_path())
             unity_log_offset = protocol.log_offset(unity_log)
             worker_role = "windows-local-editor"
 
@@ -1534,11 +2051,19 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             "worker": protocol.bounded_command_label(worker_command),
         }
         if surface == "editor":
-            print(
-                "[phase181:" + profile_id + "] Repo-local custom String envelope peer is waiting for its Unity subscription "
-                + "for up to " + format(ready_timeout, "g") + " seconds; enter Play Mode now.",
-                flush=True,
-            )
+            if args.unity_batch:
+                if editor_command is None or editor_environment is None:
+                    raise PeerFailure("FAIL_EDITOR_BATCH", "The owned Unity Editor Batch launch was not prepared.")
+                print(
+                    "[phase181:" + profile_id + "] Starting the owned Unity Editor Batch probe after the peer worker.",
+                    flush=True,
+                )
+            else:
+                print(
+                    "[phase181:" + profile_id + "] Repo-local custom String envelope peer is waiting for its Unity subscription "
+                    + "for up to " + format(ready_timeout, "g") + " seconds; enter Play Mode now.",
+                    flush=True,
+                )
         worker_log_path = workspace / "peer-worker.log"
         worker_stream = worker_log_path.open("w", encoding="utf-8", errors="replace")
         worker_process = subprocess.Popen(
@@ -1555,11 +2080,46 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             **summary["processOwnership"],
             "workerPid": worker_process.pid,
         }
-        try:
-            worker_exit = worker_process.wait(timeout=ready_timeout + apply_timeout + 30.0)
-        except subprocess.TimeoutExpired as exc:
-            _terminate_owned_child(worker_process)
-            raise PeerFailure("FAIL_WORKER_TIMEOUT", "The helper-owned custom ROS2 peer exceeded its bounded acceptance window.") from exc
+        if surface == "editor" and args.unity_batch:
+            if editor_runtime_plugins is None or editor_custom_plugins is None:
+                raise PeerFailure("FAIL_EDITOR_BATCH", "The selected Unity native plugin directories were not prepared.")
+            custom_plugin_alias = editor_plugin_alias_stack.enter_context(
+                temporary_short_windows_plugin_alias(editor_custom_plugins)
+            )
+            editor_environment = build_editor_batch_environment(
+                editor_environment,
+                editor_runtime_plugins,
+                custom_plugin_alias,
+            )
+            editor_process = subprocess.Popen(
+                editor_command,
+                cwd=str(repository),
+                env=editor_environment,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                shell=False,
+                **worker_launch_options(),
+            )
+            summary["processOwnership"] = {
+                **summary["processOwnership"],
+                "unityBatchPid": editor_process.pid,
+            }
+        worker_deadline = time.monotonic() + ready_timeout + apply_timeout + 30.0
+        while worker_process.poll() is None:
+            if editor_process is not None:
+                editor_exit = editor_process.poll()
+                if editor_exit is not None and editor_exit != 0:
+                    raise PeerFailure(
+                        "FAIL_EDITOR_BATCH_EXIT",
+                        "The Unity Editor Batch probe stopped before the custom ROS2 peer completed.",
+                    )
+            remaining = worker_deadline - time.monotonic()
+            if remaining <= 0.0:
+                _terminate_owned_child(worker_process)
+                raise PeerFailure("FAIL_WORKER_TIMEOUT", "The helper-owned custom ROS2 peer exceeded its bounded acceptance window.")
+            time.sleep(min(0.1, remaining))
+        worker_exit = worker_process.returncode
         worker_result = read_successful_worker_result(worker_result_path, lock)
         if worker_exit != 0:
             raise PeerFailure("FAIL_WORKER_EXIT", "The typed worker reported PASS but returned a nonzero operating-system exit code.")
@@ -1571,6 +2131,17 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
                 raise PeerFailure("FAIL_PLAYER_EXIT", "The Player emitted peer evidence but did not exit after its terminal marker.") from exc
             summary["playerExitCode"] = player_exit
             require_player_exit_code(player_exit)
+        if editor_process is not None:
+            try:
+                editor_exit = editor_process.wait(timeout=30.0)
+            except subprocess.TimeoutExpired as exc:
+                _terminate_owned_child(editor_process)
+                raise PeerFailure(
+                    "FAIL_EDITOR_BATCH_EXIT",
+                    "The Unity Editor Batch probe emitted peer evidence but did not exit after its terminal dwell.",
+                ) from exc
+            summary["unityBatchExitCode"] = editor_exit
+            require_editor_batch_exit_code(editor_exit)
         summary["unityMarkerOffsets"] = {
             "start": unity_log_offset,
             "end": worker_result.get("markerOffsetEnd"),
@@ -1589,9 +2160,17 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             _terminate_owned_child(worker_process)
         if player_process is not None and player_process.poll() is None:
             _terminate_owned_child(player_process)
+        if editor_process is not None and editor_process.poll() is None:
+            _terminate_owned_child(editor_process)
+        editor_plugin_alias_stack.close()
         if worker_stream is not None:
             worker_stream.close()
         if workspace is not None:
+            if failure is not None:
+                preserve_failure_log(workspace, output_directory, "colcon-build.log", "peer-build-failure.log")
+                preserve_failure_log(workspace, output_directory, "typesupport-preflight.log", "typesupport-preflight-failure.log")
+                preserve_failure_log(workspace, output_directory, "peer-worker.log", "peer-worker-failure.log")
+                preserve_failure_log(workspace, output_directory, "worker-result.json", "peer-worker-result-failure.json")
             try:
                 cleanup_owned_workspace(workspace, repository / "build" / "phase181")
             except PeerFailure as cleanup_error:
@@ -1631,6 +2210,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--colcon", type=pathlib.Path)
     parser.add_argument("--static-interface-package", type=pathlib.Path)
     parser.add_argument("--unity-log", type=pathlib.Path)
+    parser.add_argument("--unity-batch", action="store_true", help="Launch an owned Unity Editor Batch probe for the Editor surface.")
+    parser.add_argument("--unity-editor", type=pathlib.Path, help="Absolute Unity.exe path required with --unity-batch.")
     parser.add_argument("--player", type=pathlib.Path)
     parser.add_argument("--player-log", type=pathlib.Path)
     parser.add_argument("--unity-log-offset", type=int, default=0)

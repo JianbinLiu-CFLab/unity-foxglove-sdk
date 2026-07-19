@@ -446,7 +446,14 @@ def _validate_managed_payload(
         expected_name="unity2foxglove_foxrun_interfaces_v1_assembly",
         remediation="repair-managed-typesupport-payload",
     )
-    if not assembly_path.name.endswith(".dll"):
+    expected_assembly_path = (
+        addon_root
+        / "Runtime"
+        / "Ros2ForUnity"
+        / "Plugins"
+        / "unity2foxglove_foxrun_interfaces_v1_assembly.dll"
+    )
+    if assembly_path != expected_assembly_path:
         raise AddonValidationError("repair-managed-typesupport-payload")
     type_map = managed.get("typeMap")
     if not isinstance(type_map, list) or not type_map:
@@ -571,6 +578,15 @@ def _validate_native_payload(
             path.relative_to(add_on_native_root)
         except ValueError as exc:
             raise AddonValidationError("repair-native-typesupport-closure") from exc
+        meta = path.with_name(path.name + ".meta")
+        if not meta.is_file() or not _has_restricted_windows_plugin_importer(
+            meta.read_text(encoding="utf-8", errors="replace")
+        ):
+            # Native typesupport is loaded by Unity's plugin loader, not by the
+            # managed assembly resolver.  A complete DLL closure without this
+            # importer contract reaches ros2cs but fails at the first native
+            # symbol lookup.
+            raise AddonValidationError("repair-native-plugin-importer")
         listed_paths.add(path.resolve())
 
     _validate_pe_dependency_closure(listed_paths, add_on_native_root, base_native_root)

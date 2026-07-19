@@ -95,6 +95,26 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void CustomNullableNestedDtoMapsToASerializableDefaultRosValueWhenAbsent()
+        {
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Phase181",
+                "CustomStateSource",
+                new[] { CreateCustomMember() });
+
+            // ros2cs writes every nested ROS member through its managed wrapper,
+            // even when the adjacent FoxRun presence bit is false.  Keep the
+            // wire-level null distinction in Foxrun_has_nested while retaining
+            // a concrete wrapper that the generated native writer can marshal.
+            Assert.Contains(
+                "target.Nested = source.Nested == null ? new global::unity2foxglove_foxrun_interfaces_v1.msg.Phase181NestedState3281D0E21244() : __FoxRunRos2CustomNested_1MapDtoToPayload_0(source.Nested, budget);",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains("target.Foxrun_has_nested = source.Nested != null;", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("target.Nested = source.Nested == null ? null :", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CustomSubscribeOnlyContractDoesNotEmitASecondNativePublisherSource()
         {
             var source = FoxgloveSourceEmitter.EmitClass(

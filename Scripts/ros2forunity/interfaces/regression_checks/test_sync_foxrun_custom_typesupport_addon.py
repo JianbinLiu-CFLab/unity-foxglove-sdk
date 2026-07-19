@@ -12,11 +12,15 @@ from Scripts.ros2forunity.interfaces.sync_foxrun_custom_typesupport_addon import
     AddonSyncError,
     AddonSyncRequest,
     allowed_inventory_paths,
+    sync_addon,
     verify_sync_ready,
 )
 from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     AddonValidationRequest,
     compute_static_interface_digest,
+)
+from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
+    MANAGED_ASSEMBLY_FILE,
 )
 
 
@@ -36,6 +40,7 @@ class CustomTypesupportSyncTests(unittest.TestCase):
                 (
                     "LICENSE",
                     "package.json",
+                    "Runtime/Ros2ForUnity/Plugins/" + MANAGED_ASSEMBLY_FILE,
                     "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll",
                     "RuntimeSupport/typesupport-inventory.json",
                     "RuntimeSupport/typesupport-manifest.json",
@@ -49,6 +54,33 @@ class CustomTypesupportSyncTests(unittest.TestCase):
             (fixture.candidate / "unexpected.dll").write_bytes(b"unexpected")
             with self.assertRaises(AddonSyncError):
                 verify_sync_ready(fixture.request, validator=lambda _request: None)
+
+    def test_sync_replaces_only_the_legacy_platform_managed_assembly(self) -> None:
+        """Verify an old layout cannot block the repaired managed assembly layout."""
+        with self._fixture(validated=True) as fixture:
+            legacy = (
+                fixture.target
+                / "Runtime/Ros2ForUnity/Plugins/Windows/x86_64"
+                / MANAGED_ASSEMBLY_FILE
+            )
+            legacy.parent.mkdir(parents=True)
+            legacy.write_bytes(b"legacy")
+            legacy.with_name(legacy.name + ".meta").write_text("legacy meta\n", encoding="utf-8")
+            generated_meta = fixture.target / "Runtime.meta"
+            generated_meta.write_text("unity generated meta\n", encoding="utf-8")
+
+            sync_addon(fixture.request, validator=lambda _request: None)
+
+            self.assertFalse(legacy.exists())
+            self.assertFalse(legacy.with_name(legacy.name + ".meta").exists())
+            self.assertTrue(
+                (
+                    fixture.target
+                    / "Runtime/Ros2ForUnity/Plugins"
+                    / MANAGED_ASSEMBLY_FILE
+                ).is_file()
+            )
+            self.assertTrue(generated_meta.is_file())
 
     def _fixture(self, *, validated: bool = False) -> "_Fixture":
         """Implement the internal fixture step."""
@@ -84,6 +116,7 @@ class _Fixture:
         self.candidate.mkdir(parents=True)
         expected = (
             "LICENSE",
+            "Runtime/Ros2ForUnity/Plugins/" + MANAGED_ASSEMBLY_FILE,
             "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll",
             "RuntimeSupport/typesupport-manifest.json",
             "package.json",

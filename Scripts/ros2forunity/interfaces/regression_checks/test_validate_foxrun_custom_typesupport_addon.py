@@ -87,6 +87,39 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
             fixture.manifest_at(("managed", "typeMap", 0, "managedType"), "other.Message")
             fixture.refresh_inventory()
             self._assert_invalid(fixture)
+        with self.subTest("managed assembly nested with native plugins"), self._fixture() as fixture:
+            source = fixture.addon / "Runtime/Ros2ForUnity/Plugins/unity2foxglove_foxrun_interfaces_v1_assembly.dll"
+            target = fixture.addon / "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_assembly.dll"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            source.replace(target)
+            fixture.manifest_at(
+                ("managed", "assembly", "path"),
+                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_assembly.dll",
+            )
+            fixture.manifest_at(
+                ("managed", "assembly", "sha256"),
+                _sha256(target),
+            )
+            fixture.manifest_at(
+                ("managed", "pluginImporter", "metaPath"),
+                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_assembly.dll.meta",
+            )
+            fixture.write(
+                "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/unity2foxglove_foxrun_interfaces_v1_assembly.dll.meta",
+                _plugin_importer_meta(),
+            )
+            fixture.refresh_inventory()
+            self._assert_invalid(fixture)
+
+    def test_native_plugin_importer_is_required_for_every_native_library(self) -> None:
+        """Reject a native typesupport closure that Unity cannot load as a plugin."""
+        with self._fixture() as fixture:
+            native_meta = fixture.addon / "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll.meta"
+            native_meta.unlink()
+            fixture.refresh_inventory()
+
+            with self.assertRaisesRegex(AddonValidationError, "repair-native-plugin-importer"):
+                validate_addon(fixture.request)
         with self.subTest("native library outside plugin root"), self._fixture() as fixture:
             fixture.write("Runtime/other.dll", b"native")
             fixture.manifest_at(("nativeLibraries", 0, "path"), "Runtime/other.dll")
@@ -243,6 +276,10 @@ class _Fixture:
         self.write(
             "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll",
             b"custom-native",
+        )
+        self.write(
+            "Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll.meta",
+            _plugin_importer_meta(),
         )
         self.write(
             "Runtime/Ros2ForUnity/Plugins/unity2foxglove_foxrun_interfaces_v1_assembly.dll",

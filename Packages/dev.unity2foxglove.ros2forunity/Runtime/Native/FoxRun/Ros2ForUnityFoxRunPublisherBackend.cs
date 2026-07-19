@@ -92,7 +92,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public bool TryPublish<T>(IFoxRunRos2NativePublisherToken token, T message)
             where T : ROS2.Message, new()
         {
-            if (Volatile.Read(ref _released) != 0 || message == null)
+            if (Volatile.Read(ref _released) != 0 || message == null || !_canUseNativeRuntime())
                 return false;
             return token is PublisherToken<T> owned && owned.TryPublish(message);
         }
@@ -113,7 +113,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         private static string Describe(Exception exception)
-            => exception.GetType().Name + ": " + exception.Message;
+        {
+            var cause = exception;
+            for (var depth = 0; depth < 4 && cause.InnerException != null; depth++)
+                cause = cause.InnerException;
+            return cause.GetType().Name + ": " + cause.Message;
+        }
 
         private interface IPublisherToken : IFoxRunRos2NativePublisherToken
         {

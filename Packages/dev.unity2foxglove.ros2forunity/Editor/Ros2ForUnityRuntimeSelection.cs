@@ -676,8 +676,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
 
             var code = result == null ? "Unknown" : result.Code.ToString();
+            var candidateValidation = result == null
+                || result.CandidateValidationCode == Ros2ForUnityCustomTypesupportCandidateValidationCode.None
+                ? string.Empty
+                : " / " + result.CandidateValidationCode;
             throw new InvalidOperationException(
-                "FoxRun custom ROS2 typesupport preflight failed while " + operation + ": " + code + ".");
+                "FoxRun custom ROS2 typesupport preflight failed while " + operation + ": " + code + candidateValidation + ".");
         }
 
         private static string NormalizeRestartPath(string path)

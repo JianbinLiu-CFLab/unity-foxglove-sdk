@@ -72,9 +72,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.Ready, result.Code);
             Assert.Equal(addOn, result.ActiveAddOnPackage);
             Assert.Equal(
-                new[] { addOn, fixture.HumbleRuntimePackage },
+                new[] { fixture.StaticInterfacePackage, addOn, fixture.HumbleRuntimePackage },
                 fixture.ManifestDependencyNames());
             Assert.Equal(originalLock, File.ReadAllText(fixture.PackagesLockPath));
+        }
+
+        [Fact]
+        public void UnityLikeReadWriteHandleDoesNotInvalidateMatchingAddOn()
+        {
+            using var fixture = new SelectionFixture();
+            var addOn = fixture.WriteAddOn("humble", valid: true);
+            fixture.WriteManifest(fixture.HumbleRuntimePackage);
+
+            // Unity may keep its loaded managed plugin open for read/write while
+            // allowing readers. Selection must still verify its MVID and SHA-256
+            // rather than converting that normal Editor state into a false stale
+            // add-on result.
+            using var unityLikeHandle = fixture.OpenRos2csCommonWithUnityLikeSharing(fixture.HumbleRuntimePackage);
+            var result = Ros2ForUnityCustomTypesupportSelectionTransaction.Apply(
+                fixture.ProjectDirectory,
+                fixture.HumbleRuntimePackage,
+                addOn,
+                () => { });
+
+            Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.Ready, result.Code);
+            Assert.Equal(addOn, result.ActiveAddOnPackage);
         }
 
         [Fact]
@@ -126,6 +148,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 fixture.HumbleRuntimePackage);
 
             Assert.Equal(Ros2ForUnityCustomTypesupportSelectionCode.RequestedCandidateNotReady, result.Code);
+            Assert.Equal(
+                Ros2ForUnityCustomTypesupportCandidateValidationCode.ManagedIdentity,
+                result.CandidateValidationCode);
         }
 
         [Fact]
@@ -164,6 +189,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(original, File.ReadAllText(fixture.ManifestPath));
         }
 
+        [Fact]
+        public void LongWindowsPluginPathUsesExtendedReadFormOnlyAtTheVerificationSeam()
+        {
+            var ordinaryPath = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                new string('a', 260),
+                "typesupport.dll");
+            var normalized = Ros2ForUnityCustomTypesupportSelectionTransaction
+                .NormalizeWindowsLongPathForRead(ordinaryPath);
+
+            if (Path.DirectorySeparatorChar == '\\')
+            {
+                Assert.StartsWith(@"\\?\", normalized, StringComparison.Ordinal);
+                Assert.EndsWith("typesupport.dll", normalized, StringComparison.Ordinal);
+            }
+            else
+            {
+                Assert.Equal(Path.GetFullPath(ordinaryPath), normalized);
+            }
+        }
+
         private sealed class SelectionFixture : IDisposable
         {
             private readonly string _root;
@@ -190,6 +236,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public string PackagesLockPath => Path.Combine(ProjectDirectory, "Packages", "packages-lock.json");
             public string HumbleRuntimePackage => "dev.unity2foxglove.ros2forunity.runtime.humble.win64";
             public string JazzyRuntimePackage => "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
+            public string StaticInterfacePackage => "dev.unity2foxglove.foxrun.ros2.interfaces";
             private string StaticRosPackageName { get; set; } = "unity2foxglove_foxrun_interfaces_v1";
             private int StaticInterfaceRevision { get; set; } = 1;
 
@@ -297,6 +344,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 return packageName;
             }
 
+            public FileStream OpenRos2csCommonWithUnityLikeSharing(string runtime)
+            {
+                var assemblyPath = Path.Combine(
+                    PackagesDirectory,
+                    runtime,
+                    "Runtime",
+                    "Ros2ForUnity",
+                    "Plugins",
+                    "ros2cs_common.dll");
+                return new FileStream(assemblyPath, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+            }
+
             public void ReplaceRos2csMvid(string packageName, string mvid)
             {
                 var path = Path.Combine(
@@ -328,7 +387,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 return dependencies.Properties()
                     .Select(property => property.Name)
                     .Where(name => name.StartsWith("dev.unity2foxglove.ros2forunity.runtime.", StringComparison.Ordinal)
-                                   || name.StartsWith("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.", StringComparison.Ordinal))
+                                   || name.StartsWith("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.", StringComparison.Ordinal)
+                                   || string.Equals(name, StaticInterfacePackage, StringComparison.Ordinal))
                     .OrderBy(name => name, StringComparer.Ordinal)
                     .ToArray();
             }

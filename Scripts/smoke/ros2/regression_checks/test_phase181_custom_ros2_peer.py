@@ -39,6 +39,13 @@ def load_peer_module():
 class Phase181CustomRos2PeerTests(unittest.TestCase):
     """Verify peer setup cannot turn a partial observation into a PASS."""
 
+    def test_peer_build_has_a_separate_bounded_window_from_unity_readiness(self):
+        """Verify Phase181 behavior: a cold rosidl build cannot consume the Unity readiness window."""
+        peer = load_peer_module()
+
+        self.assertEqual(600.0, peer.peer_build_timeout_seconds())
+        self.assertGreater(peer.peer_build_timeout_seconds(), 300.0)
+
     def test_static_interface_lock_requires_identity_and_full_digest(self):
         """Verify Phase181 behavior: static interface lock requires identity and full digest."""
         peer = load_peer_module()
@@ -147,6 +154,70 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertIn("phase181-player-token", command)
         self.assertIn("450", command)
         self.assertNotIn("ros2", command)
+
+    def test_editor_batch_command_runs_the_probe_without_automatic_quit(self):
+        """Verify Phase181 behavior: Editor Batch owns the probe lifetime rather than Unity's generic quit switch."""
+        peer = load_peer_module()
+        command = peer.build_editor_batch_command(
+            pathlib.Path("C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Unity.exe"),
+            pathlib.Path("C:/repo/Unity2Foxglove"),
+            pathlib.Path("C:/repo/build/phase181/lyrical-fastrtps/unity-editor-batch.log"),
+        )
+
+        self.assertEqual(
+            str(pathlib.Path("C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Unity.exe")),
+            command[0],
+        )
+        self.assertEqual(str(pathlib.Path("C:/repo/Unity2Foxglove")), command[command.index("-projectPath") + 1])
+        self.assertIn("-batchmode", command)
+        self.assertIn("-nographics", command)
+        self.assertEqual(
+            "Phase181BatchModeCustomRos2InteropProbe.Run",
+            command[command.index("-executeMethod") + 1],
+        )
+        self.assertEqual(
+            str(pathlib.Path("C:/repo/build/phase181/lyrical-fastrtps/unity-editor-batch.log")),
+            command[command.index("-logFile") + 1],
+        )
+        self.assertNotIn("-quit", command)
+
+    def test_editor_batch_is_an_explicit_opt_in_with_an_editor_path(self):
+        """Verify Phase181 behavior: a named profile can opt into an owned Editor Batch launch."""
+        peer = load_peer_module()
+        args = peer.parse_args(
+            [
+                "--role",
+                "windows-local-editor",
+                "--unity-batch",
+                "--unity-editor",
+                "C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Unity.exe",
+            ]
+        )
+
+        self.assertTrue(args.unity_batch)
+        self.assertEqual(
+            pathlib.Path("C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Unity.exe"),
+            args.unity_editor,
+        )
+
+    def test_editor_batch_environment_prioritizes_the_short_custom_plugin_alias(self):
+        """Verify Phase181 behavior: the Windows loader sees custom and runtime native plugin directories before ROS paths."""
+        peer = load_peer_module()
+        custom_alias = pathlib.Path("Y:/")
+        runtime_plugins = pathlib.Path("C:/repo/Packages/runtime/Runtime/Ros2ForUnity/Plugins/Windows/x86_64")
+
+        environment = peer.build_editor_batch_environment(
+            {"PATH": "C:/ros/bin", "RMW_IMPLEMENTATION": "rmw_fastrtps_cpp", "TOKEN": "not-forwarded"},
+            runtime_plugins,
+            custom_alias,
+        )
+
+        self.assertEqual(
+            peer.os.pathsep.join((str(custom_alias), str(runtime_plugins), "C:/ros/bin")),
+            environment["PATH"],
+        )
+        self.assertEqual("rmw_fastrtps_cpp", environment["RMW_IMPLEMENTATION"])
+        self.assertNotIn("TOKEN", environment)
 
     def test_player_exit_code_is_never_inferred_from_peer_receipt(self):
         """Verify Phase181 behavior: player exit code is never inferred from peer receipt."""
@@ -280,6 +351,56 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertFalse(nullable_empty["has_optional_count"])
         self.assertFalse(nullable_empty["has_optional_text"])
 
+    def test_final_bidirectional_probe_retries_until_unity_reports_the_remote_apply(self):
+        """Verify Phase181 behavior: the final nullable probe is retried after the same-origin replay barrier."""
+        peer = load_peer_module()
+
+        self.assertFalse(
+            peer.should_publish_final_bidirectional_probe(
+                requires_bidirectional=True,
+                same_origin_dropped=False,
+                remote_origin_applied=False,
+                now=10.0,
+                next_publish_time=None,
+            )
+        )
+        self.assertTrue(
+            peer.should_publish_final_bidirectional_probe(
+                requires_bidirectional=True,
+                same_origin_dropped=True,
+                remote_origin_applied=False,
+                now=10.0,
+                next_publish_time=None,
+            )
+        )
+        self.assertFalse(
+            peer.should_publish_final_bidirectional_probe(
+                requires_bidirectional=True,
+                same_origin_dropped=True,
+                remote_origin_applied=False,
+                now=10.5,
+                next_publish_time=10.75,
+            )
+        )
+        self.assertTrue(
+            peer.should_publish_final_bidirectional_probe(
+                requires_bidirectional=True,
+                same_origin_dropped=True,
+                remote_origin_applied=False,
+                now=10.75,
+                next_publish_time=10.75,
+            )
+        )
+        self.assertFalse(
+            peer.should_publish_final_bidirectional_probe(
+                requires_bidirectional=True,
+                same_origin_dropped=True,
+                remote_origin_applied=True,
+                now=11.0,
+                next_publish_time=10.75,
+            )
+        )
+
     def test_owned_workspace_refuses_unmarked_or_outside_build_paths(self):
         """Verify Phase181 behavior: owned workspace refuses unmarked or outside build paths."""
         peer = load_peer_module()
@@ -295,16 +416,68 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_WORKSPACE"):
                 peer.cleanup_owned_workspace(unsafe, build_root)
 
-    def test_colcon_command_is_explicit_and_never_uses_a_shell(self):
-        """Verify Phase181 behavior: colcon command is explicit and never uses a shell."""
+    def test_colcon_command_pins_ninja_release_and_cmake_safe_pixi_python(self):
+        """Verify Phase181 behavior: colcon receives the portable native-interface build contract."""
         peer = load_peer_module()
-        command = peer.build_colcon_command(
+        command = peer.build_windows_colcon_command(
             pathlib.Path("C:/ros2/.pixi/envs/default/Scripts/colcon.exe"),
             "unity2foxglove_foxrun_interfaces_v1",
+            pathlib.Path("C:/ros2/.pixi/envs/default/python.exe"),
         )
 
         self.assertEqual(str(pathlib.Path("C:/ros2/.pixi/envs/default/Scripts/colcon.exe")), command[0])
-        self.assertEqual(["build", "--merge-install", "--packages-select", "unity2foxglove_foxrun_interfaces_v1"], command[1:])
+        self.assertEqual(
+            [
+                "build",
+                "--merge-install",
+                "--packages-select",
+                "unity2foxglove_foxrun_interfaces_v1",
+                "--cmake-args",
+                "-G",
+                "Ninja",
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DPython3_EXECUTABLE=C:/ros2/.pixi/envs/default/python.exe",
+                "-DPYTHON_EXECUTABLE=C:/ros2/.pixi/envs/default/python.exe",
+            ],
+            command[1:],
+        )
+
+    def test_windows_peer_build_environment_preserves_ros_tools_and_enables_utf8_templates(self):
+        """Verify Phase181 behavior: native build keeps ROS paths while adding only captured MSVC state."""
+        peer = load_peer_module()
+
+        environment = peer.merge_windows_peer_build_environment(
+            {"PATH": "C:/ros/bin;C:/ros/pixi", "ROS_DISTRO": "lyrical", "TOKEN": "not-forwarded"},
+            {"PATH": "C:/VS/bin;C:/Windows Kits/bin", "VisualStudioVersion": "18.0", "INCLUDE": "C:/VS/include"},
+        )
+
+        self.assertEqual(
+            "C:/VS/bin;C:/Windows Kits/bin" + peer.os.pathsep + "C:/ros/bin;C:/ros/pixi",
+            environment["PATH"],
+        )
+        self.assertEqual("18.0", environment["VisualStudioVersion"])
+        self.assertEqual("C:/VS/include", environment["INCLUDE"])
+        self.assertEqual("lyrical", environment["ROS_DISTRO"])
+        self.assertEqual("1", environment["PYTHONUTF8"])
+        self.assertNotIn("TOKEN", environment)
+
+    def test_windows_peer_build_alias_is_reserved_for_projected_rosidl_path_overflow(self):
+        """Verify Phase181 behavior: temporary drive aliases are limited to Windows paths that need them."""
+        peer = load_peer_module()
+
+        self.assertFalse(peer.requires_short_windows_peer_workspace_alias(pathlib.Path("C:/"), "nt"))
+        self.assertTrue(
+            peer.requires_short_windows_peer_workspace_alias(
+                pathlib.Path("D:/BaiduSyncdisk/Obsidian Vault/Websocket/00 Inbox/build/phase181/lyrical-fastrtps/peer-workspace"),
+                "nt",
+            )
+        )
+        self.assertFalse(
+            peer.requires_short_windows_peer_workspace_alias(
+                pathlib.Path("D:/BaiduSyncdisk/Obsidian Vault/Websocket/00 Inbox/build/phase181/lyrical-fastrtps/peer-workspace"),
+                "posix",
+            )
+        )
 
     def test_windows_toolchain_requires_pinned_python_ros2_and_colcon(self):
         """Verify Phase181 behavior: windows toolchain requires pinned python ros2 and colcon."""
@@ -501,6 +674,47 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
                     runner=lambda *args, **kwargs: SimpleNamespace(returncode=9),
                 )
 
+    def test_failure_log_archive_retains_only_named_owned_diagnostic(self):
+        """Verify Phase181 behavior: cleanup may retain a bounded profile diagnostic for failures."""
+        peer = load_peer_module()
+        with temporary_directory("peer-") as temporary:
+            root = pathlib.Path(temporary)
+            workspace = root / "peer-workspace"
+            output = root / "profile-output"
+            workspace.mkdir()
+            (workspace / "colcon-build.log").write_text("bounded build failure\n", encoding="utf-8")
+
+            peer.preserve_failure_log(workspace, output, "colcon-build.log", "peer-build-failure.log")
+
+            self.assertEqual(
+                "bounded build failure\n",
+                (output / "peer-build-failure.log").read_text(encoding="utf-8"),
+            )
+            self.assertFalse((output / "unexpected.log").exists())
+
+    def test_failure_log_archive_retains_redacted_worker_result(self):
+        """Verify Phase181 behavior: failed peers preserve their bounded result evidence."""
+        peer = load_peer_module()
+        with temporary_directory("peer-") as temporary:
+            root = pathlib.Path(temporary)
+            workspace = root / "peer-workspace"
+            output = root / "profile-output"
+            workspace.mkdir()
+            expected = '{"verdict":"FAIL_GRAPH_EVIDENCE","token":"redacted"}\n'
+            (workspace / "worker-result.json").write_text(expected, encoding="utf-8")
+
+            peer.preserve_failure_log(
+                workspace,
+                output,
+                "worker-result.json",
+                "peer-worker-result-failure.json",
+            )
+
+            self.assertEqual(
+                expected,
+                (output / "peer-worker-result-failure.json").read_text(encoding="utf-8"),
+            )
+
     def test_selected_typesupport_requires_exactly_one_matching_runtime_and_addon(self):
         """Verify Phase181 behavior: selected typesupport requires exactly one matching runtime and addon."""
         peer = load_peer_module()
@@ -578,6 +792,103 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             )
         )
 
+    def test_graph_evidence_reports_each_required_direction_without_endpoint_identity(self):
+        """Verify Phase181 behavior: graph failures retain bounded per-direction evidence."""
+        peer = load_peer_module()
+
+        class Qos:
+            """Provide a lightweight Phase181 test double for Qos."""
+            reliability = 1
+
+        class Endpoint:
+            """Provide a lightweight Phase181 test double for Endpoint."""
+            topic_type = "example/msg/Envelope"
+            node_name = "unity"
+            qos_profile = Qos()
+
+        checks = peer.evaluate_graph_evidence(
+            [Endpoint()],
+            [Endpoint()],
+            [Endpoint()],
+            [Endpoint()],
+            "phase181_peer",
+            "example/msg/Envelope",
+            1,
+            True,
+            True,
+        )
+
+        self.assertEqual(
+            {
+                "subscribeReliable": True,
+                "publishPublisher": True,
+                "bidirectionalPublisher": True,
+                "bidirectionalReliable": True,
+            },
+            checks,
+        )
+
+    def test_graph_endpoint_summary_distinguishes_type_mismatch_from_reliability_mismatch(self):
+        """Verify Phase181 behavior: diagnostic endpoint counts expose no identities or raw endpoint data."""
+        peer = load_peer_module()
+
+        class Qos:
+            """Provide a lightweight Phase181 test double for Qos."""
+            def __init__(self, reliability):
+                self.reliability = reliability
+
+        class Endpoint:
+            """Provide a lightweight Phase181 test double for Endpoint."""
+            def __init__(self, topic_type, node_name, reliability):
+                self.topic_type = topic_type
+                self.node_name = node_name
+                self.qos_profile = Qos(reliability)
+
+        summary = peer.summarize_graph_endpoints(
+            [
+                Endpoint("wrong/msg/Envelope", "unity", 1),
+                Endpoint("example/msg/Envelope", "phase181_peer", 1),
+                Endpoint("example/msg/Envelope", "unity", 2),
+            ],
+            "phase181_peer",
+            "example/msg/Envelope",
+            1,
+        )
+
+        self.assertEqual(
+            {
+                "total": 3,
+                "matchingType": 2,
+                "externalMatchingType": 1,
+                "externalMatchingReliable": 0,
+            },
+            summary,
+        )
+
+    def test_graph_observation_survives_unity_endpoint_teardown_in_the_same_run(self):
+        """Verify Phase181 behavior: a post-stop graph query cannot erase live endpoint evidence."""
+        peer = load_peer_module()
+
+        observed = peer.merge_graph_observations(
+            {},
+            {
+                "subscribeReliable": True,
+                "publishPublisher": True,
+                "bidirectionalPublisher": True,
+                "bidirectionalReliable": True,
+            },
+        )
+        after_unity_exit = peer.merge_graph_observations(
+            observed,
+            {
+                "subscribeReliable": False,
+                "publishPublisher": False,
+                "bidirectionalPublisher": False,
+                "bidirectionalReliable": False,
+            },
+        )
+
+        self.assertEqual(observed, after_unity_exit)
     def test_peer_never_mistakes_its_remote_final_origin_for_a_unity_echo(self):
         """Verify Phase181 behavior: peer never mistakes its remote final origin for a unity echo."""
         peer = load_peer_module()

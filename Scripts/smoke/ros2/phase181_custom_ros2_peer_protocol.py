@@ -29,7 +29,7 @@ from typing import Any, Callable, Iterable, Mapping, Protocol
 
 
 INTERFACE_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
-MARKER_RE = re.compile(r"^(PHASE181_CUSTOM_ROS2_[A-Z_]+)(?:\s+(.*))?$")
+MARKER_RE = re.compile(r"^(PHASE181_CUSTOM(?:_ROS2)?_[A-Z_]+)(?:\s+(.*))?$")
 SUMMARY_SCHEMA_VERSION = 1
 SENSITIVE_KEY_PARTS = (
     "token",
@@ -206,12 +206,19 @@ def parse_marker_line(line: str) -> UnityMarker | None:
 
 
 def read_new_markers(path: pathlib.Path, offset: int) -> tuple[list[UnityMarker], int]:
-    """Read only bytes appended after *offset*, keeping the first repeated marker."""
+    """Read new marker bytes, restarting at zero when Unity replaces its Batch log."""
 
     if offset < 0:
         raise ValueError("Log offsets cannot be negative.")
     try:
         with path.open("r", encoding="utf-8", errors="replace") as stream:
+            stream.seek(0, 2)
+            if stream.tell() < offset:
+                # ``-logFile`` truncates a previous Batch log after the worker
+                # has captured its old cursor.  The new run is authoritative;
+                # retaining the stale cursor would hide every new readiness
+                # marker until the replacement file grew past its old size.
+                offset = 0
             stream.seek(offset)
             appended = stream.read()
             end_offset = stream.tell()

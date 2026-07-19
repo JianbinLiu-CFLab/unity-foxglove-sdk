@@ -39,6 +39,18 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void RendererSharesOneEnvelopeFileAcrossContractsUsingTheSameDto()
+        {
+            var rendered = FoxRunRos2InterfacePackageRenderer.Render(BuildModelWithSharedDtoContracts(typeof(Phase181State)));
+            var envelopePath = "Ros2Package~/msg/Phase181State48D288ED82F1Envelope.msg";
+
+            Assert.Equal(3, rendered.Lock.Contracts.Count);
+            Assert.Single(rendered.Files, file => string.Equals(file.RelativePath, envelopePath, StringComparison.Ordinal));
+            Assert.Single(rendered.Lock.Contracts.Select(contract => contract.EnvelopeMessageName).Distinct(StringComparer.Ordinal));
+            Assert.Single(rendered.Lock.Contracts.Select(contract => contract.EnvelopeDigest).Distinct(StringComparer.Ordinal));
+        }
+
+        [Fact]
         public void RendererAndCheckedInStaticPackageMatchTheExactGoldenUtf8LfFiles()
         {
             var rendered = FoxRunRos2InterfacePackageRenderer.Render(BuildModel(typeof(Phase181State)));
@@ -176,23 +188,47 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         private static FoxRunGenerationModel BuildModel(Type dtoType)
         {
             var shape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(dtoType);
-            var member = new FoxRunGenerationMember(
+            return FoxRunGenerationModel.FromMembers(new[]
+            {
+                CreateMember(shape, dtoType, "State", "/phase181/custom_state", rawMemberOrder: 0)
+            });
+        }
+
+        private static FoxRunGenerationModel BuildModelWithSharedDtoContracts(Type dtoType)
+        {
+            var shape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(dtoType);
+            return FoxRunGenerationModel.FromMembers(new[]
+            {
+                CreateMember(shape, dtoType, "NativeInput", "/phase181/native_input", rawMemberOrder: 0),
+                CreateMember(shape, dtoType, "NativeOutput", "/phase181/native_output", rawMemberOrder: 1),
+                CreateMember(shape, dtoType, "NativeInputWebSocketOutput", "/phase181/native_input_websocket_output", rawMemberOrder: 2)
+            });
+        }
+
+        private static FoxRunGenerationMember CreateMember(
+            FoxRunRos2CustomDtoShape shape,
+            Type dtoType,
+            string memberName,
+            string topic,
+            int rawMemberOrder)
+        {
+            return new FoxRunGenerationMember(
                 typeof(Phase181CustomInterfaceFixture).Namespace,
                 nameof(Phase181CustomInterfaceFixture),
-                "State",
+                memberName,
                 "property",
                 dtoType.FullName,
                 isValueType: false,
                 isArray: false,
                 elementTypeName: string.Empty,
-                topic: "/phase181/custom_state",
+                topic: topic,
                 rateHz: 10f,
                 schemaName: string.Empty,
                 publishMode: 0,
                 changeEpsilon: 0f,
                 forceIntervalSeconds: 0f,
                 hostKind: "fixture",
-                rawMemberOrder: 0,
+                rawMemberOrder: rawMemberOrder,
                 conditionalSymbols: string.Empty,
                 mode: (int)FoxRunMode.PublishAndSubscribe,
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
@@ -202,7 +238,6 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 generatesRos2NativeRegistration: true,
                 ros2CustomDtoShape: shape,
                 ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
-            return FoxRunGenerationModel.FromMembers(new[] { member });
         }
 
         private static FoxRunGenerationModel BuildInvalidModel()

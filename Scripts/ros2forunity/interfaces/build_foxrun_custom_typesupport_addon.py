@@ -3,9 +3,9 @@
 
 The script deliberately has two materialization boundaries.  rosidl output is
 first characterized in an out-of-tree candidate workspace.  A Unity batch
-importer then generates the managed-DLL PluginImporter metadata in that
-candidate.  Only the sibling ``sync_...`` command may copy a fully validated
-candidate to ``Packages/``.
+importer then generates PluginImporter metadata for every managed and native
+candidate DLL.  Only the sibling ``sync_...`` command may copy a fully
+validated candidate to ``Packages/``.
 """
 
 from __future__ import annotations
@@ -252,6 +252,17 @@ def _candidate_native_paths(request: CandidateBuildRequest) -> tuple[Path, ...]:
     return select_candidate_native_libraries(sorted(native_root.glob("*.dll"), key=lambda item: item.name.lower()))
 
 
+def _managed_package_assembly_path(package_root: Path) -> Path:
+    """Place ros2cs managed messages beside the base runtime's managed assemblies.
+
+    R2FU keeps CLR message assemblies directly below ``Plugins/`` while native
+    typesupport remains in the platform-specific ``Windows/x86_64`` child.
+    Keeping those loader domains separate is required for Unity's managed
+    assembly resolver and mirrors the selected runtime package layout.
+    """
+    return Path(package_root) / "Runtime" / "Ros2ForUnity" / "Plugins" / MANAGED_ASSEMBLY_FILE
+
+
 def _copy_file(source: Path, target: Path) -> None:
     """Copy one candidate artifact after creating only its target parent directory."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -464,7 +475,7 @@ def _write_candidate_manifest(
         "repair-base-runtime-manifest",
     )
     type_map = _typesupport_type_map(managed_evidence)
-    managed_path = package_root / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / MANAGED_ASSEMBLY_FILE
+    managed_path = _managed_package_assembly_path(package_root)
     if not managed_path.is_file():
         raise CandidateBuildError("repair-generated-managed-assembly")
     try:
@@ -690,14 +701,55 @@ def _unity_editor_process_is_running() -> bool:
     return result.returncode == 0 and "Unity.exe" in result.stdout
 
 
-def _run_unity_plugin_importer(request: CandidateBuildRequest, managed_path: Path) -> None:
-    """Ask Unity to generate the only allowed managed-DLL importer metadata."""
+def _unity_plugin_importer_arguments(
+    input_path: Path,
+    output_path: Path,
+    *,
+    input_is_directory: bool,
+) -> tuple[str, ...]:
+    """Build the auditable Batch Mode importer arguments for one candidate boundary."""
+
+    input_text = Path(input_path).as_posix()
+    output_text = Path(output_path).as_posix()
+    if input_is_directory:
+        return (
+            "-phase181TypesupportPluginInputDirectory",
+            input_text,
+            "-phase181TypesupportPluginMetaOutputDirectory",
+            output_text,
+        )
+    return (
+        "-phase181TypesupportManagedInput",
+        input_text,
+        "-phase181TypesupportManagedMetaOutput",
+        output_text,
+    )
+
+
+def _run_unity_plugin_importer(
+    request: CandidateBuildRequest,
+    input_path: Path,
+    *,
+    input_is_directory: bool,
+) -> None:
+    """Ask Unity to generate restricted importer metadata for an owned candidate boundary."""
 
     unity = _unity_executable(request)
     project = _repo_root(request) / "Unity2Foxglove"
-    output_meta = managed_path.with_name(managed_path.name + ".meta")
+    input_path = Path(input_path)
+    output_path = input_path if input_is_directory else input_path.with_name(input_path.name + ".meta")
+    expected_meta = (
+        tuple(path.with_name(path.name + ".meta") for path in sorted(input_path.glob("*.dll"), key=lambda item: item.name.lower()))
+        if input_is_directory
+        else (output_path,)
+    )
     if not unity.is_file() or not project.is_dir():
         raise CandidateBuildError("provide-unity-6000-plugin-importer")
+    if input_is_directory:
+        if not input_path.is_dir() or not expected_meta:
+            raise CandidateBuildError("repair-generated-native-typesupport-closure")
+    elif not input_path.is_file():
+        raise CandidateBuildError("repair-generated-managed-assembly")
     # A stale lockfile can remain after a prior Editor crash or controlled exit.
     # Only an actually running Editor blocks our batch import; Unity itself owns
     # stale-lock recovery when it opens the project.
@@ -712,15 +764,12 @@ def _run_unity_plugin_importer(request: CandidateBuildRequest, managed_path: Pat
         str(project),
         "-executeMethod",
         "Phase181TypesupportPluginImporterBuilder.Run",
-        "-phase181TypesupportManagedInput",
-        str(managed_path),
-        "-phase181TypesupportManagedMetaOutput",
-        str(output_meta),
+        *_unity_plugin_importer_arguments(input_path, output_path, input_is_directory=input_is_directory),
         "-logFile",
         str(_phase181_distro_root(request) / "candidate" / "e" / "unity-plugin-importer.log"),
     )
     result = subprocess.run(command, shell=False, capture_output=True, text=True, errors="replace", check=False)
-    if result.returncode != 0 or not output_meta.is_file():
+    if result.returncode != 0 or not all(path.is_file() for path in expected_meta):
         raise CandidateBuildError("repair-unity-plugin-importer-metadata")
 
 
@@ -758,7 +807,7 @@ def build_candidate(request: CandidateBuildRequest, *, check_source_only: bool =
     _write_candidate_texts(candidate_root, _repo_root(request), request.distro)
 
     native_root = candidate_root / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
-    managed_target = native_root / MANAGED_ASSEMBLY_FILE
+    managed_target = _managed_package_assembly_path(candidate_root)
     _copy_file(result.managed_assembly, managed_target)
     native_libraries = _candidate_native_paths(request)
     if not native_libraries:
@@ -766,7 +815,8 @@ def build_candidate(request: CandidateBuildRequest, *, check_source_only: bool =
     for native in native_libraries:
         _copy_file(native, native_root / native.name)
 
-    _run_unity_plugin_importer(request, managed_target)
+    _run_unity_plugin_importer(request, managed_target, input_is_directory=False)
+    _run_unity_plugin_importer(request, native_root, input_is_directory=True)
     managed_evidence = _load_json(
         _phase181_distro_root(request) / "candidate" / "e" / "managed.json",
         "repair-managed-characterization-evidence",

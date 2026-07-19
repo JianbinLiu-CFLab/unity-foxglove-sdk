@@ -153,18 +153,56 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(contract => contract.StableKey, StringComparer.Ordinal)
                 .ToList();
             var identities = new HashSet<string>(StringComparer.Ordinal);
-            var messages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var payloadContracts = new Dictionary<string, FoxRunRos2InterfaceContractLock>(StringComparer.OrdinalIgnoreCase);
+            var envelopeContracts = new Dictionary<string, FoxRunRos2InterfaceContractLock>(StringComparer.OrdinalIgnoreCase);
             foreach (var contract in ordered)
             {
                 if (!identities.Add(contract.StableKey))
                     throw new ArgumentException("Lock contains a duplicate contract identity.", nameof(contracts));
-                if (!messages.Add(contract.PayloadMessageName))
-                    throw new ArgumentException("Lock contains a duplicate payload message identity.", nameof(contracts));
-                if (!messages.Add(contract.EnvelopeMessageName))
-                    throw new ArgumentException("Lock contains a duplicate envelope message identity.", nameof(contracts));
+
+                if (envelopeContracts.TryGetValue(contract.PayloadMessageName, out _)
+                    || payloadContracts.TryGetValue(contract.EnvelopeMessageName, out _))
+                {
+                    throw new ArgumentException(
+                        "Lock contains a payload message name that collides with an envelope message name.",
+                        nameof(contracts));
+                }
+
+                if (payloadContracts.TryGetValue(contract.PayloadMessageName, out var existingPayload))
+                    EnsureSharedMessagePairIsConsistent(existingPayload, contract, nameof(contracts));
+                else
+                    payloadContracts.Add(contract.PayloadMessageName, contract);
+
+                if (envelopeContracts.TryGetValue(contract.EnvelopeMessageName, out var existingEnvelope))
+                    EnsureSharedMessagePairIsConsistent(existingEnvelope, contract, nameof(contracts));
+                else
+                    envelopeContracts.Add(contract.EnvelopeMessageName, contract);
             }
 
             return ordered.AsReadOnly();
+        }
+
+        private static void EnsureSharedMessagePairIsConsistent(
+            FoxRunRos2InterfaceContractLock existing,
+            FoxRunRos2InterfaceContractLock candidate,
+            string parameterName)
+        {
+            if (!string.Equals(existing.PayloadMessageName, candidate.PayloadMessageName, StringComparison.Ordinal)
+                || !string.Equals(existing.EnvelopeMessageName, candidate.EnvelopeMessageName, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Lock contains case-colliding or inconsistently paired ROS2 message names.",
+                    parameterName);
+            }
+
+            if (!string.Equals(existing.DtoIdentity, candidate.DtoIdentity, StringComparison.Ordinal)
+                || !string.Equals(existing.MessageDigest, candidate.MessageDigest, StringComparison.Ordinal)
+                || !string.Equals(existing.EnvelopeDigest, candidate.EnvelopeDigest, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Lock maps one ROS2 message pair to incompatible DTO or message content.",
+                    parameterName);
+            }
         }
 
         private static FoxRunRos2InterfaceContractLock ParseContract(JObject value)

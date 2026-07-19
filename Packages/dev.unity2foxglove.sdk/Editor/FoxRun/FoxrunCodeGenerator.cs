@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -230,8 +231,68 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
             var model = LowerReflectionMembers(scan.ReflectionMembers);
-            ValidateGenerationModel(model);
+            // The source-package command must reject invalid wire contracts, but
+            // Roslyn remains the authority for suppressible source diagnostics.
+            // Replaying advisory diagnostics through reflection would bypass a
+            // source-level #pragma and make a successful validation look failed.
+            ValidateGenerationModel(model, logWarnings: false);
             return model;
+        }
+
+        /// <summary>
+        /// Returns the current custom native contract snapshot for Edit Mode
+        /// preflight presentation without rewriting generated schema evidence.
+        /// </summary>
+        internal static IReadOnlyList<FoxRunSchemaCustomNativeContractInfo> CollectCustomNativeContractsForInspector()
+        {
+            var scan = ScanFoxRunMembers(ignoreReflectionTypeLoadExceptions: true);
+            var manifest = FoxRunManifestBuilder.Build(
+                scan.ManifestMembers,
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
+            return manifest.CustomNativeContracts
+                .Select(ToSchemaCustomNativeContractInfo)
+                .ToArray();
+        }
+
+        private static FoxRunSchemaCustomNativeContractInfo ToSchemaCustomNativeContractInfo(
+            FoxRunManifestCustomNativeContract contract)
+        {
+            if (contract == null)
+                throw new ArgumentNullException(nameof(contract));
+
+            return new FoxRunSchemaCustomNativeContractInfo(
+                contract.DeclaringType,
+                contract.MemberName,
+                contract.Topic,
+                contract.FlowMode,
+                ToSubscriptionProvider(contract.DeclaredProvider),
+                ToRos2QosPreset(contract.Ros2Qos),
+                contract.SupportsRos2Native,
+                contract.CustomDtoIdentity,
+                contract.CustomPayloadIdentity,
+                contract.CustomEnvelopeIdentity);
+        }
+
+        private static FoxRunSubscriptionProvider ToSubscriptionProvider(string provider)
+        {
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal))
+                return FoxRunSubscriptionProvider.Ros2Native;
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal))
+                return FoxRunSubscriptionProvider.FoxgloveWebSocket;
+            return FoxRunSubscriptionProvider.Inherit;
+        }
+
+        private static FoxRunRos2QosPreset ToRos2QosPreset(string qos)
+        {
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.DefaultRos2Qos, StringComparison.Ordinal))
+                return FoxRunRos2QosPreset.Default;
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.ReliableRos2Qos, StringComparison.Ordinal))
+                return FoxRunRos2QosPreset.Reliable;
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.SensorDataRos2Qos, StringComparison.Ordinal))
+                return FoxRunRos2QosPreset.SensorData;
+            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos, StringComparison.Ordinal))
+                return FoxRunRos2QosPreset.TransientLocal;
+            return FoxRunRos2QosPreset.Inherit;
         }
 
         public static FoxRunSchemaInfoVerification VerifyGeneratedSchemaInfoFiles()
@@ -283,7 +344,7 @@ namespace Unity.FoxgloveSDK.Editor
             return FoxRunReflectionGenerationModelLowerer.Lower(members);
         }
 
-        private static void ValidateGenerationModel(FoxRunGenerationModel model)
+        private static void ValidateGenerationModel(FoxRunGenerationModel model, bool logWarnings = true)
         {
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
             var errors = new List<string>();
@@ -291,7 +352,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 if (string.Equals(diagnostic.Severity, "Error", StringComparison.Ordinal))
                     errors.Add(diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message);
-                else if (string.Equals(diagnostic.Severity, "Warning", StringComparison.Ordinal))
+                else if (logWarnings && string.Equals(diagnostic.Severity, "Warning", StringComparison.Ordinal))
                     Debug.LogWarning("[FoxrunCodeGenerator] " + diagnostic.Id + ": " + diagnostic.Target + ": " + diagnostic.Message);
             }
 

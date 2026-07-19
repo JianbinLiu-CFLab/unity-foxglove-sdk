@@ -328,7 +328,12 @@ namespace Unity.FoxgloveSDK.Editor
                     return;
                 case FoxRunRos2CustomDtoMemberKind.NestedDto:
                     var nested = registry.Get(member.NestedShape);
-                    sb.AppendLine(pad + target + " = " + source + " == null ? null : " + nested.DtoToRosMethod + "(" + source + ", budget);");
+                    // ros2cs writes every nested field through the generated
+                    // managed wrapper even when this project's presence bit is
+                    // false. Preserve null at the DTO/wire-contract level via
+                    // foxrun_has_* while retaining a default wrapper that can
+                    // be serialized safely by the native message writer.
+                    sb.AppendLine(pad + target + " = " + source + " == null ? new " + nested.RosType + "() : " + nested.DtoToRosMethod + "(" + source + ", budget);");
                     return;
                 case FoxRunRos2CustomDtoMemberKind.Sequence:
                     EmitSequenceDtoToRos(sb, pad, source, target, member);

@@ -109,16 +109,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return Ros2ForUnityCustomTypesupportStaticSourceSnapshot.Invalid();
             }
 
-            var envelopes = contracts
+            var contractObjects = contracts
                 .OfType<JObject>()
+                .ToArray();
+            if (contractObjects.Length != contracts.Count)
+                return Ros2ForUnityCustomTypesupportStaticSourceSnapshot.Invalid();
+
+            var envelopes = contractObjects
                 .Select(contract => Text(contract["envelopeMessageName"]))
-                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToArray();
+            if (envelopes.Any(string.IsNullOrWhiteSpace))
+                return Ros2ForUnityCustomTypesupportStaticSourceSnapshot.Invalid();
+
+            var envelopeTypes = envelopes
                 .Select(name => rosPackageName + "/msg/" + name)
                 .Distinct(StringComparer.Ordinal)
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToArray();
-            if (envelopes.Length != contracts.Count)
-                return Ros2ForUnityCustomTypesupportStaticSourceSnapshot.Invalid();
 
             return new Ros2ForUnityCustomTypesupportStaticSourceSnapshot(
                 present: true,
@@ -126,7 +133,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 rosPackageName,
                 revision,
                 interfaceDigest,
-                envelopes);
+                envelopeTypes);
         }
 
         private static Ros2ForUnityCustomTypesupportAddOnSnapshot ReadAddOn(

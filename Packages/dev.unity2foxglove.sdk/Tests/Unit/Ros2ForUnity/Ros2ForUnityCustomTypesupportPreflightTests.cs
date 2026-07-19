@@ -164,6 +164,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void OneRosEnvelopeSharedByDistinctContractsRemainsReady()
+        {
+            using var fixture = new PreflightFixture();
+            fixture.WriteStaticLock(sharedEnvelopeAcrossContracts: true);
+
+            var result = fixture.Evaluate();
+
+            Assert.Equal(Ros2ForUnityCustomTypesupportPreflightCode.Ready, result.Code);
+            Assert.Equal(fixture.CanonicalEnvelopeType, Assert.Single(result.Contracts).CanonicalEnvelopeType);
+        }
+
+        [Fact]
         public void DiscoveryCacheRefreshesOnlyAfterAnExplicitInvalidation()
         {
             using var fixture = new PreflightFixture();
@@ -290,10 +302,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
             }
 
-            public void WriteStaticLock(string interfaceDigest = InterfaceDigest)
+            public void WriteStaticLock(
+                string interfaceDigest = InterfaceDigest,
+                bool sharedEnvelopeAcrossContracts = false)
             {
                 var directory = Path.Combine(PackagesDirectory, StaticPackageId, "RuntimeSupport");
                 Directory.CreateDirectory(directory);
+                var contracts = new JArray
+                {
+                    new JObject { ["envelopeMessageName"] = "StateEnvelope" }
+                };
+                if (sharedEnvelopeAcrossContracts)
+                    contracts.Add(new JObject { ["envelopeMessageName"] = "StateEnvelope" });
                 File.WriteAllText(
                     Path.Combine(directory, "foxrun-ros2-interface-lock.json"),
                     new JObject
@@ -304,10 +324,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                         ["rosPackageName"] = RosPackageName,
                         ["interfaceRevision"] = 1,
                         ["interfaceDigest"] = interfaceDigest,
-                        ["contracts"] = new JArray
-                        {
-                            new JObject { ["envelopeMessageName"] = "StateEnvelope" }
-                        }
+                        ["contracts"] = contracts
                     }.ToString(Formatting.Indented));
                 Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
             }

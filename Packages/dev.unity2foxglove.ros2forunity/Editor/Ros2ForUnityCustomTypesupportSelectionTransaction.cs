@@ -26,6 +26,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         ResolveFailed,
     }
 
+    /// <summary>
+    /// Bounded reason why a repository add-on was not eligible for selection.
+    /// This is deliberately separate from the public selection result: callers
+    /// receive enough evidence to correct package state without exposing local
+    /// paths, hashes, or raw I/O exceptions.
+    /// </summary>
+    internal enum Ros2ForUnityCustomTypesupportCandidateValidationCode
+    {
+        None = 0,
+        Ready = 1,
+        MissingCandidate = 2,
+        PackageMetadata = 3,
+        StaticSource = 4,
+        SourceIdentity = 5,
+        ManagedIdentity = 6,
+        NativeClosure = 7,
+        Unexpected = 8,
+    }
+
     internal sealed class Ros2ForUnityCustomTypesupportSelectionResult
     {
         public Ros2ForUnityCustomTypesupportSelectionResult(
@@ -33,13 +52,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             string activeAddOnPackage,
             string interfaceDigest,
             string baseRuntimeAbiDigest,
-            string nativePluginDirectory)
+            string nativePluginDirectory,
+            Ros2ForUnityCustomTypesupportCandidateValidationCode candidateValidationCode =
+                Ros2ForUnityCustomTypesupportCandidateValidationCode.None)
         {
             Code = code;
             ActiveAddOnPackage = activeAddOnPackage ?? string.Empty;
             InterfaceDigest = interfaceDigest ?? string.Empty;
             BaseRuntimeAbiDigest = baseRuntimeAbiDigest ?? string.Empty;
             NativePluginDirectory = nativePluginDirectory ?? string.Empty;
+            CandidateValidationCode = candidateValidationCode;
         }
 
         public Ros2ForUnityCustomTypesupportSelectionCode Code { get; }
@@ -47,6 +69,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public string InterfaceDigest { get; }
         public string BaseRuntimeAbiDigest { get; }
         public string NativePluginDirectory { get; }
+        public Ros2ForUnityCustomTypesupportCandidateValidationCode CandidateValidationCode { get; }
         public bool IsReady => Code == Ros2ForUnityCustomTypesupportSelectionCode.Ready;
     }
 
@@ -100,17 +123,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return Failure(Ros2ForUnityCustomTypesupportSelectionCode.InvalidManifest);
             }
 
-            var candidates = DiscoverValidatedCandidates(packagesDirectory, baseRuntime).ToArray();
             Candidate selected = null;
             if (!string.IsNullOrWhiteSpace(requestedAddOnPackage))
             {
-                selected = candidates.FirstOrDefault(candidate => StringEquals(candidate.PackageId, requestedAddOnPackage));
+                selected = TryReadCandidateByPackageId(
+                    packagesDirectory,
+                    baseRuntime,
+                    requestedAddOnPackage,
+                    out var candidateValidationCode);
                 if (selected == null)
-                    return Failure(Ros2ForUnityCustomTypesupportSelectionCode.RequestedCandidateNotReady);
+                    return Failure(
+                        Ros2ForUnityCustomTypesupportSelectionCode.RequestedCandidateNotReady,
+                        candidateValidationCode);
             }
-            else if (candidates.Length == 1)
+            else
             {
-                selected = candidates[0];
+                var candidates = DiscoverValidatedCandidates(packagesDirectory, baseRuntime).ToArray();
+                if (candidates.Length == 1)
+                    selected = candidates[0];
             }
 
             var updated = (JObject)manifest.DeepClone();
@@ -118,7 +148,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             RemoveOwnedDependencies(dependencies);
             AddDependency(dependencies, selectedBaseRuntimePackage, BuildPackageReference(projectDirectory, packagesDirectory, selectedBaseRuntimePackage));
             if (selected != null)
+            {
+                AddDependency(
+                    dependencies,
+                    StaticInterfacePackageId,
+                    BuildPackageReference(projectDirectory, packagesDirectory, StaticInterfacePackageId));
                 AddDependency(dependencies, selected.PackageId, BuildPackageReference(projectDirectory, packagesDirectory, selected.PackageId));
+            }
 
             var rendered = SerializeManifest(updated, DetectLineEnding(originalManifest));
             try
@@ -205,10 +241,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (active.Length != 1)
                 return Failure(Ros2ForUnityCustomTypesupportSelectionCode.RequestedCandidateNotReady);
 
-            var candidate = DiscoverValidatedCandidates(packagesDirectory, baseRuntime)
-                .FirstOrDefault(value => StringEquals(value.PackageId, active[0]));
+            var candidate = TryReadCandidateByPackageId(
+                packagesDirectory,
+                baseRuntime,
+                active[0],
+                out var candidateValidationCode);
             return candidate == null
-                ? Failure(Ros2ForUnityCustomTypesupportSelectionCode.RequestedCandidateNotReady)
+                ? Failure(
+                    Ros2ForUnityCustomTypesupportSelectionCode.RequestedCandidateNotReady,
+                    candidateValidationCode)
                 : new Ros2ForUnityCustomTypesupportSelectionResult(
                     Ros2ForUnityCustomTypesupportSelectionCode.Ready,
                     candidate.PackageId,
@@ -274,9 +315,35 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                          CustomTypesupportPackagePrefix + "*",
                          SearchOption.TopDirectoryOnly))
             {
-                if (TryReadCandidate(directory, baseRuntime, out var candidate))
+                if (TryReadCandidate(directory, baseRuntime, out var candidate, out _))
                     yield return candidate;
             }
+        }
+
+        private static Candidate TryReadCandidateByPackageId(
+            string packagesDirectory,
+            BaseRuntime baseRuntime,
+            string packageId,
+            out Ros2ForUnityCustomTypesupportCandidateValidationCode validationCode)
+        {
+            validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.MissingCandidate;
+            if (string.IsNullOrWhiteSpace(packageId))
+                return null;
+
+            foreach (var directory in Directory.GetDirectories(
+                         packagesDirectory,
+                         CustomTypesupportPackagePrefix + "*",
+                         SearchOption.TopDirectoryOnly))
+            {
+                if (!StringEquals(Path.GetFileName(directory), packageId))
+                    continue;
+
+                return TryReadCandidate(directory, baseRuntime, out var candidate, out validationCode)
+                    ? candidate
+                    : null;
+            }
+
+            return null;
         }
 
         private static bool TryReadBaseRuntime(
@@ -312,9 +379,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             return true;
         }
 
-        private static bool TryReadCandidate(string directory, BaseRuntime baseRuntime, out Candidate candidate)
+        private static bool TryReadCandidate(
+            string directory,
+            BaseRuntime baseRuntime,
+            out Candidate candidate,
+            out Ros2ForUnityCustomTypesupportCandidateValidationCode validationCode)
         {
             candidate = null;
+            validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.Unexpected;
             try
             {
                 var packageId = Path.GetFileName(directory);
@@ -324,6 +396,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     || !TryReadObject(Path.Combine(directory, "RuntimeSupport", "typesupport-manifest.json"), out var manifest)
                     || !TryReadObject(Path.Combine(directory, "RuntimeSupport", "typesupport-inventory.json"), out var inventory))
                 {
+                    validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.PackageMetadata;
                     return false;
                 }
 
@@ -334,14 +407,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     || Text(dependencies[OptionalFacadePackageId]).Length == 0
                     || !StringEquals(Text(dependencies[baseRuntime.PackageId]), baseRuntime.PackageVersion))
                 {
+                    validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.PackageMetadata;
                     return false;
                 }
 
                 var source = manifest["source"] as JObject;
                 var baseRuntimeToken = manifest["baseRuntime"] as JObject;
                 if (source == null || baseRuntimeToken == null
-                    || !TryReadStaticSourceLock(directory, out var staticSource)
-                    || !StringEquals(Text(source["upmPackageId"]), StaticInterfacePackageId)
+                    || !TryReadStaticSourceLock(directory, out var staticSource))
+                {
+                    validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.StaticSource;
+                    return false;
+                }
+
+                if (!StringEquals(Text(source["upmPackageId"]), StaticInterfacePackageId)
                     || !StringEquals(Text(source["rosPackageName"]), staticSource.RosPackageName)
                     || source["interfaceRevision"]?.Value<int?>() != staticSource.InterfaceRevision
                     || !StringEquals(Text(source["interfaceDigest"]), staticSource.InterfaceDigest)
@@ -352,12 +431,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     || !StringEquals(Text(baseRuntimeToken["runtimeManifestSha256"]), baseRuntime.ManifestDigest)
                     || baseRuntimeToken["runtimeManifestVersion"]?.Value<int?>() != 1)
                 {
+                    validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.SourceIdentity;
                     return false;
                 }
 
-                if (!HasMatchingRos2csIdentity(directory, manifest, baseRuntime)
-                    || !HasVerifiedNativeClosure(directory, manifest, inventory, baseRuntime))
+                if (!HasMatchingRos2csIdentity(directory, manifest, baseRuntime))
                 {
+                    validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.ManagedIdentity;
+                    return false;
+                }
+
+                if (!HasVerifiedNativeClosure(directory, manifest, inventory, baseRuntime))
+                {
+                    validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.NativeClosure;
                     return false;
                 }
 
@@ -365,12 +451,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     packageId,
                     Text(source["interfaceDigest"]),
                     Path.Combine(directory, NativePluginRelativeDirectory));
+                validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.Ready;
                 return true;
             }
             catch (Exception)
             {
                 // Package contents are untrusted input to this selector.
                 candidate = null;
+                validationCode = Ros2ForUnityCustomTypesupportCandidateValidationCode.Unexpected;
                 return false;
             }
         }
@@ -423,7 +511,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             mvid = string.Empty;
             try
             {
-                var image = File.ReadAllBytes(path);
+                var image = ReadAllBytesForVerification(path);
                 if (!TryReadUInt16(image, 0, out var dosSignature) || dosSignature != 0x5a4d
                     || !TryReadUInt32(image, 0x3c, out var peOffsetValue)
                     || !TryToOffset(peOffsetValue, image.Length, out var peOffset)
@@ -835,9 +923,50 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static string FileSha256(string path)
         {
             using (var sha = SHA256.Create())
-            using (var stream = File.OpenRead(path))
+            using (var stream = OpenForVerificationRead(path))
             {
                 return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", string.Empty).ToLowerInvariant();
+            }
+        }
+
+        // Unity can retain an already loaded plugin with read/write access while
+        // permitting readers. Verification must therefore share the read handle
+        // without loading the assembly or weakening the MVID/SHA-256 comparison.
+        private static FileStream OpenForVerificationRead(string path)
+            => new FileStream(
+                NormalizeWindowsLongPathForRead(path),
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+
+        // A generated rosidl typesupport DLL name can legitimately push the
+        // complete package path past legacy MAX_PATH when Unity runs from a
+        // deeply nested workspace. Unity's Mono FileStream needs the Win32
+        // extended-path form even though File.Exists has already accepted the
+        // ordinary path. Keep this read-only adaptation at the verification
+        // seam; package metadata and manifest paths retain their normal form.
+        internal static string NormalizeWindowsLongPathForRead(string path)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (Path.DirectorySeparatorChar != '\\'
+                || fullPath.Length < 248
+                || fullPath.StartsWith(@"\\?\", StringComparison.Ordinal))
+            {
+                return fullPath;
+            }
+
+            return fullPath.StartsWith(@"\\", StringComparison.Ordinal)
+                ? @"\\?\UNC\" + fullPath.Substring(2)
+                : @"\\?\" + fullPath;
+        }
+
+        private static byte[] ReadAllBytesForVerification(string path)
+        {
+            using (var stream = OpenForVerificationRead(path))
+            using (var buffer = new MemoryStream())
+            {
+                stream.CopyTo(buffer);
+                return buffer.ToArray();
             }
         }
 
@@ -866,8 +995,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         }
 
         private static Ros2ForUnityCustomTypesupportSelectionResult Failure(
-            Ros2ForUnityCustomTypesupportSelectionCode code)
-            => new Ros2ForUnityCustomTypesupportSelectionResult(code, string.Empty, string.Empty, string.Empty, string.Empty);
+            Ros2ForUnityCustomTypesupportSelectionCode code,
+            Ros2ForUnityCustomTypesupportCandidateValidationCode candidateValidationCode =
+                Ros2ForUnityCustomTypesupportCandidateValidationCode.None)
+            => new Ros2ForUnityCustomTypesupportSelectionResult(
+                code,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                candidateValidationCode);
 
         private sealed class BaseRuntime
         {

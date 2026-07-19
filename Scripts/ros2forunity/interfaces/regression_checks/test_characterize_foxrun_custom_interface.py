@@ -68,6 +68,34 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
             self.assertIn("-G", command)
             self.assertIn("Ninja", command)
 
+    def test_workspace_retries_a_transient_windows_build_file_lock(self) -> None:
+        """Verify a previous Ninja handle does not require operator cleanup."""
+        with temporary_directory("characterize-") as temporary_root:
+            root = Path(temporary_root)
+            static_package = self._make_static_package(root)
+            request = self._make_request(root, static_package)
+            workspace = characterization_root(request)
+            workspace.mkdir(parents=True)
+            (workspace / ".ninja_deps").write_text("stale", encoding="utf-8")
+            real_rmtree = characterization.shutil.rmtree
+            locked = PermissionError(32, "locked")
+            locked.winerror = 32
+
+            with (
+                patch.object(
+                    characterization.shutil,
+                    "rmtree",
+                    side_effect=[locked, real_rmtree],
+                ) as remove,
+                patch.object(characterization.time, "sleep") as sleep,
+            ):
+                prepared = prepare_characterization_workspace(request, replace_existing=True)
+
+            self.assertEqual(workspace, prepared)
+            self.assertEqual(2, remove.call_count)
+            sleep.assert_called_once()
+            self.assertTrue((prepared / "s" / "unity2foxglove_foxrun_interfaces_v1" / "package.xml").is_file())
+
     def test_colcon_command_uses_cmake_safe_forward_slash_python_paths(self) -> None:
         """Verify colcon command uses cmake safe forward slash python paths."""
         with temporary_directory("characterize-") as temporary_root:

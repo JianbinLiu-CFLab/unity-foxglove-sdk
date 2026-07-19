@@ -126,6 +126,7 @@ namespace Unity.FoxgloveSDK.Editor
                     RenderPayload(shape)));
             }
 
+            var envelopeFilesByPayloadIdentity = new Dictionary<string, FoxRunRos2InterfaceRenderedFile>(StringComparer.Ordinal);
             var renderedContracts = new List<FoxRunRos2InterfaceContractLock>();
             foreach (var contract in contracts.OrderBy(value => ContractKey(value), StringComparer.Ordinal))
             {
@@ -133,9 +134,13 @@ namespace Unity.FoxgloveSDK.Editor
                 var payloadPath = "Ros2Package~/msg/" + shape.PayloadIdentity + ".msg";
                 var payloadFile = filesWithoutLock.Single(file => string.Equals(file.RelativePath, payloadPath, StringComparison.Ordinal));
                 var envelopeName = FoxRunRos2InterfaceIdentity.BuildEnvelopeMessageName(shape.PayloadIdentity);
-                var envelopePath = "Ros2Package~/msg/" + envelopeName + ".msg";
-                var envelopeFile = new FoxRunRos2InterfaceRenderedFile(envelopePath, RenderEnvelope(shape.PayloadIdentity));
-                filesWithoutLock.Add(envelopeFile);
+                if (!envelopeFilesByPayloadIdentity.TryGetValue(shape.PayloadIdentity, out var envelopeFile))
+                {
+                    var envelopePath = "Ros2Package~/msg/" + envelopeName + ".msg";
+                    envelopeFile = new FoxRunRos2InterfaceRenderedFile(envelopePath, RenderEnvelope(shape.PayloadIdentity));
+                    envelopeFilesByPayloadIdentity.Add(shape.PayloadIdentity, envelopeFile);
+                    filesWithoutLock.Add(envelopeFile);
+                }
                 renderedContracts.Add(new FoxRunRos2InterfaceContractLock(
                     contract.DeclaringType,
                     contract.MemberName,

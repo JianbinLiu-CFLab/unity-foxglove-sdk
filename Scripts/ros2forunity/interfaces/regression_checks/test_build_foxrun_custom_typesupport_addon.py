@@ -12,9 +12,12 @@ from Scripts.test_support.phase181_scratch import temporary_directory
 from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon import (
     CandidateBuildError,
     CandidateBuildRequest,
+    MANAGED_ASSEMBLY_FILE,
     _catalog_source,
+    _managed_package_assembly_path,
     _repair_tracked_addon_catalog,
     _runtime_rmws,
+    _unity_plugin_importer_arguments,
     build_candidate,
     candidate_package_root,
     parse_args,
@@ -75,6 +78,15 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         )
         with self.assertRaises(CandidateBuildError):
             candidate_package_root(unsafe)
+
+    def test_managed_ros2cs_assembly_stays_at_the_plugins_root(self) -> None:
+        """Match the R2FU package layout: managed assembly above Win64 native DLLs."""
+        package_root = Path("candidate") / "package"
+
+        self.assertEqual(
+            package_root / "Runtime" / "Ros2ForUnity" / "Plugins" / MANAGED_ASSEMBLY_FILE,
+            _managed_package_assembly_path(package_root),
+        )
 
     def test_source_lock_drift_fails_before_build(self) -> None:
         """Verify source lock drift fails before build."""
@@ -151,6 +163,38 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         self.assertNotIn("interface_digest", catalog)
         self.assertNotIn("base_runtime", catalog)
         self.assertEqual(1, catalog.count("public string Platform"))
+
+    def test_unity_plugin_importer_uses_one_native_directory_pass(self) -> None:
+        """Keep the managed and native importer boundaries explicit and bounded."""
+        managed = _unity_plugin_importer_arguments(
+            Path("candidate/i/bin/interfaces_assembly.dll"),
+            Path("candidate/package/interfaces_assembly.dll.meta"),
+            input_is_directory=False,
+        )
+        native = _unity_plugin_importer_arguments(
+            Path("candidate/package/Runtime/Ros2ForUnity/Plugins/Windows/x86_64"),
+            Path("candidate/package/Runtime/Ros2ForUnity/Plugins/Windows/x86_64"),
+            input_is_directory=True,
+        )
+
+        self.assertEqual(
+            (
+                "-phase181TypesupportManagedInput",
+                "candidate/i/bin/interfaces_assembly.dll",
+                "-phase181TypesupportManagedMetaOutput",
+                "candidate/package/interfaces_assembly.dll.meta",
+            ),
+            managed,
+        )
+        self.assertEqual(
+            (
+                "-phase181TypesupportPluginInputDirectory",
+                "candidate/package/Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
+                "-phase181TypesupportPluginMetaOutputDirectory",
+                "candidate/package/Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
+            ),
+            native,
+        )
 
     def test_catalog_repair_regenerates_only_the_tracked_catalog_and_inventory(self) -> None:
         """Verify catalog repair regenerates only the tracked catalog and inventory."""
