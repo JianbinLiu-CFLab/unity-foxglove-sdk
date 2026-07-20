@@ -843,11 +843,13 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         class Qos:
             """Provide a lightweight Phase181 test double for Qos."""
             def __init__(self, reliability):
+                """Store the synthetic reliability value used by this test."""
                 self.reliability = reliability
 
         class Endpoint:
             """Provide a lightweight Phase181 test double for Endpoint."""
             def __init__(self, topic_type, node_name, reliability):
+                """Store the synthetic graph endpoint fields used by this test."""
                 self.topic_type = topic_type
                 self.node_name = node_name
                 self.qos_profile = Qos(reliability)
