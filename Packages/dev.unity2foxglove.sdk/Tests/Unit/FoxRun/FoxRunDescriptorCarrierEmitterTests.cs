@@ -29,5 +29,21 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
             Assert.Empty(errors);
         }
+
+        [Theory]
+        [InlineData("\u0001")]
+        [InlineData("\U0001F600")]
+        public void DescriptorCarrierDoesNotSplitUnicodeEscapes(string unicodeValue)
+        {
+            var descriptorJson = new string('x', 15998) + unicodeValue + new string('y', 44000);
+            var source = FoxRunDescriptorCarrierEmitter.DescriptorCarrierSource(descriptorJson);
+
+            var errors = CSharpSyntaxTree.ParseText(source)
+                .GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.Empty(errors);
+        }
     }
 }

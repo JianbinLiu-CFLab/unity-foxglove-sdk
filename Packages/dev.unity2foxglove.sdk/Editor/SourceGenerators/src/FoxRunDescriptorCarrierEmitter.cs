@@ -72,21 +72,36 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         private static int SyntaxSafeChunkLength(string escapedDescriptorJson, int start, int maximumLength)
         {
             var length = Math.Min(maximumLength, escapedDescriptorJson.Length - start);
-            var trailingBackslashes = 0;
-            for (var index = start + length - 1;
-                 index >= start && escapedDescriptorJson[index] == '\\';
-                 index--)
+            var end = start + length;
+            for (var index = start; index < end;)
             {
-                trailingBackslashes++;
+                if (escapedDescriptorJson[index] != '\\')
+                {
+                    index++;
+                    continue;
+                }
+
+                var escapeLength = index + 1 < escapedDescriptorJson.Length
+                                   && escapedDescriptorJson[index + 1] == 'u'
+                    ? 6
+                    : 2;
+                if (index + escapeLength <= end)
+                {
+                    index += escapeLength;
+                    continue;
+                }
+
+                if (index == start)
+                {
+                    throw new ArgumentException(
+                        "An escaped descriptor literal chunk cannot contain only a partial escape sequence.",
+                        nameof(escapedDescriptorJson));
+                }
+
+                return index - start;
             }
 
-            if ((trailingBackslashes & 1) == 0)
-                return length;
-
-            if (length == 1)
-                throw new ArgumentException("An escaped descriptor literal cannot end with an unpaired backslash.", nameof(escapedDescriptorJson));
-
-            return length - 1;
+            return length;
         }
 
         public static string EscapeStringLiteral(string value)
