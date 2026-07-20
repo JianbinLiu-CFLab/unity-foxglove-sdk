@@ -461,6 +461,14 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual("1", environment["PYTHONUTF8"])
         self.assertNotIn("TOKEN", environment)
 
+    def test_msvc_activator_command_keeps_humble_python310_fstrings_parseable(self):
+        """Verify Phase181 behavior: the pinned Humble worker does not parse a backslash inside an f-string expression."""
+        source = PEER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn('comspec = os.environ.get("ComSpec", r"C:\\Windows\\System32\\cmd.exe")', source)
+        self.assertIn("f'\"{comspec}\" '", source)
+        self.assertNotIn('f\'\"{os.environ.get("ComSpec", r"C:', source)
+
     def test_windows_peer_build_alias_is_reserved_for_projected_rosidl_path_overflow(self):
         """Verify Phase181 behavior: temporary drive aliases are limited to Windows paths that need them."""
         peer = load_peer_module()

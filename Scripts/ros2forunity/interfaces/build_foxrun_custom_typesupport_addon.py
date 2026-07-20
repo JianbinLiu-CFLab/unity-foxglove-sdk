@@ -581,12 +581,15 @@ def _inventory_classification(relative: str) -> str:
 def _write_inventory(package_root: Path) -> None:
     """Write a sorted byte-exact inventory for the disposable add-on package."""
     excluded = {"RuntimeSupport/typesupport-inventory.json"}
+    managed_importer = _managed_package_assembly_path(package_root).relative_to(package_root).as_posix() + ".meta"
     entries = []
     for path in sorted(package_root.rglob("*"), key=lambda item: item.as_posix().lower()):
         if not path.is_file():
             continue
         relative = path.relative_to(package_root).as_posix()
         if relative in excluded:
+            continue
+        if relative.endswith(".meta") and relative != managed_importer:
             continue
         entries.append(
             {

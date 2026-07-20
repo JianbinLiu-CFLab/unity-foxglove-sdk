@@ -112,7 +112,12 @@ public static class Phase181TypesupportPluginImporterBuilder
 
     private static void GeneratePluginImporter(string uniqueFolder, string input, string output)
     {
-        var stageAssetPath = uniqueFolder + "/" + Path.GetFileName(input);
+        // Unity resolves Editor plugin collisions by DLL file name rather than
+        // by its full asset path. Prefix the disposable staging copy with this
+        // Batch process' unique directory name so it cannot collide with an
+        // already-active add-on that exports the same native support library.
+        var stageFileName = Path.GetFileName(uniqueFolder) + "_" + Path.GetFileName(input);
+        var stageAssetPath = uniqueFolder + "/" + stageFileName;
         var stageDiskPath = Path.Combine(
             Directory.GetParent(Application.dataPath).FullName,
             stageAssetPath.Replace('/', Path.DirectorySeparatorChar));

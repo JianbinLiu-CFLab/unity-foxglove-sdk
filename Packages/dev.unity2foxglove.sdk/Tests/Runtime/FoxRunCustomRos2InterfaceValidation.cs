@@ -113,6 +113,10 @@ namespace Unity.FoxgloveSDK.Tests
             "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase181CustomRos2InterfacePlayerBuilder.cs";
         private const string AcceptanceBatchProbePath =
             "Unity2Foxglove/Assets/Editor/ManualAcceptance/Phase181BatchModeCustomRos2InteropProbe.cs";
+        private const string TypesupportPluginImporterBuilderPath =
+            "Unity2Foxglove/Assets/Editor/Phase181TypesupportPluginImporterBuilder.cs";
+        private const string RuntimeBatchSelectionPath =
+            "Packages/dev.unity2foxglove.ros2forunity/Editor/Phase181Ros2RuntimeBatchSelection.cs";
         private const string PeerProtocolPath =
             "Scripts/smoke/ros2/phase181_custom_ros2_peer_protocol.py";
         private const string PeerHelperPath =
@@ -184,6 +188,8 @@ namespace Unity.FoxgloveSDK.Tests
             var acceptanceComponent = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceComponentPath);
             var acceptancePlayerBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptancePlayerBuilderPath);
             var acceptanceBatchProbe = PhaseValidationSourceHelpers.ReadRequiredRepoText(AcceptanceBatchProbePath);
+            var typesupportPluginImporterBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(TypesupportPluginImporterBuilderPath);
+            var runtimeBatchSelection = PhaseValidationSourceHelpers.ReadRequiredRepoText(RuntimeBatchSelectionPath);
             var peerProtocol = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerProtocolPath);
             var peerHelper = PhaseValidationSourceHelpers.ReadRequiredRepoText(PeerHelperPath);
             var linuxPeer = PhaseValidationSourceHelpers.ReadRequiredRepoText(LinuxPeerPath);
@@ -243,7 +249,9 @@ namespace Unity.FoxgloveSDK.Tests
                 r2fuPackageJson,
                 acceptanceComponent,
                 acceptancePlayerBuilder,
-                acceptanceBatchProbe);
+                acceptanceBatchProbe,
+                typesupportPluginImporterBuilder);
+            VerifyRuntimeBatchSelection(runtimeBatchSelection);
             VerifyInteropAutomationReleaseGate(
                 peerProtocol,
                 peerHelper,
@@ -501,6 +509,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && transaction.Contains("WriteAtomically", StringComparison.Ordinal)
                   && transaction.Contains("File.Replace", StringComparison.Ordinal)
                   && transaction.Contains("Client.Resolve", StringComparison.Ordinal) == false
+                  && transaction.Contains("property.Name == StaticInterfacePackageId", StringComparison.Ordinal)
                   // The transaction documents Unity ownership of the lock;
                   // reject an actual packages-lock.json write path instead of
                   // treating that explanatory text as a violation.
@@ -735,7 +744,8 @@ namespace Unity.FoxgloveSDK.Tests
             string r2fuPackageJson,
             string acceptanceComponent,
             string playerBuilder,
-            string batchProbe)
+            string batchProbe,
+            string typesupportPluginImporterBuilder)
         {
             Check(sample.Contains("FoxRunMode.PublishOnly", StringComparison.Ordinal)
                   && sample.Contains("FoxRunMode.SubscribeOnly", StringComparison.Ordinal)
@@ -834,6 +844,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && !batchProbe.Contains("using ROS2", StringComparison.Ordinal)
                   && !batchProbe.Contains("CreateNode", StringComparison.Ordinal),
                 "181F-19: the Batch-only Editor probe drives the tracked custom-interface scene and accepts only its bounded terminal evidence markers");
+
+            Check(typesupportPluginImporterBuilder.Contains(
+                      "var stageFileName = Path.GetFileName(uniqueFolder) + \"_\" + Path.GetFileName(input);",
+                      StringComparison.Ordinal)
+                  && typesupportPluginImporterBuilder.Contains(
+                      "var stageAssetPath = uniqueFolder + \"/\" + stageFileName;",
+                      StringComparison.Ordinal),
+                "181F-20: candidate PluginImporter staging gives each DLL a Batch-unique file name, avoiding collisions with active add-on plugins");
         }
 
         private static void VerifyInteropAutomationReleaseGate(
@@ -886,6 +904,23 @@ namespace Unity.FoxgloveSDK.Tests
                   && dotnetWorkflow.Contains("Run Phase181 custom ROS2 acceptance helper regressions", StringComparison.Ordinal)
                   && packageWorkflow.Contains("Validate Phase181 custom ROS2 typesupport add-ons", StringComparison.Ordinal),
                 "181F-10: public CI runs protocol regressions and all tracked custom typesupport preflight validators");
+        }
+
+        private static void VerifyRuntimeBatchSelection(string runtimeBatchSelection)
+        {
+            Check(runtimeBatchSelection.Contains("public static void SelectFromCommandLine()", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("-phase181Ros2Distro", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("-phase181Ros2CommunicationMode", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("Ros2ForUnityCustomTypesupportSelectionTransaction.Apply", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("Ros2ForUnityRuntimeSelection.SetCommunicationMode", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("Client.Resolve()", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("Events.registeredPackages", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("PackageInfo.FindForPackageName", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("[InitializeOnLoadMethod]", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("SessionState.SetString", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("Ros2ForUnityRuntimeDefineInstaller.ReconcileCompileSymbolForEditor();", StringComparison.Ordinal)
+                  && runtimeBatchSelection.Contains("EditorApplication.Exit(0);", StringComparison.Ordinal),
+                "181F-21: an explicit Unity Batch selector applies one validated runtime/add-on and communication-mode transaction before each isolated acceptance row");
         }
 
         private static void VerifyPublicOperationalDocumentation(

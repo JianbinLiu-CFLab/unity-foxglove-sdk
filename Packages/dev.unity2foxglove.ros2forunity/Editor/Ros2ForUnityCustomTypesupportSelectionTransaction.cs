@@ -786,7 +786,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             foreach (var property in dependencies.Properties()
                          .Where(property => property.Name.StartsWith(RuntimePackagePrefix, StringComparison.Ordinal)
-                                            || property.Name.StartsWith(CustomTypesupportPackagePrefix, StringComparison.Ordinal))
+                                            || property.Name.StartsWith(CustomTypesupportPackagePrefix, StringComparison.Ordinal)
+                                            || property.Name == StaticInterfacePackageId)
                          .ToArray())
             {
                 property.Remove();

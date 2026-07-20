@@ -111,8 +111,12 @@ def capture_windows_msvc_environment(base_environment: Mapping[str, str]) -> dic
     command = pathlib.Path(roots[0].strip()) / "Common7" / "Tools" / "VsDevCmd.bat"
     if not command.is_file() or '"' in str(command) or "%" in str(command):
         raise PeerFailure("FAIL_PEER_TOOLCHAIN", "The discovered Visual Studio x64 tool activator is not usable.")
+    # ROS 2 Humble's pinned Python is 3.10, whose f-string parser rejects a
+    # backslash anywhere inside the expression. Compute the fallback first so
+    # the command stays parseable by the same Python which will run the worker.
+    comspec = os.environ.get("ComSpec", r"C:\Windows\System32\cmd.exe")
     command_line = (
-        f'"{os.environ.get("ComSpec", r"C:\Windows\System32\cmd.exe")}" '
+        f'"{comspec}" '
         f'/d /s /c call "{command}" -arch=x64 -host_arch=x64 >nul && set'
     )
     result = subprocess.run(

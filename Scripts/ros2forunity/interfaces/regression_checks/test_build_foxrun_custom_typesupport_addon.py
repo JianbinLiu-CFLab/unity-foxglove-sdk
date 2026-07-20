@@ -229,6 +229,9 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             )
             stale_catalog = generated / "FoxRunCustomTypesupportCatalog.g.cs"
             stale_catalog.write_text("stale catalog", encoding="utf-8")
+            # Unity can create this local importer beside a tracked package
+            # asset; it is not package payload and must not become inventory.
+            (target / "LICENSE.meta").write_text("unity-generated\n", encoding="utf-8")
             request = CandidateBuildRequest(
                 distro="humble",
                 static_interface_package=fixture.static,
@@ -257,6 +260,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             )
             self.assertEqual(repaired.stat().st_size, catalog_entry["byteLength"])
             self.assertEqual(file_sha256(repaired), catalog_entry["sha256"])
+            self.assertNotIn("LICENSE.meta", {entry["path"] for entry in inventory["entries"]})
             self.assertNotIn(b"\r", repaired.read_bytes())
 
     def _request(self) -> CandidateBuildRequest:
