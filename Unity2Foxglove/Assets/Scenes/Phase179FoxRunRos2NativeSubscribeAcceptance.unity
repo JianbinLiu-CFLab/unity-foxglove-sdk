@@ -146,7 +146,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: afc2d6291bf7eb743b8c49690ebc3c6f, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.FoxgloveSDK::Unity.FoxgloveSDK.Components.FoxgloveManager
   _publishCadenceDiagnosticsEnabled: 0
   _publishCadenceDiagnosticsSummaryIntervalSeconds: 5
@@ -154,11 +154,12 @@ MonoBehaviour:
   _frameStallDiagnosticsThresholdMs: 200
   _frameStallStageTimingDiagnosticsEnabled: 0
   _foxRunPolicySerializationVersion: 2
+  _coordinateTransportPolicySerializationVersion: 1
   _defaultFoxRunPublishEncoding: 1
   _defaultFoxRunWireEncoding: 1
   _defaultFoxRunSubscriptionEncoding: 1
   _defaultFoxRunSubscriptionProvider: 2
-  _defaultFoxRunRos2Qos: 1
+  _defaultFoxRunRos2Qos: 2
   _foxRunRos2NativeCopyBudgetBytes: 4194304
   _enableFoxRunInbound: 1
   _allowRemoteFoxRunInboundWithSharedToken: 0
@@ -169,9 +170,9 @@ MonoBehaviour:
   _port: 8765
   _startOnEnable: 1
   _runInBackground: 1
-  _transportMode: 2
+  _transportMode: 0
   _transportModeBeforeOutputDisabled: 0
-  _foxgloveOutputEnabled: 0
+  _foxgloveOutputEnabled: 1
   _ros2NativeEnabled: 0
   _profilingEnabled: 0
   _defaultPublishRateHz: 10
@@ -183,7 +184,7 @@ MonoBehaviour:
   _ros2BridgeAutoConnect: 1
   _defaultRos2BridgeOutputEnabled: 0
   _allowPublisherRos2BridgeOverride: 1
-  _ros2BridgeNamespace:
+  _ros2BridgeNamespace: 
   _ros2BridgeQosPreset: 0
   _ros2BridgeCustomReliability: 0
   _ros2BridgeCustomDurability: 0
@@ -192,41 +193,43 @@ MonoBehaviour:
   _ros2BridgeReconnectIntervalMs: 1000
   _ros2BridgeSendTimeoutMs: 1000
   _coordinateMode: 0
+  _outputCoordinateMode: 0
+  _inputCoordinateMode: 0
   _assetRoots: []
   _enablePlaybackControl: 0
   _playbackStartOffsetSeconds: 0
   _playbackDurationSeconds: 60
   _enableRecording: 0
   _recordingPrefix: foxglove
-  _recordingDirectory:
+  _recordingDirectory: 
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
-  _replayFilePath:
+  _replayFilePath: 
   _replayAutoPlay: 0
   _disableLivePublishers: 0
   _enableRemoteMcapFileServer: 0
   _remoteMcapFileServerHost: 127.0.0.1
   _remoteMcapFileServerPort: 8891
   _remoteMcapFileServerSourceId: local-mcap
-  _remoteMcapFileServerToken:
+  _remoteMcapFileServerToken: 
   _enableReplayCursorBridge: 0
   _replayCursorBridgeHost: 127.0.0.1
   _replayCursorBridgePort: 8892
-  _replayCursorBridgeToken:
+  _replayCursorBridgeToken: 
   _identityModeSource: 0
   _identityModeOverride: 0
   _projectSettingsIdentityMode: 0
   _schemaEvidenceRoot: Assets/Generated
   _allowHostedFoxgloveWeb: 1
   _allowedBrowserOrigins: []
-  _certificatePfxPath:
-  _certificatePassword:
+  _certificatePfxPath: 
+  _certificatePassword: 
   _rootCaDistributorEnabled: 0
   _rootCaDistributorHost: 127.0.0.1
   _rootCaDistributorPort: 8766
-  _rootCaFilePath:
-  _sharedToken:
+  _rootCaFilePath: 
+  _sharedToken: 
 --- !u!4 &160907796
 Transform:
   m_ObjectHideFlags: 0
@@ -269,18 +272,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: eef4b5c8d8f9add4cbb8676ddb19dad1, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Phase179FoxRunRos2NativeSubscribeAcceptance
   _manager: {fileID: 160907795}
   _status: Waiting for native ROS2 subscription registration.
-  _stringData:
+  _stringData: 
   _twistLinearX: 0
   _twistLinearY: 0
   _twistAngularZ: 0
-  _joyFrameId:
+  _joyFrameId: 
   _joyAxes: []
-  _joyButtons:
-  _imuFrameId:
+  _joyButtons: 
+  _imuFrameId: 
   _imuOrientationX: 0
   _imuOrientationY: 0
   _imuOrientationZ: 0
@@ -304,7 +307,7 @@ MonoBehaviour:
     binding deep-copies them before main-thread application; this component exposes
     only bounded managed copies and counters.
   _playerAutoQuitRequested: 0
-  _playerToken:
+  _playerToken: 
   _playerAutoQuitTimeoutSeconds: 60
   _playerBurstFinalSequence: -1
   _playerStringMatched: 0
