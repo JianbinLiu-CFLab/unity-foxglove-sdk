@@ -212,8 +212,8 @@ class VersionBump:
             )
             self.write_if_changed(path, text, f"update core SDK dependency literal to {self.version}")
 
-    # Maximum number of old release-note links kept in README.
-    KEEP_RELEASE_NOTES = 2
+    # README exposes only the current release; historical notes remain in docs/releases.
+    KEEP_RELEASE_NOTES = 1
 
     def update_readme(self, old_version: str) -> None:
         """Update root README badges and release-note links for the target version."""
@@ -235,34 +235,48 @@ class VersionBump:
             "README verified Windows version note",
         )
 
-        release_note_line = (
-            r"^- \[v(?P<ver>\d+\.\d+\.\d+) release notes\]"
-            r"\(docs/releases/RELEASE_NOTES_v(?P=ver)\.md\)$"
+        release_note_link = (
+            r"\[v(?P<ver>\d+\.\d+\.\d+) release notes\]"
+            r"\(docs/releases/RELEASE_NOTES_v(?P=ver)\.md\)"
         )
-        release_note_re = re.compile(release_note_line, re.MULTILINE)
+        release_note_re = re.compile(release_note_link)
+        current_release_note = (
+            f"[v{self.version} release notes]"
+            f"(docs/releases/RELEASE_NOTES_v{self.version}.md)"
+        )
+        text = self.sub_exactly_once(
+            path,
+            text,
+            rf"\[v{old} release notes\]"
+            rf"\(docs/releases/RELEASE_NOTES_v{old}\.md\)",
+            current_release_note,
+            "README current release-note link",
+        )
 
-        release_note = f"- [v{self.version} release notes](docs/releases/RELEASE_NOTES_v{self.version}.md)"
-        if release_note not in text:
-            match = release_note_re.search(text)
-            if match:
-                text = text[: match.start()] + release_note + "\n" + text[match.start() :]
-            else:
-                archive = "- [Release notes archive](docs/releases/)"
-                idx = text.find(archive)
-                if idx >= 0:
-                    text = text[:idx] + release_note + "\n" + text[idx:]
-                else:
-                    text += f"\n{release_note}\n"
-
-        # Trim old entries to keep only the latest KEEP_RELEASE_NOTES.
+        # Keep the first link in place (inline navigation or a legacy bullet) and
+        # remove only historical standalone bullets. Ambiguous inline duplicates
+        # fail closed instead of silently corrupting prose.
         hits = list(release_note_re.finditer(text))
         if len(hits) > self.KEEP_RELEASE_NOTES:
             for hit in reversed(hits[self.KEEP_RELEASE_NOTES :]):
-                start = hit.start()
-                end = hit.end()
-                if end < len(text) and text[end] == "\n":
-                    end += 1
-                text = text[:start] + text[end:]
+                line_start = text.rfind("\n", 0, hit.start()) + 1
+                line_end = text.find("\n", hit.end())
+                if line_end < 0:
+                    line_end = len(text)
+                line = text[line_start:line_end].rstrip("\r")
+                if line != "- " + hit.group(0):
+                    raise ValueError(
+                        "Historical README release-note links must be standalone bullets "
+                        f"in {self.rel(path)}."
+                    )
+                remove_end = line_end + (1 if line_end < len(text) else 0)
+                text = text[:line_start] + text[remove_end:]
+
+        text = re.sub(
+            r"(?m)^- \[Release notes archive\]\(docs/releases/\)\r?\n?",
+            "",
+            text,
+        )
 
         self.write_if_changed(path, text, f"update README version references to {self.version}")
 
@@ -300,14 +314,14 @@ class VersionBump:
         self.write_if_changed(path, text, f"update CITATION.cff metadata to {self.version}")
 
     def update_changelog(self) -> None:
-        """Insert a changelog section for the target version when it is absent."""
+        """Promote Unreleased notes or insert a stub for the target version."""
         path = self.root / "CHANGELOG.md"
         text = self.read(path)
         heading = f"## {self.version} - "
         if heading in text:
             return
 
-        entry = (
+        stub_entry = (
             f"## {self.version} - {self.release_date}\n\n"
             "### Added\n\n"
             "- Version prepared for the next Unity2Foxglove package release.\n\n"
@@ -318,10 +332,26 @@ class VersionBump:
             "- Release package validation should be run before tagging this release.\n\n"
         )
 
+        unreleased = re.search(
+            r"(?ms)^## Unreleased[ \t]*\r?\n(?P<body>.*?)(?=^## \d+\.\d+\.\d+ - )",
+            text,
+        )
+        if unreleased is not None:
+            body = unreleased.group("body").strip()
+            entry = (
+                f"## {self.version} - {self.release_date}\n\n{body}\n\n"
+                if body
+                else stub_entry
+            )
+            replacement = "## Unreleased\n\n" + entry
+            text = text[: unreleased.start()] + replacement + text[unreleased.end() :]
+            self.write_if_changed(path, text, f"promote Unreleased notes to {self.version}")
+            return
+
         insertion = re.search(r"(?m)^---\n\n(?=## \d+\.\d+\.\d+ - )", text)
         if insertion is None:
             raise ValueError(f"Cannot find changelog insertion point in {self.rel(path)}")
-        text = text[: insertion.end()] + entry + text[insertion.end() :]
+        text = text[: insertion.end()] + stub_entry + text[insertion.end() :]
         self.write_if_changed(path, text, f"insert changelog section for {self.version}")
 
     def create_release_notes(self) -> None:

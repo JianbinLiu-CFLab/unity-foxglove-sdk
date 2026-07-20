@@ -1,420 +1,302 @@
-# Shared-Emitter Dual-Host AOT Code Generation for Unity Telemetry
+# Shared-Emitter Dual-Host AOT Code Generation for Bidirectional Unity Telemetry
 
-**Draft Research Note - Unity2Foxglove Project. First drafted 2026-05-12; updated 2026-06-09.**
+Updated: 2026-07-20
 
-## 1 Introduction
+## Abstract
 
-Telemetry systems in game engines and simulation frameworks typically rely on runtime reflection to discover annotated fields, read their values, and publish data. In a standard .NET JIT environment, this works reliably. Under Unity IL2CPP and broader C#/.NET ahead-of-time (AOT) compilation constraints, however, reflection-heavy runtime discovery becomes fragile: reflected members can be stripped by the linker, runtime code generation is unavailable, and build success does not guarantee that the runtime scanner will find the same metadata it found during development.
+FoxRun turns annotated Unity fields and properties into static telemetry bindings. A binding can publish from Unity, subscribe into Unity, or do both. The same resolved generation model feeds two hosts: a Roslyn source generator for normal Editor compilation and a build-time writer that emits physical `_FoxRun.g.cs` files for IL2CPP Player builds.
 
-This note describes the source-generation architecture behind Unity2Foxglove's `[FoxRun]` telemetry mechanism. The central idea is to separate **when code is generated** from **what code is generated**. A platform-neutral shared emitter owns the generated-source semantics, while multiple host integrations invoke that emitter at different lifecycle points: a Roslyn source generator for Unity Editor ergonomics, and a build-time physical `.g.cs` writer for IL2CPP Player builds.
+The architecture is deliberately bidirectional but asymmetric at the transport boundary. One subscribed member has exactly one resolved input source for a session, while a published member may fan out to Foxglove WebSocket, MCAP recording, ROS2 Native, and other configured sinks. Generated input code stages owned values off the Unity main thread and applies them on the main thread. Generated output code reads the member directly and dispatches through the configured sinks. Neither path discovers or accesses FoxRun members through CLR reflection at runtime.
 
-The result is a zero-CLR-reflection telemetry binding path: runtime code does not scan assemblies, inspect attributes, call `FieldInfo.GetValue()`, or emit IL dynamically to discover telemetry members. It only executes statically generated publisher code that has already been produced during compilation or build preparation.
+This note describes the public declaration model, its lowering into generated code, the runtime safety boundary, and the evidence used to keep Roslyn and IL2CPP behavior equivalent.
 
-The architecture also treats Player-build success as insufficient evidence by itself. A generated publisher can compile and still fail semantically under IL2CPP if the generated payload shape depends on metadata that the Player runtime strips. Unity2Foxglove therefore validates not only that physical `_FoxRun.g.cs` files participate in the IL2CPP build, but also that a built Player publishes concrete JSON payload values into Foxglove.
+## 1. FoxRun's User Mental Model
 
-### 1.1 Why Unity Is the Target Platform
-
-Unity is the primary target of this project, not a test vehicle for a general-purpose C# SDK. The project exists to make Foxglove streaming, MCAP recording and replay, and declarative telemetry work inside Unity's development and Player lifecycle. That target introduces constraints that a conventional .NET host does not share:
-
-| Constraint | Unity Editor / IL2CPP Player | Conventional .NET JIT host |
-| --- | --- | --- |
-| Runtime code generation | Restricted or unavailable in IL2CPP | Generally available |
-| Managed code stripping | Player builds may strip unrooted metadata and members | Not normally part of JIT execution |
-| Lifecycle integration | Bound to Unity compilation, Play Mode, Player builds, and `MonoBehaviour` execution | Application-defined |
-| Packaging | UPM package, asmdefs, analyzer labels, generated Unity assets, and build hooks | NuGet/MSBuild conventions |
-| Domain adaptation | Unity value types, scene objects, physics, and left-handed coordinates | Host-specific |
-| Platform restrictions | Unity platform matrix, including WebGL socket restrictions | Depends on the selected .NET runtime |
-
-IL2CPP is therefore a useful high-pressure validation environment for the shared-emitter design. Passing Editor and IL2CPP Player validation provides strong evidence that generated telemetry semantics do not depend on JIT-only code generation or reflection-heavy member binding. It does **not**, by itself, prove compatibility with every standard .NET, trimmed, or Native AOT host: those targets still require their own target-framework builds, dependency audits, and runtime tests.
-
-This distinction keeps the project positioning precise. Unity-specific constraints motivate the architecture and remain the product acceptance boundary. Any future platform-neutral extraction would reuse proven implementation pieces without redefining Unity2Foxglove as a general Foxglove SDK replacement.
-
-## 2 Problem
-
-Telemetry systems often want APIs that look like this:
+FoxRun is a field binding, not merely a publishing shortcut. The topic is positional; direction, update policy, and rate are optional.
 
 ```csharp
-[FoxRun("/debug/status")]
-private string _status;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+public partial class RobotTelemetry : MonoBehaviour
+{
+    // Defaults: Publish + FixedRate + 10 Hz.
+    [FoxRun("/robot/pose")]
+    private PoseState _pose;
+
+    // Apply subscribed changes on the Unity main thread, at most 30 times/s.
+    [FoxRun("/robot/state", Mode = Subscribe, Policy = Change, RateHz = 30)]
+    private RobotState _state;
+
+    // Debug-oriented full duplex binding. Both directions use the same policy/rate.
+    [FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, RateHz = 10)]
+    private DebugState _debugState;
+
+    // Explicit API-driven update only; a periodic rate is invalid here.
+    [FoxRun("/robot/reset", Policy = Trigger)]
+    private ResetEvent _reset;
+}
 ```
 
-The user describes what should be published. The system handles how to publish it.
+The default is intentionally useful:
 
-For Unity developers, this is intentionally close to the familiar `[SerializeField]` mental model: mark a member in a `MonoBehaviour`, keep the runtime code ordinary, and let the tooling build the supporting infrastructure around that declaration.
+```csharp
+[FoxRun("/debug/position")]
+private Vector3 _position;
+```
 
-In a normal JIT runtime, such APIs are often implemented by runtime reflection: scan assemblies, find attributes, read fields, infer schemas, and publish values. That approach is convenient, but it becomes brittle under Unity IL2CPP and other AOT/trimming environments [10]:
+is a 10 Hz fixed-rate publisher. Users add options only when the data flow or scheduling semantics differ.
 
-- reflected members can be stripped unless explicitly preserved,
-- runtime code generation is unavailable,
-- Editor behavior can diverge from Player behavior,
-- build success does not guarantee the runtime scanner will discover the same metadata.
+### 1.1 Flow
 
-For telemetry, silent failure is especially dangerous. A missing topic can look like "no data changed" instead of "the build removed the publisher."
+| `Mode` | Unity member behavior | Intended use |
+| --- | --- | --- |
+| `Publish` | Reads the Unity member and emits it to enabled output sinks. This is the default. | Normal telemetry and visualization. |
+| `Subscribe` | Accepts one resolved external source, stages the newest owned value, and applies it on the Unity main thread. | Remote state injection and controls. |
+| `PublishAndSubscribe` | Enables both halves with one declaration. Inbound application is not echoed back as a new outbound update. | Debugging and integration; avoid where ownership would be ambiguous in production. |
 
-## 3 Related Work
+### 1.2 Policy
 
-### 3.1 System.Text.Json Source Generation
+The four policies describe when a direction is eligible to update. They are not transport QoS settings.
 
-Microsoft's `System.Text.Json` [1] replaces reflection-heavy serialization metadata with compile-time generated code. Microsoft documents source generation as useful for trimming and Native AOT scenarios. More generally, C# source generators [3] provide a compile-time mechanism for adding generated C# source to a user's compilation. The similarity is that both systems replace runtime reflection with generated code for AOT safety. The difference is domain: `System.Text.Json` focuses on JSON serialization contracts, normally with one Roslyn host, not Unity telemetry publication with a dual-host Editor/IL2CPP architecture.
+| `Policy` | Publish behavior | Subscribe behavior |
+| --- | --- | --- |
+| `FixedRate` | Emits the current value on each eligible cadence. | Applies only when a newer staged value exists; it never re-applies stale data just because a timer fired. |
+| `Change` | Emits the first value and later value changes. | Applies the first accepted value and later changes, subject to the main-thread apply cap. |
+| `ChangeOrInterval` | Emits changes immediately when eligible and also supplies an interval heartbeat. | May apply a newly received duplicate after the interval; it never invents a heartbeat from an old staged value. |
+| `Trigger` | Emits only through the generated explicit trigger API. | Applies only through the generated explicit apply API. A positive `RateHz` is contradictory and fails validation. |
 
-### 3.2 MessagePack-CSharp AOT Generation
+### 1.3 What `RateHz` Means
 
-MessagePack-CSharp [2] provides AOT-friendly code generation for Unity/Xamarin-style strict-AOT environments. Current MessagePack-CSharp releases use source generation for annotated MessagePack types, while older documentation and versions also describe the `mpc` compiler workflow. This is the closest prior-art pattern to Unity2Foxglove's AOT approach: it recognizes that Unity/IL2CPP needs ahead-of-time generated C# instead of runtime code generation. The key difference is domain and host integration. Unity2Foxglove applies that AOT discipline to field/property-level telemetry, uses a shared emitter as the single generation-semantics source, and integrates the physical fallback into Unity's Player build path.
+`RateHz` is a local scheduling ceiling:
 
-### 3.3 Unity Netcode for Entities Source Generators
+- on publish, it is the maximum output cadence;
+- on subscribe, it is the maximum Unity main-thread apply cadence;
+- on full duplex, the two directions are scheduled independently under the same ceiling.
 
-Unity Netcode for Entities [4] uses Roslyn source generation to produce serialization and registration code, avoiding runtime reflection for replicated networking types. The product domain is DOTS/ECS networking, not MonoBehaviour telemetry or Foxglove/MCAP publication. Generated output is part of Unity Netcode's package pipeline, not a dual-host architecture with a shared emitter.
+It does not throttle network receive callbacks, alter discovery, select a provider, or change ROS2 QoS. If a subscription omits `RateHz`, it inherits the Manager's frozen input-apply cap. A full-duplex binding without an explicit rate uses the normal 10 Hz output default and the Manager input-apply cap.
 
-### 3.4 Refitter MSBuild Generation
+## 2. Why Static Generation Is Required
 
-Refitter [5] demonstrates a multi-entry code-generation workflow where CLI and MSBuild tooling can generate physical `.cs` files before compilation. Its input is OpenAPI contract files, and output is REST client code. The relevance is the multi-host pattern; the difference is that Refitter does not target Unity, IL2CPP, or telemetry publication.
+Unity has two materially different authoring and deployment environments:
 
-### 3.5 Refit NativeAOT/Trimming Guidance
+- Editor development benefits from Roslyn generation during compilation.
+- IL2CPP Players require ahead-of-time-visible source and preservation evidence; runtime IL emission is unavailable and reflection-only metadata may be stripped.
 
-Refit [6, 7] recommends source-generator-first usage for Native AOT and trimming-sensitive applications. It focuses on HTTP client interface implementations and DTO serialization metadata, not scene/runtime telemetry binding.
+A telemetry system that scans assemblies, reads attributes, and calls `FieldInfo.GetValue()` or `SetValue()` on every message is fragile under stripping and expensive on hot paths. Silent failure is especially dangerous: a missing binding can look like unchanged robot data rather than a broken build.
 
-### 3.6 ReactiveMarbles ObservableEvents Source Generator
+FoxRun therefore resolves attributes before runtime and emits direct member access. A Player build is not considered proven merely because it compiles. Validation also checks that generated bindings are present, that real payload values cross the boundary, and that inbound values reach the intended member on the Unity main thread.
 
-ReactiveMarbles ObservableEvents [8] uses source generation to remove event-to-observable boilerplate and generate typed code from C# declarations. It targets event binding/reactive APIs, not AOT-safe telemetry publishing into visualization tools.
-
-### 3.7 Rerun Logging APIs
-
-Rerun [9] provides a declarative low-friction logging experience for visualization through calls like `rr.log(entity_path, entity)`. Rerun's primary public SDKs are Python, Rust, and C++. Unity2Foxglove adapts declarative telemetry to Unity, Foxglove schemas, MCAP, and IL2CPP constraints.
-
-### 3.8 Comparison
-
-| Feature | System.Text.Json | MessagePack | Unity Netcode | Refitter | Refit | ReactiveMarbles | Rerun | Unity2Foxglove |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Roslyn source generation | Yes | Yes | Yes | MSBuild/CLI | Yes | Yes | No | Yes |
-| Physical fallback for AOT | Partial | Yes | No | Yes | No | No | N/A | Yes |
-| Dual-host shared emitter | No | No | No | No | No | No | No | Yes |
-| Unity IL2CPP target | No | Yes | Yes (DOTS) | No | No | No | No | Yes (MonoBehaviour) |
-| Telemetry/visualization domain | No | No | Networking | REST clients | HTTP clients | Events | Visualization | Telemetry |
-| Generated/AOT-friendly runtime path | Source-gen mode | Source-gen mode | Yes | Generated clients | Source-gen mode | Yes | N/A | Yes for telemetry binding |
-
-The important boundary is conservative: Unity2Foxglove does not claim to invent source generation or AOT pre-generation. Many systems use these techniques. The narrower claim is that the reviewed public Unity telemetry tooling did not document this exact combination: declarative field/property telemetry attributes, a Roslyn Editor host, a Unity build-time physical `.g.cs` host for IL2CPP, a shared emitter as the generation-semantics source, zero CLR reflection for telemetry member binding at runtime, and Foxglove-compatible streaming and MCAP evidence in the same Unity package.
-
-## 4 Design Principle
-
-The key design principle is:
-
-> Separate "when to generate" from "what to generate."
-
-The shared emitter answers only one question: given a resolved telemetry model, what C# source code should be produced? In the current implementation that resolved model is the shared `FoxRunGenerationModel`; it is also serialized as `foxrun.generation-descriptor.json` so the Roslyn and build-time hosts can be compared at the same semantic boundary.
-
-Host integrations answer a different question: when and where should that generated code be injected?
+## 3. Architecture
 
 ```mermaid
-flowchart TD
-  Attr["Attribute declarations"] --> Model["Generation model"]
-  Model --> Emitter["Shared emitter"]
-  Emitter --> Roslyn["Roslyn host"]
-  Emitter --> BuildWriter["Build-time writer"]
-  Roslyn --> InMemory["In-memory generated code"]
-  BuildWriter --> Files["Physical .g.cs files"]
-  InMemory --> StaticCode["Static publisher code"]
-  Files --> StaticCode
-  StaticCode --> Runtime["Runtime publisher adapter"]
-  Runtime --> Foxglove["Foxglove / MCAP"]
+flowchart TB
+  Source["C# fields/properties with [FoxRun]"]
+  Resolve["Canonical generation model<br/>flow · policy · rate · schema · transport metadata"]
+  Emitter["Shared FoxgloveSourceEmitter"]
+  Roslyn["Roslyn host<br/>in-memory source"]
+  Physical["Build host<br/>physical _FoxRun.g.cs"]
+  Generated["Generated partial type<br/>direct member access"]
+  Output["Publish scheduler and dispatch"]
+  Inputs["WebSocket or ROS2 input dispatch"]
+  Stage["Owned latest-value staging"]
+  Main["Unity main-thread apply"]
+  Sinks["Foxglove · MCAP · ROS2 · configured sinks"]
+
+  Source --> Resolve --> Emitter
+  Emitter --> Roslyn --> Generated
+  Emitter --> Physical --> Generated
+  Generated --> Output --> Sinks
+  Inputs --> Stage --> Main --> Generated
 ```
 
-The emitter is the semantic reference point. Roslyn, Unity build hooks, MSBuild tasks, and CLI tools can all be hosts, but they should not each own a separate copy of the generation semantics.
+The shared emitter is the semantic authority. The two hosts own discovery and injection timing, not two independent implementations of FoxRun behavior.
 
-## 5 Architecture
+### 3.1 Declaration and Model Resolution
 
-### 5.1 Attribute Declaration Layer
+The declaration layer captures the compact user contract. The resolver expands it into a canonical model containing, as applicable:
 
-The user-facing API is intentionally small. A developer annotates fields or properties with `[FoxRun]`, including topic, rate, schema, and publish-policy options.
+- declaring type and directly accessible member expression;
+- topic and schema identity;
+- `Flow`, `Policy`, explicit/effective rate, and trigger shape;
+- JSON or Protobuf wire contract;
+- one resolved input provider and its admission policy;
+- ROS2 canonical type, QoS preset, and custom-interface identity;
+- publish sink demand and replay suppression behavior;
+- stable diagnostics and manifest identity.
 
-This layer does not expose Roslyn, IL2CPP, build hooks, generated files, or emitter internals.
+The Roslyn builder and reflection-based build-time reader must lower to this same model. Reflection is permitted in the Editor/build preparation host where it is used to describe code. It is not used for per-message member binding in the generated runtime path.
 
-### 5.2 Model Resolution Layer
+### 3.2 Shared Emitter Modules
 
-Each host resolves source declarations into a host-independent model:
+The emitter is split by responsibility under `Editor/Shared/FoxgloveSourceEmitter/`:
 
-- containing type,
-- member name,
-- member type,
-- topic,
-- schema name,
-- rate,
-- publish mode,
-- change epsilon,
-- forced interval,
-- diagnostic metadata.
-
-Roslyn and build-time scanning produce this model through different mechanisms, but both lower into the same `FoxRunGenerationModel` DTOs before source emission. The Roslyn lowerer lives under `Editor/SourceGenerators/src/`, the reflection/build-time lowerer lives under `Editor/FoxRun/`, and shared descriptor/model files live under `Editor/Shared/FoxRunDescriptor/` with explicit `.csproj` links into the source-generator and validation projects.
-
-The type fields in that model are intentionally split:
-
-- `RawObservedTypeName` records what a host observed and is provenance only.
-- `EmissionTypeName` is the legal C# type expression consumed by the source emitter and participates in semantic equality.
-- `CanonicalType` is the normalized schema/contract token used for descriptor and manifest identity.
-
-This distinction matters because Roslyn and reflection can observe the same type with different strings, such as `Outer.Inner` versus `Outer+Inner`, or C# generic syntax versus CLR generic names. The formatter and canonical normalizer turn those host-specific observations into stable emission and schema values before the shared emitter runs.
-
-The current `FoxRunGenerationMember` keeps three construction paths for this split. Older call sites can still provide one raw type string, newer host lowerers can provide separate raw-observed and emission type strings, and the most explicit path can also pass a canonical type override. When no canonical type is supplied, arrays are canonicalized from their element type before normalization, while scalar and generic values use the normalized emission type. This keeps descriptor identity stable without forcing every host to observe type syntax in the same way.
-
-`FoxRunGenerationType` also normalizes member order before emission. Members are sorted by topic, member name, schema name, and canonical type, all with ordinal string comparison. That order is not merely aesthetic: it makes descriptor JSON and emitted source comparable across Roslyn and reflection hosts even when each host discovers members in a different raw order.
-
-The descriptor is serialized from the same model instance passed to `FoxgloveSourceEmitter`. Semantic fields such as declaring type, member name, canonical type, topic, schema, encoding, publish mode, and policy values participate in equivalence checks. Provenance fields such as host kind, raw type display, member order, or conditional-symbol notes are retained for diagnostics but are not replay identity and do not define semantic equality.
-
-### 5.3 Shared Emitter Layer
-
-The shared emitter converts the generation model into C# source.
-
-In Unity2Foxglove, the shared emitter is now a small coordinator plus focused emitter modules:
-
-```text
-Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/
-  FoxgloveSourceEmitter.cs   // entry point and orchestration
-  ClassFrameEmitter.cs       // namespace/class/interface frame
-  TopicMetadataEmitter.cs    // topic metadata and publish-mode literals
-  PublishDispatchEmitter.cs  // per-topic payload dispatch
-  TriggerEmitter.cs          // OnTrigger methods and TriggerAll emission
-  PolicyEmitter.cs           // ShouldPublish/MarkPublished policy logic
-  TypeExprEmitter.cs         // type-aware member/value/change expressions
-  StringLiteralEmitter.cs    // generated string literal escaping
-```
-
-Its constraints are deliberate:
-
-- no Unity scene access,
-- no `UnityEditor` lifecycle dependency,
-- no file-system side effects,
-- no runtime reflection assumptions,
-- deterministic source output for a given model.
-
-The emitter exists to prevent semantic drift between Editor and Player generation paths.
-
-The publish policy surface currently has four modes: `FixedRate`, `OnChange`, `OnChangeOrInterval`, and `OnTrigger`. `FixedRate` publishes on the scheduler cadence, `OnChange` and `OnChangeOrInterval` use generated last-value storage plus `FoxRunPublishPolicy`, and `OnTrigger` opts out of automatic policy publishing. For trigger-mode topics, the emitter generates member-specific trigger methods and `FoxRun_TriggerAll()`, which publish through `FoxgloveLogHub.Trigger(...)`.
-
-### 5.4 Host Injection Layer
-
-Unity2Foxglove currently uses two hosts:
-
-| Host | Purpose | Output |
-| --- | --- | --- |
-| Roslyn source generator | Editor-time authoring and compile feedback | In-memory generated source via `AddSource()` |
-| Unity build-time writer | IL2CPP Player build determinism | Physical `.g.cs` files before build |
-
-The Roslyn path is implemented as an incremental source generator. It is fast and ergonomic during development because it can participate in Unity's analyzer pipeline without requiring the user to run a separate generation step. The physical `.g.cs` path gives the Player build a normal source file that participates in compilation and IL2CPP conversion.
-
-The same canonical model now also produces generated runtime schema info under `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This file is compiled in both Editor Play Mode and Player builds, and it registers the current manifest hash plus type/contract/field metadata without runtime reflection. MCAP recording writes that evidence into `unity2foxglove.foxrun.schema`, and Unity replay compares the recorded `globalManifestHash` with the current runtime hash before playback. The registry does not own publisher behavior and does not recompute canonical hashes.
-
-### 5.5 Runtime Layer
-
-Runtime code only executes generated publishers. It does not:
-
-- scan loaded assemblies for telemetry attributes,
-- read attribute metadata at runtime,
-- use `FieldInfo.GetValue()` to publish values,
-- rely on dynamic IL generation.
-
-This is the boundary that makes the telemetry path AOT-oriented instead of reflection-oriented.
-
-Unity2Foxglove may still use explicit registration hooks plus a fallback Unity scene query, such as finding active `MonoBehaviour` instances and checking whether they implement `IFoxgloveLogSource`. That is runtime discovery in the Unity object model, not CLR reflection-based telemetry binding. The generated partial type implements the interface, and publisher execution then calls generated methods rather than inspecting fields or attributes.
-
-The IL2CPP preservation story is also part of the boundary. Unity documents `link.xml` as a root-annotation mechanism for preserving assemblies, types, and members from managed code stripping [10]. Before a Player build, the build preprocess path writes physical `_FoxRun.g.cs` fallback files and generates `Assets/FoxRun_link.xml` entries for detected `[FoxRun]` user `MonoBehaviour` types with `preserve="all"`. If that scan or validation fails, the build fails fast instead of silently relying on stripped metadata. The precise runtime claim is therefore **zero CLR reflection for telemetry member discovery and field/property access**, not "no runtime object lookup anywhere" and not "no build-time reflection anywhere."
-
-## 6 Semantic Equivalence
-
-"Equivalent generation" does not mean the Roslyn output and physical `.g.cs` output must be byte-for-byte identical. It means their observable telemetry behavior must match.
-
-For FoxRun publishers, the relevant equivalence surface includes:
-
-- same topic names,
-- same schema names,
-- same field expansion behavior,
-- same rate and publish-policy logic,
-- same generated runtime adapter calls,
-- same preservation requirements,
-- same handling of member-name conflicts and NaN/change detection cases.
-
-Text snapshots are useful, but they are not enough. Unity2Foxglove combines emitter tests, policy tests, runtime tests, IL2CPP smoke validation, and manual Foxglove checks to reduce drift risk.
-
-There is an important caveat: the Roslyn host and the Unity build-time writer resolve declarations through different mechanisms. A Roslyn incremental source generator observes syntax and semantic model data, while the Unity build-time writer may inspect loaded assemblies during the Editor build phase. Unity2Foxglove now makes that boundary explicit by lowering both paths into `FoxRunGenerationModel` and comparing normalized descriptors at same-scope fixture granularity. A release-quality validation strategy therefore checks both:
-
-- **model equivalence**: the same members, topics, schemas, publish modes, and diagnostics are passed to the emitter;
-- **output equivalence**: the generated Roslyn source and physical `.g.cs` source are observably equivalent for telemetry behavior.
-
-Current validation includes a Roslyn `CSharpGeneratorDriver` fixture, a compile-and-reflection fixture, a normalized descriptor comparison, negative semantic-drift checks, provenance-only drift checks, and a checked-in analyzer DLL inspection. This matters because Unity loads the package's checked-in analyzer DLL with the `RoslynAnalyzer` label; testing the source-generator source alone would not prove that Unity Editor users receive the same diagnostics and descriptor carrier.
-
-The descriptor comparison is now reader-mediated instead of being a JSON field-removal shortcut. The Roslyn host emits descriptor JSON, the validation reader parses it back into `FoxRunGenerationModel`, and the shared comparer compares that model with the reflection-lowered model. The fixture deliberately includes primitive, array, generic list, nullable, nested, and Unity vector-like member types so `EmissionTypeName` equality is exercised where host drift is most likely. The same fixture also checks that build-time model emission and Roslyn model emission are byte-for-byte identical at the emitter boundary.
-
-The descriptor remains audit evidence, not a replay guard key. Replay blocking still uses the canonical FoxRun `globalManifestHash` written to MCAP metadata, while `foxrun.generation-descriptor.json` helps diagnose generator host drift and sidecar evidence completeness.
-
-The current IL2CPP acceptance evidence also includes a Player-run payload smoke. After the physical fallback generated `FoxRun115FManualProbe_FoxRun.g.cs`, a Win64 IL2CPP Player was built and connected to Foxglove at `ws://127.0.0.1:8765`. Foxglove showed concrete payload values for representative generated JSON topics:
-
-```text
-/debug/115f/array
-sampleArray: [0.981964767, 0.981964767, 0.7611084]
-
-/debug/115f/string
-textValue: "frame 1906"
-
-/debug/115f/list
-sampleList: [-0.6825271, -7.308603, 3002]
-```
-
-This evidence is intentionally stronger than "the Player build succeeded": it verifies that the generated source survived IL2CPP and still produced observable payload semantics in the target viewer.
-
-## 7 Failure Modes
-
-A shared emitter removes a large class of host drift bugs, but it is also a single source of generated-code defects. If the emitter mishandles string escaping, locale-sensitive numeric formatting, topic grouping, or publish-mode precedence, both hosts can produce the same wrong code.
-
-This is not a reason to avoid a shared emitter. It means the emitter must be treated as a compiler component:
-
-- user-controlled strings must be escaped before entering C# literals;
-- floating-point and timestamp formatting must be culture-invariant;
-- publish-mode precedence needs tests and diagnostics, especially because `OnTrigger` must not be auto-published by the scheduler;
-- generated source should have snapshot or structural tests;
-- generated JSON payloads must avoid anonymous object shapes that can lose property metadata under IL2CPP serialization;
-- physical fallback output should be checked for freshness before IL2CPP release validation.
-
-For example, if the emitter accidentally used the current UI culture and produced a floating-point literal such as `1,5f` instead of `1.5f`, the first line of defense should be emitter-output validation: source snapshots or structural checks around `FoxgloveSourceEmitter` should fail before the generated code reaches a Player build. Runtime behavior tests are the second line of defense, confirming that generated publishers actually publish the expected topics and payloads. This is why the evidence chain must include emitter-level tests, not only runtime smoke tests.
-
-A later IL2CPP acceptance run exposed a related failure mode: anonymous-object payloads such as `new { textValue = this.textValue }` compiled successfully and advertised topics in Foxglove, but the Player serialized them as empty JSON objects. The fix was to emit explicit `Dictionary<string, object>` payloads, including nested dictionaries for Unity value decompositions. This made the generated source less idiomatic C#, but more robust under Unity IL2CPP and Newtonsoft.Json.
-
-## 8 Validation Strategy
-
-The architecture is validated at multiple levels:
-
-| Validation | Purpose |
+| Module | Responsibility |
 | --- | --- |
-| Emitter output tests | Lock generated source structure |
-| Generation-model tests | Confirm parsed metadata survives into the emitter model |
-| Reader-mediated descriptor diff | Parses Roslyn descriptor JSON back into `FoxRunGenerationModel` and compares it with the build-time model |
-| Runtime behavior tests | Confirm generated publishers publish expected payloads |
-| IL2CPP build smoke | Confirm physical fallback files participate in Player builds |
-| IL2CPP runtime payload smoke | Confirm a built Player publishes non-empty JSON payload values in Foxglove |
-| Manual Foxglove smoke | Confirm topics appear and update in the target viewer |
-| Release package checks | Confirm generated artifacts do not leak into samples/package contents |
+| `FoxgloveSourceEmitter.cs` | Coordinates canonical members and emitted partial types. |
+| `ClassFrameEmitter.cs` | Writes class/interface framing and generated lifecycle entry points. |
+| `TopicMetadataEmitter.cs` | Emits stable topic, schema, flow, policy, and rate metadata. |
+| `PolicyEmitter.cs` | Emits direction-aware eligibility state and scheduling calls. |
+| `TriggerEmitter.cs` | Emits explicit trigger/apply entry points. |
+| `PublishDispatchEmitter.cs` | Emits JSON/output dispatch and sink fanout. |
+| `ProtobufPublishDispatchEmitter.cs` | Emits static Protobuf output encoding. |
+| `InputDispatchEmitter.cs` | Emits WebSocket input registration, decode, staging, and apply. |
+| `ProtobufInputDispatchEmitter.cs` | Emits typed Protobuf input decoding. |
+| `Ros2InputDispatchEmitter.cs` | Emits native ROS2 registration and owned-copy/apply wiring. |
+| `Ros2CustomPublishEmitter.cs` | Emits custom ROS2 DTO output binding. |
+| `Ros2CustomDtoMapperEmitter.cs` | Emits static DTO-to-ROS2 mapping, copy, and cleanup code. |
+| `ConditionEmitter.cs` | Emits declaration gates resolved by the model. |
+| `TypeExprEmitter.cs`, `StringLiteralEmitter.cs`, `IdentifierUtils.cs` | Keep generated C# syntax, names, and literals deterministic. |
 
-Unity2Foxglove already includes validation suites that cover shared emitter behavior, FoxRun attribute defaults, publish-policy generation, MCAP recording/replay, package hygiene, and manual Unity/Foxglove acceptance.
+Splitting the emitter this way is not a second architecture layer. It keeps input, output, Protobuf, ROS2, policy, and syntax concerns independently testable while preserving one model and one generated class.
 
-Phase 112 adds a FoxRun canonical manifest governance layer to that evidence chain. The manifest is derived from deterministic JSON and its fingerprints ignore generated timestamps, comments, file paths, Unity `Library/` contents, and other machine-local state. Editor Play Mode refreshes the same manifest artifacts before play starts, while leaving physical `_FoxRun.g.cs` fallback generation to the Player build path. This makes the descriptor useful as release evidence without turning transient workstation details into semantic drift.
+### 3.3 Dual Hosts
 
-A debug overlay path stays outside that descriptor. It publishes explicit `/debug/...` schemaless JSON topics as non-contract diagnostics. Those messages are not included in `foxrun.manifest.json` or its fingerprints and are not replay guard keys, even if MCAP records them as ordinary JSON frames for visual inspection.
+The Roslyn host injects generated source into normal compilation for fast authoring feedback. The physical-file host runs before Player compilation and writes source below the project-generated FoxRun directory so IL2CPP sees ordinary C# input.
 
-The MCAP schema metadata path is deliberately narrow: `unity2foxglove.foxrun.schema` stores compact JSON with `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes. Replay blocks only on a `globalManifestHash` mismatch. A confirmed mismatch fails closed in explicit replay mode: the Manager aborts startup instead of falling back to live publishers. Missing or malformed recorded metadata is warning-only so older MCAP evidence remains readable.
+Both hosts must agree on:
 
-The SDK schema manifest aggregate broadens release evidence without broadening replay governance. It records the FoxRun evidence summary, bundled protobuf registry, bundled ROS2 `.msg` registry, and SDK typed publisher catalog under `Assets/Generated/Unity2Foxglove/`. Its aggregate hash is useful for audit and coverage review, while replay remains governed only by the FoxRun `globalManifestHash` stored in MCAP metadata.
+- member inclusion and ordering;
+- defaults and validation failures;
+- flow/policy/rate lowering;
+- topic and schema identity;
+- JSON, Protobuf, and ROS2 type mapping;
+- generated method and field names;
+- manifest and descriptor hashes.
 
-Schema Evidence identity policy makes that governance adjustable for different project stages. `Off` keeps demos and early debugging low-friction, `Warn` surfaces mismatches while allowing replay and live work to continue, and `Strict` treats the FoxRun identity as an acceptance gate. When MCAP recording runs with identity enabled, Unity2Foxglove writes a sibling `.schema` directory next to the `.mcap` and copies both the `FoxRun/` contract evidence and the broader `Unity2Foxglove/` aggregate evidence, giving each recording a portable audit bundle without changing the replay guard key. The FoxRun generation descriptor is copied into that sidecar when present as optional evidence; missing descriptor evidence is reported as a warning and does not make Strict recording incomplete.
+A build-time descriptor comparison and emitter-output tests are therefore more useful than two unrelated source snapshots: they prove that host-specific discovery produced the same semantic input before code emission.
 
-## 9 Implementation Evidence
+## 4. Generated Runtime Behavior
 
-| Evidence | Location | Meaning |
-| --- | --- | --- |
-| Shared emitter | `Editor/Shared/FoxgloveSourceEmitter/` | Single source of generation semantics, split into a coordinator plus focused class-frame, topic metadata, dispatch, trigger, policy, type-expression, and string-literal emitters |
-| Shared generation model | `Editor/Shared/FoxRunDescriptor/` | Host-independent model, descriptor writer, comparer, validator, and canonical type normalizer |
-| Emission type formatter | `Editor/Shared/FoxRunDescriptor/FoxRunEmissionTypeNameFormatter.cs` | Converts Roslyn and reflection type observations into legal, stable C# source type names |
-| FoxRun canonical manifest | `Editor/Shared/FoxRunManifest/` | Host-independent contract normalization and fingerprinting |
-| Roslyn host | `Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.cs` | Editor source generation path |
-| Roslyn lowerer | `Editor/SourceGenerators/src/FoxRunRoslynGenerationModelLowerer.cs` | Converts Roslyn-extracted declarations into `FoxRunGenerationModel` |
-| Build-time host | `Editor/FoxRun/FoxrunCodeGenerator.cs` | Physical `.g.cs` generation path |
-| Build-time lowerer | `Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs` | Converts reflection-scanned declarations into `FoxRunGenerationModel` |
-| Generation descriptor | `Assets/Generated/FoxRun/foxrun.generation-descriptor.json` | Non-replay-blocking audit descriptor serialized from the model passed to the emitter |
-| Descriptor reader validation | `Tests/Runtime/FoxRunGenerationDescriptorJsonReader.cs`, `Phase115FValidation.cs` | Test-owned parser that proves descriptor JSON round-trips back into the model comparer |
-| Checked-in analyzer DLL | `Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll` | Unity-loaded Roslyn analyzer/source generator artifact; must be rebuilt after source changes |
-| IL2CPP-safe JSON payload emission | `Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs`, `Phase115FValidation.cs` | Emits dictionary payloads instead of anonymous objects so Player JSON serialization keeps payload fields |
-| Play Mode manifest hook | `Editor/FoxRun/FoxrunManifestPlayModeHook.cs` | Refreshes canonical manifest artifacts before Editor Play Mode |
-| Build preprocess hook | `Editor/FoxRun/FoxrunBuildPreprocess.cs` | Fails fast before Player build if generation/preservation fails |
-| IL2CPP preservation | `Editor/FoxRun/FoxrunCodeGenerator.cs`, `Assets/FoxRun_link.xml` | Preserves detected user `MonoBehaviour` types for generated publisher execution |
-| User declaration API | `Runtime/Components/Attributes/FoxRunAttribute.cs` | Topic/rate/schema/policy declaration surface |
-| Runtime schema info | `Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs` | Exposes generated manifest hash evidence without reflection |
-| MCAP schema metadata | `Runtime/Components/FoxRun/FoxRunSchemaMcapMetadata.cs` | Stores and compares recorded/current `globalManifestHash` values for replay mismatch protection |
-| Runtime scheduler | `Runtime/Components/FoxRun/FoxgloveLogHub.cs` | Registers or discovers generated publisher interfaces without CLR reflection-based member binding |
-| Cross-target generated logging evidence | Unity2Rerun v0.4.0 release notes and Zenodo DOI `10.5281/zenodo.20247513` | Shows the same architectural pressure applied to a Rerun target: generated logging attributes, Editor source generation, build-time generated-file fallback, and Windows IL2CPP validation |
+### 4.1 Output: One Member, Multiple Destinations
 
-This implementation also generates `FoxRun_link.xml` for IL2CPP preservation. That is separate from publisher execution: it is a build-time preservation artifact, not a runtime reflection scanner.
+Generated output reads the member directly, evaluates its local policy state, builds the selected wire representation, and sends one logical topic envelope through the topic bus and sink router. The Manager may enable more than one destination. Adding ROS2 Native does not replace Foxglove output, and recording does not require a second user declaration.
 
-The FoxRun canonical manifest is the first concrete descriptor artifact in this traceability path. It is scoped to FoxRun automatic telemetry and governance only. The same fingerprints now feed generated runtime schema info, MCAP metadata, and replay mismatch checks; broader schema manifest sections can be added without changing this FoxRun contract boundary.
+Replay suppression is applied before external fanout. Replayed state must not masquerade as new live telemetry or feed a native ROS2 loop.
 
-## 10 Contribution
+### 4.2 Input: Exactly One Source
 
-Unity2Foxglove introduces an AOT-safe dual-host source generation architecture with a shared emitter for zero-reflection telemetry publishing in Unity Editor and IL2CPP Player builds.
+A subscribed member resolves exactly one provider for an enabled Manager session. The source may be Foxglove WebSocket or the optional ROS2 Native facade, but it cannot be both. Contradictory declarations, unavailable capabilities, encoding mismatches, unauthorized clients, and unsupported schemas fail closed rather than falling back to a different source.
 
-The contribution is not the invention of Roslyn source generators, AOT pre-generation, WebSocket telemetry, or MCAP. It is the system-level integration of these known techniques into a Unity-native telemetry pipeline where:
+The session freezes provider, encoding, QoS, copy budget, and apply-rate policy. Changing those Inspector settings requires a new subscription session.
 
-- users declare telemetry with attributes,
-- Editor and Player generation paths share one emitter,
-- runtime telemetry publishing does not depend on reflection,
-- generated behavior is covered by repeatable tests and release checks,
-- generated files and validation artifacts can be archived as part of a traceable release evidence chain.
+### 4.3 Threading and Ownership
 
-The strongest defensible novelty claim is:
+Input callbacks never mutate Unity fields. They perform bounded work:
 
-> Unity2Foxglove demonstrates a Unity-native telemetry pipeline in which a shared emitter prevents semantic drift between Editor-time Roslyn generation and Player-build physical `.g.cs` generation, enabling Foxglove telemetry with zero CLR reflection for telemetry member binding under IL2CPP constraints.
+1. validate the topic, client, schema, encoding, and session contract;
+2. decode or deep-copy into memory owned by Unity2Foxglove;
+3. replace the single pending value in a latest-wins slot;
+4. return without calling a Unity API.
 
-The contribution boundary is:
+The generated main-thread path later drains the newest pending value, evaluates `Policy` and `RateHz`, writes the member directly, and disposes replaced or applied owned graphs exactly once. This prevents borrowed ros2cs message graphs from escaping a callback and prevents unbounded history from accumulating behind a slow scene.
 
-- Unity2Foxglove is not an official Foxglove replacement.
-- Unity2Foxglove is not a complete general-purpose MCAP library.
-- Unity2Foxglove does not claim deterministic physics reproduction.
-- Unity2Foxglove does not claim to invent Roslyn, AOT pre-generation, WebSocket telemetry, or MCAP.
+### 4.4 Full Duplex Without Echo
 
-The work is best framed as system integration and domain adaptation: existing code-generation ideas are organized into a new telemetry-specific architecture with Unity IL2CPP as the high-pressure target environment.
+Full duplex is two independently scheduled halves sharing one declaration. Applying a remote value updates the field, but the generated origin/session guard prevents that application from being immediately emitted as a new local change. A later genuine Unity-side change remains publishable. This makes the mode useful for diagnostics without turning it into an accidental feedback oscillator.
 
-Using Unity IL2CPP as the primary validation target is part of that contribution boundary. It demonstrates that the generated telemetry path survives Unity lifecycle integration, managed-code stripping pressure, and the absence of JIT code generation. This provides directional confidence for reuse in less constrained C# hosts, while stopping short of claiming compatibility that has not been independently built and tested.
+## 5. AOT and Reflection Boundary
 
-The traceability value is secondary to the AOT safety claim, but important for robotics and simulation evidence. A release can archive the physical `_FoxRun.g.cs` output, generation descriptors, validation logs, and MCAP smoke artifacts to show which telemetry bindings participated in a Player build. This makes missing or changed telemetry topics easier to audit after a recorded experiment.
+The precise claim is narrow:
 
-Since the first draft of this note, Unity2Rerun v0.4.0 has become a concrete second-target data point rather than only a future comparison. Its release notes describe generated logging attributes (`[RerunLog]`, `[RerunScalar]`, and `[RerunTransform]`), an IL2CPP-oriented architecture with Editor source generation plus build-time generated-file fallback, Windows Standalone IL2CPP validation, `.rrd` verification through `rerun rrd verify`, and a version DOI for exact reproduction. That evidence upgrades the multi-target claim from hypothetical to partially demonstrated: the declaration-to-generated-logging architecture has now been applied to both Foxglove/MCAP and Rerun/RRD telemetry targets. The remaining research work is to measure how much of the model and emitter infrastructure was actually reused versus forked.
+> Generated FoxRun member binding uses direct static access for both publish and subscribe paths; it does not require CLR reflection in the per-message runtime path.
 
-## 11 Future Work
+Unity scene discovery may still find active components that implement generated interfaces. Editor tooling and the physical-file host may still inspect assemblies while generating source. Replay decoding may use a separate cached property adapter for dynamic recorded schemas. None of those paths changes the generated FoxRun member-binding claim.
 
-The following evidence would strengthen this research note:
+Generated source also carries link-preservation evidence for the user `MonoBehaviour` types that IL2CPP must retain. Preservation is a build artifact, not a runtime attribute scanner.
 
-1. **Generated-vs-reflection benchmark.** Compare direct generated field access against `FieldInfo.GetValue()` and reflection-based publisher dispatch.
+## 6. Schema Identity, Recording, and Governance
 
-2. **Cross-target churn analysis.** Unity2Rerun v0.4.0 now provides the second-target evidence point. Measure how much code changed or was reused in the declaration/model layer, shared emitter infrastructure, schema mapping, runtime adapter layer, generated-file fallback, and validation harness. Report whether the Rerun target mostly swaps adapters and schemas or requires generation semantics to fork.
+FoxRun generation produces a canonical manifest with deterministic ordering, invariant numeric formatting, normalized type identity, and stable timestamps policy. The canonical manifest is source-controlled governance evidence; generated local artifacts are machine-local and remain outside the tracked source package.
 
-3. **Broader model-equivalence matrix.** The single-fixture descriptor comparison now proves the shared-model boundary, and the current manual evidence covers one IL2CPP Player payload smoke. Future work should extend that matrix to more Unity assemblies, asmdef layouts, conditional symbols, Unity value types, and additional Player-build scenarios.
+Generated runtime schema info is compiled for both Editor Play Mode and Player builds. It registers the manifest hash and contract metadata without runtime member reflection. MCAP recording stores compact FoxRun evidence under `unity2foxglove.foxrun.schema`, including `globalManifestHash`. On replay, a confirmed current-versus-recorded mismatch fails closed; missing historical metadata remains a compatibility warning rather than inventing an identity.
 
-4. **Player-build performance smoke.** Capture IL2CPP Player evidence for frame cost, allocations, and publisher behavior beyond the current payload-correctness smoke.
+The broader SDK schema manifest is separate from replay governance. It aggregates FoxRun evidence, bundled protobuf descriptors, bundled ROS2 message registries, and the SDK typed publisher catalog for release audit. Replay's FoxRun guard remains keyed to the recorded FoxRun `globalManifestHash`, not to every aggregate SDK section.
 
-5. **Traceability bundle.** Archive physical `_FoxRun.g.cs` outputs, normalized generation descriptors, validation logs, and MCAP smoke artifacts with the release evidence so the telemetry binding used in an experiment can be audited later.
+The `Schema Evidence` policy supports `Off`, `Warn`, and `Strict` identity handling. Human-readable `.schema` sidecars and generated artifacts live below the Unity2Foxglove evidence root. They make the build inspectable without changing the runtime contract.
 
-6. **Public evidence release.** Tag the exact version and archive it through Zenodo while keeping the repository-level `CITATION.cff` on the Zenodo Concept DOI. Record the version-specific DOI in release notes and evidence metadata only when exact artifact reproduction is required.
+The debug overlay is explicitly non-contract evidence. It is not included in canonical hashes and is not a replay guard key.
 
-7. **Evaluate a platform-neutral managed core.** Large parts of `Runtime/Transport/`, `Runtime/Protocol/`, `Runtime/IO/`, and `Runtime/Core/` are already written against BCL and project-owned abstractions rather than direct `UnityEngine` APIs. That is promising evidence for reuse, but these directories are not yet an independently packaged library boundary. The current graph still includes dependencies from Core and IO into project `Components` and `Schemas`, and `McapDecodeRegistry` contains a Unity-conditional runtime reload hook.
+Repository citation metadata follows a two-level rule: `CITATION.cff` points to the Zenodo Concept DOI, while an exact release may record its version-specific DOI in release notes or archived evidence.
 
-   A credible extraction would first define the smallest reusable contracts for transport, Foxglove protocol handling, and MCAP IO; move Unity lifecycle and reload behavior behind adapter interfaces; and remove dependency edges from the candidate core back into Unity-facing components. It could then add an independently built, versioned, and tested managed package target, while the existing UPM package retained `MonoBehaviour`, Inspector, sensor, coordinate-conversion, source-generation host, and Player-build integration.
+## 7. Validation Strategy
 
-   This should be treated as a measured packaging and dependency-boundary project, not as an assumption that the current directory layout can be published unchanged. Acceptance would require clean non-Unity builds, API compatibility review for the selected target frameworks, conformance tests, and separate JIT and Native AOT evidence where those environments are claimed. Unity remains the primary product target regardless of whether such a library is extracted.
+No single test proves the architecture. The useful evidence chain is layered:
 
-## 12 Conclusion
+| Layer | What it proves |
+| --- | --- |
+| Attribute/model tests | Defaults, validation, flow/policy/rate semantics, and canonical identity. |
+| Roslyn/reflection parity tests | Both hosts describe the same binding, including difficult type shapes. |
+| Emitter structural and compile tests | Generated C# is deterministic, syntax-safe, and directly accesses members. |
+| Runtime unit tests | Publish scheduling, input admission, latest-wins staging, main-thread apply, cleanup, and echo suppression. |
+| Optional ROS2 tests | Static built-in/custom mapping, QoS, provider ownership, and native lifecycle boundaries. |
+| Editor Play Mode tests | Generated bindings work with Unity lifecycle and session freezes. |
+| IL2CPP Player smoke | Physical generated source survives stripping and transfers concrete values. |
+| MCAP/schema checks | Recorded identity is auditable and replay mismatch behavior is deterministic. |
 
-This note describes a dual-host, shared-emitter source generation architecture for Unity telemetry. The architecture separates generation semantics from host injection timing, enabling the same emitter to serve both Roslyn in-memory generation during Editor development and physical `.g.cs` file generation for IL2CPP Player builds.
+Generated-code tests must cover both directions. A source file that compiles but stages a borrowed native graph, mutates a field on a callback thread, or emits an inbound echo is not semantically correct.
 
-The practical result is a telemetry pipeline where `[FoxRun]`-annotated fields and properties in Unity `MonoBehaviour` classes are compiled into static publisher code without runtime reflection. The shared emitter acts as the semantic reference point, preventing the Editor and Player generation paths from drifting apart silently.
+## 8. Implementation Map
 
-The contribution is best understood as a compositional systems contribution: Roslyn source generation, AOT pre-generation, and Unity build hooks are established techniques, but their combination into a shared-emitter dual-host architecture for Unity telemetry publication, targeting Foxglove streaming, MCAP recording, and IL2CPP constraints in a single package, has not been identified in the reviewed public Unity telemetry literature and project documentation.
+| Concern | Primary repository area |
+| --- | --- |
+| Public declaration | `Runtime/Components/Attributes/` |
+| Direction-aware update policy | `Runtime/Utilities/FoxRunUpdatePolicy.cs` |
+| Shared semantic descriptors | `Editor/Shared/FoxRunDescriptor/` |
+| Shared emitter | `Editor/Shared/FoxgloveSourceEmitter/` |
+| Roslyn host | `Editor/SourceGenerators/` |
+| Physical Player-build host | `Editor/FoxRun/` |
+| Output bus and sink fanout | `Runtime/Components/FoxRun/FoxTopicBus.cs`, `FoxTopicSinkRouter.cs`, `FoxgloveLogHub.cs` |
+| Input admission and routing | `Runtime/Components/FoxRun/FoxgloveInputHub.cs`, `FoxRunInputRouter.cs`, `FoxRunInputSource.cs` |
+| Schema and replay guard | `Runtime/Components/FoxRun/FoxRunSchemaInfoRegistry.cs`, `FoxRunSchemaMcapMetadata.cs` |
+| Optional ROS2 facade | `Packages/dev.unity2foxglove.ros2forunity/` |
+
+The core SDK remains ROS-free. Native node, subscription, publisher, RMW, and ros2cs ownership stay in the optional facade and distro runtime packages. Shared emitter descriptors can describe the contract without introducing a reverse package dependency.
+
+## 9. Contribution and Limits
+
+The individual ingredients—source generation, AOT pre-generation, direct member access, bounded queues, and generated serialization—are established techniques. The project contribution is their composition into one Unity declaration model that produces equivalent Editor and IL2CPP bindings for:
+
+- outbound Foxglove/MCAP/ROS2 telemetry;
+- inbound WebSocket or ROS2 state application;
+- JSON and Protobuf contracts;
+- custom typed ROS2 DTOs;
+- deterministic schema evidence and replay guards.
+
+The system does not claim deterministic simulation execution, unlimited input history, arbitrary runtime schema reflection, or simultaneous subscription from multiple providers. Full duplex is an explicit debugging convenience, not a substitute for defining production data ownership.
+
+## 10. Future Evidence
+
+Useful next measurements include:
+
+1. generated direct-access versus reflection-based get/set throughput and allocations;
+2. IL2CPP Player input acceptance across more Unity assemblies and value shapes;
+3. high-rate ROS2 callback pressure with bounded replacement/disposal accounting;
+4. cross-target reuse measurements for Foxglove/MCAP and Rerun/RRD emitters;
+5. archived generation descriptors, physical source, manifest hashes, and version-specific release evidence.
+
+## 11. Conclusion
+
+FoxRun reduces telemetry authoring to a topic plus optional flow, policy, and rate. Under that compact surface is a shared semantic model, one modular emitter, two generation hosts, and direction-specific runtime safety rules.
+
+The central design property is not simply that code is generated. It is that the Editor and Player paths generate the same direct-access binding, output may fan out while input remains single-owner, callback work stays bounded, and all Unity mutation occurs on the main thread. That combination gives FoxRun a small user mental model without hiding transport ownership or AOT constraints.
 
 ## References
 
-[1] Microsoft. "Reflection versus source generation in System.Text.Json." Microsoft Learn. https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation
+[1] Unity Technologies. "Scripting restrictions." https://docs.unity.cn/Manual/ScriptingRestrictions.html
 
-[2] MessagePack-CSharp Contributors. "MessagePack for C#." GitHub repository. https://github.com/MessagePack-CSharp/MessagePack-CSharp
+[2] Unity Technologies. "Managed code stripping." https://docs.unity.cn/Manual/ManagedCodeStripping.html
 
-[3] Microsoft .NET Blog. "Introducing C# Source Generators." https://devblogs.microsoft.com/dotnet/introducing-c-source-generators/
+[3] Unity Technologies. "Roslyn analyzers and source generators." https://docs.unity.cn/Manual/roslyn-analyzers.html
 
-[4] Unity Technologies. "Netcode for Entities source generators." Unity Documentation. https://docs.unity.cn/Packages/com.unity.netcode%401.4/manual/source-generators.html
+[4] Microsoft. "Reflection versus source generation in System.Text.Json." https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation
 
-[5] Helle, C. "Refitter." GitHub repository. https://github.com/christianhelle/refitter
+[5] MessagePack-CSharp Contributors. "MessagePack for C#." https://github.com/MessagePack-CSharp/MessagePack-CSharp
 
-[6] ReactiveUI Contributors. "Refit: NativeAOT and trimming guidance." GitHub repository. https://github.com/reactiveui/refit#native-aot--trimming-guidance
+[6] Microsoft .NET Blog. "Introducing C# Source Generators." https://devblogs.microsoft.com/dotnet/introducing-c-source-generators/
 
-[7] ReactiveUI Contributors. "Refit should be linker-friendly and support trimming." GitHub Issue #1389. https://github.com/reactiveui/refit/issues/1389
-
-[8] ReactiveMarbles Contributors. "ReactiveMarbles ObservableEvents Source Generator." NuGet. https://www.nuget.org/packages/ReactiveMarbles.ObservableEvents.SourceGenerator/
-
-[9] Rerun Contributors. "Rerun Python API: Logging functions." https://ref.rerun.io/docs/python/0.31.2/common/logging_functions/
-
-[10] Unity Technologies. "Managed code stripping." Unity Manual. https://docs.unity.cn/Manual/ManagedCodeStripping.html
+[7] Rerun Contributors. "Logging functions." https://ref.rerun.io/docs/python/0.31.2/common/logging_functions/
 
 ## Evidence Scope
 
-This document records the design state represented by the current Unity2Foxglove repository documentation and the latest IL2CPP payload acceptance evidence. Future versions may add benchmark data, a broader IL2CPP Player matrix, a more complete related-work review, and a clearly versioned implementation artifact.
+This document describes the Phase183 declaration model as the completed public contract and grounds its implementation discussion in the repository's current shared emitter, input/output routing, optional ROS2 facade, schema evidence, and Player-generation architecture. Performance statements remain design expectations unless a benchmark is cited; validation rows describe evidence classes rather than claiming every platform matrix cell has passed.

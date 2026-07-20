@@ -72,6 +72,7 @@ PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon",
     "Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain",
 )
+RELEASE_TOOLING_REGRESSION = "Scripts.release.regression_checks.test_release_tooling"
 PHASE181_TYPESUPPORT_VALIDATOR = "Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py"
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
@@ -895,6 +896,10 @@ def main() -> int:
     # --- package validators ---
     if args.only in (None, "packages"):
         package_results = run_parallel([
+            (
+                "test_release_tooling.py",
+                [sys.executable, "-m", "unittest", RELEASE_TOOLING_REGRESSION],
+            ),
             ("validate_unity_package.py", [sys.executable, "Scripts/package/validate_unity_package.py"]),
             ("validate_local_entrypoints.py", [sys.executable, "Scripts/package/validate_local_entrypoints.py"]),
             ("sync_full_demo.py", [sys.executable, "Scripts/samples/sync_full_demo.py", "--mode", "validate"]),
@@ -908,6 +913,7 @@ def main() -> int:
                 [sys.executable, "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py"],
             ),
         ])
+        results["release-tooling-regression"] = package_results["test_release_tooling.py"]
         results["validate-package"] = package_results["validate_unity_package.py"]
         results["validate-entrypoints"] = package_results["validate_local_entrypoints.py"]
         results["validate-full-demo-sync"] = package_results["sync_full_demo.py"]

@@ -52,6 +52,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check release documentation invariants
+        run: python3 -m unittest Scripts.release.regression_checks.test_release_tooling
+
       - name: Check public docs for local paths and placeholders
         shell: bash
         run: |

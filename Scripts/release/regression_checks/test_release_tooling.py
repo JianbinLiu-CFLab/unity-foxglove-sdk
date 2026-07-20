@@ -62,8 +62,8 @@ class VersionBumpTests(unittest.TestCase):
 
         self.assertNotIn("broken_release_tool_under_test", sys.modules)
 
-    def test_update_readme_keeps_two_newest_release_notes_without_corruption(self) -> None:
-        """Trim old release notes without stale-offset deletion."""
+    def test_update_readme_keeps_only_current_release_note_without_corruption(self) -> None:
+        """Keep one current release note and remove archive navigation from README."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             readme = root / "README.md"
@@ -94,12 +94,59 @@ class VersionBumpTests(unittest.TestCase):
             self.assertIn("Windows is verified for v2.0.0;", text)
             self.assertIn("Historical note: upgraded from release-v1.9.4 after verified for v1.9.4 acceptance.", text)
             self.assertIn("- [v2.0.0 release notes](docs/releases/RELEASE_NOTES_v2.0.0.md)", text)
-            self.assertIn("- [v1.9.4 release notes](docs/releases/RELEASE_NOTES_v1.9.4.md)", text)
+            self.assertNotIn("RELEASE_NOTES_v1.9.4", text)
             self.assertNotIn("RELEASE_NOTES_v1.9.3", text)
             self.assertNotIn("RELEASE_NOTES_v1.9.2", text)
             self.assertNotIn("RELEASE_NOTES_v1.9.1", text)
-            self.assertIn("- [Release notes archive](docs/releases/)", text)
+            self.assertNotIn("- [Release notes archive](docs/releases/)", text)
+            self.assertEqual(text.count("release notes](docs/releases/RELEASE_NOTES_v"), 1)
             self.assertIn("footer", text)
+
+    def test_root_readme_links_only_the_package_release(self) -> None:
+        """The public README should expose exactly the current package release note."""
+        package = json.loads((ROOT / "Packages/dev.unity2foxglove.sdk/package.json").read_text(encoding="utf-8"))
+        version = package["version"]
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        links = re.findall(
+            r"docs/releases/RELEASE_NOTES_v\d+\.\d+\.\d+\.md",
+            text,
+        )
+
+        self.assertEqual(links, [f"docs/releases/RELEASE_NOTES_v{version}.md"])
+        self.assertNotIn("[Release notes archive]", text)
+
+    def test_update_readme_preserves_concise_release_navigation(self) -> None:
+        """Update the single inline release link without appending a legacy list."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            readme = root / "README.md"
+            readme.write_text(
+                "\n".join(
+                    [
+                        "[![Release](https://img.shields.io/badge/release-v1.9.6-green)](https://example.test/releases)",
+                        "Core WebSocket/MCAP: Windows is verified for v1.9.6; other platforms remain pending.",
+                        "Release and compliance: [v1.9.6 release notes](docs/releases/RELEASE_NOTES_v1.9.6.md) "
+                        "· [Changelog](CHANGELOG.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "1.9.7", "2026-07-20", False)
+            bump.update_readme("1.9.6")
+
+            text = readme.read_text(encoding="utf-8")
+            self.assertIn("release-v1.9.7-green", text)
+            self.assertIn("Windows is verified for v1.9.7;", text)
+            self.assertIn(
+                "Release and compliance: [v1.9.7 release notes]"
+                "(docs/releases/RELEASE_NOTES_v1.9.7.md) · [Changelog]",
+                text,
+            )
+            self.assertNotIn("RELEASE_NOTES_v1.9.6", text)
+            self.assertEqual(text.count("release notes](docs/releases/RELEASE_NOTES_v"), 1)
+            self.assertFalse(text.rstrip().endswith("release notes](docs/releases/RELEASE_NOTES_v1.9.7.md)"))
 
     def test_replace_version_property_updates_package_json(self) -> None:
         """The package.json version property should be synchronized."""
@@ -229,6 +276,37 @@ class VersionBumpTests(unittest.TestCase):
             text = changelog.read_text(encoding="utf-8")
             self.assertIn("---\nNon-version separator.\n\n---\n\n## 2.0.0 - 2026-06-08", text)
             self.assertIn("## 1.2.3 - 2026-01-02", text)
+
+    def test_update_changelog_promotes_nonempty_unreleased_section(self) -> None:
+        """Move curated Unreleased notes into the new version without stub text."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            changelog = root / "CHANGELOG.md"
+            changelog.write_text(
+                "# Changelog\n\n"
+                "---\n\n"
+                "## Unreleased\n\n"
+                "### Added\n\n"
+                "- Bidirectional FoxRun bindings.\n\n"
+                "### Verified\n\n"
+                "- Focused gates passed.\n\n"
+                "## 1.9.6 - 2026-07-06\n\n"
+                "- Existing release.\n",
+                encoding="utf-8",
+            )
+
+            bump = self.bump_module.VersionBump(root, "1.9.7", "2026-07-20", False)
+            bump.update_changelog()
+
+            text = changelog.read_text(encoding="utf-8")
+            self.assertIn(
+                "## Unreleased\n\n## 1.9.7 - 2026-07-20\n\n"
+                "### Added\n\n- Bidirectional FoxRun bindings.",
+                text,
+            )
+            self.assertIn("### Verified\n\n- Focused gates passed.", text)
+            self.assertIn("## 1.9.6 - 2026-07-06", text)
+            self.assertNotIn("should be run before tagging", text)
 
     def test_update_citation_updates_version_and_release_date(self) -> None:
         """CITATION.cff should carry exact release metadata."""
