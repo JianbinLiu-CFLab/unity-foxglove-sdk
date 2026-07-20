@@ -195,6 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
                 OptionalPackage + "/Editor/FoxRunRos2CustomTypesupportInspector.cs",
                 OptionalPackage + "/Editor/Native/FoxRunRos2SubscriptionDiagnosticsInspector.cs",
                 OptionalPackage + "/Editor/Native/Unity2Foxglove.Ros2ForUnity.Native.Editor.asmdef",
+                OptionalPackage + "/Editor/Phase181Ros2RuntimeBatchSelection.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportPreflight.cs",
                 OptionalPackage + "/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs",
