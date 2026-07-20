@@ -170,8 +170,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyRegistryEntry()
         {
             Check(PhaseValidationRegistry.All.Any(item => item.Flag == "--phase176"
-                                                           && item.Name == "Phase 176: FoxRun Subscribe Data and Publish panel"),
-                "176E-1: validation registry exposes the Subscribe Data and Publish panel gate");
+                                                           && item.Name == "Phase 176: FoxRun Subscribe Data and Publish panel"
+                                                           && item.Evidence == ValidationEvidence.Structural),
+                "176E-1: validation registry classifies the Subscribe Data and Publish panel source inspection as structural evidence");
         }
 
         private static string Slice(string source, string start, string end)

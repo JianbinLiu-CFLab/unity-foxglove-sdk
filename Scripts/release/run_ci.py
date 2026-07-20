@@ -37,6 +37,8 @@ SOURCE_GENERATOR_PROJ = (
 )
 SOURCE_GENERATOR_VALIDATOR = "Scripts/package/validate_source_generator_dll.py"
 SCHEMA_GENERATED_OUTPUT_VALIDATOR = "Scripts/schema/validate_schema_generated_outputs.py"
+FOXRUN_PUBLISH_PANEL_DIR = "Tools/foxglove-extensions/foxrun-publish-panel"
+NPM_EXECUTABLE = "npm.cmd" if sys.platform == "win32" else "npm"
 PHASE179_ROS2_INBOUND_ACCEPTANCE_REGRESSION = (
     "Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_inbound_acceptance"
 )
@@ -163,6 +165,11 @@ def dotnet_msbuild_props(suite: str) -> list[str]:
         f"-p:MSBuildProjectExtensionsPath={_msbuild_dir(obj_root)}",
         f"-p:RestoreOutputPath={_msbuild_dir(obj_root)}",
     ]
+
+
+def foxrun_publish_panel_npm(*args: str) -> list[str]:
+    """Build an argument-array command for the checked-in FoxRun panel package."""
+    return [NPM_EXECUTABLE, "--prefix", FOXRUN_PUBLISH_PANEL_DIR, *args]
 
 
 def validator_msbuild_args(msbuild_props: list[str]) -> list[str]:
@@ -296,6 +303,7 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
     jobs.extend(
         [
             CiJob("dotnet", [sys.executable, script, "--only", "dotnet"]),
+            CiJob("foxrun-publish-panel", [sys.executable, script, "--only", "foxrun-publish-panel"]),
             CiJob(
                 "phase179-ros2-regression",
                 [sys.executable, script, "--only", "phase179-ros2-regression"],
@@ -487,7 +495,7 @@ def main() -> int:
         type=str,
         help=(
             "Run only one suite: dotnet, phase179-ros2-regression, phase181-ros2-regression, "
-            "mcap-conformance, packages, boundary, analyzer"
+            "mcap-conformance, packages, boundary, analyzer, foxrun-publish-panel"
         ),
     )
     parser.add_argument(
@@ -650,6 +658,24 @@ def main() -> int:
                 "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
             ],
             "xUnit Native ROS2 compilation unit tests",
+        )
+
+    # --- FoxRun Publish panel behavior suite ---
+    if args.only in (None, "foxrun-publish-panel"):
+        results["foxrun-publish-panel-install"] = run(
+            foxrun_publish_panel_npm("ci"),
+            "FoxRun Publish panel lockfile install",
+            fatal=True,
+        )
+        results["foxrun-publish-panel-typecheck"] = run(
+            foxrun_publish_panel_npm("run", "typecheck"),
+            "FoxRun Publish panel typecheck",
+            fatal=True,
+        )
+        results["foxrun-publish-panel-test"] = run(
+            foxrun_publish_panel_npm("test"),
+            "FoxRun Publish panel Vitest behavior tests",
+            fatal=True,
         )
 
     # --- pure ROS2 acceptance-helper regression tests ---

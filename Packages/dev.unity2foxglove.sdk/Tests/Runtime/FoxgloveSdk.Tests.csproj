@@ -169,6 +169,7 @@
     <Compile Include="FoxRunDualCodecValidation.cs" />
     <Compile Include="FoxRunManagerWirePolicyValidation.cs" />
     <Compile Include="FoxRunSubscribeDataValidation.cs" />
+    <Compile Include="FoxRunWireHardeningValidation.cs" />
     <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs" />
     <Compile Include="DataTransportInspectorValidation.cs" />
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs" />

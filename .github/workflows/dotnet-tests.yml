@@ -26,6 +26,13 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Run FoxRun publish panel behavior tests
+        working-directory: Tools/foxglove-extensions/foxrun-publish-panel
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
       - name: Enable Corepack for the pinned official MCAP harness
         run: corepack enable
 

@@ -375,7 +375,16 @@ class RunCiTests(unittest.TestCase):
         jobs = self.run_ci.build_default_ci_jobs(args)
 
         self.assertEqual(
-            ["analyzer", "dotnet", "mcap-conformance", "packages", "boundary"],
+            [
+                "analyzer",
+                "dotnet",
+                "foxrun-publish-panel",
+                "phase179-ros2-regression",
+                "phase181-ros2-regression",
+                "mcap-conformance",
+                "packages",
+                "boundary",
+            ],
             [job.name for job in jobs],
         )
         for job in jobs:
@@ -431,7 +440,16 @@ class RunCiTests(unittest.TestCase):
                 self.assertEqual(0, self.run_ci.main())
 
         self.assertEqual(
-            ["analyzer", "dotnet", "mcap-conformance", "packages", "boundary"],
+            [
+                "analyzer",
+                "dotnet",
+                "foxrun-publish-panel",
+                "phase179-ros2-regression",
+                "phase181-ros2-regression",
+                "mcap-conformance",
+                "packages",
+                "boundary",
+            ],
             observed["names"],
         )
         self.assertEqual(2, observed["max_workers"])
