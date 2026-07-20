@@ -7,8 +7,22 @@
 const FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1";
 const MESSAGE_DATA_OPCODE = 1;
 const DIRECT_CONNECTION_TIMEOUT_MS = 10_000;
+const DIRECT_SOCKET_CONNECTING = 0;
+const DIRECT_SOCKET_OPEN = 1;
 
-type OpenableWebSocket = Pick<WebSocket, "addEventListener" | "close">;
+export type DirectFoxRunSocket = Pick<WebSocket, "addEventListener" | "binaryType" | "close" | "readyState" | "send">;
+export type DirectFoxRunSocketFactory = (url: string, protocol: string) => DirectFoxRunSocket;
+
+type OpenableWebSocket = Pick<DirectFoxRunSocket, "addEventListener" | "close">;
+
+type DirectConnectionAttempt = {
+  url: string;
+  socket: DirectFoxRunSocket;
+  generation: number;
+  pendingOpen: Promise<DirectFoxRunSocket> | undefined;
+};
+
+const browserSocketFactory: DirectFoxRunSocketFactory = (url, protocol) => new WebSocket(url, protocol);
 
 export function withToken(endpoint: string, token: string): string {
   const url = new URL(endpoint);
@@ -74,13 +88,21 @@ export function waitForSocketOpen(socket: OpenableWebSocket, timeoutMs: number):
 }
 
 export class DirectFoxRunProtocolClient {
-  private socket: WebSocket | undefined;
-  private socketUrl = "";
+  private attempt: DirectConnectionAttempt | undefined;
+  private nextConnectionGeneration = 0;
   private nextChannelId = 176_001;
   private readonly channels = new DirectProtobufChannelTracker(() => this.allocateChannelId());
 
+  /** Test seam; production construction uses the browser WebSocket factory. */
+  public constructor(private readonly socketFactory: DirectFoxRunSocketFactory = browserSocketFactory) {
+  }
+
   public async publish(endpoint: string, token: string, topic: string, payload: Uint8Array): Promise<void> {
     const socket = await this.ensureSocket(endpoint, token);
+    if (!this.isCurrentOpenSocket(socket)) {
+      throw new Error("The direct Protobuf connection was closed or replaced before publication.");
+    }
+
     const action = this.channels.begin(topic);
     if (action.unadvertiseChannelId != undefined) {
       socket.send(buildClientUnadvertise(action.unadvertiseChannelId));
@@ -92,39 +114,83 @@ export class DirectFoxRunProtocolClient {
   }
 
   public close(): void {
-    const socket = this.socket;
-    this.socket = undefined;
-    this.socketUrl = "";
+    this.invalidateCurrentAttempt();
+  }
+
+  private ensureSocket(endpoint: string, token: string): Promise<DirectFoxRunSocket> {
+    const url = withToken(endpoint, token);
+    const existing = this.attempt;
+    if (existing != undefined && existing.url === url) {
+      if (this.isSocketOpen(existing.socket)) {
+        return Promise.resolve(existing.socket);
+      }
+      if (this.isSocketConnecting(existing.socket) && existing.pendingOpen != undefined) {
+        return existing.pendingOpen;
+      }
+    }
+
+    if (existing != undefined) {
+      this.invalidateCurrentAttempt();
+    }
+
+    return this.openSocket(url);
+  }
+
+  private openSocket(url: string): Promise<DirectFoxRunSocket> {
+    const socket = this.socketFactory(url, FOXGLOVE_SUBPROTOCOL);
+    socket.binaryType = "arraybuffer";
+    const attempt: DirectConnectionAttempt = {
+      url,
+      socket,
+      generation: ++this.nextConnectionGeneration,
+      pendingOpen: undefined,
+    };
+    this.attempt = attempt;
+
+    const pendingOpen = waitForSocketOpen(socket, DIRECT_CONNECTION_TIMEOUT_MS).then(
+      () => {
+        if (!this.ownsAttempt(attempt) || !this.isSocketOpen(socket)) {
+          throw new Error("The direct Protobuf connection attempt was superseded before it opened.");
+        }
+        attempt.pendingOpen = undefined;
+        return socket;
+      },
+      (error: unknown) => {
+        if (this.ownsAttempt(attempt)) {
+          attempt.pendingOpen = undefined;
+          this.attempt = undefined;
+        }
+        throw error;
+      },
+    );
+    attempt.pendingOpen = pendingOpen;
+    return pendingOpen;
+  }
+
+  private invalidateCurrentAttempt(): void {
+    const attempt = this.attempt;
+    this.attempt = undefined;
+    this.nextConnectionGeneration++;
     this.channels.release();
-    if (socket != undefined
-        && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-      socket.close();
+    if (attempt != undefined && (this.isSocketOpen(attempt.socket) || this.isSocketConnecting(attempt.socket))) {
+      attempt.socket.close();
     }
   }
 
-  private async ensureSocket(endpoint: string, token: string): Promise<WebSocket> {
-    const url = withToken(endpoint, token);
-    if (this.socket != undefined && this.socketUrl === url && this.socket.readyState === WebSocket.OPEN) {
-      return this.socket;
-    }
+  private ownsAttempt(attempt: DirectConnectionAttempt): boolean {
+    return this.attempt?.generation === attempt.generation && this.attempt.socket === attempt.socket;
+  }
 
-    this.close();
-    const socket = new WebSocket(url, FOXGLOVE_SUBPROTOCOL);
-    socket.binaryType = "arraybuffer";
-    this.socket = socket;
-    this.socketUrl = url;
+  private isCurrentOpenSocket(socket: DirectFoxRunSocket): boolean {
+    return this.attempt?.socket === socket && this.isSocketOpen(socket);
+  }
 
-    try {
-      await waitForSocketOpen(socket, DIRECT_CONNECTION_TIMEOUT_MS);
-    } catch (error) {
-      if (this.socket === socket) {
-        this.socket = undefined;
-        this.socketUrl = "";
-      }
-      throw error;
-    }
+  private isSocketOpen(socket: DirectFoxRunSocket): boolean {
+    return socket.readyState === DIRECT_SOCKET_OPEN;
+  }
 
-    return socket;
+  private isSocketConnecting(socket: DirectFoxRunSocket): boolean {
+    return socket.readyState === DIRECT_SOCKET_CONNECTING;
   }
 
   private allocateChannelId(): number {
