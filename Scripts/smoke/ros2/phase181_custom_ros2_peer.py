@@ -2734,7 +2734,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--summary-json", type=pathlib.Path)
     parser.add_argument("--interface-digest", default="")
     parser.add_argument("--zenoh-topology-id", default="")
-    parser.add_argument("--ready-timeout-seconds", type=float, default=300.0)
+    parser.add_argument("--ready-timeout-seconds", type=float, default=900.0)
     parser.add_argument("--apply-timeout-seconds", type=float, default=120.0)
     return parser.parse_args(argv)
 

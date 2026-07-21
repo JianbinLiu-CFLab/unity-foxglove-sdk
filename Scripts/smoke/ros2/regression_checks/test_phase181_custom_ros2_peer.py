@@ -317,6 +317,14 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             args.unity_editor,
         )
 
+    def test_manual_editor_uses_a_three_times_readiness_budget(self):
+        """Verify Phase181 behavior: a human-driven Editor run has enough time to enter Play Mode."""
+        peer = load_peer_module()
+        args = peer.parse_args(["--role", "windows-local-editor"])
+
+        self.assertFalse(args.unity_batch)
+        self.assertEqual(900.0, args.ready_timeout_seconds)
+
     def test_editor_batch_environment_prioritizes_the_short_custom_plugin_alias(self):
         """Verify Phase181 behavior: the Windows loader sees custom and runtime native plugin directories before ROS paths."""
         peer = load_peer_module()
