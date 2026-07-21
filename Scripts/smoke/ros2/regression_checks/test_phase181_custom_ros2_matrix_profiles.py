@@ -55,6 +55,34 @@ class Phase181CustomRos2MatrixProfileTests(unittest.TestCase):
             self.assertEqual(rmw, argv[argv.index("--rmw") + 1])
             self.assertEqual("300", argv[argv.index("--ready-timeout-seconds") + 1])
 
+    def test_batch_profile_selects_its_runtime_pair_before_starting_the_peer(self):
+        """Verify Phase181 behavior: Batch runs select its validated Unity pair before the native peer."""
+        profiles = load_profiles_module()
+        events: list[str] = []
+
+        with mock.patch.object(
+            profiles.peer,
+            "prepare_unity_batch_profile_selection",
+            create=True,
+            side_effect=lambda _args: events.append("selection"),
+        ) as selection, mock.patch.object(
+            profiles.peer,
+            "run_windows_local_editor",
+            side_effect=lambda _args: events.append("peer") or 0,
+        ):
+            exit_code = profiles.run_profile(
+                "humble-fastrtps",
+                [
+                    "--unity-batch",
+                    "--unity-editor",
+                    "C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Unity.exe",
+                ],
+            )
+
+        self.assertEqual(0, exit_code)
+        selection.assert_called_once()
+        self.assertEqual(["selection", "peer"], events)
+
     def test_only_the_lyrical_zenoh_profile_owns_a_default_router(self):
         """Verify Phase181 behavior: only the lyrical zenoh profile owns a default router."""
         profiles = load_profiles_module()
@@ -105,6 +133,41 @@ class Phase181CustomRos2MatrixProfileTests(unittest.TestCase):
 
         self.assertIn("--zenoh-topology-id=operator-owned-topology", argv)
         self.assertNotIn(profiles.DEFAULT_ZENOH_TOPOLOGY_ID, argv)
+
+    def test_owned_zenoh_router_session_config_flows_from_topology_to_the_peer(self):
+        """Verify Phase181 behavior: the router-selected session config reaches both peer and Unity via the peer runner."""
+
+        profiles = load_profiles_module()
+        session_config = pathlib.Path("C:/owned/phase181/owned-zenoh-session-config.json5")
+        handle = type("Handle", (), {"session_config": session_config})()
+        with mock.patch.object(profiles.ros2env, "default_ros2_root", return_value=pathlib.Path("C:/ros2")), mock.patch.object(
+            profiles.ros2env,
+            "build_ros_env",
+            return_value={"PATH": "base"},
+        ), mock.patch.object(
+            profiles.zenoh_topology,
+            "validate_topology_options",
+            return_value=type("Options", (), {"mode": "owned-router"})(),
+        ), mock.patch.object(
+            profiles.zenoh_topology,
+            "create_owned_local_router_config",
+            return_value=object(),
+        ), mock.patch.object(
+            profiles.zenoh_topology,
+            "start_topology",
+            return_value=handle,
+        ), mock.patch.object(
+            profiles.zenoh_topology,
+            "close_topology",
+        ), mock.patch.object(
+            profiles.peer,
+            "run_windows_local_editor",
+            return_value=0,
+        ) as run_peer:
+            exit_code = profiles.run_profile("lyrical-zenoh", [])
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(session_config, run_peer.call_args.kwargs["zenoh_session_config"])
 
     def test_router_start_failure_persists_a_redacted_profile_summary(self):
         """Verify Phase181 behavior: router start failure persists a redacted profile summary."""

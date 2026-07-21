@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -50,7 +51,20 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _PROFILE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 OWNERSHIP_MARKER_NAME = ".phase181-peer-owned"
 _OWNERSHIP_MARKER_CONTENT = "phase181-peer-workspace-v1\n"
-_PEER_BUILD_TIMEOUT_SECONDS = 600.0
+PEER_BUILD_CACHE_NAME = ".phase181-peer-build.json"
+_PEER_BUILD_CACHE_FORMAT = "phase181-peer-build-v1"
+_PEER_BUILD_STALL_SECONDS = 1800.0
+_WORKER_STARTUP_TIMEOUT_SECONDS = 60.0
+_RUNTIME_SELECTION_STALL_SECONDS = 900.0
+_RUNTIME_SELECTION_PROGRESS_INTERVAL_SECONDS = 30.0
+_RUNTIME_SELECTION_READY_MARKER = "PHASE181_BATCH_RUNTIME_SELECTION_READY"
+_RUNTIME_SELECTION_EXECUTE_METHOD = (
+    "Unity2Foxglove.Ros2ForUnity.Editor.Phase181Ros2RuntimeBatchSelection.SelectFromCommandLine"
+)
+_COMMUNICATION_MODE_BY_RMW = {
+    "rmw_fastrtps_cpp": "fastdds",
+    "rmw_zenoh_cpp": "zenoh",
+}
 _LONGEST_WINDOWS_ROSIDL_OBJECT = (
     "95441c87d059a3e1deffafe69425029c/"
     "_unity2foxglove_foxrun_interfaces_v1_s.ep.rosidl_typesupport_introspection_c.c.obj"
@@ -290,32 +304,97 @@ def run_logged_owned_command(
     timeout_seconds: float,
     failure_code: str,
     runner=None,
+    stream_output: bool = False,
+    output_prefix: str = "",
+    process_factory=None,
 ) -> None:
-    """Run one helper-owned command with bounded output retained only in owned storage."""
+    """Run one helper-owned command with a completion cap or a streamed no-progress watchdog."""
 
     if not command or timeout_seconds <= 0.0 or not failure_code.startswith("FAIL_"):
         raise ValueError("Phase181 owned commands require a command, positive timeout, and stable failure code.")
+    if stream_output and runner is not None:
+        raise ValueError("A streamed Phase181 command cannot use the completed-process test runner.")
     execute = runner or subprocess.run
     try:
         pathlib.Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         with pathlib.Path(log_path).open("w", encoding="utf-8", errors="replace") as log_stream:
-            result = execute(
-                list(command),
-                cwd=str(cwd),
-                env=dict(env),
-                stdout=log_stream,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-                timeout=timeout_seconds,
-                shell=False,
-            )
+            if not stream_output:
+                result = execute(
+                    list(command),
+                    cwd=str(cwd),
+                    env=dict(env),
+                    stdout=log_stream,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    check=False,
+                    timeout=timeout_seconds,
+                    shell=False,
+                )
+                returncode = result.returncode
+            else:
+                create_process = process_factory or subprocess.Popen
+                process = create_process(
+                    list(command),
+                    cwd=str(cwd),
+                    env=dict(env),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    errors="replace",
+                    bufsize=1,
+                    shell=False,
+                )
+                if process.stdout is None:
+                    raise PeerFailure(failure_code, "A helper-owned command did not expose readable progress output.")
+
+                last_output_at = time.monotonic()
+
+                def copy_output() -> None:
+                    """Tee one owned command's line-buffered output without holding up its timeout."""
+
+                    nonlocal last_output_at
+
+                    for line in iter(process.stdout.readline, ""):
+                        log_stream.write(line)
+                        log_stream.flush()
+                        last_output_at = time.monotonic()
+                        print(output_prefix + line.rstrip("\r\n"), flush=True)
+
+                reader = threading.Thread(target=copy_output, name="phase181-peer-command-output", daemon=True)
+                reader.start()
+                try:
+                    while True:
+                        try:
+                            returncode = process.wait(timeout=min(1.0, timeout_seconds))
+                            break
+                        except subprocess.TimeoutExpired:
+                            if not stream_output_is_stalled(last_output_at, time.monotonic(), timeout_seconds):
+                                continue
+                            try:
+                                process.kill()
+                                process.wait(timeout=5.0)
+                            except (OSError, subprocess.TimeoutExpired):
+                                pass
+                            raise
+                finally:
+                    reader.join(timeout=5.0)
     except subprocess.TimeoutExpired as exc:
-        raise PeerFailure(failure_code, "A helper-owned command did not finish before its bounded timeout.") from exc
+        message = (
+            "A helper-owned command stopped emitting progress before its watchdog window."
+            if stream_output
+            else "A helper-owned command did not finish before its bounded timeout."
+        )
+        raise PeerFailure(failure_code, message) from exc
     except OSError as exc:
         raise PeerFailure(failure_code, "A helper-owned command could not be started.") from exc
-    if result.returncode != 0:
+    if returncode != 0:
         raise PeerFailure(failure_code, "A helper-owned command returned a nonzero status.")
+
+
+def stream_output_is_stalled(last_output_at: float, current_time: float, stall_seconds: float) -> bool:
+    """Treat an active streamed build as healthy regardless of total duration; only a silent interval can fail it."""
+
+    return current_time - last_output_at > stall_seconds
 
 
 def worker_launch_options(platform_name: str | None = None) -> dict[str, object]:
@@ -514,6 +593,119 @@ def cleanup_owned_workspace(workspace: pathlib.Path, build_root: pathlib.Path) -
         raise PeerFailure("FAIL_PEER_WORKSPACE", "The owned peer workspace could not be cleaned up.") from exc
 
 
+def _peer_build_tool_identity(path: pathlib.Path) -> dict[str, object]:
+    """Return a private hash input for one pinned build tool without persisting its path."""
+
+    candidate = pathlib.Path(path).resolve()
+    try:
+        stat = candidate.stat()
+    except OSError:
+        return {"path": str(candidate), "available": False}
+    return {
+        "path": str(candidate),
+        "available": True,
+        "size": stat.st_size,
+        "modifiedNs": stat.st_mtime_ns,
+    }
+
+
+def peer_build_cache_key(
+    lock: StaticInterfaceLock,
+    profile_id: str,
+    distro: str,
+    rmw: str,
+    toolchain: WindowsPeerToolchain,
+    colcon_command: Sequence[str],
+) -> str:
+    """Hash every locked input that makes one local generated-interface build reusable."""
+
+    if _PROFILE_ID.fullmatch(profile_id) is None or not distro or not rmw or not colcon_command:
+        raise PeerFailure("FAIL_PEER_WORKSPACE", "The peer build cache requires a complete bounded profile identity.")
+    payload = {
+        "format": _PEER_BUILD_CACHE_FORMAT,
+        "profileId": profile_id,
+        "distro": distro,
+        "rmw": rmw,
+        "rosPackageName": lock.ros_package_name,
+        "interfaceRevision": lock.interface_revision,
+        "interfaceDigest": lock.interface_digest,
+        "colconCommand": list(colcon_command),
+        "toolchain": {
+            "ros2Root": _peer_build_tool_identity(toolchain.ros2_root),
+            "ros2LocalSetup": _peer_build_tool_identity(toolchain.ros2_root / "local_setup.bat"),
+            "python": _peer_build_tool_identity(toolchain.python_executable),
+            "colcon": _peer_build_tool_identity(toolchain.colcon_executable),
+        },
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _has_reusable_peer_build_outputs(workspace: pathlib.Path, ros_package_name: str) -> bool:
+    """Require the minimal generated install surface before accepting a cached peer build."""
+
+    install = pathlib.Path(workspace) / "install"
+    return (install / "local_setup.bat").is_file() and (install / "share" / ros_package_name / "package.xml").is_file()
+
+
+def _peer_build_cache_matches(workspace: pathlib.Path, cache_key: str, ros_package_name: str) -> bool:
+    """Accept only a sealed owned workspace with the exact locked build fingerprint."""
+
+    candidate = pathlib.Path(workspace)
+    try:
+        marker_matches = (candidate / OWNERSHIP_MARKER_NAME).read_text(encoding="utf-8") == _OWNERSHIP_MARKER_CONTENT
+        manifest = json.loads((candidate / PEER_BUILD_CACHE_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return (
+        marker_matches
+        and isinstance(manifest, Mapping)
+        and manifest.get("format") == _PEER_BUILD_CACHE_FORMAT
+        and manifest.get("cacheKey") == cache_key
+        and manifest.get("rosPackageName") == ros_package_name
+        and _has_reusable_peer_build_outputs(candidate, ros_package_name)
+    )
+
+
+def prepare_peer_build_workspace(
+    build_root: pathlib.Path,
+    profile_id: str,
+    cache_key: str,
+    ros_package_name: str,
+) -> tuple[pathlib.Path, bool]:
+    """Reuse one sealed matching peer build or safely replace only an owned stale workspace."""
+
+    if _SHA256.fullmatch(cache_key) is None or not ros_package_name:
+        raise PeerFailure("FAIL_PEER_WORKSPACE", "The peer build cache key or ROS package identity is invalid.")
+    root = pathlib.Path(build_root).resolve()
+    workspace = _require_owned_workspace_path(root / profile_id / "peer-workspace", root)
+    if workspace.exists() and _peer_build_cache_matches(workspace, cache_key, ros_package_name):
+        return workspace, True
+    return prepare_owned_workspace(root, profile_id), False
+
+
+def seal_peer_build_workspace(workspace: pathlib.Path, cache_key: str, ros_package_name: str) -> None:
+    """Seal a successful owned generated-interface build for exact future reuse."""
+
+    candidate = pathlib.Path(workspace)
+    try:
+        marker_matches = (candidate / OWNERSHIP_MARKER_NAME).read_text(encoding="utf-8") == _OWNERSHIP_MARKER_CONTENT
+    except (OSError, UnicodeDecodeError) as exc:
+        raise PeerFailure("FAIL_PEER_WORKSPACE", "The peer build workspace is not owned by this helper.") from exc
+    if not marker_matches or _SHA256.fullmatch(cache_key) is None or not ros_package_name:
+        raise PeerFailure("FAIL_PEER_WORKSPACE", "The peer build workspace cannot be sealed with an invalid identity.")
+    if not _has_reusable_peer_build_outputs(candidate, ros_package_name):
+        raise PeerFailure("FAIL_PEER_BUILD", "The peer build did not create its required generated install outputs.")
+    protocol.write_summary_atomic(
+        candidate / PEER_BUILD_CACHE_NAME,
+        {
+            "format": _PEER_BUILD_CACHE_FORMAT,
+            "cacheKey": cache_key,
+            "rosPackageName": ros_package_name,
+        },
+    )
+
+
 def preserve_failure_log(
     workspace: pathlib.Path,
     output_directory: pathlib.Path,
@@ -687,6 +879,32 @@ def stage_locked_ros_source(
     return destination
 
 
+def apply_explicit_zenoh_session_config(
+    env: dict[str, str],
+    *,
+    rmw: str,
+    zenoh_session_config: pathlib.Path | None,
+) -> None:
+    """Clear ambient Zenoh routing and optionally install one wrapper-owned session config."""
+
+    for key in ("ZENOH_ROUTER_CONFIG_URI", "ZENOH_SESSION_CONFIG_URI", "ZENOH_CONFIG_OVERRIDE"):
+        env.pop(key, None)
+    if zenoh_session_config is None:
+        return
+    if rmw != "rmw_zenoh_cpp":
+        raise PeerFailure("FAIL_ZENOH_TOPOLOGY", "An explicit Zenoh session config requires rmw_zenoh_cpp.")
+    candidate = pathlib.Path(zenoh_session_config)
+    if candidate.suffix.lower() not in {".json", ".json5"}:
+        raise PeerFailure("FAIL_ZENOH_TOPOLOGY", "The explicit Zenoh session config must be a JSON configuration file.")
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as exc:
+        raise PeerFailure("FAIL_ZENOH_TOPOLOGY", "The explicit Zenoh session config does not exist.") from exc
+    if not resolved.is_file():
+        raise PeerFailure("FAIL_ZENOH_TOPOLOGY", "The explicit Zenoh session config is not a file.")
+    env["ZENOH_SESSION_CONFIG_URI"] = str(resolved)
+
+
 def build_peer_environment(
     source: Mapping[str, str],
     ros2_root: pathlib.Path,
@@ -696,6 +914,7 @@ def build_peer_environment(
     rmw: str,
     domain_id: int,
     topology_id: str | None = None,
+    zenoh_session_config: pathlib.Path | None = None,
 ) -> dict[str, str]:
     """Build an explicit secret-free environment for one owned peer workspace."""
 
@@ -719,6 +938,11 @@ def build_peer_environment(
     env["ROS_DOMAIN_ID"] = str(domain_id)
     env.pop("ROS_LOCALHOST_ONLY", None)
     env.pop("ROS_DISCOVERY_SERVER", None)
+    apply_explicit_zenoh_session_config(
+        env,
+        rmw=rmw,
+        zenoh_session_config=zenoh_session_config,
+    )
     if topology_id:
         env["UNITY2FOXGLOVE_ZENOH_TOPOLOGY_ID"] = topology_id
     return env
@@ -733,6 +957,7 @@ def build_player_environment(
     interface_revision: int,
     interface_digest: str,
     topology_id: str | None = None,
+    zenoh_session_config: pathlib.Path | None = None,
     discovery_range: str = "SUBNET",
 ) -> dict[str, str]:
     """Build the Player's explicit, non-secret custom-interface environment.
@@ -759,12 +984,7 @@ def build_player_environment(
     # A Player launch is not allowed to quietly inherit a previous run's
     # discovery/configuration selection.  The outer wrapper owns the topology
     # choice and passes only its opaque ID here.
-    for key in (
-        "ROS_LOCALHOST_ONLY",
-        "ROS_DISCOVERY_SERVER",
-        "ZENOH_SESSION_CONFIG_URI",
-        "ZENOH_CONFIG_OVERRIDE",
-    ):
+    for key in ("ROS_LOCALHOST_ONLY", "ROS_DISCOVERY_SERVER"):
         env.pop(key, None)
     env["ROS_VERSION"] = "2"
     env["ROS_PYTHON_VERSION"] = "3"
@@ -774,6 +994,11 @@ def build_player_environment(
     env["ROS_AUTOMATIC_DISCOVERY_RANGE"] = discovery_range
     env["UNITY2FOXGLOVE_FOXRUN_INTERFACE_REVISION"] = str(interface_revision)
     env["UNITY2FOXGLOVE_FOXRUN_INTERFACE_DIGEST"] = interface_digest
+    apply_explicit_zenoh_session_config(
+        env,
+        rmw=rmw,
+        zenoh_session_config=zenoh_session_config,
+    )
     if topology_id is not None:
         env["UNITY2FOXGLOVE_ZENOH_TOPOLOGY_ID"] = topology_id
     else:
@@ -843,6 +1068,156 @@ def build_editor_batch_command(
     ]
 
 
+def build_runtime_selection_batch_command(
+    editor: pathlib.Path,
+    project: pathlib.Path,
+    selection_log: pathlib.Path,
+    distro: str,
+    rmw: str,
+) -> list[str]:
+    """Build the official Batch-only runtime/add-on selection transaction for one fixed matrix row."""
+
+    if distro not in {"humble", "jazzy", "lyrical"}:
+        raise PeerFailure("FAIL_RUNTIME_SELECTION", "The Batch runtime selector received an unsupported ROS2 distribution.")
+    try:
+        communication_mode = _COMMUNICATION_MODE_BY_RMW[rmw]
+    except KeyError as exc:
+        raise PeerFailure("FAIL_RUNTIME_SELECTION", "The Batch runtime selector received an unsupported RMW implementation.") from exc
+    return [
+        str(pathlib.Path(editor)),
+        "-batchmode",
+        "-nographics",
+        "-projectPath",
+        str(pathlib.Path(project)),
+        "-executeMethod",
+        _RUNTIME_SELECTION_EXECUTE_METHOD,
+        "-phase181Ros2Distro",
+        distro,
+        "-phase181Ros2CommunicationMode",
+        communication_mode,
+        "-logFile",
+        str(pathlib.Path(selection_log)),
+    ]
+
+
+def _runtime_selection_log_signature(selection_log: pathlib.Path) -> tuple[int, int] | None:
+    """Return the minimal owned Unity-log progress signature without parsing its implementation detail."""
+
+    try:
+        status = pathlib.Path(selection_log).stat()
+    except OSError:
+        return None
+    return status.st_size, status.st_mtime_ns
+
+
+def wait_for_runtime_selection_process(
+    process,
+    selection_log: pathlib.Path,
+    *,
+    profile_id: str,
+    stall_seconds: float = _RUNTIME_SELECTION_STALL_SECONDS,
+    clock=None,
+    sleep=None,
+    terminate_process=None,
+) -> int:
+    """Wait without a total-duration limit while Unity's owned selection log continues to make progress."""
+
+    if stall_seconds <= 0.0:
+        raise ValueError("The Unity runtime-selection stall window must be positive.")
+    now = clock or time.monotonic
+    pause = sleep or time.sleep
+    terminate = terminate_process or _terminate_owned_child
+    last_signature = _runtime_selection_log_signature(selection_log)
+    last_progress_at = now()
+    next_progress_message_at = last_progress_at + _RUNTIME_SELECTION_PROGRESS_INTERVAL_SECONDS
+
+    while True:
+        exit_code = process.poll()
+        if exit_code is not None:
+            return exit_code
+
+        current_time = now()
+        signature = _runtime_selection_log_signature(selection_log)
+        if signature != last_signature:
+            last_signature = signature
+            last_progress_at = current_time
+        if stream_output_is_stalled(last_progress_at, current_time, stall_seconds):
+            terminate(process)
+            raise PeerFailure(
+                "FAIL_RUNTIME_SELECTION",
+                "Unity Batch runtime selection stopped producing owned log progress before it completed.",
+            )
+        if current_time >= next_progress_message_at:
+            print(
+                "[phase181:" + profile_id + "] Unity runtime/add-on selection is still progressing; "
+                + "waiting for its next Package Manager or compiler update.",
+                flush=True,
+            )
+            next_progress_message_at = current_time + _RUNTIME_SELECTION_PROGRESS_INTERVAL_SECONDS
+        pause(1.0)
+
+
+def prepare_unity_batch_profile_selection(args: argparse.Namespace) -> None:
+    """Select and resolve the exact Unity runtime/add-on pair before a Batch-only Phase181 peer starts."""
+
+    if not args.unity_batch:
+        return
+    if args.surface != "editor":
+        raise PeerFailure("FAIL_ARGUMENTS", "Batch runtime selection is valid only for the Unity Editor surface.")
+
+    repository = workspace_root()
+    profile_id = args.profile_id or (args.distro + "-" + args.rmw.removeprefix("rmw_").replace("_cpp", ""))
+    output_directory = _profile_build_directory(repository, profile_id)
+    editor = _require_unity_editor_path(args.unity_editor)
+    selection_log = output_directory / "runtime-selection.log"
+    selection_command = build_runtime_selection_batch_command(
+        editor,
+        repository / "Unity2Foxglove",
+        selection_log,
+        args.distro,
+        args.rmw,
+    )
+    print(
+        "[phase181:" + profile_id + "] Selecting the Unity runtime/add-on pair for "
+        + args.distro + "/" + _COMMUNICATION_MODE_BY_RMW[args.rmw]
+        + " through the official Package Manager transaction. There is no total timeout; "
+        + format(_RUNTIME_SELECTION_STALL_SECONDS, "g")
+        + " seconds without a Unity log update is treated as stalled.",
+        flush=True,
+    )
+    try:
+        selection_log.parent.mkdir(parents=True, exist_ok=True)
+        selection_process = subprocess.Popen(
+            selection_command,
+            cwd=str(repository),
+            env=ros2env.sanitized_subprocess_env(os.environ),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            shell=False,
+            **worker_launch_options(),
+        )
+    except OSError as exc:
+        raise PeerFailure("FAIL_RUNTIME_SELECTION", "Unity Batch runtime selection could not be started.") from exc
+    selection_exit = wait_for_runtime_selection_process(
+        selection_process,
+        selection_log,
+        profile_id=profile_id,
+    )
+    if selection_exit != 0:
+        raise PeerFailure("FAIL_RUNTIME_SELECTION", "Unity Batch runtime selection returned a nonzero status.")
+    try:
+        selection_output = selection_log.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise PeerFailure("FAIL_RUNTIME_SELECTION", "Unity Batch selection did not produce its owned diagnostic log.") from exc
+    if _RUNTIME_SELECTION_READY_MARKER not in selection_output:
+        raise PeerFailure("FAIL_RUNTIME_SELECTION", "Unity Batch selection exited without its validated runtime/add-on readiness marker.")
+    print(
+        "[phase181:" + profile_id + "] Unity runtime/add-on selection is ready; starting the native peer preflight.",
+        flush=True,
+    )
+
+
 def require_player_exit_code(exit_code: int | None) -> None:
     """Accept only the Player's explicit zero success exit after terminal proof."""
 
@@ -854,7 +1229,11 @@ def require_editor_batch_exit_code(exit_code: int | None) -> None:
     """Accept only the Batch probe's explicit zero exit after its complete evidence dwell."""
 
     if exit_code != 0:
-        raise PeerFailure("FAIL_EDITOR_BATCH_EXIT", "The Unity Editor Batch probe did not exit with its required zero success code.")
+        raise PeerFailure(
+            "FAIL_EDITOR_BATCH_EXIT",
+            "The Unity Editor Batch probe did not exit with its required zero success code; "
+            + "operating-system exit code " + str(exit_code) + ".",
+        )
 
 
 def build_worker_command(
@@ -868,6 +1247,7 @@ def build_worker_command(
     token: str,
     unity_log: pathlib.Path | None = None,
     result_json: pathlib.Path | None = None,
+    worker_ready_json: pathlib.Path | None = None,
     distro: str | None = None,
     rmw: str | None = None,
     domain_id: int | None = None,
@@ -903,6 +1283,8 @@ def build_worker_command(
         command.extend(["--unity-log", str(unity_log)])
     if result_json is not None:
         command.extend(["--worker-result-json", str(result_json)])
+    if worker_ready_json is not None:
+        command.extend(["--worker-ready-json", str(worker_ready_json)])
     if distro is not None:
         command.extend(["--distro", distro])
     if rmw is not None:
@@ -1052,6 +1434,55 @@ def write_worker_result(path: pathlib.Path, result: Mapping[str, object]) -> Non
     """Write one atomic, redacted worker result usable by its owning outer helper."""
 
     protocol.write_summary_atomic(path, result)
+
+
+def write_worker_ready(path: pathlib.Path, lock: StaticInterfaceLock) -> None:
+    """Atomically prove that the typed peer created its generated ROS2 endpoints."""
+
+    protocol.write_summary_atomic(
+        path,
+        {
+            "phase": 181,
+            "ready": True,
+            "interfaceDigest": lock.interface_digest,
+        },
+    )
+
+
+def require_matching_worker_ready(path: pathlib.Path, lock: StaticInterfaceLock) -> None:
+    """Reject a missing, partial, or foreign endpoint-ready file before prompting Unity."""
+
+    try:
+        ready = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PeerFailure("FAIL_WORKER_READY", "The custom ROS2 peer did not produce a valid endpoint-ready proof.") from exc
+    if (
+        not isinstance(ready, Mapping)
+        or ready.get("phase") != 181
+        or ready.get("ready") is not True
+        or ready.get("interfaceDigest") != lock.interface_digest
+    ):
+        raise PeerFailure("FAIL_WORKER_READY", "The custom ROS2 peer endpoint-ready proof did not match the locked interface.")
+
+
+def wait_for_matching_worker_ready(
+    process: subprocess.Popen[str],
+    ready_path: pathlib.Path,
+    lock: StaticInterfaceLock,
+    timeout_seconds: float,
+) -> None:
+    """Wait a separate bounded startup window before allowing Unity to enter Play Mode."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if pathlib.Path(ready_path).is_file():
+            require_matching_worker_ready(ready_path, lock)
+            return
+        if process.poll() is not None:
+            raise PeerFailure("FAIL_WORKER_READY", "The custom ROS2 peer stopped before its typed endpoints became ready.")
+        if time.monotonic() >= deadline:
+            raise PeerFailure("FAIL_WORKER_READY", "The custom ROS2 peer did not create typed endpoints before its bounded startup timeout.")
+        time.sleep(0.05)
 
 
 def _safe_marker_token(value: str | None) -> bool:
@@ -1464,6 +1895,9 @@ def run_typed_worker(args: argparse.Namespace) -> int:
     terminal_error: PeerFailure | None = None
 
     try:
+        worker_ready_json = getattr(args, "worker_ready_json", None)
+        if worker_ready_json is not None:
+            write_worker_ready(worker_ready_json, lock)
         while time.monotonic() < worker_phase_deadline(run_token, ready_deadline, apply_deadline):
             rclpy.spin_once(node, timeout_sec=0.05)
             newly_observed, marker_offset = protocol.read_new_markers(args.unity_log, marker_offset)
@@ -1779,9 +2213,9 @@ def _require_positive_timeout(value: float, name: str) -> float:
 
 
 def peer_build_timeout_seconds() -> float:
-    """Return the bounded cold-build allowance, independent from Unity readiness."""
+    """Return the cold-build no-progress watchdog, independent from total build duration and Unity readiness."""
 
-    return _PEER_BUILD_TIMEOUT_SECONDS
+    return _PEER_BUILD_STALL_SECONDS
 
 
 def _terminate_owned_child(process: subprocess.Popen[str]) -> None:
@@ -1827,23 +2261,36 @@ def _require_unity_editor_path(editor: pathlib.Path | None) -> pathlib.Path:
     return candidate.resolve()
 
 
-def run_windows_local_editor(args: argparse.Namespace) -> int:
+def run_windows_local_editor(
+    args: argparse.Namespace,
+    *,
+    zenoh_session_config: pathlib.Path | None = None,
+) -> int:
     """Run the owned Windows-local Editor proof for one explicit profile."""
 
     if args.surface != "editor":
         raise PeerFailure("FAIL_ARGUMENTS", "The Windows-local Editor path requires the editor surface.")
-    return _run_windows_surface(args, surface="editor")
+    return _run_windows_surface(args, surface="editor", zenoh_session_config=zenoh_session_config)
 
 
-def run_windows_player(args: argparse.Namespace) -> int:
+def run_windows_player(
+    args: argparse.Namespace,
+    *,
+    zenoh_session_config: pathlib.Path | None = None,
+) -> int:
     """Run the same correlated protocol against one helper-owned Player."""
 
     if args.surface != "player":
         raise PeerFailure("FAIL_ARGUMENTS", "The Windows Player path requires the player surface.")
-    return _run_windows_surface(args, surface="player")
+    return _run_windows_surface(args, surface="player", zenoh_session_config=zenoh_session_config)
 
 
-def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
+def _run_windows_surface(
+    args: argparse.Namespace,
+    *,
+    surface: str,
+    zenoh_session_config: pathlib.Path | None = None,
+) -> int:
     """Share strict preflight, source staging, and evidence between Editor/Player."""
 
     if surface not in {"editor", "player"}:
@@ -1875,6 +2322,7 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
     editor_process: subprocess.Popen[str] | None = None
     editor_plugin_alias_stack = contextlib.ExitStack()
     worker_stream = None
+    peer_build_sealed = False
     exit_code = 1
     try:
         if args.workspace is not None:
@@ -1885,6 +2333,8 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
         apply_timeout = _require_positive_timeout(args.apply_timeout_seconds, "The Unity apply timeout")
         if args.rmw == "rmw_zenoh_cpp" and not args.zenoh_topology_id:
             raise PeerFailure("FAIL_ZENOH_TOPOLOGY", "Zenoh custom-interface acceptance requires an explicit topology identity.")
+        if zenoh_session_config is not None and args.rmw != "rmw_zenoh_cpp":
+            raise PeerFailure("FAIL_ZENOH_TOPOLOGY", "Only the Zenoh profile may supply an explicit Zenoh session config.")
 
         static_package = pathlib.Path(args.static_interface_package or default_static_interface_package(repository))
         lock = load_static_interface_lock(static_package)
@@ -1914,21 +2364,6 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
 
         ros2_root = pathlib.Path(args.ros2_root or ros2env.default_ros2_root(args.distro, repository))
         toolchain = resolve_windows_peer_toolchain(ros2_root)
-        workspace = prepare_owned_workspace(repository / "build" / "phase181", profile_id)
-        summary["processOwnership"] = {"workspaceOwned": True}
-
-        validator_command = build_addon_validator_command(repository, args.distro, args.rmw)
-        summary["commandLabels"] = {"addonValidator": protocol.bounded_command_label(validator_command)}
-        run_logged_owned_command(
-            validator_command,
-            cwd=repository,
-            env=ros2env.sanitized_subprocess_env(os.environ),
-            log_path=workspace / "typesupport-preflight.log",
-            timeout_seconds=min(60.0, ready_timeout),
-            failure_code="FAIL_TYPESUPPORT_PREFLIGHT",
-        )
-        summary["typesupportPreflight"] = "passed"
-
         build_environment = ros2env.build_ros_env(
             toolchain.ros2_root,
             args.rmw,
@@ -1945,20 +2380,70 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             lock.ros_package_name,
             toolchain.python_executable,
         )
+        cache_key = peer_build_cache_key(
+            lock,
+            profile_id,
+            args.distro,
+            args.rmw,
+            toolchain,
+            colcon_command,
+        )
+        workspace, peer_build_reused = prepare_peer_build_workspace(
+            repository / "build" / "phase181",
+            profile_id,
+            cache_key,
+            lock.ros_package_name,
+        )
+        peer_build_sealed = peer_build_reused
+        summary["processOwnership"] = {"workspaceOwned": True}
+        summary["peerBuild"] = "reused" if peer_build_reused else "cold"
+
+        validator_command = build_addon_validator_command(repository, args.distro, args.rmw)
+        summary["commandLabels"] = {"addonValidator": protocol.bounded_command_label(validator_command)}
+        print("[phase181:" + profile_id + "] Checking the selected custom typesupport add-on.", flush=True)
+        run_logged_owned_command(
+            validator_command,
+            cwd=repository,
+            env=ros2env.sanitized_subprocess_env(os.environ),
+            log_path=workspace / "typesupport-preflight.log",
+            timeout_seconds=min(60.0, ready_timeout),
+            failure_code="FAIL_TYPESUPPORT_PREFLIGHT",
+        )
+        summary["typesupportPreflight"] = "passed"
+
         summary["commandLabels"] = {
             **summary["commandLabels"],
             "colcon": protocol.bounded_command_label(colcon_command),
         }
-        with temporary_short_windows_peer_workspace(workspace) as (_, build_workspace):
-            stage_locked_ros_source(static_package, build_workspace, lock.ros_package_name)
-            run_logged_owned_command(
-                colcon_command,
-                cwd=build_workspace,
-                env=build_environment,
-                log_path=workspace / "colcon-build.log",
-                timeout_seconds=peer_build_timeout_seconds(),
-                failure_code="FAIL_PEER_BUILD",
+        if peer_build_reused:
+            print(
+                "[phase181:" + profile_id + "] Reusing the verified locked custom ROS2 peer build; starting endpoints.",
+                flush=True,
             )
+        else:
+            print(
+                "[phase181:" + profile_id + "] Cold-building the locked custom ROS2 peer with no total timeout; "
+                + "only "
+                + format(peer_build_timeout_seconds(), "g")
+                + " seconds without build output is treated as stalled. Live progress follows and is saved to "
+                + str(workspace / "colcon-build.log")
+                + ".",
+                flush=True,
+            )
+            with temporary_short_windows_peer_workspace(workspace) as (_, build_workspace):
+                stage_locked_ros_source(static_package, build_workspace, lock.ros_package_name)
+                run_logged_owned_command(
+                    colcon_command,
+                    cwd=build_workspace,
+                    env=build_environment,
+                    log_path=workspace / "colcon-build.log",
+                    timeout_seconds=peer_build_timeout_seconds(),
+                    failure_code="FAIL_PEER_BUILD",
+                    stream_output=True,
+                    output_prefix="[phase181:" + profile_id + "][build] ",
+                )
+            seal_peer_build_workspace(workspace, cache_key, lock.ros_package_name)
+            peer_build_sealed = True
 
         peer_environment = build_peer_environment(
             build_environment,
@@ -1968,6 +2453,7 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             rmw=args.rmw,
             domain_id=args.domain_id,
             topology_id=args.zenoh_topology_id or None,
+            zenoh_session_config=zenoh_session_config,
         )
         run_token = "phase181-peer-" + uuid.uuid4().hex
         editor_command: list[str] | None = None
@@ -1986,6 +2472,7 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
                 interface_revision=lock.interface_revision,
                 interface_digest=lock.interface_digest,
                 topology_id=args.zenoh_topology_id or None,
+                zenoh_session_config=zenoh_session_config,
                 discovery_range=args.discovery_range,
             )
             summary["commandLabels"] = {
@@ -2021,6 +2508,7 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
                     interface_revision=lock.interface_revision,
                     interface_digest=lock.interface_digest,
                     topology_id=args.zenoh_topology_id or None,
+                    zenoh_session_config=zenoh_session_config,
                     discovery_range=args.discovery_range,
                 )
                 summary["commandLabels"] = {
@@ -2033,6 +2521,12 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             worker_role = "windows-local-editor"
 
         worker_result_path = workspace / "worker-result.json"
+        worker_ready_path = workspace / "worker-ready.json"
+        try:
+            worker_result_path.unlink(missing_ok=True)
+            worker_ready_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise PeerFailure("FAIL_PEER_WORKSPACE", "The owned peer workspace could not clear prior worker evidence.") from exc
         worker_command = build_worker_command(
             toolchain.python_executable,
             role=worker_role,
@@ -2042,6 +2536,7 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             token=run_token,
             unity_log=unity_log,
             result_json=worker_result_path,
+            worker_ready_json=worker_ready_path,
             distro=args.distro,
             rmw=args.rmw,
             domain_id=args.domain_id,
@@ -2054,22 +2549,14 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             **summary["commandLabels"],
             "worker": protocol.bounded_command_label(worker_command),
         }
-        if surface == "editor":
-            if args.unity_batch:
-                if editor_command is None or editor_environment is None:
-                    raise PeerFailure("FAIL_EDITOR_BATCH", "The owned Unity Editor Batch launch was not prepared.")
-                print(
-                    "[phase181:" + profile_id + "] Starting the owned Unity Editor Batch probe after the peer worker.",
-                    flush=True,
-                )
-            else:
-                print(
-                    "[phase181:" + profile_id + "] Repo-local custom String envelope peer is waiting for its Unity subscription "
-                    + "for up to " + format(ready_timeout, "g") + " seconds; enter Play Mode now.",
-                    flush=True,
-                )
         worker_log_path = workspace / "peer-worker.log"
         worker_stream = worker_log_path.open("w", encoding="utf-8", errors="replace")
+        print(
+            "[phase181:" + profile_id + "] Starting generated custom ROS2 endpoints (up to "
+            + format(min(_WORKER_STARTUP_TIMEOUT_SECONDS, ready_timeout), "g")
+            + " seconds).",
+            flush=True,
+        )
         worker_process = subprocess.Popen(
             worker_command,
             cwd=str(workspace),
@@ -2084,6 +2571,26 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             **summary["processOwnership"],
             "workerPid": worker_process.pid,
         }
+        wait_for_matching_worker_ready(
+            worker_process,
+            worker_ready_path,
+            lock,
+            min(_WORKER_STARTUP_TIMEOUT_SECONDS, ready_timeout),
+        )
+        if surface == "editor":
+            if args.unity_batch:
+                if editor_command is None or editor_environment is None:
+                    raise PeerFailure("FAIL_EDITOR_BATCH", "The owned Unity Editor Batch launch was not prepared.")
+                print(
+                    "[phase181:" + profile_id + "] Peer endpoints are ready; starting the owned Unity Editor Batch probe.",
+                    flush=True,
+                )
+            else:
+                print(
+                    "[phase181:" + profile_id + "] Peer endpoints are ready. Enter Play Mode now; waiting for Unity's subscription "
+                    + "for up to " + format(ready_timeout, "g") + " seconds.",
+                    flush=True,
+                )
         if surface == "editor" and args.unity_batch:
             if editor_runtime_plugins is None or editor_custom_plugins is None:
                 raise PeerFailure("FAIL_EDITOR_BATCH", "The selected Unity native plugin directories were not prepared.")
@@ -2114,9 +2621,11 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
             if editor_process is not None:
                 editor_exit = editor_process.poll()
                 if editor_exit is not None and editor_exit != 0:
+                    summary["unityBatchExitCode"] = editor_exit
                     raise PeerFailure(
                         "FAIL_EDITOR_BATCH_EXIT",
-                        "The Unity Editor Batch probe stopped before the custom ROS2 peer completed.",
+                        "The Unity Editor Batch probe stopped before the custom ROS2 peer completed; "
+                        + "operating-system exit code " + str(editor_exit) + ".",
                     )
             remaining = worker_deadline - time.monotonic()
             if remaining <= 0.0:
@@ -2175,12 +2684,13 @@ def _run_windows_surface(args: argparse.Namespace, *, surface: str) -> int:
                 preserve_failure_log(workspace, output_directory, "typesupport-preflight.log", "typesupport-preflight-failure.log")
                 preserve_failure_log(workspace, output_directory, "peer-worker.log", "peer-worker-failure.log")
                 preserve_failure_log(workspace, output_directory, "worker-result.json", "peer-worker-result-failure.json")
-            try:
-                cleanup_owned_workspace(workspace, repository / "build" / "phase181")
-            except PeerFailure as cleanup_error:
-                if failure is None:
-                    failure = cleanup_error
-                    exit_code = 1
+            if not peer_build_sealed:
+                try:
+                    cleanup_owned_workspace(workspace, repository / "build" / "phase181")
+                except PeerFailure as cleanup_error:
+                    if failure is None:
+                        failure = cleanup_error
+                        exit_code = 1
         if failure is not None:
             summary["failureCode"] = failure.code
             summary["error"] = str(failure)
@@ -2220,6 +2730,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--player-log", type=pathlib.Path)
     parser.add_argument("--unity-log-offset", type=int, default=0)
     parser.add_argument("--worker-result-json", type=pathlib.Path)
+    parser.add_argument("--worker-ready-json", type=pathlib.Path)
     parser.add_argument("--summary-json", type=pathlib.Path)
     parser.add_argument("--interface-digest", default="")
     parser.add_argument("--zenoh-topology-id", default="")

@@ -374,8 +374,10 @@ def run_linux_peer(args: argparse.Namespace) -> int:
             cwd=caller_workspace,
             env=environment,
             log_path=caller_workspace / "phase181-linux-colcon.log",
-            timeout_seconds=min(300.0, args.ready_timeout_seconds),
+            timeout_seconds=peer.peer_build_timeout_seconds(),
             failure_code="FAIL_PEER_BUILD",
+            stream_output=True,
+            output_prefix="[phase181:linux-peer][build] ",
         )
 
         install = caller_workspace / "install"

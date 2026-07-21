@@ -151,6 +151,16 @@ def _default_zenoh_router(ros2_root: pathlib.Path) -> pathlib.Path:
     return ros2_root / "Lib" / "rmw_zenoh_cpp" / "rmw_zenohd.exe"
 
 
+def _default_zenoh_config_templates(ros2_root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    """Resolve the packaged Lyrical defaults that seed one owned local router configuration."""
+
+    config_directory = ros2_root / "share" / "rmw_zenoh_cpp" / "config"
+    return (
+        config_directory / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
+        config_directory / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
+    )
+
+
 def profile_summary_path(profile: MatrixProfile) -> pathlib.Path:
     """Return the durable, profile-scoped Windows-local summary path."""
 
@@ -207,9 +217,11 @@ def run_profile(profile_id: str, argv: Sequence[str] | None = None) -> int:
 
     topology_handle: zenoh_topology.ZenohTopologyHandle | None = None
     try:
+        if args.unity_batch:
+            peer.prepare_unity_batch_profile_selection(args)
         if profile_owns_default_router(profile_id):
             ros2_root = ros2env.default_ros2_root(profile.distro, peer.workspace_root())
-            router = requested_router or _default_zenoh_router(ros2_root)
+            router = requested_router if requested_router is not None else (None if no_router else _default_zenoh_router(ros2_root))
             environment = ros2env.build_ros_env(
                 ros2_root,
                 profile.rmw,
@@ -223,14 +235,29 @@ def run_profile(profile_id: str, argv: Sequence[str] | None = None) -> int:
                 no_router=no_router,
                 topology_id=args.zenoh_topology_id,
             )
+            owned_config: zenoh_topology.OwnedZenohRouterConfig | None = None
+            if options.mode == "owned-router":
+                router_template, session_template = _default_zenoh_config_templates(ros2_root)
+                owned_config = zenoh_topology.create_owned_local_router_config(
+                    router_template=router_template,
+                    session_template=session_template,
+                    output_directory=peer.workspace_root() / "build" / "phase181" / profile.profile_id,
+                )
             topology_handle = zenoh_topology.start_topology(
                 options,
                 env=environment,
                 cwd=peer.workspace_root(),
                 log_path=peer.workspace_root() / "build" / "phase181" / profile.profile_id / "owned-zenoh-router.log",
                 ready_timeout_seconds=min(60.0, args.ready_timeout_seconds),
+                owned_config=owned_config,
             )
-        return peer.run_windows_local_editor(args)
+        if topology_handle is None:
+            return peer.run_windows_local_editor(args)
+        return peer.run_windows_local_editor(args, zenoh_session_config=topology_handle.session_config)
+    except peer.PeerFailure as exc:
+        write_profile_failure_summary(profile, exc.code)
+        print(exc.code, file=sys.stderr)
+        return 1
     except zenoh_topology.ZenohTopologyError:
         write_profile_failure_summary(profile, "FAIL_ZENOH_TOPOLOGY")
         print("FAIL_ZENOH_TOPOLOGY", file=sys.stderr)

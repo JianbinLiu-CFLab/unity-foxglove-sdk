@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -169,6 +170,72 @@ class Ros2ForUnityPackageValidatorTests(unittest.TestCase):
 
         entries = next(result for result in results if result.name == "runtime inventory file entries")
         self.assertFalse(entries.ok)
+
+    def test_runtime_inventory_uses_the_current_default_rmw_schema_field(self) -> None:
+        """A refreshed runtime inventory records its default RMW as `defaultRmwImplementation`."""
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.configure_package_paths(root)
+            self.validator.RUNTIME_INVENTORY.parent.mkdir(parents=True, exist_ok=True)
+            self.validator.MANIFEST.parent.mkdir(parents=True, exist_ok=True)
+            self.validator.RUNTIME_INVENTORY.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "runtimeId": self.validator.RUNTIME_ID,
+                        "artifactName": self.validator.RUNTIME_ARTIFACT,
+                        "rosDistro": "humble",
+                        "defaultRmwImplementation": "rmw_fastrtps_cpp",
+                        "platform": "win64",
+                        "buildType": "standalone",
+                        "redistributionStatus": "candidate_not_published",
+                        "artifactSize": 1,
+                        "sha256": self.validator.RUNTIME_SHA256,
+                        "fileCount": 1,
+                        "categoryCounts": {
+                            "native_libraries": 901,
+                            "managed_assemblies": 2,
+                            "generated_message_assemblies": 40,
+                        },
+                        "knownCriticalFiles": [
+                            {"name": "rcl.dll", "present": True},
+                            {"name": "yaml.dll", "present": True},
+                            {"name": "spdlog.dll", "present": True},
+                            {"name": "fmt.dll", "present": False},
+                        ],
+                        "detectedComponents": [
+                            {"name": "ros2cs"},
+                            {"name": "Fast DDS"},
+                            {"name": "RMW FastRTPS"},
+                            {"name": "Pixi runtime closure DLLs"},
+                        ],
+                        "files": [{"path": "rcl.dll", "sha256": "abc"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.validator.MANIFEST.write_text(
+                json.dumps(
+                    {
+                        "supportedRuntimePackages": [
+                            {
+                                "packageName": self.validator.RUNTIME_PACKAGE_NAME,
+                                "artifactSize": 1,
+                                "artifactSha256": self.validator.RUNTIME_SHA256,
+                                "inventoryFileCount": 1,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            results = []
+
+            self.validator.check_runtime_inventory(results)
+
+        rmw = next(result for result in results if result.name == "runtime inventory defaultRmwImplementation")
+        self.assertTrue(rmw.ok)
 
 
 if __name__ == "__main__":

@@ -116,6 +116,40 @@ class Phase179ZenohTopologyTests(unittest.TestCase):
         )
         self.assertEqual("not-applicable", not_applicable.mode)
 
+    def test_owned_local_router_config_uses_one_available_loopback_endpoint_for_router_and_sessions(self) -> None:
+        """An owned local router must not rely on the Windows-reserved default port 7447."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            template_directory = root / "templates"
+            output_directory = root / "build" / "phase181" / "lyrical-zenoh"
+            template_directory.mkdir(parents=True)
+            router_template = template_directory / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            session_template = template_directory / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
+            router_template.write_text(
+                '{ listen: { endpoints: ["tcp/[::]:7447"] } }\n',
+                encoding="utf-8",
+            )
+            session_template.write_text(
+                '{ connect: { endpoints: ["tcp/localhost:7447"] } }\n',
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(self.topology, "choose_owned_loopback_port", return_value=45678):
+                configuration = self.topology.create_owned_local_router_config(
+                    router_template=router_template,
+                    session_template=session_template,
+                    output_directory=output_directory,
+                )
+
+            self.assertEqual("tcp/127.0.0.1:45678", configuration.endpoint)
+            self.assertEqual(output_directory / "owned-zenoh-router-config.json5", configuration.router_config)
+            self.assertEqual(output_directory / "owned-zenoh-session-config.json5", configuration.session_config)
+            self.assertIn(configuration.endpoint, configuration.router_config.read_text(encoding="utf-8"))
+            self.assertIn(configuration.endpoint, configuration.session_config.read_text(encoding="utf-8"))
+            self.assertNotIn(":7447", configuration.router_config.read_text(encoding="utf-8"))
+            self.assertNotIn(":7447", configuration.session_config.read_text(encoding="utf-8"))
+
     def test_owned_router_waits_for_ready_marker_and_cleanup_keeps_external_topology_untouched(self) -> None:
         """Only a helper-owned router may be stopped, and only after readiness was observed."""
 
@@ -237,6 +271,42 @@ class Phase179ZenohTopologyTests(unittest.TestCase):
                     )
 
         self.assertEqual("ROUTER_EXITED", failure.exception.category)
+
+    def test_windows_cleanup_falls_back_to_the_owned_process_when_taskkill_does_not_finish_it(self) -> None:
+        """A failed tree cleanup must not orphan the helper-owned Zenoh router."""
+
+        timeout_expired = self.topology.subprocess.TimeoutExpired
+
+        class TaskkillResistantProcess:
+            """Synthetic owned process that requires the direct owned-process fallback."""
+
+            pid = 4245
+
+            def __init__(self) -> None:
+                self.killed = False
+
+            def poll(self):
+                """Remain live until the direct fallback runs."""
+
+                return 0 if self.killed else None
+
+            def wait(self, timeout=None):
+                """Model a tree kill that reported completion but left the root process alive."""
+
+                if not self.killed:
+                    raise timeout_expired("taskkill", timeout)
+                return 0
+
+            def kill(self):
+                """Record the only allowed direct fallback: the helper-owned root process."""
+
+                self.killed = True
+
+        process = TaskkillResistantProcess()
+        with mock.patch.object(self.topology.os, "name", "nt"), mock.patch.object(self.topology.subprocess, "run"):
+            self.topology.terminate_owned_process(process)
+
+        self.assertTrue(process.killed)
 
     def test_cleanup_tolerates_a_posix_router_that_exits_before_its_process_group_is_signaled(self) -> None:
         """A router that exits during teardown must not require a fallback process API call."""

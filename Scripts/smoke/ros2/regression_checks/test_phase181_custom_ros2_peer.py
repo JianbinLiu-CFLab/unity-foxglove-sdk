@@ -11,7 +11,9 @@ import importlib.util
 import io
 import json
 import pathlib
+import subprocess
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 
@@ -43,8 +45,17 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         """Verify Phase181 behavior: a cold rosidl build cannot consume the Unity readiness window."""
         peer = load_peer_module()
 
-        self.assertEqual(600.0, peer.peer_build_timeout_seconds())
+        self.assertEqual(1800.0, peer.peer_build_timeout_seconds())
         self.assertGreater(peer.peer_build_timeout_seconds(), 300.0)
+
+    def test_streamed_build_watchdog_measures_silence_not_total_elapsed_time(self):
+        """Verify Phase181 behavior: a long cold build remains healthy whenever it continues to emit progress."""
+        peer = load_peer_module()
+        self.assertTrue(hasattr(peer, "stream_output_is_stalled"))
+
+        self.assertFalse(peer.stream_output_is_stalled(900.0, 900.0, 1800.0))
+        self.assertFalse(peer.stream_output_is_stalled(0.0, 1799.0, 1800.0))
+        self.assertTrue(peer.stream_output_is_stalled(0.0, 1801.0, 1800.0))
 
     def test_static_interface_lock_requires_identity_and_full_digest(self):
         """Verify Phase181 behavior: static interface lock requires identity and full digest."""
@@ -138,6 +149,45 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual("a" * 64, environment["UNITY2FOXGLOVE_FOXRUN_INTERFACE_DIGEST"])
         self.assertEqual("phase181-test-router", environment["UNITY2FOXGLOVE_ZENOH_TOPOLOGY_ID"])
 
+    def test_explicit_zenoh_session_config_replaces_ambient_router_settings_for_peer_and_unity(self):
+        """Verify Phase181 behavior: an owned Zenoh config is forwarded explicitly, never inherited ambiently."""
+
+        peer = load_peer_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            session_config = pathlib.Path(temporary) / "owned-zenoh-session-config.json5"
+            session_config.write_text('{ connect: { endpoints: ["tcp/127.0.0.1:45678"] } }\n', encoding="utf-8")
+            source = {
+                "PATH": "base",
+                "ZENOH_ROUTER_CONFIG_URI": "C:/ambient/router.json5",
+                "ZENOH_SESSION_CONFIG_URI": "C:/ambient/session.json5",
+                "ZENOH_CONFIG_OVERRIDE": "connect/endpoints=[\"tcp/ambient:7447\"]",
+            }
+            peer_environment = peer.build_peer_environment(
+                source,
+                pathlib.Path("C:/ros2"),
+                pathlib.Path("C:/owned/install"),
+                distro="lyrical",
+                rmw="rmw_zenoh_cpp",
+                domain_id=17,
+                topology_id="phase181-test-router",
+                zenoh_session_config=session_config,
+            )
+            unity_environment = peer.build_player_environment(
+                source,
+                distro="lyrical",
+                rmw="rmw_zenoh_cpp",
+                domain_id=17,
+                interface_revision=1,
+                interface_digest="a" * 64,
+                topology_id="phase181-test-router",
+                zenoh_session_config=session_config,
+            )
+
+        for environment in (peer_environment, unity_environment):
+            self.assertEqual(str(session_config.resolve()), environment["ZENOH_SESSION_CONFIG_URI"])
+            self.assertNotIn("ZENOH_ROUTER_CONFIG_URI", environment)
+            self.assertNotIn("ZENOH_CONFIG_OVERRIDE", environment)
+
     def test_player_command_uses_a_generated_token_and_bounded_auto_quit(self):
         """Verify Phase181 behavior: player command uses a generated token and bounded auto quit."""
         peer = load_peer_module()
@@ -180,6 +230,73 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             command[command.index("-logFile") + 1],
         )
         self.assertNotIn("-quit", command)
+
+    def test_runtime_selection_batch_command_uses_the_official_unity_selector(self):
+        """Verify Phase181 behavior: an isolated row selects its runtime/add-on before launching the peer."""
+        peer = load_peer_module()
+
+        command = peer.build_runtime_selection_batch_command(
+            pathlib.Path("C:/Program Files/Unity/Hub/Editor/6000.3.14f1/Editor/Unity.exe"),
+            pathlib.Path("C:/repo/Unity2Foxglove"),
+            pathlib.Path("C:/repo/build/phase181/humble-fastrtps/runtime-selection.log"),
+            "humble",
+            "rmw_fastrtps_cpp",
+        )
+
+        self.assertEqual(
+            "Unity2Foxglove.Ros2ForUnity.Editor.Phase181Ros2RuntimeBatchSelection.SelectFromCommandLine",
+            command[command.index("-executeMethod") + 1],
+        )
+        self.assertEqual("humble", command[command.index("-phase181Ros2Distro") + 1])
+        self.assertEqual("fastdds", command[command.index("-phase181Ros2CommunicationMode") + 1])
+        self.assertEqual(
+            str(pathlib.Path("C:/repo/build/phase181/humble-fastrtps/runtime-selection.log")),
+            command[command.index("-logFile") + 1],
+        )
+        self.assertNotIn("-quit", command)
+
+    def test_runtime_selection_wait_accepts_continued_unity_log_progress_past_a_legacy_total_timeout(self):
+        """Verify Phase181 behavior: active Unity compilation is not killed merely for exceeding a total selector duration."""
+        peer = load_peer_module()
+        self.assertTrue(hasattr(peer, "wait_for_runtime_selection_process"))
+
+        class Process:
+            """Provide one deterministic owned Unity process for the selection wait policy."""
+
+            def __init__(self):
+                self._poll_results = [None, None, 0]
+
+            def poll(self):
+                return self._poll_results.pop(0)
+
+        with temporary_directory("peer-") as temporary:
+            selection_log = pathlib.Path(temporary) / "runtime-selection.log"
+            selection_log.write_text("initial Unity work\n", encoding="utf-8")
+            clock = {"seconds": 0.0}
+            terminated: list[Process] = []
+
+            def now() -> float:
+                return clock["seconds"]
+
+            def advance_with_unity_log_progress(_seconds: float) -> None:
+                clock["seconds"] += 301.0
+                selection_log.write_text(
+                    "Unity compilation is still progressing at " + str(clock["seconds"]) + "\n",
+                    encoding="utf-8",
+                )
+
+            exit_code = peer.wait_for_runtime_selection_process(
+                Process(),
+                selection_log,
+                profile_id="humble-fastrtps",
+                stall_seconds=300.0,
+                clock=now,
+                sleep=advance_with_unity_log_progress,
+                terminate_process=lambda process: terminated.append(process),
+            )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual([], terminated)
 
     def test_editor_batch_is_an_explicit_opt_in_with_an_editor_path(self):
         """Verify Phase181 behavior: a named profile can opt into an owned Editor Batch launch."""
@@ -226,6 +343,13 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         peer.require_player_exit_code(0)
         with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PLAYER_EXIT"):
             peer.require_player_exit_code(2)
+
+    def test_editor_batch_exit_diagnostic_retains_the_actual_operating_system_code(self):
+        """Verify Phase181 behavior: a Batch exit failure exposes its real OS code without weakening the zero gate."""
+        peer = load_peer_module()
+
+        with self.assertRaisesRegex(peer.PeerFailure, r"exit code 17"):
+            peer.require_editor_batch_exit_code(17)
 
     def test_one_sided_graph_or_inspector_evidence_cannot_pass(self):
         """Verify Phase181 behavior: one sided graph or inspector evidence cannot pass."""
@@ -415,6 +539,79 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             unsafe.mkdir(parents=True)
             with self.assertRaisesRegex(peer.PeerFailure, "FAIL_PEER_WORKSPACE"):
                 peer.cleanup_owned_workspace(unsafe, build_root)
+
+    def test_peer_build_workspace_reuses_only_a_sealed_matching_install(self):
+        """Verify Phase181 behavior: peer reuse requires an exact owned build seal and install outputs."""
+        peer = load_peer_module()
+        with temporary_directory("peer-") as temporary:
+            root = pathlib.Path(temporary)
+            build_root = root / "build" / "phase181"
+            workspace, reused = peer.prepare_peer_build_workspace(
+                build_root,
+                "lyrical-fastrtps",
+                "a" * 64,
+                "example_interfaces",
+            )
+            self.assertFalse(reused)
+            (workspace / "install" / "share" / "example_interfaces").mkdir(parents=True)
+            (workspace / "install" / "local_setup.bat").write_text("@echo off\n", encoding="utf-8")
+            (workspace / "install" / "share" / "example_interfaces" / "package.xml").write_text(
+                "<package/>\n",
+                encoding="utf-8",
+            )
+            peer.seal_peer_build_workspace(workspace, "a" * 64, "example_interfaces")
+
+            reused_workspace, reused = peer.prepare_peer_build_workspace(
+                build_root,
+                "lyrical-fastrtps",
+                "a" * 64,
+                "example_interfaces",
+            )
+            self.assertEqual(workspace, reused_workspace)
+            self.assertTrue(reused)
+
+            rebuilt_workspace, reused = peer.prepare_peer_build_workspace(
+                build_root,
+                "lyrical-fastrtps",
+                "b" * 64,
+                "example_interfaces",
+            )
+            self.assertEqual(workspace, rebuilt_workspace)
+            self.assertFalse(reused)
+            self.assertFalse((rebuilt_workspace / "install" / "local_setup.bat").exists())
+
+    def test_peer_build_cache_key_binds_lock_profile_runtime_and_toolchain(self):
+        """Verify Phase181 behavior: a peer build cache key cannot cross locked runtime inputs."""
+        peer = load_peer_module()
+        toolchain = peer.WindowsPeerToolchain(
+            pathlib.Path("C:/ros2/lyrical"),
+            pathlib.Path("C:/ros2/lyrical/python.exe"),
+            pathlib.Path("C:/ros2/lyrical/colcon.exe"),
+        )
+        lock = peer.StaticInterfaceLock("example_interfaces", 1, "a" * 64, "State", "Envelope")
+        command = ["C:/ros2/lyrical/colcon.exe", "build", "--merge-install"]
+
+        key = peer.peer_build_cache_key(lock, "lyrical-fastrtps", "lyrical", "rmw_fastrtps_cpp", toolchain, command)
+        changed_digest = peer.peer_build_cache_key(
+            peer.StaticInterfaceLock("example_interfaces", 1, "b" * 64, "State", "Envelope"),
+            "lyrical-fastrtps",
+            "lyrical",
+            "rmw_fastrtps_cpp",
+            toolchain,
+            command,
+        )
+        changed_runtime = peer.peer_build_cache_key(
+            lock,
+            "lyrical-zenoh",
+            "lyrical",
+            "rmw_zenoh_cpp",
+            toolchain,
+            command,
+        )
+
+        self.assertRegex(key, r"^[0-9a-f]{64}$")
+        self.assertNotEqual(key, changed_digest)
+        self.assertNotEqual(key, changed_runtime)
 
     def test_colcon_command_pins_ninja_release_and_cmake_safe_pixi_python(self):
         """Verify Phase181 behavior: colcon receives the portable native-interface build contract."""
@@ -639,6 +836,24 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertIn("--ready-timeout-seconds", command)
         self.assertNotIn("ros2", command)
 
+    def test_worker_command_carries_one_owned_endpoint_ready_path(self):
+        """Verify Phase181 behavior: outer helper can wait for the worker's endpoint-ready proof."""
+        peer = load_peer_module()
+        command = peer.build_worker_command(
+            pathlib.Path("C:/ros2/.pixi/envs/default/python.exe"),
+            role="windows-local-editor",
+            workspace=pathlib.Path("C:/build/peer-workspace"),
+            interface_digest="a" * 64,
+            token="phase181-peer-token",
+            worker_ready_json=pathlib.Path("C:/build/worker-ready.json"),
+        )
+
+        self.assertIn("--worker-ready-json", command)
+        self.assertEqual(
+            str(pathlib.Path("C:/build/worker-ready.json")),
+            command[command.index("--worker-ready-json") + 1],
+        )
+
     def test_logged_owned_command_uses_explicit_environment_and_never_a_shell(self):
         """Verify Phase181 behavior: logged owned command uses explicit environment and never a shell."""
         peer = load_peer_module()
@@ -681,6 +896,72 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
                     failure_code="FAIL_TYPESUPPORT_PREFLIGHT",
                     runner=lambda *args, **kwargs: SimpleNamespace(returncode=9),
                 )
+
+    def test_streamed_owned_command_tees_live_progress_to_the_console_and_log(self):
+        """Verify Phase181 behavior: cold builds visibly stream their bounded helper output."""
+        peer = load_peer_module()
+        calls: list[tuple[list[str], dict[str, object]]] = []
+
+        class Process:
+            """Minimal owned process with two colcon progress lines."""
+
+            def __init__(self):
+                self.stdout = io.StringIO("Starting >>> example_interfaces\nFinished <<< example_interfaces\n")
+
+            def wait(self, timeout):
+                self.timeout = timeout
+                return 0
+
+            def kill(self):
+                raise AssertionError("A successful streamed process must not be killed.")
+
+        def process_factory(command, **kwargs):
+            """Capture the strict Phase181 subprocess construction."""
+            calls.append((list(command), kwargs))
+            return Process()
+
+        with temporary_directory("peer-") as temporary:
+            root = pathlib.Path(temporary)
+            console = io.StringIO()
+            with contextlib.redirect_stdout(console):
+                peer.run_logged_owned_command(
+                    ["colcon.exe", "build"],
+                    cwd=root,
+                    env={"PATH": "safe"},
+                    log_path=root / "colcon.log",
+                    timeout_seconds=5.0,
+                    failure_code="FAIL_PEER_BUILD",
+                    stream_output=True,
+                    output_prefix="[phase181:test][build] ",
+                    process_factory=process_factory,
+                )
+
+            self.assertIn("Starting >>> example_interfaces", console.getvalue())
+            self.assertIn("Finished <<< example_interfaces", console.getvalue())
+            self.assertEqual(
+                "Starting >>> example_interfaces\nFinished <<< example_interfaces\n",
+                (root / "colcon.log").read_text(encoding="utf-8"),
+            )
+
+        self.assertFalse(calls[0][1]["shell"])
+        self.assertEqual({"PATH": "safe"}, calls[0][1]["env"])
+        self.assertEqual(subprocess.PIPE, calls[0][1]["stdout"])
+
+    def test_worker_ready_file_requires_the_locked_full_interface_digest(self):
+        """Verify Phase181 behavior: manual Play prompts cannot follow a stale or foreign worker startup file."""
+        peer = load_peer_module()
+        lock = peer.StaticInterfaceLock("example_interfaces", 1, "a" * 64, "State", "Envelope")
+        with temporary_directory("peer-") as temporary:
+            ready_path = pathlib.Path(temporary) / "worker-ready.json"
+            peer.write_worker_ready(ready_path, lock)
+            peer.require_matching_worker_ready(ready_path, lock)
+
+            ready_path.write_text(
+                json.dumps({"phase": 181, "ready": True, "interfaceDigest": "b" * 64}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(peer.PeerFailure, "FAIL_WORKER_READY"):
+                peer.require_matching_worker_ready(ready_path, lock)
 
     def test_failure_log_archive_retains_only_named_owned_diagnostic(self):
         """Verify Phase181 behavior: cleanup may retain a bounded profile diagnostic for failures."""
