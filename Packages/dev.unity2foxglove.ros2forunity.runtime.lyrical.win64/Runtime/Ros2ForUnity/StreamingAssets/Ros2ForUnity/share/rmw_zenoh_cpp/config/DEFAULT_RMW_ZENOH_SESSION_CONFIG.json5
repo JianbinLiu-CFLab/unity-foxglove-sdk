@@ -104,6 +104,7 @@
     /// E.g. tcp/192.168.0.1:7447#exit_on_failure=false;retry_period_max_ms=1000"
 
     /// exit from application, if timeout exceed
+    /// Unity2Foxglove package safety: a busy local router port is non-fatal.
     exit_on_failure: false,
     /// listen retry configuration
     retry: {
@@ -708,8 +709,8 @@
         buffer_size: 65535,
         /// Maximum size of the defragmentation buffer at receiver end.
         /// Fragmented messages that are larger than the configured size will be dropped.
-        /// ROS setting: cap the receiver defragmentation buffer to 128MiB by default
-        /// to avoid reserving a 1GiB worst-case buffer in Unity player processes.
+        /// Unity2Foxglove package safety: cap the receiver buffer to 128MiB
+        /// so Unity player processes do not reserve the upstream 1GiB worst case.
         max_message_size: 134217728,
       },
       /// Configure TLS specific parameters

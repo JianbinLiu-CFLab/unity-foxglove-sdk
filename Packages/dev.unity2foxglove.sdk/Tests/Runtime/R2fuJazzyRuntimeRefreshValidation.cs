@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ProjectPath =
             "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj";
         private const string ExpectedSha =
-            "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3";
+            "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74";
 
         private static int _passed;
         private static bool _runningFullValidation;
@@ -206,7 +206,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 "\"handoffInventoryDelta\"",
                 "\"addedDlls\"",
-                "\"allowedRemovedStaleBackupDlls\"",
+                "\"excludedTestTypesupportDlls\"",
                 "\"assetCriticalBaseline\"",
                 "Ros2ForUnity/Plugins/Windows/x86_64/tf2.dll",
                 "Ros2ForUnity/Plugins/Windows/x86_64/tf2_ros.dll",
@@ -222,7 +222,6 @@ namespace Unity.FoxgloveSDK.Tests
 
             foreach (var stalePath in new[]
             {
-                "geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll",
                 "test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll",
                 "test_msgs_keyed_long__rosidl_typesupport_c_native.dll",
                 "test_msgs_keyed_string__rosidl_typesupport_c_native.dll",
@@ -230,9 +229,9 @@ namespace Unity.FoxgloveSDK.Tests
             })
             {
                 Check(manifest.Contains(stalePath, StringComparison.Ordinal),
-                    "161-C-allowed-stale: " + stalePath + " is named in the allowed removed set");
+                    "161-C-excluded-test: " + stalePath + " is named in the excluded test-only set");
                 Check(!inventory.Contains(stalePath, StringComparison.Ordinal),
-                    "161-C-absent-stale: " + stalePath + " is not present in current Jazzy inventory");
+                    "161-C-absent-test: " + stalePath + " is not present in current Jazzy inventory");
             }
         }
 
@@ -248,7 +247,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(build.Contains("EXPECTED_ARTIFACT_SHA256", StringComparison.Ordinal)
                   && build.Contains(ExpectedSha, StringComparison.Ordinal)
                   && build.Contains("PHASE161_ADDED_DLLS", StringComparison.Ordinal)
-                  && build.Contains("PHASE161_ALLOWED_STALE_REMOVED_DLLS", StringComparison.Ordinal)
+                  && build.Contains("V083_EXCLUDED_TEST_TYPESUPPORT_DLLS", StringComparison.Ordinal)
                   && build.Contains("PHASE161_ASSET_CRITICAL_BASELINE", StringComparison.Ordinal)
                   && build.Contains("patch_standalone_environment_bootstrap", StringComparison.Ordinal)
                   && build.Contains("AMENT_PREFIX_PATH", StringComparison.Ordinal)
@@ -258,7 +257,7 @@ namespace Unity.FoxgloveSDK.Tests
             var validator = ReadRepoText(JazzyScripts + "/validate_r2fu_runtime_package.py");
             Check(validator.Contains(ExpectedSha, StringComparison.Ordinal)
                   && validator.Contains("Phase161 added DLL paths are present", StringComparison.Ordinal)
-                  && validator.Contains("Phase161 stale old-backup DLL paths are absent", StringComparison.Ordinal)
+                  && validator.Contains("v0.8.3 test-only typesupport DLL paths are absent", StringComparison.Ordinal)
                   && validator.Contains("Phase161 asset-critical baseline paths are present", StringComparison.Ordinal),
                 "161-D3: Jazzy validator enforces Phase161 delta and baseline rules");
 

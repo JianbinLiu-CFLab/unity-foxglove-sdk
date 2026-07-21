@@ -2,9 +2,9 @@
 <ros2_for_unity>
    <ros2>humble</ros2>
    <version>
-      <sha>7f6d53db010b8d3fac9748a88fe2d2a7689e5a82</sha>
-      <desc>v0.7.0-5-g7f6d53d</desc>
-      <date>2026-06-22 19:44:50 +0200</date>
-      <branch>feature/official-interface-coverage-for-windows-artifacts</branch>
+      <sha>3995d8b57c733e5e17fddd6cd4071236efa0a99f</sha>
+      <desc>v0.8.3</desc>
+      <date>2026-07-21 13:08:34 +0200</date>
+      <branch>HEAD</branch>
    </version>
 </ros2_for_unity>

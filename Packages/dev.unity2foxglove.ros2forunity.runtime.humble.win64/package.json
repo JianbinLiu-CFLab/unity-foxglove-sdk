@@ -12,10 +12,6 @@
     "humble",
     "win64"
   ],
-  "unity2foxgloveConflicts": [
-    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
-  ],
   "author": {
     "name": "Unity2Foxglove"
   }

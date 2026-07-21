@@ -127,9 +127,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
             var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
             var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
+            var zenohRouterEndpoint = Ros2ForUnityRuntimeSelection.GetZenohRouterEndpointRequiringEditorRestart(status);
             var customTypesupportPackage = Ros2ForUnityRuntimeSelection.GetCustomTypesupportRequiringEditorRestart(status);
             if (string.IsNullOrWhiteSpace(runtimePackage)
                 && string.IsNullOrWhiteSpace(communicationMode)
+                && string.IsNullOrWhiteSpace(zenohRouterEndpoint)
                 && string.IsNullOrWhiteSpace(customTypesupportPackage))
             {
                 if (TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic))
@@ -165,6 +167,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     "Unity2Foxglove ROS2 For Unity communication mode was switched to "
                     + communicationMode
                     + " in this Unity Editor process. Restart Unity before entering Play Mode so stale native ROS2 RMW DLLs are unloaded.");
+            }
+            else if (!string.IsNullOrWhiteSpace(zenohRouterEndpoint))
+            {
+                Debug.LogError(
+                    "Unity2Foxglove ROS2 For Unity Zenoh router endpoint was switched to "
+                    + zenohRouterEndpoint
+                    + " in this Unity Editor process. Restart Unity before entering Play Mode so the native Zenoh session uses one frozen endpoint.");
             }
             else
             {

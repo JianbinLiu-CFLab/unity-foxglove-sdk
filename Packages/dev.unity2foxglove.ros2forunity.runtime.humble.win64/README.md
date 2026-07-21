@@ -8,8 +8,6 @@ Install this package when a Unity project needs to run as a ROS2 node through RO
 
 This package is independent from `dev.unity2foxglove.sdk` and can import by itself. It does not provide the high-level Unity2Foxglove facade or samples by itself; those live in `dev.unity2foxglove.ros2forunity`.
 
-The runtime package intentionally does not declare a UPM dependency on `dev.unity2foxglove.ros2forunity`: standalone import is useful for package diagnostics, while adapter-backed workflows should install the adapter package explicitly.
-
 Recommended combinations:
 
 - `dev.unity2foxglove.ros2forunity.runtime.humble.win64` alone: imports runtime files, manifest, notices, and diagnostics.
@@ -22,8 +20,6 @@ Install only one `dev.unity2foxglove.ros2forunity.runtime.*` package in a Unity 
 
 Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the same project. Use either an external asset-folder runtime or this package runtime.
 
-The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime` across all distro runtime packages. The adapter package references that stable assembly name, while the one-runtime policy and package conflict metadata prevent multiple distro runtimes from being active in the same Unity project.
-
 ## Runtime Identity
 
 - ROS distro: Humble
@@ -32,7 +28,7 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-humble-win64`
 - Artifact source: `Ros2ForUnity_humble_standalone_windows_x86_64.zip`
-- SHA-256: `2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f`
+- SHA-256: `83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-humble-win64-runtime-inventory.json`.
 

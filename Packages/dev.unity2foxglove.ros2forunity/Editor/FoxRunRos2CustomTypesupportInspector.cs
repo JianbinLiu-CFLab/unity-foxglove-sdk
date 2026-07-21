@@ -26,6 +26,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string GenerateSourceMenuItem = "Foxglove/FoxRun/Generate ROS2 Interface Source Package";
         private const string ValidateSourceMenuItem = "Foxglove/FoxRun/Validate ROS2 Interface Source Package";
         private const string OpenSourceMenuItem = "Foxglove/FoxRun/Open ROS2 Interface Source Package";
+        private static string _zenohRouterSettingsError;
 
         /// <summary>
         /// Late-bound from the ROS-free Manager Inspector. Contracts are a
@@ -69,6 +70,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             EditorGUILayout.HelpBox(
                 result.Diagnostic + "\n" + result.Action,
                 result.IsReady ? MessageType.Info : MessageType.Warning);
+            DrawZenohRouterSettings(projectDirectory, runtime);
             DrawContracts(result.Contracts);
             DrawSourceActions();
             DrawAddOnSelection(projectDirectory, runtime, result);
@@ -127,6 +129,76 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     EditorGUILayout.LabelField("Canonical Envelope", contract.CanonicalEnvelopeType);
                     EditorGUILayout.LabelField("Directional Policy", contract.DirectionalPolicy);
                 }
+            }
+        }
+
+        private static void DrawZenohRouterSettings(
+            string projectDirectory,
+            Ros2ForUnityRuntimeDescriptor runtime)
+        {
+            if (runtime == null)
+                return;
+
+            var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeForRuntime(runtime);
+            var rmwImplementation = Ros2ForUnityRuntimeSelection.GetRmwImplementationForCommunicationMode(
+                runtime,
+                communicationMode);
+            if (!string.Equals(
+                    rmwImplementation,
+                    Ros2ForUnityRuntimeSelection.ZenohRmwImplementation,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Zenoh Router", EditorStyles.boldLabel);
+            var endpoint = Ros2ForUnityZenohRouterSettings.Get(runtime);
+            var address = endpoint.Address;
+            var port = endpoint.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var settingsChangeBlocked = EditorApplication.isPlayingOrWillChangePlaymode;
+            using (new EditorGUI.DisabledScope(settingsChangeBlocked))
+            {
+                EditorGUI.BeginChangeCheck();
+                address = EditorGUILayout.DelayedTextField("Router Address", address);
+                port = EditorGUILayout.DelayedTextField("Router Port", port);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    if (Ros2ForUnityZenohRouterSettings.TrySet(
+                            projectDirectory,
+                            runtime,
+                            address,
+                            port,
+                            out var error))
+                    {
+                        _zenohRouterSettingsError = string.Empty;
+                        endpoint = Ros2ForUnityZenohRouterSettings.Get(runtime);
+                    }
+                    else
+                    {
+                        _zenohRouterSettingsError = error;
+                    }
+                }
+            }
+
+            using (new EditorGUI.DisabledScope(true))
+                EditorGUILayout.TextField("Effective Endpoint", endpoint.Endpoint);
+
+            if (settingsChangeBlocked)
+            {
+                EditorGUILayout.HelpBox(
+                    "Exit Play Mode before changing the shared Zenoh Router Address or Router Port.",
+                    MessageType.Info);
+            }
+            else if (!string.IsNullOrWhiteSpace(_zenohRouterSettingsError))
+            {
+                EditorGUILayout.HelpBox(_zenohRouterSettingsError, MessageType.Warning);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "This endpoint is shared by every Zenoh R2FU session in this Unity project. Restart Unity after changing it once native ROS2 has loaded.",
+                    MessageType.Info);
             }
         }
 

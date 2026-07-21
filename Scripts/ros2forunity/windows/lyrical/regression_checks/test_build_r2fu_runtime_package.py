@@ -103,8 +103,62 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             self.assertEqual(self.builder.sha256_file(deps), patched_inventory["files"][0]["sha256"])
             self.assertEqual(deps.stat().st_size, patched_inventory["files"][0]["size"])
 
-    def test_validate_ros2cs_metadata_descriptions_rejects_cross_distro_desc(self) -> None:
-        """Generated lyrical runtime metadata must not keep another distro in desc."""
+    def test_patch_deps_json_sha512_removes_known_spurious_service_message_refs(self) -> None:
+        """Known non-service message assemblies must not retain service_msgs references."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins"
+            support = package / "RuntimeSupport"
+            plugin_root.mkdir(parents=True)
+            support.mkdir(parents=True)
+            deps = plugin_root / "stereo_msgs_assembly.deps.json"
+            deps.write_text(
+                json.dumps(
+                    {
+                        "targets": {
+                            ".NETStandard,Version=v2.0/": {
+                                "stereo_msgs_assembly/1.0.0": {
+                                    "dependencies": {"service_msgs_assembly": "0.0.0.0"},
+                                },
+                                "service_msgs_assembly/0.0.0.0": {"runtime": {}},
+                            },
+                        },
+                        "libraries": {
+                            "stereo_msgs_assembly/1.0.0": {"sha512": ""},
+                            "service_msgs_assembly/0.0.0.0": {"sha512": ""},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            inventory = support / "r2fu-lyrical-win64-runtime-inventory.json"
+            inventory.write_text(
+                json.dumps(
+                    {
+                        "files": [
+                            {
+                                "path": "Ros2ForUnity/Plugins/stereo_msgs_assembly.deps.json",
+                                "sha256": "",
+                                "size": 0,
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.builder.patch_deps_json_sha512(package)
+
+            patched = json.loads(deps.read_text(encoding="utf-8"))
+            target = patched["targets"][".NETStandard,Version=v2.0/"]
+            self.assertNotIn("service_msgs_assembly", target["stereo_msgs_assembly/1.0.0"]["dependencies"])
+            self.assertNotIn("service_msgs_assembly/0.0.0.0", target)
+            self.assertNotIn("service_msgs_assembly/0.0.0.0", patched["libraries"])
+            patched_inventory = json.loads(inventory.read_text(encoding="utf-8"))
+            self.assertEqual(self.builder.sha256_file(deps), patched_inventory["files"][0]["sha256"])
+
+    def test_validate_ros2cs_metadata_descriptions_accepts_shared_ros2cs_release_label(self) -> None:
+        """The ros2cs release label is provenance, not the selected ROS distro."""
         with tempfile.TemporaryDirectory() as temp:
             package = Path(temp) / "package"
             metadata_files = (
@@ -116,6 +170,24 @@ class RuntimePackageExtractionTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(
                     "<ros2cs><ros2>lyrical</ros2><version><desc>v0.6.0-jazzy-preview</desc></version></ros2cs>",
+                    encoding="utf-8",
+                )
+
+            self.builder.validate_ros2cs_metadata_descriptions(package)
+
+    def test_validate_ros2cs_metadata_descriptions_rejects_cross_distro_field(self) -> None:
+        """Generated Lyrical metadata must reject a genuinely cross-distro field."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            metadata_files = (
+                package / "Runtime" / "Ros2ForUnity" / "metadata_ros2cs.xml",
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
+                package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
+            )
+            for path in metadata_files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    "<ros2cs><ros2>jazzy</ros2><version><desc>v0.6.0-jazzy-preview</desc></version></ros2cs>",
                     encoding="utf-8",
                 )
 
@@ -136,6 +208,50 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 self.builder.patch_ros2_for_unity(package)
+
+    def test_runtime_safety_patches_survive_the_new_upstream_layout(self) -> None:
+        """Lifecycle and Unity-time safety patches must survive an upstream runtime refresh."""
+        runtime = (
+            "        EditorApplication.playModeStateChanged += EditorPlayStateChanged;\n"
+            "        EditorApplication.quitting += ShutdownShared;\n"
+            "        editorHandlersRegistered = true;\n"
+            "        EditorApplication.playModeStateChanged -= EditorPlayStateChanged;\n"
+            "        EditorApplication.quitting -= ShutdownShared;\n"
+            "        editorHandlersRegistered = false;\n"
+            "    }\n\n"
+            "    private static void ThrowIfUninitialized(string callContext)\n"
+            "    {\n"
+            "        if (!isInitialized)\n"
+            "        {\n"
+            "            throw new InvalidOperationException(\"not initialized\");\n"
+            "        }\n"
+            "    }\n\n"
+            "            throw new InvalidOperationException(\"Metadata document is empty while reading \" + valuePath);\n"
+        )
+        unity_time = (
+            "  public UnityTimeSource()\n"
+            "  {\n"
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    lastReadingSecs = Time.timeAsDouble;\n"
+            "  }\n"
+        )
+
+        patched_runtime = self.builder.patch_runtime_lifecycle_safety(runtime)
+        patched_time = self.builder.patch_unity_time_source_main_thread_guard(unity_time)
+        patched_startup = self.builder.patch_standalone_environment_isolation(
+            "            // Load metadata\n"
+            "            LoadMetadata();\n"
+            "            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n"
+            "            SetStandalonePrefixPath();\n"
+            "            SetStandaloneRmwImplementation();\n"
+        )
+
+        self.assertIn("AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared", patched_runtime)
+        self.assertIn("AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared", patched_runtime)
+        self.assertNotIn("ThrowIfUninitialized", patched_runtime)
+        self.assertIn("LoadMetadata() must complete before metadata-backed properties are read.", patched_runtime)
+        self.assertIn("must be constructed on the Unity main thread", patched_time)
+        self.assertEqual(1, patched_startup.count("sourcedRosDistroBeforeStandalonePatch"))
 
     def test_require_inputs_rejects_mismatched_artifact_size(self) -> None:
         """Reject inventory files whose optional artifact size disagrees."""
@@ -313,6 +429,71 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             self.assertIn("without authentication or ACLs", patched)
             self.assertIn("localhost-only or ACL-protected deployment profile", patched)
             self.assertIn("high development default is unsuitable", patched)
+            self.assertEqual(patched, mirror.read_text(encoding="utf-8"))
+
+    def test_zenoh_session_patch_enforces_memory_and_adminspace_safety(self) -> None:
+        """The packaged Zenoh session defaults must retain bounded, local-safe behavior."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "package"
+            config = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "Plugins"
+                / "Windows"
+                / "x86_64"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
+            )
+            mirror = (
+                package
+                / "Runtime"
+                / "Ros2ForUnity"
+                / "StreamingAssets"
+                / "Ros2ForUnity"
+                / "share"
+                / "rmw_zenoh_cpp"
+                / "config"
+                / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
+            )
+            config.parent.mkdir(parents=True)
+            mirror.parent.mkdir(parents=True)
+            text = (
+                "{\n"
+                "  listen: {\n"
+                "    exit_on_failure: true,\n"
+                "  },\n"
+                "  transport: { link: { rx: {\n"
+                "        /// Maximum size of the defragmentation buffer at receiver end.\n"
+                "        /// Fragmented messages that are larger than the configured size will be dropped.\n"
+                "        /// The default value is 1GiB. This would work in most scenarios.\n"
+                "        /// NOTE: reduce the value if you are operating on a memory constrained device.\n"
+                "        max_message_size: 1073741824,\n"
+                "  } } },\n"
+                "  adminspace: {\n"
+                "    /// Enables the admin space\n"
+                "    enabled: true,\n"
+                "    /// read and/or write permissions on the admin space\n"
+                "    permissions: {\n"
+                "      read: true,\n"
+                "      write: false,\n"
+                "    },\n"
+                "  },\n"
+                "}\n"
+            )
+            config.write_text(text, encoding="utf-8")
+            mirror.write_text(text, encoding="utf-8")
+
+            self.builder.patch_zenoh_session_config_safety(package)
+
+            patched = config.read_text(encoding="utf-8")
+            self.assertIn("exit_on_failure: false", patched)
+            self.assertIn("max_message_size: 134217728", patched)
+            self.assertNotIn("max_message_size: 1073741824", patched)
+            self.assertIn("enabled: false", patched)
+            self.assertIn("read: false", patched)
             self.assertEqual(patched, mirror.read_text(encoding="utf-8"))
 
     def test_zenoh_config_inventory_hashes_are_refreshed_after_patches(self) -> None:

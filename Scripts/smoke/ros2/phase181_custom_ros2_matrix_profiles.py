@@ -15,6 +15,7 @@ the same lock/digest/marker protocol rather than drifting into four copies.
 
 from __future__ import annotations
 
+import json
 import pathlib
 import sys
 from dataclasses import dataclass
@@ -29,6 +30,10 @@ import phase181_custom_ros2_peer_protocol as protocol
 DEFAULT_READY_TIMEOUT_SECONDS = 300
 DEFAULT_APPLY_TIMEOUT_SECONDS = 120
 DEFAULT_ZENOH_TOPOLOGY_ID = "phase181-lyrical-zenoh-local-router"
+DEFAULT_ZENOH_ROUTER_ADDRESS = "localhost"
+DEFAULT_ZENOH_ROUTER_PORT = 8778
+_PROJECT_ZENOH_ROUTER_SETTINGS_RELATIVE_PATH = pathlib.Path(
+    "Unity2Foxglove/Library/Unity2Foxglove/R2fuZenohRouterSettings.json")
 _FIXED_PROFILE_OPTIONS = ("--role", "--profile-id", "--distro", "--rmw", "--surface")
 _REPOSITORY_LOCAL_OPTIONS = ("--ros2-root", "--workspace", "--static-interface-package")
 
@@ -161,6 +166,45 @@ def _default_zenoh_config_templates(ros2_root: pathlib.Path) -> tuple[pathlib.Pa
     )
 
 
+def load_project_zenoh_router_endpoint(workspace: pathlib.Path) -> str:
+    """Load the non-secret Unity R2FU router selection, or its stable project default."""
+
+    settings_path = pathlib.Path(workspace) / _PROJECT_ZENOH_ROUTER_SETTINGS_RELATIVE_PATH
+    if not settings_path.is_file():
+        return zenoh_topology.validate_tcp_endpoint(
+            "tcp/" + DEFAULT_ZENOH_ROUTER_ADDRESS + ":" + str(DEFAULT_ZENOH_ROUTER_PORT))
+
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise peer.PeerFailure(
+            "FAIL_ZENOH_TOPOLOGY",
+            "The Unity-configured Zenoh router setting could not be read.",
+        ) from exc
+
+    if not isinstance(settings, dict) or settings.get("schemaVersion") != 1:
+        raise peer.PeerFailure(
+            "FAIL_ZENOH_TOPOLOGY",
+            "The Unity-configured Zenoh router setting has an unsupported schema.",
+        )
+
+    address = settings.get("routerAddress")
+    port = settings.get("routerPort")
+    if not isinstance(address, str) or not isinstance(port, int) or isinstance(port, bool):
+        raise peer.PeerFailure(
+            "FAIL_ZENOH_TOPOLOGY",
+            "The Unity-configured Zenoh router setting is invalid.",
+        )
+
+    try:
+        return zenoh_topology.validate_tcp_endpoint("tcp/" + address.strip() + ":" + str(port))
+    except zenoh_topology.ZenohTopologyError as exc:
+        raise peer.PeerFailure(
+            "FAIL_ZENOH_TOPOLOGY",
+            "The Unity-configured Zenoh router setting is invalid.",
+        ) from exc
+
+
 def profile_summary_path(profile: MatrixProfile) -> pathlib.Path:
     """Return the durable, profile-scoped Windows-local summary path."""
 
@@ -220,7 +264,8 @@ def run_profile(profile_id: str, argv: Sequence[str] | None = None) -> int:
         if args.unity_batch:
             peer.prepare_unity_batch_profile_selection(args)
         if profile_owns_default_router(profile_id):
-            ros2_root = ros2env.default_ros2_root(profile.distro, peer.workspace_root())
+            workspace = peer.workspace_root()
+            ros2_root = ros2env.default_ros2_root(profile.distro, workspace)
             router = requested_router if requested_router is not None else (None if no_router else _default_zenoh_router(ros2_root))
             environment = ros2env.build_ros_env(
                 ros2_root,
@@ -237,11 +282,14 @@ def run_profile(profile_id: str, argv: Sequence[str] | None = None) -> int:
             )
             owned_config: zenoh_topology.OwnedZenohRouterConfig | None = None
             if options.mode == "owned-router":
+                zenoh_router_endpoint = load_project_zenoh_router_endpoint(workspace)
+                print("[phase181:" + profile.profile_id + "] Using Unity-configured Zenoh router " + zenoh_router_endpoint + ".")
                 router_template, session_template = _default_zenoh_config_templates(ros2_root)
                 owned_config = zenoh_topology.create_owned_local_router_config(
                     router_template=router_template,
                     session_template=session_template,
-                    output_directory=peer.workspace_root() / "build" / "phase181" / profile.profile_id,
+                    output_directory=workspace / "build" / "phase181" / profile.profile_id,
+                    endpoint=zenoh_router_endpoint,
                 )
             topology_handle = zenoh_topology.start_topology(
                 options,

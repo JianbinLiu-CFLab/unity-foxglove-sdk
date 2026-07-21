@@ -435,6 +435,10 @@ def build_characterization_environment(request: CharacterizationRequest) -> dict
         Path(base["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0",
     )
     environment["PATH"] = os.pathsep.join(str(entry) for entry in path_entries)
+    # ros2cs is a complete overlay after its explicit install preflight: each
+    # dependency exports native ROSIDL headers/targets *and* its managed
+    # assembly.  Layer it before the base ROS2 root so custom generated C# and
+    # native code resolve the same package revision.
     prefix_entries = (request.ros2cs_install, request.ros2_root)
     environment["AMENT_PREFIX_PATH"] = os.pathsep.join(str(entry) for entry in prefix_entries)
     environment["CMAKE_PREFIX_PATH"] = os.pathsep.join(str(entry) for entry in prefix_entries)
@@ -453,23 +457,42 @@ def build_characterization_environment(request: CharacterizationRequest) -> dict
 
 
 def _run(command: Sequence[str], *, cwd: Path, environment: Mapping[str, str], log_path: Path) -> None:
-    """Implement the internal run step."""
-    result = subprocess.run(
-        tuple(command),
-        shell=False,
-        cwd=cwd,
-        env=dict(environment),
-        capture_output=True,
-        text=True,
-        errors="replace",
-        check=False,
-    )
+    """Run colcon with live console progress and a durable combined log."""
+
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.write_text(
-        "$ " + " ".join(command) + "\n" + result.stdout + "\n" + result.stderr + f"\n# exit={result.returncode}\n",
-        encoding="utf-8",
-    )
-    if result.returncode != 0:
+    command_line = "$ " + " ".join(command)
+    print("[phase181-typesupport] native characterization started; live colcon output follows.", flush=True)
+    print("[phase181-typesupport] log: " + str(log_path), flush=True)
+    try:
+        process = subprocess.Popen(
+            tuple(command),
+            shell=False,
+            cwd=cwd,
+            env=dict(environment),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            bufsize=1,
+        )
+    except OSError as exc:
+        log_path.write_text(command_line + "\n# launch-error=" + str(exc) + "\n", encoding="utf-8")
+        raise CharacterizationError("repair-custom-interface-colcon-build") from exc
+    with log_path.open("w", encoding="utf-8", newline="\n") as log:
+        log.write(command_line + "\n")
+        output = process.stdout
+        if output is not None:
+            try:
+                for line in output:
+                    log.write(line)
+                    log.flush()
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+            finally:
+                output.close()
+        return_code = process.wait()
+        log.write("\n# exit=" + str(return_code) + "\n")
+    if return_code != 0:
         raise CharacterizationError("repair-custom-interface-colcon-build")
 
 

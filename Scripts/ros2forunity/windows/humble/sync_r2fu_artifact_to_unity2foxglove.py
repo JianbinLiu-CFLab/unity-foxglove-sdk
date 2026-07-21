@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.humble.win64"
 RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
-EXPECTED_ARTIFACT_SHA256 = "2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f"
+EXPECTED_ARTIFACT_SHA256 = "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba"
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
@@ -140,7 +140,12 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
     return {"path": str(artifact), "sha256": digest, "manifest": str(manifest), "manifestData": data}
 
 
-def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> dict[str, object]:
+def ensure_project_uses_runtime_package(
+    project_root: Path,
+    *,
+    update: bool,
+    require_runtime_dependency: bool = True,
+) -> dict[str, object]:
     """Validate or update the Unity project runtime package dependency."""
     manifest_path = project_root / "Unity2Foxglove" / "Packages" / "manifest.json"
     lock_path = project_root / "Unity2Foxglove" / "Packages" / "packages-lock.json"
@@ -154,7 +159,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
         name for name in dependencies if name.startswith(RUNTIME_PACKAGE_PREFIX)
     )
     foreign_runtime_packages = [name for name in active_runtime_packages if name != PACKAGE_NAME]
-    if foreign_runtime_packages:
+    if require_runtime_dependency and foreign_runtime_packages:
         if not update:
             joined = ", ".join(foreign_runtime_packages)
             raise RuntimeError(
@@ -165,7 +170,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
             del dependencies[name]
         changed = True
 
-    if dependencies.get(PACKAGE_NAME) != runtime_ref:
+    if require_runtime_dependency and dependencies.get(PACKAGE_NAME) != runtime_ref:
         if not update:
             raise RuntimeError(f"{manifest_path} does not reference {PACKAGE_NAME}; rerun with --update-project-manifest")
         dependencies[PACKAGE_NAME] = runtime_ref
@@ -189,7 +194,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
         )
         foreign_lock_runtime_packages = [name for name in lock_runtime_packages if name != PACKAGE_NAME]
         lock_changed = False
-        if foreign_lock_runtime_packages:
+        if require_runtime_dependency and foreign_lock_runtime_packages:
             if not update:
                 joined = ", ".join(foreign_lock_runtime_packages)
                 raise RuntimeError(
@@ -199,7 +204,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
             for name in foreign_lock_runtime_packages:
                 del lock_dependencies[name]
             lock_changed = True
-        if update and PACKAGE_NAME not in lock_dependencies:
+        if require_runtime_dependency and update and PACKAGE_NAME not in lock_dependencies:
             lock_dependencies[PACKAGE_NAME] = {
                 "version": runtime_package_version(project_root),
                 "depth": 0,
@@ -217,6 +222,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
     return {
         "manifestPath": str(manifest_path),
         "manifestUpdated": changed,
+        "runtimeDependencyRequired": require_runtime_dependency,
         "lockPath": str(lock_path),
         "lockHasRuntimePackage": lock_has_runtime,
         "lockRuntimePackages": lock_runtime_packages,
@@ -262,6 +268,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--project-root", type=Path, default=ROOT)
     parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
     parser.add_argument("--update-project-manifest", action="store_true", help="Add the runtime package dependency if it is missing.")
+    parser.add_argument(
+        "--skip-project-manifest-check",
+        action="store_true",
+        help="Refresh the runtime package without requiring the Unity sample manifest to select Humble.",
+    )
     parser.add_argument("--skip-validate", action="store_true")
     parser.add_argument("--run-unity-import", action="store_true")
     parser.add_argument("--unity-editor", type=Path, default=Path(os.environ.get("R2FU_UNITY_EXE", str(DEFAULT_UNITY_EXE))))
@@ -286,7 +297,11 @@ def main(argv: list[str] | None = None) -> int:
     validate_script = project_root / "Scripts" / "ros2forunity" / "windows" / "humble" / "validate_r2fu_runtime_package.py"
 
     if args.dry_run:
-        project_shape = ensure_project_uses_runtime_package(project_root, update=False)
+        project_shape = ensure_project_uses_runtime_package(
+            project_root,
+            update=False,
+            require_runtime_dependency=not args.skip_project_manifest_check,
+        )
         print("[DRY-RUN] artifact:", artifact)
         print("[DRY-RUN] sha256:", artifact_info["sha256"])
         print("[DRY-RUN] inventory:", inventory_path)
@@ -309,7 +324,11 @@ def main(argv: list[str] | None = None) -> int:
         ],
         cwd=project_root,
     )
-    project_shape = ensure_project_uses_runtime_package(project_root, update=args.update_project_manifest)
+    project_shape = ensure_project_uses_runtime_package(
+        project_root,
+        update=args.update_project_manifest,
+        require_runtime_dependency=not args.skip_project_manifest_check,
+    )
 
     validation_log = evidence_dir / f"sync-r2fu-runtime-validate-{timestamp}.log"
     if not args.skip_validate:

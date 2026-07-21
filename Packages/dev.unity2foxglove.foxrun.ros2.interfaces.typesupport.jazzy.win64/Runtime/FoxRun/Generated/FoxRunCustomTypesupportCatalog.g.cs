@@ -41,6 +41,7 @@ namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Register()
         {
+            FoxRunRos2CustomTypesupportNativePluginBootstrap.Register(typeof(FoxRunCustomTypesupportCatalog).Assembly);
             FoxRunRos2CustomTypesupportCatalogRegistry.Register(new FoxRunCustomTypesupportCatalog());
         }
     }

@@ -150,6 +150,36 @@ class Phase179ZenohTopologyTests(unittest.TestCase):
             self.assertNotIn(":7447", configuration.router_config.read_text(encoding="utf-8"))
             self.assertNotIn(":7447", configuration.session_config.read_text(encoding="utf-8"))
 
+    def test_owned_local_router_config_can_use_the_explicit_inspector_endpoint(self) -> None:
+        """A formal R2FU router setting must win over the former random local-port workaround."""
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            template_directory = root / "templates"
+            output_directory = root / "build" / "phase181" / "lyrical-zenoh"
+            template_directory.mkdir(parents=True)
+            router_template = template_directory / "DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"
+            session_template = template_directory / "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
+            router_template.write_text(
+                '{ listen: { endpoints: ["tcp/[::]:7447"] } }\n',
+                encoding="utf-8",
+            )
+            session_template.write_text(
+                '{ connect: { endpoints: ["tcp/localhost:7447"] } }\n',
+                encoding="utf-8",
+            )
+
+            configuration = self.topology.create_owned_local_router_config(
+                router_template=router_template,
+                session_template=session_template,
+                output_directory=output_directory,
+                endpoint="tcp/localhost:8778",
+            )
+
+            self.assertEqual("tcp/localhost:8778", configuration.endpoint)
+            self.assertIn(configuration.endpoint, configuration.router_config.read_text(encoding="utf-8"))
+            self.assertIn(configuration.endpoint, configuration.session_config.read_text(encoding="utf-8"))
+
     def test_owned_router_waits_for_ready_marker_and_cleanup_keeps_external_topology_untouched(self) -> None:
         """Only a helper-owned router may be stopped, and only after readiness was observed."""
 

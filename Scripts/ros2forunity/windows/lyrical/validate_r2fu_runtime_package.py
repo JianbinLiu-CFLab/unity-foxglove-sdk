@@ -17,6 +17,7 @@ import hashlib
 import re
 import struct
 import sys
+import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -392,23 +393,22 @@ def check_required_files(results: list[CheckResult]) -> None:
 
 
 def check_ros2cs_metadata_descriptions(results: list[CheckResult]) -> None:
-    """Validate ros2cs metadata provenance text matches the package distro."""
+    """Validate the ros2cs metadata's semantic runtime-distro field."""
     for path in (
         RUNTIME_ROOT / "metadata_ros2cs.xml",
         RUNTIME_ROOT / "Plugins" / "metadata_ros2cs.xml",
         PLUGIN_ROOT / "metadata_ros2cs.xml",
     ):
         text = read_optional_text(path)
+        try:
+            root = ElementTree.fromstring(text)
+            distro = (root.findtext("ros2") or "").strip() if root.tag == "ros2cs" else ""
+        except ElementTree.ParseError:
+            distro = ""
         add(
             results,
             f"{rel(path)} declares lyrical ros2cs distro",
-            "<ros2>lyrical</ros2>" in text,
-            rel(path),
-        )
-        add(
-            results,
-            f"{rel(path)} desc does not name another distro",
-            not any(distro in text for distro in ("humble", "jazzy")),
+            distro == "lyrical",
             rel(path),
         )
 

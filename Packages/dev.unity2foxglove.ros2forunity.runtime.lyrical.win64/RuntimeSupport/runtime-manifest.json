@@ -29,10 +29,10 @@
     }
   ],
   "artifactName": "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip",
-  "artifactSha256": "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608",
-  "artifactSize": 25179851,
+  "artifactSha256": "1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096",
+  "artifactSize": 25216923,
   "inventoryFile": "RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json",
-  "inventoryFileCount": 1227,
+  "inventoryFileCount": 1229,
   "runtimeRoot": "Runtime/Ros2ForUnity",
   "pluginPath": "Runtime/Ros2ForUnity/Plugins/Windows/x86_64",
   "sourceBasis": "Local Lyrical rebuild from RobotecAI ROS2 For Unity and ros2cs sources with Windows ROS2 Lyrical dependency closure",

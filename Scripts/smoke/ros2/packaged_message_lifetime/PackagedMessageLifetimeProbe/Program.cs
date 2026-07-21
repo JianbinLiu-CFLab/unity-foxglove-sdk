@@ -56,8 +56,8 @@ internal static class Program
         try
         {
             ROS2.Ros2cs.Init();
-            node = ROS2.Ros2cs.CreateNode("phase179_" + distro + "_" + Environment.ProcessId);
-            var topic = "/phase179/" + distro + "/lifetime_" + Environment.ProcessId;
+            node = ROS2.Ros2cs.CreateNode("packaged_message_lifetime_" + distro + "_" + Environment.ProcessId);
+            var topic = "/r2fu/packaged_message_lifetime/" + distro + "/" + Environment.ProcessId;
             using var qos = new ROS2.QualityOfServiceProfile(ROS2.QosPresetProfile.DEFAULT);
             subscription = node.CreateSubscription<RosString>(topic, message =>
             {
@@ -95,11 +95,11 @@ internal static class Program
                     executorFailure = error;
                     callbackCompleted.Set();
                 }
-            }) { Name = "phase179-ros2cs-executor" };
+            }) { Name = "packaged-message-lifetime-ros2cs-executor" };
 
             executor.Start();
             Check(executorStarted.Wait(TimeSpan.FromSeconds(2)), "ROS2 executor thread did not start.");
-            using (var outbound = new RosString { Data = "phase179" })
+            using (var outbound = new RosString { Data = "packaged-message-lifetime" })
             {
                 var publishDeadline = Stopwatch.StartNew();
                 while (!callbackCompleted.IsSet && publishDeadline.Elapsed < TimeSpan.FromSeconds(8))
@@ -304,7 +304,7 @@ internal static class Program
             {
                 failure = error;
             }
-        }) { Name = "phase179-producer-replace" };
+        }) { Name = "packaged-message-lifetime-producer-replace" };
 
         producer.Start();
         JoinOrThrow(producer, "producer replacement");
@@ -325,7 +325,7 @@ internal static class Program
             {
                 failure = error;
             }
-        }) { Name = "phase179-producer-split" };
+        }) { Name = "packaged-message-lifetime-producer-split" };
 
         producer.Start();
         JoinOrThrow(producer, "split construction");
@@ -359,7 +359,7 @@ internal static class Program
                 failure = error;
                 ready.Set();
             }
-        }) { Name = "phase179-producer-concurrent" };
+        }) { Name = "packaged-message-lifetime-producer-concurrent" };
 
         producer.Start();
         Check(ready.Wait(TimeSpan.FromSeconds(5)), "Concurrent-disposal producer did not become ready.");

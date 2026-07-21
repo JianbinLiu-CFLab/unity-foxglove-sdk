@@ -30,6 +30,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void AddOnNativePluginBootstrapIgnoresAMissingAssembly()
+        {
+            FoxRunRos2CustomTypesupportNativePluginBootstrap.Register(null);
+        }
+
+        [Fact]
         public void RevisionedCatalogUsesItsOwnVersionedRosPackageName()
         {
             Reset();

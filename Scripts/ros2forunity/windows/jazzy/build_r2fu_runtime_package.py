@@ -32,7 +32,7 @@ PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 PACKAGE_VERSION = "0.1.0-preview.1"
 RUNTIME_ID = "r2fu-jazzy-win64"
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-EXPECTED_ARTIFACT_SHA256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3"
+EXPECTED_ARTIFACT_SHA256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74"
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_ARTIFACT = ROOT / "r2fu-runtime-artifacts" / "jazzy" / "windows_x86_64" / ARTIFACT_NAME
@@ -96,10 +96,7 @@ PHASE161_ADDED_DLLS = (
 PHASE161_SUPPLEMENTAL_RUNTIME_DLLS = (
     "rosidl_dynamic_typesupport_fastrtps.dll",
 )
-PHASE161_ALLOWED_STALE_REMOVED_DLLS = (
-    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll",
-    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_fastrtps_c_native.dll",
-    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_introspection_c_native.dll",
+V083_EXCLUDED_TEST_TYPESUPPORT_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_fastrtps_c_native.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_introspection_c_native.dll",
@@ -771,7 +768,7 @@ def runtime_manifest(artifact: RuntimeArtifact) -> dict[str, object]:
         ],
         "handoffInventoryDelta": {
             "addedDlls": list(PHASE161_ADDED_DLLS),
-            "allowedRemovedStaleBackupDlls": list(PHASE161_ALLOWED_STALE_REMOVED_DLLS),
+            "excludedTestTypesupportDlls": list(V083_EXCLUDED_TEST_TYPESUPPORT_DLLS),
             "assetCriticalBaseline": list(PHASE161_ASSET_CRITICAL_BASELINE),
         },
         "packagePathPatch": {
@@ -965,6 +962,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = patch_ros2cs_logger_callback_api(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
         text = patch_standalone_environment_bootstrap(text)
+        text = patch_runtime_lifecycle_safety(text)
         write_text(source, text)
         return
     if "unity2FoxgloveRuntimePackageName" not in text:
@@ -984,12 +982,71 @@ def patch_ros2_for_unity(package: Path) -> None:
     else:
         raise ValueError("Could not find upstream ROS2ForUnity path block to patch.")
     text = patch_standalone_environment_bootstrap(text)
+    text = patch_runtime_lifecycle_safety(text)
     write_text(source, text)
 
 
 def patch_ros2cs_logger_callback_api(text: str) -> str:
     """Patch obsolete ros2cs logger callback calls emitted by older runtime artifacts."""
     return text.replace("Ros2csLogger.setCallback", "Ros2csLogger.SetCallback")
+
+
+def patch_runtime_lifecycle_safety(text: str) -> str:
+    """Restore local lifecycle guards that a refreshed upstream runtime can omit."""
+    register_marker = "        EditorApplication.quitting += ShutdownShared;"
+    unregister_marker = "        EditorApplication.quitting -= ShutdownShared;"
+    if "AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared" not in text:
+        text = text.replace(
+            register_marker,
+            register_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared;",
+            1,
+        )
+    if "AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared" not in text:
+        text = text.replace(
+            unregister_marker,
+            unregister_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared;",
+            1,
+        )
+
+    dead_guard = "    private static void ThrowIfUninitialized(string callContext)\n"
+    guard_start = text.find(dead_guard)
+    if guard_start >= 0:
+        guard_end = text.find("\n    }\n\n", guard_start)
+        if guard_end < 0:
+            raise ValueError("Could not remove the stale ThrowIfUninitialized guard.")
+        text = text[:guard_start] + text[guard_end + len("\n    }\n\n"):]
+
+    metadata_prerequisite = "LoadMetadata() must complete before metadata-backed properties are read."
+    if metadata_prerequisite not in text:
+        text = text.replace(
+            '            throw new InvalidOperationException("Metadata document is empty while reading " + valuePath);\n',
+            "            throw new InvalidOperationException(\n"
+            '                "Metadata document is empty while reading " + valuePath +\n'
+            '                ". LoadMetadata() must complete before metadata-backed properties are read.");\n',
+            1,
+        )
+    return text
+
+
+def patch_unity_time_source_main_thread_guard(text: str) -> str:
+    """Restore a clear construction failure when Unity time is initialized off the main thread."""
+    if "must be constructed on the Unity main thread" not in text:
+        text = text.replace(
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    lastReadingSecs = Time.timeAsDouble;\n",
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    try\n"
+            "    {\n"
+            "      lastReadingSecs = Time.timeAsDouble;\n"
+            "    }\n"
+            "    catch (UnityException exception)\n"
+            "    {\n"
+            "      throw new InvalidOperationException(\n"
+            '        "UnityTimeSource must be constructed on the Unity main thread.", exception);\n'
+            "    }\n",
+            1,
+        )
+    return text
 
 
 def patch_standalone_environment_bootstrap(text: str) -> str:
@@ -1211,6 +1268,68 @@ def patch_standalone_environment_bootstrap(text: str) -> str:
         CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);
 '''
         text = text.replace(old_startup, new_startup)
+        if "sourcedRosDistroBeforeStandalonePatch" not in text:
+            refreshed_upstream_startup = '''            // Load metadata
+            LoadMetadata();
+            string currentRos2Version = GetROSVersion();
+            string standalone = IsStandalone() ? "standalone" : "non-standalone";
+
+            // Self checks
+            CheckROSSupport(currentRos2Version);
+            CheckIntegrity();
+            bool standaloneBuild = IsStandalone();
+            WarnIfLyricalSpinFallbackUnset(currentRos2Version, standaloneBuild);
+
+            // Library loading
+'''
+            refreshed_startup_patch = '''            // Load metadata
+            LoadMetadata();
+            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
+            bool standaloneBuild = IsStandalone();
+            if (standaloneBuild)
+            {
+                SetStandalonePrefixPath();
+                SetStandaloneRmwImplementation();
+            }
+
+            string currentRos2Version = standaloneBuild
+                ? GetMetadataValue(ros2csMetadata, "/ros2cs/ros2")
+                : GetROSVersion();
+            if (standaloneBuild)
+            {
+                SetStandaloneRosDistro(currentRos2Version);
+            }
+            string standalone = standaloneBuild ? "standalone" : "non-standalone";
+
+            // Self checks
+            CheckROSSupport(currentRos2Version);
+            WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);
+            CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);
+            WarnIfLyricalSpinFallbackUnset(currentRos2Version, standaloneBuild);
+
+            // Library loading
+'''
+            text = text.replace(refreshed_upstream_startup, refreshed_startup_patch, 1)
+            text = text.replace(
+                '''            if (standaloneBuild)
+            {
+                // For standalone, currentRos2Version comes from metadata, not ROS_DISTRO.
+                // SetStandaloneRosDistro must stay after CheckROSSupport/CheckIntegrity.
+                SetStandaloneRosDistro(currentRos2Version);
+                SetStandaloneRos2csSpinFallback(currentRos2Version);
+                SetStandalonePrefixPath();
+                SetStandaloneRmwImplementation();
+                SetStandaloneRcutilsConsoleMode();
+            }
+''',
+                '''            if (standaloneBuild)
+            {
+                SetStandaloneRos2csSpinFallback(currentRos2Version);
+                SetStandaloneRcutilsConsoleMode();
+            }
+''',
+                1,
+            )
     text = text.replace(
         "        CheckIntegrity(" + "sourcedRosDistroBeforeStandalonePatch);\n",
         "        WarnIfStandaloneRosDistroOverride(sourcedRosDistroBeforeStandalonePatch, currentRos2Version);\n"
@@ -1325,6 +1444,13 @@ def patch_ros_time_source_contract(package: Path) -> None:
             1,
         )
     write_text(dotnet_time, dotnet_text)
+
+    unity_time = time_dir / "UnityTimeSource.cs"
+    if unity_time.exists():
+        write_text(
+            unity_time,
+            patch_unity_time_source_main_thread_guard(unity_time.read_text(encoding="utf-8")),
+        )
 
     time_utils = time_dir / "TimeUtils.cs"
     time_utils_text = time_utils.read_text(encoding="utf-8")

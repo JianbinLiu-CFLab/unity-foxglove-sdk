@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RuntimePackageRoot>$(RepoRoot)Packages\dev.unity2foxglove.ros2forunity.runtime.$(Distro).win64\Runtime\Ros2ForUnity</RuntimePackageRoot>
     <PluginsRoot>$(RuntimePackageRoot)\Plugins</PluginsRoot>
-    <BaseOutputPath>$(RepoRoot)build\phase179b\probe\$(Distro)\bin\</BaseOutputPath>
+    <BaseOutputPath>$(RepoRoot)build\smoke\ros2\packaged-message-lifetime\$(Distro)\bin\</BaseOutputPath>
   </PropertyGroup>
 
   <Target Name="ValidateDistro" BeforeTargets="PrepareForBuild">

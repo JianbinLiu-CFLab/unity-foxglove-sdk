@@ -2,8 +2,8 @@
 # Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Purpose: Run bounded packaged ros2cs message lifetime probes per ROS2 distro.
-# Usage: python Scripts/ros2forunity/windows/phase179/probe_packaged_message_lifetime.py --distro all
+# Purpose: Run bounded packaged ros2cs message-lifetime smoke probes per ROS2 distro.
+# Usage: python Scripts/smoke/ros2/packaged_message_lifetime/probe_packaged_message_lifetime.py --distro all
 # Outputs: Builds under repo build/ and prints one PASS/FAIL result per fresh distro process.
 
 """Run bounded ros2cs message lifetime probes in fresh per-distro processes."""
@@ -23,7 +23,7 @@ PROBE_TIMEOUT_SECONDS = 30
 
 
 def repo_root() -> Path:
-    """Return the repository root containing this Phase179 helper."""
+    """Return the repository root containing this packaged-runtime smoke helper."""
 
     return Path(__file__).resolve().parents[4]
 
@@ -88,8 +88,8 @@ def run_checked(command: list[str], *, cwd: Path, env: dict[str, str], timeout: 
 def run_distro(root: Path, distro: str, iterations: int) -> None:
     """Build and execute the lifetime probe for one ROS2 distribution."""
 
-    project = root / "Scripts" / "ros2forunity" / "windows" / "phase179" / "PackagedMessageLifetimeProbe" / "PackagedMessageLifetimeProbe.csproj"
-    intermediate = root / "build" / "phase179b" / "probe" / distro / "obj"
+    project = root / "Scripts" / "smoke" / "ros2" / "packaged_message_lifetime" / "PackagedMessageLifetimeProbe" / "PackagedMessageLifetimeProbe.csproj"
+    intermediate = root / "build" / "smoke" / "ros2" / "packaged-message-lifetime" / distro / "obj"
     env = distro_environment(root, distro)
     run_checked(
         [
@@ -105,7 +105,7 @@ def run_distro(root: Path, distro: str, iterations: int) -> None:
         env=env,
         timeout=BUILD_TIMEOUT_SECONDS,
     )
-    probe_dll = root / "build" / "phase179b" / "probe" / distro / "bin" / "Debug" / "net8.0" / "PackagedMessageLifetimeProbe.dll"
+    probe_dll = root / "build" / "smoke" / "ros2" / "packaged-message-lifetime" / distro / "bin" / "Debug" / "net8.0" / "PackagedMessageLifetimeProbe.dll"
     if not probe_dll.is_file():
         raise RuntimeError(f"{distro}: build did not create expected probe DLL: {probe_dll}")
     run_checked(

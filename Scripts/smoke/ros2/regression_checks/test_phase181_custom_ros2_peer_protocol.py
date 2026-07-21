@@ -177,6 +177,25 @@ class Phase181CustomRos2PeerProtocolTests(unittest.TestCase):
         self.assertEqual("PHASE181_CUSTOM_INTERFACE_READY", marker.name)
         self.assertEqual("opaque", marker.fields["token"])
 
+    def test_marker_parser_recovers_marker_concatenated_after_concurrent_logger_prefix(self):
+        """Verify Phase181 behavior: a native warning cannot hide an adjacent Unity marker."""
+        protocol = load_protocol_module()
+
+        marker = protocol.parse_marker_line(
+            "[WARNING] direct spin fallback timeout."
+            "PHASE181_CUSTOM_ROS2_READY runtime=lyrical rmw=rmw_zenoh_cpp token=opaque"
+        )
+
+        self.assertIsNotNone(marker)
+        self.assertEqual("PHASE181_CUSTOM_ROS2_READY", marker.name)
+        self.assertEqual("opaque", marker.fields["token"])
+        self.assertTrue(marker.raw.startswith("PHASE181_CUSTOM_ROS2_READY "))
+        self.assertIsNone(
+            protocol.parse_marker_line(
+                "NOT_PHASE181_CUSTOM_ROS2_READY runtime=lyrical rmw=rmw_zenoh_cpp token=opaque"
+            )
+        )
+
     def test_nullable_empty_payload_and_envelope_metadata_are_verified(self):
         """Verify Phase181 behavior: nullable empty payload and envelope metadata are verified."""
         protocol = load_protocol_module()

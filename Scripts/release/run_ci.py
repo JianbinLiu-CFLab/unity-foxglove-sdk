@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from dataclasses import dataclass
 import os
 import subprocess
@@ -67,6 +67,7 @@ PHASE181_INTERFACE_TOOLING_REGRESSIONS = (
     "Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest",
     "Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface",
     "Scripts.ros2forunity.interfaces.regression_checks.test_build_foxrun_custom_typesupport_addon",
+    "Scripts.ros2forunity.interfaces.regression_checks.test_refresh_phase181_custom_typesupport_addons",
     "Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon",
     "Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon",
     "Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain",
@@ -75,6 +76,7 @@ PHASE181_TYPESUPPORT_VALIDATOR = "Scripts/ros2forunity/interfaces/validate_foxru
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 600
 DEFAULT_JOB_TIMEOUT_SECONDS = 1800
 DEFAULT_PARALLEL_JOBS = 2
+DOTNET_CI_EXCLUSIVE_GROUP = "dotnet"
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,7 @@ class CiJob:
     name: str
     command: list[str]
     disable_timeout: bool = False
+    exclusive_group: str | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +98,19 @@ class CiJobResult:
     returncode: int
     elapsed_seconds: float
     log_path: Path
+
+
+@dataclass(frozen=True)
+class CapturedCommandResult:
+    """Captured package-validator result with an optional enforced timeout limit."""
+
+    label: str
+    ok: bool
+    returncode: int
+    elapsed_seconds: float
+    stdout: str
+    stderr: str
+    timeout_seconds: int | None = None
 
 
 def command_timeout_seconds() -> int:
@@ -228,25 +244,30 @@ def run(
         if disable_timeout
         else command_timeout_seconds() if timeout_seconds is None else max(1, timeout_seconds)
     )
+    start = time.monotonic()
     try:
         result = subprocess.run(cmd, cwd=REPO_ROOT, timeout=effective_timeout)
     except subprocess.TimeoutExpired:
-        print(red(f"{FAIL} {label} timed out after {effective_timeout}s"))
+        elapsed = time.monotonic() - start
+        print(red(f"{FAIL} {label} timed out after {effective_timeout}s ({elapsed:.1f}s)"))
         if fatal:
             raise SystemExit(124)
         return False
+    elapsed = time.monotonic() - start
     ok = result.returncode == 0
     if ok:
-        print(green(f"{PASS} {label}"))
+        print(green(f"{PASS} {label} ({elapsed:.1f}s)"))
     else:
-        print(red(f"{FAIL} {label} (exit {result.returncode})"))
+        print(red(f"{FAIL} {label} (exit {result.returncode}) ({elapsed:.1f}s)"))
         if fatal:
             raise SystemExit(result.returncode)
     return ok
 
 
-def run_captured(cmd: list[str], label: str) -> tuple[str, bool, int, str, str]:
+def run_captured(cmd: list[str], label: str) -> CapturedCommandResult:
     """Run a subprocess and capture output for later ordered replay."""
+    effective_timeout = command_timeout_seconds()
+    start = time.monotonic()
     try:
         result = subprocess.run(
             cmd,
@@ -255,43 +276,93 @@ def run_captured(cmd: list[str], label: str) -> tuple[str, bool, int, str, str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             errors="replace",
-            timeout=command_timeout_seconds(),
+            timeout=effective_timeout,
         )
     except subprocess.TimeoutExpired as ex:
+        elapsed = time.monotonic() - start
         stdout = ex.stdout.decode(errors="replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
         stderr = ex.stderr.decode(errors="replace") if isinstance(ex.stderr, bytes) else (ex.stderr or "")
-        stderr += f"\n{FAIL} {label} timed out after {command_timeout_seconds()}s\n"
-        return label, False, 124, stdout, stderr
-    return label, result.returncode == 0, result.returncode, result.stdout, result.stderr
+        return CapturedCommandResult(
+            label,
+            False,
+            124,
+            elapsed,
+            stdout,
+            stderr,
+            timeout_seconds=effective_timeout,
+        )
+    elapsed = time.monotonic() - start
+    return CapturedCommandResult(
+        label,
+        result.returncode == 0,
+        result.returncode,
+        elapsed,
+        result.stdout,
+        result.stderr,
+    )
 
 
 def run_parallel(commands: list[tuple[str, list[str]]]) -> dict[str, bool]:
     """Run independent commands concurrently and replay their output in declaration order."""
     print(f"\n{cyan('--- package validators (parallel) ---')}")
-    results_by_label: dict[str, tuple[bool, int, str, str]] = {}
+    results_by_label: dict[str, CapturedCommandResult] = {}
     with ThreadPoolExecutor(max_workers=len(commands)) as executor:
         futures = {
             executor.submit(run_captured, cmd, label): label
             for label, cmd in commands
         }
         for future in as_completed(futures):
-            label, ok, returncode, stdout, stderr = future.result()
-            results_by_label[label] = (ok, returncode, stdout, stderr)
+            result = future.result()
+            results_by_label[result.label] = result
 
     ordered_results: dict[str, bool] = {}
     for label, _ in commands:
-        ok, returncode, stdout, stderr = results_by_label[label]
+        result = results_by_label[label]
         print(f"\n{cyan('--- ' + label + ' ---')}")
-        if stdout:
-            print(stdout, end="" if stdout.endswith("\n") else "\n")
-        if stderr:
-            print(stderr, end="" if stderr.endswith("\n") else "\n", file=sys.stderr)
-        if ok:
-            print(green(f"{PASS} {label}"))
+        if result.stdout:
+            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+        if result.stderr:
+            print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
+        if result.ok:
+            print(green(f"{PASS} {label} ({result.elapsed_seconds:.1f}s)"))
+        elif result.timeout_seconds is not None:
+            print(
+                red(
+                    f"{FAIL} {label} timed out after {result.timeout_seconds}s "
+                    f"({result.elapsed_seconds:.1f}s)"
+                )
+            )
         else:
-            print(red(f"{FAIL} {label} (exit {returncode})"))
-        ordered_results[label] = ok
+            print(red(f"{FAIL} {label} (exit {result.returncode}) ({result.elapsed_seconds:.1f}s)"))
+        ordered_results[label] = result.ok
     return ordered_results
+
+
+def build_dotnet_ci_jobs() -> list[CiJob]:
+    """Build the independent runtime and xUnit lane self-subcommands."""
+    script = str(Path(__file__).resolve())
+    return [
+        CiJob(
+            "dotnet-runtime",
+            [sys.executable, script, "--only", "dotnet-runtime"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+        CiJob(
+            "xunit",
+            [sys.executable, script, "--only", "xunit"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+        CiJob(
+            "xunit-adapter",
+            [sys.executable, script, "--only", "xunit-adapter"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+        CiJob(
+            "xunit-native",
+            [sys.executable, script, "--only", "xunit-native"],
+            exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+        ),
+    ]
 
 
 def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
@@ -299,10 +370,16 @@ def build_default_ci_jobs(args: argparse.Namespace) -> list[CiJob]:
     script = str(Path(__file__).resolve())
     jobs: list[CiJob] = []
     if not args.skip_analyzer:
-        jobs.append(CiJob("analyzer", [sys.executable, script, "--only", "analyzer"]))
+        jobs.append(
+            CiJob(
+                "analyzer",
+                [sys.executable, script, "--only", "analyzer"],
+                exclusive_group=DOTNET_CI_EXCLUSIVE_GROUP,
+            )
+        )
+    jobs.extend(build_dotnet_ci_jobs())
     jobs.extend(
         [
-            CiJob("dotnet", [sys.executable, script, "--only", "dotnet"]),
             CiJob("foxrun-publish-panel", [sys.executable, script, "--only", "foxrun-publish-panel"]),
             CiJob(
                 "phase179-ros2-regression",
@@ -388,33 +465,81 @@ def run_ci_jobs(jobs: list[CiJob], max_workers: int) -> dict[str, bool]:
 
     results_by_name: dict[str, CiJobResult] = {}
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {executor.submit(_run_ci_job, job, log_dir): job.name for job in jobs}
-        for future in as_completed(futures):
-            result = future.result()
-            results_by_name[result.name] = result
-            status = PASS if result.ok else FAIL
-            colour = green if result.ok else red
-            print(
-                colour(
-                    f"{status} {result.name} "
-                    f"({result.elapsed_seconds:.1f}s, log: {result.log_path})"
+        pending = list(jobs)
+        running: dict[Future[CiJobResult], CiJob] = {}
+        active_groups: set[str] = set()
+
+        while pending or running:
+            while len(running) < worker_count:
+                compatible_index = next(
+                    (
+                        index
+                        for index, job in enumerate(pending)
+                        if job.exclusive_group is None or job.exclusive_group not in active_groups
+                    ),
+                    None,
                 )
-            )
-            if not result.ok:
-                print(_job_log_tail(result.log_path), file=sys.stderr)
+                if compatible_index is None:
+                    break
+
+                job = pending.pop(compatible_index)
+                if job.exclusive_group is not None:
+                    active_groups.add(job.exclusive_group)
+                running[executor.submit(_run_ci_job, job, log_dir)] = job
+
+            if not running:
+                raise RuntimeError("CI scheduler found no compatible pending job")
+
+            completed, _ = wait(running, return_when=FIRST_COMPLETED)
+            for future in completed:
+                job = running.pop(future)
+                try:
+                    result = future.result()
+                finally:
+                    if job.exclusive_group is not None:
+                        active_groups.remove(job.exclusive_group)
+
+                results_by_name[result.name] = result
+                status = PASS if result.ok else FAIL
+                colour = green if result.ok else red
+                print(
+                    colour(
+                        f"{status} {result.name} "
+                        f"({result.elapsed_seconds:.1f}s, log: {result.log_path})"
+                    )
+                )
+                if not result.ok:
+                    print(_job_log_tail(result.log_path), file=sys.stderr)
 
     return {job.name: results_by_name[job.name].ok for job in jobs}
+
+
+def report_ci_job_results(results: dict[str, bool]) -> int:
+    """Print the standard top-level CI aggregate summary and return its exit code."""
+    print(f"\n{'=' * 60}")
+    for name, ok in results.items():
+        print(f"  {green(PASS) if ok else red(FAIL)} {name}")
+
+    if all(results.values()):
+        print(f"\n{green('All CI checks passed.')}")
+        return 0
+
+    failed = [n for n, ok in results.items() if not ok]
+    print(f"\n{red('Failed: ' + ', '.join(failed))}")
+    return 1
 
 
 def restore_with_ignoring_failed_sources(
     project: str,
     label: str,
     msbuild_props: list[str] | None = None,
+    *,
+    fatal: bool = True,
 ) -> bool:
     """Restore a project while allowing ignored failed sources."""
     msbuild_props = msbuild_props or []
     cmd = ["dotnet", "restore", project, *msbuild_props, *IGNORE_FAILED_SOURCES_OPTION]
-    return run(cmd, label, fatal=True)
+    return run(cmd, label, fatal=fatal)
 
 
 def run_with_restore_fallback(
@@ -494,8 +619,9 @@ def main() -> int:
         "--only",
         type=str,
         help=(
-            "Run only one suite: dotnet, phase179-ros2-regression, phase181-ros2-regression, "
-            "mcap-conformance, packages, boundary, analyzer, foxrun-publish-panel"
+            "Run only one suite: dotnet, dotnet-runtime, xunit, xunit-adapter, xunit-native, "
+            "analyzer, foxrun-publish-panel, phase179-ros2-regression, "
+            "phase181-ros2-regression, mcap-conformance, packages, boundary"
         ),
     )
     parser.add_argument(
@@ -511,18 +637,11 @@ def main() -> int:
 
     if args.only is None:
         results.update(run_ci_jobs(build_default_ci_jobs(args), args.jobs))
+        return report_ci_job_results(results)
 
-        print(f"\n{'=' * 60}")
-        for name, ok in results.items():
-            print(f"  {green(PASS) if ok else red(FAIL)} {name}")
-
-        if all(results.values()):
-            print(f"\n{green('All CI checks passed.')}")
-            return 0
-
-        failed = [n for n, ok in results.items() if not ok]
-        print(f"\n{red('Failed: ' + ', '.join(failed))}")
-        return 1
+    if args.only == "dotnet":
+        results.update(run_ci_jobs(build_dotnet_ci_jobs(), args.jobs))
+        return report_ci_job_results(results)
 
     # --- analyzer build + freshness ---
     if args.only in (None, "analyzer"):
@@ -580,84 +699,106 @@ def main() -> int:
                     "Analyzer DLL freshness (--phase115f)",
                 )
 
-    # --- dotnet validation suite ---
-    if args.only in (None, "dotnet"):
-        results["dotnet-restore"] = restore_with_ignoring_failed_sources(
-            RUNTIME_TESTS_PROJ, "Restore runtime test project", RUNTIME_TEST_PROPS
+    # --- independent dotnet validation lanes ---
+    if args.only == "dotnet-runtime":
+        results["dotnet-runtime-restore"] = restore_with_ignoring_failed_sources(
+            RUNTIME_TESTS_PROJ,
+            "Restore runtime test project",
+            RUNTIME_TEST_PROPS,
+            fatal=False,
         )
-        results["dotnet"] = run_with_restore_fallback(
-            [
-                "dotnet", "run", "--no-restore",
-                "--project", RUNTIME_TESTS_PROJ,
-                *RUNTIME_TEST_PROPS,
-            ],
-            [
-                "dotnet", "run",
-                "--project", RUNTIME_TESTS_PROJ,
-                *RUNTIME_TEST_PROPS,
-            ],
-            "Dotnet validation suite (default CI)",
+        results["dotnet-runtime"] = (
+            run(
+                [
+                    "dotnet",
+                    "run",
+                    "--no-restore",
+                    "--project",
+                    RUNTIME_TESTS_PROJ,
+                    *RUNTIME_TEST_PROPS,
+                ],
+                "Dotnet validation suite (default CI)",
+            )
+            if results["dotnet-runtime-restore"]
+            else False
         )
+
+    if args.only == "xunit":
         results["xunit-restore"] = restore_with_ignoring_failed_sources(
-            UNIT_TESTS_PROJ, "Restore xUnit unit test project", UNIT_TEST_PROPS
+            UNIT_TESTS_PROJ,
+            "Restore xUnit unit test project",
+            UNIT_TEST_PROPS,
+            fatal=False,
         )
-        results["xunit"] = run_with_restore_fallback(
-            [
-                "dotnet", "test",
-                "--no-restore", UNIT_TESTS_PROJ,
-                *UNIT_TEST_PROPS,
-                "--logger", "trx;LogFileName=unit-tests.trx",
-                "--results-directory", str(UNIT_TEST_RESULTS_DIR),
-            ],
-            [
-                "dotnet", "test", UNIT_TESTS_PROJ,
-                *UNIT_TEST_PROPS,
-                "--logger", "trx;LogFileName=unit-tests.trx",
-                "--results-directory", str(UNIT_TEST_RESULTS_DIR),
-            ],
-            "xUnit unit tests",
+        results["xunit"] = (
+            run(
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    UNIT_TESTS_PROJ,
+                    *UNIT_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests.trx",
+                    "--results-directory",
+                    str(UNIT_TEST_RESULTS_DIR),
+                ],
+                "xUnit unit tests",
+            )
+            if results["xunit-restore"]
+            else False
         )
+
+    if args.only == "xunit-adapter":
         results["xunit-adapter-restore"] = restore_with_ignoring_failed_sources(
             UNIT_TESTS_PROJ,
             "Restore xUnit optional ROS2 adapter lane",
             UNIT_ADAPTER_TEST_PROPS,
+            fatal=False,
         )
-        results["xunit-adapter"] = run_with_restore_fallback(
-            [
-                "dotnet", "test",
-                "--no-restore", UNIT_TESTS_PROJ,
-                *UNIT_ADAPTER_TEST_PROPS,
-                "--logger", "trx;LogFileName=unit-tests-adapter.trx",
-                "--results-directory", str(UNIT_ADAPTER_TEST_RESULTS_DIR),
-            ],
-            [
-                "dotnet", "test", UNIT_TESTS_PROJ,
-                *UNIT_ADAPTER_TEST_PROPS,
-                "--logger", "trx;LogFileName=unit-tests-adapter.trx",
-                "--results-directory", str(UNIT_ADAPTER_TEST_RESULTS_DIR),
-            ],
-            "xUnit optional ROS2 adapter unit tests",
+        results["xunit-adapter"] = (
+            run(
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    UNIT_TESTS_PROJ,
+                    *UNIT_ADAPTER_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests-adapter.trx",
+                    "--results-directory",
+                    str(UNIT_ADAPTER_TEST_RESULTS_DIR),
+                ],
+                "xUnit optional ROS2 adapter unit tests",
+            )
+            if results["xunit-adapter-restore"]
+            else False
         )
+
+    if args.only == "xunit-native":
         results["xunit-native-restore"] = restore_with_ignoring_failed_sources(
             UNIT_TESTS_PROJ,
             "Restore xUnit Native ROS2 compilation lane",
             UNIT_NATIVE_TEST_PROPS,
+            fatal=False,
         )
-        results["xunit-native"] = run_with_restore_fallback(
-            [
-                "dotnet", "test",
-                "--no-restore", UNIT_TESTS_PROJ,
-                *UNIT_NATIVE_TEST_PROPS,
-                "--logger", "trx;LogFileName=unit-tests-native.trx",
-                "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
-            ],
-            [
-                "dotnet", "test", UNIT_TESTS_PROJ,
-                *UNIT_NATIVE_TEST_PROPS,
-                "--logger", "trx;LogFileName=unit-tests-native.trx",
-                "--results-directory", str(UNIT_NATIVE_TEST_RESULTS_DIR),
-            ],
-            "xUnit Native ROS2 compilation unit tests",
+        results["xunit-native"] = (
+            run(
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    UNIT_TESTS_PROJ,
+                    *UNIT_NATIVE_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests-native.trx",
+                    "--results-directory",
+                    str(UNIT_NATIVE_TEST_RESULTS_DIR),
+                ],
+                "xUnit Native ROS2 compilation unit tests",
+            )
+            if results["xunit-native-restore"]
+            else False
         )
 
     # --- FoxRun Publish panel behavior suite ---

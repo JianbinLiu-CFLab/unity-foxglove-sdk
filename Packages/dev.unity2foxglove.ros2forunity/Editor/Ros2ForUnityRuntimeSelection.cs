@@ -182,6 +182,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private static readonly IReadOnlyList<string> NoCommunicationModeIds = Array.Empty<string>();
         private const string SessionRuntimeKey = "Unity2Foxglove.R2FU.SessionRuntime";
         private const string SessionCommunicationModeKey = "Unity2Foxglove.R2FU.SessionCommunicationMode";
+        private const string SessionZenohRouterEndpointKey = "Unity2Foxglove.R2FU.SessionZenohRouterEndpoint";
         private const string SessionCustomTypesupportIdentityKey =
             "Unity2Foxglove.R2FU.SessionCustomTypesupportIdentity";
         private const string CommunicationModeEditorUserSettingsKey =
@@ -326,6 +327,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         public static string GetSessionCommunicationMode()
             => SessionState.GetString(SessionCommunicationModeKey, string.Empty);
 
+        public static string GetSessionZenohRouterEndpoint()
+            => SessionState.GetString(SessionZenohRouterEndpointKey, string.Empty);
+
         public static string GetSessionCustomTypesupportIdentity()
             => SessionState.GetString(SessionCustomTypesupportIdentityKey, string.Empty);
 
@@ -405,7 +409,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
 
             var mode = GetCommunicationModeForRuntime(status.SelectedRuntime);
-            ApplySelectedRuntimeEnvironment(status.SelectedRuntime, mode);
+            ApplySelectedRuntimeEnvironment(projectDirectory, status.SelectedRuntime, mode);
         }
 
         public static void BindActiveRuntimeForPlayMode(string projectDirectory)
@@ -425,7 +429,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             ThrowIfCustomTypesupportTransactionFailed(customTypesupport, "binding ROS2 For Unity for Play Mode");
 
             var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
-            ApplySelectedRuntimeEnvironment(status.SelectedRuntime, communicationMode);
+            ApplySelectedRuntimeEnvironment(projectDirectory, status.SelectedRuntime, communicationMode);
 
             if (string.IsNullOrWhiteSpace(GetSessionRuntimePackage()))
                 SessionState.SetString(SessionRuntimeKey, status.SelectedRuntime.PackageName);
@@ -433,11 +437,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (string.IsNullOrWhiteSpace(GetSessionCommunicationMode()))
                 SessionState.SetString(SessionCommunicationModeKey, communicationMode);
 
+            if (string.IsNullOrWhiteSpace(GetSessionZenohRouterEndpoint())
+                && string.Equals(
+                    GetRmwImplementationForCommunicationMode(status.SelectedRuntime, communicationMode),
+                    ZenohRmwImplementation,
+                    StringComparison.Ordinal))
+            {
+                SessionState.SetString(
+                    SessionZenohRouterEndpointKey,
+                    Ros2ForUnityZenohRouterSettings.Get(status.SelectedRuntime).Endpoint);
+            }
+
             if (string.IsNullOrWhiteSpace(GetSessionCustomTypesupportIdentity()))
                 SessionState.SetString(SessionCustomTypesupportIdentityKey, BuildCustomTypesupportIdentity(customTypesupport));
         }
 
         private static void ApplySelectedRuntimeEnvironment(
+            string projectDirectory,
             Ros2ForUnityRuntimeDescriptor runtime,
             string communicationMode)
         {
@@ -453,6 +469,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var rmwImplementation = GetRmwImplementationForCommunicationMode(runtime, communicationMode);
             if (!string.IsNullOrWhiteSpace(rmwImplementation))
                 Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", rmwImplementation);
+
+            Ros2ForUnityZenohRouterSettings.ApplyToCurrentProcess(
+                projectDirectory,
+                runtime,
+                rmwImplementation);
         }
 
         public static string GetRuntimePackageRequiringEditorRestart(string projectDirectory)
@@ -477,7 +498,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         public static bool IsEditorRestartRequired(Ros2ForUnityRuntimeSelectionStatus status)
             => !string.IsNullOrWhiteSpace(GetRuntimePackageRequiringEditorRestart(status))
-               || !string.IsNullOrWhiteSpace(GetCommunicationModeRequiringEditorRestart(status));
+               || !string.IsNullOrWhiteSpace(GetCommunicationModeRequiringEditorRestart(status))
+               || !string.IsNullOrWhiteSpace(GetZenohRouterEndpointRequiringEditorRestart(status));
 
         public static string GetCommunicationModeRequiringEditorRestart(string projectDirectory)
             => GetCommunicationModeRequiringEditorRestart(GetStatus(projectDirectory));
@@ -495,6 +517,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             return string.Equals(communicationMode, sessionMode, StringComparison.Ordinal)
                 ? string.Empty
                 : communicationMode;
+        }
+
+        public static string GetZenohRouterEndpointRequiringEditorRestart(string projectDirectory)
+            => GetZenohRouterEndpointRequiringEditorRestart(GetStatus(projectDirectory));
+
+        public static string GetZenohRouterEndpointRequiringEditorRestart(Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            var sessionEndpoint = GetSessionZenohRouterEndpoint();
+            if (string.IsNullOrWhiteSpace(sessionEndpoint) || status?.SelectedRuntime == null)
+                return string.Empty;
+
+            var communicationMode = GetCommunicationModeForRuntime(status.SelectedRuntime);
+            if (!string.Equals(
+                    GetRmwImplementationForCommunicationMode(status.SelectedRuntime, communicationMode),
+                    ZenohRmwImplementation,
+                    StringComparison.Ordinal))
+            {
+                return string.Empty;
+            }
+
+            var selectedEndpoint = Ros2ForUnityZenohRouterSettings.Get(status.SelectedRuntime).Endpoint;
+            return string.Equals(selectedEndpoint, sessionEndpoint, StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : selectedEndpoint;
         }
 
         public static string GetCustomTypesupportRequiringEditorRestart(Ros2ForUnityRuntimeSelectionStatus status)
@@ -566,6 +612,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             var rmwImplementation = GetRmwImplementationForCommunicationMode(runtime, communicationMode);
             if (!string.IsNullOrWhiteSpace(rmwImplementation))
                 startInfo.EnvironmentVariables["RMW_IMPLEMENTATION"] = rmwImplementation;
+
+            Ros2ForUnityZenohRouterSettings.ApplyToRestartProcess(
+                projectDirectory,
+                runtime,
+                rmwImplementation,
+                startInfo);
 
             try
             {

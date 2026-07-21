@@ -117,6 +117,48 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.builder.patch_ros2_for_unity(package)
 
+    def test_runtime_safety_patches_survive_the_new_upstream_layout(self) -> None:
+        """Lifecycle and Unity-time safety patches must survive an upstream runtime refresh."""
+        runtime = (
+            "        EditorApplication.playModeStateChanged += EditorPlayStateChanged;\n"
+            "        EditorApplication.quitting += ShutdownShared;\n"
+            "        editorHandlersRegistered = true;\n"
+            "        EditorApplication.playModeStateChanged -= EditorPlayStateChanged;\n"
+            "        EditorApplication.quitting -= ShutdownShared;\n"
+            "        editorHandlersRegistered = false;\n"
+            "    }\n\n"
+            "    private static void ThrowIfUninitialized(string callContext)\n"
+            "    {\n"
+            "        if (!isInitialized)\n"
+            "        {\n"
+            "            throw new InvalidOperationException(\"not initialized\");\n"
+            "        }\n"
+            "    }\n\n"
+            "            throw new InvalidOperationException(\"Metadata document is empty while reading \" + valuePath);\n"
+        )
+        unity_time = (
+            "  public UnityTimeSource()\n"
+            "  {\n"
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    lastReadingSecs = Time.timeAsDouble;\n"
+            "  }\n"
+        )
+
+        patched_runtime = self.builder.patch_runtime_lifecycle_safety(runtime)
+        patched_time = self.builder.patch_unity_time_source_main_thread_guard(unity_time)
+        patched_startup = self.builder.patch_standalone_environment_isolation(
+            "            // Load metadata\n"
+            "            LoadMetadata();\n"
+            "            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n"
+        )
+
+        self.assertIn("AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared", patched_runtime)
+        self.assertIn("AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared", patched_runtime)
+        self.assertNotIn("ThrowIfUninitialized", patched_runtime)
+        self.assertIn("LoadMetadata() must complete before metadata-backed properties are read.", patched_runtime)
+        self.assertIn("must be constructed on the Unity main thread", patched_time)
+        self.assertEqual(1, patched_startup.count("sourcedRosDistroBeforeStandalonePatch"))
+
     def test_require_inputs_rejects_mismatched_artifact_size(self) -> None:
         """Reject inventory files whose optional artifact size disagrees."""
         with tempfile.TemporaryDirectory() as temp:

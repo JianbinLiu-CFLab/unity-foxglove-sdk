@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import io
+import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from pathlib import Path
@@ -350,6 +354,221 @@ class RunCiTests(unittest.TestCase):
                 self.run_ci.run(["tool"], "fatal", fatal=True)
         self.assertEqual(7, context.exception.code)
 
+    def test_run_reports_elapsed_seconds_on_success(self) -> None:
+        """Direct command success output should include stable one-decimal elapsed time."""
+        completed = subprocess.CompletedProcess(args=["tool"], returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[10.0, 11.24]):
+            with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    self.assertTrue(self.run_ci.run(["tool"], "timed success"))
+
+        self.assertIn(f"{self.run_ci.PASS} timed success (1.2s)", stdout.getvalue())
+
+    def test_run_reports_elapsed_seconds_on_nonzero_exit(self) -> None:
+        """Direct command failures should retain their exit code and include elapsed time."""
+        failed = subprocess.CompletedProcess(args=["tool"], returncode=7, stdout="", stderr="")
+
+        with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[15.0, 16.24]):
+            with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    self.assertFalse(self.run_ci.run(["tool"], "timed failure"))
+
+        self.assertIn(
+            f"{self.run_ci.FAIL} timed failure (exit 7) (1.2s)",
+            stdout.getvalue(),
+        )
+
+    def test_run_captured_returns_elapsed_seconds_on_success(self) -> None:
+        """Captured package-validator results should carry elapsed time for ordered replay."""
+        completed = subprocess.CompletedProcess(
+            args=["tool"],
+            returncode=0,
+            stdout="validator output\n",
+            stderr="",
+        )
+
+        with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[20.0, 21.26]):
+            with mock.patch.object(self.run_ci.subprocess, "run", return_value=completed):
+                result = self.run_ci.run_captured(
+                    ["tool"],
+                    "captured validator",
+                )
+
+        self.assertIsInstance(result, self.run_ci.CapturedCommandResult)
+        self.assertEqual("captured validator", result.label)
+        self.assertTrue(result.ok)
+        self.assertEqual(0, result.returncode)
+        self.assertAlmostEqual(1.26, result.elapsed_seconds)
+        self.assertEqual("validator output\n", result.stdout)
+        self.assertEqual("", result.stderr)
+        self.assertIsNone(result.timeout_seconds)
+
+    def test_run_captured_preserves_nonzero_result_without_timeout(self) -> None:
+        """Captured non-timeout failures should preserve their process result and elapsed time."""
+        failed = subprocess.CompletedProcess(
+            args=["tool"],
+            returncode=9,
+            stdout="validator stdout\n",
+            stderr="validator stderr\n",
+        )
+
+        with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[25.0, 26.24]):
+            with mock.patch.object(self.run_ci.subprocess, "run", return_value=failed):
+                result = self.run_ci.run_captured(["tool"], "captured failure")
+
+        self.assertIsInstance(result, self.run_ci.CapturedCommandResult)
+        self.assertEqual("captured failure", result.label)
+        self.assertFalse(result.ok)
+        self.assertEqual(9, result.returncode)
+        self.assertAlmostEqual(1.24, result.elapsed_seconds)
+        self.assertEqual("validator stdout\n", result.stdout)
+        self.assertEqual("validator stderr\n", result.stderr)
+        self.assertIsNone(result.timeout_seconds)
+
+    def test_run_captured_timeout_caches_its_effective_timeout(self) -> None:
+        """Captured timeout diagnostics should use the one timeout value enforced by subprocess."""
+        timeout = subprocess.TimeoutExpired(
+            ["tool"],
+            7,
+            output="partial stdout\n",
+            stderr="partial stderr\n",
+        )
+
+        with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[30.0, 31.24]):
+            with mock.patch.object(
+                self.run_ci,
+                "command_timeout_seconds",
+                side_effect=[7, 99],
+            ) as command_timeout:
+                with mock.patch.object(self.run_ci.subprocess, "run", side_effect=timeout) as run_process:
+                    result = self.run_ci.run_captured(["tool"], "captured timeout")
+
+        command_timeout.assert_called_once_with()
+        self.assertEqual(7, run_process.call_args.kwargs["timeout"])
+        self.assertIsInstance(result, self.run_ci.CapturedCommandResult)
+        self.assertFalse(result.ok)
+        self.assertEqual(124, result.returncode)
+        self.assertAlmostEqual(1.24, result.elapsed_seconds)
+        self.assertEqual(7, result.timeout_seconds)
+        self.assertEqual("partial stdout\n", result.stdout)
+        self.assertEqual("partial stderr\n", result.stderr)
+
+    def test_run_parallel_replays_ordered_command_elapsed_time(self) -> None:
+        """Parallel validator replay should retain labels, output order, return codes, and elapsed time."""
+        captured_results = {
+            "first validator": self.run_ci.CapturedCommandResult(
+                label="first validator",
+                ok=True,
+                returncode=0,
+                elapsed_seconds=1.2,
+                stdout="first output\n",
+                stderr="",
+            ),
+            "second validator": self.run_ci.CapturedCommandResult(
+                label="second validator",
+                ok=False,
+                returncode=9,
+                elapsed_seconds=4.6,
+                stdout="",
+                stderr="second error\n",
+            ),
+        }
+
+        def fake_run_captured(_cmd: list[str], label: str):
+            """Return complete captured command results without starting a subprocess."""
+            return captured_results[label]
+
+        with mock.patch.object(self.run_ci, "run_captured", side_effect=fake_run_captured):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                    results = self.run_ci.run_parallel(
+                        [
+                            ("first validator", ["first"]),
+                            ("second validator", ["second"]),
+                        ]
+                    )
+
+        rendered_stdout = stdout.getvalue()
+        self.assertEqual({"first validator": True, "second validator": False}, results)
+        self.assertIn("--- first validator ---", rendered_stdout)
+        self.assertIn("first output", rendered_stdout)
+        self.assertIn(f"{self.run_ci.PASS} first validator (1.2s)", rendered_stdout)
+        self.assertIn("--- second validator ---", rendered_stdout)
+        self.assertIn(
+            f"{self.run_ci.FAIL} second validator (exit 9) (4.6s)",
+            rendered_stdout,
+        )
+        self.assertLess(rendered_stdout.index("--- first validator ---"), rendered_stdout.index("--- second validator ---"))
+        self.assertLess(rendered_stdout.index("first output"), rendered_stdout.index("--- second validator ---"))
+        self.assertIn("second error", stderr.getvalue())
+
+    def test_run_parallel_replays_captured_timeout_once_in_declaration_order(self) -> None:
+        """Captured timeouts should retain partial output and use one timeout-specific replay diagnostic."""
+        captured_results = {
+            "first validator": self.run_ci.CapturedCommandResult(
+                label="first validator",
+                ok=True,
+                returncode=0,
+                elapsed_seconds=1.2,
+                stdout="first output\n",
+                stderr="",
+            ),
+            "timeout validator": self.run_ci.CapturedCommandResult(
+                label="timeout validator",
+                ok=False,
+                returncode=124,
+                elapsed_seconds=4.6,
+                stdout="partial timeout stdout\n",
+                stderr="partial timeout stderr\n",
+                timeout_seconds=7,
+            ),
+        }
+
+        def fake_run_captured(_cmd: list[str], label: str):
+            """Return captured results without starting a subprocess."""
+            return captured_results[label]
+
+        with mock.patch.object(self.run_ci, "run_captured", side_effect=fake_run_captured):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                    results = self.run_ci.run_parallel(
+                        [
+                            ("first validator", ["first"]),
+                            ("timeout validator", ["timeout"]),
+                        ]
+                    )
+
+        rendered_stdout = stdout.getvalue()
+        rendered_stderr = stderr.getvalue()
+        rendered = rendered_stdout + rendered_stderr
+        self.assertEqual({"first validator": True, "timeout validator": False}, results)
+        self.assertLess(rendered_stdout.index("--- first validator ---"), rendered_stdout.index("--- timeout validator ---"))
+        self.assertLess(rendered_stdout.index("first output"), rendered_stdout.index("--- timeout validator ---"))
+        self.assertIn("partial timeout stdout", rendered_stdout)
+        self.assertIn("partial timeout stderr", rendered_stderr)
+        self.assertIn(
+            f"{self.run_ci.FAIL} timeout validator timed out after 7s (4.6s)",
+            rendered_stdout,
+        )
+        self.assertEqual(1, rendered.count(f"{self.run_ci.FAIL} timeout validator"))
+        self.assertNotIn(f"{self.run_ci.FAIL} timeout validator (exit 124)", rendered)
+
+    def test_run_timeout_reports_reason_and_elapsed_seconds(self) -> None:
+        """Timed-out direct commands should retain their limit and show elapsed time."""
+        with mock.patch.object(self.run_ci.time, "monotonic", side_effect=[30.0, 31.28]):
+            with mock.patch.object(
+                self.run_ci.subprocess,
+                "run",
+                side_effect=subprocess.TimeoutExpired(["tool"], 7),
+            ):
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    self.assertFalse(self.run_ci.run(["tool"], "timeout", timeout_seconds=7))
+
+        rendered = stdout.getvalue()
+        self.assertIn(f"{self.run_ci.FAIL} timeout timed out after 7s", rendered)
+        self.assertIn("(1.3s)", rendered)
+
     def test_run_ci_reports_timeout_without_hanging(self) -> None:
         """Subprocess timeouts should fail the command instead of hanging local CI."""
         with mock.patch.dict(os.environ, {"UNITY2FOXGLOVE_CI_TIMEOUT": "1"}):
@@ -369,7 +588,7 @@ class RunCiTests(unittest.TestCase):
         self.assertIsNone(run_process.call_args.kwargs["timeout"])
 
     def test_default_ci_builds_independent_subcommand_jobs(self) -> None:
-        """Default local CI should fan out independent suites through self-subcommands."""
+        """Default local CI should enqueue every dotnet lane as a self-subcommand."""
         args = types.SimpleNamespace(skip_analyzer=False)
 
         jobs = self.run_ci.build_default_ci_jobs(args)
@@ -377,7 +596,10 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(
             [
                 "analyzer",
-                "dotnet",
+                "dotnet-runtime",
+                "xunit",
+                "xunit-adapter",
+                "xunit-native",
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
@@ -388,11 +610,480 @@ class RunCiTests(unittest.TestCase):
             [job.name for job in jobs],
         )
         for job in jobs:
-            self.assertEqual(sys.executable, job.command[0])
-            self.assertEqual(str(RUN_CI_PATH), job.command[1])
-            self.assertEqual(["--only", job.name], job.command[2:])
+            self.assertEqual(
+                [sys.executable, str(RUN_CI_PATH.resolve()), "--only", job.name],
+                job.command,
+        )
         self.assertTrue(next(job for job in jobs if job.name == "mcap-conformance").disable_timeout)
         self.assertTrue(all(not job.disable_timeout for job in jobs if job.name != "mcap-conformance"))
+
+    def test_only_help_lists_dotnet_lane_selectors(self) -> None:
+        """CLI help should expose each direct dotnet lane selector."""
+        with mock.patch.object(sys, "argv", ["run_ci.py", "--help"]):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                with self.assertRaises(SystemExit) as context:
+                    self.run_ci.main()
+
+        self.assertEqual(0, context.exception.code)
+        for selector in ("dotnet-runtime", "xunit", "xunit-adapter", "xunit-native"):
+            help_pattern = re.escape(selector).replace(r"\-", r"-\s*")
+            self.assertRegex(stdout.getvalue(), help_pattern)
+
+    def test_default_ci_marks_only_analyzer_and_dotnet_lanes_exclusive(self) -> None:
+        """Resource-heavy analyzer and dotnet jobs should serialize without blocking unrelated work."""
+        jobs = self.run_ci.build_default_ci_jobs(types.SimpleNamespace(skip_analyzer=False))
+
+        self.assertEqual("dotnet", self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP)
+        self.assertEqual(
+            {
+                "analyzer": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "dotnet-runtime": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "xunit": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "xunit-adapter": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "xunit-native": self.run_ci.DOTNET_CI_EXCLUSIVE_GROUP,
+                "foxrun-publish-panel": None,
+                "phase179-ros2-regression": None,
+                "phase181-ros2-regression": None,
+                "mcap-conformance": None,
+                "packages": None,
+                "boundary": None,
+            },
+            {job.name: job.exclusive_group for job in jobs},
+        )
+
+    def test_main_dispatches_dotnet_parent_through_flat_parallel_jobs(self) -> None:
+        """The dotnet parent selection should use the top-level lane scheduler."""
+        observed: dict[str, object] = {}
+
+        def fake_run_ci_jobs(jobs, max_workers):
+            """Capture the flattened lane jobs without executing subprocesses."""
+            observed["names"] = [job.name for job in jobs]
+            observed["max_workers"] = max_workers
+            return {job.name: True for job in jobs}
+
+        with mock.patch.object(self.run_ci, "run_ci_jobs", side_effect=fake_run_ci_jobs):
+            with mock.patch.object(self.run_ci, "restore_with_ignoring_failed_sources", return_value=True):
+                with mock.patch.object(self.run_ci, "run_with_restore_fallback", return_value=True):
+                    with mock.patch.object(sys, "argv", ["run_ci.py", "--only", "dotnet", "--jobs", "2"]):
+                        self.assertEqual(0, self.run_ci.main())
+
+        self.assertEqual(
+            ["dotnet-runtime", "xunit", "xunit-adapter", "xunit-native"],
+            observed.get("names"),
+        )
+        self.assertEqual(2, observed.get("max_workers"))
+
+    def _flat_dotnet_lane_cases(self):
+        """Return the exact restore and command contracts for every flat dotnet lane."""
+        return [
+            (
+                "dotnet-runtime",
+                self.run_ci.RUNTIME_TESTS_PROJ,
+                self.run_ci.RUNTIME_TEST_PROPS,
+                "Restore runtime test project",
+                [
+                    "dotnet",
+                    "run",
+                    "--no-restore",
+                    "--project",
+                    self.run_ci.RUNTIME_TESTS_PROJ,
+                    *self.run_ci.RUNTIME_TEST_PROPS,
+                ],
+                "Dotnet validation suite (default CI)",
+                None,
+                None,
+            ),
+            (
+                "xunit",
+                self.run_ci.UNIT_TESTS_PROJ,
+                self.run_ci.UNIT_TEST_PROPS,
+                "Restore xUnit unit test project",
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    self.run_ci.UNIT_TESTS_PROJ,
+                    *self.run_ci.UNIT_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests.trx",
+                    "--results-directory",
+                    str(self.run_ci.UNIT_TEST_RESULTS_DIR),
+                ],
+                "xUnit unit tests",
+                "unit-tests.trx",
+                self.run_ci.CI_ROOT / "test-results" / "unit",
+            ),
+            (
+                "xunit-adapter",
+                self.run_ci.UNIT_TESTS_PROJ,
+                self.run_ci.UNIT_ADAPTER_TEST_PROPS,
+                "Restore xUnit optional ROS2 adapter lane",
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    self.run_ci.UNIT_TESTS_PROJ,
+                    *self.run_ci.UNIT_ADAPTER_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests-adapter.trx",
+                    "--results-directory",
+                    str(self.run_ci.UNIT_ADAPTER_TEST_RESULTS_DIR),
+                ],
+                "xUnit optional ROS2 adapter unit tests",
+                "unit-tests-adapter.trx",
+                self.run_ci.CI_ROOT / "test-results" / "unit-adapter",
+            ),
+            (
+                "xunit-native",
+                self.run_ci.UNIT_TESTS_PROJ,
+                self.run_ci.UNIT_NATIVE_TEST_PROPS,
+                "Restore xUnit Native ROS2 compilation lane",
+                [
+                    "dotnet",
+                    "test",
+                    "--no-restore",
+                    self.run_ci.UNIT_TESTS_PROJ,
+                    *self.run_ci.UNIT_NATIVE_TEST_PROPS,
+                    "--logger",
+                    "trx;LogFileName=unit-tests-native.trx",
+                    "--results-directory",
+                    str(self.run_ci.UNIT_NATIVE_TEST_RESULTS_DIR),
+                ],
+                "xUnit Native ROS2 compilation unit tests",
+                "unit-tests-native.trx",
+                self.run_ci.CI_ROOT / "test-results" / "unit-native",
+            ),
+        ]
+
+    def test_flat_dotnet_selectors_restore_and_run_isolated_lanes(self) -> None:
+        """Each flat selector should restore its isolated lane then run it once without restore."""
+        cases = self._flat_dotnet_lane_cases()
+        xunit_artifacts: list[tuple[str, str]] = []
+        lane_msbuild_roots: list[tuple[str, ...]] = []
+
+        for (
+            selector,
+            project,
+            props,
+            restore_label,
+            command,
+            run_label,
+            trx_name,
+            results_dir,
+        ) in cases:
+            with self.subTest(selector=selector):
+                with mock.patch.object(
+                    self.run_ci,
+                    "restore_with_ignoring_failed_sources",
+                    return_value=True,
+                ) as restore:
+                    with mock.patch.object(self.run_ci, "run", return_value=True) as run:
+                        with mock.patch.object(self.run_ci, "run_with_restore_fallback") as fallback:
+                            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", selector]):
+                                self.assertEqual(0, self.run_ci.main())
+
+                restore.assert_called_once_with(project, restore_label, props, fatal=False)
+                run.assert_called_once_with(command, run_label)
+                fallback.assert_not_called()
+                self.assertIn("--no-restore", command)
+                isolated_roots = [
+                    prop.split("=", 1)[1]
+                    for prop in props
+                    if prop.startswith(
+                        (
+                            "-p:BaseOutputPath=",
+                            "-p:BaseIntermediateOutputPath=",
+                            "-p:MSBuildProjectExtensionsPath=",
+                            "-p:RestoreOutputPath=",
+                        )
+                    )
+                ]
+                self.assertEqual(4, len(isolated_roots))
+                isolated_root = str(self.run_ci.ISOLATED_DOTNET_ROOT.resolve()).replace("\\", "/") + "/"
+                self.assertTrue(all(root.startswith(isolated_root) for root in isolated_roots))
+                lane_msbuild_roots.append(
+                    tuple(root.replace("\\", "/").rstrip("/") for root in isolated_roots)
+                )
+
+                if selector == "xunit-adapter":
+                    self.assertIn("-p:IncludeRos2ForUnityAdapter=true", props)
+                if selector == "xunit-native":
+                    self.assertIn("-p:IncludeRos2ForUnityNative=true", props)
+                if trx_name is not None:
+                    self.assertIsNotNone(results_dir)
+                    self.assertIn(f"trx;LogFileName={trx_name}", command)
+                    self.assertIn(str(results_dir), command)
+                    xunit_artifacts.append((trx_name, str(results_dir)))
+
+        self.assertEqual(3, len({trx_name for trx_name, _ in xunit_artifacts}))
+        self.assertEqual(3, len({results_dir for _, results_dir in xunit_artifacts}))
+        self.assertEqual(4, len(lane_msbuild_roots))
+        self.assertEqual(4, len(set(lane_msbuild_roots)))
+
+    def test_flat_dotnet_lane_failure_does_not_retry_with_restore(self) -> None:
+        """Every failed lane should report failure after one no-restore command."""
+        for (
+            selector,
+            project,
+            props,
+            restore_label,
+            command,
+            run_label,
+            _trx_name,
+            _results_dir,
+        ) in self._flat_dotnet_lane_cases():
+            with self.subTest(selector=selector):
+                with mock.patch.object(
+                    self.run_ci,
+                    "restore_with_ignoring_failed_sources",
+                    return_value=True,
+                ) as restore:
+                    with mock.patch.object(self.run_ci, "run", return_value=False) as run:
+                        with mock.patch.object(self.run_ci, "run_with_restore_fallback") as fallback:
+                            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", selector]):
+                                self.assertEqual(1, self.run_ci.main())
+
+                restore.assert_called_once_with(project, restore_label, props, fatal=False)
+                run.assert_called_once_with(command, run_label)
+                self.assertIn("--no-restore", command)
+                fallback.assert_not_called()
+
+    def test_flat_dotnet_lane_restore_failure_skips_the_no_restore_command(self) -> None:
+        """Every failed explicit restore should fail its lane without running its test command."""
+        for (
+            selector,
+            project,
+            props,
+            restore_label,
+            _command,
+            _run_label,
+            _trx_name,
+            _results_dir,
+        ) in self._flat_dotnet_lane_cases():
+            with self.subTest(selector=selector):
+                with mock.patch.object(
+                    self.run_ci,
+                    "restore_with_ignoring_failed_sources",
+                    return_value=False,
+                ) as restore:
+                    with mock.patch.object(self.run_ci, "run") as run:
+                        with mock.patch.object(self.run_ci, "run_with_restore_fallback") as fallback:
+                            with mock.patch.object(sys, "argv", ["run_ci.py", "--only", selector]):
+                                self.assertEqual(1, self.run_ci.main())
+
+                restore.assert_called_once_with(project, restore_label, props, fatal=False)
+                run.assert_not_called()
+                fallback.assert_not_called()
+
+    def test_run_ci_jobs_limits_active_jobs_until_release(self) -> None:
+        """The real top-level scheduler should not start a third job before release."""
+        jobs = [
+            self.run_ci.CiJob("first", ["first"]),
+            self.run_ci.CiJob("second", ["second"]),
+            self.run_ci.CiJob("third", ["third"]),
+        ]
+        release = threading.Event()
+        two_jobs_started = threading.Event()
+        third_job_started = threading.Event()
+        state_lock = threading.Lock()
+        state = {"active": 0, "max_active": 0, "started_before_release": []}
+        outcome: dict[str, object] = {}
+        worker_errors: list[BaseException] = []
+
+        def fake_run_ci_job(job, log_dir):
+            """Hold worker slots until the test releases the synthetic jobs."""
+            with state_lock:
+                state["active"] += 1
+                state["max_active"] = max(state["max_active"], state["active"])
+                if not release.is_set():
+                    state["started_before_release"].append(job.name)
+                    if len(state["started_before_release"]) == 2:
+                        two_jobs_started.set()
+                    elif len(state["started_before_release"]) == 3:
+                        third_job_started.set()
+            try:
+                release.wait()
+                return self.run_ci.CiJobResult(job.name, True, 0, 0.0, log_dir / f"{job.name}.log")
+            finally:
+                with state_lock:
+                    state["active"] -= 1
+
+        def run_scheduler() -> None:
+            """Run the real scheduler without blocking the test thread."""
+            try:
+                outcome["results"] = self.run_ci.run_ci_jobs(jobs, max_workers=2)
+            except BaseException as exc:  # pragma: no cover - asserted by the test thread.
+                worker_errors.append(exc)
+
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(self.run_ci, "CI_ROOT", Path(temp)):
+                with mock.patch.object(self.run_ci, "_run_ci_job", side_effect=fake_run_ci_job):
+                    scheduler_thread = threading.Thread(target=run_scheduler)
+                    scheduler_thread.start()
+                    try:
+                        self.assertTrue(two_jobs_started.wait(timeout=2), "two workers did not start")
+                        self.assertFalse(
+                            third_job_started.wait(timeout=0.5),
+                            "a third job started before a worker slot was released",
+                        )
+                        with state_lock:
+                            self.assertEqual(2, len(state["started_before_release"]))
+                            self.assertLessEqual(state["max_active"], 2)
+                    finally:
+                        release.set()
+                        scheduler_thread.join(timeout=5)
+
+        self.assertFalse(scheduler_thread.is_alive(), "scheduler did not finish after release")
+        self.assertEqual([], worker_errors)
+        self.assertEqual({job.name: True for job in jobs}, outcome["results"])
+
+    def test_run_ci_jobs_admits_compatible_work_while_dotnet_group_is_active(self) -> None:
+        """A blocked dotnet job should leave a worker free for an unrelated pending job."""
+        jobs = [
+            types.SimpleNamespace(
+                name="dotnet-a",
+                command=["dotnet-a"],
+                disable_timeout=False,
+                exclusive_group="dotnet",
+            ),
+            types.SimpleNamespace(
+                name="dotnet-b",
+                command=["dotnet-b"],
+                disable_timeout=False,
+                exclusive_group="dotnet",
+            ),
+            types.SimpleNamespace(
+                name="other",
+                command=["other"],
+                disable_timeout=False,
+                exclusive_group=None,
+            ),
+        ]
+        dotnet_a_started = threading.Event()
+        dotnet_a_release = threading.Event()
+        dotnet_b_started = threading.Event()
+        other_finished = threading.Event()
+        started_names: list[str] = []
+        state_lock = threading.Lock()
+        outcome: dict[str, object] = {}
+        worker_errors: list[BaseException] = []
+
+        def fake_run_ci_job(job, log_dir):
+            """Control only worker completion while retaining the real admission scheduler."""
+            with state_lock:
+                started_names.append(job.name)
+            if job.name == "dotnet-a":
+                dotnet_a_started.set()
+                dotnet_a_release.wait()
+            elif job.name == "dotnet-b":
+                dotnet_b_started.set()
+            elif job.name == "other":
+                other_finished.set()
+            return self.run_ci.CiJobResult(job.name, True, 0, 0.0, log_dir / f"{job.name}.log")
+
+        def run_scheduler() -> None:
+            """Run the real scheduler off the test thread so it can await controlled workers."""
+            try:
+                outcome["results"] = self.run_ci.run_ci_jobs(jobs, max_workers=2)
+            except BaseException as exc:  # pragma: no cover - asserted by the test thread.
+                worker_errors.append(exc)
+
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(self.run_ci, "CI_ROOT", Path(temp)):
+                with mock.patch.object(self.run_ci, "_run_ci_job", side_effect=fake_run_ci_job):
+                    scheduler_thread = threading.Thread(target=run_scheduler)
+                    scheduler_thread.start()
+                    try:
+                        self.assertTrue(dotnet_a_started.wait(timeout=2), "dotnet-a did not start")
+                        self.assertTrue(other_finished.wait(timeout=2), "compatible job did not start")
+                        self.assertFalse(
+                            dotnet_b_started.wait(timeout=0.5),
+                            "second dotnet job started before the active group released",
+                        )
+                        with state_lock:
+                            self.assertEqual({"dotnet-a", "other"}, set(started_names))
+                        dotnet_a_release.set()
+                        self.assertTrue(dotnet_b_started.wait(timeout=2), "dotnet-b did not start after release")
+                    finally:
+                        dotnet_a_release.set()
+                        scheduler_thread.join(timeout=5)
+
+        self.assertFalse(scheduler_thread.is_alive(), "scheduler did not finish after release")
+        self.assertEqual([], worker_errors)
+        self.assertEqual(
+            [("dotnet-a", True), ("dotnet-b", True), ("other", True)],
+            list(outcome["results"].items()),
+        )
+
+    def test_run_ci_jobs_releases_dotnet_group_after_normal_failure(self) -> None:
+        """A normal failed grouped job should release its group for the next grouped job."""
+        jobs = [
+            types.SimpleNamespace(
+                name="dotnet-a",
+                command=["dotnet-a"],
+                disable_timeout=False,
+                exclusive_group="dotnet",
+            ),
+            types.SimpleNamespace(
+                name="dotnet-b",
+                command=["dotnet-b"],
+                disable_timeout=False,
+                exclusive_group="dotnet",
+            ),
+        ]
+        dotnet_a_started = threading.Event()
+        dotnet_a_release = threading.Event()
+        dotnet_b_started = threading.Event()
+        outcome: dict[str, object] = {}
+        worker_errors: list[BaseException] = []
+
+        def fake_run_ci_job(job, log_dir):
+            """Return an ordinary failed result for the group owner after controlled release."""
+            if job.name == "dotnet-a":
+                dotnet_a_started.set()
+                dotnet_a_release.wait()
+                log_path = log_dir / f"{job.name}.log"
+                log_path.write_text("synthetic normal failure\n", encoding="utf-8")
+                return self.run_ci.CiJobResult(
+                    job.name,
+                    False,
+                    1,
+                    0.0,
+                    log_path,
+                )
+            dotnet_b_started.set()
+            return self.run_ci.CiJobResult(job.name, True, 0, 0.0, log_dir / f"{job.name}.log")
+
+        def run_scheduler() -> None:
+            """Run the real scheduler off the test thread so it can await controlled workers."""
+            try:
+                outcome["results"] = self.run_ci.run_ci_jobs(jobs, max_workers=2)
+            except BaseException as exc:  # pragma: no cover - asserted by the test thread.
+                worker_errors.append(exc)
+
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(self.run_ci, "CI_ROOT", Path(temp)):
+                with mock.patch.object(self.run_ci, "_run_ci_job", side_effect=fake_run_ci_job):
+                    scheduler_thread = threading.Thread(target=run_scheduler)
+                    scheduler_thread.start()
+                    try:
+                        self.assertTrue(dotnet_a_started.wait(timeout=2), "dotnet-a did not start")
+                        self.assertFalse(
+                            dotnet_b_started.wait(timeout=0.5),
+                            "dotnet-b started before the failed owner released its group",
+                        )
+                        dotnet_a_release.set()
+                        self.assertTrue(dotnet_b_started.wait(timeout=2), "dotnet-b did not start after failure")
+                    finally:
+                        dotnet_a_release.set()
+                        scheduler_thread.join(timeout=5)
+
+        self.assertFalse(scheduler_thread.is_alive(), "scheduler did not finish after failure")
+        self.assertEqual([], worker_errors)
+        self.assertEqual(
+            [("dotnet-a", False), ("dotnet-b", True)],
+            list(outcome["results"].items()),
+        )
 
     def test_mcap_conformance_disables_wall_clock_timeout(self) -> None:
         """The external differential gate should not assume how fast the host machine is."""
@@ -442,7 +1133,10 @@ class RunCiTests(unittest.TestCase):
         self.assertEqual(
             [
                 "analyzer",
-                "dotnet",
+                "dotnet-runtime",
+                "xunit",
+                "xunit-adapter",
+                "xunit-native",
                 "foxrun-publish-panel",
                 "phase179-ros2-regression",
                 "phase181-ros2-regression",
@@ -499,6 +1193,87 @@ class McapConformanceToolTests(unittest.TestCase):
         failure = report["failures"][0]
         self.assertTrue(failure["timedOut"])
         self.assertIn("Timed out after 180 second(s).", failure["details"])
+
+
+class R2fuArtifactHandoffTests(unittest.TestCase):
+    """Keep source gates aligned with the current verified R2FU artifact handoff."""
+
+    def test_v083_runtime_artifact_pins_are_consistent(self) -> None:
+        """Every source gate must name the three verified v0.8.3 artifact digests."""
+        expected_by_path = {
+            "Scripts/ros2forunity/windows/humble/sync_r2fu_artifact_to_unity2foxglove.py": "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba",
+            "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py": "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba",
+            "Scripts/ros2forunity/windows/jazzy/sync_r2fu_artifact_to_unity2foxglove.py": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
+            "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
+            "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
+            "Scripts/ros2forunity/windows/lyrical/lyrical_artifact_config.py": "1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuHumbleRuntimePackageValidation.cs": "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuJazzyRuntimeRefreshValidation.cs": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuLyricalRuntimePackageValidation.cs": "1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase128Validation.cs": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
+        }
+
+        for relative_path, expected_sha256 in expected_by_path.items():
+            with self.subTest(path=relative_path):
+                source = (ROOT / relative_path).read_text(encoding="utf-8")
+                self.assertIn(expected_sha256, source)
+
+    def test_inactive_runtime_syncs_can_preserve_the_selected_runtime(self) -> None:
+        """Refreshing a non-selected payload must not rewrite the Unity runtime selection."""
+        scripts = {
+            "humble": ROOT / "Scripts/ros2forunity/windows/humble/sync_r2fu_artifact_to_unity2foxglove.py",
+            "jazzy": ROOT / "Scripts/ros2forunity/windows/jazzy/sync_r2fu_artifact_to_unity2foxglove.py",
+        }
+
+        for distro, path in scripts.items():
+            with self.subTest(distro=distro), tempfile.TemporaryDirectory() as temp:
+                project_root = Path(temp)
+                manifest_path = project_root / "Unity2Foxglove/Packages/manifest.json"
+                manifest_path.parent.mkdir(parents=True)
+                manifest = {
+                    "dependencies": {
+                        "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64": (
+                            "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
+                        )
+                    }
+                }
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                sync = load_module(f"{distro}_r2fu_sync_under_test", path)
+
+                result = sync.ensure_project_uses_runtime_package(
+                    project_root,
+                    update=False,
+                    require_runtime_dependency=False,
+                )
+
+                self.assertFalse(result["manifestUpdated"])
+                self.assertFalse(result["runtimeDependencyRequired"])
+                self.assertEqual(json.loads(manifest_path.read_text(encoding="utf-8")), manifest)
+                source = path.read_text(encoding="utf-8")
+                self.assertIn("--skip-project-manifest-check", source)
+                self.assertIn("require_runtime_dependency=not args.skip_project_manifest_check", source)
+
+    def test_jazzy_v083_excludes_only_test_typesupport_payload(self) -> None:
+        """The current Jazzy gate must not reject real geometry message support as stale debris."""
+        paths = (
+            ROOT / "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py",
+            ROOT / "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py",
+        )
+        expected_test_only = (
+            "test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll",
+            "test_msgs_keyed_long__rosidl_typesupport_c_native.dll",
+            "test_msgs_keyed_string__rosidl_typesupport_c_native.dll",
+            "test_msgs_non_keyed_with_nested_key__rosidl_typesupport_c_native.dll",
+        )
+
+        for path in paths:
+            with self.subTest(path=path):
+                source = path.read_text(encoding="utf-8")
+                self.assertIn("V083_EXCLUDED_TEST_TYPESUPPORT_DLLS", source)
+                self.assertNotIn("geometry_msgs_velocity_with_covariance_stamped", source)
+                for filename in expected_test_only:
+                    self.assertIn(filename, source)
 
 
 class UnityIl2CppBuildTests(unittest.TestCase):

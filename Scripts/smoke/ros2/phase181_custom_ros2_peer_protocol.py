@@ -29,7 +29,9 @@ from typing import Any, Callable, Iterable, Mapping, Protocol
 
 
 INTERFACE_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
-MARKER_RE = re.compile(r"^(PHASE181_CUSTOM(?:_ROS2)?_[A-Z_]+)(?:\s+(.*))?$")
+MARKER_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(PHASE181_CUSTOM(?:_ROS2)?_[A-Z_]+)(?:\s+(.*))?$"
+)
 SUMMARY_SCHEMA_VERSION = 1
 SENSITIVE_KEY_PARTS = (
     "token",
@@ -192,7 +194,7 @@ def log_offset(path: pathlib.Path) -> int:
 def parse_marker_line(line: str) -> UnityMarker | None:
     """Parse one recognized bounded marker; unrelated Unity output is ignored."""
 
-    match = MARKER_RE.match(line.strip())
+    match = MARKER_RE.search(line.strip())
     if match is None or match.group(1) not in MARKER_NAMES:
         return None
     fields: dict[str, str] = {}
@@ -202,7 +204,7 @@ def parse_marker_line(line: str) -> UnityMarker | None:
         if not separator or not key or len(key) > 48 or len(value) > 128:
             continue
         fields[key] = value
-    return UnityMarker(match.group(1), fields, line.strip()[:512])
+    return UnityMarker(match.group(1), fields, match.group(0).strip()[:512])
 
 
 def read_new_markers(path: pathlib.Path, offset: int) -> tuple[list[UnityMarker], int]:

@@ -89,6 +89,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 var sessionRuntime = Ros2ForUnityRuntimeSelection.GetSessionRuntimePackage();
                 var restartPackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
                 var restartCommunicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
+                var restartZenohRouterEndpoint = Ros2ForUnityRuntimeSelection.GetZenohRouterEndpointRequiringEditorRestart(status);
                 var restartCustomTypesupport = Ros2ForUnityRuntimeSelection.GetCustomTypesupportRequiringEditorRestart(status);
                 if (!string.IsNullOrWhiteSpace(restartPackage))
                 {
@@ -114,6 +115,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                         + ", and the active mode is now "
                         + restartCommunicationMode
                         + ". Unity cannot safely unload native ROS2 RMW DLLs mid-session.",
+                        MessageType.Error);
+
+                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    {
+                        if (GUILayout.Button("Restart Unity"))
+                            Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(restartZenohRouterEndpoint))
+                {
+                    EditorGUILayout.HelpBox(
+                        "Restart Unity before entering Play Mode. This Editor session already loaded the Zenoh RMW with router endpoint "
+                        + Ros2ForUnityRuntimeSelection.GetSessionZenohRouterEndpoint()
+                        + ", and the selected endpoint is now "
+                        + restartZenohRouterEndpoint
+                        + ". Unity cannot safely change a native Zenoh session endpoint mid-session.",
                         MessageType.Error);
 
                     using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))

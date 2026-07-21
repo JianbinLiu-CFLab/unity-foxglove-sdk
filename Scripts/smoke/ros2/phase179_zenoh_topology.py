@@ -25,6 +25,8 @@ _TOPOLOGY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
 _SESSION_CONFIG_SUFFIXES = frozenset({".json", ".json5", ".yaml", ".yml"})
 _DEFAULT_ROUTER_ENDPOINT = "tcp/[::]:7447"
 _DEFAULT_SESSION_ENDPOINT = "tcp/localhost:7447"
+_TCP_ENDPOINT_RE = re.compile(
+    r"^tcp/(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9][A-Za-z0-9.-]{0,252}):(\d{1,5})$")
 
 
 class ZenohTopologyError(RuntimeError):
@@ -88,18 +90,41 @@ def choose_owned_loopback_port() -> int:
     return port
 
 
+def validate_tcp_endpoint(endpoint: str) -> str:
+    """Return one safe, explicit Zenoh TCP endpoint for generated local configuration."""
+
+    normalized = str(endpoint or "").strip()
+    match = _TCP_ENDPOINT_RE.fullmatch(normalized)
+    if match is None:
+        raise ZenohTopologyError(
+            "ENVIRONMENT",
+            "The configured Zenoh router endpoint must use one tcp host and port.",
+        )
+
+    port = int(match.group(1))
+    if port < 1 or port > 65535:
+        raise ZenohTopologyError(
+            "ENVIRONMENT",
+            "The configured Zenoh router endpoint has an invalid TCP port.",
+        )
+
+    return normalized
+
+
 def create_owned_local_router_config(
     *,
     router_template: pathlib.Path,
     session_template: pathlib.Path,
     output_directory: pathlib.Path,
+    endpoint: str | None = None,
 ) -> OwnedZenohRouterConfig:
-    """Clone the packaged defaults with one dynamically selected loopback endpoint.
+    """Clone the packaged defaults with one explicit shared endpoint.
 
-    Windows may reserve the default Zenoh port 7447 even when no process owns
-    it.  The router and every local RMW session must therefore receive the same
-    generated endpoint; all generated files remain under the helper-owned build
-    directory rather than altering packaged runtime configuration.
+    Callers that pass an endpoint use the shared project configuration. Legacy
+    callers without one retain the dynamic loopback fallback. The router and
+    every local RMW session receive the same generated endpoint; all generated
+    files remain under the helper-owned build directory rather than altering
+    packaged runtime configuration.
     """
 
     router_source = pathlib.Path(router_template)
@@ -115,9 +140,13 @@ def create_owned_local_router_config(
     if _DEFAULT_ROUTER_ENDPOINT not in router_text or _DEFAULT_SESSION_ENDPOINT not in session_text:
         raise ZenohTopologyError("ENVIRONMENT", "The packaged Zenoh config templates do not contain their expected local endpoints.")
 
-    endpoint = "tcp/127.0.0.1:" + str(choose_owned_loopback_port())
-    router_text = router_text.replace(_DEFAULT_ROUTER_ENDPOINT, endpoint)
-    session_text = session_text.replace(_DEFAULT_SESSION_ENDPOINT, endpoint)
+    selected_endpoint = (
+        validate_tcp_endpoint(endpoint)
+        if endpoint is not None
+        else "tcp/127.0.0.1:" + str(choose_owned_loopback_port())
+    )
+    router_text = router_text.replace(_DEFAULT_ROUTER_ENDPOINT, selected_endpoint)
+    session_text = session_text.replace(_DEFAULT_SESSION_ENDPOINT, selected_endpoint)
     directory = pathlib.Path(output_directory)
     router_config = directory / "owned-zenoh-router-config.json5"
     session_config = directory / "owned-zenoh-session-config.json5"
@@ -127,7 +156,7 @@ def create_owned_local_router_config(
         session_config.write_text(session_text, encoding="utf-8")
     except OSError as exc:
         raise ZenohTopologyError("ENVIRONMENT", "The helper-owned Zenoh configuration could not be created.") from exc
-    return OwnedZenohRouterConfig(endpoint, router_config.resolve(), session_config.resolve())
+    return OwnedZenohRouterConfig(selected_endpoint, router_config.resolve(), session_config.resolve())
 
 
 def validate_topology_options(

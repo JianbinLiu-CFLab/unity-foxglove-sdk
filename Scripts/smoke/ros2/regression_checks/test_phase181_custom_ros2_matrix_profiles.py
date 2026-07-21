@@ -169,6 +169,69 @@ class Phase181CustomRos2MatrixProfileTests(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertEqual(session_config, run_peer.call_args.kwargs["zenoh_session_config"])
 
+    def test_zenoh_profile_uses_the_project_router_setting_for_its_owned_router(self):
+        """Verify Phase181 behavior: manual Unity and the peer use the same explicit Router Address and Port."""
+
+        profiles = load_profiles_module()
+        with temporary_directory("matrix-profiles-") as temporary:
+            root = pathlib.Path(temporary)
+            settings_path = (
+                root
+                / "Unity2Foxglove"
+                / "Library"
+                / "Unity2Foxglove"
+                / "R2fuZenohRouterSettings.json"
+            )
+            settings_path.parent.mkdir(parents=True)
+            settings_path.write_text(
+                json.dumps({"schemaVersion": 1, "routerAddress": "localhost", "routerPort": 8778}),
+                encoding="utf-8",
+            )
+            session_config = root / "build" / "phase181" / "lyrical-zenoh" / "session.json5"
+            handle = type("Handle", (), {"session_config": session_config})()
+            with mock.patch.object(profiles.peer, "workspace_root", return_value=root), mock.patch.object(
+                profiles.ros2env,
+                "default_ros2_root",
+                return_value=pathlib.Path("C:/ros2"),
+            ), mock.patch.object(
+                profiles.ros2env,
+                "build_ros_env",
+                return_value={"PATH": "base"},
+            ), mock.patch.object(
+                profiles.zenoh_topology,
+                "validate_topology_options",
+                return_value=type("Options", (), {"mode": "owned-router"})(),
+            ), mock.patch.object(
+                profiles.zenoh_topology,
+                "create_owned_local_router_config",
+                return_value=object(),
+            ) as create_config, mock.patch.object(
+                profiles.zenoh_topology,
+                "start_topology",
+                return_value=handle,
+            ), mock.patch.object(
+                profiles.zenoh_topology,
+                "close_topology",
+            ), mock.patch.object(
+                profiles.peer,
+                "run_windows_local_editor",
+                return_value=0,
+            ):
+                exit_code = profiles.run_profile("lyrical-zenoh", [])
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual("tcp/localhost:8778", create_config.call_args.kwargs["endpoint"])
+
+    def test_project_zenoh_router_default_is_localhost_8778(self):
+        """The first manual Zenoh run must avoid both the historical 7447 default and a random port."""
+
+        profiles = load_profiles_module()
+        with temporary_directory("matrix-profiles-") as temporary:
+            self.assertEqual(
+                "tcp/localhost:8778",
+                profiles.load_project_zenoh_router_endpoint(pathlib.Path(temporary)),
+            )
+
     def test_router_start_failure_persists_a_redacted_profile_summary(self):
         """Verify Phase181 behavior: router start failure persists a redacted profile summary."""
         profiles = load_profiles_module()

@@ -127,6 +127,89 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FoxRunAddOnDiscoveryDelegatesNativePathRegistrationToR2fu()
+        {
+            var bootstrap = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
+                + "FoxRunRos2CustomTypesupportNativePluginBootstrap.cs");
+
+            Assert.Contains("PackageInfo.FindForAssembly", bootstrap, StringComparison.Ordinal);
+            Assert.Contains(
+                "Ros2ForUnityNativePluginBootstrap.RegisterEditorPackagePluginDirectory(package.resolvedPath)",
+                bootstrap,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("GlobalVariables.RegisterNativeLibraryDirectory", bootstrap, StringComparison.Ordinal);
+            Assert.DoesNotContain("NativePluginRelativeDirectory", bootstrap, StringComparison.Ordinal);
+
+            foreach (var distro in new[] { "humble", "jazzy", "lyrical" })
+            {
+                var runtimeBootstrap = Text(
+                    "Packages/dev.unity2foxglove.ros2forunity.runtime."
+                    + distro
+                    + ".win64/Runtime/Ros2ForUnity/Scripts/Ros2ForUnityNativePluginBootstrap.cs");
+                Assert.Contains("RegisterEditorPackagePluginDirectory", runtimeBootstrap, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void FoxRunAddOnDiscoveryAlsoMakesSiblingNativeDependenciesDiscoverable()
+        {
+            var bootstrap = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
+                + "FoxRunRos2CustomTypesupportNativePluginBootstrap.cs");
+
+            Assert.Contains(
+                "AppendSelectedAddOnPluginDirectoryToProcessPath",
+                bootstrap,
+                StringComparison.Ordinal);
+            Assert.Contains("Environment.SetEnvironmentVariable", bootstrap, StringComparison.Ordinal);
+            Assert.Contains("\"PATH\"", bootstrap, StringComparison.Ordinal);
+            Assert.Contains("Path.PathSeparator", bootstrap, StringComparison.Ordinal);
+            Assert.Contains(
+                "Ros2ForUnityNativePluginBootstrap.RegisterEditorPackagePluginDirectory(package.resolvedPath)",
+                bootstrap,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("GlobalVariables.RegisterNativeLibraryDirectory", bootstrap, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ZenohRouterConfigurationIsAnOptionalR2fuSessionSetting()
+        {
+            var runtimeSelection = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimeSelection.cs");
+            var zenohRouterSettings = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityZenohRouterSettings.cs");
+            var customInspector = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/FoxRunRos2CustomTypesupportInspector.cs");
+            var playModeGuard = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
+
+            Assert.Contains("SessionZenohRouterEndpointKey", runtimeSelection, StringComparison.Ordinal);
+            Assert.Contains("GetZenohRouterEndpointRequiringEditorRestart", runtimeSelection, StringComparison.Ordinal);
+            Assert.Contains("Ros2ForUnityZenohRouterSettings", runtimeSelection, StringComparison.Ordinal);
+
+            Assert.Contains("DefaultZenohRouterPort = 8778", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("ZenohRouterAddressEditorUserSettingsKey", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("ZenohRouterPortEditorUserSettingsKey", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("R2fuZenohRouterSettings.json", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("ZENOH_SESSION_CONFIG_URI", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("SetProcessEnvironmentVariable(ZenohSessionConfigEnvironmentVariable", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("_wputenv_s", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("GetZenohRouterEndpointRequiringEditorRestart", playModeGuard, StringComparison.Ordinal);
+
+            var customInterfaceIndex = customInspector.IndexOf(
+                "Custom FoxRun ROS 2 Interface",
+                StringComparison.Ordinal);
+            var routerIndex = customInspector.IndexOf("DrawZenohRouterSettings", StringComparison.Ordinal);
+            var contractsIndex = customInspector.IndexOf("DrawContracts(result.Contracts)", StringComparison.Ordinal);
+            Assert.True(
+                customInterfaceIndex >= 0 && routerIndex > customInterfaceIndex && contractsIndex > routerIndex,
+                "The conditional Zenoh Router controls must be between Custom FoxRun ROS 2 Interface and Generated Contracts.");
+            Assert.Contains("Router Address", customInspector, StringComparison.Ordinal);
+            Assert.Contains("Router Port", customInspector, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedNativePartialCompilesForPredefinedAndReferencedCustomAssemblies()
         {
             var predefined = CompileGeneratedFixture("Assembly-CSharp", includeNativeReference: true);

@@ -67,6 +67,7 @@ jobs:
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_build_foxrun_custom_typesupport_addon
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_refresh_phase181_custom_typesupport_addons
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon
           python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain

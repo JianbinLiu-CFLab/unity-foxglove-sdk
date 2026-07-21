@@ -28,6 +28,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from lyrical_artifact_config import ARTIFACT_NAME, EXPECTED_ARTIFACT_SHA256
 
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
+RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
@@ -121,6 +122,15 @@ def write_json(path: Path, data: dict[str, object]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def runtime_package_version(project_root: Path) -> str:
+    """Read the checked-in Lyrical runtime package version."""
+    package_json = read_json(project_root / "Packages" / PACKAGE_NAME / "package.json")
+    version = package_json.get("version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError(f"Missing version in Packages/{PACKAGE_NAME}/package.json")
+    return version
+
+
 def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> dict[str, object]:
     """Validate an artifact against its optional sidecar manifest."""
     if not artifact.exists():
@@ -155,12 +165,28 @@ def ensure_project_uses_runtime_package(
     runtime_ref = "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
 
     changed = False
-    if dependencies.get(PACKAGE_NAME) != runtime_ref and require_runtime_dependency:
+    active_runtime_packages = sorted(
+        name for name in dependencies if name.startswith(RUNTIME_PACKAGE_PREFIX)
+    )
+    foreign_runtime_packages = [name for name in active_runtime_packages if name != PACKAGE_NAME]
+    if require_runtime_dependency and foreign_runtime_packages:
+        if not update:
+            joined = ", ".join(foreign_runtime_packages)
+            raise RuntimeError(
+                f"{manifest_path} references another R2FU runtime package ({joined}); "
+                "rerun with --update-project-manifest to switch to Lyrical."
+            )
+        for name in foreign_runtime_packages:
+            del dependencies[name]
+        changed = True
+
+    if require_runtime_dependency and dependencies.get(PACKAGE_NAME) != runtime_ref:
         if not update:
             raise RuntimeError(f"{manifest_path} does not reference {PACKAGE_NAME}; rerun with --update-project-manifest")
         dependencies[PACKAGE_NAME] = runtime_ref
-        write_json(manifest_path, manifest)
         changed = True
+    if changed:
+        write_json(manifest_path, manifest)
 
     direct_asset_exists = direct_asset.exists()
     if direct_asset_exists:
@@ -170,9 +196,39 @@ def ensure_project_uses_runtime_package(
         )
 
     lock_has_runtime = False
+    lock_runtime_packages: list[str] = []
     if lock_path.exists():
         lock_data = read_json(lock_path)
-        lock_has_runtime = PACKAGE_NAME in lock_data.get("dependencies", {})
+        lock_dependencies = lock_data.get("dependencies", {})
+        lock_runtime_packages = sorted(
+            name for name in lock_dependencies if name.startswith(RUNTIME_PACKAGE_PREFIX)
+        )
+        foreign_lock_runtime_packages = [name for name in lock_runtime_packages if name != PACKAGE_NAME]
+        lock_changed = False
+        if require_runtime_dependency and foreign_lock_runtime_packages:
+            if not update:
+                joined = ", ".join(foreign_lock_runtime_packages)
+                raise RuntimeError(
+                    f"{lock_path} resolves another R2FU runtime package ({joined}); "
+                    "rerun with --update-project-manifest to switch to Lyrical."
+                )
+            for name in foreign_lock_runtime_packages:
+                del lock_dependencies[name]
+            lock_changed = True
+        if require_runtime_dependency and update and PACKAGE_NAME not in lock_dependencies:
+            lock_dependencies[PACKAGE_NAME] = {
+                "version": runtime_package_version(project_root),
+                "depth": 0,
+                "source": "local",
+                "dependencies": {},
+            }
+            lock_changed = True
+        if lock_changed:
+            write_json(lock_path, lock_data)
+            lock_runtime_packages = sorted(
+                name for name in lock_dependencies if name.startswith(RUNTIME_PACKAGE_PREFIX)
+            )
+        lock_has_runtime = PACKAGE_NAME in lock_runtime_packages
 
     return {
         "manifestPath": str(manifest_path),
@@ -180,6 +236,7 @@ def ensure_project_uses_runtime_package(
         "runtimeDependencyRequired": require_runtime_dependency,
         "lockPath": str(lock_path),
         "lockHasRuntimePackage": lock_has_runtime,
+        "lockRuntimePackages": lock_runtime_packages,
         "directAssetsRos2ForUnityExists": direct_asset_exists,
     }
 

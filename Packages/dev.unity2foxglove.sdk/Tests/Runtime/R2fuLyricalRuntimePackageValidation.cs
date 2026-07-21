@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string Phase162SmokeHelper =
             "Scripts/smoke/ros2/phase162_lyrical_zenoh_player_smoke.py";
         private const string Phase162ArtifactSha =
-            "ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608";
+            "1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096";
 
         private static int _passed;
         private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

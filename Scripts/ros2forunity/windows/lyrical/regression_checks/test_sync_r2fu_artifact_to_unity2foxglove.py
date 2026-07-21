@@ -105,6 +105,47 @@ class SyncR2fuArtifactTests(unittest.TestCase):
 
             self.assertEqual(digest, info["sha256"])
 
+    def test_runtime_selection_removes_foreign_manifest_and_lock_entries(self) -> None:
+        """Selecting Lyrical leaves Unity with exactly one runtime package in both files."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            packages = root / "Unity2Foxglove" / "Packages"
+            packages.mkdir(parents=True)
+            runtime_package = root / "Packages" / self.sync.PACKAGE_NAME
+            runtime_package.mkdir(parents=True)
+            (runtime_package / "package.json").write_text(
+                json.dumps({"name": self.sync.PACKAGE_NAME, "version": "0.1.0-test"}),
+                encoding="utf-8",
+            )
+            foreign = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+            (packages / "manifest.json").write_text(
+                json.dumps({"dependencies": {foreign: "file:../../Packages/jazzy"}}),
+                encoding="utf-8",
+            )
+            (packages / "packages-lock.json").write_text(
+                json.dumps(
+                    {
+                        "dependencies": {
+                            foreign: {
+                                "version": "file:../../Packages/jazzy",
+                                "depth": 0,
+                                "source": "local",
+                                "dependencies": {},
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = self.sync.ensure_project_uses_runtime_package(root, update=True)
+
+            manifest = json.loads((packages / "manifest.json").read_text(encoding="utf-8"))
+            lock = json.loads((packages / "packages-lock.json").read_text(encoding="utf-8"))
+            self.assertEqual([self.sync.PACKAGE_NAME], sorted(manifest["dependencies"]))
+            self.assertEqual([self.sync.PACKAGE_NAME], sorted(lock["dependencies"]))
+            self.assertEqual([self.sync.PACKAGE_NAME], result["lockRuntimePackages"])
+
     def test_logged_subprocess_failure_reports_log_path(self) -> None:
         """Failed logged subprocesses surface the captured evidence log path."""
         with tempfile.TemporaryDirectory() as temp:

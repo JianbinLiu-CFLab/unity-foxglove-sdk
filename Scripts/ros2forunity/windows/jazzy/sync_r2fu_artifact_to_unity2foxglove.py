@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
-EXPECTED_ARTIFACT_SHA256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3"
+EXPECTED_ARTIFACT_SHA256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74"
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
@@ -112,6 +112,15 @@ def write_json(path: Path, data: dict[str, object]) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def runtime_package_version(project_root: Path) -> str:
+    """Read the checked-in Jazzy runtime package version."""
+    package_json = read_json(project_root / "Packages" / PACKAGE_NAME / "package.json")
+    version = package_json.get("version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError(f"Missing version in Packages/{PACKAGE_NAME}/package.json")
+    return version
+
+
 def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> dict[str, object]:
     """Validate an artifact against its optional sidecar manifest."""
     if not artifact.exists():
@@ -131,7 +140,12 @@ def assert_artifact_matches_manifest(artifact: Path, manifest: Path | None) -> d
     return {"path": str(artifact), "sha256": digest, "manifest": str(manifest), "manifestData": data}
 
 
-def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> dict[str, object]:
+def ensure_project_uses_runtime_package(
+    project_root: Path,
+    *,
+    update: bool,
+    require_runtime_dependency: bool = True,
+) -> dict[str, object]:
     """Validate or update the Unity project runtime package dependency."""
     manifest_path = project_root / "Unity2Foxglove" / "Packages" / "manifest.json"
     lock_path = project_root / "Unity2Foxglove" / "Packages" / "packages-lock.json"
@@ -146,7 +160,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
         for key in dependencies
         if key.startswith(RUNTIME_PACKAGE_PREFIX) and key != PACKAGE_NAME
     ]
-    if other_runtimes:
+    if require_runtime_dependency and other_runtimes:
         if not update:
             raise RuntimeError(
                 f"{manifest_path} references other ROS2 For Unity runtime packages: {', '.join(other_runtimes)}; "
@@ -156,7 +170,7 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
             dependencies.pop(key, None)
         changed = True
 
-    if dependencies.get(PACKAGE_NAME) != runtime_ref:
+    if require_runtime_dependency and dependencies.get(PACKAGE_NAME) != runtime_ref:
         if not update:
             raise RuntimeError(f"{manifest_path} does not reference {PACKAGE_NAME}; rerun with --update-project-manifest")
         dependencies[PACKAGE_NAME] = runtime_ref
@@ -172,15 +186,47 @@ def ensure_project_uses_runtime_package(project_root: Path, *, update: bool) -> 
         )
 
     lock_has_runtime = False
+    lock_runtime_packages: list[str] = []
     if lock_path.exists():
         lock_data = read_json(lock_path)
-        lock_has_runtime = PACKAGE_NAME in lock_data.get("dependencies", {})
+        lock_dependencies = lock_data.get("dependencies", {})
+        lock_runtime_packages = sorted(
+            name for name in lock_dependencies if name.startswith(RUNTIME_PACKAGE_PREFIX)
+        )
+        foreign_lock_runtime_packages = [name for name in lock_runtime_packages if name != PACKAGE_NAME]
+        lock_changed = False
+        if require_runtime_dependency and foreign_lock_runtime_packages:
+            if not update:
+                joined = ", ".join(foreign_lock_runtime_packages)
+                raise RuntimeError(
+                    f"{lock_path} resolves another R2FU runtime package ({joined}); "
+                    "rerun with --update-project-manifest to switch to Jazzy."
+                )
+            for name in foreign_lock_runtime_packages:
+                del lock_dependencies[name]
+            lock_changed = True
+        if require_runtime_dependency and update and PACKAGE_NAME not in lock_dependencies:
+            lock_dependencies[PACKAGE_NAME] = {
+                "version": runtime_package_version(project_root),
+                "depth": 0,
+                "source": "local",
+                "dependencies": {},
+            }
+            lock_changed = True
+        if lock_changed:
+            write_json(lock_path, lock_data)
+            lock_runtime_packages = sorted(
+                name for name in lock_dependencies if name.startswith(RUNTIME_PACKAGE_PREFIX)
+            )
+        lock_has_runtime = PACKAGE_NAME in lock_runtime_packages
 
     return {
         "manifestPath": str(manifest_path),
         "manifestUpdated": changed,
+        "runtimeDependencyRequired": require_runtime_dependency,
         "lockPath": str(lock_path),
         "lockHasRuntimePackage": lock_has_runtime,
+        "lockRuntimePackages": lock_runtime_packages,
         "directAssetsRos2ForUnityExists": direct_asset_exists,
     }
 
@@ -226,6 +272,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--project-root", type=Path, default=ROOT)
     parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
     parser.add_argument("--update-project-manifest", action="store_true", help="Add the runtime package dependency if it is missing.")
+    parser.add_argument(
+        "--skip-project-manifest-check",
+        action="store_true",
+        help="Refresh the runtime package without requiring the Unity sample manifest to select Jazzy.",
+    )
     parser.add_argument("--skip-validate", action="store_true")
     parser.add_argument("--run-unity-import", action="store_true")
     parser.add_argument("--unity-editor", type=Path, default=Path(os.environ.get("R2FU_UNITY_EXE", str(DEFAULT_UNITY_EXE))))
@@ -250,7 +301,11 @@ def main(argv: list[str] | None = None) -> int:
     validate_script = project_root / "Scripts" / "ros2forunity" / "windows" / "jazzy" / "validate_r2fu_runtime_package.py"
 
     if args.dry_run:
-        project_shape = ensure_project_uses_runtime_package(project_root, update=False)
+        project_shape = ensure_project_uses_runtime_package(
+            project_root,
+            update=False,
+            require_runtime_dependency=not args.skip_project_manifest_check,
+        )
         print("[DRY-RUN] artifact:", artifact)
         print("[DRY-RUN] sha256:", artifact_info["sha256"])
         print("[DRY-RUN] inventory:", inventory_path)
@@ -273,7 +328,11 @@ def main(argv: list[str] | None = None) -> int:
         ],
         cwd=project_root,
     )
-    project_shape = ensure_project_uses_runtime_package(project_root, update=args.update_project_manifest)
+    project_shape = ensure_project_uses_runtime_package(
+        project_root,
+        update=args.update_project_manifest,
+        require_runtime_dependency=not args.skip_project_manifest_check,
+    )
 
     validation_log = evidence_dir / f"sync-r2fu-runtime-validate-{timestamp}.log"
     if not args.skip_validate:

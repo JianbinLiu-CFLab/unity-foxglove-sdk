@@ -18,6 +18,7 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
     _repair_tracked_addon_catalog,
     _runtime_rmws,
     _unity_plugin_importer_arguments,
+    _write_inventory,
     build_candidate,
     candidate_package_root,
     parse_args,
@@ -87,6 +88,21 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             package_root / "Runtime" / "Ros2ForUnity" / "Plugins" / MANAGED_ASSEMBLY_FILE,
             _managed_package_assembly_path(package_root),
         )
+
+    def test_inventory_records_native_plugin_importer_metadata(self) -> None:
+        """Native PluginImporter metadata is verified payload, never untracked candidate debris."""
+        with temporary_directory("typesupport-native-meta-") as temporary:
+            package = Path(temporary) / "package"
+            native = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "custom.dll"
+            native.parent.mkdir(parents=True)
+            native.write_bytes(b"native")
+            native.with_name(native.name + ".meta").write_text("PluginImporter:\n", encoding="utf-8")
+
+            _write_inventory(package)
+
+            inventory = json.loads((package / "RuntimeSupport" / "typesupport-inventory.json").read_text(encoding="utf-8"))
+            paths = {entry["path"] for entry in inventory["entries"]}
+            self.assertIn("Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll.meta", paths)
 
     def test_source_lock_drift_fails_before_build(self) -> None:
         """Verify source lock drift fails before build."""
@@ -163,6 +179,12 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
         self.assertNotIn("interface_digest", catalog)
         self.assertNotIn("base_runtime", catalog)
         self.assertEqual(1, catalog.count("public string Platform"))
+        self.assertIn("FoxRunRos2CustomTypesupportNativePluginBootstrap.Register(", catalog)
+        self.assertLess(
+            catalog.index("FoxRunRos2CustomTypesupportNativePluginBootstrap.Register("),
+            catalog.index("FoxRunRos2CustomTypesupportCatalogRegistry.Register("),
+        )
+        self.assertNotIn("ROS2.GlobalVariables", catalog)
 
     def test_unity_plugin_importer_uses_one_native_directory_pass(self) -> None:
         """Keep the managed and native importer boundaries explicit and bounded."""

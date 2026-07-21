@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string OptionalPackageValidator = "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py";
         private const string JazzyArtifactName = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip";
         // Mirrors the adoption manifest and release-side hash sidecar; this check catches accidental artifact swaps.
-        private const string JazzyArtifactSha256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3";
+        private const string JazzyArtifactSha256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74";
 
         private static readonly string[] OptionalEditorForbiddenTokenList =
         {

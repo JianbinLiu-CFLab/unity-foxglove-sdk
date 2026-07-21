@@ -433,6 +433,7 @@ namespace Unity2Foxglove.FoxRun.CustomRos2Typesupport
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Register()
         {
+            FoxRunRos2CustomTypesupportNativePluginBootstrap.Register(typeof(FoxRunCustomTypesupportCatalog).Assembly);
             FoxRunRos2CustomTypesupportCatalogRegistry.Register(new FoxRunCustomTypesupportCatalog());
         }
     }
@@ -581,7 +582,6 @@ def _inventory_classification(relative: str) -> str:
 def _write_inventory(package_root: Path) -> None:
     """Write a sorted byte-exact inventory for the disposable add-on package."""
     excluded = {"RuntimeSupport/typesupport-inventory.json"}
-    managed_importer = _managed_package_assembly_path(package_root).relative_to(package_root).as_posix() + ".meta"
     entries = []
     for path in sorted(package_root.rglob("*"), key=lambda item: item.as_posix().lower()):
         if not path.is_file():
@@ -589,7 +589,10 @@ def _write_inventory(package_root: Path) -> None:
         relative = path.relative_to(package_root).as_posix()
         if relative in excluded:
             continue
-        if relative.endswith(".meta") and relative != managed_importer:
+        # Unity-generated PluginImporter metadata is part of the native or
+        # managed DLL contract.  Other asset metadata is Editor-local and
+        # deliberately remains outside the portable payload inventory.
+        if relative.endswith(".meta") and not relative.endswith(".dll.meta"):
             continue
         entries.append(
             {

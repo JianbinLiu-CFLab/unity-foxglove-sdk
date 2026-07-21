@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+import io
 import json
 import os
+import sys
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -200,6 +203,50 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
                 environment = build_characterization_environment(request)
 
             self.assertEqual("1", environment["PYTHONUTF8"])
+
+    def test_environment_layers_the_complete_ros2cs_overlay_before_the_ros_base(self) -> None:
+        """Generated packages need each ros2cs dependency's native and managed exports together."""
+        with temporary_directory("characterize-") as temporary_root:
+            root = Path(temporary_root)
+            static_package = self._make_static_package(root)
+            request = self._make_request(root, static_package)
+            ros2cs_install = root / "ros2cs-install"
+            (ros2cs_install / "share" / "rosidl_generator_cs").mkdir(parents=True)
+            request = CharacterizationRequest(
+                distro=request.distro,
+                static_package=request.static_package,
+                ros2_root=request.ros2_root,
+                ros2cs_source=request.ros2cs_source,
+                ros2cs_install=ros2cs_install,
+                r2fu_source=request.r2fu_source,
+                build_root=request.build_root,
+            )
+
+            with patch.object(characterization, "_capture_msvc_environment", return_value={"PATH": r"C:\\VS\\bin"}):
+                environment = build_characterization_environment(request)
+
+            expected = [str(ros2cs_install), str(request.ros2_root)]
+            self.assertEqual(expected, environment["AMENT_PREFIX_PATH"].split(os.pathsep))
+            self.assertEqual(expected, environment["CMAKE_PREFIX_PATH"].split(os.pathsep))
+            self.assertEqual(expected, environment["COLCON_PREFIX_PATH"].split(os.pathsep))
+
+    def test_colcon_execution_streams_visible_progress_while_retaining_the_log(self) -> None:
+        """A minutes-long native build must not look silent or lose its durable log."""
+        with temporary_directory("characterize-") as temporary_root:
+            root = Path(temporary_root)
+            log = root / "e" / "colcon.log"
+            output = io.StringIO()
+
+            with redirect_stdout(output):
+                characterization._run(
+                    (sys.executable, "-c", "print('phase181 visible build progress')"),
+                    cwd=root,
+                    environment=dict(os.environ),
+                    log_path=log,
+                )
+
+            self.assertIn("phase181 visible build progress", output.getvalue())
+            self.assertIn("phase181 visible build progress", log.read_text(encoding="utf-8"))
 
     @staticmethod
     def _make_static_package(root: Path) -> Path:
