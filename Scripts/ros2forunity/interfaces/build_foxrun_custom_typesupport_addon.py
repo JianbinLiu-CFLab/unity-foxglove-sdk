@@ -284,6 +284,16 @@ def _write_utf8_lf(target: Path, content: str) -> None:
     target.write_bytes(normalized.encode("utf-8"))
 
 
+def _write_canonical_license(license_source: Path, target: Path) -> None:
+    """Copy repository legal text as the LF-canonical inventory payload."""
+
+    try:
+        content = license_source.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise CandidateBuildError("provide-repository-license-notices") from exc
+    _write_utf8_lf(target, content)
+
+
 def _write_candidate_texts(package_root: Path, repo_root: Path, distro: str) -> None:
     """Write plain legal/readme files into the private candidate only."""
 
@@ -291,7 +301,7 @@ def _write_candidate_texts(package_root: Path, repo_root: Path, distro: str) -> 
     notice_source = repo_root / "THIRD_PARTY_NOTICES.md"
     if not license_source.is_file() or not notice_source.is_file():
         raise CandidateBuildError("provide-repository-license-notices")
-    _copy_file(license_source, package_root / "LICENSE")
+    _write_canonical_license(license_source, package_root / "LICENSE")
     _write_utf8_lf(
         package_root / "README.md",
         "# Unity2Foxglove FoxRun Custom ROS2 Typesupport - " + distro.title() + " Win64\n\n"
@@ -612,11 +622,11 @@ def _write_inventory(package_root: Path) -> None:
 
 
 def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
-    """Regenerate only a tracked catalog when a prior catalog template was invalid.
+    """Regenerate tracked catalog and canonical legal metadata without payload rebuild.
 
     This is intentionally narrower than ``build_candidate``: it never touches a
-    native or managed payload, never creates a package, and derives the catalog
-    exclusively from the validated static lock plus the tracked manifest.
+    native or managed payload, never creates a package, and derives generated
+    metadata exclusively from the validated static lock plus tracked sources.
     """
 
     interface_digest = verify_candidate_source_lock(request)
@@ -680,6 +690,7 @@ def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
             type_map=tuple(type_map),
         ),
     )
+    _write_canonical_license(repository_root / "LICENSE", package_root / "LICENSE")
     _write_inventory(package_root)
     return catalog_path
 
