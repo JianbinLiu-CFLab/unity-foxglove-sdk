@@ -201,7 +201,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             Check(source.Contains("case \"FOXRUN011\": return MissingClassName;", StringComparison.Ordinal)
                   && source.Contains("case \"FOXRUN012\": return MissingMemberName;", StringComparison.Ordinal)
-                  && source.Contains("case \"FOXRUN013\": return InvalidPublishMode;", StringComparison.Ordinal),
+                  && source.Contains("case \"FOXRUN013\": return InvalidPolicy;", StringComparison.Ordinal),
                 "134-18-F1: Roslyn shared diagnostic map covers every shared validator error id");
             Check(source.Contains("return UnknownFoxRunDiagnostic(id);", StringComparison.Ordinal)
                   && source.Contains("return UnknownFoxServiceDiagnostic(id);", StringComparison.Ordinal)

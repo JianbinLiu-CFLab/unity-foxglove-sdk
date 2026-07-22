@@ -264,7 +264,7 @@ namespace Unity.FoxgloveSDK.Editor
                 contract.DeclaringType,
                 contract.MemberName,
                 contract.Topic,
-                contract.FlowMode,
+                contract.Flow,
                 ToSubscriptionProvider(contract.DeclaredProvider),
                 ToRos2QosPreset(contract.Ros2Qos),
                 contract.SupportsRos2Native,

@@ -12,7 +12,7 @@ namespace Unity.FoxgloveSDK.Editor
 {
     /// <summary>
     /// Builds and emits trigger methods (per-member and <c>FoxRun_TriggerAll</c>)
-    /// for FoxRun partial classes that have OnTrigger-mode topics.
+    /// for FoxRun partial classes that have Trigger-mode topics.
     /// </summary>
     internal static class TriggerEmitter
     {
@@ -37,7 +37,7 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Groups OnTrigger-mode members by origin member name and produces a
+        /// Groups Trigger-mode members by origin member name and produces a
         /// list of <see cref="TriggerMember"/> descriptors with deduplicated
         /// method names.
         /// </summary>
@@ -49,11 +49,11 @@ namespace Unity.FoxgloveSDK.Editor
             var usedNames = new HashSet<string>();
             var result = new List<TriggerMember>();
 
-            foreach (var group in members.Where(m => m.PublishMode == 3).GroupBy(m => m.MemberName).OrderBy(g => g.Key, StringComparer.Ordinal))
+            foreach (var group in members.Where(m => m.Policy == 4).GroupBy(m => m.MemberName).OrderBy(g => g.Key, StringComparer.Ordinal))
             {
                 var topicIndexes = group
                     .Select(m => IndexOfTopic(topics, m.Topic))
-                    .Where(i => i >= 0 && topicModes[topics[i]] == 3)
+                    .Where(i => i >= 0 && topicModes[topics[i]] == 4)
                     .Distinct()
                     .OrderBy(i => i)
                     .ToList();
@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Emits per-member trigger methods and a <c>FoxRun_TriggerAll</c> method
-        /// that fire FoxgloveLogHub triggers for all OnTrigger-mode topics.
+        /// that fire FoxgloveLogHub triggers for all Trigger-mode topics.
         /// </summary>
         internal static void EmitTriggers(StringBuilder sb, IReadOnlyList<TriggerMember> triggerMembers, IReadOnlyList<string> topics, IReadOnlyDictionary<string, int> topicModes, string pad)
         {
@@ -96,7 +96,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             var triggerTopicIndexes = topics
                 .Select((topic, index) => new { topic, index })
-                .Where(x => topicModes[x.topic] == 3)
+                .Where(x => topicModes[x.topic] == 4)
                 .Select(x => x.index)
                 .ToList();
 

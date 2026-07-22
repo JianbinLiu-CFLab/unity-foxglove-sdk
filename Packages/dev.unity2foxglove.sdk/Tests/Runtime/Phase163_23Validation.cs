@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && scanner.Contains("FOXRUN203 Error: ", StringComparison.Ordinal),
                 "163-23E-1: reflection build path formats readonly inbound failures as FOXRUN203 errors");
             Check(scanner.Contains("FoxRun inbound \" + memberKind", StringComparison.Ordinal)
-                  && scanner.Contains("cannot receive SubscribeOnly or PublishAndSubscribe messages", StringComparison.Ordinal),
+                  && scanner.Contains("cannot receive Subscribe or PublishAndSubscribe messages", StringComparison.Ordinal),
                 "163-23E-2: FOXRUN203 reflection failure message includes member kind and unsupported shape");
         }
 

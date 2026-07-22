@@ -22,12 +22,13 @@ namespace Unity.FoxgloveSDK.Editor
         private const string DuplicateProtobufFieldNumberDiagnosticId = "FOXRUN605";
         private const string BidirectionalInheritedWireEncodingDiagnosticId = "FOXRUN401";
         private const string InvalidSubscriptionProviderDiagnosticId = "FOXRUN204";
-        private const string NativeSubscribeOnlyDiagnosticId = "FOXRUN205";
+        private const string NativeSubscribeDiagnosticId = "FOXRUN205";
         private const string NativeEncodingDiagnosticId = "FOXRUN206";
-        private const string NativeProviderPublishOnlyDiagnosticId = "FOXRUN214";
+        private const string NativeProviderPublishDiagnosticId = "FOXRUN214";
         private const string CustomNativeBidirectionalContractDiagnosticId = "FOXRUN402";
         private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN210";
         private const string IgnoredRos2QosDiagnosticId = "FOXRUN213";
+        private const string TriggerRateConflictDiagnosticId = "FOXRUN609";
         private const float DefaultRateHz = 10f;
 
         private static readonly string[] UnityNativeContainerPrefixes =
@@ -106,11 +107,20 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrWhiteSpace(member.MemberName))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN012", target, member.MemberName, "FoxRun member name is required."));
 
-            if (member.PublishMode < 0 || member.PublishMode > 3)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun publish mode must be between 0 and 3."));
+            if (member.Policy < 1 || member.Policy > 4)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun Policy must be FixedRate, Change, ChangeOrInterval, or Trigger."));
 
-            if (member.Mode < 0 || member.Mode > 2)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN600", target, member.MemberName, "FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe."));
+            if (member.Mode < 1 || member.Mode > 3)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN600", target, member.MemberName, "FoxRun Mode must be Publish, Subscribe, or PublishAndSubscribe."));
+
+            if (member.Policy == 4 && member.HasExplicitRateHz)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    TriggerRateConflictDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun Trigger cannot be combined with an explicit positive RateHz."));
+            }
 
             if (!IsKnownDeclaredEncoding(member.Encoding))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidWireEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be inherit, json, or protobuf."));
@@ -168,7 +178,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             if (requiresWebSocketShapeValidation
-                && member.Mode == 2
+                && member.Mode == 3
                 && !IsNativeCustomBidirectionalOutputContract(member)
                 && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
             {
@@ -196,7 +206,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             if (requiresWebSocketShapeValidation
-                && member.Mode != 0
+                && member.Mode != 1
                 && (member.IsAggregateMember
                     || (member.IsArray
                         && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal))))
@@ -207,7 +217,7 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun inbound collections require explicit Protobuf encoding; aggregate members remain unsupported."));
 
             if (requiresWebSocketShapeValidation
-                && member.Mode != 0
+                && member.Mode != 1
                 && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
                 && member.ProtobufTypeShape != null
                 && !IsInboundAssignable(member.ProtobufTypeShape))
@@ -219,32 +229,19 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun inbound Protobuf DTO members must be writable fields or settable properties."));
             }
 
-            if (member.Mode == 1
-                && (member.PublishMode != 0
-                    || member.ChangeEpsilon > 0f
-                    || member.ForceIntervalSeconds > 0f
-                    || member.RateHz != DefaultRateHz))
-            {
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
-                    "FOXRUN201",
-                    target,
-                    member.MemberName,
-                    "SubscribeOnly ignores RateHz, PublishMode, ChangeEpsilon, and ForceIntervalSeconds."));
-            }
-
-            if (member.Mode == 2)
+            if (member.Mode == 3)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
                     "FOXRUN400",
                     target,
                     member.MemberName,
                     "PublishAndSubscribe exposes remote-authoritative state; document ownership and feedback behavior."));
 
-            if (member.Mode == 1 && !LooksLikeInputPort(member.MemberName))
+            if (member.Mode == 2 && !LooksLikeInputPort(member.MemberName))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
                     "FOXRUN202",
                     target,
                     member.MemberName,
-                    "SubscribeOnly members should use an input-port name such as _incoming, _input, _requested, _command, or _remote."));
+                    "Subscribe members should use an input-port name such as _incoming, _input, _requested, _command, or _remote."));
 
             if (!IsKnownMemberKind(member.MemberKind))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN014", target, member.MemberName, "FoxRun member kind must be 'field' or 'property'."));
@@ -285,10 +282,7 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN008", target, member.MemberName, "FoxRun topic must be absolute and start with '/'."));
 
             if (member.HasNonFiniteRateHz)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz must be finite; use OnTrigger or a positive finite rate for periodic output."));
-            else if (member.RateHz <= 0f && member.PublishMode != 3)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz <= 0 disables scheduled publishing; use OnTrigger or a positive rate for periodic output."));
-
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz must be finite; use Trigger or a positive finite rate for periodic output."));
             if (member.HasNonFiniteChangeEpsilon)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "ChangeEpsilon must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
 
@@ -367,7 +361,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static bool RequiresNativeShapeValidation(FoxRunGenerationMember member)
         {
             // Phase181 builds a custom DTO shape for every ordinary DTO so a
-            // PublishOnly contract can later participate in the Manager-owned
+            // Publish contract can later participate in the Manager-owned
             // native output route.  That output capability must not turn an
             // inherited subscription declaration into an explicit native-input
             // contract, or a normal unsupported WebSocket field would acquire
@@ -403,13 +397,13 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
                 StringComparison.Ordinal))
             {
-                // PublishOnly has no inbound provider to resolve.  A valid
+                // Publish has no inbound provider to resolve.  A valid
                 // custom interface may therefore be selected solely by the
                 // Manager's native output route, even when its ordinary DTO
                 // shape is not a canonical WebSocket field shape.  Keep the
                 // existing validation for every inbound/P&S declaration: an
                 // inherited provider there can still resolve to WebSocket.
-                if (IsNativeCustomPublishOnlyOutputContract(member, hasValidNativeCapability))
+                if (IsNativeCustomPublishOutputContract(member, hasValidNativeCapability))
                     return false;
 
                 return member.GeneratesWebSocketCodec || !hasValidNativeCapability;
@@ -429,17 +423,17 @@ namespace Unity.FoxgloveSDK.Editor
             if (!IsNativeProvider(member.SubscriptionProvider))
                 return;
 
-            if (member.Mode == 0)
+            if (member.Mode == 1)
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    NativeProviderPublishOnlyDiagnosticId,
+                    NativeProviderPublishDiagnosticId,
                     target,
                     member.MemberName,
-                    "Ros2Native is an inbound SubscriptionProvider and is invalid for PublishOnly. Configure ROS2 Native output on the Manager instead."));
+                    "Ros2Native is an inbound SubscriptionProvider and is invalid for Publish. Configure ROS2 Native output on the Manager instead."));
                 return;
             }
 
-            if (member.Mode != 2)
+            if (member.Mode != 3)
                 return;
 
             if (member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message)
@@ -448,10 +442,10 @@ namespace Unity.FoxgloveSDK.Editor
                 // real packaged ROS2.Message contracts and is never repurposed
                 // for a Phase181 custom interface failure.
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    NativeSubscribeOnlyDiagnosticId,
+                    NativeSubscribeDiagnosticId,
                     target,
                     member.MemberName,
-                    "Ros2Native subscriptions are supported only for SubscribeOnly members."));
+                    "Ros2Native subscriptions are supported only for Subscribe members."));
                 return;
             }
 
@@ -467,19 +461,19 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool AllowsNativeBidirectionalOutputEncoding(FoxRunGenerationMember member)
             => member != null
-               && member.Mode == 2
+               && member.Mode == 3
                && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto;
 
         private static bool IsNativeCustomBidirectionalOutputContract(FoxRunGenerationMember member)
             => IsNativeProvider(member?.SubscriptionProvider)
                && AllowsNativeBidirectionalOutputEncoding(member);
 
-        private static bool IsNativeCustomPublishOnlyOutputContract(
+        private static bool IsNativeCustomPublishOutputContract(
             FoxRunGenerationMember member,
             bool hasValidNativeCapability)
             => hasValidNativeCapability
                && member != null
-               && member.Mode == 0
+               && member.Mode == 1
                && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto;
 
         private static bool HasCompleteCustomBidirectionalContract(FoxRunGenerationMember member)
@@ -579,7 +573,7 @@ namespace Unity.FoxgloveSDK.Editor
                         "FoxRun member names collide after stripping leading underscores for topic '" + group.Key + "'."));
                 }
 
-                var mixedPolicy = members.Select(member => member.PublishMode).Distinct().Count() > 1
+                var mixedPolicy = members.Select(member => member.Policy).Distinct().Count() > 1
                     || members.Select(member => member.ChangeEpsilon).Distinct().Count() > 1
                     || members.Select(member => member.ForceIntervalSeconds).Distinct().Count() > 1;
                 if (mixedPolicy)
@@ -589,7 +583,7 @@ namespace Unity.FoxgloveSDK.Editor
                         "FOXRUN005",
                         first.DeclaringType + "." + first.MemberName,
                         first.MemberName,
-                        "Topic '" + group.Key + "' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values."));
+                        "Topic '" + group.Key + "' has mixed Policy, ChangeEpsilon, or ForceIntervalSeconds values."));
                 }
 
                 var mixedConditions = members.Select(member => member.When).Distinct(StringComparer.Ordinal).Count() > 1

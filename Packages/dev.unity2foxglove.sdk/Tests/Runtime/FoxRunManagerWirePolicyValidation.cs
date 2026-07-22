@@ -78,7 +78,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && policy.Contains("public FoxRunWireEncoding WebSocketSubscriptionEncoding { get; }", StringComparison.Ordinal)
                   && policy.Contains("public FoxRunRos2QosPreset DefaultRos2Qos { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int NativeCopyBudgetBytes { get; }", StringComparison.Ordinal)
-                  && policy.Contains("public int MainThreadApplyRateLimitHz { get; }", StringComparison.Ordinal)
+                  && policy.Contains("public int TransportAdmissionRateLimitHz { get; }", StringComparison.Ordinal)
+                  && policy.Contains("public int DefaultMainThreadApplyRateHz { get; }", StringComparison.Ordinal)
                   && policy.Contains("if (generation == ulong.MaxValue)", StringComparison.Ordinal)
                   && policy.Contains("throw new InvalidOperationException(", StringComparison.Ordinal)
                   && policy.Contains("var nextGeneration = generation + 1UL;", StringComparison.Ordinal)
@@ -194,7 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(input.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal)
                   && input.Contains("Unsupported FoxRun inbound wire encoding", StringComparison.Ordinal),
                 "175C-4: generated inbound dispatch preserves Inherit and supports both concrete encodings");
-            Check(publish.Contains("mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly)", StringComparison.Ordinal),
+            Check(publish.Contains("mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish)", StringComparison.Ordinal),
                 "175C-5: generated publish dispatch resolves inherited encoding through the publish policy");
             Check(router.Contains("DeclaredWireEncoding", StringComparison.Ordinal)
                   && router.Contains("DefaultSubscriptionWireEncoding", StringComparison.Ordinal),
@@ -228,9 +229,10 @@ namespace Unity.FoxgloveSDK.Tests
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
             Check(inspector.Contains("Default Input Transport", StringComparison.Ordinal)
-                  && inspector.Contains("Subscription Rate Limit Hz (per Topic)", StringComparison.Ordinal)
+                  && inspector.Contains("Maximum Accepted Rate Hz (per Topic)", StringComparison.Ordinal)
+                  && inspector.Contains("Default Apply Rate Hz", StringComparison.Ordinal)
                   && inspector.Contains("Subscription-policy changes apply after subscriptions are re-enabled.", StringComparison.Ordinal)
-                  && inspector.Contains("captured provider, WebSocket encoding, QoS, copy budget, and rate", StringComparison.Ordinal),
+                  && inspector.Contains("captured provider, WebSocket encoding, QoS, copy budget, admission ceiling, and default apply rate", StringComparison.Ordinal),
                 "175C-9: Inspector exposes subscription controls and the session re-enable boundary");
         }
 
@@ -246,8 +248,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(source.Contains("class Phase175ProtobufManualAcceptance", StringComparison.Ordinal)
                   && source.Contains("/phase175/protobuf/target-value", StringComparison.Ordinal)
                   && source.Contains("/phase175/protobuf/shared-state", StringComparison.Ordinal)
-                  && source.Contains("Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
-                  && source.Contains("Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1", StringComparison.Ordinal)
                   && source.Contains("#pragma warning disable FOXRUN400", StringComparison.Ordinal)
                   && source.Contains("remote-authoritative shared observation", StringComparison.Ordinal)
                   && source.Contains("#pragma warning restore FOXRUN400", StringComparison.Ordinal)
@@ -266,7 +268,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(source.Contains("class Phase175JsonManualAcceptance", StringComparison.Ordinal)
                   && source.Contains("/phase175/json/legacy-state", StringComparison.Ordinal)
-                  && source.Contains("Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Json", StringComparison.Ordinal)
+                  && source.Contains("Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Json", StringComparison.Ordinal)
                   && source.Contains("requestedLegacyJsonState", StringComparison.Ordinal)
                   && source.Contains("Applied JSON legacy state", StringComparison.Ordinal)
                   && !source.Contains("FoxRunWireEncoding.Inherit", StringComparison.Ordinal),

@@ -266,8 +266,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && readme.Contains("Packages/dev.unity2foxglove.ros2forunity", StringComparison.Ordinal)
                   && readme.Contains("Unity2Foxglove demo project", StringComparison.Ordinal),
                 "107-D1: README describes core, optional ROS2, and demo project package model");
-            Check(readme.Contains("normal Foxglove WebSocket streaming, MCAP recording, or replay", StringComparison.Ordinal)
-                  && readme.Contains("no ROS2", StringComparison.OrdinalIgnoreCase),
+            Check(readme.Contains("does not require ROS for its core WebSocket, MCAP, Replay, or FoxRun workflows", StringComparison.Ordinal)
+                  && readme.IndexOf("Quick Start", StringComparison.Ordinal) < readme.IndexOf("Package Combinations", StringComparison.Ordinal),
                 "107-D2: README keeps no-ROS default prominent");
             Check(combined.Contains("Windows Firewall", StringComparison.Ordinal)
                   && combined.Contains("Fast DDS", StringComparison.Ordinal)

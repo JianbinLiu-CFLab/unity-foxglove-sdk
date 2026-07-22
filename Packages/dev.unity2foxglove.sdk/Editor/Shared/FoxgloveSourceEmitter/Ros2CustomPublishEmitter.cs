@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static string ModeLiteral(int mode)
-            => "(global::Unity.FoxgloveSDK.Components.FoxRunMode)"
+            => "(global::Unity.FoxgloveSDK.Components.FoxRunFlow)"
                + mode.ToString(CultureInfo.InvariantCulture);
     }
 }

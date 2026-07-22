@@ -17,7 +17,7 @@ namespace Unity.FoxgloveSDK.Components
         InvalidMode = 3,
         InvalidDeclaredEncoding = 4,
         NativeEncodingConflict = 5,
-        NativeRequiresSubscribeOnly = 6,
+        NativeRequiresSubscribe = 6,
         Unsupported = 7
     }
 
@@ -55,8 +55,8 @@ namespace Unity.FoxgloveSDK.Components
             "FoxRun wire encoding declaration is invalid.";
         private const string NativeEncodingConflictMessage =
             "Explicit Ros2Native subscriptions cannot declare a WebSocket Json or Protobuf encoding.";
-        private const string NativeRequiresSubscribeOnlyMessage =
-            "Ros2Native subscriptions require SubscribeOnly mode.";
+        private const string NativeRequiresSubscribeMessage =
+            "Ros2Native subscriptions require Subscribe mode.";
         private const string UnsupportedMessage =
             "The resolved FoxRun subscription provider is unsupported for this type.";
 
@@ -70,7 +70,7 @@ namespace Unity.FoxgloveSDK.Components
         public static FoxRunSubscriptionProviderResolution Resolve(
             FoxRunSubscriptionProvider declaredProvider,
             FoxRunSubscriptionProvider managerDefault,
-            FoxRunMode mode,
+            FoxRunFlow mode,
             FoxRunWireEncoding declaredEncoding,
             bool supportsWebSocket,
             bool supportsRos2Native,
@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             var customNativeBidirectional = provider == FoxRunSubscriptionProvider.Ros2Native
-                                            && mode == FoxRunMode.PublishAndSubscribe
+                                            && mode == FoxRunFlow.PublishAndSubscribe
                                             && allowsNativePublishAndSubscribe;
 
             if (declaredProvider == FoxRunSubscriptionProvider.Ros2Native
@@ -133,13 +133,13 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (provider == FoxRunSubscriptionProvider.Ros2Native
-                && mode != FoxRunMode.SubscribeOnly
+                && mode != FoxRunFlow.Subscribe
                 && !customNativeBidirectional)
             {
                 return Failure(
                     provider,
-                    FoxRunSubscriptionProviderDiagnosticCode.NativeRequiresSubscribeOnly,
-                    NativeRequiresSubscribeOnlyMessage);
+                    FoxRunSubscriptionProviderDiagnosticCode.NativeRequiresSubscribe,
+                    NativeRequiresSubscribeMessage);
             }
 
             var supported = provider == FoxRunSubscriptionProvider.FoxgloveWebSocket
@@ -183,10 +183,10 @@ namespace Unity.FoxgloveSDK.Components
                || provider == FoxRunSubscriptionProvider.FoxgloveWebSocket
                || provider == FoxRunSubscriptionProvider.Ros2Native;
 
-        private static bool IsValidMode(FoxRunMode mode)
-            => mode == FoxRunMode.PublishOnly
-               || mode == FoxRunMode.SubscribeOnly
-               || mode == FoxRunMode.PublishAndSubscribe;
+        private static bool IsValidMode(FoxRunFlow mode)
+            => mode == FoxRunFlow.Publish
+               || mode == FoxRunFlow.Subscribe
+               || mode == FoxRunFlow.PublishAndSubscribe;
 
         private static bool IsValidEncoding(FoxRunWireEncoding encoding)
             => encoding == FoxRunWireEncoding.Inherit

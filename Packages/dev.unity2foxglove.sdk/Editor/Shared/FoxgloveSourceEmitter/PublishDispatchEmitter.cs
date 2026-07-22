@@ -43,7 +43,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var protobufSchema = StringLiteralEmitter.CSharpStringLiteral(
                     FoxRunProtobufContractBuilder.ResolveMessageFullName(rawSchema, declaringType, topics[i]));
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
-                var suppressRemoteEcho = fields.Any(field => field.Mode == 2);
+                var suppressRemoteEcho = fields.Any(field => field.Mode == 3);
                 var protobuf = string.Equals(
                     TopicMetadataEmitter.EffectiveEncoding(fields),
                     FoxRunGenerationDescriptorConstants.ProtobufEncoding,
@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     if (inherited)
                     {
-                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
                         sb.AppendLine($"{pad}                else");
                         sb.AppendLine($"{pad}                {{");
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     if (inherited)
                     {
-                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)");
+                        sb.AppendLine($"{pad}                if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)");
                         sb.AppendLine($"{pad}                    mgr.PublishProto(\"{topic}\", \"{protobufSchema}\", __BuildFoxRunProtobuf_{i}(), nowNs);");
                         sb.AppendLine($"{pad}                else");
                         sb.AppendLine($"{pad}                    mgr.PublishJson(\"{topic}\", \"{schema}\", {PayloadExpr(fields)}, nowNs);");
@@ -251,7 +251,7 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                if (fields.Any(field => field.Mode == 2))
+                if (fields.Any(field => field.Mode == 3))
                 {
                     sb.AppendLine();
                     sb.AppendLine($"{pad}    private bool __foxRunSuppressNextPublish_{i};");

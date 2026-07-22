@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void ActiveSnapshotCapturesSevenConcreteReadOnlyValues()
+        public void ActiveSnapshotCapturesIndependentAdmissionAndDefaultApplyRates()
         {
             var state = new FoxRunSubscriptionSessionState();
 
@@ -30,6 +30,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Json,
                 FoxRunRos2QosPreset.SensorData,
                 8 * 1024 * 1024,
+                120,
                 37);
 
             Assert.Equal(1UL, policy.SessionGeneration);
@@ -38,11 +39,12 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunWireEncoding.Json, policy.WebSocketSubscriptionEncoding);
             Assert.Equal(FoxRunRos2QosPreset.SensorData, policy.DefaultRos2Qos);
             Assert.Equal(8 * 1024 * 1024, policy.NativeCopyBudgetBytes);
-            Assert.Equal(37, policy.MainThreadApplyRateLimitHz);
+            Assert.Equal(120, policy.TransportAdmissionRateLimitHz);
+            Assert.Equal(37, policy.DefaultMainThreadApplyRateHz);
 
             var properties = typeof(FoxRunSubscriptionSessionPolicy)
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public);
-            Assert.Equal(7, properties.Length);
+            Assert.Equal(8, properties.Length);
             Assert.All(properties, property => Assert.False(property.CanWrite));
         }
 
@@ -56,6 +58,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Protobuf,
                 FoxRunRos2QosPreset.Default,
                 4 * 1024 * 1024,
+                120,
                 60);
 
             Assert.Equal(FoxRunSubscriptionProvider.Ros2Native, policy.DefaultProvider);
@@ -72,12 +75,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Json,
                 FoxRunRos2QosPreset.Inherit,
                 0,
+                0,
                 0);
 
             Assert.Equal(FoxRunSubscriptionProvider.FoxgloveWebSocket, policy.DefaultProvider);
             Assert.Equal(FoxRunRos2QosPreset.Default, policy.DefaultRos2Qos);
             Assert.Equal(4 * 1024 * 1024, policy.NativeCopyBudgetBytes);
-            Assert.Equal(1, policy.MainThreadApplyRateLimitHz);
+            Assert.Equal(1, policy.TransportAdmissionRateLimitHz);
+            Assert.Equal(1, policy.DefaultMainThreadApplyRateHz);
         }
 
         [Fact]
@@ -89,6 +94,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Json,
                 FoxRunRos2QosPreset.Reliable,
                 2 * 1024 * 1024,
+                90,
                 25);
 
             var repeated = state.BeginIfNeeded(
@@ -96,6 +102,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Protobuf,
                 FoxRunRos2QosPreset.TransientLocal,
                 16 * 1024 * 1024,
+                240,
                 120);
 
             Assert.Same(first, repeated);
@@ -104,7 +111,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunWireEncoding.Json, repeated.WebSocketSubscriptionEncoding);
             Assert.Equal(FoxRunRos2QosPreset.Reliable, repeated.DefaultRos2Qos);
             Assert.Equal(2 * 1024 * 1024, repeated.NativeCopyBudgetBytes);
-            Assert.Equal(25, repeated.MainThreadApplyRateLimitHz);
+            Assert.Equal(90, repeated.TransportAdmissionRateLimitHz);
+            Assert.Equal(25, repeated.DefaultMainThreadApplyRateHz);
         }
 
         [Fact]
@@ -116,6 +124,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Protobuf,
                 FoxRunRos2QosPreset.Default,
                 4 * 1024 * 1024,
+                120,
                 60);
 
             var disabled = state.End();
@@ -135,6 +144,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Protobuf,
                 FoxRunRos2QosPreset.Default,
                 4 * 1024 * 1024,
+                120,
                 60);
             state.End();
 
@@ -143,6 +153,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Json,
                 FoxRunRos2QosPreset.SensorData,
                 8 * 1024 * 1024,
+                90,
                 30);
 
             Assert.Equal(first.SessionGeneration + 1UL, second.SessionGeneration);
@@ -159,6 +170,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     FoxRunWireEncoding.Protobuf,
                     FoxRunRos2QosPreset.Default,
                     4 * 1024 * 1024,
+                    120,
                     60));
 
             Assert.Same(before, state.Current);

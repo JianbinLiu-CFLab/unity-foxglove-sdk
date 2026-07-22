@@ -11,18 +11,119 @@ using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.SourceGenerators;
+using Unity.FoxgloveSDK.Util;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
-    public sealed class FoxRunModeTests
+    public sealed class FoxRunFlowTests
     {
         [Fact]
-        public void FoxRunAttributeDefaultsToPublishOnlyMode()
+        public void FoxRunAttributeDefaultsToPublishFlow()
         {
             var attr = new FoxRunAttribute("/phase157/default");
 
-            Assert.Equal(FoxRunMode.PublishOnly, attr.Mode);
+            Assert.Equal(FoxRunFlow.Publish, attr.Mode);
+        }
+
+        [Fact]
+        public void FreshDeclarationEnumsExposeOnlyNewNonZeroFlowAndPolicyValues()
+        {
+            var assembly = typeof(FoxRunAttribute).Assembly;
+            var flowType = assembly.GetType("Unity.FoxgloveSDK.Components.FoxRunFlow");
+            var policyType = assembly.GetType("Unity.FoxgloveSDK.Components.FoxRunPolicy");
+
+            Assert.NotNull(flowType);
+            Assert.NotNull(policyType);
+            Assert.True(flowType.IsEnum);
+            Assert.True(policyType.IsEnum);
+            Assert.Equal(
+                new[] { "Publish", "Subscribe", "PublishAndSubscribe" },
+                Enum.GetNames(flowType));
+            Assert.Equal(
+                new[] { "FixedRate", "Change", "ChangeOrInterval", "Trigger" },
+                Enum.GetNames(policyType));
+            Assert.Equal(1, Convert.ToInt32(Enum.Parse(flowType, "Publish")));
+            Assert.Equal(2, Convert.ToInt32(Enum.Parse(flowType, "Subscribe")));
+            Assert.Equal(3, Convert.ToInt32(Enum.Parse(flowType, "PublishAndSubscribe")));
+            Assert.Equal(1, Convert.ToInt32(Enum.Parse(policyType, "FixedRate")));
+            Assert.Equal(2, Convert.ToInt32(Enum.Parse(policyType, "Change")));
+            Assert.Equal(3, Convert.ToInt32(Enum.Parse(policyType, "ChangeOrInterval")));
+            Assert.Equal(4, Convert.ToInt32(Enum.Parse(policyType, "Trigger")));
+        }
+
+        [Fact]
+        public void StaticImportDeclarationGrammarCompilesAllFlowsAndFixedRatePolicy()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace Demo
+{
+    public partial class DeclarationGrammar
+    {
+        [FoxRun(""/phase183/default"")]
+        private float _defaultValue;
+
+        [FoxRun(""/phase183/publish"", Mode = Publish, Policy = FixedRate)]
+        private float _publishedValue;
+
+        [FoxRun(""/phase183/subscribe"", Mode = Subscribe, Policy = FixedRate)]
+        private float _subscribedValue;
+
+        [FoxRun(""/phase183/full-duplex"", Mode = PublishAndSubscribe,
+            Policy = FixedRate, Encoding = FoxRunWireEncoding.Protobuf)]
+        private float _sharedValue;
+    }
+}");
+
+            Assert.DoesNotContain(result.Diagnostics, diagnostic =>
+                diagnostic.Severity == DiagnosticSeverity.Error);
+            var generated = string.Join(
+                Environment.NewLine,
+                result.GeneratedTrees.Select(tree => tree.GetText().ToString()));
+            Assert.Contains("/phase183/publish", generated, StringComparison.Ordinal);
+            Assert.Contains("/phase183/subscribe", generated, StringComparison.Ordinal);
+            Assert.Contains("/phase183/full-duplex", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void UpdatePolicySeparatesFreshInputFromStaleTimerTicks()
+        {
+            Assert.True(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.Change, 1d, false, false, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.Change, 2d, true, false, 1d, 0d));
+            Assert.True(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.ChangeOrInterval, 3d, true, false, 1d, 2d));
+
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.FixedRate, false, true, false, 3d, 1d, 0d));
+            Assert.True(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, true, false, false, 3d, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, true, true, false, 3d, 1d, 0d));
+            Assert.True(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.ChangeOrInterval, true, true, false, 3d, 1d, 2d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.ChangeOrInterval, false, true, false, 4d, 1d, 2d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Trigger, true, false, true, 1d, 0d, 0d));
+        }
+
+        [Fact]
+        public void UpdatePolicyFailsClosedForUnknownPolicyAndNonFiniteClock()
+        {
+            Assert.False(FoxRunUpdatePolicy.ShouldPublish(
+                (FoxRunPolicy)0, 1d, false, true, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                (FoxRunPolicy)99, true, false, true, 1d, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.FixedRate, double.NaN, false, true, 0d, 0d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.FixedRate, true, false, true, double.PositiveInfinity, 0d, 0d));
         }
 
         [Fact]
@@ -71,7 +172,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void SubscribeOnlyMembersStayOutOfGeneratedPublishDispatch()
+        public void SubscribeMembersStayOutOfGeneratedPublishDispatch()
         {
             var type = new FoxRunGenerationType(
                 "Demo",
@@ -86,7 +187,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         "Demo", "CommandInput", "_incomingVelocity", "field", "UnityEngine.Vector3",
                         true, false, "", "/phase157/cmd_vel", 10f, "",
                         0, 0f, 0f, "UnitTest", 1, "",
-                        mode: (int)FoxRunMode.SubscribeOnly)
+                        mode: (int)FoxRunFlow.Subscribe)
                 });
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
@@ -98,7 +199,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void RoslynGeneratorLowersSubscribeOnlyModeWithoutPublishingTopic()
+        public void RoslynGeneratorLowersSubscribeModeWithoutPublishingTopic()
         {
             var source = @"
 using UnityEngine;
@@ -111,7 +212,7 @@ namespace Demo
         [FoxRun(""/phase157/status"")]
         private string _status;
 
-        [FoxRun(""/phase157/cmd_vel"", Mode = FoxRunMode.SubscribeOnly)]
+        [FoxRun(""/phase157/cmd_vel"", Mode = FoxRunFlow.Subscribe)]
         private Vector3 _incomingVelocity;
     }
 }";
@@ -131,7 +232,7 @@ namespace Demo
         }
 
         [Fact]
-        public void RoslynGeneratorEmitsTypedSubscribeOnlyAssignment()
+        public void RoslynGeneratorEmitsTypedSubscribeAssignment()
         {
             var source = @"
 using UnityEngine;
@@ -141,7 +242,7 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        [FoxRun(""/phase157/cmd_vel"", Mode = FoxRunMode.SubscribeOnly)]
+        [FoxRun(""/phase157/cmd_vel"", Mode = FoxRunFlow.Subscribe)]
         private Vector3 _incomingVelocity;
     }
 }";
@@ -153,13 +254,17 @@ namespace Demo
             Assert.Contains("partial class CommandInput : IFoxgloveInputSource", generated, StringComparison.Ordinal);
             Assert.Contains("int IFoxgloveInputSource.FoxgloveInput_TopicCount => 1", generated, StringComparison.Ordinal);
             Assert.Contains(
-                "new FoxgloveInputTopicInfo(\"/phase157/cmd_vel\", FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly, FoxRunSubscriptionProvider.Inherit, supportsWebSocket: true, supportsRos2Native: false)",
-                generated,
+                "new FoxgloveInputTopicInfo(/phase157/cmd_vel",
+                generated.Replace("\"", string.Empty, StringComparison.Ordinal),
                 StringComparison.Ordinal);
+            Assert.Contains("policy: FoxRunPolicy.FixedRate", generated, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitRateHz: false", generated, StringComparison.Ordinal);
             Assert.Contains("string.Equals(encoding, \"protobuf\", global::System.StringComparison.OrdinalIgnoreCase)", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundJson.TryRead(payload, \"incomingVelocity\", out global::UnityEngine.Vector3 __value", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundProtobuf.TryRead", generated, StringComparison.Ordinal);
-            Assert.Contains("this._incomingVelocity = __value", generated, StringComparison.Ordinal);
+            Assert.Contains("__foxRunInputPending_0 = __value", generated, StringComparison.Ordinal);
+            Assert.Contains("this._incomingVelocity = __foxRunInputPending_0", generated, StringComparison.Ordinal);
+            Assert.Contains("IFoxgloveInputSource.FoxgloveInput_Flush", generated, StringComparison.Ordinal);
             Assert.DoesNotContain("IFoxgloveLogSource", generated, StringComparison.Ordinal);
         }
 
@@ -173,7 +278,7 @@ namespace Demo
 {
     public partial class SharedState
     {
-        [FoxRun(""/phase157/state"", Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase157/state"", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private string _state;
     }
 }";
@@ -184,13 +289,14 @@ namespace Demo
 
             Assert.Contains("IFoxgloveLogSource", generated, StringComparison.Ordinal);
             Assert.Contains("IFoxgloveInputSource", generated, StringComparison.Ordinal);
-            Assert.Contains("this._state = __value", generated, StringComparison.Ordinal);
+            Assert.Contains("__foxRunInputPending_0 = __value", generated, StringComparison.Ordinal);
+            Assert.Contains("this._state = __foxRunInputPending_0", generated, StringComparison.Ordinal);
             Assert.Contains("__foxRunSuppressNextPublish_0 = true", generated, StringComparison.Ordinal);
             Assert.Contains("if (__foxRunSuppressNextPublish_0)", generated, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void RoslynGeneratorReadsFoxRunModeFromSemanticConstant()
+        public void RoslynGeneratorReadsFoxRunFlowFromSemanticConstant()
         {
             var source = @"
 using Unity.FoxgloveSDK.Components;
@@ -199,7 +305,7 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        private const FoxRunMode Inbound = FoxRunMode.SubscribeOnly;
+        private const FoxRunFlow Inbound = FoxRunFlow.Subscribe;
 
         [FoxRun(""/phase157/cmd_vel"", Mode = Inbound)]
             private float _incomingVelocity;
@@ -231,7 +337,7 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        [FoxRun(""/phase157/target-speed"", Mode = FoxRunMode.SubscribeOnly)]
+        [FoxRun(""/phase157/target-speed"", Mode = FoxRunFlow.Subscribe)]
         private float requestedTargetSpeed;
     }
 }");
@@ -253,10 +359,10 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        [FoxRun(""/phase157/shared-state"", Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Json)]
+        [FoxRun(""/phase157/shared-state"", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Json)]
         private float sharedState;
 
-        [FoxRun(""/phase157/target-speed"", Mode = FoxRunMode.SubscribeOnly)]
+        [FoxRun(""/phase157/target-speed"", Mode = FoxRunFlow.Subscribe)]
         private float requestedTargetSpeed;
     }
 }");
@@ -280,7 +386,7 @@ namespace Demo
 {
     public partial class SharedState
     {
-        [FoxRun(""/phase176/ambiguous-state"", Mode = FoxRunMode.PublishAndSubscribe)]
+        [FoxRun(""/phase176/ambiguous-state"", Mode = FoxRunFlow.PublishAndSubscribe)]
         private float sharedState;
     }
 }");
@@ -289,7 +395,7 @@ namespace Demo
         }
 
         [Fact]
-        public void RoslynAttributeDataExposesFoxRunModeConstant()
+        public void RoslynAttributeDataExposesFoxRunFlowConstant()
         {
             var compilation = CreateCompilation(@"
 using Unity.FoxgloveSDK.Components;
@@ -298,7 +404,7 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        private const FoxRunMode Inbound = FoxRunMode.SubscribeOnly;
+        private const FoxRunFlow Inbound = FoxRunFlow.Subscribe;
 
         [FoxRun(""/phase157/cmd_vel"", Mode = Inbound)]
         private float _incomingVelocity;
@@ -316,7 +422,7 @@ namespace Demo
                 .Single(argument => argument.Key == "Mode")
                 .Value;
 
-            Assert.Equal(1, Convert.ToInt32(mode.Value));
+            Assert.Equal(2, Convert.ToInt32(mode.Value));
         }
 
         [Fact]
@@ -360,6 +466,26 @@ namespace Demo
 }");
 
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN602");
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsTriggerWithExplicitRateUsingReservedDiagnostic()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace Demo
+{
+    public partial class TriggerState
+    {
+        [FoxRun(""/phase183/trigger"", Policy = Trigger, RateHz = 10f)]
+        private int _count;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN609");
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN000");
         }
 
         [Fact]
@@ -442,10 +568,10 @@ namespace Demo
 
     public partial class CommandInput
     {
-        [FoxRun(""/phase175/telemetry_in"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/telemetry_in"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private Telemetry _incomingTelemetry;
 
-        [FoxRun(""/phase175/samples_in"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/samples_in"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private float[] _incomingSamples;
     }
 }");
@@ -475,7 +601,7 @@ namespace Demo
 
     public partial class CommandInput
     {
-        [FoxRun(""/phase175/readonly_dto"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/readonly_dto"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private Command _incomingCommand;
     }
 }");
@@ -508,13 +634,13 @@ namespace Demo
 
     public partial class CommandInput
     {
-        [FoxRun(""/phase175/commands"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/commands"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private Command _incomingCommand;
 
-        [FoxRun(""/phase175/ints"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/ints"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private int[] _incomingInts;
 
-        [FoxRun(""/phase175/kind"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/kind"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
         private CommandKind _incomingKind;
     }
 }");
@@ -542,29 +668,29 @@ namespace Demo
         }
 
         [Fact]
-        public void DescriptorJsonIncludesExplicitFoxRunMode()
+        public void DescriptorJsonIncludesExplicitFoxRunFlow()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
             {
                 new FoxRunGenerationMember(
                     "Demo", "CommandInput", "_incomingVelocity", "field", "UnityEngine.Vector3",
                     true, false, "", "/phase157/cmd_vel", 10f, "",
-                    0, 0f, 0f, "UnitTest", 0, "",
-                    mode: (int)FoxRunMode.SubscribeOnly)
+                    1, 0f, 0f, "UnitTest", 0, "",
+                    mode: (int)FoxRunFlow.Subscribe)
             });
 
             var json = FoxRunGenerationDescriptorJsonWriter.Write(model);
 
-            Assert.Contains("\"mode\":\"SubscribeOnly\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"mode\":\"Subscribe\"", json, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void DescriptorComparerTreatsFoxRunModeAsSemanticState()
+        public void DescriptorComparerTreatsFoxRunFlowAsSemanticState()
         {
-            var publishOnly = ModelWithMode(FoxRunMode.PublishOnly);
-            var subscribeOnly = ModelWithMode(FoxRunMode.SubscribeOnly);
+            var publish = ModelWithMode(FoxRunFlow.Publish);
+            var subscribe = ModelWithMode(FoxRunFlow.Subscribe);
 
-            var comparison = FoxRunGenerationDescriptorComparer.Compare(publishOnly, subscribeOnly);
+            var comparison = FoxRunGenerationDescriptorComparer.Compare(publish, subscribe);
 
             Assert.False(comparison.IsSemanticEqual);
             Assert.Contains(
@@ -617,31 +743,31 @@ namespace Demo
         [Fact]
         public void ManifestRecordsInboundFlowWithoutChangingDefaultCanonicalShape()
         {
-            var publishOnly = FoxRunManifestBuilder.Build(new[]
+            var publish = FoxRunManifestBuilder.Build(new[]
             {
-                ManifestMember(FoxRunMode.PublishOnly)
+                ManifestMember(FoxRunFlow.Publish)
             });
-            var subscribeOnly = FoxRunManifestBuilder.Build(new[]
+            var subscribe = FoxRunManifestBuilder.Build(new[]
             {
-                ManifestMember(FoxRunMode.SubscribeOnly)
+                ManifestMember(FoxRunFlow.Subscribe)
             });
             var publishAndSubscribe = FoxRunManifestBuilder.Build(new[]
             {
-                ManifestMember(FoxRunMode.PublishAndSubscribe)
+                ManifestMember(FoxRunFlow.PublishAndSubscribe)
             });
 
-            var publishJson = FoxRunManifestJsonWriter.WriteCanonical(publishOnly);
-            var subscribeJson = FoxRunManifestJsonWriter.WriteCanonical(subscribeOnly);
+            var publishJson = FoxRunManifestJsonWriter.WriteCanonical(publish);
+            var subscribeJson = FoxRunManifestJsonWriter.WriteCanonical(subscribe);
             var publishAndSubscribeJson = FoxRunManifestJsonWriter.WriteCanonical(publishAndSubscribe);
 
-            Assert.DoesNotContain("\"flowMode\"", publishJson, StringComparison.Ordinal);
-            Assert.Contains("\"flowMode\":\"SubscribeOnly\"", subscribeJson, StringComparison.Ordinal);
-            Assert.Contains("\"flowMode\":\"PublishAndSubscribe\"", publishAndSubscribeJson, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"flow\"", publishJson, StringComparison.Ordinal);
+            Assert.Contains("\"flow\":\"Subscribe\"", subscribeJson, StringComparison.Ordinal);
+            Assert.Contains("\"flow\":\"PublishAndSubscribe\"", publishAndSubscribeJson, StringComparison.Ordinal);
             Assert.NotEqual(
-                publishOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
-                subscribeOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash);
+                publish.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
+                subscribe.Sections.FoxRun.Types[0].Contracts[0].ContractHash);
             Assert.NotEqual(
-                publishOnly.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
+                publish.Sections.FoxRun.Types[0].Contracts[0].ContractHash,
                 publishAndSubscribe.Sections.FoxRun.Types[0].Contracts[0].ContractHash);
         }
 
@@ -662,7 +788,7 @@ namespace Demo
                     "/phase175/wire_state",
                     10f,
                     "Demo.WireState",
-                    0,
+                    1,
                     0f,
                     0f,
                     encoding: (int)FoxRunWireEncoding.Inherit,
@@ -677,7 +803,7 @@ namespace Demo
         }
 
         [Fact]
-        public void ManifestRejectsUnknownPublishMode()
+        public void ManifestRejectsUnknownPolicy()
         {
             var member = new FoxRunManifestMember(
                 "Demo",
@@ -697,8 +823,8 @@ namespace Demo
 
             var ex = Assert.Throws<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[] { member }));
 
-            Assert.Contains("publish mode", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("0..3", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("Policy", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("1..4", ex.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -722,7 +848,7 @@ namespace Demo
         public void ManifestPolicyHashInputCanonicalizesNonFiniteFloats()
         {
             var hashInput = FoxRunManifestJsonWriter.WritePolicyHashInput(new FoxRunManifestPolicy(
-                "OnChange",
+                "Change",
                 float.NaN,
                 float.PositiveInfinity,
                 float.NegativeInfinity));
@@ -733,7 +859,7 @@ namespace Demo
         }
 
         [Fact]
-        public void InboundValidationRejectsJsonArraysAndWarnsAboutPublishOptions()
+        public void InboundValidationRejectsJsonArraysWithoutLegacyIgnoredOptionWarning()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
             {
@@ -741,13 +867,13 @@ namespace Demo
                     "Demo", "CommandInput", "_incomingSamples", "field", "System.Single[]",
                     false, true, "System.Single", "/phase157/samples", 10f, "",
                     1, 0.1f, 2f, "UnitTest", 0, "",
-                    mode: (int)FoxRunMode.SubscribeOnly)
+                    mode: (int)FoxRunFlow.Subscribe)
             });
 
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN200" && diagnostic.Severity == "Error");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201" && diagnostic.Severity == "Warning");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201");
         }
 
         [Fact]
@@ -759,7 +885,7 @@ namespace Demo
                     "Demo", "CommandInput", "_incomingSamples", "field", "System.Single[]",
                     false, true, "System.Single", "/phase175/samples", 10f, "",
                     1, 0.1f, 2f, "UnitTest", 0, "",
-                    mode: (int)FoxRunMode.SubscribeOnly,
+                    mode: (int)FoxRunFlow.Subscribe,
                     encoding: "protobuf",
                     protobufTypeShape: FoxRunProtobufTypeShape.Canonical("float32"))
             });
@@ -767,7 +893,7 @@ namespace Demo
             var diagnostics = FoxRunGenerationModelValidator.Validate(model);
 
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN200" && diagnostic.Severity == "Error");
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201" && diagnostic.Severity == "Warning");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN201");
         }
 
         [Fact]
@@ -816,7 +942,7 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        [FoxRun(""/phase157/cmd"", Mode = FoxRunMode.SubscribeOnly)]
+        [FoxRun(""/phase157/cmd"", Mode = FoxRunFlow.Subscribe)]
         private float IncomingCommand => 0;
     }
 }");
@@ -836,7 +962,7 @@ namespace Demo
                         "Demo", "CommandInput", "", "field", "System.Single",
                         false, false, "", "/phase173/input", 10f, "",
                         0, 0f, 0f, "UnitTest", 0, "",
-                        mode: (int)FoxRunMode.SubscribeOnly)
+                        mode: (int)FoxRunFlow.Subscribe)
                 });
 
             var ex = Assert.Throws<ArgumentException>(() => FoxgloveSourceEmitter.EmitClass(type));
@@ -844,19 +970,19 @@ namespace Demo
             Assert.Contains("Input TopicMember has empty MemberName", ex.Message, StringComparison.Ordinal);
         }
 
-        private static FoxRunGenerationModel ModelWithMode(FoxRunMode mode)
+        private static FoxRunGenerationModel ModelWithMode(FoxRunFlow mode)
         {
             return FoxRunGenerationModel.FromMembers(new[]
             {
                 new FoxRunGenerationMember(
                     "Demo", "CommandInput", "_incomingVelocity", "field", "UnityEngine.Vector3",
                     true, false, "", "/phase157/cmd_vel", 10f, "",
-                    0, 0f, 0f, "UnitTest", 0, "",
+                    1, 0f, 0f, "UnitTest", 0, "",
                     mode: (int)mode)
             });
         }
 
-        private static FoxRunManifestMember ManifestMember(FoxRunMode mode)
+        private static FoxRunManifestMember ManifestMember(FoxRunFlow mode)
         {
             return new FoxRunManifestMember(
                 "Demo",
@@ -870,10 +996,10 @@ namespace Demo
                 "/phase157/cmd_vel",
                 10f,
                 "",
-                0,
+                1,
                 0f,
                 0f,
-                flowMode: (int)mode);
+                flow: (int)mode);
         }
 
         private static FoxRunManifestMember ManifestMember(string memberName, string topic, string jsonFieldName)
@@ -890,7 +1016,7 @@ namespace Demo
                 topic,
                 10f,
                 "",
-                0,
+                1,
                 0f,
                 0f,
                 jsonFieldName: jsonFieldName);

@@ -11,7 +11,7 @@ namespace Unity.FoxgloveSDK.Components
 {
     public enum FoxRunInputDispatchStatus
     {
-        Applied,
+        Staged,
         UnknownTopic,
         PayloadTooLarge,
         RateLimited,
@@ -20,16 +20,17 @@ namespace Unity.FoxgloveSDK.Components
 
     public readonly struct FoxRunInputDispatchResult
     {
-        public FoxRunInputDispatchResult(FoxRunInputDispatchStatus status, string diagnostic, int appliedCount)
+        public FoxRunInputDispatchResult(FoxRunInputDispatchStatus status, string diagnostic, int stagedCount)
         {
             Status = status;
             Diagnostic = diagnostic ?? string.Empty;
-            AppliedCount = appliedCount;
+            StagedCount = stagedCount;
         }
 
         public FoxRunInputDispatchStatus Status { get; }
         public string Diagnostic { get; }
-        public int AppliedCount { get; }
+        /// <summary>Number of generated inputs that accepted and staged this payload.</summary>
+        public int StagedCount { get; }
     }
 
     public sealed class FoxRunInputRouter
@@ -41,6 +42,8 @@ namespace Unity.FoxgloveSDK.Components
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, Queue<double>> _arrivalTimes =
             new(StringComparer.Ordinal);
+        private readonly List<IFoxgloveInputSource> _registeredSources = new();
+        private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
         private FoxRunWireEncoding _defaultSubscriptionWireEncoding = FoxRunWireEncoding.Protobuf;
         private FoxRunSubscriptionProvider _defaultSubscriptionProvider =
             FoxRunSubscriptionProvider.FoxgloveWebSocket;
@@ -113,6 +116,7 @@ namespace Unity.FoxgloveSDK.Components
 
             lock (_gate)
             {
+                var addedRegistration = false;
                 for (var index = 0; index < source.FoxgloveInput_TopicCount; index++)
                 {
                     var info = source.FoxgloveInput_GetTopic(index);
@@ -141,7 +145,11 @@ namespace Unity.FoxgloveSDK.Components
                         info.Mode,
                         _defaultSubscriptionWireEncoding));
                     _registrationSnapshots[info.Topic] = registrations.ToArray();
+                    addedRegistration = true;
                 }
+
+                if (addedRegistration)
+                    AddSourceSnapshotEntry(source);
             }
         }
 
@@ -174,7 +182,42 @@ namespace Unity.FoxgloveSDK.Components
                     _registrationSnapshots.Remove(topic);
                     _arrivalTimes.Remove(topic);
                 }
+
+                RemoveSourceSnapshotEntry(source);
             }
+        }
+
+        /// <summary>
+        /// Invokes each registered generated source once on the Unity main
+        /// thread. Transport admission has already happened; sources decide
+        /// whether their latest owned value is eligible for application.
+        /// </summary>
+        public int Flush(double nowSeconds, int inheritedApplyRateLimitHz)
+        {
+            IFoxgloveInputSource[] sources;
+            lock (_gate)
+                sources = _sourceSnapshot;
+
+            var applied = 0;
+            foreach (var source in sources)
+            {
+                try
+                {
+                    applied += Math.Max(
+                        0,
+                        source.FoxgloveInput_Flush(nowSeconds, inheritedApplyRateLimitHz));
+                }
+                catch (Exception ex) when (!(ex is OutOfMemoryException)
+                                           && !(ex is StackOverflowException)
+                                           && !(ex is AccessViolationException))
+                {
+                    // Generated sources own their individual typed state. One
+                    // source must not prevent other independently allowlisted
+                    // contracts from making main-thread progress.
+                }
+            }
+
+            return applied;
         }
 
         public FoxRunInputDispatchResult Dispatch(
@@ -245,7 +288,7 @@ namespace Unity.FoxgloveSDK.Components
                     0);
             }
 
-            var applied = 0;
+            var staged = 0;
             var firstError = string.Empty;
             foreach (var registration in registrations)
             {
@@ -262,13 +305,13 @@ namespace Unity.FoxgloveSDK.Components
 
                 try
                 {
-                    if (registration.Source.FoxgloveInput_TryApply(
+                    if (registration.Source.FoxgloveInput_TryStage(
                             registration.TopicIndex,
                             payload,
                             encoding,
                             out var error))
                     {
-                        applied++;
+                        staged++;
                     }
                     else if (string.IsNullOrEmpty(firstError))
                     {
@@ -284,9 +327,32 @@ namespace Unity.FoxgloveSDK.Components
                 }
             }
 
-            return applied > 0
-                ? new FoxRunInputDispatchResult(FoxRunInputDispatchStatus.Applied, firstError, applied)
+            return staged > 0
+                ? new FoxRunInputDispatchResult(FoxRunInputDispatchStatus.Staged, firstError, staged)
                 : new FoxRunInputDispatchResult(FoxRunInputDispatchStatus.DecodeRejected, firstError, 0);
+        }
+
+        private void AddSourceSnapshotEntry(IFoxgloveInputSource source)
+        {
+            for (var index = 0; index < _registeredSources.Count; index++)
+            {
+                if (ReferenceEquals(_registeredSources[index], source))
+                    return;
+            }
+
+            _registeredSources.Add(source);
+            _sourceSnapshot = _registeredSources.ToArray();
+        }
+
+        private void RemoveSourceSnapshotEntry(IFoxgloveInputSource source)
+        {
+            for (var index = _registeredSources.Count - 1; index >= 0; index--)
+            {
+                if (ReferenceEquals(_registeredSources[index], source))
+                    _registeredSources.RemoveAt(index);
+            }
+
+            _sourceSnapshot = _registeredSources.ToArray();
         }
 
         private bool AcceptRate(string topic, double nowSeconds)
@@ -308,7 +374,7 @@ namespace Unity.FoxgloveSDK.Components
                 IFoxgloveInputSource source,
                 int topicIndex,
                 FoxRunWireEncoding declaredWireEncoding,
-                FoxRunMode mode,
+                FoxRunFlow mode,
                 FoxRunWireEncoding subscriptionDefault)
             {
                 Source = source;
@@ -326,7 +392,7 @@ namespace Unity.FoxgloveSDK.Components
             public IFoxgloveInputSource Source { get; }
             public int TopicIndex { get; }
             public FoxRunWireEncoding DeclaredWireEncoding { get; }
-            public FoxRunMode Mode { get; }
+            public FoxRunFlow Mode { get; }
             public string Encoding { get; }
 
             public Registration Resolve(FoxRunWireEncoding subscriptionDefault)

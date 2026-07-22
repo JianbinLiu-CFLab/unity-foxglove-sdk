@@ -128,9 +128,9 @@ namespace Unity.FoxgloveSDK.Editor
             WriteName(sb, "rateHz");
             WriteFloat(sb, member.RateHz);
             sb.Append(',');
-            WriteStringField(sb, "publishMode", member.PublishModeName);
+            WriteStringField(sb, "policy", member.PolicyName);
             sb.Append(',');
-            WriteStringField(sb, "mode", member.ModeName);
+            WriteStringField(sb, "mode", member.FlowName);
             sb.Append(',');
             WriteName(sb, "changeEpsilon");
             WriteFloat(sb, member.ChangeEpsilon);

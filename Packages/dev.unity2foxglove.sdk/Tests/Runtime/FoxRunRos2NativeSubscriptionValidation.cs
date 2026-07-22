@@ -288,15 +288,14 @@ namespace Unity.FoxgloveSDK.Tests
                 CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
             var unshipped = PhaseValidationSourceHelpers.ReadRequiredRepoText(
                 CorePackageRoot + "/Editor/SourceGenerators/AnalyzerReleases.Unshipped.md");
-            var subscribeOnly = new[]
+            var subscribe = new[]
             {
                 new KeyValuePair<string, string>("UnsupportedInboundShape", "FOXRUN200"),
-                new KeyValuePair<string, string>("IgnoredSubscribePolicy", "FOXRUN201"),
                 new KeyValuePair<string, string>("InboundNaming", "FOXRUN202"),
                 new KeyValuePair<string, string>("InboundTargetNotWritable", "FOXRUN203"),
                 new KeyValuePair<string, string>("SharedInboundTargetNotWritable", "FOXRUN203"),
                 new KeyValuePair<string, string>("InvalidSubscriptionProvider", "FOXRUN204"),
-                new KeyValuePair<string, string>("NativeSubscribeOnly", "FOXRUN205"),
+                new KeyValuePair<string, string>("NativeSubscribe", "FOXRUN205"),
                 new KeyValuePair<string, string>("NativeEncoding", "FOXRUN206"),
                 new KeyValuePair<string, string>("Ros2MessageIdentity", "FOXRUN207"),
                 new KeyValuePair<string, string>("Ros2MessageConstructor", "FOXRUN208"),
@@ -313,7 +312,7 @@ namespace Unity.FoxgloveSDK.Tests
             };
             var infrastructure = new[]
             {
-                new KeyValuePair<string, string>("InvalidFoxRunMode", "FOXRUN600"),
+                new KeyValuePair<string, string>("InvalidFoxRunFlow", "FOXRUN600"),
                 new KeyValuePair<string, string>("UnlessConditionMissing", "FOXRUN601"),
                 new KeyValuePair<string, string>("InvalidWireEncoding", "FOXRUN602"),
                 new KeyValuePair<string, string>("InvalidProtobufFieldNumber", "FOXRUN603"),
@@ -325,16 +324,21 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
 
             Check(diagnostics.Contains("#region FoxRun publish diagnostics (FOXRUN001-199)", StringComparison.Ordinal)
-                  && diagnostics.Contains("#region FoxRun SubscribeOnly diagnostics (FOXRUN200-399)", StringComparison.Ordinal)
+                  && diagnostics.Contains("#region FoxRun Subscribe diagnostics (FOXRUN200-399)", StringComparison.Ordinal)
                   && diagnostics.Contains("#region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)", StringComparison.Ordinal)
                   && diagnostics.Contains("#region FoxRun cross-direction diagnostics (FOXRUN600+)", StringComparison.Ordinal),
-                "FoxRun diagnostic source declares direction-readable publish, SubscribeOnly, PublishAndSubscribe, and cross-direction ranges");
+                "FoxRun diagnostic source declares direction-readable publish, Subscribe, PublishAndSubscribe, and cross-direction ranges");
 
-            var expected = subscribeOnly.Concat(bidirectional).Concat(infrastructure).ToArray();
+            var expected = subscribe.Concat(bidirectional).Concat(infrastructure).ToArray();
             Check(expected.All(pair => HasDiagnosticDescriptorId(diagnostics, pair.Key, pair.Value))
                   && expected.All(pair => unshipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
+                  && !diagnostics.Contains("IgnoredSubscribePolicy", StringComparison.Ordinal)
+                  && HasReleaseTrackingRow(
+                      unshipped,
+                      "FOXRUN201",
+                      "Retired before release; subscription policy now applies symmetrically and this ID is permanently reserved.")
                   && retired.All(id => !diagnostics.Contains(id, StringComparison.Ordinal)),
-                "FoxRun diagnostics map inbound, bidirectional, and cross-direction rules into their stable unshipped ID ranges without retired descriptors");
+                "FoxRun diagnostics map active rules into stable ranges while permanently reserving removed descriptors");
         }
 
         private static void VerifyDiagnosticIdLegacyLedger()
@@ -372,7 +376,7 @@ namespace Unity.FoxgloveSDK.Tests
             };
 
             Check(diagnostics.Contains(
-                      "Legacy FoxRun diagnostic IDs 023 through 044 are permanently retired and must never be reused.",
+                      "Legacy FoxRun diagnostic IDs 023 through 044 and unshipped ID 201 are permanently retired and must never be reused.",
                       StringComparison.Ordinal)
                   && retired.All(pair => shipped.Contains(pair.Key + " | FoxRun |", StringComparison.Ordinal))
                   && retired.All(pair => unshipped.Contains(pair.Value + " | FoxRun |", StringComparison.Ordinal))
@@ -749,7 +753,7 @@ namespace Unity.FoxgloveSDK.Tests
             var probeGuid = ReadUnityAssetGuid(probeMetaAbsolute);
 
             Check(probe.Contains("/foxrun/phase179/string", StringComparison.Ordinal)
-                  && probe.Contains("Mode = FoxRunMode.SubscribeOnly", StringComparison.Ordinal)
+                  && probe.Contains("Mode = FoxRunFlow.Subscribe", StringComparison.Ordinal)
                   && probe.Contains(
                       "SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native",
                       StringComparison.Ordinal)
@@ -930,7 +934,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && sample.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && sample.Contains("CopyBounded", StringComparison.Ordinal)
                   && packageJson.Contains("FoxRun ROS2 Native Subscribe", StringComparison.Ordinal),
-                "public sample exposes four existing typed native SubscribeOnly contracts with bounded Inspector copies");
+                "public sample exposes four existing typed native Subscribe contracts with bounded Inspector copies");
 
             Check(sampleReadme.Contains("phase179_humble_fastrtps_acceptance.py", StringComparison.Ordinal)
                   && sampleReadme.Contains("phase179_jazzy_fastrtps_acceptance.py", StringComparison.Ordinal)

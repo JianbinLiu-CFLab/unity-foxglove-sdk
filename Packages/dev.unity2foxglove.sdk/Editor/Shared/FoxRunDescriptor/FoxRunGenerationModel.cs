@@ -171,11 +171,15 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
         public readonly int ProtobufFieldNumber;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
+        /// <summary>Raw declaration value; a non-positive value means no explicit per-contract rate.</summary>
+        public readonly float DeclaredRateHz;
+        /// <summary>True only when the declaration supplied a positive finite rate.</summary>
+        public readonly bool HasExplicitRateHz;
         public readonly float RateHz;
-        public readonly int PublishMode;
-        public readonly string PublishModeName;
+        public readonly int Policy;
+        public readonly string PolicyName;
         public readonly int Mode;
-        public readonly string ModeName;
+        public readonly string FlowName;
         public readonly float ChangeEpsilon;
         public readonly float ForceIntervalSeconds;
         public readonly bool HasNonFiniteRateHz;
@@ -201,7 +205,7 @@ namespace Unity.FoxgloveSDK.Editor
             string topic,
             float rateHz,
             string schemaName,
-            int publishMode,
+            int policy,
             float changeEpsilon,
             float forceIntervalSeconds,
             string hostKind,
@@ -211,7 +215,7 @@ namespace Unity.FoxgloveSDK.Editor
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0,
+            int mode = 1,
             string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
@@ -235,7 +239,7 @@ namespace Unity.FoxgloveSDK.Editor
                 topic,
                 rateHz,
                 schemaName,
-                publishMode,
+                policy,
                 changeEpsilon,
                 forceIntervalSeconds,
                 hostKind,
@@ -272,7 +276,7 @@ namespace Unity.FoxgloveSDK.Editor
             string topic,
             float rateHz,
             string schemaName,
-            int publishMode,
+            int policy,
             float changeEpsilon,
             float forceIntervalSeconds,
             string hostKind,
@@ -282,7 +286,7 @@ namespace Unity.FoxgloveSDK.Editor
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0,
+            int mode = 1,
             string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
@@ -307,7 +311,7 @@ namespace Unity.FoxgloveSDK.Editor
                 topic,
                 rateHz,
                 schemaName,
-                publishMode,
+                policy,
                 changeEpsilon,
                 forceIntervalSeconds,
                 hostKind,
@@ -345,7 +349,7 @@ namespace Unity.FoxgloveSDK.Editor
             string topic,
             float rateHz,
             string schemaName,
-            int publishMode,
+            int policy,
             float changeEpsilon,
             float forceIntervalSeconds,
             string hostKind,
@@ -355,7 +359,7 @@ namespace Unity.FoxgloveSDK.Editor
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0,
+            int mode = 1,
             string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
@@ -395,16 +399,18 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2CustomDtoShape);
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
+            DeclaredRateHz = rateHz;
             HasNonFiniteRateHz = IsNonFinite(rateHz);
+            HasExplicitRateHz = !HasNonFiniteRateHz && rateHz > 0f;
             HasNonFiniteChangeEpsilon = IsNonFinite(changeEpsilon);
             HasNonFiniteForceIntervalSeconds = IsNonFinite(forceIntervalSeconds);
             RateHz = NormalizeRateHz(rateHz);
-            PublishMode = publishMode;
-            PublishModeName = PublishModeToName(publishMode);
+            Policy = policy;
+            PolicyName = PolicyToName(policy);
             ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
             ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);
             Mode = mode;
-            ModeName = ModeToName(mode);
+            FlowName = FlowToName(mode);
             HostKind = hostKind ?? string.Empty;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
@@ -435,7 +441,7 @@ namespace Unity.FoxgloveSDK.Editor
                 Topic,
                 RateHz,
                 SchemaName,
-                PublishMode,
+                Policy,
                 ChangeEpsilon,
                 ForceIntervalSeconds,
                 When,
@@ -453,7 +459,8 @@ namespace Unity.FoxgloveSDK.Editor
                 GeneratesRos2NativeRegistration,
                 Ros2MessageShape,
                 Ros2CustomDtoShape,
-                Ros2ContractKind);
+                Ros2ContractKind,
+                hasExplicitRateHz: HasExplicitRateHz);
         }
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(
@@ -523,9 +530,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static float NormalizeRateHz(float rateHz)
         {
-            if (IsNonFinite(rateHz) || rateHz <= 0f)
-                return 0f;
-            return rateHz;
+            return !IsNonFinite(rateHz) && rateHz > 0f ? rateHz : 10f;
         }
 
         public static float NormalizeNonNegative(float value)
@@ -540,25 +545,25 @@ namespace Unity.FoxgloveSDK.Editor
             return float.IsNaN(value) || float.IsInfinity(value);
         }
 
-        public static string PublishModeToName(int mode)
+        public static string PolicyToName(int policy)
         {
-            switch (mode)
+            switch (policy)
             {
-                case 0: return "FixedRate";
-                case 1: return "OnChange";
-                case 2: return "OnChangeOrInterval";
-                case 3: return "OnTrigger";
+                case 1: return "FixedRate";
+                case 2: return "Change";
+                case 3: return "ChangeOrInterval";
+                case 4: return "Trigger";
                 default: return "Unknown";
             }
         }
 
-        public static string ModeToName(int mode)
+        public static string FlowToName(int flow)
         {
-            switch (mode)
+            switch (flow)
             {
-                case 0: return "PublishOnly";
-                case 1: return "SubscribeOnly";
-                case 2: return "PublishAndSubscribe";
+                case 1: return "Publish";
+                case 2: return "Subscribe";
+                case 3: return "PublishAndSubscribe";
                 default: return "Unknown";
             }
         }

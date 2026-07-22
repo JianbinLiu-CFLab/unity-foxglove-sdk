@@ -387,11 +387,15 @@ namespace Unity.FoxgloveSDK.Tests
                   && HasExactlyOneLabeledProperty(
                       allInvocations,
                       "_foxRunInboundMaxMessagesPerSecondPerTopic",
-                      "Subscription Rate Limit Hz (per Topic)")
+                      "Maximum Accepted Rate Hz (per Topic)")
+                  && HasExactlyOneLabeledProperty(
+                      allInvocations,
+                      "_foxRunDefaultApplyRateHz",
+                      "Default Apply Rate Hz")
                   && ContainsStringLiteralFragment(
                       subscribeData,
-                      "captured provider, WebSocket encoding, QoS, copy budget, and rate."),
-                "180F-2: Subscribe keeps its enable gate, delivery rate, and complete frozen-session policy boundary");
+                      "captured provider, WebSocket encoding, QoS, copy budget, admission ceiling, and default apply rate."),
+                "180F-2: Subscribe keeps its enable gate, admission ceiling, default apply rate, and complete frozen-session policy boundary");
             Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
                                                 && HasStringHeading(invocation, "Coordinate System")) == 1
                   && HasExactlyOneLabeledProperty(

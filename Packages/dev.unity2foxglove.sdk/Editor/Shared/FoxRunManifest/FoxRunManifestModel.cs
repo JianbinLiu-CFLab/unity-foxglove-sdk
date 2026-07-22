@@ -22,8 +22,8 @@ namespace Unity.FoxgloveSDK.Editor
         public string Topic { get; }
         public float RateHz { get; }
         public string SchemaName { get; }
-        public int PublishMode { get; }
-        public int FlowMode { get; }
+        public int Policy { get; }
+        public int Flow { get; }
         public int Encoding { get; }
         public int ProtobufFieldNumber { get; }
         public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
@@ -51,12 +51,12 @@ namespace Unity.FoxgloveSDK.Editor
             string topic,
             float rateHz,
             string schemaName,
-            int publishMode,
+            int policy,
             float changeEpsilon,
             float forceIntervalSeconds,
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int flowMode = 0,
+            int flow = 1,
             int encoding = 2,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
@@ -79,8 +79,8 @@ namespace Unity.FoxgloveSDK.Editor
             Topic = topic ?? string.Empty;
             RateHz = rateHz;
             SchemaName = schemaName ?? string.Empty;
-            PublishMode = publishMode;
-            FlowMode = flowMode;
+            Policy = policy;
+            Flow = flow;
             Encoding = encoding;
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
@@ -141,7 +141,7 @@ namespace Unity.FoxgloveSDK.Editor
                 member.Topic,
                 member.RateHz,
                 member.SchemaName,
-                member.PublishMode,
+                member.Policy,
                 member.ChangeEpsilon,
                 member.ForceIntervalSeconds,
                 member.IsAggregateMember,
@@ -270,7 +270,7 @@ namespace Unity.FoxgloveSDK.Editor
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string Topic { get; }
-        public string FlowMode { get; }
+        public string Flow { get; }
         public string DeclaredProvider { get; }
         public string Ros2Qos { get; }
         public bool SupportsWebSocket { get; }
@@ -287,7 +287,7 @@ namespace Unity.FoxgloveSDK.Editor
             string declaringType,
             string memberName,
             string topic,
-            string flowMode,
+            string flow,
             string declaredProvider,
             string ros2Qos,
             bool supportsWebSocket,
@@ -303,7 +303,7 @@ namespace Unity.FoxgloveSDK.Editor
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
-            FlowMode = flowMode ?? string.Empty;
+            Flow = flow ?? string.Empty;
             DeclaredProvider = declaredProvider ?? string.Empty;
             Ros2Qos = ros2Qos ?? string.Empty;
             SupportsWebSocket = supportsWebSocket;
@@ -321,14 +321,14 @@ namespace Unity.FoxgloveSDK.Editor
     /// <summary>
     /// Direction-neutral manifest metadata for a supported custom DTO that has
     /// a generated ROS2 native registration. This is intentionally not named a
-    /// subscription binding because PublishOnly custom contracts are included.
+    /// subscription binding because Publish custom contracts are included.
     /// </summary>
     public sealed class FoxRunManifestCustomNativeContract
     {
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string Topic { get; }
-        public string FlowMode { get; }
+        public string Flow { get; }
         public string DeclaredProvider { get; }
         public string Ros2Qos { get; }
         public bool SupportsRos2Native { get; }
@@ -340,7 +340,7 @@ namespace Unity.FoxgloveSDK.Editor
             string declaringType,
             string memberName,
             string topic,
-            string flowMode,
+            string flow,
             string declaredProvider,
             string ros2Qos,
             bool supportsRos2Native,
@@ -351,7 +351,7 @@ namespace Unity.FoxgloveSDK.Editor
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
-            FlowMode = flowMode ?? string.Empty;
+            Flow = flow ?? string.Empty;
             DeclaredProvider = declaredProvider ?? string.Empty;
             Ros2Qos = ros2Qos ?? string.Empty;
             SupportsRos2Native = supportsRos2Native;
@@ -399,7 +399,7 @@ namespace Unity.FoxgloveSDK.Editor
         public string ContractHash { get; }
         public string BindingHash { get; }
         public string PolicyHash { get; }
-        public string FlowMode { get; }
+        public string Flow { get; }
         public IReadOnlyList<FoxRunManifestField> Fields { get; }
         public FoxRunManifestPolicy Policy { get; }
 
@@ -413,7 +413,7 @@ namespace Unity.FoxgloveSDK.Editor
             string policyHash,
             IReadOnlyList<FoxRunManifestField> fields,
             FoxRunManifestPolicy policy,
-            string flowMode = "PublishOnly")
+            string flow = "Publish")
         {
             DeclaringType = declaringType ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -422,7 +422,7 @@ namespace Unity.FoxgloveSDK.Editor
             ContractHash = contractHash ?? string.Empty;
             BindingHash = bindingHash ?? string.Empty;
             PolicyHash = policyHash ?? string.Empty;
-            FlowMode = string.IsNullOrWhiteSpace(flowMode) ? "PublishOnly" : flowMode;
+            Flow = string.IsNullOrWhiteSpace(flow) ? "Publish" : flow;
             Fields = new List<FoxRunManifestField>(fields ?? Array.Empty<FoxRunManifestField>()).AsReadOnly();
             Policy = policy ?? throw new ArgumentNullException(nameof(policy));
         }

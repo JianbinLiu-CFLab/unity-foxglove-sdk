@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// <summary>Publishing rate in Hz.</summary>
             public readonly float RateHz;
             /// <summary>Publish mode as int enum value.</summary>
-            public readonly int PublishMode;
+            public readonly int Policy;
             public readonly int Mode;
             public readonly int Encoding;
             public readonly int SubscriptionProvider;
@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+                int policy = 1, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.Editor
                 Topic = topic;
                 RateHz = rate;
                 SchemaName = schema;
-                PublishMode = publishMode;
+                Policy = policy;
                 Mode = mode;
                 Encoding = encoding;
                 SubscriptionProvider = subscriptionProvider;
@@ -111,7 +111,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+                int policy = 1, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             {
                 if (LooksLikeArrayType(rawType))
                     throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
@@ -128,7 +128,7 @@ namespace Unity.FoxgloveSDK.Editor
                 SchemaName = schema;
                 Ns = "";
                 ClassName = "";
-                PublishMode = publishMode;
+                Policy = policy;
                 Mode = mode;
                 Encoding = encoding;
                 SubscriptionProvider = subscriptionProvider;
@@ -175,7 +175,7 @@ namespace Unity.FoxgloveSDK.Editor
                     Topic,
                     SchemaName,
                     RateHz,
-                    PublishMode,
+                    Policy,
                     ChangeEpsilon,
                     ForceIntervalSeconds,
                     RawMemberOrder,

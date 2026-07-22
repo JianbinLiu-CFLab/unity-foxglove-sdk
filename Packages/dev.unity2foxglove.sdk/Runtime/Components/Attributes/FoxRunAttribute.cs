@@ -10,22 +10,6 @@ using System;
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
-    /// Declares the data-flow direction for a <see cref="FoxRunAttribute"/>
-    /// topic. Publishing remains the default for backward compatibility.
-    /// </summary>
-    public enum FoxRunMode
-    {
-        /// <summary>Current FoxRun behavior: Unity publishes the member value.</summary>
-        PublishOnly = 0,
-
-        /// <summary>Inbound-only control surface; no generated publish path.</summary>
-        SubscribeOnly = 1,
-
-        /// <summary>Advanced bidirectional state sync; publish path remains enabled.</summary>
-        PublishAndSubscribe = 2
-    }
-
-    /// <summary>
     /// Marks a field or property for source-generated publishing as a Foxglove
     /// topic. The containing <c>MonoBehaviour</c> must be declared
     /// <c>partial</c> so the generator can add the publish implementation.
@@ -36,24 +20,28 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Foxglove topic name (e.g. "/debug/pose").</summary>
         public string Topic { get; }
 
-        /// <summary>Publish rate in Hz (default 10).</summary>
-        public float RateHz { get; set; } = 10f;
+        /// <summary>
+        /// Optional update rate in Hz. A positive value limits publication and
+        /// main-thread input application; the omitted sentinel resolves to
+        /// 10 Hz for output and the frozen Manager default apply rate for input.
+        /// </summary>
+        public float RateHz { get; set; } = -1f;
 
         /// <summary>Optional Foxglove schema name. If empty, publishes schemaless JSON.</summary>
         public string SchemaName { get; set; }
 
         /// <summary>
-        /// Publish mode: FixedRate (default), OnChange, OnChangeOrInterval, or
-        /// OnTrigger. OnTrigger topics publish only when generated trigger
+        /// Scheduling policy: FixedRate (default), Change, ChangeOrInterval,
+        /// or Trigger. Trigger topics publish only when generated trigger
         /// methods are called explicitly by user code.
         /// </summary>
-        public FoxRunPublishMode PublishMode { get; set; } = FoxRunPublishMode.FixedRate;
+        public FoxRunPolicy Policy { get; set; } = FoxRunPolicy.FixedRate;
 
         /// <summary>
-        /// Data-flow mode for this topic. The default keeps existing FoxRun
-        /// members publish-only; inbound modes explicitly expose a control surface.
+        /// Data-flow mode for this topic. Publish is the default; inbound modes
+        /// explicitly expose a control surface.
         /// </summary>
-        public FoxRunMode Mode { get; set; } = FoxRunMode.PublishOnly;
+        public FoxRunFlow Mode { get; set; } = FoxRunFlow.Publish;
 
         /// <summary>
         /// Declared wire encoding for this topic. The default is resolved by
@@ -83,7 +71,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Epsilon for float/double/Vector change detection. Negative treated as 0.</summary>
         public float ChangeEpsilon { get; set; } = 0f;
 
-        /// <summary>Heartbeat interval in seconds for OnChangeOrInterval mode. Non-positive disables.</summary>
+        /// <summary>Heartbeat interval in seconds for ChangeOrInterval. Non-positive disables.</summary>
         public float ForceIntervalSeconds { get; set; } = 0f;
 
         /// <summary>Optional bool field, property, or zero-argument method that must be true to publish.</summary>

@@ -126,8 +126,8 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(reader.Contains("isValueType: BoolValue(member, \"isValueType\")", StringComparison.Ordinal),
                 "134-32F-1: descriptor JSON reader preserves isValueType");
-            Check(reader.Contains("FoxRunPublishMode.OnChange", StringComparison.Ordinal)
-                  && !reader.Contains("case \"OnChange\": return 1;", StringComparison.Ordinal),
+            Check(reader.Contains("FoxRunPolicy.Change", StringComparison.Ordinal)
+                  && !reader.Contains("case \"Change\": return 1;", StringComparison.Ordinal),
                 "134-32F-2: descriptor JSON reader maps publish modes through the runtime enum");
         }
 

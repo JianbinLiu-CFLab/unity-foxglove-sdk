@@ -14,7 +14,7 @@ namespace Unity.FoxgloveSDK.Components
         private FoxRunWireEncoding _activeFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
         private bool _hasActiveFoxRunPublishEncoding;
 
-        /// <summary>Serialized default used by inherited PublishOnly contracts.</summary>
+        /// <summary>Serialized default used by inherited Publish contracts.</summary>
         public FoxRunWireEncoding DefaultFoxRunPublishEncoding
         {
             get => _defaultFoxRunPublishEncoding == FoxRunWireEncoding.Inherit

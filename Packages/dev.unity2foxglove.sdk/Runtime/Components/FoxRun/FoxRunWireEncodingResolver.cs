@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public static FoxRunWireEncoding Resolve(
             FoxRunWireEncoding declaredEncoding,
-            FoxRunMode mode,
+            FoxRunFlow mode,
             FoxRunWireEncoding publishDefault,
             FoxRunWireEncoding subscriptionDefault)
         {
@@ -46,11 +46,11 @@ namespace Unity.FoxgloveSDK.Components
 
             switch (mode)
             {
-                case FoxRunMode.PublishOnly:
+                case FoxRunFlow.Publish:
                     return ValidateManagerDefault(publishDefault);
-                case FoxRunMode.SubscribeOnly:
+                case FoxRunFlow.Subscribe:
                     return ValidateManagerDefault(subscriptionDefault);
-                case FoxRunMode.PublishAndSubscribe:
+                case FoxRunFlow.PublishAndSubscribe:
                     throw new ArgumentException(
                         "PublishAndSubscribe requires an explicit Protobuf or Json encoding.",
                         nameof(declaredEncoding));

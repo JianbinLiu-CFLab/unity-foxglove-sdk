@@ -45,8 +45,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("publishDefault = concrete", StringComparison.Ordinal)
                   && helper.Contains("subscriptionDefault = concrete", StringComparison.Ordinal),
                 "176A-1: legacy one-default serialization migrates into directional publish and subscription defaults in player-safe deserialization");
-            Check(resolver.Contains("FoxRunMode.PublishOnly", StringComparison.Ordinal)
-                  && resolver.Contains("FoxRunMode.SubscribeOnly", StringComparison.Ordinal)
+            Check(resolver.Contains("FoxRunFlow.Publish", StringComparison.Ordinal)
+                  && resolver.Contains("FoxRunFlow.Subscribe", StringComparison.Ordinal)
                   && resolver.Contains("PublishAndSubscribe requires an explicit", StringComparison.Ordinal),
                 "176A-2: inherited contracts resolve by direction and bidirectional contracts require one explicit encoding");
         }
@@ -100,7 +100,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && subscriptionProtocolLabels.Contains("ROS2 Native (R2FU)", StringComparison.Ordinal)
                   && subscribe.Contains("Native Copied-Message Budget", StringComparison.Ordinal)
                   && subscribe.Contains("ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled", StringComparison.Ordinal)
-                  && subscribe.Contains("Subscription Rate Limit Hz (per Topic)", StringComparison.Ordinal)
+                  && subscribe.Contains("Maximum Accepted Rate Hz (per Topic)", StringComparison.Ordinal)
+                  && subscribe.Contains("Default Apply Rate Hz", StringComparison.Ordinal)
                   && !inbound.Contains("[Header(\"FoxRun Subscription Control\")]", StringComparison.Ordinal)
                   && publish.Contains("Component Publisher Encoding", StringComparison.Ordinal)
                   && publish.Contains("Allow Component Publisher Override", StringComparison.Ordinal)

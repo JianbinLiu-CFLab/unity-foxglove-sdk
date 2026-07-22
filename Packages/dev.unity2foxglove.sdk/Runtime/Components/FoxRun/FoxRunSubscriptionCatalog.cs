@@ -77,7 +77,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     ["declaringType"] = contract.DeclaringType,
                     ["topic"] = contract.Topic,
-                    ["flowMode"] = contract.FlowMode,
+                    ["flow"] = contract.Flow,
                     ["encoding"] = FoxRunWireEncodingResolver.ToProtocolEncoding(entry.EffectiveEncoding),
                     ["schemaName"] = contract.SchemaName,
                     ["rateHz"] = contract.RateHz,
@@ -115,13 +115,13 @@ namespace Unity.FoxgloveSDK.Components
 
                 foreach (var group in type.Contracts
                              .Where(contract => contract != null
-                                                && IsSubscriptionFlow(contract.FlowMode)
+                                                && IsSubscriptionFlow(contract.Flow)
                                                 && IsWebSocketEncoding(contract.Encoding))
-                             .GroupBy(contract => new ContractKey(contract.Topic, contract.FlowMode)))
+                             .GroupBy(contract => new ContractKey(contract.Topic, contract.Flow)))
                 {
                     var variants = group.ToArray();
                     var declared = ResolveDeclaredEncoding(variants);
-                    var mode = ParseFlowMode(group.Key.FlowMode);
+                    var mode = ParseFlow(group.Key.Flow);
                     if (!ResolvesToWebSocket(
                             manifest,
                             variants,
@@ -147,7 +147,7 @@ namespace Unity.FoxgloveSDK.Components
         private static bool ResolvesToWebSocket(
             FoxRunSchemaManifestInfo manifest,
             IReadOnlyList<FoxRunSchemaContractInfo> contracts,
-            FoxRunMode mode,
+            FoxRunFlow mode,
             FoxRunWireEncoding declaredEncoding,
             FoxRunSubscriptionProvider defaultProvider)
         {
@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Components
                 .Where(binding => binding != null
                                   && string.Equals(binding.DeclaringType, contract.DeclaringType, StringComparison.Ordinal)
                                   && string.Equals(binding.Topic, contract.Topic, StringComparison.Ordinal)
-                                  && string.Equals(binding.FlowMode, contract.FlowMode, StringComparison.Ordinal))
+                                  && string.Equals(binding.Flow, contract.Flow, StringComparison.Ordinal))
                 .OrderBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToArray();
             if (bindings.Length == 0)
@@ -263,21 +263,21 @@ namespace Unity.FoxgloveSDK.Components
                 : hasProtobuf ? FoxRunWireEncoding.Protobuf : FoxRunWireEncoding.Json;
         }
 
-        private static bool IsSubscriptionFlow(string flowMode)
-            => string.Equals(flowMode, "SubscribeOnly", StringComparison.Ordinal)
-               || string.Equals(flowMode, "PublishAndSubscribe", StringComparison.Ordinal);
+        private static bool IsSubscriptionFlow(string flow)
+            => string.Equals(flow, "Subscribe", StringComparison.Ordinal)
+               || string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal);
 
         private static bool IsWebSocketEncoding(string encoding)
             => string.Equals(encoding, "json", StringComparison.Ordinal)
                || string.Equals(encoding, "protobuf", StringComparison.Ordinal);
 
-        private static FoxRunMode ParseFlowMode(string flowMode)
+        private static FoxRunFlow ParseFlow(string flow)
         {
-            if (string.Equals(flowMode, "SubscribeOnly", StringComparison.Ordinal))
-                return FoxRunMode.SubscribeOnly;
-            if (string.Equals(flowMode, "PublishAndSubscribe", StringComparison.Ordinal))
-                return FoxRunMode.PublishAndSubscribe;
-            throw new ArgumentException("Unsupported FoxRun subscription flow mode: " + (flowMode ?? string.Empty), nameof(flowMode));
+            if (string.Equals(flow, "Subscribe", StringComparison.Ordinal))
+                return FoxRunFlow.Subscribe;
+            if (string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal))
+                return FoxRunFlow.PublishAndSubscribe;
+            throw new ArgumentException("Unsupported FoxRun subscription flow mode: " + (flow ?? string.Empty), nameof(flow));
         }
 
         private readonly struct CatalogContract
@@ -294,18 +294,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly struct ContractKey : IEquatable<ContractKey>
         {
-            public ContractKey(string topic, string flowMode)
+            public ContractKey(string topic, string flow)
             {
                 Topic = topic ?? string.Empty;
-                FlowMode = flowMode ?? string.Empty;
+                Flow = flow ?? string.Empty;
             }
 
             public string Topic { get; }
-            public string FlowMode { get; }
+            public string Flow { get; }
 
             public bool Equals(ContractKey other)
                 => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
-                   && string.Equals(FlowMode, other.FlowMode, StringComparison.Ordinal);
+                   && string.Equals(Flow, other.Flow, StringComparison.Ordinal);
 
             public override bool Equals(object obj) => obj is ContractKey other && Equals(other);
 
@@ -314,7 +314,7 @@ namespace Unity.FoxgloveSDK.Components
                 unchecked
                 {
                     var hash = StringComparer.Ordinal.GetHashCode(Topic);
-                    return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(FlowMode);
+                    return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(Flow);
                 }
             }
         }
@@ -344,7 +344,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 ["declaringType"] = TypeSchema("string"),
                 ["topic"] = TypeSchema("string"),
-                ["flowMode"] = TypeSchema("string"),
+                ["flow"] = TypeSchema("string"),
                 ["encoding"] = TypeSchema("string"),
                 ["schemaName"] = TypeSchema("string"),
                 ["rateHz"] = TypeSchema("number"),

@@ -364,10 +364,10 @@ using Unity.FoxgloveSDK.Components;
 /// </summary>
 public partial class EpsilonPolicyProbe
 {
-    [FoxRun(""/debug/epsilon/integer"", PublishMode = FoxRunPublishMode.OnChange, ChangeEpsilon = 1)]
+    [FoxRun(""/debug/epsilon/integer"", Policy = FoxRunPolicy.Change, ChangeEpsilon = 1)]
     public float integerLiteral;
 
-    [FoxRun(""/debug/epsilon/float"", PublishMode = FoxRunPublishMode.OnChange, ChangeEpsilon = 1f)]
+    [FoxRun(""/debug/epsilon/float"", Policy = FoxRunPolicy.Change, ChangeEpsilon = 1f)]
     public float floatLiteral;
 }
 ";

@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && message.Contains("AttributeTargets.Class", StringComparison.Ordinal)
                   && message.Contains("AllowMultiple = false", StringComparison.Ordinal)
                   && message.Contains("public string Topic { get; }", StringComparison.Ordinal)
-                  && message.Contains("public FoxRunPublishMode PublishMode", StringComparison.Ordinal),
+                  && message.Contains("public FoxRunPolicy Policy", StringComparison.Ordinal),
                 "FoxRunMessage is a single class-level aggregate topic attribute with cadence options");
 
             Check(field.Contains("public sealed class FoxRunFieldAttribute", StringComparison.Ordinal)

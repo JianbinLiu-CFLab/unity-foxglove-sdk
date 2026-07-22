@@ -64,13 +64,13 @@ namespace Unity.FoxgloveSDK.Editor
                                  // A custom DTO P&S contract has native input
                                  // but still deliberately exposes its selected
                                  // JSON/Protobuf contract as WebSocket output.
-                                 // SubscribeOnly native contracts remain absent
+                                 // Subscribe native contracts remain absent
                                  // so this never creates a fallback input path.
                                  && (!string.Equals(
                                          member.SubscriptionProvider,
                                          FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
                                          StringComparison.Ordinal)
-                                     || member.FlowMode == 2))
+                                     || member.Flow == (int)FoxRunFlow.PublishAndSubscribe))
                 .GroupBy(DeclaringType)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .Select(group => new FoxRunManifestType(group.Key, BuildContracts(group.Key, group.ToList())))
@@ -82,12 +82,13 @@ namespace Unity.FoxgloveSDK.Editor
             IReadOnlyList<FoxRunManifestMember> members)
         {
             return members
-                .Where(member => member.FlowMode == 1 || member.FlowMode == 2)
+                .Where(member => member.Flow == (int)FoxRunFlow.Subscribe
+                                 || member.Flow == (int)FoxRunFlow.PublishAndSubscribe)
                 .Select(member => new FoxRunManifestSubscriptionBinding(
                     DeclaringType(member),
                     member.MemberName,
                     member.Topic,
-                    FoxRunGenerationMember.ModeToName(member.FlowMode),
+                    FoxRunGenerationMember.FlowToName(member.Flow),
                     member.SubscriptionProvider,
                     member.Ros2Qos,
                     member.GeneratesWebSocketCodec,
@@ -116,7 +117,7 @@ namespace Unity.FoxgloveSDK.Editor
                     DeclaringType(member),
                     member.MemberName,
                     member.Topic,
-                    FoxRunGenerationMember.ModeToName(member.FlowMode),
+                    FoxRunGenerationMember.FlowToName(member.Flow),
                     member.SubscriptionProvider,
                     member.Ros2Qos,
                     true,
@@ -211,14 +212,14 @@ namespace Unity.FoxgloveSDK.Editor
                 .ToList();
             ValidateJsonFieldNames(declaringType, key, fields);
             var policy = BuildPolicy(members);
-            var flowMode = BuildFlowMode(members);
+            var flow = BuildFlow(members);
             var contractHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteContractHashInput(
                     declaringType,
                     key.SchemaName,
                     key.Encoding,
                     fields,
-                    flowMode));
+                    flow));
             var bindingHash = FoxRunManifestHasher.Sha256Hex(
                 FoxRunManifestJsonWriter.WriteBindingHashInput(
                     declaringType,
@@ -238,7 +239,7 @@ namespace Unity.FoxgloveSDK.Editor
                 policyHash,
                 fields.AsReadOnly(),
                 policy,
-                flowMode);
+                flow);
         }
 
         private static FoxRunManifestField BuildField(FoxRunManifestMember member, bool includeProtobufFieldNumber)
@@ -322,26 +323,26 @@ namespace Unity.FoxgloveSDK.Editor
         private static FoxRunManifestPolicy BuildPolicy(IReadOnlyList<FoxRunManifestMember> members)
         {
             return new FoxRunManifestPolicy(
-                PublishModeName(TopicPublishMode(members)),
+                PolicyName(TopicPolicy(members)),
                 members.Count == 0 ? 0f : members.Max(member => NormalizeRateHz(member.RateHz)),
                 members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ChangeEpsilon)),
                 members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ForceIntervalSeconds)));
         }
 
-        private static string BuildFlowMode(IReadOnlyList<FoxRunManifestMember> members)
+        private static string BuildFlow(IReadOnlyList<FoxRunManifestMember> members)
         {
-            var modes = members.Select(member => member.FlowMode).Distinct().ToList();
+            var modes = members.Select(member => member.Flow).Distinct().ToList();
             if (modes.Count > 1)
                 throw new InvalidOperationException("FoxRun topic has mixed data-flow modes.");
 
-            return FoxRunGenerationMember.ModeToName(modes.Count == 0 ? 0 : modes[0]);
+            return FoxRunGenerationMember.FlowToName(modes.Count == 0 ? 1 : modes[0]);
         }
 
         private static float NormalizeRateHz(float rateHz)
         {
-            if (float.IsNaN(rateHz) || float.IsInfinity(rateHz) || rateHz <= 0f)
-                return 0f;
-            return rateHz;
+            return !float.IsNaN(rateHz) && !float.IsInfinity(rateHz) && rateHz > 0f
+                ? rateHz
+                : 10f;
         }
 
         private static float NormalizeNonNegative(float value)
@@ -351,31 +352,31 @@ namespace Unity.FoxgloveSDK.Editor
             return value;
         }
 
-        private static int TopicPublishMode(IReadOnlyList<FoxRunManifestMember> members)
+        private static int TopicPolicy(IReadOnlyList<FoxRunManifestMember> members)
         {
-            var invalid = members.FirstOrDefault(member => member.PublishMode < 0 || member.PublishMode > 3);
+            var invalid = members.FirstOrDefault(member => member.Policy < 1 || member.Policy > 4);
             if (invalid != null)
                 throw new InvalidOperationException(
-                    "FoxRun manifest publish mode is outside the supported range 0..3 for " +
+                    "FoxRun manifest Policy is outside the supported range 1..4 for " +
                     DeclaringType(invalid) + "." + invalid.MemberName + ".");
 
-            if (members.Any(member => member.PublishMode == 3))
+            if (members.Any(member => member.Policy == 4))
+                return 4;
+            if (members.Any(member => member.Policy == 3))
                 return 3;
-            if (members.Any(member => member.PublishMode == 2))
+            if (members.Any(member => member.Policy == 2))
                 return 2;
-            if (members.Any(member => member.PublishMode == 1))
-                return 1;
-            return members.Count == 0 ? 0 : members.Max(member => member.PublishMode);
+            return members.Count == 0 ? 1 : members.Max(member => member.Policy);
         }
 
-        private static string PublishModeName(int mode)
+        private static string PolicyName(int policy)
         {
-            switch (mode)
+            switch (policy)
             {
-                case 0: return "FixedRate";
-                case 1: return "OnChange";
-                case 2: return "OnChangeOrInterval";
-                case 3: return "OnTrigger";
+                case 1: return "FixedRate";
+                case 2: return "Change";
+                case 3: return "ChangeOrInterval";
+                case 4: return "Trigger";
                 default: return "Unknown";
             }
         }

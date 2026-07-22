@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Components
                 ActiveFoxRunPublishEncoding,
                 subscriptionPolicy.WebSocketSubscriptionEncoding,
                 subscriptionPolicy.DefaultProvider,
-                subscriptionPolicy.MainThreadApplyRateLimitHz,
+                subscriptionPolicy.DefaultMainThreadApplyRateHz,
                 requestedTopic,
                 includeDescriptor);
         }

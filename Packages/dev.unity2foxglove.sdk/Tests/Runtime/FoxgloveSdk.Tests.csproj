@@ -173,6 +173,7 @@
     <Compile Include="FoxRunRos2NativeSubscriptionValidation.cs" />
     <Compile Include="DataTransportInspectorValidation.cs" />
     <Compile Include="FoxRunCustomRos2InterfaceValidation.cs" />
+    <Compile Include="FoxRunDeclarationModelValidation.cs" />
     <Compile Include="Phase163_2Validation.cs" />
     <Compile Include="Phase163_3Validation.cs" />
     <Compile Include="Phase163_4Validation.cs" />

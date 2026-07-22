@@ -51,30 +51,30 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         [FoxRun("/debug/value", RateHz = 5f)]
         public float _value;
 
-        [FoxRun("/debug/value", PublishMode = FoxRunPublishMode.OnChange, ChangeEpsilon = 0.01f)]
+        [FoxRun("/debug/value", Policy = FoxRunPolicy.Change, ChangeEpsilon = 0.01f)]
         public float _valueMirror { get; set; }
 
 #if FOXRUN_FIXTURE_EXTRA
         [FoxRun("/debug/extra", RateHz = 0f)]
         public string _extra;
 
-        [FoxRun("/debug/trigger", PublishMode = FoxRunPublishMode.OnTrigger)]
+        [FoxRun("/debug/trigger", Policy = FoxRunPolicy.Trigger)]
         public int _trigger;
 
-        [FoxRun("/debug/array", PublishMode = FoxRunPublishMode.OnChange)]
+        [FoxRun("/debug/array", Policy = FoxRunPolicy.Change)]
         public float[] _samples;
 
-        [FoxRun("/debug/list", PublishMode = FoxRunPublishMode.OnChange)]
+        [FoxRun("/debug/list", Policy = FoxRunPolicy.Change)]
         public List<float> _sampleList;
 
-        [FoxRun("/debug/nullable", PublishMode = FoxRunPublishMode.OnChange)]
+        [FoxRun("/debug/nullable", Policy = FoxRunPolicy.Change)]
         public int? _optionalCount;
 
         // Nested custom payloads are intentionally not a valid FoxRun contract field after the
         // fail-fast diagnostics added for IL2CPP-safe generation.
         public Nested _nested;
 
-        [FoxRun("/debug/vector", PublishMode = FoxRunPublishMode.OnChange, ChangeEpsilon = 0.001f)]
+        [FoxRun("/debug/vector", Policy = FoxRunPolicy.Change, ChangeEpsilon = 0.001f)]
         public UnityEngine.Vector3 _position;
 #endif
     }

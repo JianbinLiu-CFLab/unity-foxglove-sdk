@@ -55,7 +55,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "std_msgs.msg.String", "global::std_msgs.msg.String",
                     false, false, "", "/demo/input", "std_msgs/msg/String",
-                    10f, 0, 0f, 0f, 1, "", mode: 1, encoding: provider == 1 ? 2 : 0,
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.Subscribe, encoding: provider == 1 ? 2 : 0,
                     protobufTypeShape: BuildStringProtobufShape(),
                     subscriptionProvider: provider, ros2Qos: qos,
                     generatesWebSocketCodec: generatesWebSocketCodec,
@@ -68,7 +69,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "std_msgs.msg.String", "global::std_msgs.msg.String",
                     false, false, "", "/demo/input", "std_msgs/msg/String",
-                    10f, 0, 0f, 0f, 1, "", mode: 1, encoding: provider == 1 ? 2 : 0,
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.Subscribe, encoding: provider == 1 ? 2 : 0,
                     protobufTypeShape: BuildStringProtobufShape(),
                     subscriptionProvider: provider, ros2Qos: qos,
                     generatesWebSocketCodec: generatesWebSocketCodec,
@@ -129,7 +131,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             {
                 new FoxRunRoslynGenerationMember(
                     "Demo", "Host", "Payload", "field", "Demo.CustomPayload", "global::Demo.CustomPayload",
-                    false, false, "", "/custom", "", 10f, 0, 0f, 0f, 1, "", mode: 2,
+                    false, false, "", "/custom", "", 10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.PublishAndSubscribe,
                     encoding: 2, subscriptionProvider: 2, ros2Qos: 0,
                     generatesWebSocketCodec: true, generatesRos2NativeRegistration: false,
                     ros2CustomDtoShape: customShape,
@@ -139,7 +142,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             {
                 new FoxRunReflectionGenerationMember(
                     "Demo", "Host", "Payload", "field", "Demo.CustomPayload", "global::Demo.CustomPayload",
-                    false, false, "", "/custom", "", 10f, 0, 0f, 0f, 1, "", mode: 2,
+                    false, false, "", "/custom", "", 10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.PublishAndSubscribe,
                     encoding: 2, subscriptionProvider: 2, ros2Qos: 0,
                     generatesWebSocketCodec: true, generatesRos2NativeRegistration: false,
                     ros2CustomDtoShape: customShape,
@@ -165,7 +169,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "sensor_msgs.msg.Imu", "global::sensor_msgs.msg.Imu",
                     false, false, "", "/imu", "sensor_msgs/msg/Imu",
-                    10f, 0, 0f, 0f, 1, "", mode: 1, encoding: 0,
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.Subscribe, encoding: 0,
                     subscriptionProvider: 2, ros2Qos: 3,
                     generatesWebSocketCodec: false,
                     generatesRos2NativeRegistration: true,
@@ -177,7 +182,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "sensor_msgs.msg.Imu", "global::sensor_msgs.msg.Imu",
                     false, false, "", "/imu", "sensor_msgs/msg/Imu",
-                    10f, 0, 0f, 0f, 1, "", mode: 1, encoding: 0,
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.Subscribe, encoding: 0,
                     subscriptionProvider: 2, ros2Qos: 3,
                     generatesWebSocketCodec: false,
                     generatesRos2NativeRegistration: true,
@@ -199,7 +205,8 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                     "Demo", "Receiver", "_incoming", "field",
                     "sensor_msgs.msg.Imu", "global::sensor_msgs.msg.Imu",
                     false, false, "", "/imu", "sensor_msgs/msg/Imu",
-                    10f, 0, 0f, 0f, 1, "", mode: 1, encoding: 0,
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.Subscribe, encoding: 0,
                     subscriptionProvider: 2, ros2Qos: 3,
                     generatesWebSocketCodec: false,
                     generatesRos2NativeRegistration: true,
@@ -238,8 +245,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var nativeOnly = new FoxRunGenerationMember(
                 "Demo", "Receiver", "_incoming", "field",
                 "vendor_msgs.msg.NativeOnly", "global::vendor_msgs.msg.NativeOnly", "vendor_msgs.msg.NativeOnly",
-                false, false, "", "/demo/input", 10f, "vendor_msgs/msg/NativeOnly", 0, 0f, 0f,
-                "Roslyn", 1, "", mode: 1,
+                false, false, "", "/demo/input", 10f, "vendor_msgs/msg/NativeOnly",
+                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                "Roslyn", 1, "", mode: (int)FoxRunFlow.Subscribe,
                 encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
                 subscriptionProvider: subscriptionProvider,
                 ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
@@ -265,8 +273,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var member = new FoxRunGenerationMember(
                 "Demo", "Receiver", "_incoming", "field",
                 "Demo.CommandDto", "global::Demo.CommandDto", "Demo.CommandDto",
-                false, false, "", "/demo/input", 10f, "demo/CommandDto", 0, 0f, 0f,
-                "Roslyn", 1, "", mode: 1,
+                false, false, "", "/demo/input", 10f, "demo/CommandDto",
+                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                "Roslyn", 1, "", mode: (int)FoxRunFlow.Subscribe,
                 encoding: FoxRunGenerationDescriptorConstants.ProtobufEncoding,
                 protobufTypeShape: protobufShape,
                 subscriptionProvider: FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
@@ -293,15 +302,17 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             int subscriptionProvider)
         {
             var topic = new TopicEntry(
-                "/demo/input", 10f, "demo/Unknown", 0, 0f, 0f,
-                mode: 1, encoding: 0, subscriptionProvider: subscriptionProvider, ros2Qos: 0);
+                "/demo/input", 10f, "demo/Unknown", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0,
+                subscriptionProvider: subscriptionProvider, ros2Qos: 0);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
                 typeName, "global::" + typeName,
                 false, false, "", 1, Location.None, new[] { topic });
             var reflectionData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeName, "/demo/input", 10f, "demo/Unknown",
-                mode: 1, encoding: 0, subscriptionProvider: subscriptionProvider, ros2Qos: 0);
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0,
+                subscriptionProvider: subscriptionProvider, ros2Qos: 0);
             var models = new[]
             {
                 FoxRunRoslynGenerationModelLowerer.Lower(sourceData.ToRoslynMembers()),
@@ -326,11 +337,11 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var shape = BuildShape("source-chain");
             var fixtureTypeName = typeof(ReflectionRos2StringFixture).FullName;
             var topic = new TopicEntry(
-                "/demo/input", 10f, "std_msgs/msg/String", 0, 0f, 0f,
-                mode: 1, encoding: 0, subscriptionProvider: 2, ros2Qos: 3);
+                "/demo/input", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0, subscriptionProvider: 2, ros2Qos: 3);
             var reflectedData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeof(ReflectionRos2StringFixture), "field", "Demo", "Receiver",
-                "/demo/input", 10f, "std_msgs/msg/String", mode: 1, encoding: 0,
+                "/demo/input", 10f, "std_msgs/msg/String", mode: (int)FoxRunFlow.Subscribe, encoding: 0,
                 subscriptionProvider: 2, ros2Qos: 3, ros2MessageShape: shape);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
@@ -356,11 +367,11 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var shape = BuildShape("explicit-native-dual");
             var fixtureTypeName = typeof(ReflectionRos2StringFixture).FullName;
             var topic = new TopicEntry(
-                "/demo/native", 10f, "std_msgs/msg/String", 0, 0f, 0f,
-                mode: 1, encoding: 0, subscriptionProvider: 2, ros2Qos: 3);
+                "/demo/native", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0, subscriptionProvider: 2, ros2Qos: 3);
             var reflectionData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeof(ReflectionRos2StringFixture), "field", "Demo", "Receiver",
-                "/demo/native", 10f, "std_msgs/msg/String", mode: 1, encoding: 0,
+                "/demo/native", 10f, "std_msgs/msg/String", mode: (int)FoxRunFlow.Subscribe, encoding: 0,
                 subscriptionProvider: 2, ros2Qos: 3, ros2MessageShape: shape);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
@@ -401,11 +412,11 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var shape = BuildShape("manifest-parity");
             var fixtureTypeName = typeof(ReflectionRos2StringFixture).FullName;
             var topic = new TopicEntry(
-                "/demo/input", 10f, "std_msgs/msg/String", 0, 0f, 0f,
-                mode: 1, encoding: 0, subscriptionProvider: 0, ros2Qos: 3);
+                "/demo/input", 10f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: 0, subscriptionProvider: 0, ros2Qos: 3);
             var reflectionData = new FoxrunCodeGenerator.MemberData(
                 "_incoming", typeof(ReflectionRos2StringFixture), "field", "Demo", "Receiver",
-                "/demo/input", 10f, "std_msgs/msg/String", mode: 1, encoding: 0,
+                "/demo/input", 10f, "std_msgs/msg/String", mode: (int)FoxRunFlow.Subscribe, encoding: 0,
                 subscriptionProvider: 0, ros2Qos: 3, ros2MessageShape: shape);
             var sourceData = new Unity.FoxgloveSDK.SourceGenerators.MemberData(
                 "Demo", "Receiver", true, "_incoming", "field",
@@ -446,7 +457,7 @@ namespace Demo
 {
     public partial class Receiver
     {
-        [FoxRun(""/demo/input"", Mode = FoxRunMode.SubscribeOnly, Encoding = FoxRunWireEncoding.Json,
+        [FoxRun(""/demo/input"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Json,
             SubscriptionProvider = FoxRunSubscriptionProvider.FoxgloveWebSocket,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         private string _incoming;
@@ -494,7 +505,8 @@ namespace Demo
                     "Demo", "Receiver", "_incoming", "field",
                     "std_msgs.msg.String", "global::std_msgs.msg.String",
                     false, false, "", "/demo/input", "std_msgs/msg/String",
-                    10f, 0, 0f, 0f, 1, "", mode: 1, encoding: provider == 1 ? 2 : 0,
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 1, "",
+                    mode: (int)FoxRunFlow.Subscribe, encoding: provider == 1 ? 2 : 0,
                     protobufTypeShape: BuildStringProtobufShape(),
                     subscriptionProvider: provider, ros2Qos: qos,
                     generatesWebSocketCodec: generatesWebSocketCodec,

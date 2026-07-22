@@ -12,7 +12,7 @@ namespace Unity.FoxgloveSDK.Tests
 {
     /// <summary>
     /// Validates the Manager-level default publish rate policy for ordinary
-    /// publishers while guarding FoxRun rate behavior from accidental changes.
+    /// publishers while guarding FoxRun direction-specific rate resolution.
     /// </summary>
     public static class Phase71Validation
     {
@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyPublisherRatePolicy();
             VerifyPublisherBaseRateResolution();
             VerifyPublisherInspectorUx();
-            VerifyFoxRunRateBehaviorUnchanged();
+            VerifyFoxRunRateResolution();
 
             Console.WriteLine($"Phase 71: {_passed} checks passed.");
         }
@@ -127,23 +127,26 @@ namespace Unity.FoxgloveSDK.Tests
                 "71D-6: publisher Inspector exposes effective rate summary");
         }
 
-        private static void VerifyFoxRunRateBehaviorUnchanged()
+        private static void VerifyFoxRunRateResolution()
         {
             var attrSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Attributes/FoxRunAttribute.cs");
             var generatorSource = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
-            var emitterSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs");
+            var generationModelSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
             var topicMetaSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TopicMetadataEmitter.cs");
             var hubSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
 
-            Check(attrSource.Contains("public float RateHz { get; set; } = 10f"),
-                "71E-1: FoxRunAttribute RateHz default remains 10");
-            Check(generatorSource.Contains("float rateHz = 10f") && generatorSource.Contains("named.Key == \"RateHz\""),
-                "71E-2: source generator still reads explicit FoxRun RateHz");
+            Check(attrSource.Contains("public float RateHz { get; set; } = -1f"),
+                "71E-1: FoxRunAttribute keeps an explicit unspecified RateHz sentinel");
+            Check(generatorSource.Contains("float rateHz = -1f") && generatorSource.Contains("named.Key == \"RateHz\""),
+                "71E-2: source generator preserves omitted and explicit FoxRun RateHz");
+            Check(generationModelSource.Contains("DeclaredRateHz = rateHz")
+                    && generationModelSource.Contains("RateHz = NormalizeRateHz(rateHz)"),
+                "71E-2a: generation model preserves declaration intent and resolves publish cadence separately");
             Check(topicMetaSource.Contains("fields.Max(m => m.RateHz)"),
-                "71E-3: shared emitter still emits FoxRun topic RateHz metadata");
+                "71E-3: shared emitter emits resolved FoxRun topic RateHz metadata");
             Check(hubSource.Contains("var rateHz = info.RateHz")
                     && hubSource.Contains("nonPositivePublishesEveryFrame: false"),
-                "71E-4: FoxgloveLogHub passes non-positive FoxRun RateHz through as disabled scheduled publish");
+                "71E-4: FoxgloveLogHub schedules from resolved metadata without invalid-rate per-frame fallback");
         }
 
         private static void VerifyPolicyResolve(

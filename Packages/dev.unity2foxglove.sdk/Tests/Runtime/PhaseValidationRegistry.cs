@@ -239,6 +239,8 @@ namespace Unity.FoxgloveSDK.Tests
                 evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural),
             Ci("--phase182", "FoxRun publish and inbound wire hardening", FoxRunWireHardeningValidation.Validate, includeInDefault: true,
                 evidence: ValidationEvidence.Structural),
+            Ci("--phase183a", "FoxRun declaration and full-duplex update policy", FoxRunDeclarationModelValidation.Validate, includeInDefault: true,
+                evidence: ValidationEvidence.Behavior | ValidationEvidence.Structural),
             Ci("--phase163-2", "Phase 163-2: phase163-2 review regression checks for FoxgloveManager lifecycle contracts", Phase163_2Validation.Validate, includeInDefault: false),
             Ci("--phase163-3", "Phase 163-3: phase163-3 review regression checks for session protocol and client routing", Phase163_3Validation.Validate, includeInDefault: false),
             Ci("--phase163-4", "Phase 163-4: phase163-4 review regression checks for registries, assets, parameters, and services", Phase163_4Validation.Validate, includeInDefault: false),

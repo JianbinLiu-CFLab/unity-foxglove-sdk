@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.Components
 
                     foreach (var group in type.Contracts
                                  .Where(contract => contract != null)
-                                 .GroupBy(contract => new ContractKey(contract.Topic, contract.FlowMode)))
+                                 .GroupBy(contract => new ContractKey(contract.Topic, contract.Flow)))
                     {
                         var contracts = group.ToList();
                         var hasJson = contracts.Any(contract => string.Equals(contract.Encoding, "json", StringComparison.Ordinal));
@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
                         var declared = hasJson && hasProtobuf
                             ? FoxRunWireEncoding.Inherit
                             : hasProtobuf ? FoxRunWireEncoding.Protobuf : FoxRunWireEncoding.Json;
-                        var mode = ParseFlowMode(group.Key.FlowMode);
+                        var mode = ParseFlow(group.Key.Flow);
                         var effective = FoxRunWireEncodingResolver.Resolve(
                             declared,
                             mode,
@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.Components
                         summaries.Add(new FoxRunTopicSummary(
                             type.DeclaringType,
                             contract.Topic,
-                            contract.FlowMode,
+                            contract.Flow,
                             declared,
                             effective,
                             contract.SchemaName));
@@ -227,18 +227,18 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly struct ContractKey : IEquatable<ContractKey>
         {
-            public ContractKey(string topic, string flowMode)
+            public ContractKey(string topic, string flow)
             {
                 Topic = topic ?? string.Empty;
-                FlowMode = flowMode ?? string.Empty;
+                Flow = flow ?? string.Empty;
             }
 
             public string Topic { get; }
-            public string FlowMode { get; }
+            public string Flow { get; }
 
             public bool Equals(ContractKey other)
                 => string.Equals(Topic, other.Topic, StringComparison.Ordinal)
-                   && string.Equals(FlowMode, other.FlowMode, StringComparison.Ordinal);
+                   && string.Equals(Flow, other.Flow, StringComparison.Ordinal);
 
             public override bool Equals(object obj) => obj is ContractKey other && Equals(other);
 
@@ -247,21 +247,21 @@ namespace Unity.FoxgloveSDK.Components
                 unchecked
                 {
                     var hash = StringComparer.Ordinal.GetHashCode(Topic);
-                    return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(FlowMode);
+                    return (hash * 397) ^ StringComparer.Ordinal.GetHashCode(Flow);
                 }
             }
         }
 
-        private static FoxRunMode ParseFlowMode(string flowMode)
+        private static FoxRunFlow ParseFlow(string flow)
         {
-            if (string.Equals(flowMode, "PublishOnly", StringComparison.Ordinal))
-                return FoxRunMode.PublishOnly;
-            if (string.Equals(flowMode, "SubscribeOnly", StringComparison.Ordinal))
-                return FoxRunMode.SubscribeOnly;
-            if (string.Equals(flowMode, "PublishAndSubscribe", StringComparison.Ordinal))
-                return FoxRunMode.PublishAndSubscribe;
+            if (string.Equals(flow, "Publish", StringComparison.Ordinal))
+                return FoxRunFlow.Publish;
+            if (string.Equals(flow, "Subscribe", StringComparison.Ordinal))
+                return FoxRunFlow.Subscribe;
+            if (string.Equals(flow, "PublishAndSubscribe", StringComparison.Ordinal))
+                return FoxRunFlow.PublishAndSubscribe;
 
-            throw new ArgumentException("Unsupported FoxRun flow mode: " + (flowMode ?? string.Empty), nameof(flowMode));
+            throw new ArgumentException("Unsupported FoxRun flow mode: " + (flow ?? string.Empty), nameof(flow));
         }
 
         private static bool IsGeneratedAggregateContract(FoxRunSchemaContractInfo contract)

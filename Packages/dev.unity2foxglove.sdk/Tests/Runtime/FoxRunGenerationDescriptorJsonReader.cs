@@ -45,7 +45,7 @@ namespace Unity.FoxgloveSDK.Tests
                         topic: StringValue(member, "topic"),
                         rateHz: FloatValue(member, "rateHz"),
                         schemaName: StringValue(member, "schemaName"),
-                        publishMode: PublishModeValue(member),
+                        policy: PolicyValue(member),
                         changeEpsilon: FloatValue(member, "changeEpsilon"),
                         forceIntervalSeconds: FloatValue(member, "forceIntervalSeconds"),
                         hostKind: StringValue(member, "hostKind"),
@@ -154,17 +154,17 @@ namespace Unity.FoxgloveSDK.Tests
             return Ros2MessageShapeValue(wrapper);
         }
 
-        private static int PublishModeValue(JObject member)
+        private static int PolicyValue(JObject member)
         {
-            var mode = StringValue(member, "publishMode");
+            var mode = StringValue(member, "policy");
             switch (mode)
             {
                 case "":
-                case "FixedRate": return (int)FoxRunPublishMode.FixedRate;
-                case "OnChange": return (int)FoxRunPublishMode.OnChange;
-                case "OnChangeOrInterval": return (int)FoxRunPublishMode.OnChangeOrInterval;
-                case "OnTrigger": return (int)FoxRunPublishMode.OnTrigger;
-                default: throw new InvalidOperationException("Unknown FoxRun publishMode: " + mode);
+                case "FixedRate": return (int)FoxRunPolicy.FixedRate;
+                case "Change": return (int)FoxRunPolicy.Change;
+                case "ChangeOrInterval": return (int)FoxRunPolicy.ChangeOrInterval;
+                case "Trigger": return (int)FoxRunPolicy.Trigger;
+                default: throw new InvalidOperationException("Unknown FoxRun policy: " + mode);
             }
         }
 
@@ -174,9 +174,9 @@ namespace Unity.FoxgloveSDK.Tests
             switch (mode)
             {
                 case "":
-                case "PublishOnly": return (int)FoxRunMode.PublishOnly;
-                case "SubscribeOnly": return (int)FoxRunMode.SubscribeOnly;
-                case "PublishAndSubscribe": return (int)FoxRunMode.PublishAndSubscribe;
+                case "Publish": return (int)FoxRunFlow.Publish;
+                case "Subscribe": return (int)FoxRunFlow.Subscribe;
+                case "PublishAndSubscribe": return (int)FoxRunFlow.PublishAndSubscribe;
                 default: throw new InvalidOperationException("Unknown FoxRun mode: " + mode);
             }
         }

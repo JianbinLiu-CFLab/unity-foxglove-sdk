@@ -212,7 +212,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic.Topic,
                 topic.SchemaName,
                 topic.RateHz,
-                topic.PublishMode,
+                topic.Policy,
                 topic.ChangeEpsilon,
                 topic.ForceIntervalSeconds,
                 RawMemberOrder,
@@ -273,10 +273,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly string Topic;
         /// <summary>Optional schema name from the attribute's named argument.</summary>
         public readonly string SchemaName;
-        /// <summary>Publishing rate in Hz (default 10).</summary>
+        /// <summary>Optional update rate in Hz.</summary>
         public readonly float RateHz;
-        /// <summary>Publish mode enum value.</summary>
-        public readonly int PublishMode;
+        /// <summary>Update policy enum value.</summary>
+        public readonly int Policy;
         public readonly int Mode;
         public readonly int Encoding;
         public readonly int SubscriptionProvider;
@@ -292,21 +292,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly string JsonFieldName;
 
         /// <summary>
-        /// Creates a topic entry with the given topic, rate, and schema (backward compat).
+        /// Creates a topic entry with the given topic, rate, and schema.
         /// </summary>
         public TopicEntry(string topic, float rate, string schema)
-            : this(topic, rate, schema, 0, 0f, 0f) { }
+            : this(topic, rate, schema, 1, 0f, 0f) { }
 
         /// <summary>
-        /// Creates a topic entry with publish policy.
+        /// Creates a topic entry with update policy.
         /// </summary>
         public TopicEntry(string topic, float rate, string schema,
-            int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
-            bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0,
+            int policy, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
+            bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0,
             int subscriptionProvider = 0, int ros2Qos = 0)
         {
             Topic = topic; RateHz = rate; SchemaName = schema;
-            PublishMode = publishMode;
+            Policy = policy;
             Mode = mode;
             Encoding = encoding;
             SubscriptionProvider = subscriptionProvider;

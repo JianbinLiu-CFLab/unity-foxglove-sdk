@@ -159,8 +159,8 @@ namespace Unity.FoxgloveSDK.Tests
                 () => new FoxgloveSchemaAttribute(" "),
                 "134-7G-1: blank schema names are rejected");
 
-            Check(!FoxRunPublishPolicy.ShouldPublish(
-                    (Unity.FoxgloveSDK.Components.FoxRunPublishMode)999,
+            Check(!FoxRunUpdatePolicy.ShouldPublish(
+                    (Unity.FoxgloveSDK.Components.FoxRunPolicy)999,
                     nowSec: 10d,
                     hasPreviousValue: true,
                     valueChanged: true,

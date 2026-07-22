@@ -36,13 +36,13 @@ namespace Unity.FoxgloveSDK.Components
                     continue;
                 }
 
-                var isPublish = string.Equals(contract.FlowMode, "PublishOnly", StringComparison.Ordinal)
-                                || string.Equals(contract.FlowMode, "PublishAndSubscribe", StringComparison.Ordinal);
+                var isPublish = string.Equals(contract.Flow, "Publish", StringComparison.Ordinal)
+                                || string.Equals(contract.Flow, "PublishAndSubscribe", StringComparison.Ordinal);
                 if (nativeOutputEnabled && isPublish)
                     return true;
 
-                var isSubscribe = string.Equals(contract.FlowMode, "SubscribeOnly", StringComparison.Ordinal)
-                                  || string.Equals(contract.FlowMode, "PublishAndSubscribe", StringComparison.Ordinal);
+                var isSubscribe = string.Equals(contract.Flow, "Subscribe", StringComparison.Ordinal)
+                                  || string.Equals(contract.Flow, "PublishAndSubscribe", StringComparison.Ordinal);
                 if (!subscriptionsEnabled || !isSubscribe)
                     continue;
 

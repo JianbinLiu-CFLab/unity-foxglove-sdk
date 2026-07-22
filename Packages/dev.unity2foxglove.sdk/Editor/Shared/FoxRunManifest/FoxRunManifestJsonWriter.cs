@@ -82,7 +82,7 @@ namespace Unity.FoxgloveSDK.Editor
             string schemaName,
             string encoding,
             IReadOnlyList<FoxRunManifestField> fields,
-            string flowMode = "PublishOnly")
+            string flow = "Publish")
         {
             var sb = new StringBuilder();
             sb.Append('{');
@@ -95,10 +95,10 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "encoding");
             AppendString(sb, encoding);
             sb.Append(',');
-            if (!IsDefaultFlowMode(flowMode))
+            if (!IsDefaultFlow(flow))
             {
-                AppendPropertyName(sb, "flowMode");
-                AppendString(sb, flowMode);
+                AppendPropertyName(sb, "flow");
+                AppendString(sb, flow);
                 sb.Append(',');
             }
             AppendPropertyName(sb, "fields");
@@ -269,8 +269,8 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "topic");
             AppendString(sb, binding.Topic);
             sb.Append(',');
-            AppendPropertyName(sb, "flowMode");
-            AppendString(sb, binding.FlowMode);
+            AppendPropertyName(sb, "flow");
+            AppendString(sb, binding.Flow);
             sb.Append(',');
             AppendPropertyName(sb, "declaredProvider");
             AppendString(sb, binding.DeclaredProvider);
@@ -368,11 +368,11 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             AppendPropertyName(sb, "policy");
             WritePolicy(sb, contract.Policy);
-            if (!IsDefaultFlowMode(contract.FlowMode))
+            if (!IsDefaultFlow(contract.Flow))
             {
                 sb.Append(',');
-                AppendPropertyName(sb, "flowMode");
-                AppendString(sb, contract.FlowMode);
+                AppendPropertyName(sb, "flow");
+                AppendString(sb, contract.Flow);
             }
             sb.Append('}');
         }
@@ -587,8 +587,8 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(value.ToString("G9", CultureInfo.InvariantCulture));
         }
 
-        private static bool IsDefaultFlowMode(string flowMode)
-            => string.IsNullOrWhiteSpace(flowMode)
-               || string.Equals(flowMode, "PublishOnly", StringComparison.Ordinal);
+        private static bool IsDefaultFlow(string flow)
+            => string.IsNullOrWhiteSpace(flow)
+               || string.Equals(flow, "Publish", StringComparison.Ordinal);
     }
 }

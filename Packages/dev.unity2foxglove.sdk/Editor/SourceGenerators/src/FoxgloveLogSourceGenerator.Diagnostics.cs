@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     /// </summary>
     internal static class Diags
     {
-        // Legacy FoxRun diagnostic IDs 023 through 044 are permanently retired and must never be reused.
+        // Legacy FoxRun diagnostic IDs 023 through 044 and unshipped ID 201 are permanently retired and must never be reused.
 
         #region FoxRun publish diagnostics (FOXRUN001-199)
 
@@ -43,8 +43,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         /// <summary>FOXRUN005: same-topic members have mixed publish policy settings.</summary>
         public static readonly DiagnosticDescriptor MixedTopicPolicy = new DiagnosticDescriptor(
-            "FOXRUN005", "Mixed same-topic PublishMode policy",
-            "Topic '{0}' has mixed PublishMode, ChangeEpsilon, or ForceIntervalSeconds values. Generated code uses OnTrigger precedence before scheduled policy settings.",
+            "FOXRUN005", "Mixed same-topic Policy policy",
+            "Topic '{0}' has mixed Policy, ChangeEpsilon, or ForceIntervalSeconds values. Generated code uses Trigger precedence before scheduled policy settings.",
             "FoxRun", DiagnosticSeverity.Warning, true);
 
         public static readonly DiagnosticDescriptor UnsupportedCanonicalType = new DiagnosticDescriptor(
@@ -82,7 +82,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun member name is required",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor InvalidPublishMode = new DiagnosticDescriptor(
+        public static readonly DiagnosticDescriptor InvalidPolicy = new DiagnosticDescriptor(
             "FOXRUN013", "FoxRun publish mode out of range",
             "{0}: FoxRun publish mode must be between 0 and 3",
             "FoxRun", DiagnosticSeverity.Error, true);
@@ -134,21 +134,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         #endregion
 
-        #region FoxRun SubscribeOnly diagnostics (FOXRUN200-399)
+        #region FoxRun Subscribe diagnostics (FOXRUN200-399)
 
         public static readonly DiagnosticDescriptor UnsupportedInboundShape = new DiagnosticDescriptor(
             "FOXRUN200", "Unsupported FoxRun inbound shape",
             "{0}: FoxRun inbound arrays and aggregate members are not supported",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor IgnoredSubscribePolicy = new DiagnosticDescriptor(
-            "FOXRUN201", "SubscribeOnly ignores publish policy",
-            "{0}: SubscribeOnly ignores publish timing options",
-            "FoxRun", DiagnosticSeverity.Warning, true);
-
         public static readonly DiagnosticDescriptor InboundNaming = new DiagnosticDescriptor(
             "FOXRUN202", "FoxRun inbound naming",
-            "{0}: SubscribeOnly member name should communicate input-port authority",
+            "{0}: Subscribe member name should communicate input-port authority",
             "FoxRun", DiagnosticSeverity.Warning, true);
 
         public static readonly DiagnosticDescriptor InboundTargetNotWritable = new DiagnosticDescriptor(
@@ -166,9 +161,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun SubscriptionProvider must be inherit, foxglove-websocket, or ros2-native",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor NativeSubscribeOnly = new DiagnosticDescriptor(
+        public static readonly DiagnosticDescriptor NativeSubscribe = new DiagnosticDescriptor(
             "FOXRUN205", "Native ROS2 subscription mode invalid",
-            "{0}: Ros2Native subscriptions are supported only for SubscribeOnly members",
+            "{0}: Ros2Native subscriptions are supported only for Subscribe members",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor NativeEncoding = new DiagnosticDescriptor(
@@ -211,8 +206,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription",
             "FoxRun", DiagnosticSeverity.Warning, true);
 
-        public static readonly DiagnosticDescriptor NativeProviderPublishOnly = new DiagnosticDescriptor(
-            "FOXRUN214", "Native subscription provider invalid for PublishOnly",
+        public static readonly DiagnosticDescriptor NativeProviderPublish = new DiagnosticDescriptor(
+            "FOXRUN214", "Native subscription provider invalid for Publish",
             "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
@@ -239,9 +234,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         #region FoxRun cross-direction diagnostics (FOXRUN600+)
 
-        public static readonly DiagnosticDescriptor InvalidFoxRunMode = new DiagnosticDescriptor(
+        public static readonly DiagnosticDescriptor InvalidFoxRunFlow = new DiagnosticDescriptor(
             "FOXRUN600", "FoxRun mode out of range",
-            "{0}: FoxRun mode must be PublishOnly, SubscribeOnly, or PublishAndSubscribe",
+            "{0}: FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor UnlessConditionMissing = new DiagnosticDescriptor(
@@ -282,6 +277,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public static readonly DiagnosticDescriptor CustomDtoMemberNotWritable = new DiagnosticDescriptor(
             "FOXRUN608", "Custom ROS2 DTO member not writable",
             "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor TriggerRateConflict = new DiagnosticDescriptor(
+            "FOXRUN609", "FoxRun Trigger rate conflict",
+            "{0}: FoxRun Trigger cannot be combined with an explicit positive RateHz",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         #endregion
@@ -367,7 +367,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN010": return BinaryType;
                 case "FOXRUN011": return MissingClassName;
                 case "FOXRUN012": return MissingMemberName;
-                case "FOXRUN013": return InvalidPublishMode;
+                case "FOXRUN013": return InvalidPolicy;
                 case "FOXRUN014": return InvalidMemberKind;
                 case "FOXRUN015": return ConditionMissing;
                 case "FOXRUN016": return ConditionNotBool;
@@ -380,10 +380,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN606": return CustomDtoShapeUnsupported;
                 case "FOXRUN607": return CustomDtoNonConstructible;
                 case "FOXRUN608": return CustomDtoMemberNotWritable;
+                case "FOXRUN609": return TriggerRateConflict;
                 case "FOXRUN401": return BidirectionalInheritedWireEncoding;
                 case "FOXRUN402": return CustomNativeBidirectionalContract;
                 case "FOXRUN204": return InvalidSubscriptionProvider;
-                case "FOXRUN205": return NativeSubscribeOnly;
+                case "FOXRUN205": return NativeSubscribe;
                 case "FOXRUN206": return NativeEncoding;
                 case "FOXRUN207": return Ros2MessageIdentity;
                 case "FOXRUN208": return Ros2MessageConstructor;
@@ -392,13 +393,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN211": return Ros2MessageShape;
                 case "FOXRUN212": return MissingNativeAssemblyReference;
                 case "FOXRUN213": return IgnoredRos2Qos;
-                case "FOXRUN214": return NativeProviderPublishOnly;
+                case "FOXRUN214": return NativeProviderPublish;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
-                case "FOXRUN600": return InvalidFoxRunMode;
+                case "FOXRUN600": return InvalidFoxRunFlow;
                 case "FOXRUN200": return UnsupportedInboundShape;
-                case "FOXRUN201": return IgnoredSubscribePolicy;
                 case "FOXRUN400": return BidirectionalAuthority;
                 case "FOXRUN202": return InboundNaming;
                 case "FOXRUN203": return SharedInboundTargetNotWritable;

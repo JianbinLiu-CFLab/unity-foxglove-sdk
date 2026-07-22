@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     member.Topic,
                     member.RateHz,
                     member.SchemaName,
-                    member.PublishMode,
+                    member.Policy,
                     member.ChangeEpsilon,
                     member.ForceIntervalSeconds,
                     "Roslyn",
@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly string Topic;
         public readonly string SchemaName;
         public readonly float RateHz;
-        public readonly int PublishMode;
+        public readonly int Policy;
         public readonly int Mode;
         public readonly int Encoding;
         public readonly int SubscriptionProvider;
@@ -103,7 +103,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string topic,
             string schemaName,
             float rateHz,
-            int publishMode,
+            int policy,
             float changeEpsilon,
             float forceIntervalSeconds,
             int rawMemberOrder,
@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0,
+            int mode = 1,
             int encoding = 0,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
@@ -138,7 +138,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
             RateHz = rateHz;
-            PublishMode = publishMode;
+            Policy = policy;
             Mode = mode;
             Encoding = encoding;
             SubscriptionProvider = subscriptionProvider;
@@ -181,7 +181,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string topic,
             string schemaName,
             float rateHz,
-            int publishMode,
+            int policy,
             float changeEpsilon,
             float forceIntervalSeconds,
             int rawMemberOrder,
@@ -190,7 +190,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string unless = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
-            int mode = 0,
+            int mode = 1,
             int encoding = 0,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
@@ -214,7 +214,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic,
                 schemaName,
                 rateHz,
-                publishMode,
+                policy,
                 changeEpsilon,
                 forceIntervalSeconds,
                 rawMemberOrder,
