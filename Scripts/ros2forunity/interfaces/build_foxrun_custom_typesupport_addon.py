@@ -11,6 +11,7 @@ validated candidate to ``Packages/``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -280,18 +281,29 @@ def _write_utf8_lf(target: Path, content: str) -> None:
     """
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
-    target.write_bytes(normalized.encode("utf-8"))
+    target.write_bytes(_canonical_utf8_lf_bytes(content))
+
+
+def _canonical_utf8_lf_bytes(content: str) -> bytes:
+    """Return UTF-8 text with every host line ending normalized to LF."""
+
+    return content.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
+
+
+def _read_canonical_license_bytes(license_source: Path) -> bytes:
+    """Read repository legal text as the exact bytes permitted by an inventory."""
+
+    try:
+        return _canonical_utf8_lf_bytes(license_source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError) as exc:
+        raise CandidateBuildError("provide-repository-license-notices") from exc
 
 
 def _write_canonical_license(license_source: Path, target: Path) -> None:
     """Copy repository legal text as the LF-canonical inventory payload."""
 
-    try:
-        content = license_source.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        raise CandidateBuildError("provide-repository-license-notices") from exc
-    _write_utf8_lf(target, content)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(_read_canonical_license_bytes(license_source))
 
 
 def _write_candidate_texts(package_root: Path, repo_root: Path, distro: str) -> None:
@@ -695,6 +707,58 @@ def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
     return catalog_path
 
 
+def _repair_tracked_addon_license_eol(request: CandidateBuildRequest) -> bool:
+    """Restore only a license whose canonical source bytes are already inventory-locked.
+
+    This deliberately does not rewrite the inventory or any generated/native
+    payload.  It is safe to run before a strict validator: a noncanonical
+    inventory, a missing license, or any other payload drift still fails closed
+    in the subsequent full add-on validation.
+    """
+
+    verify_candidate_source_lock(request)
+    repository_root = _repo_root(request).resolve()
+    package_root = repository_root / "Packages" / addon_package_id(request.distro)
+    license_path = package_root / "LICENSE"
+    if not license_path.is_file():
+        raise CandidateBuildError("repair-typesupport-license-inventory")
+    inventory = _load_json(
+        package_root / "RuntimeSupport" / "typesupport-inventory.json",
+        "repair-typesupport-license-inventory",
+    )
+    entries = inventory.get("entries") if isinstance(inventory, Mapping) else None
+    if not isinstance(entries, list):
+        raise CandidateBuildError("repair-typesupport-license-inventory")
+    license_entries = [item for item in entries if isinstance(item, Mapping) and item.get("path") == "LICENSE"]
+    if len(license_entries) != 1:
+        raise CandidateBuildError("repair-typesupport-license-inventory")
+    expected_length = license_entries[0].get("byteLength")
+    expected_sha256 = license_entries[0].get("sha256")
+    if (
+        not isinstance(expected_length, int)
+        or isinstance(expected_length, bool)
+        or expected_length < 0
+        or not isinstance(expected_sha256, str)
+        or len(expected_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in expected_sha256)
+    ):
+        raise CandidateBuildError("repair-typesupport-license-inventory")
+    canonical_bytes = _read_canonical_license_bytes(repository_root / "LICENSE")
+    if len(canonical_bytes) != expected_length or hashlib.sha256(canonical_bytes).hexdigest() != expected_sha256:
+        raise CandidateBuildError("repair-typesupport-license-inventory")
+    try:
+        actual_bytes = license_path.read_bytes()
+    except OSError as exc:
+        raise CandidateBuildError("repair-typesupport-license-inventory") from exc
+    if actual_bytes == canonical_bytes:
+        return False
+    try:
+        license_path.write_bytes(canonical_bytes)
+    except OSError as exc:
+        raise CandidateBuildError("repair-typesupport-license-inventory") from exc
+    return True
+
+
 def _unity_executable(request: CandidateBuildRequest) -> Path:
     """Return the explicitly supplied Unity executable or the supported Unity 6000 location."""
     if request.unity_executable is not None:
@@ -888,7 +952,7 @@ def _require_explicit_toolchain_sources(request: CandidateBuildRequest) -> tuple
     return request.ros2cs_source, ros2cs_install, request.r2fu_source
 
 
-def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest, bool, bool]:
+def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest, bool, bool, bool]:
     """Parse a candidate command without inventing external operator toolchain paths."""
     root = _default_repo_root()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -904,9 +968,10 @@ def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest
     parser.add_argument("--unity", type=Path)
     parser.add_argument("--check-source", action="store_true")
     parser.add_argument("--repair-tracked-catalog", action="store_true")
+    parser.add_argument("--repair-tracked-license-eol", action="store_true")
     args = parser.parse_args(argv)
-    if args.check_source and args.repair_tracked_catalog:
-        parser.error("--check-source and --repair-tracked-catalog are mutually exclusive")
+    if sum((args.check_source, args.repair_tracked_catalog, args.repair_tracked_license_eol)) > 1:
+        parser.error("--check-source, --repair-tracked-catalog, and --repair-tracked-license-eol are mutually exclusive")
     ros2_root = args.ros2_root or root / "ros2-windows" / ("ros2_" + args.distro)
     ros2cs_install = args.ros2cs_install
     if ros2cs_install is None and args.ros2cs_source is not None:
@@ -927,13 +992,18 @@ def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest
         ),
         args.check_source,
         args.repair_tracked_catalog,
+        args.repair_tracked_license_eol,
     )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run source-only validation, catalog repair, or a controlled candidate build."""
-    request, check_source_only, repair_tracked_catalog = parse_args(argv)
+    request, check_source_only, repair_tracked_catalog, repair_tracked_license_eol = parse_args(argv)
     try:
+        if repair_tracked_license_eol:
+            changed = _repair_tracked_addon_license_eol(request)
+            print("PASS:", request.distro, "canonicalized-license" if changed else "license-already-canonical")
+            return 0
         if repair_tracked_catalog:
             catalog = _repair_tracked_addon_catalog(request)
             print("PASS:", request.distro, catalog)

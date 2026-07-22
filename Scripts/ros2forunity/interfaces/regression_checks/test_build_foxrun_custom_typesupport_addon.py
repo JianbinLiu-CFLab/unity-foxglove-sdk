@@ -16,6 +16,7 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
     _catalog_source,
     _managed_package_assembly_path,
     _repair_tracked_addon_catalog,
+    _repair_tracked_addon_license_eol,
     _runtime_rmws,
     _unity_plugin_importer_arguments,
     _write_candidate_texts,
@@ -39,10 +40,11 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
     """Represent CustomTypesupportCandidateBuildTests."""
     def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
         """Verify check source cli does not invent machine specific toolchain sources."""
-        request, check_source, repair_catalog = parse_args(("--distro", "humble", "--check-source"))
+        request, check_source, repair_catalog, repair_license_eol = parse_args(("--distro", "humble", "--check-source"))
 
         self.assertTrue(check_source)
         self.assertFalse(repair_catalog)
+        self.assertFalse(repair_license_eol)
         self.assertIsNone(request.ros2cs_source)
         self.assertIsNone(request.ros2cs_install)
         self.assertIsNone(request.r2fu_source)
@@ -121,6 +123,37 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             license_entry = next(entry for entry in inventory["entries"] if entry["path"] == "LICENSE")
             self.assertEqual(license_path.stat().st_size, license_entry["byteLength"])
             self.assertEqual(file_sha256(license_path), license_entry["sha256"])
+
+    def test_tracked_license_repair_restores_only_the_inventory_locked_lf_text(self) -> None:
+        """A preflight repair may restore only the source-locked legal text."""
+        with self._fixture() as fixture:
+            target = fixture.root / "Packages" / addon_package_id("humble")
+            license_path = target / "LICENSE"
+            payload_path = target / "Runtime" / "payload.bin"
+            payload_path.parent.mkdir(parents=True)
+            payload_path.write_bytes(b"payload must remain unchanged")
+            license_path.write_bytes(b"fixture license\nsecond line\n")
+            _write_inventory(target)
+            inventory_before = (target / "RuntimeSupport" / "typesupport-inventory.json").read_bytes()
+            license_path.write_bytes(b"fixture license\r\nsecond line\r\n")
+
+            changed = _repair_tracked_addon_license_eol(replace(fixture.request, repo_root=fixture.root))
+
+            self.assertTrue(changed)
+            self.assertEqual(b"fixture license\nsecond line\n", license_path.read_bytes())
+            self.assertEqual(b"payload must remain unchanged", payload_path.read_bytes())
+            self.assertEqual(inventory_before, (target / "RuntimeSupport" / "typesupport-inventory.json").read_bytes())
+
+    def test_tracked_license_repair_rejects_an_inventory_with_noncanonical_license_bytes(self) -> None:
+        """A repair must not rewrite an inventory whose legal-text hash is not canonical."""
+        with self._fixture() as fixture:
+            target = fixture.root / "Packages" / addon_package_id("humble")
+            target.mkdir(parents=True)
+            (target / "LICENSE").write_bytes(b"fixture license\r\nsecond line\r\n")
+            _write_inventory(target)
+
+            with self.assertRaisesRegex(CandidateBuildError, "repair-typesupport-license-inventory"):
+                _repair_tracked_addon_license_eol(replace(fixture.request, repo_root=fixture.root))
 
     def test_source_lock_drift_fails_before_build(self) -> None:
         """Verify source lock drift fails before build."""

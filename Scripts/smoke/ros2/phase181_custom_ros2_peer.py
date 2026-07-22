@@ -253,6 +253,17 @@ def build_addon_validator_command(repository: pathlib.Path, distro: str, rmw: st
     return [sys.executable, str(validator), "--distro", distro, "--require-rmw", rmw]
 
 
+def build_addon_license_repair_command(repository: pathlib.Path, distro: str) -> list[str]:
+    """Build the narrowly scoped canonical-license repair before strict add-on validation."""
+
+    if distro not in {"humble", "jazzy", "lyrical"}:
+        raise PeerFailure("FAIL_TYPESUPPORT_PREFLIGHT", "The custom typesupport distribution is not valid.")
+    builder = pathlib.Path(repository) / "Scripts" / "ros2forunity" / "interfaces" / "build_foxrun_custom_typesupport_addon.py"
+    if not builder.is_file():
+        raise PeerFailure("FAIL_TYPESUPPORT_PREFLIGHT", "The custom typesupport repair helper is unavailable.")
+    return [sys.executable, str(builder), "--distro", distro, "--repair-tracked-license-eol"]
+
+
 def require_selected_typesupport_addon(repository: pathlib.Path, distro: str) -> str:
     """Require the Unity project to select exactly the matching runtime/add-on pair."""
 
@@ -2402,8 +2413,21 @@ def _run_windows_surface(
         summary["processOwnership"] = {"workspaceOwned": True}
         summary["peerBuild"] = "reused" if peer_build_reused else "cold"
 
+        license_repair_command = build_addon_license_repair_command(repository, args.distro)
         validator_command = build_addon_validator_command(repository, args.distro, args.rmw)
-        summary["commandLabels"] = {"addonValidator": protocol.bounded_command_label(validator_command)}
+        summary["commandLabels"] = {
+            "addonLicenseEolRepair": protocol.bounded_command_label(license_repair_command),
+            "addonValidator": protocol.bounded_command_label(validator_command),
+        }
+        print("[phase181:" + profile_id + "] Verifying the selected custom typesupport legal-text inventory.", flush=True)
+        run_logged_owned_command(
+            license_repair_command,
+            cwd=repository,
+            env=ros2env.sanitized_subprocess_env(os.environ),
+            log_path=workspace / "typesupport-license-eol-repair.log",
+            timeout_seconds=min(60.0, ready_timeout),
+            failure_code="FAIL_TYPESUPPORT_PREFLIGHT",
+        )
         print("[phase181:" + profile_id + "] Checking the selected custom typesupport add-on.", flush=True)
         run_logged_owned_command(
             validator_command,
