@@ -1311,7 +1311,7 @@ def _normalize_probe_role(value: str) -> str:
 
 
 def _role_requires(role: str) -> tuple[bool, bool, bool]:
-    """Return whether a role needs PublishOnly, P&S, and null/empty proof."""
+    """Return whether a role needs Publish, full-duplex, and null/empty proof."""
 
     normalized = _normalize_probe_role(role)
     return (
@@ -2009,7 +2009,7 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                     continue
                 observed_outbound_messages.add(id(message))
                 if _payload_evidence(message) != custom_payload_fields("unity-publish", null_empty=False):
-                    raise PeerFailure("FAIL_PAYLOAD_SHAPE", "Unity's native custom PublishOnly envelope did not preserve the locked payload.")
+                    raise PeerFailure("FAIL_PAYLOAD_SHAPE", "Unity's native custom Publish envelope did not preserve the locked payload.")
                 previous_outbound_sequence = protocol.require_envelope_metadata(
                     _envelope_metadata(message),
                     previous_outbound_sequence,

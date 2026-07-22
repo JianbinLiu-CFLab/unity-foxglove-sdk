@@ -55,7 +55,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     // are acceptance evidence.
     [FoxRun(
         Topic,
-        Mode = FoxRunMode.SubscribeOnly,
+        Mode = FoxRunFlow.Subscribe,
         SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
         Ros2Qos = FoxRunRos2QosPreset.Reliable)]
     private std_msgs.msg.String inputString;
