@@ -97,16 +97,16 @@ Members on the same topic must agree on `Policy`, `ChangeEpsilon`, and
   independently.
 
 When `RateHz` is omitted, publish resolves to 10 Hz and subscribe inherits the
-Manager's frozen **Default Apply Rate Hz**.
+Manager's frozen **Default Subscribe Rate Hz** (10 Hz by default).
 
 Under **Foxglove Manager > Data Transport > Subscribe Data > Subscription
 Delivery**, two adjacent controls have different jobs:
 
-- **Maximum Accepted Rate Hz (per Topic)** is the hard provider-neutral
+- **Default Subscribe Rate Hz** is 10 Hz by default and is inherited only by
+  declarations without a positive `RateHz`.
+- **Maximum Subscribe Rate Hz (per Topic)** is the hard provider-neutral
   admission ceiling for Foxglove WebSocket and ROS 2 Native input. Excess
   messages are dropped before avoidable DTO decode or native deep-copy work.
-- **Default Apply Rate Hz** is inherited only by declarations without a
-  positive `RateHz`.
 
 A declaration override cannot exceed the admission ceiling. Accepted input is
 bounded latest-wins: if Unity cannot apply every value, the newest owned value
@@ -162,8 +162,8 @@ private DriveCommand _command;
 uses Foxglove WebSocket. `Ros2Native` requires the optional
 `dev.unity2foxglove.ros2forunity` facade, one selected distro runtime package,
 and a supported native message or matching custom typesupport add-on. Provider,
-encoding, QoS, copy budget, admission ceiling, and apply default are frozen for
-one enabled subscription session.
+encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate
+are frozen for one enabled subscription session.
 
 ## 7. Explicit Triggers
 
@@ -278,8 +278,8 @@ suppresses live WebSocket and native fanout while replay is authoritative.
 |---|---|
 | No topic appears | The class is `partial`, the topic starts with `/`, the component is enabled, and Play Mode is running. |
 | Subscribe receives nothing | Enable subscriptions, verify the selected provider and encoding, and inspect transport-admission diagnostics. |
-| Input arrives but applies slowly | Check declaration `RateHz` or the Manager's **Default Apply Rate Hz**. |
-| Messages are dropped | Check **Maximum Accepted Rate Hz (per Topic)**, payload bounds, encoding, and native copy budget. |
+| Input arrives but applies slowly | Check declaration `RateHz` or the Manager's **Default Subscribe Rate Hz**. |
+| Messages are dropped | Check **Maximum Subscribe Rate Hz (per Topic)**, payload bounds, encoding, and native copy budget. |
 | Trigger value does not move | Call the correct generated publish or apply trigger from the Unity main thread. |
 | Full-duplex value does not echo immediately | One-shot suppression of the just-applied inbound version is intentional. |
 | Editor works but Player does not | Inspect the build-preprocess logs and generated fallback source. |

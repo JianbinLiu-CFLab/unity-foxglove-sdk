@@ -80,12 +80,12 @@ private DebugState _debugState;
 - `Subscribe`：通过传输准入后，在 Unity 主线程应用值的最大频率。
 - `PublishAndSubscribe`：同一个显式值分别控制两个方向。
 
-省略 `RateHz` 时，发布使用 10 Hz；订阅继承 Manager 会话冻结的 **Default Apply Rate Hz**。
+省略 `RateHz` 时，发布使用 10 Hz；订阅继承 Manager 会话冻结的 **Default Subscribe Rate Hz**（默认 10 Hz）。
 
 在 **Foxglove Manager > Data Transport > Subscribe Data > Subscription Delivery** 中有两个相邻但职责不同的设置：
 
-- **Maximum Accepted Rate Hz (per Topic)**：Foxglove WebSocket 与 ROS 2 Native 共用的硬准入上限。超额消息会尽量在 DTO 解码或原生深拷贝之前丢弃。
-- **Default Apply Rate Hz**：仅供未显式设置正数 `RateHz` 的订阅声明继承。
+- **Default Subscribe Rate Hz**：默认值为 10 Hz，仅供未显式设置正数 `RateHz` 的订阅声明继承。
+- **Maximum Subscribe Rate Hz (per Topic)**：Foxglove WebSocket 与 ROS 2 Native 共用的硬准入上限。超额消息会尽量在 DTO 解码或原生深拷贝之前丢弃。
 
 声明级 `RateHz` 不能突破准入上限。通过准入的数据采用有界 latest-wins：Unity 来不及应用全部输入时，新值替换旧的待处理值。
 
@@ -119,7 +119,7 @@ public partial class SpeedController : MonoBehaviour
 
 `Encoding = FoxRunWireEncoding.Inherit` 使用 Manager 会话冻结的方向默认值。`PublishAndSubscribe` 的两个方向共用一个 wire contract，因此必须显式选择 JSON 或 Protobuf。
 
-核心 SDK 的常规输入路径是 Foxglove WebSocket。`SubscriptionProvider = Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。provider、编码、QoS、复制预算、准入上限和默认应用频率都会在一次已启用的订阅会话中冻结。
+核心 SDK 的常规输入路径是 Foxglove WebSocket。`SubscriptionProvider = Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。provider、编码、QoS、复制预算、最大订阅频率和默认订阅频率都会在一次已启用的订阅会话中冻结。
 
 ## 7. Trigger 与全双工
 
@@ -160,8 +160,8 @@ Replay 治理分离；Replay 使用随 MCAP 记录的 FoxRun 契约身份。
 |---|---|
 | 看不到 topic | 类型是否为 `partial`、topic 是否以 `/` 开头、组件是否启用、是否已进入 Play Mode。 |
 | 订阅没有数据 | 是否启用订阅、provider 与编码是否匹配、传输准入诊断是否出现丢弃。 |
-| 输入应用太慢 | 声明 `RateHz` 或 Manager 的 **Default Apply Rate Hz**。 |
-| 消息被丢弃 | **Maximum Accepted Rate Hz (per Topic)**、负载大小、编码和 native copy budget。 |
+| 输入应用太慢 | 声明 `RateHz` 或 Manager 的 **Default Subscribe Rate Hz**。 |
+| 消息被丢弃 | **Maximum Subscribe Rate Hz (per Topic)**、负载大小、编码和 native copy budget。 |
 | Trigger 不生效 | 是否从 Unity 主线程调用了对应的发布或应用触发方法。 |
 | 全双工值没有立即回传 | 刚应用的外部版本会执行一次 echo suppression，这是设计行为。 |
 | Editor 正常、Player 异常 | 检查 build preprocess 日志与生成的 fallback source。 |

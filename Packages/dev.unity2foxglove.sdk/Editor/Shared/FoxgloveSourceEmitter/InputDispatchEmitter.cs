@@ -168,7 +168,7 @@ namespace Unity.FoxgloveSDK.Editor
             string pad)
         {
             sb.AppendLine();
-            sb.AppendLine($"{pad}    int IFoxgloveInputSource.FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz)");
+            sb.AppendLine($"{pad}    int IFoxgloveInputSource.FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)");
             sb.AppendLine($"{pad}    {{");
             sb.AppendLine($"{pad}        var applied = 0;");
             for (var i = 0; i < members.Count; i++)
@@ -188,7 +188,7 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var rate = member.HasExplicitRateHz
                 ? TypeExprEmitter.FloatLiteral(member.RateHz)
-                : "(float)global::System.Math.Max(1, inheritedApplyRateLimitHz)";
+                : "(float)global::System.Math.Max(1, inheritedSubscribeRateHz)";
             var interval = TypeExprEmitter.FloatLiteral(
                 member.ForceIntervalSeconds < 0f ? 0f : member.ForceIntervalSeconds);
             var policy = TopicMetadataEmitter.PolicyLiteral(member.Policy);

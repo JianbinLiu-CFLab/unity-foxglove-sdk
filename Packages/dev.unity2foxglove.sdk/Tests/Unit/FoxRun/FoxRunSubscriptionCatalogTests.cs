@@ -292,7 +292,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 handler,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "subscriptionPolicy.DefaultMainThreadApplyRateHz",
+                "subscriptionPolicy.DefaultSubscribeRateHz",
                 handler,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("_defaultFoxRunSubscriptionProvider", handler, StringComparison.Ordinal);

@@ -192,7 +192,7 @@ namespace Unity.FoxgloveSDK.Components
         /// thread. Transport admission has already happened; sources decide
         /// whether their latest owned value is eligible for application.
         /// </summary>
-        public int Flush(double nowSeconds, int inheritedApplyRateLimitHz)
+        public int Flush(double nowSeconds, int inheritedSubscribeRateHz)
         {
             IFoxgloveInputSource[] sources;
             lock (_gate)
@@ -205,7 +205,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     applied += Math.Max(
                         0,
-                        source.FoxgloveInput_Flush(nowSeconds, inheritedApplyRateLimitHz));
+                        source.FoxgloveInput_Flush(nowSeconds, inheritedSubscribeRateHz));
                 }
                 catch (Exception ex) when (!(ex is OutOfMemoryException)
                                            && !(ex is StackOverflowException)

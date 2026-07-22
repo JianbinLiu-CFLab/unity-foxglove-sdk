@@ -221,10 +221,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 router.Dispatch("/phase183/staged", new byte[] { 2 }, "json", nowSeconds: 1.01).Status);
             Assert.Equal(0, input.AppliedCount);
 
-            Assert.Equal(1, router.Flush(nowSeconds: 2, inheritedApplyRateLimitHz: 60));
+            Assert.Equal(1, router.Flush(nowSeconds: 2, inheritedSubscribeRateHz: 60));
             Assert.Equal(1, input.AppliedCount);
             Assert.Equal(2, input.LastAppliedValue);
-            Assert.Equal(0, router.Flush(nowSeconds: 3, inheritedApplyRateLimitHz: 60));
+            Assert.Equal(0, router.Flush(nowSeconds: 3, inheritedSubscribeRateHz: 60));
         }
 
         [Fact]
@@ -513,7 +513,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunRos2QosPreset.Default,
                 nativeCopyBudgetBytes: 4 * 1024 * 1024,
                 transportAdmissionRateLimitHz: 60,
-                defaultMainThreadApplyRateHz: 60);
+                defaultSubscribeRateHz: 60);
             var generation = policy.SessionGeneration;
             var input = new RestartDecodingInput();
             var router = new FoxRunInputRouter();
@@ -549,7 +549,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     2,
                     router.Flush(
                         nowSeconds += 0.1d,
-                        inheritedApplyRateLimitHz: 60));
+                        inheritedSubscribeRateHz: 60));
             }
 
             StartAndAttach(policy);
@@ -564,12 +564,12 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunRos2QosPreset.SensorData,
                 nativeCopyBudgetBytes: 1024,
                 transportAdmissionRateLimitHz: 1,
-                defaultMainThreadApplyRateHz: 1);
+                defaultSubscribeRateHz: 1);
             Assert.Same(policy, frozenPolicy);
             Assert.Equal(generation, frozenPolicy.SessionGeneration);
             Assert.Equal(FoxRunWireEncoding.Protobuf, frozenPolicy.WebSocketSubscriptionEncoding);
             Assert.Equal(60, frozenPolicy.TransportAdmissionRateLimitHz);
-            Assert.Equal(60, frozenPolicy.DefaultMainThreadApplyRateHz);
+            Assert.Equal(60, frozenPolicy.DefaultSubscribeRateHz);
 
             StartAndAttach(frozenPolicy);
             PublishBoth(jsonValue: 12, protobufValue: 16);
@@ -692,7 +692,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return true;
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz) => 0;
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private sealed class StagedRecordingInput : IFoxgloveInputSource
@@ -719,7 +719,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return true;
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz)
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)
             {
                 if (!_hasPending)
                     return 0;
@@ -773,7 +773,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return true;
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz) => 0;
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private sealed class NativeUnavailableCoexistenceInput : IFoxgloveInputSource
@@ -818,7 +818,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return true;
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz) => 0;
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private sealed class ThrowingInput : IFoxgloveInputSource
@@ -838,7 +838,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 throw new InvalidOperationException("staging failed");
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz) => 0;
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private sealed class InheritedRecordingInput : IFoxgloveInputSource
@@ -861,7 +861,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return true;
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz) => 0;
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private static byte[] ClientMessageFrame(uint channelId, byte[] payload)
@@ -912,7 +912,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 return true;
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz)
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)
             {
                 var applied = 0;
                 if (HasPendingJson)

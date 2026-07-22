@@ -108,6 +108,6 @@ namespace Unity.FoxgloveSDK.Components
         int FoxgloveInput_TopicCount { get; }
         FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index);
         bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error);
-        int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz);
+        int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz);
     }
 }

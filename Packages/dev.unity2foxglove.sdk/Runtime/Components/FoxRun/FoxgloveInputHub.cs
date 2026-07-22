@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxgloveInputSource> _scanSources = new();
         private readonly HashSet<string> _warned = new(StringComparer.Ordinal);
         private bool _subscriptionsEnabled;
-        private int _inheritedApplyRateLimitHz = 60;
+        private int _inheritedSubscribeRateHz = 10;
         private float _managerSearchCooldown;
         private float _scanTimer;
 
@@ -78,7 +78,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _router.Flush(
                     Time.realtimeSinceStartupAsDouble,
-                    _inheritedApplyRateLimitHz);
+                    _inheritedSubscribeRateHz);
             }
         }
 
@@ -142,7 +142,7 @@ namespace Unity.FoxgloveSDK.Components
             _router.DefaultSubscriptionProvider = policy.DefaultProvider;
             _router.DefaultSubscriptionWireEncoding = policy.WebSocketSubscriptionEncoding;
             _router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;
-            _inheritedApplyRateLimitHz = policy.DefaultMainThreadApplyRateHz;
+            _inheritedSubscribeRateHz = policy.DefaultSubscribeRateHz;
         }
 
         private void RebuildRouterRegistrationsForActiveSession()

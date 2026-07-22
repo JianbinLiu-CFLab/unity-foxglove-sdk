@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Optional update rate in Hz. A positive value limits publication and
         /// main-thread input application; the omitted sentinel resolves to
-        /// 10 Hz for output and the frozen Manager default apply rate for input.
+        /// 10 Hz for output and the frozen Manager default subscription rate for input.
         /// </summary>
         public float RateHz { get; set; } = -1f;
 

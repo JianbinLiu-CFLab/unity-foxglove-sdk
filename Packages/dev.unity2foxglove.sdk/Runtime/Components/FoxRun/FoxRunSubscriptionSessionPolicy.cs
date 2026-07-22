@@ -23,7 +23,7 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunRos2QosPreset defaultRos2Qos,
             int nativeCopyBudgetBytes,
             int transportAdmissionRateLimitHz,
-            int defaultMainThreadApplyRateHz)
+            int defaultSubscribeRateHz)
         {
             SessionGeneration = sessionGeneration;
             SubscriptionsEnabled = subscriptionsEnabled;
@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Components
             DefaultRos2Qos = defaultRos2Qos;
             NativeCopyBudgetBytes = nativeCopyBudgetBytes;
             TransportAdmissionRateLimitHz = transportAdmissionRateLimitHz;
-            DefaultMainThreadApplyRateHz = defaultMainThreadApplyRateHz;
+            DefaultSubscribeRateHz = defaultSubscribeRateHz;
         }
 
         /// <summary>Monotonic identifier for the captured subscription session.</summary>
@@ -60,10 +60,10 @@ namespace Unity.FoxgloveSDK.Components
         public int TransportAdmissionRateLimitHz { get; }
 
         /// <summary>
-        /// Frozen default main-thread application frequency inherited by a
+        /// Frozen default subscription frequency inherited by a
         /// subscription declaration that does not specify a positive RateHz.
         /// </summary>
-        public int DefaultMainThreadApplyRateHz { get; }
+        public int DefaultSubscribeRateHz { get; }
 
         internal static FoxRunSubscriptionSessionPolicy Disabled(ulong generation)
             => new(
@@ -95,7 +95,7 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunRos2QosPreset defaultRos2Qos,
             int nativeCopyBudgetBytes,
             int transportAdmissionRateLimitHz,
-            int defaultMainThreadApplyRateHz)
+            int defaultSubscribeRateHz)
         {
             if (Current.SubscriptionsEnabled)
                 return Current;
@@ -116,7 +116,7 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunRos2QosResolver.NormalizeManagerDefault(defaultRos2Qos),
                 FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(nativeCopyBudgetBytes),
                 Math.Max(1, transportAdmissionRateLimitHz),
-                Math.Max(1, defaultMainThreadApplyRateHz));
+                Math.Max(1, defaultSubscribeRateHz));
             return Current;
         }
 

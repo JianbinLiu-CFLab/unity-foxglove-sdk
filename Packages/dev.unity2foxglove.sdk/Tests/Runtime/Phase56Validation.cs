@@ -80,7 +80,7 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(!doc.Contains("RateHz = 0"),
                 "56C-1: Chinese FoxRun docs no longer claim RateHz = 0 publishes every frame");
-            Check(doc.Contains("省略 `RateHz`") && doc.Contains("Default Apply Rate Hz"),
+            Check(doc.Contains("省略 `RateHz`") && doc.Contains("Default Subscribe Rate Hz"),
                 "56C-1a: Chinese FoxRun docs explain omitted RateHz inherits direction-specific defaults");
             Check(doc.Contains("Policy") && doc.Contains("Trigger") && doc.Contains("ChangeEpsilon")
                 && doc.Contains("ForceIntervalSeconds") && doc.Contains("FOXRUN005"),

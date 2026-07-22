@@ -6,6 +6,7 @@
 
 using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -27,8 +28,9 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(256)] private int _foxRunInboundMaxPayloadBytes = 64 * 1024;
         [Tooltip("Hard per-topic transport-admission ceiling shared by Foxglove WebSocket and ROS 2 Native subscriptions. Excess input is dropped before avoidable decode or native deep-copy work.")]
         [SerializeField, Min(1)] private int _foxRunInboundMaxMessagesPerSecondPerTopic = 60;
-        [Tooltip("Main-thread apply frequency inherited by subscription declarations that do not specify a positive RateHz.")]
-        [SerializeField, Min(1)] private int _foxRunDefaultApplyRateHz = 60;
+        [Tooltip("Default subscription rate inherited by subscription declarations that do not specify a positive RateHz.")]
+        [FormerlySerializedAs("_foxRunDefaultApplyRateHz")]
+        [SerializeField, Min(1)] private int _foxRunDefaultSubscribeRateHz = 10;
 
         public bool EnableFoxRunInbound
         {
@@ -39,15 +41,15 @@ namespace Unity.FoxgloveSDK.Components
         public int FoxRunSubscriptionMaxPayloadBytes => Math.Max(256, _foxRunInboundMaxPayloadBytes);
         private int ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic =>
             Math.Max(1, _foxRunInboundMaxMessagesPerSecondPerTopic);
-        private int ConfiguredFoxRunDefaultApplyRateHz =>
-            Math.Max(1, _foxRunDefaultApplyRateHz);
+        private int ConfiguredFoxRunDefaultSubscribeRateHz =>
+            Math.Max(1, _foxRunDefaultSubscribeRateHz);
         public int FoxRunSubscriptionMaxMessagesPerSecondPerTopic =>
             ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
                 ? ActiveFoxRunSubscriptionSessionPolicy.TransportAdmissionRateLimitHz
                 : ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic;
 
-        /// <summary>Configured main-thread apply default for inherited subscription declarations.</summary>
-        public int DefaultFoxRunSubscriptionApplyRateHz => ConfiguredFoxRunDefaultApplyRateHz;
+        /// <summary>Configured default rate for inherited subscription declarations.</summary>
+        public int DefaultFoxRunSubscriptionRateHz => ConfiguredFoxRunDefaultSubscribeRateHz;
 
         /// <summary>Serialized default used by inherited Subscribe contracts.</summary>
         public FoxRunWireEncoding DefaultFoxRunSubscriptionEncoding

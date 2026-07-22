@@ -79,7 +79,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && policy.Contains("public FoxRunRos2QosPreset DefaultRos2Qos { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int NativeCopyBudgetBytes { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int TransportAdmissionRateLimitHz { get; }", StringComparison.Ordinal)
-                  && policy.Contains("public int DefaultMainThreadApplyRateHz { get; }", StringComparison.Ordinal)
+                  && policy.Contains("public int DefaultSubscribeRateHz { get; }", StringComparison.Ordinal)
                   && policy.Contains("if (generation == ulong.MaxValue)", StringComparison.Ordinal)
                   && policy.Contains("throw new InvalidOperationException(", StringComparison.Ordinal)
                   && policy.Contains("var nextGeneration = generation + 1UL;", StringComparison.Ordinal)
@@ -229,10 +229,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && !labels.Contains("ROS2", StringComparison.Ordinal),
                 "175C-8: Manager dropdown offers only Protobuf and JSON and cannot persist Inherit");
             Check(inspector.Contains("Default Input Transport", StringComparison.Ordinal)
-                  && inspector.Contains("Maximum Accepted Rate Hz (per Topic)", StringComparison.Ordinal)
-                  && inspector.Contains("Default Apply Rate Hz", StringComparison.Ordinal)
+                  && inspector.Contains("Default Subscribe Rate Hz", StringComparison.Ordinal)
+                  && inspector.Contains("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
+                  && inspector.IndexOf("Default Subscribe Rate Hz", StringComparison.Ordinal)
+                     < inspector.IndexOf("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
                   && inspector.Contains("Subscription-policy changes apply after subscriptions are re-enabled.", StringComparison.Ordinal)
-                  && inspector.Contains("captured provider, WebSocket encoding, QoS, copy budget, admission ceiling, and default apply rate", StringComparison.Ordinal),
+                  && inspector.Contains("captured provider, WebSocket encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate", StringComparison.Ordinal),
                 "175C-9: Inspector exposes subscription controls and the session re-enable boundary");
         }
 

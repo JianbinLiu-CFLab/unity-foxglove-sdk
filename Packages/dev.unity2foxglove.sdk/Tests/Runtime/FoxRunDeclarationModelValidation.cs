@@ -75,19 +75,19 @@ namespace Unity.FoxgloveSDK.Tests
                 FoxRunRos2QosPreset.Default,
                 4 * 1024 * 1024,
                 transportAdmissionRateLimitHz: 120,
-                defaultMainThreadApplyRateHz: 30);
+                defaultSubscribeRateHz: 30);
             var frozen = state.BeginIfNeeded(
                 FoxRunSubscriptionProvider.Ros2Native,
                 FoxRunWireEncoding.Json,
                 FoxRunRos2QosPreset.SensorData,
                 1,
                 transportAdmissionRateLimitHz: 1,
-                defaultMainThreadApplyRateHz: 1);
+                defaultSubscribeRateHz: 1);
 
             Check(policy.TransportAdmissionRateLimitHz == 120
-                  && policy.DefaultMainThreadApplyRateHz == 30
+                  && policy.DefaultSubscribeRateHz == 30
                   && ReferenceEquals(policy, frozen),
-                "Behavior 183A-7: admission ceiling and inherited apply default are distinct and frozen for one session");
+                "Behavior 183A-7: maximum and default subscription rates are distinct and frozen for one session");
         }
 
         private static void VerifyLatestWinsInputRouting()
@@ -98,13 +98,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             var first = router.Dispatch("/phase183/latest", new byte[] { 1 }, "json", 1d);
             var second = router.Dispatch("/phase183/latest", new byte[] { 2 }, "json", 1.01d);
-            var applied = router.Flush(2d, inheritedApplyRateLimitHz: 30);
+            var applied = router.Flush(2d, inheritedSubscribeRateHz: 30);
 
             Check(first.Status == FoxRunInputDispatchStatus.Staged
                   && second.Status == FoxRunInputDispatchStatus.Staged
                   && applied == 1
                   && source.AppliedValue == 2
-                  && router.Flush(3d, inheritedApplyRateLimitHz: 30) == 0,
+                  && router.Flush(3d, inheritedSubscribeRateHz: 30) == 0,
                 "Behavior 183A-8: accepted input is bounded latest-wins and a later flush cannot replay stale state");
         }
 
@@ -115,10 +115,10 @@ namespace Unity.FoxgloveSDK.Tests
             var native = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2InputDispatchEmitter.cs");
 
             Check(input.Contains("member.HasExplicitRateHz", StringComparison.Ordinal)
-                  && input.Contains("inheritedApplyRateLimitHz", StringComparison.Ordinal)
+                  && input.Contains("inheritedSubscribeRateHz", StringComparison.Ordinal)
                   && input.Contains("var baseName = \"FoxRun_Apply_\"", StringComparison.Ordinal)
                   && input.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal),
-                "Structural 183A-9: generated WebSocket input inherits or overrides apply rate, exposes Trigger apply, and marks remote-echo suppression");
+                "Structural 183A-9: generated WebSocket input inherits or overrides subscription rate, exposes Trigger apply, and marks remote-echo suppression");
             Check(publish.Contains("fields.Any(field => field.Mode == 3)", StringComparison.Ordinal)
                   && publish.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal)
                   && native.Contains("member.HasExplicitRateHz", StringComparison.Ordinal)
@@ -211,7 +211,7 @@ namespace Unity.FoxgloveSDK.Tests
                 return true;
             }
 
-            public int FoxgloveInput_Flush(double nowSeconds, int inheritedApplyRateLimitHz)
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)
             {
                 if (!_hasPending)
                     return 0;

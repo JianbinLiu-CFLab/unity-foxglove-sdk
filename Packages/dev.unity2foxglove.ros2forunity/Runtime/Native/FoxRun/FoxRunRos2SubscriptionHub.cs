@@ -1001,9 +1001,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     identity,
                     new FoxRunRos2DiscoveryKey(source.TypeName, source.InstanceId, contract.Topic, contract.MemberName),
                     binding,
-                    EffectiveApplyRateHz(
+                    EffectiveSubscribeRateHz(
                         contract,
-                        _policy.DefaultMainThreadApplyRateHz,
+                        _policy.DefaultSubscribeRateHz,
                         _policy.TransportAdmissionRateLimitHz));
                 _bindings.Add(hosted);
                 _existingBindings.Add(identity);
@@ -1018,9 +1018,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
-        private static double EffectiveApplyRateHz(
+        private static double EffectiveSubscribeRateHz(
             FoxRunRos2GeneratedContract contract,
-            int managerDefaultApplyRateHz,
+            int managerDefaultSubscribeRateHz,
             int transportAdmissionRateLimitHz)
             => Math.Min(
                 contract.HasExplicitRateHz
@@ -1028,7 +1028,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                && !float.IsInfinity(contract.RateHz)
                && contract.RateHz > 0f
                 ? contract.RateHz
-                : Math.Max(1, managerDefaultApplyRateHz),
+                : Math.Max(1, managerDefaultSubscribeRateHz),
                 Math.Max(1, transportAdmissionRateLimitHz));
 
         private long ActiveGeneration()

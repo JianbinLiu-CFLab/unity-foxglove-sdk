@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void ActiveSnapshotCapturesIndependentAdmissionAndDefaultApplyRates()
+        public void ActiveSnapshotCapturesIndependentMaximumAndDefaultSubscribeRates()
         {
             var state = new FoxRunSubscriptionSessionState();
 
@@ -30,8 +30,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Json,
                 FoxRunRos2QosPreset.SensorData,
                 8 * 1024 * 1024,
-                120,
-                37);
+                transportAdmissionRateLimitHz: 120,
+                defaultSubscribeRateHz: 37);
 
             Assert.Equal(1UL, policy.SessionGeneration);
             Assert.True(policy.SubscriptionsEnabled);
@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunRos2QosPreset.SensorData, policy.DefaultRos2Qos);
             Assert.Equal(8 * 1024 * 1024, policy.NativeCopyBudgetBytes);
             Assert.Equal(120, policy.TransportAdmissionRateLimitHz);
-            Assert.Equal(37, policy.DefaultMainThreadApplyRateHz);
+            Assert.Equal(37, policy.DefaultSubscribeRateHz);
 
             var properties = typeof(FoxRunSubscriptionSessionPolicy)
                 .GetProperties(BindingFlags.Instance | BindingFlags.Public);
@@ -82,7 +82,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunRos2QosPreset.Default, policy.DefaultRos2Qos);
             Assert.Equal(4 * 1024 * 1024, policy.NativeCopyBudgetBytes);
             Assert.Equal(1, policy.TransportAdmissionRateLimitHz);
-            Assert.Equal(1, policy.DefaultMainThreadApplyRateHz);
+            Assert.Equal(1, policy.DefaultSubscribeRateHz);
         }
 
         [Fact]
@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(FoxRunRos2QosPreset.Reliable, repeated.DefaultRos2Qos);
             Assert.Equal(2 * 1024 * 1024, repeated.NativeCopyBudgetBytes);
             Assert.Equal(90, repeated.TransportAdmissionRateLimitHz);
-            Assert.Equal(25, repeated.DefaultMainThreadApplyRateHz);
+            Assert.Equal(25, repeated.DefaultSubscribeRateHz);
         }
 
         [Fact]
