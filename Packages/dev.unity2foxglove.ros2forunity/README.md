@@ -87,7 +87,7 @@ uses a different cache location.
 The `FoxRun ROS2 Native Subscribe` Package Manager sample is the direct
 Linux/ROS2-to-Unity input route for existing compiled ROS2 message types. It
 does not use Foxglove Desktop, Foxglove WebSocket, or FoxRun Publish Data. The
-sample exposes four explicit native `SubscribeOnly` contracts. Its serialized
+sample exposes four explicit native `Subscribe` contracts. Its serialized
 topic fields retain source-defined defaults and remain visible in the Inspector:
 
 | Type | Inspector topic field | QoS |
@@ -136,13 +136,13 @@ of changing the contract to a WebSocket encoding.
 
 ROS domain IDs are discovery isolation, not authentication. Configure network
 controls and ROS2 security separately. This packaged-message sample supports
-existing compiled `.msg` types and native `SubscribeOnly`; generated custom
+existing compiled `.msg` types and native `Subscribe`; generated custom
 FoxRun DTO interfaces use the separate workflow below.
 
 ## FoxRun Custom ROS2 Interfaces
 
 The `FoxRun Custom ROS2 Interface` sample supports a locked, generated custom
-ROS2 interface for native `PublishOnly`, `SubscribeOnly`, and
+ROS2 interface for native `Publish`, `Subscribe`, and
 `PublishAndSubscribe` contracts. It is an optional R2FU path: the core SDK
 remains ROS-free and no custom typesupport is inferred or downloaded at
 runtime.

@@ -1,7 +1,7 @@
 # FoxRun Publish
 
 FoxRun Publish is a catalog-driven Foxglove panel for sending data to Unity
-`SubscribeOnly` and `PublishAndSubscribe` FoxRun contracts.
+`Subscribe` and `PublishAndSubscribe` FoxRun contracts.
 
 The panel loads `/foxrun/subscription-contracts` from the active Unity
 connection. The first request contains only deterministic contract summaries;

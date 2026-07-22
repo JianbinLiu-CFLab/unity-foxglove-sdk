@@ -72,7 +72,7 @@ generated envelope.
 
 ## Direction, origin, and recording semantics
 
-`PublishOnly`, `SubscribeOnly`, and `PublishAndSubscribe` are independent
+`Publish`, `Subscribe`, and `PublishAndSubscribe` are independent
 contracts. Native subscription QoS is selected at the contract/input side;
 custom native publisher QoS is not fabricated as a Manager-global setting.
 

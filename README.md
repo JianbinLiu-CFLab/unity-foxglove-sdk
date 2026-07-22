@@ -85,6 +85,7 @@ Foxglove owns interactive time. Unity applies ordered forward ranges during norm
 ROS-free product for Foxglove WebSocket streaming, FoxRun over WebSocket, MCAP
 recording/replay, sensors, services, and the optional `ROS2 Bridge` sidecar.
 Do not add a ROS2 runtime merely because a project publishes data to Foxglove.
+ROS2 Bridge output is independent from WebSocket output and disabled by default.
 
 The repository contains candidate packages for optional capabilities. A package
 folder on disk is not an instruction to add it to a Unity project: only the
@@ -95,7 +96,7 @@ packages resolved by that project's `Packages/manifest.json` are active.
 | Core | `dev.unity2foxglove.sdk` | Always. This is the normal and sufficient installation. |
 | Remote gateway | `dev.unity2foxglove.remotegateway.win64` | Windows x64 Foxglove Cloud remote-access gateway. It depends on the core SDK. |
 | ROS2 facade | `dev.unity2foxglove.ros2forunity` | Direct native ROS2 communication through ROS2 For Unity. It depends on the core SDK but has no runtime by itself. |
-| ROS2 runtime | One of `dev.unity2foxglove.ros2forunity.runtime.humble.win64`, `.jazzy.win64`, or `.lyrical.win64` | Direct native ROS2 on Windows x64. Select exactly one distro. Lyrical Fast DDS versus Zenoh is a communication-mode setting, not another package. |
+| ROS2 runtime | One of `dev.unity2foxglove.ros2forunity.runtime.humble.win64`, `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`, or `dev.unity2foxglove.ros2forunity.runtime.lyrical.win64` | Direct native ROS2 on Windows x64. Select exactly one distro. Lyrical Fast DDS versus Zenoh is a communication-mode setting, not another package. |
 | Custom interface source | `dev.unity2foxglove.foxrun.ros2.interfaces` | Native ROS2 for generated custom FoxRun DTOs. This is a locked source and schema package, not a runtime. |
 | Custom typesupport | The matching `dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.<distro>.win64` | Only with the custom-interface source package and its same-distro runtime. Select exactly one add-on. |
 

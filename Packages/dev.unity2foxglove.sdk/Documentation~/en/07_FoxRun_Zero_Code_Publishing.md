@@ -1,113 +1,183 @@
+# FoxRun Publish, Subscribe, and Full Duplex
+
 ## 1. Purpose
 
-Use this page to publish simple debug and telemetry values without writing a custom publisher component.
+FoxRun exposes small Unity fields and properties as generated transport
+contracts. It supports outbound telemetry, inbound control values, and an
+explicit full-duplex mode without handwritten publisher or subscriber
+components.
 
-## 2. Workflow
+Use it for debug state, numeric plots, commands, small DTOs, and explicit event
+snapshots. Use dedicated publisher components for large images, point clouds,
+meshes, or other high-throughput binary data.
 
-You will add `[FoxRun]` attributes to fields or properties, see `/debug/...` topics in Foxglove, and verify that the generated Player fallback works in IL2CPP builds.
-
-## 3. FoxRun Use Cases
-
-FoxRun is a convenience layer for debug and telemetry values.
-
-Good uses:
-
-- Current object position
-- Current speed
-- Runtime state string
-- Small diagnostic structs
-- Explicit event snapshots, such as a state transition or decoded packet status
-
-Use regular publisher components when you need:
-
-- Full control over schema registration
-- High-frequency binary data
-- Large image or mesh payloads
-- A stable production API surface
-
-## 4. Minimal Example
+## 2. Smallest Example
 
 ```csharp
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 
-public partial class TestLog : MonoBehaviour
+public partial class RobotTelemetry : MonoBehaviour
 {
-    [FoxRun("/debug/position")]
-    public Vector3 Position => transform.position;
+    [FoxRun("/robot/pose")]
+    private Vector3 _position;
 
-    [FoxRun("/debug/name", RateHz = 1)]
-    public string ObjectName => gameObject.name;
+    private void Update()
+    {
+        _position = transform.position;
+    }
 }
 ```
 
-Requirements:
+`[FoxRun("/robot/pose")]` means `Publish`, `FixedRate`, 10 Hz. The containing
+class must be `partial`, the topic must start with `/`, and the value must have
+a supported generated wire shape.
 
-- The class must be `partial`.
-- The member must be a field or property.
-- The topic must start with `/`.
-- The value must be serializable by the SDK's JSON path.
+## 3. Declaration Grammar
 
-## 5. See FoxRun Topics in Foxglove
-
-1. Add the script to a GameObject.
-2. Press **Play**.
-3. Connect Foxglove to `ws://127.0.0.1:8765`.
-4. Open the **Topics** panel.
-5. Look for `/debug/position`, `/debug/name`, or your chosen topic.
-
-You can inspect values with a Raw Messages panel or plot numeric fields if the value shape is numeric.
-
-## 6. Attribute Fields
-
-Think of a FoxRun attribute as:
+Import the short flow and policy vocabularies in files that use explicit
+options:
 
 ```csharp
-[FoxRun("topic path", options...)]
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 ```
 
-The first argument is the Foxglove topic path. Options are named C# attribute properties such as `RateHz`, `SchemaName`, `PublishMode`, `ChangeEpsilon`, `ForceIntervalSeconds`, `When`, and `Unless`.
+Then declarations stay compact:
 
-| Field | Default | What it does | When to change it | Common mistakes |
-|---|---:|---|---|---|
-| `Topic` | Required | Topic name published to Foxglove. | Change for each debug value you want to expose. | Forgetting the leading `/`. |
-| `RateHz` | `10` | Maximum publish frequency for that member; `0` or less disables scheduled publishing. | Lower noisy debug values, temporarily disable a debug topic, or raise smooth plots carefully. | Setting very high rates for many JSON values. |
-| `SchemaName` | Empty | Optional explicit schema name. | Use when you need a stable named schema. | Adding a schema name without checking the viewer expects it. |
-| `PublishMode` | `FixedRate` | Controls when generated code publishes. | Use `OnChange`, `OnChangeOrInterval`, or `OnTrigger` for non-fixed-rate telemetry. | Expecting `OnTrigger` to publish without calling the generated trigger method. |
-| `ChangeEpsilon` | `0` | Numeric tolerance for change-driven modes. | Suppress tiny float jitter. | Expecting it to affect `FixedRate` or `OnTrigger`. |
-| `ForceIntervalSeconds` | `0` | Heartbeat interval for `OnChangeOrInterval`. | Publish an occasional heartbeat even when unchanged. | Expecting it to affect `OnTrigger`. |
-| `When` | `""` | Bool field, property, or zero-argument method that must be true before publishing. | Gate optional telemetry behind runtime state. | Referencing a non-bool or side-effect-heavy member. |
-| `Unless` | `""` | Bool field, property, or zero-argument method that must be false before publishing. | Suppress telemetry during pause or replay states. | Using different gates on members sharing one topic. |
+```csharp
+[FoxRun("/robot/pose")]
+private PoseState _pose;
 
-## 7. Publish Modes
+[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, RateHz = 30)]
+private RobotCommand _command;
 
-FoxRun supports four publish modes:
+[FoxRun("/debug/state", Mode = PublishAndSubscribe,
+    Policy = FixedRate, RateHz = 10,
+    Encoding = FoxRunWireEncoding.Protobuf)]
+private DebugState _debugState;
+```
 
-| Mode | Behavior |
+### Flows
+
+| `Mode` | Meaning |
 |---|---|
-| `FixedRate` | Publishes on the scheduled hub timer after `RateHz` elapses. |
-| `OnChange` | Publishes the first value and later changed values after the scheduled timer fires. |
-| `OnChangeOrInterval` | Publishes changed values, plus heartbeat samples after `ForceIntervalSeconds`. |
-| `OnTrigger` | Publishes only when user code calls the generated trigger method. Scheduled hub ticks skip the topic. |
+| `Publish` | Unity is the source and sends the current value. This is the default. |
+| `Subscribe` | One selected external provider is the source; Unity applies accepted values on the main thread. |
+| `PublishAndSubscribe` | Both directions are generated. This is intended for debugging and integration, not as the normal production default. |
 
-`OnTrigger` is intentionally explicit. The generator does not subscribe to C# events or UnityEvents and does not serialize event arguments. Set the field or property first, then call the generated trigger method.
+One subscription declaration resolves to exactly one input provider. Publishing
+may fan out to multiple enabled destinations.
 
-For concise examples, you can import the publish-mode enum members:
+### Policies
 
-```csharp
-using static Unity.FoxgloveSDK.Components.FoxRunPublishMode;
-```
+| `Policy` | Publish behavior | Subscribe behavior |
+|---|---|---|
+| `FixedRate` | Sends the current value on each eligible cadence. | Applies when a newer staged value exists; it never reapplies stale state just because a timer fired. |
+| `Change` | Sends the first value and later semantic changes. | Applies only when the staged value differs from the last applied value. |
+| `ChangeOrInterval` | Sends changes plus the configured heartbeat interval. | Applies a change or a newly received duplicate after the interval; it never invents a duplicate. |
+| `Trigger` | Sends only when the generated publish trigger is called. | Keeps the newest staged value until the generated apply trigger is called. |
 
-Then `PublishMode = OnTrigger` is equivalent to `PublishMode = FoxRunPublishMode.OnTrigger`.
+`Trigger` cannot be combined with an explicit positive `RateHz`; the source
+generator reports `FOXRUN609` instead of silently ignoring either setting.
+
+`ChangeEpsilon` controls the change threshold for floating-point and vector
+values. `ForceIntervalSeconds` controls the `ChangeOrInterval` heartbeat.
+Members on the same topic must agree on `Policy`, `ChangeEpsilon`, and
+`ForceIntervalSeconds`; otherwise the generator reports `FOXRUN005`.
+
+## 4. Rate and Admission Controls
+
+`RateHz` is a boundary cadence, not a network or ROS2 discovery setting:
+
+- Publish: maximum generated publication cadence.
+- Subscribe: maximum main-thread application cadence after transport admission.
+- PublishAndSubscribe: the same explicit value governs each direction
+  independently.
+
+When `RateHz` is omitted, publish resolves to 10 Hz and subscribe inherits the
+Manager's frozen **Default Apply Rate Hz**.
+
+Under **Foxglove Manager > Data Transport > Subscribe Data > Subscription
+Delivery**, two adjacent controls have different jobs:
+
+- **Maximum Accepted Rate Hz (per Topic)** is the hard provider-neutral
+  admission ceiling for Foxglove WebSocket and ROS 2 Native input. Excess
+  messages are dropped before avoidable DTO decode or native deep-copy work.
+- **Default Apply Rate Hz** is inherited only by declarations without a
+  positive `RateHz`.
+
+A declaration override cannot exceed the admission ceiling. Accepted input is
+bounded latest-wins: if Unity cannot apply every value, the newest owned value
+replaces the older pending value.
+
+## 5. Subscribe Data
+
+Subscribe Data is an external control surface and is disabled by default.
+Enable **FoxRun Subscriptions** in the Manager before entering Play Mode.
+
+Prefer an input-buffer member and validate it in normal Unity code:
 
 ```csharp
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
-using static Unity.FoxgloveSDK.Components.FoxRunPublishMode;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+public partial class SpeedController : MonoBehaviour
+{
+    [FoxRun("/control/target-speed", Mode = Subscribe,
+        Policy = Change, RateHz = 30,
+        Encoding = FoxRunWireEncoding.Json)]
+    private float _requestedTargetSpeed;
+
+    private void Update()
+    {
+        var safeTarget = Mathf.Clamp(_requestedTargetSpeed, 0f, 10f);
+        ApplyValidatedTarget(safeTarget);
+    }
+}
+```
+
+Inbound targets must be writable. Generated allowlists, payload bounds,
+encoding checks, provider checks, transport admission, owned latest-wins
+staging, and main-thread application all remain in force. A non-loopback
+listener remains fail-closed unless the Manager's explicit remote-input and
+authentication policy allows it.
+
+## 6. Wire Encoding and Input Provider
+
+`Encoding = FoxRunWireEncoding.Inherit` resolves through the Manager's frozen
+directional defaults. `PublishAndSubscribe` uses one wire contract in both
+directions and must therefore choose JSON or Protobuf explicitly.
+
+```csharp
+[FoxRun("/control/command", Mode = PublishAndSubscribe,
+    Encoding = FoxRunWireEncoding.Protobuf)]
+private DriveCommand _command;
+```
+
+`SubscriptionProvider` chooses the one input source. The normal core SDK path
+uses Foxglove WebSocket. `Ros2Native` requires the optional
+`dev.unity2foxglove.ros2forunity` facade, one selected distro runtime package,
+and a supported native message or matching custom typesupport add-on. Provider,
+encoding, QoS, copy budget, admission ceiling, and apply default are frozen for
+one enabled subscription session.
+
+## 7. Explicit Triggers
+
+Publish triggers set the value first and then call the generated
+`FoxRun_Trigger_<member>()` method:
+
+```csharp
+using UnityEngine;
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 
 public partial class StateReporter : MonoBehaviour
 {
-    [FoxRun("/events/state", PublishMode = OnTrigger)]
+    [FoxRun("/events/state", Policy = Trigger)]
     private string _state;
 
     private void OnEnable()
@@ -118,181 +188,101 @@ public partial class StateReporter : MonoBehaviour
 }
 ```
 
-For external callbacks, copy decoded data into a field that generated code can read, then call the trigger method from the Unity main thread:
+Subscribe triggers stage the newest input without changing the Unity member
+until user code calls `FoxRun_Apply_<member>()`. Generated trigger methods are
+main-thread-oriented; worker callbacks should marshal to the Unity main thread
+before invoking them.
+
+## 8. Full Duplex
+
+`PublishAndSubscribe` generates independent publish and apply schedules from
+one declaration. Applying an inbound value marks that exact version so it is
+not immediately echoed as a fresh outbound change; a later local mutation can
+publish normally. Use this mode for debug loops and integration probes where
+both sides understand the ownership rule. Prefer separate `Publish` and
+`Subscribe` declarations for production authority boundaries.
+
+## 9. Aggregate Messages
+
+`[FoxRunMessage]` remains an aggregate publish form. It uses the same `Policy`
+vocabulary but does not expose a partial inbound mode.
 
 ```csharp
-using UnityEngine;
 using Unity.FoxgloveSDK.Components;
-using static Unity.FoxgloveSDK.Components.FoxRunPublishMode;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 
-public partial class PacketReporter : MonoBehaviour
+[FoxRunMessage("/robot/summary", Policy = Change)]
+public partial class RobotSummary
 {
-    [FoxRun("/events/ouster", PublishMode = OnTrigger)]
-    private string _lastFrameStatus;
-
-    private void OnOusterFrameDecoded(PointCloudFrame frame)
-    {
-        _lastFrameStatus = $"points={frame.Points.Count}";
-        FoxRun_Trigger_lastFrameStatus();
-    }
+    [FoxRunField("battery")]
+    private float _battery;
 }
 ```
 
-Generated trigger methods return `true` only when the publish dispatch succeeds. They return `false` when no Foxglove manager is running, the topic index is invalid, or live publishers are suppressed during replay.
+## 10. Foxglove Workflow
 
-If one grouped topic contains any `OnTrigger` member, that topic is trigger-only. It will not publish from scheduled hub ticks; call a generated trigger method to publish the grouped topic.
+1. Add the component and a `FoxgloveManager` to the scene.
+2. Configure Publish Data and, when needed, Subscribe Data before Play Mode.
+3. Enter Play Mode.
+4. Connect Foxglove to `ws://127.0.0.1:8765`.
+5. Use Topics, Raw Messages, or Plot for output.
+6. Use the optional **FoxRun Publish** extension for generated writable JSON
+   and Protobuf subscription contracts.
 
-## 8. Threading Notes
+The panel discovers contracts through `/foxrun/subscription-contracts`; it
+does not guess topics or encodings. Protobuf input uses binary MessageData and
+does not fall back to JSON.
 
-Generated trigger methods are main-thread-oriented. They may read Unity-owned fields, properties, transforms, or objects. Unity callbacks such as `Update`, `OnEnable`, or collision callbacks can call them directly. Background packet, network, or worker callbacks should marshal to the Unity main thread before calling generated trigger methods.
+## 11. Generated Evidence and Player Builds
 
-The FoxRun trigger mode does not add an event queue, dispatcher, automatic event subscription, UnityEvent parsing, collision snapshot generation, or event-argument serialization.
+The Roslyn generator is the authoring authority. Editor Play Mode refreshes the
+canonical descriptor, manifest, hashes, and runtime schema info. Player builds
+also generate physical fallback `.g.cs` files before compilation. These
+artifacts describe the resolved contract and support replay governance; they do
+not create a second runtime declaration model.
 
-## 9. IL2CPP Notes
+The canonical manifest is deterministic governance evidence. Report-only
+timestamps and warnings are excluded from its contract fingerprints, while the
+generated manifest, descriptor, hashes, and fallback sources remain ignored
+machine-local build state rather than versioned authoring input.
 
-In the Unity Editor, FoxRun source is generated during compilation. For Player builds, Unity2Foxglove also generates physical fallback `.g.cs` files before building.
+Editor Play Mode registers runtime schema info carrying the manifest hash used
+as MCAP metadata and later replay drift evidence.
 
-When the IL2CPP build starts, you should see logs like:
+MCAP stores this evidence as `unity2foxglove.foxrun.schema`, including
+`globalManifestHash`. A replay schema mismatch is handled by the Manager's
+configured schema-identity guard instead of silently applying incompatible
+FoxRun data.
+
+The broader SDK schema manifest also catalogs Protobuf and packaged ROS2
+coverage. That aggregate inventory is separate from replay governance, which
+uses the FoxRun contract identity recorded with the MCAP.
+
+The debug overlay is non-contract diagnostics. It is not included in canonical
+hashes and is not a replay guard key.
+
+During IL2CPP preprocessing, expect logs such as:
 
 ```text
 [FoxrunBuildPreprocess] Generating FoxRun source files...
-[FoxrunCodeGenerator] Generated TestLog_FoxRun.g.cs
+[FoxrunCodeGenerator] Generated RobotTelemetry_FoxRun.g.cs
 ```
 
-You normally do not need to manage these files. The build preprocess step writes them only when content changes.
+MCAP records the external boundary representation. Replay compares the
+recorded FoxRun schema identity with the current generated identity and
+suppresses live WebSocket and native fanout while replay is authoritative.
 
-## 10. Canonical Manifest Governance
-
-During build-time FoxRun generation, the SDK also writes a canonical manifest under `Assets/Generated/FoxRun/`. Entering Editor Play Mode refreshes the same manifest artifacts before play starts, without writing physical `_FoxRun.g.cs` fallback files. This manifest is a governance and evidence artifact for the resolved `[FoxRun]` telemetry contract. The manifest artifact itself does not change runtime publishing behavior.
-
-The manifest governance path also locks the FoxRun non-positive `RateHz` policy: `RateHz` values of `0` or less disable scheduled publishing for that topic. This keeps the runtime behavior aligned with the canonical policy value recorded as `0`.
-
-The canonical manifest and its SHA-256 fingerprints are computed from deterministic JSON. They ignore generated timestamps, comments, file paths, Unity `Library/` contents, and machine-local state. Timestamps and warnings appear only in the report JSON, not in the canonical manifest hash input.
-
-This contract evidence covers FoxRun automatic telemetry only. Generated runtime schema info embeds the current manifest hash values so Editor Play Mode and Player runtime code can query the same evidence without reflection.
-
-## 11. Runtime Schema Info
-
-Build-time generation and Editor Play Mode manifest refresh also write `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This generated file registers a runtime schema info snapshot containing the global manifest hash, the FoxRun section manifest hash, and type/contract/field metadata.
-
-The registry is evidence, not publisher logic. It does not change FoxRun runtime publishing behavior, does not recompute canonical hashes, and does not pull manifest builders into runtime code.
-
-When MCAP recording is enabled, Unity2Foxglove writes this evidence into a metadata record named `unity2foxglove.foxrun.schema`. The metadata value is compact JSON containing `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes. During Unity replay, the SDK compares the recorded `globalManifestHash` with the current runtime schema info. A mismatch blocks replay with a short-hash diagnostic; in explicit replay mode, the Manager aborts startup instead of falling back to live publishers. Missing or malformed metadata is warning-only so older recordings can still open.
-
-## 12. SDK Schema Manifest Aggregate
-
-Build-time generation and Editor Play Mode manifest refresh also write an SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/`. This aggregate records the FoxRun evidence summary, the bundled protobuf schema registry, the bundled ROS2 `.msg` registry, and the SDK typed publisher catalog in one deterministic JSON artifact.
-
-This SDK schema manifest is release evidence, not replay governance. Unity replay continues to compare only the FoxRun `globalManifestHash` stored in MCAP metadata; protobuf registry changes, ROS2 catalog changes, and typed publisher catalog changes do not become replay guard keys through this aggregate.
-
-## 13. Debug Overlay Topics
-
-For temporary diagnostics that should stay outside the FoxRun contract, publish explicit `/debug/...` schemaless JSON through the debug overlay helper. Debug overlay messages are non-contract data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or the canonical manifest fingerprints, and they are not replay guard keys. MCAP recording may still capture them as ordinary JSON frames, but replay schema mismatch checks should ignore them.
-
-## 14. Subscribe Data Fields
-
-FoxRun fields are publish-only by default. To expose a field as an explicit input port, set `Mode`:
-
-```csharp
-[FoxRun("/control/target-speed", Mode = FoxRunMode.SubscribeOnly)]
-private float _requestedTargetSpeed;
-
-private void Update()
-{
-    _targetSpeed = Mathf.Clamp(_requestedTargetSpeed, 0f, 10f);
-}
-```
-
-`SubscribeOnly` fields are not published. `PublishAndSubscribe` fields retain publishing and suppress the first echo after an inbound assignment. Inbound fields must be writable scalar, string, or supported Unity value types. Protobuf inputs also support generated enums, DTO graphs, arrays, and `List<T>` values; aggregate message fields, readonly fields, and properties without setters are rejected by generator diagnostics.
-
-Prefer an input-buffer field such as `_requestedTargetSpeed`, validate it in normal Unity code, and then apply it to authoritative state. Use `SubscribeOnly` for remote-authoritative commands. Keep local-authoritative state publish-only. Use `PublishAndSubscribe` only for intentionally shared observed state where both sides understand the ownership and feedback-loop policy.
-
-**Subscribe Data** means Unity subscribes to data published by a Foxglove
-client. It is an external control surface and is disabled by default. Enable it
-under `FoxgloveManager > Subscribe Data > FoxRun Subscription Control`. The
-runtime accepts only generated topic contracts, applies bounded payload and
-per-topic rate limits, rejects polymorphic `$type` metadata for JSON, and
-assigns values on the Unity main thread.
-
-Loopback endpoints may opt in directly. A non-loopback endpoint remains fail-closed unless shared-token authentication is configured and the separate remote-inbound option is enabled. Every authenticated client currently receives the same generated allowlist; per-client topic authorization is not provided.
-
-### Directional Wire Encoding
-
-`[FoxRun]` declares `Encoding = FoxRunWireEncoding.Inherit` by default. The
-Manager has two concrete defaults, both initially **Protobuf**:
-
-- **Default FoxRun Publish Encoding** resolves inherited `PublishOnly`
-  contracts.
-- **Default Subscription Encoding** resolves inherited `SubscribeOnly`
-  contracts.
-
-The Inspector exposes only **Protobuf** and **JSON** for these defaults;
-`Inherit` is source-owned and is not an Inspector option. Changing the
-subscription default does not change a `PublishOnly` topic, and vice versa.
-
-Use an explicit JSON declaration for a legacy client that must keep its existing contract:
-
-```csharp
-[FoxRun("/control/legacy-speed", Mode = FoxRunMode.SubscribeOnly,
-    Encoding = FoxRunWireEncoding.Json)]
-private float _legacyRequestedSpeed;
-```
-
-Bidirectional contracts have one wire contract in both directions, so they must
-declare their encoding explicitly. The source generator rejects
-`PublishAndSubscribe` with `Encoding = Inherit`:
-
-```csharp
-[FoxRun("/control/command", Mode = FoxRunMode.PublishAndSubscribe,
-    Encoding = FoxRunWireEncoding.Protobuf)]
-private DriveCommand _command;
-```
-
-The Manager captures both defaults when its server starts. Changing either
-Inspector popup during Play Mode takes effect only after restarting or
-re-enabling the server; an active session never changes channel encoding in
-place. The FoxRun Runtime Topics summary under **FoxServices** shows each
-topic's direction, declared and effective encodings, schema, and a topic copy
-button.
-
-Encoding contributes to the schema contract identity. An inherited topic activated as Protobuf therefore has different schema/fingerprint evidence from its JSON variant. Re-record MCAP data after changing an inherited topic's effective encoding, and explicitly select JSON before recording when an external client must retain the legacy JSON contract.
-
-### FoxRun Publish Panel
-
-The optional **FoxRun Publish** Foxglove extension discovers writable
-`SubscribeOnly` and `PublishAndSubscribe` contracts through Unity's
-`/foxrun/subscription-contracts` service. It renders generated writable fields
-for a selected contract rather than asking users to type a topic or encoding.
-
-Install the packaged extension from
-`Tools/foxglove-extensions/foxrun-publish-panel`, add **FoxRun Publish** to a
-Foxglove layout, then enter Unity Play Mode with **Enable FoxRun
-Subscriptions** enabled. The panel reports Unity's authoritative per-topic
-limit and clamps its requested repeat rate to that bound. A disabled
-subscription service returns no writable contracts, and the panel disables
-sending instead of offering inputs that Unity will reject.
-
-JSON contracts use the Foxglove panel publishing path. Protobuf contracts use
-a direct Unity WebSocket connection, explicitly advertise `protobuf`, and send
-binary `MessageData`; they never fall back to JSON. A shared token, when a
-remote endpoint requires one, is memory-only and must be entered again for a
-new panel session. Panel send status is fire-and-forget: use Unity diagnostics
-and an observed Unity-side applied-message counter as acceptance authority.
-
-Local service calls extend the existing `[FoxService]` registry through `FoxgloveServiceHub.CallLocal`. They do not create a second service registry or move Unity handlers onto worker threads.
-
-## 15. Troubleshooting
+## 12. Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| No `/debug/...` topics in Editor | The class is `partial`, the component is enabled, and Play Mode is running. |
-| Works in Editor but not Player | Run the IL2CPP build script and check for `[FoxrunBuildPreprocess]` logs. |
-| Topic exists but value is stale | Check `RateHz`, Play Mode state, and whether the property value changes. |
-| `OnTrigger` topic exists but does not update | Confirm user code calls the generated `FoxRun_Trigger_...()` method after setting the value. |
-| Generated trigger method returns `false` | Confirm the Foxglove manager is running and live publishers are not suppressed by replay mode. |
-| Build loops or recompiles too often | Generated fallback files should only be written when content changes. |
+| No topic appears | The class is `partial`, the topic starts with `/`, the component is enabled, and Play Mode is running. |
+| Subscribe receives nothing | Enable subscriptions, verify the selected provider and encoding, and inspect transport-admission diagnostics. |
+| Input arrives but applies slowly | Check declaration `RateHz` or the Manager's **Default Apply Rate Hz**. |
+| Messages are dropped | Check **Maximum Accepted Rate Hz (per Topic)**, payload bounds, encoding, and native copy budget. |
+| Trigger value does not move | Call the correct generated publish or apply trigger from the Unity main thread. |
+| Full-duplex value does not echo immediately | One-shot suppression of the just-applied inbound version is intentional. |
+| Editor works but Player does not | Inspect the build-preprocess logs and generated fallback source. |
 
-## 16. Where to Learn More
-
-- Use [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md) for build verification.
-- Use [10_Architecture](10_Architecture.md) for generator and fallback internals.
+See [09_IL2CPP_Build_Guide](09_IL2CPP_Build_Guide.md) for Player verification
+and [10_Architecture](10_Architecture.md) for generator and runtime ownership.
