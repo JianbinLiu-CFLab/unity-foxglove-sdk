@@ -173,7 +173,11 @@ def validate_addon(request: AddonValidationRequest) -> AddonValidationResult:
     _validate_package_metadata(package, distro, runtime_manifest)
     _validate_manifest(manifest, distro, static_lock, runtime_manifest)
     _validate_notices(addon_root)
-    base_ros2_identity = _base_ros2_message_identity(base_root, request.base_ros2_message_identity)
+    base_ros2_identity = _base_ros2_message_identity(
+        base_root,
+        request.base_ros2_message_identity,
+        allow_hash_only=True,
+    )
     _validate_managed_payload(addon_root, manifest, base_ros2_identity)
     _validate_native_payload(addon_root, manifest, base_root)
     _validate_inventory(addon_root, inventory)
@@ -342,6 +346,8 @@ def _validate_notices(addon_root: Path) -> None:
 def _base_ros2_message_identity(
     base_runtime_root: Path,
     supplied: Mapping[str, str] | None,
+    *,
+    allow_hash_only: bool = False,
 ) -> Mapping[str, str]:
     """Implement the internal base ros2 message identity step."""
     if supplied is not None:
@@ -351,12 +357,31 @@ def _base_ros2_message_identity(
     if not assembly_path.is_file():
         raise AddonValidationError("repair-ros2cs-common-identity")
     try:
+        assembly_sha256 = file_sha256(assembly_path)
+    except OSError as exc:
+        raise AddonValidationError("repair-ros2cs-common-identity") from exc
+    if not _is_windows_host():
+        if allow_hash_only:
+            # The artifact is Win64-only, while the package-check workflow is
+            # intentionally Linux-hosted. The SHA-256 still proves that the
+            # declared identity refers to the exact selected base DLL. The
+            # Windows analyzer workflow runs this same validator with the CLR
+            # metadata probe enabled before an add-on can merge.
+            return {"sha256": assembly_sha256}
+        raise AddonValidationError("repair-ros2cs-common-identity")
+    try:
         identity = _read_windows_managed_identity(assembly_path)
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise AddonValidationError("repair-ros2cs-common-identity") from exc
     identity = dict(identity)
-    identity["sha256"] = file_sha256(assembly_path)
+    identity["sha256"] = assembly_sha256
     return _validate_managed_identity(identity, "repair-ros2cs-common-identity")
+
+
+def _is_windows_host() -> bool:
+    """Return whether the host can perform the Win64 CLR metadata probe."""
+
+    return os.name == "nt"
 
 
 def _read_windows_managed_identity(assembly_path: Path) -> Mapping[str, str]:
@@ -470,7 +495,10 @@ def _validate_managed_payload(
     if not isinstance(ros2_message, dict):
         raise AddonValidationError("repair-ros2cs-common-identity")
     declared_identity = _validate_managed_identity(ros2_message, "repair-ros2cs-common-identity")
-    if declared_identity != dict(base_ros2_identity):
+    if set(base_ros2_identity) == {"sha256"}:
+        if declared_identity["sha256"] != base_ros2_identity["sha256"]:
+            raise AddonValidationError("repair-ros2cs-common-identity")
+    elif declared_identity != dict(base_ros2_identity):
         raise AddonValidationError("repair-ros2cs-common-identity")
     importer = managed.get("pluginImporter")
     if not isinstance(importer, dict):

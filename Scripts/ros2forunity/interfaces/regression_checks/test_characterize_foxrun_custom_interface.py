@@ -31,8 +31,9 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
     """Represent CustomInterfaceCharacterizationTests."""
     def test_windows_build_alias_is_required_only_for_an_overlong_projected_object_path(self) -> None:
         """Verify windows build alias is required only for an overlong projected object path."""
-        self.assertFalse(requires_short_windows_build_alias(Path("T:/")))
-        self.assertTrue(requires_short_windows_build_alias(Path("D:/") / ("very-long-root-" * 20)))
+        with patch.object(characterization, "_is_windows_host", return_value=True):
+            self.assertFalse(requires_short_windows_build_alias(Path("T:/")))
+            self.assertTrue(requires_short_windows_build_alias(Path("D:/") / ("very-long-root-" * 20)))
 
     def test_candidate_workspace_uses_a_separate_out_of_tree_root(self) -> None:
         """Verify candidate workspace uses a separate out of tree root."""
@@ -173,13 +174,14 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
                 dotnet=dotnet,
             )
 
-            with patch.object(characterization, "_capture_msvc_environment", return_value={"PATH": r"C:\\VS\\bin"}):
+            msvc_bin = root / "visual-studio" / "bin"
+            with patch.object(characterization, "_capture_msvc_environment", return_value={"PATH": str(msvc_bin)}):
                 environment = build_characterization_environment(request)
 
-            self.assertIn(str(dotnet.parent), environment["PATH"].split(";"))
-            self.assertIn(r"C:\\VS\\bin", environment["PATH"].split(";"))
-            self.assertEqual(os.environ["APPDATA"], environment["APPDATA"])
-            self.assertEqual(os.environ["ProgramFiles"], environment["ProgramFiles"])
+            self.assertIn(str(dotnet.parent), environment["PATH"].split(os.pathsep))
+            self.assertIn(str(msvc_bin), environment["PATH"].split(os.pathsep))
+            self.assertEqual(os.environ.get("APPDATA"), environment.get("APPDATA"))
+            self.assertEqual(os.environ.get("ProgramFiles"), environment.get("ProgramFiles"))
 
     def test_environment_forces_utf8_for_rosidl_template_expansion(self) -> None:
         """Verify environment forces utf8 for rosidl template expansion."""

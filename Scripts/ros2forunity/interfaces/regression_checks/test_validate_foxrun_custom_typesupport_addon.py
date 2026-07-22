@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from Scripts.test_support.phase181_scratch import temporary_directory
 
+from Scripts.ros2forunity.interfaces import foxrun_custom_typesupport_common as common
 from Scripts.ros2forunity.interfaces.foxrun_custom_typesupport_common import (
     AddonValidationError,
     AddonValidationRequest,
@@ -30,6 +33,32 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
                 "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64",
                 result.package_id,
             )
+
+    def test_portable_validation_compares_actual_base_runtime_hash_without_windows_metadata_probe(self) -> None:
+        """Verify non-Windows package checks retain a real base-DLL identity gate."""
+        with self._fixture() as fixture:
+            request = replace(fixture.request, base_ros2_message_identity=None)
+
+            with (
+                patch.object(common, "_is_windows_host", return_value=False),
+                patch.object(
+                    common,
+                    "_read_windows_managed_identity",
+                    side_effect=AssertionError("portable validation must not invoke the Windows probe"),
+                ),
+            ):
+                result = validate_addon(request)
+
+            self.assertEqual("humble", result.distro)
+
+        with self._fixture() as fixture:
+            fixture.manifest_at(("managed", "ros2Message", "sha256"), "0" * 64)
+            fixture.refresh_inventory()
+            request = replace(fixture.request, base_ros2_message_identity=None)
+
+            with patch.object(common, "_is_windows_host", return_value=False):
+                with self.assertRaisesRegex(AddonValidationError, "repair-ros2cs-common-identity"):
+                    validate_addon(request)
 
     def test_source_identity_distro_and_digest_mismatches_fail_closed(self) -> None:
         """Verify source identity distro and digest mismatches fail closed."""

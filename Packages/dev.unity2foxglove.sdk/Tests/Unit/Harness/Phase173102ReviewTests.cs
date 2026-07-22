@@ -68,6 +68,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void AnalyzerFreshnessUsesGitLongPathsBeforeCheckoutAndValidatesWin64TypesupportIdentity()
+        {
+            var source = TestSources.Text(".github/workflows/dotnet-tests.yml");
+            var analyzerStart = source.IndexOf("analyzer-freshness:", StringComparison.Ordinal);
+            var longPathStep = source.IndexOf("Enable Git long-path support", StringComparison.Ordinal);
+            var checkout = source.IndexOf("uses: actions/checkout@v4", analyzerStart, StringComparison.Ordinal);
+
+            Assert.True(analyzerStart >= 0, "The Windows analyzer job is missing.");
+            Assert.True(longPathStep > analyzerStart && longPathStep < checkout, "Git long-path support must be enabled before checkout.");
+            Assert.Contains("git config --global core.longpaths true", source, StringComparison.Ordinal);
+            Assert.Contains("Validate Phase181 Win64 custom ROS2 typesupport identities", source, StringComparison.Ordinal);
+            Assert.Contains("validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_zenoh_cpp", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void PerformanceThresholdsKeepGen2CollectionsMeaningful()
         {
             var json = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Performance/performance-thresholds.json");

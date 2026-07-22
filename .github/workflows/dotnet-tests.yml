@@ -151,7 +151,18 @@ jobs:
   analyzer-freshness:
     runs-on: windows-latest
     steps:
+      - name: Enable Git long-path support
+        shell: pwsh
+        run: git config --global core.longpaths true
+
       - uses: actions/checkout@v4
+
+      - name: Validate Phase181 Win64 custom ROS2 typesupport identities
+        run: |
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro humble --require-rmw rmw_fastrtps_cpp
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro jazzy --require-rmw rmw_fastrtps_cpp
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_fastrtps_cpp
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_zenoh_cpp
 
       - uses: actions/setup-dotnet@v4
         with:

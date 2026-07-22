@@ -110,10 +110,16 @@ def _characterization_parent(request: CharacterizationRequest) -> Path:
     return request.build_root / "phase181" / request.distro
 
 
+def _is_windows_host() -> bool:
+    """Return whether host-specific Windows path workarounds may run."""
+
+    return os.name == "nt"
+
+
 def requires_short_windows_build_alias(characterization_parent: Path) -> bool:
     """Return whether the deepest rosidl object would exceed safe MSVC space."""
 
-    if os.name != "nt":
+    if not _is_windows_host():
         return False
     projected = (
         characterization_parent
@@ -422,6 +428,7 @@ def build_characterization_environment(request: CharacterizationRequest) -> dict
     toolchain_path = environment["PATH"]
     environment.update(_capture_msvc_environment(base))
     pixi = request.ros2_root / ".pixi" / "envs" / "default"
+    system_root = Path(base.get("SystemRoot", r"C:\Windows"))
     path_entries = (
         environment["PATH"],
         toolchain_path,
@@ -431,8 +438,8 @@ def build_characterization_environment(request: CharacterizationRequest) -> dict
         request.ros2_root / "Scripts",
         pixi / "Scripts",
         pixi / "Library" / "bin",
-        Path(base["SystemRoot"]) / "System32",
-        Path(base["SystemRoot"]) / "System32" / "WindowsPowerShell" / "v1.0",
+        system_root / "System32",
+        system_root / "System32" / "WindowsPowerShell" / "v1.0",
     )
     environment["PATH"] = os.pathsep.join(str(entry) for entry in path_entries)
     # ros2cs is a complete overlay after its explicit install preflight: each
