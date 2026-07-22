@@ -193,6 +193,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Contains("ZenohRouterPortEditorUserSettingsKey", zenohRouterSettings, StringComparison.Ordinal);
             Assert.Contains("R2fuZenohRouterSettings.json", zenohRouterSettings, StringComparison.Ordinal);
             Assert.Contains("ZENOH_SESSION_CONFIG_URI", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.Contains("ReadAllTextForVerification(templatePath)", zenohRouterSettings, StringComparison.Ordinal);
+            Assert.DoesNotContain("File.ReadAllText(templatePath)", zenohRouterSettings, StringComparison.Ordinal);
             Assert.Contains("SetProcessEnvironmentVariable(ZenohSessionConfigEnvironmentVariable", zenohRouterSettings, StringComparison.Ordinal);
             Assert.Contains("_wputenv_s", zenohRouterSettings, StringComparison.Ordinal);
             Assert.Contains("GetZenohRouterEndpointRequiringEditorRestart", playModeGuard, StringComparison.Ordinal);

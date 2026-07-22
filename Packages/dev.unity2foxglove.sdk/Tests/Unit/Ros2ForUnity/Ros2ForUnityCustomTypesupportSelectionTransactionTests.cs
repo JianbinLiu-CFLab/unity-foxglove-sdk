@@ -210,6 +210,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
         }
 
+        [Fact]
+        public void VerificationExistenceHandlesDeepPackagePaths()
+        {
+            var root = Path.Combine(
+                RepositoryBuildTestRoot(),
+                "u2f-phase181-exists-" + Guid.NewGuid().ToString("N"));
+            var directory = root;
+            while (directory.Length < 280)
+                directory = Path.Combine(directory, "deep-typesupport-segment");
+            var file = Path.Combine(directory, "custom-typesupport.dll");
+
+            try
+            {
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(file, "verified");
+
+                Assert.True(
+                    Ros2ForUnityCustomTypesupportSelectionTransaction.FileExistsForVerification(file));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
+        }
+
         private sealed class SelectionFixture : IDisposable
         {
             private readonly string _root;

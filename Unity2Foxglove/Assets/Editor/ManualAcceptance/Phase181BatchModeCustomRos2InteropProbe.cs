@@ -160,9 +160,13 @@ public static class Phase181BatchModeCustomRos2InteropProbe
             return;
         }
 
-        if (state != PlayModeStateChange.EnteredEditMode
-            || !SessionState.GetBool(SessionKey("exit-requested"), false))
+        if (state != PlayModeStateChange.EnteredEditMode)
+            return;
+
+        if (!SessionState.GetBool(SessionKey("exit-requested"), false))
         {
+            Debug.Log("PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_RETRY reason=editor-returned-before-entry");
+            EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
             return;
         }
 

@@ -2321,6 +2321,7 @@ def _run_windows_surface(
     player_process: subprocess.Popen[str] | None = None
     editor_process: subprocess.Popen[str] | None = None
     editor_plugin_alias_stack = contextlib.ExitStack()
+    peer_workspace_alias_stack = contextlib.ExitStack()
     worker_stream = None
     peer_build_sealed = False
     exit_code = 1
@@ -2394,6 +2395,9 @@ def _run_windows_surface(
             cache_key,
             lock.ros_package_name,
         )
+        _, peer_runtime_workspace = peer_workspace_alias_stack.enter_context(
+            temporary_short_windows_peer_workspace(workspace)
+        )
         peer_build_sealed = peer_build_reused
         summary["processOwnership"] = {"workspaceOwned": True}
         summary["peerBuild"] = "reused" if peer_build_reused else "cold"
@@ -2430,25 +2434,24 @@ def _run_windows_surface(
                 + ".",
                 flush=True,
             )
-            with temporary_short_windows_peer_workspace(workspace) as (_, build_workspace):
-                stage_locked_ros_source(static_package, build_workspace, lock.ros_package_name)
-                run_logged_owned_command(
-                    colcon_command,
-                    cwd=build_workspace,
-                    env=build_environment,
-                    log_path=workspace / "colcon-build.log",
-                    timeout_seconds=peer_build_timeout_seconds(),
-                    failure_code="FAIL_PEER_BUILD",
-                    stream_output=True,
-                    output_prefix="[phase181:" + profile_id + "][build] ",
-                )
+            stage_locked_ros_source(static_package, peer_runtime_workspace, lock.ros_package_name)
+            run_logged_owned_command(
+                colcon_command,
+                cwd=peer_runtime_workspace,
+                env=build_environment,
+                log_path=workspace / "colcon-build.log",
+                timeout_seconds=peer_build_timeout_seconds(),
+                failure_code="FAIL_PEER_BUILD",
+                stream_output=True,
+                output_prefix="[phase181:" + profile_id + "][build] ",
+            )
             seal_peer_build_workspace(workspace, cache_key, lock.ros_package_name)
             peer_build_sealed = True
 
         peer_environment = build_peer_environment(
             build_environment,
             toolchain.ros2_root,
-            workspace / "install",
+            peer_runtime_workspace / "install",
             distro=args.distro,
             rmw=args.rmw,
             domain_id=args.domain_id,
@@ -2559,7 +2562,7 @@ def _run_windows_surface(
         )
         worker_process = subprocess.Popen(
             worker_command,
-            cwd=str(workspace),
+            cwd=str(peer_runtime_workspace),
             env=peer_environment,
             text=True,
             stdout=worker_stream,
@@ -2676,6 +2679,7 @@ def _run_windows_surface(
         if editor_process is not None and editor_process.poll() is None:
             _terminate_owned_child(editor_process)
         editor_plugin_alias_stack.close()
+        peer_workspace_alias_stack.close()
         if worker_stream is not None:
             worker_stream.close()
         if workspace is not None:

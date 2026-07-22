@@ -700,6 +700,15 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             )
         )
 
+    def test_windows_peer_keeps_the_short_workspace_alias_through_worker_startup(self):
+        """Verify Phase181 behavior: generated Python typesupport loads from the same short alias used to build it."""
+        source = PEER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("peer_workspace_alias_stack = contextlib.ExitStack()", source)
+        self.assertIn("peer_runtime_workspace = peer_workspace_alias_stack.enter_context(", source)
+        self.assertIn("peer_runtime_workspace / \"install\"", source)
+        self.assertIn("peer_workspace_alias_stack.close()", source)
+
     def test_windows_toolchain_requires_pinned_python_ros2_and_colcon(self):
         """Verify Phase181 behavior: windows toolchain requires pinned python ros2 and colcon."""
         peer = load_peer_module()

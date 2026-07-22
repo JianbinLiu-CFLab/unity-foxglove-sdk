@@ -497,7 +497,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                    && IsVersion(Text(identity["version"]))
                    && IsGuid(Text(identity["mvid"]))
                    && IsSha256(Text(identity["sha256"]))
-                   && File.Exists(baseAssembly)
+                   && FileExistsForVerification(baseAssembly)
                    && TryReadAssemblyMvid(baseAssembly, out var actualMvid)
                    && StringEquals(Text(identity["mvid"]), actualMvid)
                    && StringEquals(Text(identity["sha256"]), FileSha256(baseAssembly));
@@ -745,7 +745,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 var fullPath = Path.Combine(candidateDirectory, path.Replace('/', Path.DirectorySeparatorChar));
                 if (!IsSafePackageRelativePath(path)
                     || !IsChildPath(fullPath, Path.Combine(candidateDirectory, NativePluginRelativeDirectory))
-                    || !File.Exists(fullPath)
+                    || !FileExistsForVerification(fullPath)
                     || !StringEquals(Text(entry["sha256"]), FileSha256(fullPath))
                     || !nativePaths.Add(path))
                 {
@@ -772,7 +772,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 {
                     if (string.IsNullOrWhiteSpace(library)
                         || library.IndexOfAny(new[] { '/', '\\' }) >= 0
-                        || !File.Exists(Path.Combine(baseRuntime.Directory, NativePluginRelativeDirectory, library)))
+                        || !FileExistsForVerification(Path.Combine(baseRuntime.Directory, NativePluginRelativeDirectory, library)))
                     {
                         return false;
                     }
@@ -940,11 +940,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
 
+        internal static bool FileExistsForVerification(string path)
+        {
+            try
+            {
+                using (OpenForVerificationRead(path))
+                    return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         // A generated rosidl typesupport DLL name can legitimately push the
         // complete package path past legacy MAX_PATH when Unity runs from a
         // deeply nested workspace. Unity's Mono FileStream needs the Win32
-        // extended-path form even though File.Exists has already accepted the
-        // ordinary path. Keep this read-only adaptation at the verification
+        // extended-path form. Keep this read-only adaptation at the verification
         // seam; package metadata and manifest paths retain their normal form.
         internal static string NormalizeWindowsLongPathForRead(string path)
         {
