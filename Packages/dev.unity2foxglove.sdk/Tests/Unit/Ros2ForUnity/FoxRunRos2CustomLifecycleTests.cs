@@ -112,7 +112,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "Phase181.Source",
                 "State",
                 "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope",
-                FoxRunMode.PublishAndSubscribe,
+                FoxRunFlow.PublishAndSubscribe,
                 FoxRunSubscriptionProvider.Ros2Native,
                 FoxRunRos2QosPreset.Reliable,
                 supportsRos2Native: true,

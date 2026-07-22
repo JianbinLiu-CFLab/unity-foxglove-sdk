@@ -262,7 +262,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 new[]
                 {
                     typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunMode),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunFlow),
                     typeof(Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider),
                     typeof(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset),
                     typeof(bool)
@@ -356,7 +356,7 @@ namespace Demo
     public partial class Receiver
     {
         [Unity.FoxgloveSDK.Components.FoxRun(""/native/string"",
-            Mode = Unity.FoxgloveSDK.Components.FoxRunMode.SubscribeOnly,
+            Mode = Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
             SubscriptionProvider = Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
             SchemaName = ""std_msgs/msg/String"")]
@@ -451,7 +451,9 @@ namespace Demo
             var trees = new[]
                 {
                     "FoxRunAttribute.cs",
-                    Path.Combine("..", "..", "Utilities", "FoxRunPublishPolicy.cs"),
+                    "FoxRunFlow.cs",
+                    "FoxRunPolicy.cs",
+                    Path.Combine("..", "..", "Utilities", "FoxRunUpdatePolicy.cs"),
                     "FoxRunWireEncoding.cs",
                     "FoxRunSubscriptionProvider.cs",
                     "FoxRunRos2QosPreset.cs"

@@ -34,7 +34,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("where T : ROS2.Message, new()", registrar, StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2CopyContext", registrar, StringComparison.Ordinal);
             Assert.Contains("public sealed class FoxRunRos2GeneratedContract", contract, StringComparison.Ordinal);
-            Assert.Contains("FoxRunMode mode", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunFlow mode", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunSubscriptionProvider subscriptionProvider", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2QosPreset qosPreset", contract, StringComparison.Ordinal);
             Assert.Contains("HasCompleteMetadata", contract, StringComparison.Ordinal);

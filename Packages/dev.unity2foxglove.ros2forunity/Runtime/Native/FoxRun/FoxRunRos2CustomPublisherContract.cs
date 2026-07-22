@@ -30,7 +30,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             int interfaceRevision,
             string interfaceDigest,
             string baseRuntimePackageId,
-            FoxRunMode mode)
+            FoxRunFlow mode)
         {
             Id = id ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -57,19 +57,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public int InterfaceRevision { get; }
         public string InterfaceDigest { get; }
         public string BaseRuntimePackageId { get; }
-        public FoxRunMode Mode { get; }
+        public FoxRunFlow Mode { get; }
 
         /// <summary>True only for a generated custom PublishAndSubscribe contract.</summary>
-        public bool IsPublishAndSubscribe => Mode == FoxRunMode.PublishAndSubscribe;
+        public bool IsPublishAndSubscribe => Mode == FoxRunFlow.PublishAndSubscribe;
 
         /// <summary>
-        /// Custom native output is supported only for generated PublishOnly and
+        /// Custom native output is supported only for generated Publish and
         /// PublishAndSubscribe contracts whose add-on identity is complete.
         /// Invalid serialized enum values fail closed through this property.
         /// </summary>
         public bool SupportsNativeOutput
             => HasCompleteMetadata
-               && (Mode == FoxRunMode.PublishOnly || Mode == FoxRunMode.PublishAndSubscribe);
+               && (Mode == FoxRunFlow.Publish || Mode == FoxRunFlow.PublishAndSubscribe);
 
         public bool HasCompleteMetadata
             => !String.IsNullOrWhiteSpace(Id)

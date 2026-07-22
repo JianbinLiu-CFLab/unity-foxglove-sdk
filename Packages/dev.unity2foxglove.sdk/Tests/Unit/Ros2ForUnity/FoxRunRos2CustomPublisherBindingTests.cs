@@ -204,7 +204,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 1,
                 "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
                 "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                FoxRunMode.PublishOnly);
+                FoxRunFlow.Publish);
 
         private static FoxTopicContract TopicContract()
             => new FoxTopicContract(

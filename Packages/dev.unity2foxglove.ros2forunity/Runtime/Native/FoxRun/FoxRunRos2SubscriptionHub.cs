@@ -111,13 +111,27 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             IFoxRunRos2HostBinding binding,
             long generation,
             out Exception failure)
+            => TryRun(
+                binding,
+                generation,
+                (double)System.Diagnostics.Stopwatch.GetTimestamp()
+                / System.Diagnostics.Stopwatch.Frequency,
+                out failure);
+
+        internal static bool TryRun(
+            IFoxRunRos2HostBinding binding,
+            long generation,
+            double nowSeconds,
+            out Exception failure)
         {
             if (binding == null)
                 throw new ArgumentNullException(nameof(binding));
             failure = null;
             try
             {
-                return binding.TryApplyLatest(generation);
+                return binding is IFoxRunRos2TimedHostBinding timed
+                    ? timed.TryApplyLatest(generation, nowSeconds)
+                    : binding.TryApplyLatest(generation);
             }
             catch (Exception exception)
             {
@@ -133,9 +147,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly double _periodSeconds;
         private double _nextAllowedAt = double.NegativeInfinity;
 
-        internal FoxRunRos2ApplyRateGate(int rateLimitHz)
+        internal FoxRunRos2ApplyRateGate(double rateLimitHz)
         {
-            if (rateLimitHz < 1)
+            if (double.IsNaN(rateLimitHz)
+                || double.IsInfinity(rateLimitHz)
+                || rateLimitHz <= 0d)
                 throw new ArgumentOutOfRangeException(nameof(rateLimitHz));
             _periodSeconds = 1.0 / rateLimitHz;
         }
@@ -318,19 +334,32 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 diagnostic = "Generated ROS2 contract has an invalid QoS declaration.";
                 return false;
             }
-            if (!Enum.IsDefined(typeof(FoxRunMode), contract.Mode))
+            if (!Enum.IsDefined(typeof(FoxRunFlow), contract.Mode))
             {
                 diagnostic = "Generated ROS2 contract has an invalid mode declaration.";
                 return false;
             }
-            var permitsCustomNativePublishAndSubscribe =
-                contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface
-                && contract.HasCompleteCustomMetadata
-                && contract.Mode == FoxRunMode.PublishAndSubscribe;
-            if (contract.Mode != FoxRunMode.SubscribeOnly
-                && !permitsCustomNativePublishAndSubscribe)
+            if (!Enum.IsDefined(typeof(FoxRunPolicy), contract.Policy)
+                || float.IsNaN(contract.RateHz)
+                || float.IsInfinity(contract.RateHz)
+                || contract.RateHz < 0f
+                || float.IsNaN(contract.ForceIntervalSeconds)
+                || float.IsInfinity(contract.ForceIntervalSeconds)
+                || contract.ForceIntervalSeconds < 0f
+                || (contract.HasExplicitRateHz && contract.RateHz <= 0f)
+                || (contract.Policy == FoxRunPolicy.Trigger && contract.HasExplicitRateHz))
             {
-                diagnostic = "Native ROS2 subscriptions require SubscribeOnly mode.";
+                diagnostic = "Generated ROS2 contract has invalid update-policy metadata.";
+                return false;
+            }
+            var permitsNativePublishAndSubscribe =
+                contract.Mode == FoxRunFlow.PublishAndSubscribe
+                && (contract.ContractKind == FoxRunRos2GeneratedContractKind.PackagedMessage
+                    || contract.HasCompleteCustomMetadata);
+            if (contract.Mode != FoxRunFlow.Subscribe
+                && !permitsNativePublishAndSubscribe)
+            {
+                diagnostic = "Native ROS2 subscriptions require Subscribe mode.";
                 return false;
             }
             if (!contract.SupportsRos2Native)
@@ -347,7 +376,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 contract.DeclaredSubscriptionEncoding,
                 supportsWebSocket: false,
                 supportsRos2Native: contract.SupportsRos2Native,
-                allowsNativePublishAndSubscribe: permitsCustomNativePublishAndSubscribe);
+                allowsNativePublishAndSubscribe: permitsNativePublishAndSubscribe);
             if (!provider.Success || provider.Provider != FoxRunSubscriptionProvider.Ros2Native)
             {
                 error = provider.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.Unsupported
@@ -393,6 +422,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             long epoch,
             out FoxRunRos2AcceptanceAttemptSnapshot snapshot);
         void Stop();
+    }
+
+    internal interface IFoxRunRos2TimedHostBinding
+    {
+        bool TryApplyLatest(long activeSessionGeneration, double nowSeconds);
     }
 
     [DefaultExecutionOrder(-435)]
@@ -873,7 +907,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void AddBinding<T>(SourceCandidate source, FoxRunRos2GeneratedContract contract,
             Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose, Action<T> apply,
-            Func<T, bool> clearIfOwned)
+            Func<T, bool> clearIfOwned, Func<T, T, bool> valuesEqual = null,
+            Func<bool> consumeTrigger = null)
             where T : ROS2.Message, new()
         {
             var identity = source.InstanceId + "|" + contract.Id;
@@ -952,7 +987,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     backend,
                     qos,
                     qosFactory: null,
-                    dropBeforeApply: dropBeforeApply);
+                    dropBeforeApply: dropBeforeApply,
+                    valuesEqual: valuesEqual,
+                    consumeTrigger: consumeTrigger,
+                    transportAdmissionRateLimitHz: _policy.TransportAdmissionRateLimitHz);
                 binding.WaitForRuntime();
                 if (Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
                         gameObject.scene))
@@ -963,7 +1001,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     identity,
                     new FoxRunRos2DiscoveryKey(source.TypeName, source.InstanceId, contract.Topic, contract.MemberName),
                     binding,
-                    _policy.MainThreadApplyRateLimitHz);
+                    EffectiveApplyRateHz(
+                        contract,
+                        _policy.DefaultMainThreadApplyRateHz,
+                        _policy.TransportAdmissionRateLimitHz));
                 _bindings.Add(hosted);
                 _existingBindings.Add(identity);
             }
@@ -976,6 +1017,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 throw;
             }
         }
+
+        private static double EffectiveApplyRateHz(
+            FoxRunRos2GeneratedContract contract,
+            int managerDefaultApplyRateHz,
+            int transportAdmissionRateLimitHz)
+            => Math.Min(
+                contract.HasExplicitRateHz
+               && !float.IsNaN(contract.RateHz)
+               && !float.IsInfinity(contract.RateHz)
+               && contract.RateHz > 0f
+                ? contract.RateHz
+                : Math.Max(1, managerDefaultApplyRateHz),
+                Math.Max(1, transportAdmissionRateLimitHz));
 
         private long ActiveGeneration()
             => _activeSession.ReadGeneration();
@@ -1115,6 +1169,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         _source.InstanceId + "|" + contract.Id,
                         contract,
                         exception));
+
+            public void Register<T>(FoxRunRos2GeneratedContract contract,
+                Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
+                Action<T> apply, Func<T, bool> clearIfOwned,
+                Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger)
+                where T : ROS2.Message, new()
+                => FoxRunRos2RegistrationIsolation.TryRun(
+                    () => _hub.AddBinding(
+                        _source,
+                        contract,
+                        copy,
+                        dispose,
+                        apply,
+                        clearIfOwned,
+                        valuesEqual,
+                        consumeTrigger),
+                    exception => _hub.RecordFailed(
+                        _source.InstanceId + "|" + contract.Id,
+                        contract,
+                        exception));
         }
 
         private readonly struct SourceCandidate
@@ -1147,14 +1221,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             private readonly FoxRunRos2ApplyRateGate _rateGate;
 
             internal HostedBinding(MonoBehaviour source, int sourceInstanceId, string identity,
-                FoxRunRos2DiscoveryKey key, IFoxRunRos2HostBinding binding, int rateLimitHz)
+                FoxRunRos2DiscoveryKey key, IFoxRunRos2HostBinding binding, double rateLimitHz)
             {
                 _source = source;
                 _sourceInstanceId = sourceInstanceId;
                 Identity = identity;
                 Key = key;
                 Binding = binding;
-                _rateGate = new FoxRunRos2ApplyRateGate(Math.Max(1, rateLimitHz));
+                _rateGate = new FoxRunRos2ApplyRateGate(Math.Max(1d, rateLimitHz));
             }
 
             internal string Identity { get; }
@@ -1178,7 +1252,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 failure = null;
                 if (!_rateGate.IsAllowed(nowSeconds))
                     return false;
-                if (!FoxRunRos2ApplyIsolation.TryRun(Binding, generation, out failure))
+                if (!FoxRunRos2ApplyIsolation.TryRun(Binding, generation, nowSeconds, out failure))
                     return false;
                 _rateGate.MarkApplied(nowSeconds);
                 return true;
