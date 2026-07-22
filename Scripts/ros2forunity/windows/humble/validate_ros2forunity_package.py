@@ -34,7 +34,7 @@ RUNTIME_PACKAGE = ROOT / "Packages" / RUNTIME_PACKAGE_NAME
 RUNTIME_NOTICES = RUNTIME_PACKAGE / "THIRD_PARTY_NOTICES.md"
 RUNTIME_ID = "r2fu-humble-win64"
 RUNTIME_ARTIFACT = "Ros2ForUnity_humble_standalone_windows_x86_64.zip"
-RUNTIME_SHA256 = "2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f"
+RUNTIME_SHA256 = "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba"
 ADAPTER_SAMPLE = PACKAGE / "Samples~" / "ROS2 For Unity External Adapter"
 RVIZ_SAMPLE = PACKAGE / "Samples~" / "RViz2 Standard Visualization Acceptance"
 RVIZ_POINTCLOUD2_SAMPLE = PACKAGE / "Samples~" / "RViz2 PointCloud2 Acceptance"
@@ -586,7 +586,7 @@ def check_runtime_inventory(results: list[CheckResult]) -> None:
         "runtimeId": "r2fu-humble-win64",
         "artifactName": "Ros2ForUnity_humble_standalone_windows_x86_64.zip",
         "rosDistro": "humble",
-        "rmw": "rmw_fastrtps_cpp",
+        "defaultRmwImplementation": "rmw_fastrtps_cpp",
         "platform": "win64",
         "buildType": "standalone",
         "redistributionStatus": "candidate_not_published",

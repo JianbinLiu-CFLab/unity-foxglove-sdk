@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySchemaLessTopicFallbackContract();
             VerifyPoseKeyLifetimeGuard();
             VerifyFoxRunTypeAndPolicyHardening();
-            VerifyNestedObjectFailFast();
+            VerifyNestedObjectClassification();
             VerifyAnalyzerDllRefreshEvidence();
 
             Console.WriteLine($"Phase 115G: {_passed} checks passed.");
@@ -204,7 +204,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "115G-E4: Roslyn ChangeEpsilon preserves integer and float literal values");
         }
 
-        private static void VerifyNestedObjectFailFast()
+        private static void VerifyNestedObjectClassification()
         {
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
             var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
@@ -212,11 +212,11 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(validator.Contains("Error(\"FOXRUN006\"", StringComparison.Ordinal)
                   || validator.Contains("Severity = \"Error\"", StringComparison.Ordinal),
-                "115G-F1: unsupported user-defined FoxRun payloads fail fast instead of warning only");
+                "115G-F1: legacy user-defined FoxRun payloads without a native shape fail fast instead of warning only");
 
-            Check(sourceGenerator.Contains("DiagnosticSeverity.Error", StringComparison.Ordinal)
+            Check(sourceGenerator.Contains("FoxRunRoslynRos2CustomDtoShapeBuilder.Build", StringComparison.Ordinal)
                   && codeGenerator.Contains("FoxRunGenerationModelValidator.Validate", StringComparison.Ordinal),
-                "115G-F2: nested object fail-fast is enforced by both Roslyn and build-time hosts");
+                "115G-F2: Roslyn custom-DTO classification and build-time validation are both wired into generation hosts");
 
             var nestedModel = new FoxRunGenerationModel(new[]
             {
@@ -245,11 +245,22 @@ namespace Unity.FoxgloveSDK.Tests
             });
             var nestedDiagnostics = FoxRunGenerationModelValidator.Validate(nestedModel);
             Check(nestedDiagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN006" && diagnostic.Severity == "Error"),
-                "115G-F3: shared validator reports FOXRUN006 Error for a FoxRun nested object member");
+                "115G-F3: shared validator reports FOXRUN006 for a legacy nested member without a custom DTO shape");
 
-            GenerateDescriptorModel(NestedObjectFixtureSource(), "FoxRunNestedObject115G", out var roslynDiagnostics);
-            Check(roslynDiagnostics.Any(diagnostic => diagnostic.Id == "FOXRUN006" && diagnostic.Severity == DiagnosticSeverity.Error),
-                "115G-F4: Roslyn generator reports FOXRUN006 Error for a FoxRun nested object member");
+            var generated = RunGenerator(NestedObjectFixtureSource(), "FoxRunNestedObject115G", out var roslynDiagnostics);
+            var descriptor = generated.FirstOrDefault(sourceResult =>
+                sourceResult.HintName == "FoxRunGeneratedDescriptorInfo.g.cs");
+            var descriptorMatch = descriptor.HintName == null
+                ? Match.Empty
+                : Regex.Match(descriptor.SourceText.ToString(), "DescriptorJson = \"(?<json>.*)\";");
+            var descriptorJson = descriptorMatch.Success
+                ? Regex.Unescape(descriptorMatch.Groups["json"].Value)
+                : string.Empty;
+            Check(!roslynDiagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                  && descriptorJson.Contains("\"ros2ContractKind\":\"CustomDto\"", StringComparison.Ordinal)
+                  && descriptorJson.Contains("\"ros2CustomDtoShape\":{", StringComparison.Ordinal)
+                  && descriptorJson.Contains("\"isSupported\":true", StringComparison.Ordinal),
+                "115G-F4: Roslyn generator classifies a supported nested object as a CustomDto instead of legacy FOXRUN006");
         }
 
         private static void VerifyAnalyzerDllRefreshEvidence()

@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ProjectPath =
             "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj";
         private const string ExpectedSha =
-            "2b40c05faac7444e61bcb9f0ca3eac4e2316da5fb28648367eb3ca5328808c5f";
+            "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba";
 
         private static readonly Dictionary<string, string> FileTextCache = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly List<string> Failures = new List<string>();

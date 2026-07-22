@@ -109,9 +109,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return;
             }
 
+            if (hasNativeDemand)
+            {
+                var customTypesupport = Ros2ForUnityRuntimeSelection.GetActiveCustomTypesupportSelection(projectDirectory);
+                if (!customTypesupport.IsReady
+                    && customTypesupport.Code != Ros2ForUnityCustomTypesupportSelectionCode.BaseOnly)
+                {
+                    var diagnostic = "FoxRun custom ROS2 typesupport is not ready for native demand: "
+                        + customTypesupport.Code + ". Resolve the selected base runtime/add-on pair before entering Play Mode.";
+                    Debug.LogError(diagnostic);
+                    if (!Application.isBatchMode)
+                        EditorUtility.DisplayDialog("FoxRun custom ROS2 typesupport not ready", diagnostic, "OK");
+                    EditorApplication.isPlaying = false;
+                    return;
+                }
+            }
+
             var runtimePackage = Ros2ForUnityRuntimeSelection.GetRuntimePackageRequiringEditorRestart(status);
             var communicationMode = Ros2ForUnityRuntimeSelection.GetCommunicationModeRequiringEditorRestart(status);
-            if (string.IsNullOrWhiteSpace(runtimePackage) && string.IsNullOrWhiteSpace(communicationMode))
+            var zenohRouterEndpoint = Ros2ForUnityRuntimeSelection.GetZenohRouterEndpointRequiringEditorRestart(status);
+            var customTypesupportPackage = Ros2ForUnityRuntimeSelection.GetCustomTypesupportRequiringEditorRestart(status);
+            if (string.IsNullOrWhiteSpace(runtimePackage)
+                && string.IsNullOrWhiteSpace(communicationMode)
+                && string.IsNullOrWhiteSpace(zenohRouterEndpoint)
+                && string.IsNullOrWhiteSpace(customTypesupportPackage))
             {
                 if (TryGetMissingZenohRouterDiagnostic(status, out var zenohRouterDiagnostic))
                 {
@@ -140,12 +161,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                     + runtimePackage
                     + " in this Unity Editor process. Restart Unity before entering Play Mode so stale native ROS2 runtime DLLs are unloaded.");
             }
-            else
+            else if (!string.IsNullOrWhiteSpace(communicationMode))
             {
                 Debug.LogError(
                     "Unity2Foxglove ROS2 For Unity communication mode was switched to "
                     + communicationMode
                     + " in this Unity Editor process. Restart Unity before entering Play Mode so stale native ROS2 RMW DLLs are unloaded.");
+            }
+            else if (!string.IsNullOrWhiteSpace(zenohRouterEndpoint))
+            {
+                Debug.LogError(
+                    "Unity2Foxglove ROS2 For Unity Zenoh router endpoint was switched to "
+                    + zenohRouterEndpoint
+                    + " in this Unity Editor process. Restart Unity before entering Play Mode so the native Zenoh session uses one frozen endpoint.");
+            }
+            else
+            {
+                Debug.LogError(
+                    "Unity2Foxglove FoxRun custom ROS2 typesupport was switched to "
+                    + customTypesupportPackage
+                    + " in this Unity Editor process. Restart Unity before entering Play Mode so stale custom native typesupport DLLs are unloaded.");
             }
 
             EditorApplication.isPlaying = false;

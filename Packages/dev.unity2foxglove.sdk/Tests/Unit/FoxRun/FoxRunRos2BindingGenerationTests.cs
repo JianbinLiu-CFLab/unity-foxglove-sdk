@@ -23,9 +23,29 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     [Trait("Domain", "FoxRun")]
     public sealed class FoxRunRos2BindingGenerationTests
     {
+        [Fact]
+        public void WebSocketOnlyGeneratedSourceDoesNotEmitNativeBusDemandProbe()
+        {
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Phase181",
+                "WebSocketOnlySource",
+                new[]
+                {
+                    new FoxgloveSourceEmitter.TopicMember(
+                        "Value",
+                        "int",
+                        "/phase181/websocket-only",
+                        10f,
+                        "phase181.WebSocketOnly"),
+                });
+
+            Assert.DoesNotContain("IFoxgloveTopicBusDemandSource", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxgloveLog_HasBusSubscribers", source, StringComparison.Ordinal);
+        }
+
         [Theory]
         [InlineData("invalid", "inherit", 1, "FOXRUN204")]
-        [InlineData("ros2-native", "inherit", 0, "FOXRUN205")]
+        [InlineData("ros2-native", "inherit", 0, "FOXRUN214")]
         [InlineData("ros2-native", "json", 1, "FOXRUN206")]
         [InlineData("ros2-native", "protobuf", 1, "FOXRUN206")]
         [InlineData("ros2-native", "inherit", 2, "FOXRUN205")]
@@ -700,12 +720,68 @@ namespace Demo { public partial class Receiver { private sensor_msgs.msg.Imu _in
         }
 
         [Fact]
-        public void SourceGeneratorReportsTargetedNativeShapeDiagnostics()
+        public void SourceGeneratorMarksCustomDtoNativePublishAndSubscribeAsNativeCapable()
+        {
+            var result = RunGenerator(
+                @"namespace vendor_msgs.msg
+{
+    public sealed class Command
+    {
+        public Command() { }
+        public int Value { get; set; }
+    }
+}",
+                "vendor_msgs/msg/Command",
+                subscriptionProvider: "Ros2Native",
+                mode: "PublishAndSubscribe",
+                encoding: "Json");
+
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            var descriptor = result.Results.Single().GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText.ToString();
+            Assert.Contains("\\\"generatesRos2NativeRegistration\\\":true", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"ros2ContractKind\\\":\\\"CustomDto\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"ros2MessageShape\\\":null", descriptor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SourceGeneratorKeepsCustomAndPackagedNativeFailuresInTheirOwnDiagnosticFamilies()
+        {
+            var customInvalid = RunGenerator(
+                @"namespace custom_msgs.msg
+{
+    public sealed class Command
+    {
+        public Command() { }
+        public char Value { get; set; }
+    }
+}",
+                "custom_msgs/msg/Command",
+                messageTypeName: "custom_msgs.msg.Command",
+                subscriptionProvider: "Ros2Native",
+                mode: "PublishAndSubscribe",
+                encoding: "Json");
+            var packagedInvalid = RunGenerator(
+                ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", publicConstructor: false),
+                "vendor_msgs/msg/Command",
+                subscriptionProvider: "Ros2Native",
+                mode: "PublishAndSubscribe",
+                encoding: "Json");
+
+            Assert.Contains(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN606");
+            Assert.Contains(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN402");
+            Assert.DoesNotContain(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
+            Assert.DoesNotContain(customInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN205");
+            Assert.Contains(packagedInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN205");
+            Assert.DoesNotContain(packagedInvalid.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN402");
+        }
+
+        [Fact]
+        public void SourceGeneratorReportsTargetedPackagedNativeShapeDiagnostics()
         {
             var cases = new[]
             {
-                (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", true, interfaceName: "User.Message")
-                    .Replace("namespace vendor_msgs.msg", "namespace User { public interface Message { } } namespace vendor_msgs.msg"), "vendor_msgs/msg/Command", "FOXRUN207", "vendor_msgs.msg.Command"),
                 (ValidMessageSource("vendor_msgs.msg", "public int Value { get; set; }", false), "vendor_msgs/msg/Command", "FOXRUN208", "vendor_msgs.msg.Command"),
                 (ValidMessageSource("vendor_msgs.srv", "public int Value { get; set; }", true), "vendor_msgs/srv/Command", "FOXRUN209", "vendor_msgs.srv.Command"),
                 (ValidMessageSource("vendor_msgs.msg", "public int Value { get; }", true), "vendor_msgs/msg/Command", "FOXRUN203", "vendor_msgs.msg.Command"),
@@ -755,7 +831,7 @@ namespace Demo { public partial class Receiver { private sensor_msgs.msg.Imu _in
                 nativeReference: false,
                 subscriptionProvider: "Inherit",
                 encoding: "Protobuf");
-            var invalidNativeShape = RunGenerator(
+            var customNativeDto = RunGenerator(
                 ValidMessageSource(
                         "vendor_msgs.msg",
                         "public int Value { get; set; }",
@@ -812,8 +888,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Assert.DoesNotContain(webSocketOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.DoesNotContain(publishOnly.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.DoesNotContain(ordinaryDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
-            Assert.DoesNotContain(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
-            Assert.Contains(invalidNativeShape.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
+            Assert.DoesNotContain(customNativeDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
+            Assert.DoesNotContain(customNativeDto.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN207");
+            Assert.DoesNotContain(customNativeDto.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
             Assert.Contains(sameNameEmptyShell.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Contains(missingRegistrar.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
             Assert.Contains(wrongVisibility.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN212");
@@ -911,6 +988,61 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Assert.True(member.GeneratesRos2NativeRegistration);
             Assert.NotNull(member.Ros2MessageShape);
             Assert.True(member.GeneratesWebSocketCodec);
+        }
+
+        [Fact]
+        public void PublishOnlyCustomDtoBuildsNativeContractAcrossReflectionAndRoslyn()
+        {
+            const string source = @"
+namespace Demo
+{
+    public sealed class CustomPayload
+    {
+        public int Count { get; set; }
+    }
+}";
+            var fixture = CompileFixture(source, "Demo.CustomPayload");
+            var roslynShape = FoxRunRoslynRos2CustomDtoShapeBuilder.Build(
+                fixture.Symbol,
+                fixture.Compilation);
+            Assert.True(roslynShape.IsSupported, string.Join(Environment.NewLine, roslynShape.Diagnostics));
+            Assert.True(FoxRunRos2ContractCapability.IsNativeRegistrationCapable(null, roslynShape));
+
+            var data = new FoxrunCodeGenerator.MemberData(
+                "Payload",
+                fixture.RuntimeType,
+                "field",
+                "Demo",
+                "Publisher",
+                "/custom",
+                10f,
+                "Demo.CustomPayload",
+                mode: 0,
+                subscriptionProvider: 0);
+            var reflected = Assert.Single(
+                FoxRunReflectionGenerationModelLowerer.Lower(new[] { data.ToReflectionMember() }).Types.Single().Members);
+
+            Assert.NotNull(reflected.Ros2CustomDtoShape);
+            Assert.Equal(FoxRunRos2ContractKind.CustomDto, reflected.Ros2ContractKind);
+            Assert.True(reflected.GeneratesRos2NativeRegistration);
+
+            var generated = RunGenerator(
+                source,
+                "Demo.CustomPayload",
+                messageTypeName: "CustomPayload",
+                subscriptionProvider: "Inherit",
+                mode: "PublishOnly",
+                encoding: "Json");
+            var descriptor = generated.Results.Single().GeneratedSources
+                .Single(item => item.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+
+            Assert.True(
+                !generated.Diagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error),
+                string.Join(Environment.NewLine, generated.Diagnostics) + Environment.NewLine + descriptor);
+            Assert.Contains("\\\"ros2ContractKind\\\":\\\"CustomDto\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"generatesRos2NativeRegistration\\\":true", descriptor, StringComparison.Ordinal);
         }
 
         private static void AssertHostParity(
@@ -2428,7 +2560,8 @@ namespace Demo
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 new[] { new FoxgloveLogSourceGenerator().AsSourceGenerator() },
-                parseOptions: parseOptions);
+                parseOptions: parseOptions,
+                driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None));
             return driver.RunGenerators(compilation).GetRunResult();
         }
 

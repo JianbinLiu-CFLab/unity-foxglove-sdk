@@ -1,8 +1,0 @@
-<Project>
-  <!-- Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors. SPDX-License-Identifier: Apache-2.0 -->
-  <PropertyGroup>
-    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\..\'))</RepoRoot>
-    <BaseIntermediateOutputPath>$(RepoRoot)build\phase179b\probe\$(Distro)\obj\</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
-  </PropertyGroup>
-</Project>

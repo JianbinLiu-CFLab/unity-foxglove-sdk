@@ -394,6 +394,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void InternalFailureKindRetainsOnlyTheBackendExceptionClass()
+        {
+            const string sensitiveDetail = "zenoh-password=phase181-secret";
+
+            var failure = FoxRunRos2RegistrationResult.Failure(
+                FoxRunRos2RegistrationError.PublisherBackendFailure,
+                "ObjectDisposedException: " + sensitiveDetail);
+
+            Assert.Equal(
+                "The native ROS2 backend failed while operating the publisher.",
+                failure.Diagnostic);
+            Assert.Equal("ObjectDisposedException", failure.FailureKind);
+            Assert.DoesNotContain(sensitiveDetail, failure.FailureKind, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void OnlyTheCurrentSuccessfulRegistrationAttemptCanPublish()
         {
             var backend = new FakeBackend();
@@ -1604,6 +1620,44 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void ContractActivationPermitsOnlyCompleteCustomNativePublishAndSubscribe()
+        {
+            var nativePolicy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
+                13,
+                true,
+                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Protobuf,
+                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default,
+                4096,
+                20);
+
+            var custom = CustomContract(
+                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native,
+                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Json);
+            Assert.True(custom.HasCompleteCustomMetadata);
+            Assert.True(FoxRunRos2ContractActivation.TryResolve(
+                custom,
+                nativePolicy,
+                out var qos,
+                out var error,
+                out var diagnostic));
+            Assert.Equal(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable, qos);
+            Assert.Equal(FoxRunRos2RegistrationError.None, error);
+            Assert.Equal(string.Empty, diagnostic);
+
+            var withoutNativeProvider = CustomContract(
+                Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                Unity.FoxgloveSDK.Components.FoxRunWireEncoding.Json);
+            Assert.False(FoxRunRos2ContractActivation.TryResolve(
+                withoutNativeProvider,
+                nativePolicy,
+                out _,
+                out _,
+                out diagnostic));
+            Assert.False(string.IsNullOrWhiteSpace(diagnostic));
+        }
+
+        [Fact]
         public void ExplicitNativeContractDoesNotDependOnOutputOrManagerDefaultProvider()
         {
             var policy = new Unity.FoxgloveSDK.Components.FoxRunSubscriptionSessionPolicy(
@@ -1667,6 +1721,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(FoxRunRos2SourceDiscovery.TryGet(source, out var discovered));
             Assert.Same(source, discovered);
             Assert.False((object)source is Unity.FoxgloveSDK.Components.IFoxgloveInputSource);
+        }
+
+        [Fact]
+        public void CustomNativeOnlyGeneratedSourceUsesTheExistingSubscriptionRegistrarDiscovery()
+        {
+            var source = new CustomNativeOnlySource { isActiveAndEnabled = true };
+
+            Assert.True(FoxRunRos2SourceDiscovery.TryGetCustom(source, out var discovered));
+            Assert.Same(source, discovered);
+            Assert.False((object)source is IFoxRunRos2SubscriptionSource);
         }
 
         [Fact]
@@ -2010,6 +2074,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 ParseQos(qos),
                 supportsNative);
 
+        private static FoxRunRos2GeneratedContract CustomContract(
+            Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
+            Unity.FoxgloveSDK.Components.FoxRunWireEncoding encoding)
+            => new FoxRunRos2GeneratedContract(
+                "custom-contract",
+                "/native/custom",
+                "Demo.CustomReceiver",
+                "_incoming",
+                "unity2foxglove_foxrun_interfaces_v1/msg/CustomEnvelope",
+                Unity.FoxgloveSDK.Components.FoxRunMode.PublishAndSubscribe,
+                provider,
+                Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable,
+                true,
+                encoding,
+                FoxRunRos2GeneratedContractKind.CustomInterface,
+                "dev.unity2foxglove.foxrun.ros2.interfaces",
+                "unity2foxglove_foxrun_interfaces_v1",
+                1,
+                "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
+                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                "unity2foxglove_foxrun_interfaces_v1/msg/Custom");
+
         private static Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider ParseProvider(string provider)
             => provider == "ros2-native"
                 ? Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native
@@ -2119,6 +2205,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
         }
 
+        private sealed class CustomNativeOnlySource : UnityEngine.MonoBehaviour, IFoxRunRos2CustomSubscriptionSource
+        {
+            public int FoxRunRos2CustomSubscriptionCount => 1;
+
+            public void FoxRunRos2RegisterCustomSubscriptions(IFoxRunRos2SubscriptionRegistrar registrar)
+            {
+            }
+        }
+
         private sealed class HostManagedQosProfile : IFoxRunRos2NativeQosProfile
         {
             public ROS2.QualityOfServiceProfile NativeProfile { get; } = null;
@@ -2151,6 +2246,22 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 RemoveCount++;
                 return RemoveReturns;
             }
+
+            public object CreatePublisher<T>(string topic)
+                where T : ROS2.Message, new()
+                => new object();
+
+            public bool IsPublisherUsable<T>(object publisher)
+                where T : ROS2.Message, new()
+                => publisher != null;
+
+            public bool Publish<T>(object publisher, T message)
+                where T : ROS2.Message, new()
+                => publisher != null && message != null;
+
+            public bool RemovePublisher<T>(object publisher)
+                where T : ROS2.Message, new()
+                => publisher != null;
 
             public void ReleaseNode() => ReleaseNodeCount++;
         }

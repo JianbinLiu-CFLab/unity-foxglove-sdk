@@ -278,6 +278,61 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("client advertised \"json\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
         }
 
+        [Fact]
+        public void RouterRejectsWrongEncodingBeforeItConsumesTheTopicRateQuota()
+        {
+            var input = new RecordingInput("/phase182/encoding");
+            var router = new FoxRunInputRouter(maxMessagesPerSecondPerTopic: 1);
+            router.Register(input);
+
+            var wrongEncoding = router.Dispatch(
+                "/phase182/encoding",
+                Encoding.UTF8.GetBytes("{\"value\":1}"),
+                "protobuf",
+                nowSeconds: 1);
+            var matchingEncoding = router.Dispatch(
+                "/phase182/encoding",
+                Encoding.UTF8.GetBytes("{\"value\":2}"),
+                "json",
+                nowSeconds: 1.1);
+            var rateLimited = router.Dispatch(
+                "/phase182/encoding",
+                Encoding.UTF8.GetBytes("{\"value\":3}"),
+                "json",
+                nowSeconds: 1.2);
+
+            Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, wrongEncoding.Status);
+            Assert.Equal(FoxRunInputDispatchStatus.Applied, matchingEncoding.Status);
+            Assert.Equal(FoxRunInputDispatchStatus.RateLimited, rateLimited.Status);
+            Assert.Equal(1, input.ApplyCount);
+        }
+
+        [Fact]
+        public void RouterConsumesOneQuotaAndAppliesOnlyMatchingSharedTopicRegistrations()
+        {
+            var json = new RecordingInput("/phase182/shared");
+            var protobuf = new InheritedRecordingInput("/phase182/shared");
+            var router = new FoxRunInputRouter(maxMessagesPerSecondPerTopic: 1);
+            router.Register(json);
+            router.Register(protobuf);
+
+            var matching = router.Dispatch(
+                "/phase182/shared",
+                Encoding.UTF8.GetBytes("{\"value\":1}"),
+                "protobuf",
+                nowSeconds: 1);
+            var rateLimited = router.Dispatch(
+                "/phase182/shared",
+                Encoding.UTF8.GetBytes("{\"value\":2}"),
+                "protobuf",
+                nowSeconds: 1.1);
+
+            Assert.Equal(FoxRunInputDispatchStatus.Applied, matching.Status);
+            Assert.Equal(0, json.ApplyCount);
+            Assert.Equal(1, protobuf.ApplyCount);
+            Assert.Equal(FoxRunInputDispatchStatus.RateLimited, rateLimited.Status);
+        }
+
         [Theory]
         [InlineData("ros2")]
         [InlineData("cdr")]

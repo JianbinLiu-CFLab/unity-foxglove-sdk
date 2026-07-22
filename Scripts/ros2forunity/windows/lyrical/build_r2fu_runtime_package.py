@@ -21,6 +21,7 @@ import shutil
 import sys
 import time
 import zipfile
+import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -451,7 +452,7 @@ def sha512_file(path: Path) -> str:
 
 
 def patch_deps_json_sha512(package: Path) -> None:
-    """Populate informational deps.json sha512 fields for packaged DLLs."""
+    """Correct known generated deps entries and populate DLL integrity hints."""
     plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins"
     inventory_path = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
     inventory = json.loads(inventory_path.read_text(encoding="utf-8")) if inventory_path.exists() else None
@@ -465,6 +466,22 @@ def patch_deps_json_sha512(package: Path) -> None:
     for deps_path in sorted(plugin_root.glob("*.deps.json")):
         data = json.loads(deps_path.read_text(encoding="utf-8"))
         changed = False
+        assembly_name = deps_path.name.removesuffix(".deps.json")
+        if assembly_name in {"stereo_msgs_assembly", "visualization_msgs_assembly"}:
+            target = data.get("targets", {}).get(".NETStandard,Version=v2.0/", {})
+            entry = target.get(f"{assembly_name}/1.0.0", {})
+            dependencies = entry.get("dependencies", {})
+            if "service_msgs_assembly" in dependencies:
+                del dependencies["service_msgs_assembly"]
+                changed = True
+            if "service_msgs_assembly/0.0.0.0" in target:
+                del target["service_msgs_assembly/0.0.0.0"]
+                changed = True
+            libraries = data.get("libraries", {})
+            if "service_msgs_assembly/0.0.0.0" in libraries:
+                del libraries["service_msgs_assembly/0.0.0.0"]
+                changed = True
+
         for library_name, metadata in data.get("libraries", {}).items():
             if not isinstance(metadata, dict):
                 continue
@@ -636,6 +653,10 @@ def package_json() -> dict[str, object]:
             "lyrical",
             "win64",
         ],
+        "unity2foxgloveConflicts": [
+            "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+            "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+        ],
         "dependencies": {},
         "author": {"name": "Unity2Foxglove"},
     }
@@ -716,6 +737,8 @@ The runtime package intentionally declares no UPM dependency on the facade packa
 Install only one `dev.unity2foxglove.ros2forunity.runtime.*` package in a Unity project. Multiple ROS2 runtime packages can load conflicting native DLLs or generated message assemblies.
 
 Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the same project. Use either an external asset-folder runtime or this package runtime.
+
+The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime` across all distro runtime packages. The adapter package references that stable assembly name, while the one-runtime policy and package conflict metadata prevent multiple distro runtimes from being active in the same Unity project.
 
 ## Runtime Identity
 
@@ -878,6 +901,8 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = patch_ros2cs_logger_callback_api(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
         text = patch_rmw_guard(text)
+        text = patch_standalone_environment_isolation(text)
+        text = patch_runtime_lifecycle_safety(text)
         write_text(source, text)
         return
     if "unity2FoxgloveRuntimePackageName" not in text:
@@ -898,12 +923,71 @@ def patch_ros2_for_unity(package: Path) -> None:
         raise ValueError("Could not find upstream ROS2ForUnity path block to patch.")
     text = patch_rmw_guard(text)
     text = patch_standalone_environment_isolation(text)
+    text = patch_runtime_lifecycle_safety(text)
     write_text(source, text)
 
 
 def patch_ros2cs_logger_callback_api(text: str) -> str:
     """Patch obsolete ros2cs logger callback calls emitted by older runtime artifacts."""
     return text.replace("Ros2csLogger.setCallback", "Ros2csLogger.SetCallback")
+
+
+def patch_runtime_lifecycle_safety(text: str) -> str:
+    """Restore local lifecycle guards that a refreshed upstream runtime can omit."""
+    register_marker = "        EditorApplication.quitting += ShutdownShared;"
+    unregister_marker = "        EditorApplication.quitting -= ShutdownShared;"
+    if "AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared" not in text:
+        text = text.replace(
+            register_marker,
+            register_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared;",
+            1,
+        )
+    if "AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared" not in text:
+        text = text.replace(
+            unregister_marker,
+            unregister_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared;",
+            1,
+        )
+
+    dead_guard = "    private static void ThrowIfUninitialized(string callContext)\n"
+    guard_start = text.find(dead_guard)
+    if guard_start >= 0:
+        guard_end = text.find("\n    }\n\n", guard_start)
+        if guard_end < 0:
+            raise ValueError("Could not remove the stale ThrowIfUninitialized guard.")
+        text = text[:guard_start] + text[guard_end + len("\n    }\n\n"):]
+
+    metadata_prerequisite = "LoadMetadata() must complete before metadata-backed properties are read."
+    if metadata_prerequisite not in text:
+        text = text.replace(
+            '            throw new InvalidOperationException("Metadata document is empty while reading " + valuePath);\n',
+            "            throw new InvalidOperationException(\n"
+            '                "Metadata document is empty while reading " + valuePath +\n'
+            '                ". LoadMetadata() must complete before metadata-backed properties are read.");\n',
+            1,
+        )
+    return text
+
+
+def patch_unity_time_source_main_thread_guard(text: str) -> str:
+    """Restore a clear construction failure when Unity time is initialized off the main thread."""
+    if "must be constructed on the Unity main thread" not in text:
+        text = text.replace(
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    lastReadingSecs = Time.timeAsDouble;\n",
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    try\n"
+            "    {\n"
+            "      lastReadingSecs = Time.timeAsDouble;\n"
+            "    }\n"
+            "    catch (UnityException exception)\n"
+            "    {\n"
+            "      throw new InvalidOperationException(\n"
+            '        "UnityTimeSource must be constructed on the Unity main thread.", exception);\n'
+            "    }\n",
+            1,
+        )
+    return text
 
 
 def patch_rmw_guard(text: str) -> str:
@@ -1106,14 +1190,15 @@ def patch_standalone_environment_isolation(text: str) -> str:
                 SetStandaloneRcutilsConsoleMode();
             }
 '''
-    if "packagedRos2Version = GetMetadataValue" not in text and startup_marker in text:
-        text = text.replace(startup_marker, startup_patch, 1)
-    elif "sourcedRosDistroBeforeStandalonePatch" not in text:
-        text = text.replace(
-            startup_marker,
-            startup_marker + "            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n",
-            1,
-        )
+    if "sourcedRosDistroBeforeStandalonePatch" not in text:
+        if "packagedRos2Version = GetMetadataValue" not in text and startup_marker in text:
+            text = text.replace(startup_marker, startup_patch, 1)
+        else:
+            text = text.replace(
+                startup_marker,
+                startup_marker + "            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n",
+                1,
+            )
     if "SetStandalonePrefixPath();" not in text or "SetStandaloneRmwImplementation();" not in text:
         raise ValueError("Standalone environment isolation patch is missing required setup calls.")
     text = text.replace(
@@ -1234,6 +1319,13 @@ def patch_ros_time_source_contract(package: Path) -> None:
         )
     write_text(dotnet_time, dotnet_text)
 
+    unity_time = time_dir / "UnityTimeSource.cs"
+    if unity_time.exists():
+        write_text(
+            unity_time,
+            patch_unity_time_source_main_thread_guard(unity_time.read_text(encoding="utf-8")),
+        )
+
     for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
         source = time_dir / name
         text = source.read_text(encoding="utf-8")
@@ -1343,6 +1435,74 @@ def patch_zenoh_router_config_notes(package: Path) -> None:
         write_text(path, text)
 
 
+def patch_zenoh_session_config_safety(package: Path) -> None:
+    """Reapply bounded, non-fatal Zenoh session defaults to both packaged mirrors."""
+    runtime_root = package / "Runtime" / "Ros2ForUnity"
+    config_relatives = (
+        Path("Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"),
+        Path("StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"),
+    )
+    old_rx_block = (
+        "        /// Maximum size of the defragmentation buffer at receiver end.\n"
+        "        /// Fragmented messages that are larger than the configured size will be dropped.\n"
+        "        /// The default value is 1GiB. This would work in most scenarios.\n"
+        "        /// NOTE: reduce the value if you are operating on a memory constrained device.\n"
+        "        max_message_size: 1073741824,\n"
+    )
+    new_rx_block = (
+        "        /// Maximum size of the defragmentation buffer at receiver end.\n"
+        "        /// Fragmented messages that are larger than the configured size will be dropped.\n"
+        "        /// Unity2Foxglove package safety: cap the receiver buffer to 128MiB\n"
+        "        /// so Unity player processes do not reserve the upstream 1GiB worst case.\n"
+        "        max_message_size: 134217728,\n"
+    )
+    old_adminspace_block = (
+        "  adminspace: {\n"
+        "    /// Enables the admin space\n"
+        "    enabled: true,\n"
+        "    /// read and/or write permissions on the admin space\n"
+        "    permissions: {\n"
+        "      read: true,\n"
+        "      write: false,\n"
+        "    },\n"
+        "  },\n"
+    )
+    new_adminspace_block = (
+        "  adminspace: {\n"
+        "    /// Enables the admin space\n"
+        "    enabled: false,\n"
+        "    /// read and/or write permissions on the admin space\n"
+        "    permissions: {\n"
+        "      read: false,\n"
+        "      write: false,\n"
+        "    },\n"
+        "  },\n"
+    )
+
+    for relative in config_relatives:
+        path = runtime_root / relative
+        if not path.exists():
+            raise ValueError(f"Missing Zenoh session config: {relative.as_posix()}")
+
+        text = path.read_text(encoding="utf-8")
+        if text.count("    exit_on_failure: true,\n") != 1:
+            raise ValueError(f"Could not find the Zenoh listen exit policy in {relative.as_posix()}.")
+        if text.count(old_rx_block) != 1:
+            raise ValueError(f"Could not find the Zenoh RX buffer policy in {relative.as_posix()}.")
+        if text.count(old_adminspace_block) != 1:
+            raise ValueError(f"Could not find the Zenoh adminspace policy in {relative.as_posix()}.")
+
+        text = text.replace(
+            "    exit_on_failure: true,\n",
+            "    /// Unity2Foxglove package safety: a busy local router port is non-fatal.\n"
+            "    exit_on_failure: false,\n",
+            1,
+        )
+        text = text.replace(old_rx_block, new_rx_block, 1)
+        text = text.replace(old_adminspace_block, new_adminspace_block, 1)
+        write_text(path, text)
+
+
 def update_zenoh_config_inventory_hashes(package: Path) -> None:
     """Refresh inventory hashes for package-patched Zenoh config mirrors."""
     inventory_path = package / "RuntimeSupport" / "r2fu-lyrical-win64-runtime-inventory.json"
@@ -1385,20 +1545,21 @@ def write_package_files(paths: BuildPaths, inventory: dict[str, object], artifac
 
 
 def validate_ros2cs_metadata_descriptions(package: Path) -> None:
-    """Reject ros2cs metadata whose human-readable desc names another distro."""
+    """Require each ros2cs metadata document to declare the Lyrical runtime."""
     metadata_files = (
         package / "Runtime" / "Ros2ForUnity" / "metadata_ros2cs.xml",
         package / "Runtime" / "Ros2ForUnity" / "Plugins" / "metadata_ros2cs.xml",
         package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64" / "metadata_ros2cs.xml",
     )
-    other_distros = ("humble", "jazzy")
     for path in metadata_files:
         text = path.read_text(encoding="utf-8", errors="replace")
-        if "<ros2>lyrical</ros2>" not in text:
+        try:
+            root = ElementTree.fromstring(text)
+        except ElementTree.ParseError as error:
+            raise ValueError(f"Invalid ros2cs metadata XML: {path}") from error
+        distro = (root.findtext("ros2") or "").strip() if root.tag == "ros2cs" else ""
+        if distro != "lyrical":
             raise ValueError(f"Unexpected ros2cs distro in {path}: expected lyrical")
-        for distro in other_distros:
-            if distro in text:
-                raise ValueError(f"Unexpected {distro!r} text in lyrical ros2cs metadata: {path}")
 
 
 def build_package(paths: BuildPaths) -> None:
@@ -1415,6 +1576,7 @@ def build_package(paths: BuildPaths) -> None:
         patch_ros2_for_unity(paths.package)
         patch_component_main_thread_prewarm(paths.package)
         patch_ros_time_source_contract(paths.package)
+        patch_zenoh_session_config_safety(paths.package)
         patch_zenoh_router_config_notes(paths.package)
         validate_ros2cs_metadata_descriptions(paths.package)
         write_package_files(paths, inventory, artifact)

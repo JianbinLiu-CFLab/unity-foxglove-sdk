@@ -30,7 +30,7 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-jazzy-win64`
 - Artifact source: `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip`
-- SHA-256: `df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3`
+- SHA-256: `792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-jazzy-win64-runtime-inventory.json`.
 

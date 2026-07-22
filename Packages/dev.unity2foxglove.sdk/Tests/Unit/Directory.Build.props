@@ -5,4 +5,23 @@
     <MSBuildProjectExtensionsPath>$(BaseOutputPath)obj\</MSBuildProjectExtensionsPath>
     <RestoreOutputPath>$(BaseOutputPath)obj\</RestoreOutputPath>
   </PropertyGroup>
+
+  <!--
+    Unit-test artifacts are repository-owned scratch data. Do not allow a
+    direct native-lane invocation to fall back to a drive-root bin/obj path.
+    CI may choose a narrower directory below this repository build root.
+  -->
+  <Target Name="ValidateUnitTestOutputsStayInsideRepositoryBuildRoot" BeforeTargets="Restore;PrepareForBuild">
+    <PropertyGroup>
+      <_RepositoryBuildRoot>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\build\'))).ToLowerInvariant())</_RepositoryBuildRoot>
+      <_UnitTestOutputPath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(BaseOutputPath)'))).ToLowerInvariant())</_UnitTestOutputPath>
+      <_UnitTestIntermediatePath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(BaseIntermediateOutputPath)'))).ToLowerInvariant())</_UnitTestIntermediatePath>
+      <_UnitTestExtensionsPath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(MSBuildProjectExtensionsPath)'))).ToLowerInvariant())</_UnitTestExtensionsPath>
+      <_UnitTestRestorePath>$([System.String]::Copy($([System.IO.Path]::GetFullPath('$(RestoreOutputPath)'))).ToLowerInvariant())</_UnitTestRestorePath>
+    </PropertyGroup>
+    <Error Condition="!$([System.String]::Copy('$(_UnitTestOutputPath)').StartsWith('$(_RepositoryBuildRoot)'))" Text="Unit-test BaseOutputPath must stay below the repository build root: $(BaseOutputPath)" />
+    <Error Condition="!$([System.String]::Copy('$(_UnitTestIntermediatePath)').StartsWith('$(_RepositoryBuildRoot)'))" Text="Unit-test BaseIntermediateOutputPath must stay below the repository build root: $(BaseIntermediateOutputPath)" />
+    <Error Condition="!$([System.String]::Copy('$(_UnitTestExtensionsPath)').StartsWith('$(_RepositoryBuildRoot)'))" Text="Unit-test MSBuildProjectExtensionsPath must stay below the repository build root: $(MSBuildProjectExtensionsPath)" />
+    <Error Condition="!$([System.String]::Copy('$(_UnitTestRestorePath)').StartsWith('$(_RepositoryBuildRoot)'))" Text="Unit-test RestoreOutputPath must stay below the repository build root: $(RestoreOutputPath)" />
+  </Target>
 </Project>

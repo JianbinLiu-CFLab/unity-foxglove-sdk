@@ -1,0 +1,8 @@
+<Project>
+  <!-- Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors. SPDX-License-Identifier: Apache-2.0 -->
+  <PropertyGroup>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\..\..\'))</RepoRoot>
+    <BaseIntermediateOutputPath>$(RepoRoot)build\smoke\ros2\packaged-message-lifetime\$(Distro)\obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>

@@ -18,6 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CATALOG_SCRIPT = REPO_ROOT / "Scripts/schema/generate_ros2_msg_schema_catalog.py"
 CDR_SCRIPT = REPO_ROOT / "Scripts/schema/generate_ros2_cdr_serializers.py"
+SCHEMA_SNAPSHOT_DIR = REPO_ROOT / "third-party" / "foxglove-sdk" / "schemas" / "ros2"
 GENERATOR_TIMEOUT_SECONDS = 120
 COMMITTED_CATALOG = (
     REPO_ROOT
@@ -34,6 +35,12 @@ EXPECTED_CDR_SOURCES = (
     "Ros2CdrDeserializerRegistry.g.cs",
     "Ros2CdrSampleFactory.g.cs",
 )
+
+
+def schema_snapshot_available() -> bool:
+    """Return whether the optional upstream Foxglove ROS 2 schema snapshot is available."""
+
+    return SCHEMA_SNAPSHOT_DIR.is_dir()
 
 
 def rel(path: Path) -> str:
@@ -64,9 +71,35 @@ def compare_file(committed: Path, fresh: Path, failures: list[str]) -> None:
         )
 
 
+def validate_committed_output_inventory(failures: list[str]) -> None:
+    """Validate the non-vacuous committed generated-output inventory without upstream sources."""
+
+    expected_generators = {
+        COMMITTED_CATALOG: "Scripts/schema/generate_ros2_msg_schema_catalog.py.",
+        **{
+            COMMITTED_CDR_DIR / name: "Scripts/schema/generate_ros2_cdr_serializers.py."
+            for name in EXPECTED_CDR_SOURCES
+        },
+    }
+    for committed, provenance in expected_generators.items():
+        if not committed.is_file():
+            failures.append(f"missing committed file: {rel(committed)}")
+            continue
+
+        text = committed.read_text(encoding="utf-8")
+        if not text.strip():
+            failures.append(f"empty committed generated output: {rel(committed)}")
+        elif provenance not in text:
+            failures.append(f"missing generator provenance: {rel(committed)}")
+
+
 def validate_generated_outputs() -> list[str]:
     """Return generated-output freshness failures, or an empty list when current."""
     failures: list[str] = []
+    if not schema_snapshot_available():
+        validate_committed_output_inventory(failures)
+        return failures
+
     build_root = REPO_ROOT / "build"
     build_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="u2f_schema_generated_", dir=build_root) as temp:
@@ -86,6 +119,7 @@ def validate_generated_outputs() -> list[str]:
 
 def main() -> int:
     """Run validation and return a process exit code."""
+    compare_fresh_output = schema_snapshot_available()
     try:
         failures = validate_generated_outputs()
     except subprocess.TimeoutExpired as exc:
@@ -104,7 +138,10 @@ def main() -> int:
             print(f"  {failure}", file=sys.stderr)
         return 1
 
-    print("[PASS] ROS 2 schema generated outputs match fresh generation")
+    if compare_fresh_output:
+        print("[PASS] ROS 2 schema generated outputs match fresh generation")
+    else:
+        print("[PASS] ROS 2 schema generated output inventory is complete (upstream snapshot unavailable)")
     return 0
 
 

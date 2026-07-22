@@ -184,6 +184,7 @@ namespace Unity.FoxgloveSDK.Components
             double nowSeconds)
         {
             Registration[] registrations;
+            var advertisedEncoding = encoding ?? string.Empty;
             lock (_gate)
             {
                 if (string.IsNullOrEmpty(topic)
@@ -202,6 +203,28 @@ namespace Unity.FoxgloveSDK.Components
                     return new FoxRunInputDispatchResult(
                         FoxRunInputDispatchStatus.PayloadTooLarge,
                         "Payload exceeds the FoxRun inbound byte limit.",
+                        0);
+                }
+
+                var hasMatchingEncoding = false;
+                foreach (var registration in registrations)
+                {
+                    if (string.Equals(registration.Encoding, advertisedEncoding, StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasMatchingEncoding = true;
+                        break;
+                    }
+                }
+
+                if (!hasMatchingEncoding)
+                {
+                    return new FoxRunInputDispatchResult(
+                        FoxRunInputDispatchStatus.DecodeRejected,
+                        "Inbound encoding does not match the generated FoxRun contract: expected \""
+                            + registrations[0].Encoding
+                            + "\" but client advertised \""
+                            + advertisedEncoding
+                            + "\".",
                         0);
                 }
 
@@ -226,13 +249,13 @@ namespace Unity.FoxgloveSDK.Components
             var firstError = string.Empty;
             foreach (var registration in registrations)
             {
-                if (!string.Equals(registration.Encoding, encoding ?? string.Empty, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(registration.Encoding, advertisedEncoding, StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.IsNullOrEmpty(firstError))
                         firstError = "Inbound encoding does not match the generated FoxRun contract: expected \""
                             + registration.Encoding
                             + "\" but client advertised \""
-                            + (encoding ?? string.Empty)
+                            + advertisedEncoding
                             + "\".";
                     continue;
                 }

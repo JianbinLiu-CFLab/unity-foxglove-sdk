@@ -83,42 +83,42 @@
     "tf2_msgs_assembly/1.0.0": {
       "type": "project",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "0d1f15424dc4eab1962d5fa154f2303bf5884a99022b62de297cb223a63cc8bb4bf95c44f6f1cd20ec2c17587065d92726216b51150f22c06ffee68f6ad0aa75"
     },
     "action_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "cf28a4aa8fd5ceb392964c2a203f88da4a7fcdc0f08813024538c208d5e89bd4985e93ff0d2ccf9d04692f819297760b90750732d4444a9a9228e99114e50f9f"
     },
     "builtin_interfaces_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "a281fbac56f119543e6ff0c9f11f8addb15f037e9d8f41326e179bb03e6564b335979dcca9a96608d77e8e994d429402c599bec253bec06b4fa1555943951188"
     },
     "geometry_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "a713d5a960052af4662f911ecf0db261b03e209607360311b143d9dcd581709ea450efb68410fd74df7a218b8f237324efa6c81301c3b9c8337ac40b51a61be2"
     },
     "ros2cs_common/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "7d22e035f6102a7140faec3e1aa4b0e8cca0b676878fa795b378fdf0279756b86da871cb272ca68e2872315606da2c55c49a43f5de7ed991881e721d52fda38a"
     },
     "service_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "b2e7a39f9db4216a949e35e704f8785f8af081858b303e3211140f273adf7910116835f77b0aded9f32efffb14781b691307217fa05cdc742d287d564e6cc92d"
     },
     "std_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "a1aa014d604eff4912ed45ca84a7d01a71957f13896490a64e937b8704edc64b8eaae25142466bbc88c5deb60b89e434f25b7459434b6274c3a8d8164789dab3"
     },
     "unique_identifier_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "7f35934c5c205f31ab8e14127410f35abd9b326f8ce7d6b8b1f969766bdb18f764bd66f2368be3c4b2a9ab72146d819cd04871214ddd9116e5d2912f3c3830ee"
     }
   }
 }

@@ -74,6 +74,54 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void RepositoryLocatorSupportsGitWorktreeMetadataFiles()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/Phase173109ReviewTests.cs");
+
+            Assert.Contains("File.Exists(Path.Combine(dir.FullName, \".git\"))", source);
+        }
+
+        [Fact]
+        public void SourceReadingUnitTestsSupportGitWorktreesWithoutLocalBootstrapFiles()
+        {
+            var worktreeLocatorSources = new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Architecture/GeneratedProtoScriptMetaTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Architecture/UnityDemoEditorExperimentalTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/ConformancePerformanceOptimizationTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/FoxgloveManagerStructureTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/Phase173089ReviewTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/Phase173090ReviewTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/RemoteTimelineOptimizationTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Mcap/McapAttachmentAndSummaryCrcTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Schemas/SceneUpdateSchemaDefinitionTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Sensors/CameraDiagnosticsAttributionTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/Sensors/PointCloudHotPathAllocationTests.cs",
+            };
+
+            foreach (var path in worktreeLocatorSources)
+            {
+                var source = TestSources.Text(path);
+                Assert.Matches(@"File\.Exists\(Path\.Combine\([^)]*,\s*""\.git""\)\)", source);
+            }
+
+            foreach (var path in new[]
+            {
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxRunRos2InterfacePackagePreflightTests.cs",
+                "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxRunRos2InterfacePackageWriterTests.cs",
+            })
+            {
+                var source = TestSources.Text(path);
+                Assert.Contains(
+                    "File.Exists(Path.Combine(directory.FullName, \".gitattributes\"))",
+                    source,
+                    StringComparison.Ordinal);
+                Assert.DoesNotContain("AGENTS.md", source, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
         public void BackfillQueryDefaultsAvoidFilterListAllocation()
         {
             var query = new McapDataLoaderBackfillQuery();
@@ -213,7 +261,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             while (dir != null)
             {
                 if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                    || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                    || Directory.Exists(Path.Combine(dir.FullName, ".git"))
+                    || File.Exists(Path.Combine(dir.FullName, ".git")))
                     return dir.FullName;
 
                 dir = dir.Parent;

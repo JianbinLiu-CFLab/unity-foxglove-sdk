@@ -2,9 +2,9 @@
 <ros2_for_unity>
    <ros2>jazzy</ros2>
    <version>
-      <sha>29575a1159bf112415d56c6c15183b6beec9d580</sha>
-      <desc>v0.7.0-6-g29575a1</desc>
-      <date>2026-06-22 22:56:53 +0200</date>
-      <branch>feature/official-interface-coverage-for-windows-artifacts</branch>
+      <sha>3995d8b57c733e5e17fddd6cd4071236efa0a99f</sha>
+      <desc>v0.8.3</desc>
+      <date>2026-07-21 13:08:34 +0200</date>
+      <branch>HEAD</branch>
    </version>
 </ros2_for_unity>

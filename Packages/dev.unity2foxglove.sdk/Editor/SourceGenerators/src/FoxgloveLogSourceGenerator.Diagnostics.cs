@@ -211,6 +211,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription",
             "FoxRun", DiagnosticSeverity.Warning, true);
 
+        public static readonly DiagnosticDescriptor NativeProviderPublishOnly = new DiagnosticDescriptor(
+            "FOXRUN214", "Native subscription provider invalid for PublishOnly",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
         #endregion
 
         #region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)
@@ -223,6 +228,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public static readonly DiagnosticDescriptor BidirectionalInheritedWireEncoding = new DiagnosticDescriptor(
             "FOXRUN401", "PublishAndSubscribe wire encoding",
             "{0}: PublishAndSubscribe requires an explicit Protobuf or Json Encoding",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor CustomNativeBidirectionalContract = new DiagnosticDescriptor(
+            "FOXRUN402", "Custom native PublishAndSubscribe contract invalid",
+            "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         #endregion
@@ -257,6 +267,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public static readonly DiagnosticDescriptor DuplicateProtobufFieldNumber = new DiagnosticDescriptor(
             "FOXRUN605", "Duplicate FoxRun Protobuf field number",
             "{0}: FoxRun topic contains a duplicate ProtobufFieldNumber",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor CustomDtoShapeUnsupported = new DiagnosticDescriptor(
+            "FOXRUN606", "Custom ROS2 DTO shape unsupported",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor CustomDtoNonConstructible = new DiagnosticDescriptor(
+            "FOXRUN607", "Custom ROS2 DTO constructor missing",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor CustomDtoMemberNotWritable = new DiagnosticDescriptor(
+            "FOXRUN608", "Custom ROS2 DTO member not writable",
+            "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         #endregion
@@ -352,7 +377,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN603": return InvalidProtobufFieldNumber;
                 case "FOXRUN604": return MixedTopicWireEncoding;
                 case "FOXRUN605": return DuplicateProtobufFieldNumber;
+                case "FOXRUN606": return CustomDtoShapeUnsupported;
+                case "FOXRUN607": return CustomDtoNonConstructible;
+                case "FOXRUN608": return CustomDtoMemberNotWritable;
                 case "FOXRUN401": return BidirectionalInheritedWireEncoding;
+                case "FOXRUN402": return CustomNativeBidirectionalContract;
                 case "FOXRUN204": return InvalidSubscriptionProvider;
                 case "FOXRUN205": return NativeSubscribeOnly;
                 case "FOXRUN206": return NativeEncoding;
@@ -363,6 +392,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN211": return Ros2MessageShape;
                 case "FOXRUN212": return MissingNativeAssemblyReference;
                 case "FOXRUN213": return IgnoredRos2Qos;
+                case "FOXRUN214": return NativeProviderPublishOnly;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
@@ -383,7 +413,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                || id == "FOXRUN208"
                || id == "FOXRUN209"
                || id == "FOXRUN210"
-               || id == "FOXRUN211";
+               || id == "FOXRUN211"
+               || id == "FOXRUN402"
+               || id == "FOXRUN606"
+               || id == "FOXRUN607"
+               || id == "FOXRUN608"
+               || id == "FOXRUN214";
 
         public static DiagnosticDescriptor Member(string id)
         {

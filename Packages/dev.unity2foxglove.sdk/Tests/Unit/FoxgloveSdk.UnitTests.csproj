@@ -30,6 +30,10 @@
     <Compile Include="**/*.cs" Exclude="bin/**/*.cs;obj/**/*.cs;../NativeCompileStubs/**/*.cs" />
     <Compile Include="../AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Link="AdapterCompileStubs/FoxgloveLogHubCompileStubs.cs" Condition="'$(IncludeRos2ForUnityAdapter)' == 'true' or '$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="../NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Link="NativeCompileStubs/Ros2ForUnityNativeCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Link="NativeCompileStubs/FoxRunCustomRos2InterfaceCompileStubs.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportSelectionTransaction.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportDiscovery.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportDiscovery.cs" />
+    <Compile Include="../../../dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityCustomTypesupportPreflight.cs" Link="Ros2ForUnityEditor/Ros2ForUnityCustomTypesupportPreflight.cs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -54,5 +58,22 @@
     <Error Condition="!$([System.String]::Copy('$(DefineConstants)').Contains('UNITY2FOXGLOVE_ROS2_FOR_UNITY'))" Text="Phase179 Native lane must define UNITY2FOXGLOVE_ROS2_FOR_UNITY." />
     <Error Condition="'@(_Phase179Contract)' == '' or '@(_Phase179Registrar)' == '' or '@(_Phase179LifecycleGate)' == '' or '@(_Phase179InboundHub)' == '' or '@(_Phase179InboundBackend)' == '' or '@(_Phase179InboundDiagnostics)' == '' or '@(_Phase179CompileStub)' == ''" Text="Phase179 Native lane compiled no named host/binding/lifecycle/stub surface (vacuous green)." />
     <Error Condition="'@(_Phase179UnrelatedNative)' != ''" Text="Phase179 focused Native lane included unrelated native bridge sources: @(_Phase179UnrelatedNative)." />
+  </Target>
+
+  <Target Name="ValidatePhase181CustomRos2CompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
+    <ItemGroup>
+      <_Phase181CustomInterfaceStub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunCustomRos2InterfaceCompileStubs'" />
+      <_Phase181CustomCatalogContract Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomTypesupportCatalog'" />
+      <_Phase181CustomCatalogRegistry Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomTypesupportCatalogRegistry'" />
+      <_Phase181CustomCatalogReadiness Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomTypesupportReadiness'" />
+      <_Phase181CustomTransportHost Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomNativeTransportHost'" />
+      <_Phase181CustomPublisherHub Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomPublisherHub'" />
+      <_Phase181CustomPublisherBinding Include="@(Compile)" Condition="'%(Compile.Filename)' == 'FoxRunRos2CustomPublisherBinding'" />
+      <_Phase181CustomPublisherSource Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomPublisherSource'" />
+      <_Phase181CustomSubscriptionSource Include="@(Compile)" Condition="'%(Compile.Filename)' == 'IFoxRunRos2CustomSubscriptionSource'" />
+      <_Phase181CustomMapperEmitter Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2CustomDtoMapperEmitter'" />
+      <_Phase181CustomPublishEmitter Include="@(Compile)" Condition="'%(Compile.Filename)' == 'Ros2CustomPublishEmitter'" />
+    </ItemGroup>
+    <Error Condition="'@(_Phase181CustomInterfaceStub)' == '' or '@(_Phase181CustomCatalogContract)' == '' or '@(_Phase181CustomCatalogRegistry)' == '' or '@(_Phase181CustomCatalogReadiness)' == '' or '@(_Phase181CustomTransportHost)' == '' or '@(_Phase181CustomPublisherHub)' == '' or '@(_Phase181CustomPublisherBinding)' == '' or '@(_Phase181CustomPublisherSource)' == '' or '@(_Phase181CustomSubscriptionSource)' == '' or '@(_Phase181CustomMapperEmitter)' == '' or '@(_Phase181CustomPublishEmitter)' == ''" Text="Phase181 Native lane compiled no named custom interface/catalog/transport/generator surface (vacuous green)." />
   </Target>
 </Project>

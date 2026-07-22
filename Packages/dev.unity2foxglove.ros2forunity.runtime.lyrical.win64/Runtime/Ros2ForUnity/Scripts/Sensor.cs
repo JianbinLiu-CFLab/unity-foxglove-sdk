@@ -12,9 +12,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-// Unity2Foxglove keeps the Humble and Lyrical Sensor.cs variants in sync.
-// Apply lifecycle fixes to both files unless a runtime-specific divergence is intentional.
 
 using UnityEngine;
 using System;
@@ -55,10 +52,9 @@ public abstract class ISensor : MonoBehaviour
     public string topicName = "";
 
     /// <summary>
-    /// Runtime-only publishing state. External writes only gate publishing; disabling or destroying the
-    /// component is still responsible for unregistering the executor callback.
+    /// Controls whether sensor is publishing messages. External writes only gate publishing; disabling or
+    /// destroying the component is still responsible for unregistering the executor callback.
     /// </summary>
-    [HideInInspector]
     public bool publishing = false;
 
     /// <summary>
@@ -196,7 +192,7 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
             }
         }
 
-        if (readingToPublish == null || componentToUse == null || nodeToUse == null)
+        if (readingToPublish == null || componentToUse == null || nodeToUse == null || !componentToUse.Ok())
         {
             return;
         }
@@ -300,7 +296,6 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         ROS2UnityComponent componentToUnregister = null;
         lock (readingsMutex)
         {
-            publishing = false;
             componentToUnregister = ros2UnityComponent;
             ros2UnityComponent = null;
             ros2Node = null;
@@ -313,6 +308,8 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         {
             componentToUnregister.UnregisterExecutable(ExecutorThreadSensorPublishAction);
         }
+
+        publishing = false;
     }
 
     /// <summary>
@@ -321,20 +318,19 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     void CalculateFrameTime()
     {
         double maxFrameFreq = 1.0 / Time.fixedDeltaTime;
-        var effectiveUpdateFreq = desiredUpdateFreq;
-        if (effectiveUpdateFreq > maxFrameFreq)
+        if (desiredUpdateFreq > maxFrameFreq)
         {
-            Debug.LogWarning("Desired frame rate of " + effectiveUpdateFreq + " can't be met, "
+            Debug.LogWarning("Desired frame rate of " + desiredUpdateFreq + " can't be met, "
                             + "physics frequency is " + maxFrameFreq);
-            effectiveUpdateFreq = maxFrameFreq;  //Can't go faster than physics
+            desiredUpdateFreq = maxFrameFreq;  //Can't go faster than physics
         }
-        if (effectiveUpdateFreq < MinimumFrequencyHz)
+        if (desiredUpdateFreq < MinimumFrequencyHz)
         {
             Debug.LogWarning("Minimum frequency of " + MinimumFrequencyHz
-                             + " applied instead of " + effectiveUpdateFreq);
-            effectiveUpdateFreq = MinimumFrequencyHz;
+                             + " applied instead of " + desiredUpdateFreq);
+            desiredUpdateFreq = MinimumFrequencyHz;
         }
-        desiredFrameTime = 1.0 / effectiveUpdateFreq;
+        desiredFrameTime = 1.0 / desiredUpdateFreq;
         cachedDesiredUpdateFreq = desiredUpdateFreq;
     }
 

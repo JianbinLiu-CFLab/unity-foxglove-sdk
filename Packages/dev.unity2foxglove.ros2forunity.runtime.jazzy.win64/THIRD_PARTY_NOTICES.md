@@ -14,8 +14,8 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3` |
-| Inventory file count | `1198` |
+| SHA-256 | `792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74` |
+| Inventory file count | `1204` |
 
 ## Known Upstream Components
 
@@ -27,15 +27,6 @@ Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, ge
 | Fast DDS / Fast CDR | DDS and CDR runtime dependency family used by the FastRTPS RMW path |
 | RMW FastRTPS | `rmw_fastrtps_cpp` runtime path used by the current Windows artifact |
 | Generated message support | Managed message assemblies plus native ROSIDL/type-support DLLs |
-
-The current upstream runtime closure includes ROS2 `test_msgs` managed and native type-support artifacts. They are retained only because they are present in the generated `r2fu-jazzy-win64` inventory; production package trimming must happen in the runtime rebuild pipeline, not by manually deleting individual DLLs from this package.
-
-## Security-Relevant Native DLL Hashes
-
-| File | SHA-256 |
-|---|---|
-| `Runtime/Ros2ForUnity/Plugins/Windows/x86_64/libcrypto-3-x64.dll` | `124c5f40a6cf0e642f9d92784dd66314fd548b4fdf93c543bf478e71e1209f9d` |
-| `Runtime/Ros2ForUnity/Plugins/Windows/x86_64/libssl-3-x64.dll` | `4158ad85699d9c5428b62778883b16b6c21b3b7da11fe60a0cc24ea37687a9fd` |
 
 ## Critical Runtime Closure
 

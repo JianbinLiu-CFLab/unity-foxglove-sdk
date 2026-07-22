@@ -1,0 +1,22 @@
+{
+  "allowUnsafeCode": false,
+  "autoReferenced": true,
+  "defineConstraints": [
+    "UNITY2FOXGLOVE_ROS2_FOR_UNITY"
+  ],
+  "excludePlatforms": [],
+  "includePlatforms": [
+    "Editor",
+    "WindowsStandalone64"
+  ],
+  "name": "Unity2Foxglove.FoxRun.CustomRos2Typesupport",
+  "noEngineReferences": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "references": [
+    "Unity2Foxglove.Ros2ForUnity.Native",
+    "unity2foxglove_foxrun_interfaces_v1_assembly"
+  ],
+  "rootNamespace": "Unity2Foxglove.FoxRun.CustomRos2Typesupport",
+  "versionDefines": []
+}

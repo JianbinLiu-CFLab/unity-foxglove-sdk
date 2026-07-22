@@ -33,7 +33,7 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 - Supported RMW implementations: `rmw_fastrtps_cpp`, `rmw_zenoh_cpp`
 - Runtime id: `r2fu-lyrical-win64`
 - Artifact source: `Ros2ForUnity_lyrical_standalone_windows_x86_64.zip`
-- SHA-256: `ea1e1c6179cf75e11ad01045dc3e7112363cc00d2052fc264ab79437ffdda608`
+- SHA-256: `1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-lyrical-win64-runtime-inventory.json`.
 

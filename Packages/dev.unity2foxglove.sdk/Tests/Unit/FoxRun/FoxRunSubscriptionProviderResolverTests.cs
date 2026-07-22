@@ -177,6 +177,45 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Theory]
+        [InlineData(FoxRunWireEncoding.Inherit)]
+        [InlineData(FoxRunWireEncoding.Json)]
+        [InlineData(FoxRunWireEncoding.Protobuf)]
+        public void CompleteCustomNativeBidirectionalContractKeepsNativeInputAndWebSocketOutputPolicy(
+            FoxRunWireEncoding outputEncoding)
+        {
+            var result = FoxRunSubscriptionProviderResolver.Resolve(
+                FoxRunSubscriptionProvider.Ros2Native,
+                FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                FoxRunMode.PublishAndSubscribe,
+                outputEncoding,
+                supportsWebSocket: true,
+                supportsRos2Native: true,
+                allowsNativePublishAndSubscribe: true);
+
+            Assert.True(result.Success);
+            Assert.Equal(FoxRunSubscriptionProvider.Ros2Native, result.Provider);
+            Assert.Equal(FoxRunSubscriptionProviderDiagnosticCode.None, result.DiagnosticCode);
+        }
+
+        [Fact]
+        public void PackagedNativeBidirectionalContractKeepsThePhase179SubscribeOnlyFailure()
+        {
+            var result = FoxRunSubscriptionProviderResolver.Resolve(
+                FoxRunSubscriptionProvider.Ros2Native,
+                FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                FoxRunMode.PublishAndSubscribe,
+                FoxRunWireEncoding.Inherit,
+                supportsWebSocket: true,
+                supportsRos2Native: true,
+                allowsNativePublishAndSubscribe: false);
+
+            Assert.False(result.Success);
+            Assert.Equal(
+                FoxRunSubscriptionProviderDiagnosticCode.NativeRequiresSubscribeOnly,
+                result.DiagnosticCode);
+        }
+
+        [Theory]
         [InlineData(
             FoxRunSubscriptionProvider.FoxgloveWebSocket,
             false,

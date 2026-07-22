@@ -41,6 +41,23 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         """Load a fresh reference to the builder module for each test."""
         self.builder = load_builder_module()
 
+    def test_package_manifest_declares_other_runtime_packages_as_conflicts(self) -> None:
+        """Jazzy must prevent Unity from installing a second distro runtime."""
+        manifest = self.builder.package_json()
+
+        self.assertEqual(
+            [
+                "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+            ],
+            manifest["unity2foxgloveConflicts"],
+        )
+        artifact = self.builder.RuntimeArtifact("artifact.zip", "0" * 64, 1, 1)
+        self.assertIn(
+            "The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`",
+            self.builder.readme_text(artifact),
+        )
+
     def test_extract_runtime_rejects_zip_slip_entries(self) -> None:
         """Reject archive entries that would escape the package root."""
         with tempfile.TemporaryDirectory() as temp:
@@ -117,6 +134,42 @@ class RuntimePackageExtractionTests(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 self.builder.patch_ros2_for_unity(package)
+
+    def test_runtime_safety_patches_survive_the_new_upstream_layout(self) -> None:
+        """Lifecycle and Unity-time safety patches must survive an upstream runtime refresh."""
+        runtime = (
+            "        EditorApplication.playModeStateChanged += EditorPlayStateChanged;\n"
+            "        EditorApplication.quitting += ShutdownShared;\n"
+            "        editorHandlersRegistered = true;\n"
+            "        EditorApplication.playModeStateChanged -= EditorPlayStateChanged;\n"
+            "        EditorApplication.quitting -= ShutdownShared;\n"
+            "        editorHandlersRegistered = false;\n"
+            "    }\n\n"
+            "    private static void ThrowIfUninitialized(string callContext)\n"
+            "    {\n"
+            "        if (!isInitialized)\n"
+            "        {\n"
+            "            throw new InvalidOperationException(\"not initialized\");\n"
+            "        }\n"
+            "    }\n\n"
+            "            throw new InvalidOperationException(\"Metadata document is empty while reading \" + valuePath);\n"
+        )
+        unity_time = (
+            "  public UnityTimeSource()\n"
+            "  {\n"
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    lastReadingSecs = Time.timeAsDouble;\n"
+            "  }\n"
+        )
+
+        patched_runtime = self.builder.patch_runtime_lifecycle_safety(runtime)
+        patched_time = self.builder.patch_unity_time_source_main_thread_guard(unity_time)
+
+        self.assertIn("AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared", patched_runtime)
+        self.assertIn("AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared", patched_runtime)
+        self.assertNotIn("ThrowIfUninitialized", patched_runtime)
+        self.assertIn("LoadMetadata() must complete before metadata-backed properties are read.", patched_runtime)
+        self.assertIn("must be constructed on the Unity main thread", patched_time)
 
     def test_build_package_restores_existing_package_when_generation_fails(self) -> None:
         """A failed regeneration should not leave the package directory destroyed."""

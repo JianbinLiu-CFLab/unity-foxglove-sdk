@@ -1,10 +1,11 @@
 // Copyright 2019-2021 Robotec.ai.
 // Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
-// Fork modifications:
+// Modifications by Jianbin Liu:
 // - Added Jazzy/Lyrical distro support and Lyrical ROS2CS_SPIN_FALLBACK setup.
 // - Added Unicode Windows CRT environment writes for standalone native getenv callers.
 // - Added reference-counted init/shutdown, editor shutdown hooks, and standalone runtime path probing.
+// - Sealed custom native plugin registration before ros2cs initialization.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -34,8 +35,6 @@ namespace ROS2
 /// <summary>
 /// Handles ROS2cs validation, initialization, and shutdown for R2FU.
 /// Wraps reference-counted init/shutdown so multiple callers can share one ROS 2 context.
-/// Callers must dispose every instance deterministically; native shutdown is intentionally
-/// not performed from a finalizer because ROS2cs and Unity executor teardown are thread-affine.
 /// </summary>
 internal class ROS2ForUnity : IDisposable
 {
@@ -284,17 +283,20 @@ internal class ROS2ForUnity : IDisposable
     private static void SetStandalonePrefixPath()
     {
         string prefixPath = GetRos2ForUnityPath();
+        string prefixSource = "asset root";
         string streamingAssetsPrefixPath = Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
         string pluginPrefixPath = GetPluginPath();
         // 1. StreamingAssets: preferred for standalone runtime share data copied beside the Player.
         if (Directory.Exists(Path.Combine(streamingAssetsPrefixPath, "share")))
         {
             prefixPath = streamingAssetsPrefixPath;
+            prefixSource = "StreamingAssets";
         }
         // 2. Plugins dir: compact standalone plugin bundle layout.
         else if (Directory.Exists(Path.Combine(pluginPrefixPath, "share")))
         {
             prefixPath = pluginPrefixPath;
+            prefixSource = "plugin directory";
         }
         // 3. Asset root: Editor or non-standalone fallback.
         else if (!Directory.Exists(Path.Combine(prefixPath, "share")))
@@ -377,8 +379,7 @@ internal class ROS2ForUnity : IDisposable
     }
 
     /// <summary>
-    /// In standalone mode, returns the packaged ROS 2 distro. In non-standalone mode,
-    /// returns the sourced ROS_DISTRO value when present, otherwise packaged metadata.
+    /// Returns the effective ROS 2 distro, preferring a sourced environment over packaged metadata.
     /// </summary>
     public string GetROSVersion()
     {
@@ -632,7 +633,7 @@ internal class ROS2ForUnity : IDisposable
             if (standaloneBuild)
             {
                 // For standalone, currentRos2Version comes from metadata, not ROS_DISTRO.
-                // Keep ROS_DISTRO pinned so native getenv callers see the packaged distro.
+                // SetStandaloneRosDistro must stay after CheckROSSupport/CheckIntegrity.
                 SetStandaloneRosDistro(currentRos2Version);
                 SetStandaloneRos2csSpinFallback(currentRos2Version);
                 SetStandalonePrefixPath();
@@ -658,13 +659,22 @@ internal class ROS2ForUnity : IDisposable
 
             // Initialize
             ConnectLoggers();
-            Ros2cs.Init();
+            Ros2ForUnityNativePluginBootstrap.SealNativeLibraryRegistration();
+            try
+            {
+                Ros2cs.Init();
+            }
+            catch
+            {
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
+                throw;
+            }
             RegisterCtrlCHandler();
 
             string rmwImpl = Ros2cs.GetRMWImplementation();
             ValidateRmwImplementation(rmwImpl);
 
-            LogRuntimeInfoWithoutStackTrace("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
+            Debug.Log("ROS2 version: " + currentRos2Version + ". Build type: " + standalone + ". RMW: " + rmwImpl);
 
 #if UNITY_EDITOR
             RegisterEditorHandlers();
@@ -777,7 +787,7 @@ internal class ROS2ForUnity : IDisposable
                 return;
             }
 
-            LogRuntimeInfoWithoutStackTrace("Shutting down Ros2 For Unity");
+            Debug.Log("Shutting down Ros2 For Unity");
             try
             {
 #if UNITY_EDITOR
@@ -794,14 +804,10 @@ internal class ROS2ForUnity : IDisposable
                 isInitialized = false;
                 referenceCount = 0;
                 shutdownInProgress = false;
+                Ros2ForUnityNativePluginBootstrap.ResetNativeLibraryRegistration();
                 UnregisterCtrlCHandlerStatic();
             }
         }
-    }
-
-    private static void LogRuntimeInfoWithoutStackTrace(string message)
-    {
-        Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", message);
     }
 
     private static void UnregisterCtrlCHandlerStatic()

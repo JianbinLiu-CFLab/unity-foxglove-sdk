@@ -47,22 +47,22 @@
     "lifecycle_msgs_assembly/1.0.0": {
       "type": "project",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "3519be179ad542911e1a4e305d1a08568ee67f030a53a74dd7d20fd4090d130ec8e88592e6aa95f0570a5b4bf3eab078b6e4b4cbdf5b56dc3b11bb8d7e98c207"
     },
     "builtin_interfaces_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "a281fbac56f119543e6ff0c9f11f8addb15f037e9d8f41326e179bb03e6564b335979dcca9a96608d77e8e994d429402c599bec253bec06b4fa1555943951188"
     },
     "ros2cs_common/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "7d22e035f6102a7140faec3e1aa4b0e8cca0b676878fa795b378fdf0279756b86da871cb272ca68e2872315606da2c55c49a43f5de7ed991881e721d52fda38a"
     },
     "service_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "b2e7a39f9db4216a949e35e704f8785f8af081858b303e3211140f273adf7910116835f77b0aded9f32efffb14781b691307217fa05cdc742d287d564e6cc92d"
     }
   }
 }

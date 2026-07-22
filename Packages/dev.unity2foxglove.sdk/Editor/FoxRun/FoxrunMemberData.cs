@@ -47,6 +47,8 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly int SubscriptionProvider;
             public readonly int Ros2Qos;
             public readonly FoxRunRos2MessageShape Ros2MessageShape;
+            public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
+            public readonly FoxRunRos2ContractKind Ros2ContractKind;
             public readonly int ProtobufFieldNumber;
             public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
             /// <summary>Change epsilon.</summary>
@@ -65,7 +67,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -86,6 +88,12 @@ namespace Unity.FoxgloveSDK.Editor
                 Ros2Qos = ros2Qos;
                 Ros2MessageShape = ros2MessageShape
                     ?? TryBuildRos2MessageShape(type, subscriptionProvider);
+                Ros2CustomDtoShape = ros2CustomDtoShape
+                    ?? TryBuildRos2CustomDtoShape(type, Ros2MessageShape, subscriptionProvider);
+                Ros2ContractKind = ResolveRos2ContractKind(
+                    ros2ContractKind,
+                    Ros2MessageShape,
+                    Ros2CustomDtoShape);
                 ProtobufFieldNumber = protobufFieldNumber;
                 ProtobufTypeShape = TryBuildProtobufTypeShape(elementType ?? type);
                 ChangeEpsilon = changeEpsilon;
@@ -103,7 +111,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float rate, string schema,
-                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null)
+                int publishMode = 0, float changeEpsilon = 0f, float forceIntervalSeconds = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string when = "", string unless = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             {
                 if (LooksLikeArrayType(rawType))
                     throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
@@ -126,6 +134,11 @@ namespace Unity.FoxgloveSDK.Editor
                 SubscriptionProvider = subscriptionProvider;
                 Ros2Qos = ros2Qos;
                 Ros2MessageShape = ros2MessageShape;
+                Ros2CustomDtoShape = ros2CustomDtoShape;
+                Ros2ContractKind = ResolveRos2ContractKind(
+                    ros2ContractKind,
+                    Ros2MessageShape,
+                    Ros2CustomDtoShape);
                 ProtobufFieldNumber = protobufFieldNumber;
                 ProtobufTypeShape = null;
                 ChangeEpsilon = changeEpsilon;
@@ -183,11 +196,12 @@ namespace Unity.FoxgloveSDK.Editor
                                 IsArray && !string.IsNullOrEmpty(ElementTypeName)
                                     ? ElementTypeName
                                     : EmissionTypeName)),
-                    Ros2MessageShape != null
-                        && Ros2MessageShape.HasPublicParameterlessConstructor
-                        && Ros2MessageShape.ImplementsRos2Message
-                        && Ros2MessageShape.Diagnostics.Count == 0,
-                    Ros2MessageShape);
+                    FoxRunRos2ContractCapability.IsNativeRegistrationCapable(
+                        Ros2MessageShape,
+                        Ros2CustomDtoShape),
+                    Ros2MessageShape,
+                    Ros2CustomDtoShape,
+                    Ros2ContractKind);
             }
         }
 
@@ -241,9 +255,55 @@ namespace Unity.FoxgloveSDK.Editor
         private static FoxRunRos2MessageShape TryBuildRos2MessageShape(Type type, int subscriptionProvider)
         {
             var shape = FoxRunReflectionRos2MessageShapeBuilder.Build(type);
-            return subscriptionProvider == 2 || shape.ImplementsRos2Message
+            return shape.ImplementsRos2Message
+                   || (subscriptionProvider == 2 && IsTopLevelPackagedRos2MessageCollection(type))
                 ? shape
                 : null;
+        }
+
+        private static FoxRunRos2CustomDtoShape TryBuildRos2CustomDtoShape(
+            Type type,
+            FoxRunRos2MessageShape packagedShape,
+            int subscriptionProvider)
+        {
+            // Native output is selected at the Manager route.  A custom DTO
+            // therefore needs a stable shape even when its subscription
+            // provider remains Inherit or WebSocket-only.  Packaged message
+            // collections remain a distinct unsupported top-level contract.
+            return packagedShape != null
+                   || IsTopLevelPackagedRos2MessageCollection(type)
+                ? null
+                : FoxRunReflectionRos2CustomDtoShapeBuilder.Build(type);
+        }
+
+        private static FoxRunRos2ContractKind ResolveRos2ContractKind(
+            FoxRunRos2ContractKind declared,
+            FoxRunRos2MessageShape packagedShape,
+            FoxRunRos2CustomDtoShape customShape)
+        {
+            if (declared != FoxRunRos2ContractKind.Unsupported)
+                return declared;
+
+            // Preserve the source family independently from whether the shape
+            // is currently usable for native generation.  The validator owns
+            // the corresponding packaged-vs-custom diagnostic family.
+            if (packagedShape != null)
+            {
+                return FoxRunRos2ContractKind.PackagedRos2Message;
+            }
+
+            return customShape != null
+                ? FoxRunRos2ContractKind.CustomDto
+                : FoxRunRos2ContractKind.Unsupported;
+        }
+
+        private static bool IsTopLevelPackagedRos2MessageCollection(Type type)
+        {
+            if (!TryGetArrayElementType(type, out var elementType))
+                return false;
+
+            return FoxRunReflectionRos2MessageShapeBuilder.Build(elementType)
+                .ImplementsRos2Message;
         }
     }
 }

@@ -1,0 +1,8 @@
+{
+  "name": "dev.unity2foxglove.foxrun.ros2.interfaces",
+  "version": "0.1.0-preview.1",
+  "displayName": "Unity2Foxglove FoxRun ROS2 Interfaces",
+  "license": "Apache-2.0",
+  "description": "Deterministic source-only ROS2 interface package generated from FoxRun custom DTO contracts.",
+  "unity": "6000.0"
+}

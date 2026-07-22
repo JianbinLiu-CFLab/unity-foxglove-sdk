@@ -47,22 +47,22 @@
     "actionlib_msgs_assembly/1.0.0": {
       "type": "project",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "72b3926fbf440d8b5fde74e92e2db31120065443f522b8f1a60bc7d0f14fff04f8ce0043b2022650c216e47dd061602fe4ddca94f67c0f709a5cb8c2a1c3ea3e"
     },
     "builtin_interfaces_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "a281fbac56f119543e6ff0c9f11f8addb15f037e9d8f41326e179bb03e6564b335979dcca9a96608d77e8e994d429402c599bec253bec06b4fa1555943951188"
     },
     "ros2cs_common/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "7d22e035f6102a7140faec3e1aa4b0e8cca0b676878fa795b378fdf0279756b86da871cb272ca68e2872315606da2c55c49a43f5de7ed991881e721d52fda38a"
     },
     "std_msgs_assembly/0.0.0.0": {
       "type": "reference",
       "serviceable": false,
-      "sha512": ""
+      "sha512": "a1aa014d604eff4912ed45ca84a7d01a71957f13896490a64e937b8704edc64b8eaae25142466bbc88c5deb60b89e434f25b7459434b6274c3a8d8164789dab3"
     }
   }
 }

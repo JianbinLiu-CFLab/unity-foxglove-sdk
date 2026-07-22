@@ -216,8 +216,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && main.IndexOf("DrawSection(\"MCAP Record & Replay\"", StringComparison.Ordinal)
                      < main.IndexOf("DrawSection(\"FoxServices\"", StringComparison.Ordinal)
                   && editorSources.Contains("DrawDataTransportSubsection", StringComparison.Ordinal)
-                  && editorSources.Contains("\"Publish\"", StringComparison.Ordinal)
-                  && editorSources.Contains("\"Subscribe\"", StringComparison.Ordinal),
+                  && editorSources.Contains("\"Publish Data\"", StringComparison.Ordinal)
+                  && editorSources.Contains("\"Subscribe Data\"", StringComparison.Ordinal),
                 "175C-7: Data Transport contains Publish and Subscribe before sibling MCAP and FoxServices");
             Check(labels.Contains("ManagerDefaultLabels = { \"Protobuf\", \"JSON\" }", StringComparison.Ordinal)
                   && labels.Contains("property.enumValueIndex == (int)FoxRunWireEncoding.Json ? 1 : 0", StringComparison.Ordinal)

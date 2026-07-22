@@ -32,6 +32,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             RejectedAfterStop = snapshot.RejectedAfterStop;
             CopyFailed = snapshot.CopyFailed;
             StaleCallbacks = snapshot.StaleCallbacks;
+            SameOriginDrops = snapshot.SameOriginDrops;
         }
 
         public string Topic { get; }
@@ -44,6 +45,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long RejectedAfterStop { get; }
         public long CopyFailed { get; }
         public long StaleCallbacks { get; }
+        /// <summary>Inbound envelopes suppressed because they originated from this Unity process.</summary>
+        public long SameOriginDrops { get; }
 
     }
 
@@ -194,6 +197,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             RejectedAfterStop = binding.RejectedAfterStop;
             CopyFailed = binding.CopyFailed;
             StaleCallbacks = binding.StaleCallbacks;
+            SameOriginDrops = binding.SameOriginDrops;
             LastReceiveStopwatchTimestamp = binding.LastReceiveStopwatchTimestamp;
             LastApplyStopwatchTimestamp = binding.LastApplyStopwatchTimestamp;
             LastErrorCode = ErrorCode(binding.Error);
@@ -219,6 +223,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long RejectedAfterStop { get; }
         public long CopyFailed { get; }
         public long StaleCallbacks { get; }
+        public long SameOriginDrops { get; }
         public long LastReceiveStopwatchTimestamp { get; }
         public long LastApplyStopwatchTimestamp { get; }
         public string LastErrorCode { get; }

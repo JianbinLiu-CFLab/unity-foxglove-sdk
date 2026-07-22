@@ -350,6 +350,11 @@ namespace Unity.FoxgloveSDK.Tests
                 var changeEpsilon = (float)attrType.GetProperty("ChangeEpsilon").GetValue(attr, null);
                 var forceIntervalSeconds = (float)attrType.GetProperty("ForceIntervalSeconds").GetValue(attr, null);
                 var isArray = TryGetArrayElementType(memberType, out var elementType);
+                // Phase181 extends the semantic descriptor with the custom
+                // ROS2 DTO candidate.  This fixture contains no packaged
+                // ROS2 message types, so reflect the same candidate shape the
+                // Roslyn host now produces for ordinary FoxRun members.
+                var customDtoShape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(memberType);
                 members.Add(new FoxRunReflectionGenerationMember(
                     declaringType.Namespace ?? string.Empty,
                     declaringType.Name,
@@ -366,7 +371,9 @@ namespace Unity.FoxgloveSDK.Tests
                     changeEpsilon,
                     forceIntervalSeconds,
                     rawMemberOrder,
-                    "FOXRUN_FIXTURE_EXTRA"));
+                    "FOXRUN_FIXTURE_EXTRA",
+                    ros2CustomDtoShape: customDtoShape,
+                    ros2ContractKind: FoxRunRos2ContractKind.CustomDto));
             }
         }
 

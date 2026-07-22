@@ -2,13 +2,13 @@
 <ros2cs>
    <ros2>jazzy</ros2>
    <version>
-      <sha>07a142431cc8c290277a4dc411de81914430f9e6</sha>
-      <desc>v0.6.0-jazzy-preview.1-52-g07a1424</desc>
-      <date>2026-06-22 22:56:09 +0200</date>
-      <branch>main</branch>
+      <sha>b37c6177ea48355df6cbee07bf25068f39472303</sha>
+      <desc>v0.8.3</desc>
+      <date>2026-07-21 12:55:01 +0200</date>
+      <branch>HEAD</branch>
    </version>
    <standalone>1</standalone>
-   <plugins root="." runtime_file_count="991">
+   <plugins root="D:\ros2unity\.build\r2fu-release-matrix\260721161035\jazzy\ros2-for-unity\install\asset\Ros2ForUnity\Plugins" runtime_file_count="994">
       <file>Windows/x86_64/action_msgs__rosidl_generator_c.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_generator_py.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_typesupport_c.dll</file>
@@ -304,14 +304,17 @@
       <file>Windows/x86_64/geometry_msgs_velocity_stamped__rosidl_typesupport_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_velocity_stamped__rosidl_typesupport_fastrtps_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_velocity_stamped__rosidl_typesupport_introspection_c_native.dll</file>
+      <file>Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll</file>
+      <file>Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_fastrtps_c_native.dll</file>
+      <file>Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_introspection_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench__rosidl_typesupport_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench__rosidl_typesupport_fastrtps_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench__rosidl_typesupport_introspection_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench_stamped__rosidl_typesupport_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench_stamped__rosidl_typesupport_fastrtps_c_native.dll</file>
       <file>Windows/x86_64/geometry_msgs_wrench_stamped__rosidl_typesupport_introspection_c_native.dll</file>
-      <file sha256="124c5f40a6cf0e642f9d92784dd66314fd548b4fdf93c543bf478e71e1209f9d">Windows/x86_64/libcrypto-3-x64.dll</file>
-      <file sha256="4158ad85699d9c5428b62778883b16b6c21b3b7da11fe60a0cc24ea37687a9fd">Windows/x86_64/libssl-3-x64.dll</file>
+      <file>Windows/x86_64/libcrypto-3-x64.dll</file>
+      <file>Windows/x86_64/libssl-3-x64.dll</file>
       <file>Windows/x86_64/libstatistics_collector.dll</file>
       <file>Windows/x86_64/lifecycle_msgs__rosidl_generator_c.dll</file>
       <file>Windows/x86_64/lifecycle_msgs__rosidl_typesupport_c.dll</file>

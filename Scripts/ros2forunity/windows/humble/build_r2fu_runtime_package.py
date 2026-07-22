@@ -614,6 +614,10 @@ def package_json() -> dict[str, object]:
             "humble",
             "win64",
         ],
+        "unity2foxgloveConflicts": [
+            "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+            "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+        ],
         "author": {"name": "Unity2Foxglove"},
     }
 
@@ -680,6 +684,8 @@ Recommended combinations:
 Install only one `dev.unity2foxglove.ros2forunity.runtime.*` package in a Unity project. Multiple ROS2 runtime packages can load conflicting native DLLs or generated message assemblies.
 
 Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the same project. Use either an external asset-folder runtime or this package runtime.
+
+The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime` across all distro runtime packages. The adapter package references that stable assembly name, while the one-runtime policy and package conflict metadata prevent multiple distro runtimes from being active in the same Unity project.
 
 ## Runtime Identity
 
@@ -829,6 +835,7 @@ def patch_ros2_for_unity(package: Path) -> None:
     text = source.read_text(encoding="utf-8")
     text = patch_ros2cs_logger_callback_api(text)
     text = patch_standalone_environment_isolation(text)
+    text = patch_runtime_lifecycle_safety(text)
     if UNITY_PACKAGE_PATH_PATCH_MARKER in text:
         text = patch_rmw_guard(text)
         write_text(source, text)
@@ -857,6 +864,64 @@ def patch_ros2_for_unity(package: Path) -> None:
 def patch_ros2cs_logger_callback_api(text: str) -> str:
     """Patch obsolete ros2cs logger callback calls emitted by older runtime artifacts."""
     return text.replace("Ros2csLogger.setCallback", "Ros2csLogger.SetCallback")
+
+
+def patch_runtime_lifecycle_safety(text: str) -> str:
+    """Restore local lifecycle guards that a refreshed upstream runtime can omit."""
+    register_marker = "        EditorApplication.quitting += ShutdownShared;"
+    unregister_marker = "        EditorApplication.quitting -= ShutdownShared;"
+    if "AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared" not in text:
+        text = text.replace(
+            register_marker,
+            register_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared;",
+            1,
+        )
+    if "AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared" not in text:
+        text = text.replace(
+            unregister_marker,
+            unregister_marker + "\n        AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared;",
+            1,
+        )
+
+    dead_guard = "    private static void ThrowIfUninitialized(string callContext)\n"
+    guard_start = text.find(dead_guard)
+    if guard_start >= 0:
+        guard_end = text.find("\n    }\n\n", guard_start)
+        if guard_end < 0:
+            raise ValueError("Could not remove the stale ThrowIfUninitialized guard.")
+        text = text[:guard_start] + text[guard_end + len("\n    }\n\n"):]
+
+    metadata_prerequisite = "LoadMetadata() must complete before metadata-backed properties are read."
+    if metadata_prerequisite not in text:
+        text = text.replace(
+            '            throw new InvalidOperationException("Metadata document is empty while reading " + valuePath);\n',
+            "            throw new InvalidOperationException(\n"
+            '                "Metadata document is empty while reading " + valuePath +\n'
+            '                ". LoadMetadata() must complete before metadata-backed properties are read.");\n',
+            1,
+        )
+    return text
+
+
+def patch_unity_time_source_main_thread_guard(text: str) -> str:
+    """Restore a clear construction failure when Unity time is initialized off the main thread."""
+    if "must be constructed on the Unity main thread" not in text:
+        text = text.replace(
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    lastReadingSecs = Time.timeAsDouble;\n",
+            "    mainThreadId = Thread.CurrentThread.ManagedThreadId;\n"
+            "    try\n"
+            "    {\n"
+            "      lastReadingSecs = Time.timeAsDouble;\n"
+            "    }\n"
+            "    catch (UnityException exception)\n"
+            "    {\n"
+            "      throw new InvalidOperationException(\n"
+            '        "UnityTimeSource must be constructed on the Unity main thread.", exception);\n'
+            "    }\n",
+            1,
+        )
+    return text
 
 
 def patch_rmw_guard(text: str) -> str:
@@ -1017,14 +1082,15 @@ def patch_standalone_environment_isolation(text: str) -> str:
             LoadMetadata();
             string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();
 '''
-    if "packagedRos2Version = GetMetadataValue" not in text and startup_marker in text:
-        text = text.replace(startup_marker, startup_patch, 1)
-    elif "packagedRos2Version = GetMetadataValue" in text and "sourcedRosDistroBeforeStandalonePatch" not in text:
-        text = text.replace(
-            "            LoadMetadata();\n            if (IsStandalone())",
-            "            LoadMetadata();\n            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n            if (IsStandalone())",
-            1,
-        )
+    if "sourcedRosDistroBeforeStandalonePatch" not in text:
+        if "packagedRos2Version = GetMetadataValue" not in text and startup_marker in text:
+            text = text.replace(startup_marker, startup_patch, 1)
+        elif "packagedRos2Version = GetMetadataValue" in text:
+            text = text.replace(
+                "            LoadMetadata();\n            if (IsStandalone())",
+                "            LoadMetadata();\n            string sourcedRosDistroBeforeStandalonePatch = GetROSVersionSourced();\n            if (IsStandalone())",
+                1,
+            )
     duplicate_standalone_block = '''            if (IsStandalone())
             {
                 string packagedRos2Version = GetMetadataValue(ros2csMetadata, "/ros2cs/ros2");
@@ -1117,6 +1183,13 @@ def patch_ros_time_source_contract(package: Path) -> None:
     if MODIFICATIONS_COPYRIGHT not in dotnet_text:
         raise ValueError("DotnetTimeSource.cs is missing the local modifications copyright line.")
     write_text(dotnet_time, dotnet_text)
+
+    unity_time = time_dir / "UnityTimeSource.cs"
+    if unity_time.exists():
+        write_text(
+            unity_time,
+            patch_unity_time_source_main_thread_guard(unity_time.read_text(encoding="utf-8")),
+        )
 
     for name in ("ROS2TimeSource.cs", "ROS2ScalableTimeSource.cs"):
         source = time_dir / name

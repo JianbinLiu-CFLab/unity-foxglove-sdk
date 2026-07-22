@@ -26,6 +26,13 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Run FoxRun publish panel behavior tests
+        working-directory: Tools/foxglove-extensions/foxrun-publish-panel
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
       - name: Enable Corepack for the pinned official MCAP harness
         run: corepack enable
 
@@ -50,6 +57,20 @@ jobs:
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_player_host
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_foxrun_ros2_matrix_profiles
           python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase179_zenoh_topology
+
+      - name: Run Phase181 custom ROS2 acceptance helper regressions
+        run: |
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer_protocol
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_peer
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_matrix_profiles
+          python3 -m unittest Scripts.smoke.ros2.regression_checks.test_phase181_custom_ros2_linux_peer
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_interface_digest
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_characterize_foxrun_custom_interface
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_build_foxrun_custom_typesupport_addon
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_refresh_phase181_custom_typesupport_addons
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_sync_foxrun_custom_typesupport_addon
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_validate_foxrun_custom_typesupport_addon
+          python3 -m unittest Scripts.ros2forunity.interfaces.regression_checks.test_verify_foxrun_custom_typesupport_toolchain
 
       - name: Run official MCAP differential conformance
         run: python3 Scripts/mcap/conformance/run_phase121_conformance.py --release-blocking --report-path build/mcap-conformance/phase121-conformance-report.json
@@ -130,7 +151,18 @@ jobs:
   analyzer-freshness:
     runs-on: windows-latest
     steps:
+      - name: Enable Git long-path support
+        shell: pwsh
+        run: git config --global core.longpaths true
+
       - uses: actions/checkout@v4
+
+      - name: Validate Phase181 Win64 custom ROS2 typesupport identities
+        run: |
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro humble --require-rmw rmw_fastrtps_cpp
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro jazzy --require-rmw rmw_fastrtps_cpp
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_fastrtps_cpp
+          python Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_zenoh_cpp
 
       - uses: actions/setup-dotnet@v4
         with:

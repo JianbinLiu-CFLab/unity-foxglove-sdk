@@ -20,6 +20,24 @@ Add to `Packages/manifest.json`:
 }
 ```
 
+## Package choices
+
+**For most Unity projects, install only this SDK package.** It already covers
+Foxglove WebSocket streaming, FoxRun over WebSocket, MCAP recording/replay,
+sensors, services, and the optional ROS2 Bridge sidecar. Direct native ROS2 is
+an opt-in capability, not a prerequisite for any of those workflows.
+
+| If you need | Add alongside this SDK |
+| --- | --- |
+| Windows x64 Foxglove Cloud remote access | `dev.unity2foxglove.remotegateway.win64` |
+| Direct native ROS2 using packaged standard messages | `dev.unity2foxglove.ros2forunity` and exactly one `dev.unity2foxglove.ros2forunity.runtime.<distro>.win64` package |
+| Direct native ROS2 using generated custom FoxRun DTOs | The facade, one matching runtime, `dev.unity2foxglove.foxrun.ros2.interfaces`, and the same-distro `dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.<distro>.win64` add-on |
+
+Do not install multiple packaged ROS2 runtimes or multiple custom typesupport
+add-ons in one Unity project. The full selection matrix, including the
+external ROS2 For Unity alternative, is in the
+[repository package-combination guide](../../README.md#package-combinations).
+
 ## Minimal usage
 
 1. Create an empty GameObject in the scene and add the **FoxgloveManager** component

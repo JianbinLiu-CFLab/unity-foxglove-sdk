@@ -76,7 +76,7 @@ public class DotnetTimeSource : ITimeSource
             {   // use Stopwatch offset
                 timeOffset = durationInSeconds;
             }
-
+            
             var totalSeconds = systemTimeIntervalStart + timeOffset;
             if (totalSeconds < lastEmittedSeconds)
             {

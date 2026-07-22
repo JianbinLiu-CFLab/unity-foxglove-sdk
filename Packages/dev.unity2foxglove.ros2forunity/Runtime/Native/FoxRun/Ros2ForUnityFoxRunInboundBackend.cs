@@ -26,6 +26,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         bool RemoveSubscription(object subscription);
 
+        object CreatePublisher<T>(string topic)
+            where T : ROS2.Message, new();
+
+        bool IsPublisherUsable<T>(object publisher)
+            where T : ROS2.Message, new();
+
+        bool Publish<T>(object publisher, T message)
+            where T : ROS2.Message, new();
+
+        bool RemovePublisher<T>(object publisher)
+            where T : ROS2.Message, new();
+
         void ReleaseNode();
     }
 
@@ -66,6 +78,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             return new Ros2ForUnityFoxRunInboundBackend(
+                this,
+                _driver,
+                _canUseNativeRuntime);
+        }
+
+        internal IFoxRunRos2NativePublisherBackend AcquirePublisherBackend()
+        {
+            lock (_sync)
+            {
+                if (_hostOwnershipReleased || _nodeReleased)
+                    throw new ObjectDisposedException(nameof(Ros2ForUnityFoxRunNodeOwner));
+                checked { _bindingLeases++; }
+            }
+
+            return new Ros2ForUnityFoxRunPublisherBackend(
                 this,
                 _driver,
                 _canUseNativeRuntime);
@@ -264,6 +291,34 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var node = Volatile.Read(ref _node);
             if (node != null && subscription is ROS2.ISubscriptionBase typed)
                 return node.RemoveSubscription(typed);
+            return false;
+        }
+
+        public object CreatePublisher<T>(string topic)
+            where T : ROS2.Message, new()
+            => Volatile.Read(ref _node)?.CreatePublisher<T>(topic)
+               ?? throw new ObjectDisposedException(nameof(Ros2ForUnityFoxRunR2fuNodeDriver));
+
+        public bool IsPublisherUsable<T>(object publisher)
+            where T : ROS2.Message, new()
+            => publisher is ROS2.IPublisher<T>;
+
+        public bool Publish<T>(object publisher, T message)
+            where T : ROS2.Message, new()
+        {
+            if (Volatile.Read(ref _node) == null || publisher is not ROS2.IPublisher<T> typed)
+                return false;
+
+            typed.Publish(message);
+            return true;
+        }
+
+        public bool RemovePublisher<T>(object publisher)
+            where T : ROS2.Message, new()
+        {
+            var node = Volatile.Read(ref _node);
+            if (node != null && publisher is ROS2.IPublisherBase typed)
+                return node.RemovePublisher(typed);
             return false;
         }
 

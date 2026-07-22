@@ -24,6 +24,8 @@ namespace Unity.FoxgloveSDK.Editor
         private const string InvalidSubscriptionProviderDiagnosticId = "FOXRUN204";
         private const string NativeSubscribeOnlyDiagnosticId = "FOXRUN205";
         private const string NativeEncodingDiagnosticId = "FOXRUN206";
+        private const string NativeProviderPublishOnlyDiagnosticId = "FOXRUN214";
+        private const string CustomNativeBidirectionalContractDiagnosticId = "FOXRUN402";
         private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN210";
         private const string IgnoredRos2QosDiagnosticId = "FOXRUN213";
         private const float DefaultRateHz = 10f;
@@ -72,7 +74,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var target = member.DeclaringType + "." + member.MemberName;
             var hasValidNativeCapability = HasValidNativeCapability(member);
-            var hasTargetedNativeDiagnostics = HasTargetedNativeDiagnostics(member.Ros2MessageShape);
+            var hasTargetedNativeDiagnostics = HasTargetedNativeDiagnostics(member.Ros2MessageShape)
+                                             || HasTargetedNativeDiagnostics(member.Ros2CustomDtoShape);
             var requiresWebSocketShapeValidation = RequiresWebSocketShapeValidation(
                 member,
                 hasValidNativeCapability);
@@ -121,17 +124,11 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun SubscriptionProvider must be inherit, foxglove-websocket, or ros2-native."));
             }
 
-            if (IsNativeProvider(member.SubscriptionProvider) && member.Mode != 1)
-            {
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    NativeSubscribeOnlyDiagnosticId,
-                    target,
-                    member.MemberName,
-                    "Ros2Native subscriptions are supported only for SubscribeOnly members."));
-            }
+            AppendNativeProviderDirectionDiagnostics(member, target, diagnostics);
 
             if (IsNativeProvider(member.SubscriptionProvider)
-                && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
+                && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal)
+                && !AllowsNativeBidirectionalOutputEncoding(member))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                     NativeEncodingDiagnosticId,
@@ -156,6 +153,7 @@ namespace Unity.FoxgloveSDK.Editor
             AppendNativeShapeDiagnostics(member, target, diagnostics);
 
             if (IsNativeProvider(member.SubscriptionProvider)
+                && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
                 && member.Ros2MessageShape != null
                 && !string.IsNullOrWhiteSpace(member.SchemaName)
                 && !string.IsNullOrWhiteSpace(member.Ros2MessageShape.CanonicalRosType)
@@ -171,6 +169,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (requiresWebSocketShapeValidation
                 && member.Mode == 2
+                && !IsNativeCustomBidirectionalOutputContract(member)
                 && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
@@ -257,6 +256,7 @@ namespace Unity.FoxgloveSDK.Editor
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(UnlessConditionMissingDiagnosticId, target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
 
             if (requiresWebSocketShapeValidation
+                && !IsNativeCustomBidirectionalOutputContract(member)
                 && !FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(member.CanonicalType)
                 && (!string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal)
                     || member.ProtobufTypeShape == null))
@@ -303,15 +303,29 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static bool HasValidNativeCapability(FoxRunGenerationMember member)
         {
-            var shape = member.Ros2MessageShape;
-            return member.GeneratesRos2NativeRegistration
-                && shape != null
-                && shape.HasPublicParameterlessConstructor
-                && shape.ImplementsRos2Message
-                && shape.Diagnostics.Count == 0;
+            if (!member.GeneratesRos2NativeRegistration)
+                return false;
+
+            return FoxRunRos2ContractCapability.IsNativeRegistrationCapable(
+                member.Ros2MessageShape,
+                member.Ros2CustomDtoShape);
         }
 
         private static bool HasTargetedNativeDiagnostics(FoxRunRos2MessageShape shape)
+        {
+            if (shape == null)
+                return false;
+            foreach (var value in shape.Diagnostics)
+            {
+                if (FoxRunRos2ShapeDiagnostic.TryDecode(value, out var id, out _, out _)
+                    && id.StartsWith("FOXRUN", StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool HasTargetedNativeDiagnostics(FoxRunRos2CustomDtoShape shape)
         {
             if (shape == null)
                 return false;
@@ -330,10 +344,15 @@ namespace Unity.FoxgloveSDK.Editor
             string target,
             ICollection<FoxRunGenerationDiagnostic> diagnostics)
         {
-            if (!RequiresNativeShapeValidation(member)
-                || member.Ros2MessageShape == null)
+            if (!RequiresNativeShapeValidation(member))
                 return;
-            foreach (var encoded in member.Ros2MessageShape.Diagnostics)
+
+            var encodedDiagnostics = member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto
+                ? member.Ros2CustomDtoShape?.Diagnostics
+                : member.Ros2MessageShape?.Diagnostics;
+            if (encodedDiagnostics == null)
+                return;
+            foreach (var encoded in encodedDiagnostics)
             {
                 if (!FoxRunRos2ShapeDiagnostic.TryDecode(encoded, out var id, out var path, out var message))
                     continue;
@@ -346,12 +365,25 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private static bool RequiresNativeShapeValidation(FoxRunGenerationMember member)
-            => IsNativeProvider(member.SubscriptionProvider)
-               || (string.Equals(
-                       member.SubscriptionProvider,
-                       FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
-                       StringComparison.Ordinal)
-                   && !member.GeneratesWebSocketCodec);
+        {
+            // Phase181 builds a custom DTO shape for every ordinary DTO so a
+            // PublishOnly contract can later participate in the Manager-owned
+            // native output route.  That output capability must not turn an
+            // inherited subscription declaration into an explicit native-input
+            // contract, or a normal unsupported WebSocket field would acquire
+            // a second, unrelated custom-ROS diagnostic.  Keep the Phase179
+            // packaged-message behavior: an inherited contract with no
+            // WebSocket codec can still resolve only through native input and
+            // must surface its packaged shape failure.  A custom DTO keeps
+            // targeted native diagnostics until its provider is explicit.
+            return IsNativeProvider(member?.SubscriptionProvider)
+                   || (member?.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
+                       && string.Equals(
+                           member.SubscriptionProvider,
+                           FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                           StringComparison.Ordinal)
+                       && !member.GeneratesWebSocketCodec);
+        }
 
         private static bool RequiresWebSocketShapeValidation(
             FoxRunGenerationMember member,
@@ -362,7 +394,8 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
                 StringComparison.Ordinal))
             {
-                return false;
+                return AllowsNativeBidirectionalOutputEncoding(member)
+                       && member.GeneratesWebSocketCodec;
             }
 
             if (string.Equals(
@@ -370,6 +403,15 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
                 StringComparison.Ordinal))
             {
+                // PublishOnly has no inbound provider to resolve.  A valid
+                // custom interface may therefore be selected solely by the
+                // Manager's native output route, even when its ordinary DTO
+                // shape is not a canonical WebSocket field shape.  Keep the
+                // existing validation for every inbound/P&S declaration: an
+                // inherited provider there can still resolve to WebSocket.
+                if (IsNativeCustomPublishOnlyOutputContract(member, hasValidNativeCapability))
+                    return false;
+
                 return member.GeneratesWebSocketCodec || !hasValidNativeCapability;
             }
 
@@ -377,6 +419,78 @@ namespace Unity.FoxgloveSDK.Editor
                 member.SubscriptionProvider,
                 FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
                 StringComparison.Ordinal);
+        }
+
+        private static void AppendNativeProviderDirectionDiagnostics(
+            FoxRunGenerationMember member,
+            string target,
+            ICollection<FoxRunGenerationDiagnostic> diagnostics)
+        {
+            if (!IsNativeProvider(member.SubscriptionProvider))
+                return;
+
+            if (member.Mode == 0)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    NativeProviderPublishOnlyDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Ros2Native is an inbound SubscriptionProvider and is invalid for PublishOnly. Configure ROS2 Native output on the Manager instead."));
+                return;
+            }
+
+            if (member.Mode != 2)
+                return;
+
+            if (member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message)
+            {
+                // FOXRUN205 is shipped Phase179 behavior. It remains limited to
+                // real packaged ROS2.Message contracts and is never repurposed
+                // for a Phase181 custom interface failure.
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    NativeSubscribeOnlyDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Ros2Native subscriptions are supported only for SubscribeOnly members."));
+                return;
+            }
+
+            if (!HasCompleteCustomBidirectionalContract(member))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    CustomNativeBidirectionalContractDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Native PublishAndSubscribe requires a supported CustomDto with complete static canonical and payload identities; it never falls back to WebSocket input."));
+            }
+        }
+
+        private static bool AllowsNativeBidirectionalOutputEncoding(FoxRunGenerationMember member)
+            => member != null
+               && member.Mode == 2
+               && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto;
+
+        private static bool IsNativeCustomBidirectionalOutputContract(FoxRunGenerationMember member)
+            => IsNativeProvider(member?.SubscriptionProvider)
+               && AllowsNativeBidirectionalOutputEncoding(member);
+
+        private static bool IsNativeCustomPublishOnlyOutputContract(
+            FoxRunGenerationMember member,
+            bool hasValidNativeCapability)
+            => hasValidNativeCapability
+               && member != null
+               && member.Mode == 0
+               && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto;
+
+        private static bool HasCompleteCustomBidirectionalContract(FoxRunGenerationMember member)
+        {
+            var shape = member?.Ros2CustomDtoShape;
+            return shape != null
+                   && shape.IsSupported
+                   && shape.HasPublicParameterlessConstructor
+                   && shape.Diagnostics.Count == 0
+                   && !string.IsNullOrWhiteSpace(shape.CanonicalIdentity)
+                   && !string.IsNullOrWhiteSpace(shape.PayloadIdentity);
         }
 
         private static void ValidateTopicGroups(FoxRunGenerationType type, List<FoxRunGenerationDiagnostic> diagnostics)

@@ -182,7 +182,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
                 while (dir != null)
                 {
                     if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                        || Directory.Exists(Path.Combine(dir.FullName, ".git"))
+                        || File.Exists(Path.Combine(dir.FullName, ".git")))
                         return dir.FullName;
 
                     dir = dir.Parent;

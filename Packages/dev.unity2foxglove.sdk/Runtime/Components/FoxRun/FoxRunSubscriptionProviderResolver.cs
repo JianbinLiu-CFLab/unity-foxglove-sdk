@@ -63,6 +63,9 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Resolves a provider declaration without treating native ROS2 as a wire encoding.
         /// The declared encoding is used only to reject an explicitly contradictory pair.
+        /// A generated complete custom interface may opt into native
+        /// PublishAndSubscribe; in that one case Json/Protobuf remains an
+        /// outbound WebSocket policy and native remains the sole input provider.
         /// </summary>
         public static FoxRunSubscriptionProviderResolution Resolve(
             FoxRunSubscriptionProvider declaredProvider,
@@ -70,7 +73,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunMode mode,
             FoxRunWireEncoding declaredEncoding,
             bool supportsWebSocket,
-            bool supportsRos2Native)
+            bool supportsRos2Native,
+            bool allowsNativePublishAndSubscribe = false)
         {
             if (!IsValidProvider(declaredProvider))
             {
@@ -114,8 +118,13 @@ namespace Unity.FoxgloveSDK.Components
                     InvalidDeclaredEncodingMessage);
             }
 
+            var customNativeBidirectional = provider == FoxRunSubscriptionProvider.Ros2Native
+                                            && mode == FoxRunMode.PublishAndSubscribe
+                                            && allowsNativePublishAndSubscribe;
+
             if (declaredProvider == FoxRunSubscriptionProvider.Ros2Native
-                && declaredEncoding != FoxRunWireEncoding.Inherit)
+                && declaredEncoding != FoxRunWireEncoding.Inherit
+                && !customNativeBidirectional)
             {
                 return Failure(
                     provider,
@@ -124,7 +133,8 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             if (provider == FoxRunSubscriptionProvider.Ros2Native
-                && mode != FoxRunMode.SubscribeOnly)
+                && mode != FoxRunMode.SubscribeOnly
+                && !customNativeBidirectional)
             {
                 return Failure(
                     provider,

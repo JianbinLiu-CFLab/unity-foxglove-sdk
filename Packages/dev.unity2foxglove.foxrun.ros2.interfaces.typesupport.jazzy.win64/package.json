@@ -1,0 +1,20 @@
+{
+  "author": {
+    "name": "Unity2Foxglove"
+  },
+  "dependencies": {
+    "dev.unity2foxglove.ros2forunity": "0.1.0-preview.1",
+    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64": "0.1.0-preview.1"
+  },
+  "description": "Validated Jazzy Win64 custom ROS2 typesupport add-on for the locked Unity2Foxglove FoxRun interface package.",
+  "displayName": "Unity2Foxglove FoxRun ROS2 Typesupport - Jazzy Win64",
+  "license": "Apache-2.0",
+  "name": "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64",
+  "unity": "6000.0",
+  "unity2foxgloveConflicts": [
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64",
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64"
+  ],
+  "unity2foxgloveFoxRunCustomTypesupportAddOn": true,
+  "version": "0.1.0-preview.1"
+}

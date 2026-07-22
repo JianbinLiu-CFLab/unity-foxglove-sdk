@@ -51,8 +51,18 @@ internal class ROS2ForUnity : IDisposable
     private const string supportedRmwImplementationsDescription = "rmw_fastrtps_cpp, rmw_zenoh_cpp";
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     private static extern int _wputenv_s(string name, string value);
+#endif
+#endif
+#endif
+#endif
+#endif
 #endif
 
 #if UNITY_EDITOR
@@ -477,7 +487,9 @@ internal class ROS2ForUnity : IDisposable
     {
         if (doc.DocumentElement == null)
         {
-            throw new InvalidOperationException("Metadata document is empty while reading " + valuePath);
+            throw new InvalidOperationException(
+                "Metadata document is empty while reading " + valuePath +
+                ". LoadMetadata() must complete before metadata-backed properties are read.");
         }
 
         XmlNode node = doc.DocumentElement.SelectSingleNode(valuePath);
@@ -611,14 +623,6 @@ internal class ROS2ForUnity : IDisposable
             isInitialized = true;
             referenceCount = 1;
             ownsReference = true;
-        }
-    }
-
-    private static void ThrowIfUninitialized(string callContext)
-    {
-        if (!isInitialized)
-        {
-            throw new InvalidOperationException("Ros2 For Unity is not initialized, can't " + callContext);
         }
     }
 
@@ -765,6 +769,7 @@ internal class ROS2ForUnity : IDisposable
 
         EditorApplication.playModeStateChanged += EditorPlayStateChanged;
         EditorApplication.quitting += ShutdownShared;
+        AssemblyReloadEvents.beforeAssemblyReload += ShutdownShared;
         editorHandlersRegistered = true;
     }
 
@@ -777,6 +782,7 @@ internal class ROS2ForUnity : IDisposable
 
         EditorApplication.playModeStateChanged -= EditorPlayStateChanged;
         EditorApplication.quitting -= ShutdownShared;
+        AssemblyReloadEvents.beforeAssemblyReload -= ShutdownShared;
         editorHandlersRegistered = false;
     }
 

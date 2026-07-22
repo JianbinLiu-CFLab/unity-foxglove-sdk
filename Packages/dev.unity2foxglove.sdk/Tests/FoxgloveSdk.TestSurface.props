@@ -35,6 +35,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*Validator.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/*State.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/Coordinate*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Manager/Ros2NativeOutputPolicy.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Profiling/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherEncoding.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Runtime/Components/Publishing/FoxglovePublisherRate.cs" />
@@ -58,6 +59,7 @@
     <Compile Remove="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/**/*.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/**/*.cs" LinkBase="Ros2ForUnityRuntime/Native/FoxRun" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity/Runtime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Link="Ros2ForUnityRuntime/Native/Ros2ForUnityNativeBridgeLifecycleGate.cs" Condition="'$(IncludeRos2ForUnityNative)' == 'true'" />
+    <!-- Phase181's named custom catalog files remain inside the focused native FoxRun allowlist above. -->
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxgloveSourceEmitter/**/*.cs" LinkBase="Shared/FoxgloveSourceEmitter" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSourceEmitter/**/*.cs" LinkBase="Shared/FoxServiceSourceEmitter" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxServiceSchema/**/*.cs" LinkBase="Shared/FoxServiceSchema" />
@@ -76,6 +78,10 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" Link="Editor/FoxRun/FoxRunReflectionGenerationModelLowerer.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" Link="Editor/FoxRun/FoxRunProtobufReflectionTypeShapeBuilder.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2MessageShapeBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" Link="Editor/FoxRun/FoxRunReflectionRos2CustomDtoShapeBuilder.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunRos2InterfacePackageRenderer.cs" Link="Editor/FoxRun/FoxRunRos2InterfacePackageRenderer.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunRos2InterfacePackageWriter.cs" Link="Editor/FoxRun/FoxRunRos2InterfacePackageWriter.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxRunRos2InterfacePackagePreflight.cs" Link="Editor/FoxRun/FoxRunRos2InterfacePackagePreflight.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunMemberData.cs" Link="Editor/FoxRun/FoxrunMemberData.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" Link="Editor/FoxRun/FoxServiceDtoReflectionValidator.cs" />
   </ItemGroup>
@@ -87,6 +93,10 @@
     </Reference>
     <Reference Include="ros2cs_core">
       <HintPath>$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/ros2cs_core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="builtin_interfaces_assembly">
+      <HintPath>$(MSBuildThisFileDirectory)../../dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/builtin_interfaces_assembly.dll</HintPath>
       <Private>true</Private>
     </Reference>
     <Reference Include="std_msgs_assembly">

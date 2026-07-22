@@ -13,6 +13,40 @@ export type FoxRunSubscriptionField = {
 };
 
 const MAX_FIELD_NUMBER = 536_870_911;
+const FIRST_RESERVED_FIELD_NUMBER = 19_000;
+const LAST_RESERVED_FIELD_NUMBER = 19_999;
+const MAX_UNKNOWN_FIELD_NAMES = 8;
+
+type ScalarEncoding = {
+  wireType: 0 | 1 | 2 | 5;
+  kind: "float64" | "float32" | "string" | "bytes" | "bool"
+    | "int32" | "int64" | "uint32" | "uint64" | "sint32" | "sint64"
+    | "fixed32" | "fixed64" | "sfixed32" | "sfixed64";
+};
+
+const SCALAR_ENCODINGS: Readonly<Record<string, ScalarEncoding>> = {
+  double: { wireType: 1, kind: "float64" },
+  float64: { wireType: 1, kind: "float64" },
+  float: { wireType: 5, kind: "float32" },
+  single: { wireType: 5, kind: "float32" },
+  float32: { wireType: 5, kind: "float32" },
+  string: { wireType: 2, kind: "string" },
+  bytes: { wireType: 2, kind: "bytes" },
+  bool: { wireType: 0, kind: "bool" },
+  boolean: { wireType: 0, kind: "bool" },
+  int: { wireType: 0, kind: "int32" },
+  int32: { wireType: 0, kind: "int32" },
+  int64: { wireType: 0, kind: "int64" },
+  uint: { wireType: 0, kind: "uint32" },
+  uint32: { wireType: 0, kind: "uint32" },
+  uint64: { wireType: 0, kind: "uint64" },
+  sint32: { wireType: 0, kind: "sint32" },
+  sint64: { wireType: 0, kind: "sint64" },
+  fixed32: { wireType: 5, kind: "fixed32" },
+  fixed64: { wireType: 1, kind: "fixed64" },
+  sfixed32: { wireType: 5, kind: "sfixed32" },
+  sfixed64: { wireType: 1, kind: "sfixed64" },
+};
 
 /**
  * Reject a Protobuf send when Unity did not supply the selected contract's
@@ -40,9 +74,11 @@ export function encodeProtobufMessage(
     throw new Error("Protobuf payload must be a JSON object.");
   }
 
+  validateContract(fields);
+  validateKnownPayloadKeys(fields, message);
+
   const bytes: number[] = [];
   for (const field of fields) {
-    validateField(field);
     const raw = message[field.name];
     if (raw == undefined || raw === null) {
       if (raw === null && !field.nullable) {
@@ -55,19 +91,49 @@ export function encodeProtobufMessage(
     for (const value of values) {
       const wireType = wireTypeFor(field.type);
       writeVarint(bytes, (BigInt(field.protobufFieldNumber) << 3n) | BigInt(wireType));
-      writeValue(bytes, field, value, wireType);
+      writeValue(bytes, field, value);
     }
   }
 
   return Uint8Array.from(bytes);
 }
 
-function validateField(field: FoxRunSubscriptionField): void {
-  if (!Number.isInteger(field.protobufFieldNumber)
-      || field.protobufFieldNumber < 1
-      || field.protobufFieldNumber > MAX_FIELD_NUMBER) {
-    throw new Error(`Field ${field.name} has an invalid Protobuf field number.`);
+function validateContract(fields: readonly FoxRunSubscriptionField[]): void {
+  for (const field of fields) {
+    validateFieldNumber(field.name, field.protobufFieldNumber);
+    encodingFor(field.type);
   }
+}
+
+function validateFieldNumber(name: string, protobufFieldNumber: number): void {
+  if (!Number.isInteger(protobufFieldNumber)
+      || protobufFieldNumber < 1
+      || protobufFieldNumber > MAX_FIELD_NUMBER
+      || (protobufFieldNumber >= FIRST_RESERVED_FIELD_NUMBER && protobufFieldNumber <= LAST_RESERVED_FIELD_NUMBER)) {
+    throw new Error(`Field ${name} has an invalid Protobuf field number.`);
+  }
+}
+
+function validateKnownPayloadKeys(
+  fields: readonly FoxRunSubscriptionField[],
+  message: Record<string, unknown>,
+): void {
+  const fieldNames = new Set(fields.map((field) => field.name));
+  const unknownNames = Object.keys(message).filter((name) => !fieldNames.has(name));
+  if (unknownNames.length === 0) {
+    return;
+  }
+
+  const displayedNames = unknownNames
+    .slice(0, MAX_UNKNOWN_FIELD_NAMES)
+    .map((name) => JSON.stringify(name));
+  const hiddenCount = unknownNames.length - displayedNames.length;
+  if (unknownNames.length === 1) {
+    throw new Error(`Unknown Protobuf payload field ${displayedNames[0]}.`);
+  }
+
+  const hiddenSuffix = hiddenCount > 0 ? ` and ${hiddenCount} more` : "";
+  throw new Error(`Unknown Protobuf payload fields ${displayedNames.join(", ")}${hiddenSuffix}.`);
 }
 
 function requireArray(name: string, value: unknown): readonly unknown[] {
@@ -78,47 +144,14 @@ function requireArray(name: string, value: unknown): readonly unknown[] {
 }
 
 function wireTypeFor(type: string): number {
-  switch (normalizeType(type)) {
-    case "double":
-    case "float64":
-      return 1;
-    case "float":
-    case "single":
-    case "float32":
-      return 5;
-    case "string":
-    case "bytes":
-      return 2;
-    case "bool":
-    case "boolean":
-    case "int":
-    case "int32":
-    case "int64":
-    case "uint":
-    case "uint32":
-    case "uint64":
-    case "sint32":
-    case "sint64":
-      return 0;
-    case "fixed32":
-    case "sfixed32":
-      return 5;
-    case "fixed64":
-    case "sfixed64":
-      return 1;
-    default:
-      throw new Error(`FoxRun Publish does not support Protobuf type ${type || "(empty)"}.`);
-  }
+  return encodingFor(type).wireType;
 }
 
-function writeValue(bytes: number[], field: FoxRunSubscriptionField, value: unknown, wireType: number): void {
-  switch (normalizeType(field.type)) {
-    case "double":
+function writeValue(bytes: number[], field: FoxRunSubscriptionField, value: unknown): void {
+  switch (encodingFor(field.type).kind) {
     case "float64":
       writeFloat64(bytes, value, field.name);
       return;
-    case "float":
-    case "single":
     case "float32":
       writeFloat32(bytes, value, field.name);
       return;
@@ -129,40 +162,51 @@ function writeValue(bytes: number[], field: FoxRunSubscriptionField, value: unkn
       writeLengthDelimited(bytes, decodeBase64(field.name, value));
       return;
     case "bool":
-    case "boolean":
       writeVarint(bytes, requireBoolean(field.name, value) ? 1n : 0n);
       return;
-    case "int":
     case "int32":
+      writeVarint(bytes, BigInt.asUintN(64, requireSignedInteger(field.name, value, 32)));
+      return;
     case "int64":
-      writeVarint(bytes, BigInt.asUintN(64, requireInteger(field.name, value)));
+      writeVarint(bytes, BigInt.asUintN(64, requireSignedInteger(field.name, value, 64)));
       return;
-    case "uint":
     case "uint32":
-    case "uint64":
-      writeVarint(bytes, requireUnsignedInteger(field.name, value));
+      writeVarint(bytes, requireUnsignedInteger(field.name, value, 32));
       return;
-    case "sint32":
+    case "uint64":
+      writeVarint(bytes, requireUnsignedInteger(field.name, value, 64));
+      return;
+    case "sint32": {
+      const signed = requireSignedInteger(field.name, value, 32);
+      writeVarint(bytes, zigZag(signed, 32));
+      return;
+    }
     case "sint64": {
-      const signed = requireInteger(field.name, value);
-      writeVarint(bytes, (signed << 1n) ^ (signed >> 63n));
+      const signed = requireSignedInteger(field.name, value, 64);
+      writeVarint(bytes, zigZag(signed, 64));
       return;
     }
     case "fixed32":
-      writeFixed32(bytes, requireUnsignedInteger(field.name, value));
+      writeFixed32(bytes, requireUnsignedInteger(field.name, value, 32));
       return;
     case "sfixed32":
-      writeFixed32(bytes, BigInt.asUintN(32, requireInteger(field.name, value)));
+      writeFixed32(bytes, BigInt.asUintN(32, requireSignedInteger(field.name, value, 32)));
       return;
     case "fixed64":
-      writeFixed64(bytes, requireUnsignedInteger(field.name, value));
+      writeFixed64(bytes, requireUnsignedInteger(field.name, value, 64));
       return;
     case "sfixed64":
-      writeFixed64(bytes, BigInt.asUintN(64, requireInteger(field.name, value)));
+      writeFixed64(bytes, BigInt.asUintN(64, requireSignedInteger(field.name, value, 64)));
       return;
-    default:
-      throw new Error(`FoxRun Publish does not support Protobuf type ${field.type || "(empty)"}.`);
   }
+}
+
+function encodingFor(type: string): ScalarEncoding {
+  const normalizedType = normalizeType(type);
+  if (!Object.prototype.hasOwnProperty.call(SCALAR_ENCODINGS, normalizedType)) {
+    throw new Error(`FoxRun Publish does not support Protobuf type ${type || "(empty)"}.`);
+  }
+  return SCALAR_ENCODINGS[normalizedType]!;
 }
 
 function normalizeType(type: string): string {
@@ -201,12 +245,30 @@ function requireInteger(name: string, value: unknown): bigint {
   }
 }
 
-function requireUnsignedInteger(name: string, value: unknown): bigint {
+function requireSignedInteger(name: string, value: unknown, bits: 32 | 64): bigint {
+  const parsed = requireInteger(name, value);
+  const limit = 1n << BigInt(bits - 1);
+  return requireIntegerInRange(name, parsed, -limit, limit - 1n, `int${bits}`);
+}
+
+function requireUnsignedInteger(name: string, value: unknown, bits: 32 | 64): bigint {
   const parsed = requireInteger(name, value);
   if (parsed < 0n) {
     throw new Error(`Field ${name} must be unsigned.`);
   }
-  return parsed;
+  const maximum = (1n << BigInt(bits)) - 1n;
+  return requireIntegerInRange(name, parsed, 0n, maximum, `uint${bits}`);
+}
+
+function requireIntegerInRange(name: string, value: bigint, minimum: bigint, maximum: bigint, type: string): bigint {
+  if (value < minimum || value > maximum) {
+    throw new Error(`Field ${name} is outside the Protobuf ${type} range.`);
+  }
+  return value;
+}
+
+function zigZag(value: bigint, bits: 32 | 64): bigint {
+  return (value << 1n) ^ (value >> BigInt(bits - 1));
 }
 
 function requireFiniteNumber(name: string, value: unknown): number {
@@ -229,18 +291,12 @@ function writeFloat64(bytes: number[], value: unknown, name: string): void {
 }
 
 function writeFixed32(bytes: number[], value: bigint): void {
-  if (value > 0xffffffffn) {
-    throw new Error("fixed32 value exceeds the Protobuf uint32 range.");
-  }
   const buffer = new ArrayBuffer(4);
   new DataView(buffer).setUint32(0, Number(value), true);
   bytes.push(...new Uint8Array(buffer));
 }
 
 function writeFixed64(bytes: number[], value: bigint): void {
-  if (value > 0xffffffffffffffffn) {
-    throw new Error("fixed64 value exceeds the Protobuf uint64 range.");
-  }
   const buffer = new ArrayBuffer(8);
   new DataView(buffer).setBigUint64(0, value, true);
   bytes.push(...new Uint8Array(buffer));

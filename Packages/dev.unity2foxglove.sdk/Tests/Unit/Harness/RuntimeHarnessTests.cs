@@ -24,6 +24,10 @@ namespace Unity.FoxgloveSDK.UnitTests
     [Trait("Domain", "Harness")]
     public class RuntimeHarnessTests
     {
+        // A full local CI run intentionally overlaps MCAP conformance with this
+        // xUnit lane. Keep the one-time harness build bounded, but allow three
+        // times the normal two-minute budget for that legitimate contention.
+        private const int HarnessBuildTimeoutMilliseconds = 360_000;
         private static readonly SemaphoreSlim HarnessBuildLock = new SemaphoreSlim(1, 1);
         private static bool _harnessBuilt;
 
@@ -337,7 +341,11 @@ namespace Unity.FoxgloveSDK.UnitTests
                 if (_harnessBuilt)
                     return;
 
-                var result = await RunProcessAsync("dotnet", repoRoot, 120_000, new[] { "build", project, "--nologo" });
+                var result = await RunProcessAsync(
+                    "dotnet",
+                    repoRoot,
+                    HarnessBuildTimeoutMilliseconds,
+                    new[] { "build", project, "--nologo" });
                 if (result.ExitCode != 0)
                     throw new InvalidOperationException(
                         "Failed to build runtime harness before CLI tests." + Environment.NewLine +

@@ -36,7 +36,7 @@ MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json"
 
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-EXPECTED_ARTIFACT_SHA256 = "df4806b750435b3a1252f39b46dd2e4e60ddc0eb6ac57989bcf00adb23fe29f3"
+EXPECTED_ARTIFACT_SHA256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74"
 EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
 
 CRITICAL_DLLS = (
@@ -85,10 +85,7 @@ PHASE161_ADDED_DLLS = (
 PHASE161_SUPPLEMENTAL_RUNTIME_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/rosidl_dynamic_typesupport_fastrtps.dll",
 )
-PHASE161_ALLOWED_STALE_REMOVED_DLLS = (
-    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_c_native.dll",
-    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_fastrtps_c_native.dll",
-    "Ros2ForUnity/Plugins/Windows/x86_64/geometry_msgs_velocity_with_covariance_stamped__rosidl_typesupport_introspection_c_native.dll",
+V083_EXCLUDED_TEST_TYPESUPPORT_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_fastrtps_c_native.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_introspection_c_native.dll",
@@ -354,9 +351,9 @@ def check_runtime_manifest(results: list[CheckResult], data: dict) -> None:
     )
     add(
         results,
-        "runtime manifest Phase161 allowed removed stale DLL set",
+        "runtime manifest v0.8.3 excluded test-only typesupport DLL set",
         isinstance(delta, dict)
-        and set(delta.get("allowedRemovedStaleBackupDlls", [])) == set(PHASE161_ALLOWED_STALE_REMOVED_DLLS),
+        and set(delta.get("excludedTestTypesupportDlls", [])) == set(V083_EXCLUDED_TEST_TYPESUPPORT_DLLS),
         f"handoffInventoryDelta={delta!r}",
     )
     add(
@@ -517,9 +514,9 @@ def check_inventory(results: list[CheckResult], manifest: dict, release_gate: bo
     )
     add(
         results,
-        "Phase161 stale old-backup DLL paths are absent",
-        not (set(PHASE161_ALLOWED_STALE_REMOVED_DLLS) & file_paths),
-        f"unexpected={sorted(set(PHASE161_ALLOWED_STALE_REMOVED_DLLS) & file_paths)!r}",
+        "v0.8.3 test-only typesupport DLL paths are absent",
+        not (set(V083_EXCLUDED_TEST_TYPESUPPORT_DLLS) & file_paths),
+        f"unexpected={sorted(set(V083_EXCLUDED_TEST_TYPESUPPORT_DLLS) & file_paths)!r}",
     )
     add(
         results,

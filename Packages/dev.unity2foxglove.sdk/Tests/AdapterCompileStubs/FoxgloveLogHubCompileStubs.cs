@@ -129,6 +129,7 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxgloveManager
     {
         public bool IsRunning { get; set; }
+        public bool Ros2NativeEnabled { get; set; }
         public bool SuppressLivePublishersForReplay { get; set; }
         public ulong NowNs { get; set; }
         public FoxRunSubscriptionSessionPolicy ActiveFoxRunSubscriptionSessionPolicy { get; set; }

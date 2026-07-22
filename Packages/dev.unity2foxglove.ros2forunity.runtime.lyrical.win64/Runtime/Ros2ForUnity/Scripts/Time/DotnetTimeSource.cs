@@ -1,5 +1,5 @@
 // Copyright 2022 Robotec.ai.
-// Modifications Copyright (c) 2026 Jianbin Liu.
+// Modifications Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ public class DotnetTimeSource : ITimeSource
             {   // use Stopwatch offset
                 timeOffset = durationInSeconds;
             }
-
+            
             var totalSeconds = systemTimeIntervalStart + timeOffset;
             if (totalSeconds < lastEmittedSeconds)
             {

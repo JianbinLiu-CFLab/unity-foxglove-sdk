@@ -158,6 +158,17 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
+        /// <summary>
+        /// Explicit native contract capability.  Consumers must use this
+        /// discriminant rather than inferring a route from a CLR type name.
+        /// </summary>
+        public readonly FoxRunRos2ContractKind Ros2ContractKind;
+        /// <summary>
+        /// Host-neutral schema for a project DTO that will later be lowered to
+        /// a generated ROS2 interface.  This is deliberately distinct from a
+        /// precompiled ros2cs <see cref="FoxRunRos2MessageShape"/>.
+        /// </summary>
+        public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
         public readonly int ProtobufFieldNumber;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
         public readonly float RateHz;
@@ -208,7 +219,9 @@ namespace Unity.FoxgloveSDK.Editor
             string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
-            FoxRunRos2MessageShape ros2MessageShape = null)
+            FoxRunRos2MessageShape ros2MessageShape = null,
+            FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             : this(
                 ns,
                 className,
@@ -240,7 +253,9 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2Qos,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
-                ros2MessageShape)
+                ros2MessageShape,
+                ros2CustomDtoShape,
+                ros2ContractKind)
         {
         }
 
@@ -275,7 +290,9 @@ namespace Unity.FoxgloveSDK.Editor
             string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
-            FoxRunRos2MessageShape ros2MessageShape = null)
+            FoxRunRos2MessageShape ros2MessageShape = null,
+            FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
             : this(
                 ns,
                 className,
@@ -308,7 +325,9 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2Qos,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
-                ros2MessageShape)
+                ros2MessageShape,
+                ros2CustomDtoShape,
+                ros2ContractKind)
         {
         }
 
@@ -344,7 +363,9 @@ namespace Unity.FoxgloveSDK.Editor
             string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
-            FoxRunRos2MessageShape ros2MessageShape = null)
+            FoxRunRos2MessageShape ros2MessageShape = null,
+            FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -367,6 +388,11 @@ namespace Unity.FoxgloveSDK.Editor
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
             Ros2MessageShape = ros2MessageShape;
+            Ros2CustomDtoShape = ros2CustomDtoShape;
+            Ros2ContractKind = ResolveRos2ContractKind(
+                ros2ContractKind,
+                ros2MessageShape,
+                ros2CustomDtoShape);
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
             HasNonFiniteRateHz = IsNonFinite(rateHz);
@@ -425,7 +451,31 @@ namespace Unity.FoxgloveSDK.Editor
                 Ros2Qos,
                 GeneratesWebSocketCodec,
                 GeneratesRos2NativeRegistration,
-                Ros2MessageShape);
+                Ros2MessageShape,
+                Ros2CustomDtoShape,
+                Ros2ContractKind);
+        }
+
+        private static FoxRunRos2ContractKind ResolveRos2ContractKind(
+            FoxRunRos2ContractKind declared,
+            FoxRunRos2MessageShape packagedShape,
+            FoxRunRos2CustomDtoShape customShape)
+        {
+            if (declared != FoxRunRos2ContractKind.Unsupported)
+                return declared;
+
+            // Contract kind identifies the source family.  Shape validity is a
+            // separate capability decision: invalid packaged messages must keep
+            // their Phase179 diagnostics, while invalid custom DTOs need their
+            // custom-schema diagnostics.
+            if (packagedShape != null)
+            {
+                return FoxRunRos2ContractKind.PackagedRos2Message;
+            }
+
+            return customShape != null
+                ? FoxRunRos2ContractKind.CustomDto
+                : FoxRunRos2ContractKind.Unsupported;
         }
 
         private static string DefaultJsonFieldName(string memberName)

@@ -1,6 +1,6 @@
 {
   "name": "Unity2Foxglove.Ros2ForUnity.Runtime",
-  "rootNamespace": "ROS2",
+  "rootNamespace": "",
   "references": [],
   "includePlatforms": [
     "Editor",

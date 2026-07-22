@@ -26,6 +26,7 @@ namespace Unity.FoxgloveSDK.Editor
             int topicCount,
             bool hasPolicy,
             bool hasConditions,
+            bool hasNativeBusDemand,
             bool hasInput,
             string pad)
         {
@@ -50,6 +51,8 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxgloveLogSource");
                 interfaces.Add("IFoxgloveTopicContractSource");
                 interfaces.Add("IFoxgloveTopicBusSource");
+                if (hasNativeBusDemand)
+                    interfaces.Add("IFoxgloveTopicBusDemandSource");
                 interfaces.Add("IFoxgloveTopicSinkSource");
                 if (hasPolicy)
                     interfaces.Add("IFoxgloveLogPolicySource");
