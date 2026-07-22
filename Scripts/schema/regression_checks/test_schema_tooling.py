@@ -317,13 +317,42 @@ class SchemaToolingTests(unittest.TestCase):
                 for name in module.EXPECTED_CDR_SOURCES:
                     (output_dir / name).write_bytes((module.COMMITTED_CDR_DIR / name).read_bytes())
 
-        with mock.patch.object(module, "run_generator", side_effect=fake_run_generator):
+        with (
+            mock.patch.object(module, "schema_snapshot_available", return_value=True),
+            mock.patch.object(module, "run_generator", side_effect=fake_run_generator),
+        ):
             failures = module.validate_generated_outputs()
 
         self.assertEqual([], failures)
         self.assertEqual(2, len(calls))
         self.assertTrue(all(command[0] == sys.executable for command in calls))
         self.assertEqual(120, module.GENERATOR_TIMEOUT_SECONDS)
+
+    def test_generated_output_validator_accepts_a_source_only_checkout(self) -> None:
+        """A clean worktree should validate committed generated inventory without an untracked SDK clone."""
+        module = load_module("schema_generated_validator_source_only", "Scripts/schema/validate_schema_generated_outputs.py")
+
+        with (
+            mock.patch.object(module, "schema_snapshot_available", return_value=False),
+            mock.patch.object(module, "run_generator") as run_generator,
+        ):
+            failures = module.validate_generated_outputs()
+
+        self.assertEqual([], failures)
+        run_generator.assert_not_called()
+
+    def test_generated_output_validator_rejects_missing_committed_catalog_without_snapshot(self) -> None:
+        """Source-only validation must still fail closed when committed generated output is absent."""
+        module = load_module("schema_generated_validator_missing_catalog", "Scripts/schema/validate_schema_generated_outputs.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            missing_catalog = Path(temp) / "FoxgloveRos2MsgSchemaCatalog.cs"
+            with mock.patch.object(module, "schema_snapshot_available", return_value=False), mock.patch.object(
+                module, "COMMITTED_CATALOG", missing_catalog
+            ):
+                failures = module.validate_generated_outputs()
+
+        self.assertIn("missing committed file", "\n".join(failures))
 
     def test_generated_output_validator_reports_startup_errors(self) -> None:
         """Missing generator executables should produce clean failure messages."""

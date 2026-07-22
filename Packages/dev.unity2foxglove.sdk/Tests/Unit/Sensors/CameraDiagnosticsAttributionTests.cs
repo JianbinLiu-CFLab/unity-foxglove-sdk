@@ -319,7 +319,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 {
                     var candidate = Path.GetFullPath(explicitRoot);
                     if (File.Exists(Path.Combine(candidate, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(candidate, ".git")))
+                        || Directory.Exists(Path.Combine(candidate, ".git"))
+                        || File.Exists(Path.Combine(candidate, ".git")))
                         return candidate;
 
                     throw new DirectoryNotFoundException(
@@ -331,7 +332,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
                 while (dir != null)
                 {
                     if (File.Exists(Path.Combine(dir.FullName, "Unity2Foxglove.sln"))
-                        || Directory.Exists(Path.Combine(dir.FullName, ".git")))
+                        || Directory.Exists(Path.Combine(dir.FullName, ".git"))
+                        || File.Exists(Path.Combine(dir.FullName, ".git")))
                         return dir.FullName;
 
                     dir = dir.Parent;

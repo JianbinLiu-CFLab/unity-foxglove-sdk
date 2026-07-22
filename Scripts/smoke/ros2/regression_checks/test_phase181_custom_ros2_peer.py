@@ -264,9 +264,13 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             """Provide one deterministic owned Unity process for the selection wait policy."""
 
             def __init__(self):
+                """Schedule two active polls followed by a successful completion."""
+
                 self._poll_results = [None, None, 0]
 
             def poll(self):
+                """Return the next deterministic process state."""
+
                 return self._poll_results.pop(0)
 
         with temporary_directory("peer-") as temporary:
@@ -276,9 +280,13 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             terminated: list[Process] = []
 
             def now() -> float:
+                """Expose the deterministic test clock to the wait helper."""
+
                 return clock["seconds"]
 
             def advance_with_unity_log_progress(_seconds: float) -> None:
+                """Advance the clock while proving that Unity continues to make log progress."""
+
                 clock["seconds"] += 301.0
                 selection_log.write_text(
                     "Unity compilation is still progressing at " + str(clock["seconds"]) + "\n",
@@ -914,13 +922,19 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             """Minimal owned process with two colcon progress lines."""
 
             def __init__(self):
+                """Seed the deterministic streamed build output."""
+
                 self.stdout = io.StringIO("Starting >>> example_interfaces\nFinished <<< example_interfaces\n")
 
             def wait(self, timeout):
+                """Record the supplied timeout and complete successfully."""
+
                 self.timeout = timeout
                 return 0
 
             def kill(self):
+                """Reject termination because the synthetic helper completed successfully."""
+
                 raise AssertionError("A successful streamed process must not be killed.")
 
         def process_factory(command, **kwargs):

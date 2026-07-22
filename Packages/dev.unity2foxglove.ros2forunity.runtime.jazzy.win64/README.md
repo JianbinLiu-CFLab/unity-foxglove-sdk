@@ -20,6 +20,8 @@ Install only one `dev.unity2foxglove.ros2forunity.runtime.*` package in a Unity 
 
 Do not import the old `Assets/Ros2ForUnity` asset folder and this package in the same project. Use either an external asset-folder runtime or this package runtime.
 
+The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime` across all distro runtime packages. The adapter package references that stable assembly name, while the one-runtime policy and package conflict metadata prevent multiple distro runtimes from being active in the same Unity project.
+
 ## Runtime Identity
 
 - ROS distro: Jazzy

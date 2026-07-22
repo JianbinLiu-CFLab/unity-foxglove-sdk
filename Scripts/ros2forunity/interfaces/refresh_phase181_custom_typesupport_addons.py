@@ -62,6 +62,8 @@ class AddonRefreshError(RuntimeError):
     """A bounded failure for the Phase181 add-on refresh transaction."""
 
     def __init__(self, remediation: str):
+        """Record the operator-facing remediation with the stable refresh error code."""
+
         self.code = ERROR_CODE
         self.remediation = remediation
         super().__init__(self.code + ": " + remediation)

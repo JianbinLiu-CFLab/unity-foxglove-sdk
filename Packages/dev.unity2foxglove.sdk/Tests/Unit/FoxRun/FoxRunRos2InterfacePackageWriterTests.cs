@@ -309,7 +309,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             var directory = new DirectoryInfo(Directory.GetCurrentDirectory());
             while (directory != null)
             {
-                if (File.Exists(Path.Combine(directory.FullName, "AGENTS.md"))
+                if (File.Exists(Path.Combine(directory.FullName, ".gitattributes"))
                     && Directory.Exists(Path.Combine(directory.FullName, "Packages", "dev.unity2foxglove.sdk")))
                 {
                     return directory.FullName;

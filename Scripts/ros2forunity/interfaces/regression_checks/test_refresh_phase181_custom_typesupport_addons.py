@@ -214,6 +214,8 @@ class Phase181CustomTypesupportRefreshTests(unittest.TestCase):
             )
 
             def mutating_runner(command, **_kwargs):
+                """Record the build command and mutate the install after preflight."""
+
                 commands.append(tuple(command))
                 if "build_foxrun_custom_typesupport_addon.py" in command[1]:
                     (fixture.ros2cs_source / "install-humble" / "lib" / "dotnet" / "builtin_interfaces_assembly.dll").write_bytes(
@@ -263,6 +265,8 @@ class Phase181CustomTypesupportRefreshTests(unittest.TestCase):
         """Return a completed-process runner that exposes the exact child argv."""
 
         def run(command, **_kwargs):
+            """Capture one child argv and report a successful completed process."""
+
             commands.append(tuple(command))
             return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -277,6 +281,8 @@ class _Fixture:
     """Own the small filesystem fixture used by the refresh tests."""
 
     def __init__(self) -> None:
+        """Create an isolated repository-shaped filesystem fixture."""
+
         self._temporary = temporary_directory("phase181-addon-refresh-")
         self.root = Path(self._temporary.name)
         self.runtime_manifest = {"runtimeId": "humble", "revision": 1}
@@ -312,12 +318,18 @@ class _Fixture:
         self._write_runtime()
 
     def __enter__(self) -> "_Fixture":
+        """Return the prepared fixture for a scoped test body."""
+
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
+        """Dispose the fixture's temporary directory when the test scope exits."""
+
         self._temporary.cleanup()
 
     def _write_project_selection(self) -> None:
+        """Write a Unity manifest and lockfile with exactly one selected runtime."""
+
         packages = self.root / "Unity2Foxglove" / "Packages"
         packages.mkdir(parents=True)
         package = "dev.unity2foxglove.ros2forunity.runtime.humble.win64"
@@ -331,6 +343,8 @@ class _Fixture:
         )
 
     def add_runtime_dependency(self, distro: str) -> None:
+        """Add a second runtime manifest dependency to create an invalid selection."""
+
         manifest_path = self.root / "Unity2Foxglove" / "Packages" / "manifest.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         package = "dev.unity2foxglove.ros2forunity.runtime." + distro + ".win64"
@@ -338,6 +352,8 @@ class _Fixture:
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     def add_runtime_lock_entry(self, distro: str) -> None:
+        """Add a stale runtime lock entry without changing the manifest."""
+
         lock_path = self.root / "Unity2Foxglove" / "Packages" / "packages-lock.json"
         lock = json.loads(lock_path.read_text(encoding="utf-8"))
         package = "dev.unity2foxglove.ros2forunity.runtime." + distro + ".win64"
@@ -345,6 +361,8 @@ class _Fixture:
         lock_path.write_text(json.dumps(lock), encoding="utf-8")
 
     def _write_static_interface(self) -> None:
+        """Write the minimum static interface lock needed by the refresher."""
+
         support = self.root / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces" / "RuntimeSupport"
         support.mkdir(parents=True)
         (support / "foxrun-ros2-interface-lock.json").write_text(
@@ -353,11 +371,15 @@ class _Fixture:
         )
 
     def _write_runtime(self) -> None:
+        """Write the selected runtime manifest used for identity comparison."""
+
         support = self.root / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64" / "RuntimeSupport"
         support.mkdir(parents=True)
         (support / "runtime-manifest.json").write_text(json.dumps(self.runtime_manifest), encoding="utf-8")
 
     def write_addon(self, *, runtime_manifest_sha: str) -> None:
+        """Write the tracked add-on manifest with a caller-controlled runtime hash."""
+
         self._write_typesupport_manifest(
             self.root
             / "Packages"

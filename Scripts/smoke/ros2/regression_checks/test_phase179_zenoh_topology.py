@@ -313,6 +313,8 @@ class Phase179ZenohTopologyTests(unittest.TestCase):
             pid = 4245
 
             def __init__(self) -> None:
+                """Start the synthetic owned process in the still-live state."""
+
                 self.killed = False
 
             def poll(self):

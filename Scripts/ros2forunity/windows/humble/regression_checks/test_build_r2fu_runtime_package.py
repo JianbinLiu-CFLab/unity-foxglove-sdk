@@ -40,6 +40,23 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         """Load a fresh reference to the builder module for each test."""
         self.builder = load_builder_module()
 
+    def test_package_manifest_declares_other_runtime_packages_as_conflicts(self) -> None:
+        """Humble must prevent Unity from installing a second distro runtime."""
+        manifest = self.builder.package_json()
+
+        self.assertEqual(
+            [
+                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+            ],
+            manifest["unity2foxgloveConflicts"],
+        )
+        artifact = self.builder.RuntimeArtifact("artifact.zip", "0" * 64, 1, 1)
+        self.assertIn(
+            "The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`",
+            self.builder.readme_text(artifact),
+        )
+
     def test_extract_runtime_rejects_zip_slip_entries(self) -> None:
         """Reject archive entries that would escape the package root."""
         with tempfile.TemporaryDirectory() as temp:
