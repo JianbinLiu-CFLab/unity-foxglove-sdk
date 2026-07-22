@@ -71,6 +71,9 @@ class ToolchainPreflightTests(unittest.TestCase):
             self.assertTrue(any(call[0][-2:] == ("-E", "capabilities") for call in runner.calls))
             self.assertTrue(any(call[1]["ROS_DISTRO"] == "humble" for call in runner.calls))
             self.assertTrue(any(".pixi" in call[1]["PATH"] for call in runner.calls))
+            self.assertTrue(
+                any(call[0][0] == str(request.dotnet) and call[0][-1:] == ("--version",) for call in runner.calls)
+            )
             compiler_probe = next(call for call in runner.calls if call[0][0].lower().endswith("cl.exe"))
             self.assertEqual(("/Bv",), compiler_probe[0][-1:])
             self.assertTrue(any(call[0][0].lower().endswith("msbuild.exe") for call in runner.calls))
@@ -176,6 +179,8 @@ class ToolchainPreflightTests(unittest.TestCase):
 
         vswhere = root / "vswhere.exe"
         vswhere.write_text("fixture", encoding="utf-8")
+        dotnet = root / "dotnet.exe"
+        dotnet.write_text("fixture", encoding="utf-8")
         visual_studio_root = root / "VisualStudio"
         vsdevcmd = visual_studio_root / "Common7" / "Tools" / "VsDevCmd.bat"
         vsdevcmd.parent.mkdir(parents=True)
@@ -196,6 +201,7 @@ class ToolchainPreflightTests(unittest.TestCase):
                 build_root=root / "build",
                 generator="Visual Studio 17 2022",
                 vswhere=vswhere,
+                dotnet=dotnet,
             ),
             visual_studio_root,
         )
