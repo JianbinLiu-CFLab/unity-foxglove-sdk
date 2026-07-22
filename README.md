@@ -79,21 +79,55 @@ See [FoxRun shared-emitter architecture](docs/research-shared-emitter-architectu
 
 Foxglove owns interactive time. Unity applies ordered forward ranges during normal playback and latest-at snapshots for seeks; it does not claim deterministic physics/input simulation. See [Foxglove-owned timeline and scene reproduction](docs/research-remote-timeline-scene-reproduction.md).
 
-## Package Layout
+## Package Combinations
 
-| Package / workspace | Role |
-| --- | --- |
-| `Packages/dev.unity2foxglove.sdk` | ROS-free core package for WebSocket, MCAP, Replay, FoxRun, publishers, and sensors. |
-| `Packages/dev.unity2foxglove.ros2forunity` | Optional ROS2 For Unity facade, diagnostics, generated bindings, and samples. |
-| `Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64` | Optional Humble Windows x64 runtime package. |
-| `Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` | Optional Jazzy Windows x64 runtime package. |
-| `Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64` | Optional Lyrical Windows x64 runtime package. |
-| `Packages/dev.unity2foxglove.foxrun.ros2.interfaces` | Static custom FoxRun ROS2 interfaces. |
-| `Unity2Foxglove` | Demo and manual-acceptance Unity project. |
+**Most projects need only `dev.unity2foxglove.sdk`.** It is the complete
+ROS-free product for Foxglove WebSocket streaming, FoxRun over WebSocket, MCAP
+recording/replay, sensors, services, and the optional `ROS2 Bridge` sidecar.
+Do not add a ROS2 runtime merely because a project publishes data to Foxglove.
 
-Exactly one optional ROS2 runtime package should be active in a Unity project. The adapter can compile without a runtime and reports the missing capability instead of making the core SDK depend on ROS2.
+The repository contains candidate packages for optional capabilities. A package
+folder on disk is not an instruction to add it to a Unity project: only the
+packages resolved by that project's `Packages/manifest.json` are active.
 
-The normal Foxglove WebSocket streaming, MCAP recording, or replay path needs no ROS2 package. The `ROS2 Bridge` is an independent localhost sidecar mirror and is disabled by default. ROS2 Native uses the optional RobotecAI ROS2 For Unity package line and preserves its Apache-2.0 attribution and runtime inventory boundary.
+| Role | Package | Add it only when you need it |
+| --- | --- | --- |
+| Core | `dev.unity2foxglove.sdk` | Always. This is the normal and sufficient installation. |
+| Remote gateway | `dev.unity2foxglove.remotegateway.win64` | Windows x64 Foxglove Cloud remote-access gateway. It depends on the core SDK. |
+| ROS2 facade | `dev.unity2foxglove.ros2forunity` | Direct native ROS2 communication through ROS2 For Unity. It depends on the core SDK but has no runtime by itself. |
+| ROS2 runtime | One of `dev.unity2foxglove.ros2forunity.runtime.humble.win64`, `.jazzy.win64`, or `.lyrical.win64` | Direct native ROS2 on Windows x64. Select exactly one distro. Lyrical Fast DDS versus Zenoh is a communication-mode setting, not another package. |
+| Custom interface source | `dev.unity2foxglove.foxrun.ros2.interfaces` | Native ROS2 for generated custom FoxRun DTOs. This is a locked source and schema package, not a runtime. |
+| Custom typesupport | The matching `dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.<distro>.win64` | Only with the custom-interface source package and its same-distro runtime. Select exactly one add-on. |
+
+Choose one active set rather than accumulating packages:
+
+| Goal | Packages the Unity project must resolve | Do not add for this goal |
+| --- | --- | --- |
+| Normal Unity-to-Foxglove, FoxRun/WebSocket input, MCAP, Replay, or ROS2 Bridge | `dev.unity2foxglove.sdk` | ROS2 facade, runtime, static interface, and typesupport packages. |
+| Windows x64 remote gateway | Core + `dev.unity2foxglove.remotegateway.win64` | ROS2 packages unless the project also has a separate native ROS2 need. |
+| Direct native ROS2 using packaged standard messages | Core + `dev.unity2foxglove.ros2forunity` + exactly one matching runtime | Custom interface and custom typesupport packages. |
+| Direct native ROS2 using generated custom FoxRun DTOs | Core + facade + exactly one runtime + `dev.unity2foxglove.foxrun.ros2.interfaces` + the exact matching typesupport add-on | Every other runtime and every other typesupport add-on. |
+| Existing external ROS2 For Unity import | Core + facade + the external ROS2 For Unity runtime | All packaged `dev.unity2foxglove.ros2forunity.runtime.*` packages. |
+
+From a repository checkout, use Unity Package Manager's **Add package from
+disk...** command for each `Packages/<package-id>/package.json` in the one row
+you selected. The [`Unity2Foxglove/Packages/manifest.json`](Unity2Foxglove/Packages/manifest.json)
+file is a working combined-project example, not a list to copy wholesale.
+For Lyrical, choose `Zenoh (rmw_zenoh_cpp)` in the FoxgloveManager Inspector at
+**Data Transport > ROS 2 Native Runtime (R2FU) — Shared** before entering Play
+Mode. The [ROS2 For Unity package guide](Packages/dev.unity2foxglove.ros2forunity/README.md)
+has the native-runtime prerequisites and switching details.
+
+Never resolve two packaged ROS2 runtimes, two custom typesupport add-ons, or a
+packaged runtime together with the legacy `Assets/Ros2ForUnity` runtime. Those
+sets can load conflicting managed and native ROS2 libraries. For a custom DTO,
+the source interface and matching add-on must both be present; the add-on does
+not replace the source package. Select or switch the runtime before entering
+Play Mode; after native ROS2 DLLs have loaded, restart the Unity Editor before
+changing distro.
+
+The `Unity2Foxglove` directory is the combined demo and manual-acceptance
+project, not a package that application projects need to install.
 
 ### ROS2 Evidence Boundary
 
