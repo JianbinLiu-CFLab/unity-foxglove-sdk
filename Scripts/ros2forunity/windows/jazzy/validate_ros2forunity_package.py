@@ -520,9 +520,9 @@ def check_text_boundaries(results: list[CheckResult]) -> None:
     add(results, "notices require future inventory", "complete transitive inventory" in combined, "future binary bundling boundary")
     add(
         results,
-        "runtime notices name artifact candidate",
+        "runtime notices name released runtime artifact",
         "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip" in runtime_notices
-        and "candidate input" in runtime_notices,
+        and "runtime package redistributes" in runtime_notices.lower(),
         rel(RUNTIME_NOTICES),
     )
     add(

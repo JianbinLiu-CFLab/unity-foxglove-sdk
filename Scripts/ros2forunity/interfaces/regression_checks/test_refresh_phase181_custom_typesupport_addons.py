@@ -72,6 +72,30 @@ class Phase181CustomTypesupportRefreshTests(unittest.TestCase):
             self.assertIn("validate_foxrun_custom_typesupport_addon.py", commands[2][1])
             self.assertIn(str(fixture.root / "build"), commands[0])
 
+    def test_apply_forwards_the_explicit_distro_ros2_root_to_the_builder(self) -> None:
+        """An isolated worktree must not depend on ignored repo-local ROS junctions."""
+        with self._fixture() as fixture:
+            fixture.write_addon(runtime_manifest_sha="0" * 64)
+            ros2_root = fixture.root / "external" / "ros2_humble"
+            ros2_root.mkdir(parents=True)
+            commands: list[tuple[str, ...]] = []
+            request = AddonRefreshRequest(
+                root=fixture.root,
+                distros=("humble",),
+                apply=True,
+                ros2cs_source=fixture.ros2cs_source,
+                r2fu_source=fixture.r2fu_source,
+                unity=fixture.unity,
+                ros2_roots=(("humble", ros2_root),),
+            )
+
+            run_refresh(request, runner=self._recording_runner(commands))
+
+            build = commands[0]
+            self.assertIn("--ros2-root", build)
+            option = build.index("--ros2-root")
+            self.assertEqual(str(ros2_root.resolve()), build[option + 1])
+
     def test_apply_reuses_a_matching_validated_candidate_before_rebuilding(self) -> None:
         """A prior successful candidate is synchronized instead of rebuilding native code again."""
         with self._fixture() as fixture:

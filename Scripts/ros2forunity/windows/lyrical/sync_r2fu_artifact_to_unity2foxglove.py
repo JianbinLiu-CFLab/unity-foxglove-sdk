@@ -14,7 +14,6 @@ import datetime as dt
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -24,8 +23,12 @@ ROOT = Path(__file__).resolve().parents[4]
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+WINDOWS_SCRIPT_DIR = SCRIPT_DIR.parent
+if str(WINDOWS_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(WINDOWS_SCRIPT_DIR))
 
 from lyrical_artifact_config import ARTIFACT_NAME, EXPECTED_ARTIFACT_SHA256
+from runtime_adoption_manifest import sync_runtime_adoption_manifest
 
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64"
 RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
@@ -243,41 +246,18 @@ def ensure_project_uses_runtime_package(
 
 def sync_adapter_compliance(project_root: Path, package_path: Path) -> dict[str, object]:
     """Sync adapter compliance metadata from the generated runtime package."""
-
-    compliance_dir = project_root / "Packages" / "dev.unity2foxglove.ros2forunity" / "Compliance"
-    adoption_path = compliance_dir / "ros2-for-unity-adoption-manifest.json"
-    adapter_notices_path = compliance_dir / "r2fu-lyrical-win64-runtime-notices.md"
-    runtime_manifest = read_json(package_path / "RuntimeSupport" / "runtime-manifest.json")
-    adoption = read_json(adoption_path)
-    runtimes = adoption.get("supportedRuntimePackages", [])
-    target = next(
-        (
-            item for item in runtimes
-            if isinstance(item, dict) and item.get("packageName") == PACKAGE_NAME
+    return sync_runtime_adoption_manifest(
+        project_root,
+        package_path,
+        PACKAGE_NAME,
+        additional_manifest_keys=(
+            "criticalRuntimeFiles",
+            "defaultRmwImplementation",
+            "supportedRmwImplementations",
+            "communicationModes",
         ),
-        None,
+        notices_relative_path="r2fu-lyrical-win64-runtime-notices.md",
     )
-    if target is None:
-        raise RuntimeError(f"{adoption_path} does not contain {PACKAGE_NAME}")
-
-    for key in (
-        "artifactSha256",
-        "artifactSize",
-        "inventoryFileCount",
-        "criticalRuntimeFiles",
-        "defaultRmwImplementation",
-        "supportedRmwImplementations",
-        "communicationModes",
-    ):
-        if key in runtime_manifest:
-            target[key] = runtime_manifest[key]
-
-    write_json(adoption_path, adoption)
-    shutil.copyfile(package_path / "THIRD_PARTY_NOTICES.md", adapter_notices_path)
-    return {
-        "adoptionManifestPath": str(adoption_path),
-        "runtimeNoticesPath": str(adapter_notices_path),
-    }
 
 
 def run_unity_import(unity_exe: Path, project_path: Path, log_path: Path) -> None:

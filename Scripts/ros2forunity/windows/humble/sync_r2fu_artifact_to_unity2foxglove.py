@@ -19,10 +19,17 @@ import sys
 from pathlib import Path
 
 
+WINDOWS_SCRIPT_DIR = Path(__file__).resolve().parent.parent
+if str(WINDOWS_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(WINDOWS_SCRIPT_DIR))
+
+from runtime_adoption_manifest import sync_runtime_adoption_manifest
+
+
 ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.humble.win64"
 RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
-EXPECTED_ARTIFACT_SHA256 = "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba"
+EXPECTED_ARTIFACT_SHA256 = "6937f348b2abdf40614379173bb81ba55090dc1541cab616d1a0f1e248ceb5b0"
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
@@ -324,6 +331,11 @@ def main(argv: list[str] | None = None) -> int:
         ],
         cwd=project_root,
     )
+    adapter_compliance = sync_runtime_adoption_manifest(
+        project_root,
+        package_path,
+        PACKAGE_NAME,
+    )
     project_shape = ensure_project_uses_runtime_package(
         project_root,
         update=args.update_project_manifest,
@@ -356,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
             "name": PACKAGE_NAME,
             "manifest": package_manifest,
             "inventoryPath": str(inventory_path),
+            "adapterCompliance": adapter_compliance,
         },
         "projectShape": project_shape,
         "validation": {

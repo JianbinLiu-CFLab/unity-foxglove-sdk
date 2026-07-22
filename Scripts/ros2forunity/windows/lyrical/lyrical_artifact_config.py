@@ -7,4 +7,4 @@
 """Shared Lyrical Win64 R2FU artifact metadata."""
 
 ARTIFACT_NAME = "Ros2ForUnity_lyrical_standalone_windows_x86_64.zip"
-EXPECTED_ARTIFACT_SHA256 = "1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096"
+EXPECTED_ARTIFACT_SHA256 = "b31f12cccd2c702ec18c5f5ededce9239d8a2bbe244d54b5526606a96a3a5b71"

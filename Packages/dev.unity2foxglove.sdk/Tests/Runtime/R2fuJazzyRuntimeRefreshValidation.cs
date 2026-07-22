@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string ProjectPath =
             "Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj";
         private const string ExpectedSha =
-            "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74";
+            "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d";
 
         private static int _passed;
         private static bool _runningFullValidation;

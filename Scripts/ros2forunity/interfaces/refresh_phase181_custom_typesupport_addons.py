@@ -88,6 +88,7 @@ class AddonRefreshRequest:
     ros2cs_source: Path | None = None
     r2fu_source: Path | None = None
     unity: Path | None = None
+    ros2_roots: tuple[tuple[str, Path], ...] = ()
 
 
 def repository_root() -> Path:
@@ -369,12 +370,21 @@ def _script(root: Path, name: str) -> Path:
     return path
 
 
+def _explicit_ros2_root(request: AddonRefreshRequest, distro: str) -> Path | None:
+    """Return the sole explicit ROS root for one distro, when supplied."""
+
+    matches = [Path(path).resolve() for candidate, path in request.ros2_roots if candidate == distro]
+    if len(matches) > 1:
+        raise AddonRefreshError("provide-one-ros2-root-per-distro")
+    return matches[0] if matches else None
+
+
 def build_command(request: AddonRefreshRequest, distro: str) -> list[str]:
     """Build the exact argument vector for one candidate-only materialization."""
 
     root = Path(request.root).resolve()
     ros2cs_source, ros2cs_install, r2fu_source, unity = _require_apply_toolchain(request, distro)
-    return [
+    command = [
         sys.executable,
         str(_script(root, "build_foxrun_custom_typesupport_addon.py")),
         "--distro",
@@ -390,6 +400,10 @@ def build_command(request: AddonRefreshRequest, distro: str) -> list[str]:
         "--unity",
         str(unity),
     ]
+    ros2_root = _explicit_ros2_root(request, distro)
+    if ros2_root is not None:
+        command.extend(("--ros2-root", str(ros2_root)))
+    return command
 
 
 def sync_command(root: Path, distro: str) -> list[str]:
@@ -493,7 +507,20 @@ def parse_args(argv: Sequence[str] | None = None) -> AddonRefreshRequest:
     parser.add_argument("--ros2cs-source", type=Path)
     parser.add_argument("--r2fu-source", type=Path)
     parser.add_argument("--unity", type=Path)
+    parser.add_argument(
+        "--ros2-root",
+        action="append",
+        default=[],
+        metavar="DISTRO=PATH",
+        help="Explicit ROS root for an isolated worktree; repeat once per selected distro.",
+    )
     args = parser.parse_args(argv)
+    ros2_roots: list[tuple[str, Path]] = []
+    for assignment in args.ros2_root:
+        distro, separator, path = assignment.partition("=")
+        if not separator or distro not in SUPPORTED_DISTROS or not path:
+            parser.error("--ros2-root must use DISTRO=PATH with a supported distro")
+        ros2_roots.append((distro, Path(path)))
     return AddonRefreshRequest(
         root=repository_root(),
         distros=tuple(args.distro or SUPPORTED_DISTROS),
@@ -501,6 +528,7 @@ def parse_args(argv: Sequence[str] | None = None) -> AddonRefreshRequest:
         ros2cs_source=args.ros2cs_source,
         r2fu_source=args.r2fu_source,
         unity=args.unity,
+        ros2_roots=tuple(ros2_roots),
     )
 
 

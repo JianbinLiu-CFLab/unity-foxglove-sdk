@@ -1276,26 +1276,96 @@ class McapConformanceToolTests(unittest.TestCase):
 class R2fuArtifactHandoffTests(unittest.TestCase):
     """Keep source gates aligned with the current verified R2FU artifact handoff."""
 
-    def test_v083_runtime_artifact_pins_are_consistent(self) -> None:
-        """Every source gate must name the three verified v0.8.3 artifact digests."""
+    def test_v090_runtime_artifact_pins_are_consistent(self) -> None:
+        """Every source gate must name the three verified v0.9.0 artifact digests."""
         expected_by_path = {
-            "Scripts/ros2forunity/windows/humble/sync_r2fu_artifact_to_unity2foxglove.py": "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba",
-            "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py": "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba",
-            "Scripts/ros2forunity/windows/jazzy/sync_r2fu_artifact_to_unity2foxglove.py": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
-            "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
-            "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
-            "Scripts/ros2forunity/windows/lyrical/lyrical_artifact_config.py": "1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096",
-            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuHumbleRuntimePackageValidation.cs": "83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba",
-            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuJazzyRuntimeRefreshValidation.cs": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
-            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuLyricalRuntimePackageValidation.cs": "1d018510d1bf4e5b901eb9555adec5ca5179acced28685df1192aa615483a096",
-            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
-            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase128Validation.cs": "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74",
+            "Scripts/ros2forunity/windows/humble/sync_r2fu_artifact_to_unity2foxglove.py": "6937f348b2abdf40614379173bb81ba55090dc1541cab616d1a0f1e248ceb5b0",
+            "Scripts/ros2forunity/windows/humble/validate_ros2forunity_package.py": "6937f348b2abdf40614379173bb81ba55090dc1541cab616d1a0f1e248ceb5b0",
+            "Scripts/ros2forunity/windows/jazzy/sync_r2fu_artifact_to_unity2foxglove.py": "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d",
+            "Scripts/ros2forunity/windows/jazzy/validate_r2fu_runtime_package.py": "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d",
+            "Scripts/ros2forunity/windows/jazzy/build_r2fu_runtime_package.py": "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d",
+            "Scripts/ros2forunity/windows/lyrical/lyrical_artifact_config.py": "b31f12cccd2c702ec18c5f5ededce9239d8a2bbe244d54b5526606a96a3a5b71",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuHumbleRuntimePackageValidation.cs": "6937f348b2abdf40614379173bb81ba55090dc1541cab616d1a0f1e248ceb5b0",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuJazzyRuntimeRefreshValidation.cs": "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/R2fuLyricalRuntimePackageValidation.cs": "b31f12cccd2c702ec18c5f5ededce9239d8a2bbe244d54b5526606a96a3a5b71",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase107Validation.cs": "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d",
+            "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase128Validation.cs": "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d",
         }
 
         for relative_path, expected_sha256 in expected_by_path.items():
             with self.subTest(path=relative_path):
                 source = (ROOT / relative_path).read_text(encoding="utf-8")
                 self.assertIn(expected_sha256, source)
+
+    def test_runtime_adoption_sync_updates_only_the_selected_distro(self) -> None:
+        """Serial runtime refreshes must preserve every other distro's verified metadata."""
+        from Scripts.ros2forunity.windows.runtime_adoption_manifest import (
+            sync_runtime_adoption_manifest,
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_name = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+            compliance = root / "Packages/dev.unity2foxglove.ros2forunity/Compliance"
+            package = root / "Packages" / package_name
+            (package / "RuntimeSupport").mkdir(parents=True)
+            compliance.mkdir(parents=True)
+            adoption = {
+                "currentRecommendedRuntime": {
+                    "packageName": package_name,
+                    "artifactSha256": "old-jazzy",
+                    "artifactSize": 1,
+                    "inventoryFileCount": 2,
+                    "criticalRuntimeFiles": ["keep-current.dll"],
+                },
+                "supportedRuntimePackages": [
+                    {
+                        "packageName": "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                        "artifactSha256": "keep-humble",
+                        "artifactSize": 10,
+                    },
+                    {
+                        "packageName": package_name,
+                        "artifactSha256": "old-jazzy",
+                        "artifactSize": 1,
+                        "inventoryFileCount": 2,
+                        "criticalRuntimeFiles": ["keep-supported.dll"],
+                    },
+                ],
+            }
+            (compliance / "ros2-for-unity-adoption-manifest.json").write_text(
+                json.dumps(adoption), encoding="utf-8"
+            )
+            (package / "RuntimeSupport/runtime-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "artifactSha256": "new-jazzy",
+                        "artifactSize": 123,
+                        "inventoryFileCount": 456,
+                        "criticalRuntimeFiles": ["runtime-only.dll"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            sync_runtime_adoption_manifest(
+                root,
+                package,
+                package_name,
+                update_current_recommended=True,
+            )
+
+            updated = json.loads(
+                (compliance / "ros2-for-unity-adoption-manifest.json").read_text(encoding="utf-8")
+            )
+            humble, jazzy = updated["supportedRuntimePackages"]
+            self.assertEqual("keep-humble", humble["artifactSha256"])
+            self.assertEqual("new-jazzy", jazzy["artifactSha256"])
+            self.assertEqual(123, jazzy["artifactSize"])
+            self.assertEqual(456, jazzy["inventoryFileCount"])
+            self.assertEqual(["keep-supported.dll"], jazzy["criticalRuntimeFiles"])
+            self.assertEqual("new-jazzy", updated["currentRecommendedRuntime"]["artifactSha256"])
+            self.assertEqual(["keep-current.dll"], updated["currentRecommendedRuntime"]["criticalRuntimeFiles"])
 
     def test_inactive_runtime_syncs_can_preserve_the_selected_runtime(self) -> None:
         """Refreshing a non-selected payload must not rewrite the Unity runtime selection."""

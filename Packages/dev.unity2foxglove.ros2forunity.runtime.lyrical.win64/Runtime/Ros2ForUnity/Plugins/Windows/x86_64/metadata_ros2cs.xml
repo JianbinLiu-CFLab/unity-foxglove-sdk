@@ -2,13 +2,13 @@
 <ros2cs>
    <ros2>lyrical</ros2>
    <version>
-      <sha>b37c6177ea48355df6cbee07bf25068f39472303</sha>
-      <desc>v0.8.3</desc>
-      <date>2026-07-21 12:55:01 +0200</date>
+      <sha>4252e38a5bafe6102c3f8f3dcb5cb591492ba087</sha>
+      <desc>v0.9.0</desc>
+      <date>2026-07-22 01:42:45 +0200</date>
       <branch>HEAD</branch>
    </version>
    <standalone>1</standalone>
-   <plugins root="D:\ros2unity\.build\r2fu-release-matrix\260721161035\lyrical\ros2-for-unity\install\asset\Ros2ForUnity\Plugins" runtime_file_count="992">
+   <plugins root="D:\ros2unity\.build\r2fu-release-matrix\260722022746\lyrical\ros2-for-unity\install\asset\Ros2ForUnity\Plugins" runtime_file_count="992">
       <file>Windows/x86_64/action_msgs__rosidl_generator_c.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_generator_py.dll</file>
       <file>Windows/x86_64/action_msgs__rosidl_typesupport_c.dll</file>
