@@ -203,6 +203,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             {
                 Assert.StartsWith(@"\\?\", normalized, StringComparison.Ordinal);
                 Assert.EndsWith("typesupport.dll", normalized, StringComparison.Ordinal);
+
+                var uncPath = @"\\phase184-server\typesupport-share\" +
+                              new string('b', 260) +
+                              @"\typesupport.dll";
+                var normalizedUnc = Ros2ForUnityCustomTypesupportSelectionTransaction
+                    .NormalizeWindowsLongPathForRead(uncPath);
+
+                Assert.StartsWith(
+                    @"\\?\UNC\phase184-server\typesupport-share\",
+                    normalizedUnc,
+                    StringComparison.Ordinal);
+                Assert.EndsWith("typesupport.dll", normalizedUnc, StringComparison.Ordinal);
             }
             else
             {
