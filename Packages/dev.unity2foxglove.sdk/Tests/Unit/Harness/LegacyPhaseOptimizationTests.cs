@@ -37,16 +37,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 new FoxRunGenerationType("Demo", "Policy", new[]
                 {
-                    Member("_nanRate", "/demo/nan", rateHz: float.NaN),
-                    Member("_infEpsilon", "/demo/inf_eps", changeEpsilon: float.PositiveInfinity),
-                    Member("_infInterval", "/demo/inf_interval", forceIntervalSeconds: float.NegativeInfinity)
+                    Member("_nanHz", "/demo/nan", hz: float.NaN),
+                    Member("_infTolerance", "/demo/inf_tolerance", tolerance: float.PositiveInfinity)
                 })
             });
 
             var policyDiagnostics = FoxRunGenerationModelValidator.Validate(policy);
-            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_nanRate");
-            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_infEpsilon");
-            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_infInterval");
+            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_nanHz");
+            Assert.Contains(policyDiagnostics, d => d.Id == "FOXRUN009" && d.MemberName == "_infTolerance");
         }
 
         [Fact]
@@ -91,10 +89,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             string name,
             string topic,
             string schemaName = "",
-            float rateHz = 10f,
+            float hz = 10f,
             int policy = 0,
-            float changeEpsilon = 0f,
-            float forceIntervalSeconds = 0f)
+            float tolerance = 0f)
         {
             return new FoxRunGenerationMember(
                 "Demo",
@@ -107,11 +104,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 false,
                 string.Empty,
                 topic,
-                rateHz,
+                hz,
                 schemaName,
                 policy,
-                changeEpsilon,
-                forceIntervalSeconds,
+                tolerance,
                 "Test",
                 0,
                 string.Empty);

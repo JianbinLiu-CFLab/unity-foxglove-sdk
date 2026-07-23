@@ -50,11 +50,11 @@ Then declarations stay compact:
 [FoxRun("/robot/pose")]
 private PoseState _pose;
 
-[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, RateHz = 30)]
+[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, Hz = 30)]
 private RobotCommand _command;
 
 [FoxRun("/debug/state", Mode = PublishAndSubscribe,
-    Policy = FixedRate, RateHz = 10,
+    Policy = FixedRate, Hz = 10,
     Encoding = FoxRunWireEncoding.Protobuf)]
 private DebugState _debugState;
 ```
@@ -75,35 +75,36 @@ may fan out to multiple enabled destinations.
 | `Policy` | Publish behavior | Subscribe behavior |
 |---|---|---|
 | `FixedRate` | Sends the current value on each eligible cadence. | Applies when a newer staged value exists; it never reapplies stale state just because a timer fired. |
-| `Change` | Sends the first value and later semantic changes. | Applies only when the staged value differs from the last applied value. |
-| `ChangeOrInterval` | Sends changes plus the configured heartbeat interval. | Applies a change or a newly received duplicate after the interval; it never invents a duplicate. |
+| `Change` without `Hz` | Sends the first value and later semantic changes. | Applies changed input at the next main-thread opportunity, bounded by the maximum subscribe rate. |
+| `Change` with `Hz` | Sends changes plus a heartbeat at `Hz`. | Applies changes immediately and may refresh a newly received equal duplicate at `Hz`; it never invents a duplicate from stale input. |
 | `Trigger` | Sends only when the generated publish trigger is called. | Keeps the newest staged value until the generated apply trigger is called. |
 
-`Trigger` cannot be combined with an explicit positive `RateHz`; the source
+`Trigger` cannot be combined with an explicit positive `Hz`; the source
 generator reports `FOXRUN609` instead of silently ignoring either setting.
 
-`ChangeEpsilon` controls the change threshold for floating-point and vector
-values. `ForceIntervalSeconds` controls the `ChangeOrInterval` heartbeat.
-Members on the same topic must agree on `Policy`, `ChangeEpsilon`, and
-`ForceIntervalSeconds`; otherwise the generator reports `FOXRUN005`.
+`Tolerance` controls the change threshold for supported floating-point and
+vector values. `Change + Hz` supplies the heartbeat without a second policy.
+`OnlyIf` names one bool field, property, or zero-argument method and expresses
+one positive gate. Members on the same topic must agree on `Policy`, `Hz`,
+`Tolerance`, and `OnlyIf`; otherwise the generator reports `FOXRUN005`.
 
 ## 4. Rate and Admission Controls
 
-`RateHz` is a boundary cadence, not a network or ROS2 discovery setting:
+`Hz` is a boundary cadence, not a network or ROS2 discovery setting:
 
 - Publish: maximum generated publication cadence.
 - Subscribe: maximum main-thread application cadence after transport admission.
 - PublishAndSubscribe: the same explicit value governs each direction
   independently.
 
-When `RateHz` is omitted, publish resolves to 10 Hz and subscribe inherits the
+When `Hz` is omitted, fixed-rate publish resolves to 10 Hz and fixed-rate subscribe inherits the
 Manager's frozen **Default Subscribe Rate Hz** (10 Hz by default).
 
 Under **Foxglove Manager > Data Transport > Subscribe Data > Subscription
 Delivery**, two adjacent controls have different jobs:
 
 - **Default Subscribe Rate Hz** is 10 Hz by default and is inherited only by
-  declarations without a positive `RateHz`.
+  fixed-rate declarations without a positive `Hz`.
 - **Maximum Subscribe Rate Hz (per Topic)** is the hard provider-neutral
   admission ceiling for Foxglove WebSocket and ROS 2 Native input. Excess
   messages are dropped before avoidable DTO decode or native deep-copy work.
@@ -128,7 +129,7 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
-        Policy = Change, RateHz = 30,
+        Policy = Change, Hz = 30,
         Encoding = FoxRunWireEncoding.Json)]
     private float _requestedTargetSpeed;
 
@@ -168,7 +169,7 @@ are frozen for one enabled subscription session.
 ## 7. Explicit Triggers
 
 Publish triggers set the value first and then call the generated
-`FoxRun_Trigger_<member>()` method:
+`FoxRun_Publish_<member>()` method:
 
 ```csharp
 using UnityEngine;
@@ -183,7 +184,7 @@ public partial class StateReporter : MonoBehaviour
     private void OnEnable()
     {
         _state = "enabled";
-        FoxRun_Trigger_state();
+        FoxRun_Publish_state();
     }
 }
 ```
@@ -278,7 +279,7 @@ suppresses live WebSocket and native fanout while replay is authoritative.
 |---|---|
 | No topic appears | The class is `partial`, the topic starts with `/`, the component is enabled, and Play Mode is running. |
 | Subscribe receives nothing | Enable subscriptions, verify the selected provider and encoding, and inspect transport-admission diagnostics. |
-| Input arrives but applies slowly | Check declaration `RateHz` or the Manager's **Default Subscribe Rate Hz**. |
+| Input arrives but applies slowly | Check declaration `Hz` or the Manager's **Default Subscribe Rate Hz**. |
 | Messages are dropped | Check **Maximum Subscribe Rate Hz (per Topic)**, payload bounds, encoding, and native copy budget. |
 | Trigger value does not move | Call the correct generated publish or apply trigger from the Unity main thread. |
 | Full-duplex value does not echo immediately | One-shot suppression of the just-applied inbound version is intentional. |

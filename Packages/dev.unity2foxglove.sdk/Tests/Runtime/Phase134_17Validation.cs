@@ -153,7 +153,6 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
                         0f,
-                        0f,
                         "Test",
                         0,
                         string.Empty)
@@ -187,14 +186,12 @@ namespace Unity.FoxgloveSDK.Tests
                         "/demo/values",
                         float.NaN,
                         string.Empty,
-                        2,
+                        (int)FoxRunPolicy.Change,
                         float.PositiveInfinity,
-                        float.NegativeInfinity,
                         "Test",
                         0,
                         string.Empty,
-                        when: "isReady",
-                        unless: "isPaused",
+                        onlyIf: "isReady",
                         isAggregateMember: true,
                         jsonFieldName: "values")
                 })
@@ -205,17 +202,15 @@ namespace Unity.FoxgloveSDK.Tests
             var member = (JObject)root["types"][0]["members"][0];
             Check(member.Value<bool>("isArray") && member.Value<string>("elementTypeName") == "float",
                 "134-17-F1: descriptor JSON preserves array metadata");
-            Check(member.Value<float>("rateHz") == 10f
-                  && member.Value<float>("changeEpsilon") == 0f
-                  && member.Value<float>("forceIntervalSeconds") == 0f,
+            Check(member.Value<float>("hz") == 10f
+                  && member.Value<float>("tolerance") == 0f,
                 "134-17-F2: descriptor JSON writes finite values and resolves the default publish rate");
 
             var reread = FoxRunGenerationDescriptorJsonReader.Read(json);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, reread);
             var rereadMember = reread.Types[0].Members[0];
             Check(comparison.IsSemanticEqual
-                  && rereadMember.When == "isReady"
-                  && rereadMember.Unless == "isPaused"
+                  && rereadMember.OnlyIf == "isReady"
                   && rereadMember.IsAggregateMember
                   && rereadMember.JsonFieldName == "values",
                 "134-17-F3: descriptor reader round-trips array, condition, aggregate, and JSON field metadata");
@@ -246,7 +241,7 @@ namespace Unity.FoxgloveSDK.Tests
                     new FoxRunGenerationMember(
                         "Demo", "InboundProbe", "_command", "field", "float",
                         true, false, string.Empty, "/demo/command", 1f, string.Empty,
-                        (int)FoxRunPolicy.FixedRate, 0f, 0f, "Test", 0, string.Empty,
+                        (int)FoxRunPolicy.FixedRate, 0f, "Test", 0, string.Empty,
                         mode: (int)FoxRunFlow.Subscribe)
                 })
             });
@@ -261,7 +256,7 @@ namespace Unity.FoxgloveSDK.Tests
                     new FoxRunGenerationMember(
                         "Demo", "InboundProbe", "_command", "field", "float",
                         true, false, string.Empty, "/demo/command", 1f, string.Empty,
-                        (int)FoxRunPolicy.FixedRate, 0f, 0f, "Test", 0, string.Empty,
+                        (int)FoxRunPolicy.FixedRate, 0f, "Test", 0, string.Empty,
                         mode: (int)FoxRunFlow.Publish)
                 })
             });
@@ -294,7 +289,6 @@ namespace Unity.FoxgloveSDK.Tests
                 string.Empty,
                 (int)FoxRunPolicy.FixedRate,
                 0f,
-                0f,
                 "Test",
                 0,
                 string.Empty);
@@ -318,7 +312,6 @@ namespace Unity.FoxgloveSDK.Tests
                         1f,
                         string.Empty,
                         99,
-                        0f,
                         0f,
                         "Test",
                         0,
@@ -362,7 +355,6 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
                         0f,
-                        0f,
                         "Test",
                         0,
                         string.Empty)
@@ -386,7 +378,6 @@ namespace Unity.FoxgloveSDK.Tests
                     1f,
                     string.Empty,
                     (int)FoxRunPolicy.FixedRate,
-                    0f,
                     0f)
             });
             var arrayField = arrayManifest.Sections.FoxRun.Types[0].Contracts[0].Fields[0];
@@ -401,14 +392,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             CheckThrows<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[]
                 {
-                    new FoxRunManifestMember("Demo", "CollisionProbe", "_", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f, 0f)
+                    new FoxRunManifestMember("Demo", "CollisionProbe", "_", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f)
                 }),
                 "134-17-G7: manifest builder rejects empty JSON field names");
 
             CheckThrows<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[]
                 {
-                    new FoxRunManifestMember("Demo", "CollisionProbe", "__value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f, 0f),
-                    new FoxRunManifestMember("Demo", "CollisionProbe", "value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f, 0f)
+                    new FoxRunManifestMember("Demo", "CollisionProbe", "__value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f),
+                    new FoxRunManifestMember("Demo", "CollisionProbe", "value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f)
                 }),
                 "134-17-G8: manifest builder rejects colliding JSON field names");
         }
@@ -483,7 +474,6 @@ namespace Unity.FoxgloveSDK.Tests
                         string.Empty,
                         (int)FoxRunPolicy.FixedRate,
                         0f,
-                        0f,
                         "Test",
                         0,
                         string.Empty)
@@ -511,7 +501,6 @@ namespace Unity.FoxgloveSDK.Tests
                 1f,
                 string.Empty,
                 (int)FoxRunPolicy.FixedRate,
-                0f,
                 0f,
                 "Test",
                 0,

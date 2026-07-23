@@ -3,13 +3,19 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Core;
 using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Schemas;
+using Unity.FoxgloveSDK.SourceGenerators;
 using Unity.FoxgloveSDK.Transport;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using UnityEngine;
@@ -225,6 +231,112 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(1, input.AppliedCount);
             Assert.Equal(2, input.LastAppliedValue);
             Assert.Equal(0, router.Flush(nowSeconds: 3, inheritedSubscribeRateHz: 60));
+        }
+
+        [Fact]
+        public void SubscribeOnlyIfClearsPendingAndNeverAppliesItAfterConditionRecovers()
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase184ConditionalInput_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class ConditionalInput
+    {
+        public bool Enabled;
+        public int ConditionEvaluationCount;
+
+        private bool CanApply()
+        {
+            ConditionEvaluationCount++;
+            return Enabled;
+        }
+
+        [FoxRun(""/phase184/conditional"", Mode = Subscribe,
+            Encoding = FoxRunWireEncoding.Json, Policy = FoxRunPolicy.Change,
+            OnlyIf = nameof(CanApply))]
+        public int Value;
+    }
+}")
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out _);
+            using var image = new MemoryStream();
+            var emit = output.Emit(image);
+
+            Assert.True(
+                emit.Success,
+                "Conditional input fixture failed to compile: " +
+                string.Join("; ", emit.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var receiverType = assembly.GetType("Demo.ConditionalInput", throwOnError: true);
+            var receiver = Activator.CreateInstance(receiverType);
+            var input = Assert.IsAssignableFrom<IFoxgloveInputSource>(receiver);
+            var enabled = receiverType.GetField("Enabled");
+            var value = receiverType.GetField("Value");
+            var conditionEvaluationCount = receiverType.GetField("ConditionEvaluationCount");
+
+            Assert.NotNull(enabled);
+            Assert.NotNull(value);
+            Assert.NotNull(conditionEvaluationCount);
+            Assert.Equal(1, input.FoxgloveInput_TopicCount);
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Value\":1}"),
+                "json",
+                out var firstError), firstError);
+            Assert.Equal(0, input.FoxgloveInput_Flush(1d, 60));
+            Assert.Equal(0, value.GetValue(receiver));
+            Assert.Equal(1, conditionEvaluationCount.GetValue(receiver));
+            Assert.Equal(1, input.FoxgloveInput_TopicCount);
+
+            enabled.SetValue(receiver, true);
+            Assert.Equal(0, input.FoxgloveInput_Flush(2d, 60));
+            Assert.Equal(0, value.GetValue(receiver));
+            Assert.Equal(1, conditionEvaluationCount.GetValue(receiver));
+
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Value\":2}"),
+                "json",
+                out var secondError), secondError);
+            Assert.Equal(1, input.FoxgloveInput_Flush(3d, 60));
+            Assert.Equal(2, value.GetValue(receiver));
+            Assert.Equal(2, conditionEvaluationCount.GetValue(receiver));
+
+            enabled.SetValue(receiver, false);
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Value\":2}"),
+                "json",
+                out var rejectedDuplicateError), rejectedDuplicateError);
+            Assert.Equal(0, input.FoxgloveInput_Flush(4d, 60));
+            Assert.Equal(3, conditionEvaluationCount.GetValue(receiver));
+
+            enabled.SetValue(receiver, true);
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Value\":2}"),
+                "json",
+                out var recoveredDuplicateError), recoveredDuplicateError);
+            Assert.Equal(1, input.FoxgloveInput_Flush(5d, 60));
+            Assert.Equal(2, value.GetValue(receiver));
+            Assert.Equal(4, conditionEvaluationCount.GetValue(receiver));
         }
 
         [Fact]
@@ -723,6 +835,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             }
 
             public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private static MetadataReference[] DynamicCompilationReferences()
+        {
+            var trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string
+                                    ?? string.Empty;
+            return trustedAssemblies
+                .Split(Path.PathSeparator)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Append(typeof(FoxRunAttribute).Assembly.Location)
+                .Append(typeof(UnityEngine.Vector3).Assembly.Location)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .ToArray();
         }
 
         private sealed class StagedRecordingInput : IFoxgloveInputSource

@@ -230,6 +230,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Func<T, bool> _dropBeforeApply;
         private readonly Func<T, T, bool> _valuesEqual;
         private readonly Func<bool> _consumeTrigger;
+        private readonly Func<bool> _canApply;
         private readonly FoxRunRos2TransportAdmissionGate _transportAdmission;
         private readonly Func<long> _admissionTimestamp;
         private readonly IFoxRunRos2NativeBackend _backend;
@@ -259,6 +260,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool _nodeReleaseClaimed;
         private bool _teardownFailureRecorded;
         private bool _preserveTerminalFailure;
+        private bool _conditionRejectedSinceLastApply;
         private FoxRunRos2RegistrationResult _lastRegistration;
         private long _acceptanceAdmission;
         private long _acceptanceEpochSequence;
@@ -285,6 +287,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<T, bool> dropBeforeApply = null,
             Func<T, T, bool> valuesEqual = null,
             Func<bool> consumeTrigger = null,
+            Func<bool> canApply = null,
             int transportAdmissionRateLimitHz = int.MaxValue,
             Func<long> admissionTimestamp = null)
         {
@@ -302,6 +305,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _dropBeforeApply = dropBeforeApply;
             _valuesEqual = valuesEqual;
             _consumeTrigger = consumeTrigger;
+            _canApply = canApply;
             _transportAdmission = new FoxRunRos2TransportAdmissionGate(
                 transportAdmissionRateLimitHz);
             _admissionTimestamp = admissionTimestamp ?? Stopwatch.GetTimestamp;
@@ -566,13 +570,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     ? Volatile.Read(ref _acceptanceCompletingEpoch)
                     : 0;
             var usesPolicy = Contract.Policy != FoxRunPolicy.FixedRate
-                             || _dropBeforeApply != null;
+                             || _dropBeforeApply != null
+                             || _canApply != null;
             _policyNowSeconds = nowSeconds;
             var applied = usesPolicy
                 ? _slot.TryApplyLatest(_decideOwned, _applyOwned, _clearOwned)
                 : _slot.TryApplyLatest(_applyOwned, _clearOwned);
             if (applied)
             {
+                _conditionRejectedSinceLastApply = false;
                 _lastSemanticApplySeconds = nowSeconds;
                 Interlocked.Exchange(ref _lastApplyStopwatchTimestamp, Stopwatch.GetTimestamp());
             }
@@ -601,12 +607,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return FoxRunRos2PendingDecision.Drop;
             }
 
+            if (_canApply != null && !_canApply())
+            {
+                _conditionRejectedSinceLastApply = true;
+                return FoxRunRos2PendingDecision.Drop;
+            }
+
             if (Contract.Policy == FoxRunPolicy.Trigger)
                 return _consumeTrigger != null && _consumeTrigger()
                     ? FoxRunRos2PendingDecision.Apply
                     : FoxRunRos2PendingDecision.Defer;
 
-            var hasApplied = applied != null;
+            var hasApplied = applied != null && !_conditionRejectedSinceLastApply;
             var changed = !hasApplied
                           || _valuesEqual == null
                           || !_valuesEqual(typedCandidate, (T)applied);
@@ -617,11 +629,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 valueChanged: changed,
                 nowSec: _policyNowSeconds,
                 lastApplySec: _lastSemanticApplySeconds,
-                forceIntervalSec: Contract.ForceIntervalSeconds)
+                heartbeatIntervalSec: Contract.HeartbeatIntervalSeconds)
                 ? FoxRunRos2PendingDecision.Apply
                 : Contract.Policy == FoxRunPolicy.Change
-                    ? FoxRunRos2PendingDecision.Drop
+                    ? HasFinitePositiveHeartbeat()
+                        ? FoxRunRos2PendingDecision.Defer
+                        : FoxRunRos2PendingDecision.Drop
                     : FoxRunRos2PendingDecision.Defer;
+        }
+
+        private bool HasFinitePositiveHeartbeat()
+        {
+            var interval = Contract.HeartbeatIntervalSeconds;
+            return interval > 0f
+                   && !float.IsNaN(interval)
+                   && !float.IsInfinity(interval);
         }
 
         public FoxRunRos2AcceptanceArmStatus ArmAcceptanceAttempt(

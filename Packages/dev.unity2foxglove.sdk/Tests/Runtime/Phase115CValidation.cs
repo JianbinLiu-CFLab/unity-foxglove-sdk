@@ -21,7 +21,7 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase115CValidation
     {
-        private const string ExpectedGlobalFixtureHash = "a9278560d8ffcd59091c927de812e210dfc829a66f13fafe565c4a2c3a9310be";
+        private const string ExpectedGlobalFixtureHash = "4ef64c60b17b8b02c17cc318aefe57a9eecc5772b9528e6649ecc590b6187cfd";
         private const string SdkFixtureHash = "0000000000000000000000000000000000000000000000000000000000000000";
         private static int _passed;
 
@@ -315,8 +315,7 @@ namespace Unity.FoxgloveSDK.Tests
                     10f,
                     "",
                     1,
-                    0.001f,
-                    0f)
+                    0.001f)
             };
         }
 

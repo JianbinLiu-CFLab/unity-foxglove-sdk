@@ -22,8 +22,8 @@ namespace Unity.FoxgloveSDK.Tests
     /// </summary>
     public static class Phase115Validation
     {
-        private const string ExpectedGlobalFixtureHash = "a9278560d8ffcd59091c927de812e210dfc829a66f13fafe565c4a2c3a9310be";
-        private const string ExpectedFoxRunFixtureHash = "be003f81e86bace13075a9a99e6099c994963d05a5afa62f5fc4aab679205b10";
+        private const string ExpectedGlobalFixtureHash = "4ef64c60b17b8b02c17cc318aefe57a9eecc5772b9528e6649ecc590b6187cfd";
+        private const string ExpectedFoxRunFixtureHash = "cff942e33353cec4b011b7792845b396c137b0813b3bf64a9f2dd5fb5e4b8695";
         private const string SharedDir = "Packages/dev.unity2foxglove.sdk/Editor/Shared/SchemaManifest";
         private const string GeneratorPath = "Packages/dev.unity2foxglove.sdk/Editor/SchemaManifest/Unity2FoxgloveSchemaManifestGenerator.cs";
         private const string PlayModeHookPath = "Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunManifestPlayModeHook.cs";
@@ -351,8 +351,7 @@ namespace Unity.FoxgloveSDK.Tests
                     10f,
                     "",
                     1,
-                    0.001f,
-                    0f)
+                    0.001f)
             });
         }
 

@@ -27,16 +27,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     member.IsArray,
                     member.ElementTypeName,
                     member.Topic,
-                    member.RateHz,
+                    member.Hz,
                     member.SchemaName,
                     member.Policy,
-                    member.ChangeEpsilon,
-                    member.ForceIntervalSeconds,
+                    member.Tolerance,
                     "Roslyn",
                     member.RawMemberOrder,
                     member.ConditionalSymbols,
-                    member.When,
-                    member.Unless,
+                    member.OnlyIf,
                     member.IsAggregateMember,
                     member.JsonFieldName,
                     member.Mode,
@@ -49,7 +47,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     member.GeneratesRos2NativeRegistration,
                     member.Ros2MessageShape,
                     member.Ros2CustomDtoShape,
-                    member.Ros2ContractKind))
+                    member.Ros2ContractKind,
+                    member.NamedArgumentPresence,
+                    member.ConditionMemberKind))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly string ElementTypeName;
         public readonly string Topic;
         public readonly string SchemaName;
-        public readonly float RateHz;
+        public readonly float Hz;
         public readonly int Policy;
         public readonly int Mode;
         public readonly int Encoding;
@@ -81,12 +81,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly FoxRunRos2ContractKind Ros2ContractKind;
         public readonly int ProtobufFieldNumber;
         public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
-        public readonly float ChangeEpsilon;
-        public readonly float ForceIntervalSeconds;
+        public readonly float Tolerance;
         public readonly int RawMemberOrder;
         public readonly string ConditionalSymbols;
-        public readonly string When;
-        public readonly string Unless;
+        public readonly string OnlyIf;
+        public readonly FoxRunConditionMemberKind ConditionMemberKind;
+        public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
 
@@ -102,14 +102,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string elementTypeName,
             string topic,
             string schemaName,
-            float rateHz,
+            float hz,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float tolerance,
             int rawMemberOrder,
             string conditionalSymbols,
-            string when = "",
-            string unless = "",
+            string onlyIf = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
@@ -122,7 +120,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             bool? generatesRos2NativeRegistration = null,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -137,7 +137,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             ElementTypeName = elementTypeName ?? string.Empty;
             Topic = topic ?? string.Empty;
             SchemaName = schemaName ?? string.Empty;
-            RateHz = rateHz;
+            Hz = hz;
             Policy = policy;
             Mode = mode;
             Encoding = encoding;
@@ -159,12 +159,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Ros2ContractKind = ros2ContractKind;
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Tolerance = tolerance;
             RawMemberOrder = rawMemberOrder;
             ConditionalSymbols = conditionalSymbols ?? string.Empty;
-            When = when ?? string.Empty;
-            Unless = unless ?? string.Empty;
+            OnlyIf = onlyIf ?? string.Empty;
+            ConditionMemberKind = conditionMemberKind;
+            NamedArgumentPresence = namedArgumentPresence;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
         }
@@ -180,14 +180,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string elementTypeName,
             string topic,
             string schemaName,
-            float rateHz,
+            float hz,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float tolerance,
             int rawMemberOrder,
             string conditionalSymbols,
-            string when = "",
-            string unless = "",
+            string onlyIf = "",
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
@@ -200,7 +198,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             bool? generatesRos2NativeRegistration = null,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
             : this(
                 ns,
                 className,
@@ -213,14 +213,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 elementTypeName,
                 topic,
                 schemaName,
-                rateHz,
+                hz,
                 policy,
-                changeEpsilon,
-                forceIntervalSeconds,
+                tolerance,
                 rawMemberOrder,
                 conditionalSymbols,
-                when,
-                unless,
+                onlyIf,
                 isAggregateMember,
                 jsonFieldName,
                 mode,
@@ -233,7 +231,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 generatesRos2NativeRegistration,
                 ros2MessageShape,
                 ros2CustomDtoShape,
-                ros2ContractKind)
+                ros2ContractKind,
+                namedArgumentPresence,
+                conditionMemberKind)
         {
         }
     }

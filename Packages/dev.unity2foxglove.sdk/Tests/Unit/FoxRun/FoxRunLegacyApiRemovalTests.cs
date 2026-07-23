@@ -10,7 +10,9 @@ using System.IO;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.SourceGenerators;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -30,6 +32,93 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "using static Unity.FoxgloveSDK.Components.FoxRunPolicy;");
             yield return Case("OnTrigger", "Policy = OnTrigger",
                 "using static Unity.FoxgloveSDK.Components.FoxRunPolicy;");
+            yield return Case("RateHz", "RateHz = 10f");
+            yield return Case("ChangeEpsilon", "ChangeEpsilon = 0.01f");
+            yield return Case("ForceIntervalSeconds", "ForceIntervalSeconds = 1f");
+            yield return Case("When", "When = nameof(Enabled)");
+            yield return Case("Unless", "Unless = nameof(Enabled)");
+            yield return Case("ChangeOrInterval", "Policy = ChangeOrInterval",
+                "using static Unity.FoxgloveSDK.Components.FoxRunPolicy;");
+        }
+
+        [Fact]
+        public void LegacyGeneratedTriggerMethodNameIsUnresolved()
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase184LegacyTriggerRemoval",
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class RemovedTrigger
+    {
+        [FoxRun(""/phase184/removed-trigger"", Policy = Trigger)]
+        private float _value;
+
+        public bool InvokeLegacyName() => FoxRun_Trigger_value();
+    }
+}")
+                },
+                CompilationReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGenerators(compilation);
+
+            var runResult = driver.GetRunResult();
+            Assert.DoesNotContain(
+                runResult.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            Assert.Contains(
+                runResult.GeneratedTrees,
+                tree => tree.ToString().Contains(
+                    "partial class RemovedTrigger",
+                    StringComparison.Ordinal));
+
+            var generatedPublicMethods = runResult.GeneratedTrees
+                .SelectMany(tree => tree.GetRoot()
+                    .DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>())
+                .Where(method =>
+                    method.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PublicKeyword))
+                    && method.ReturnType.ToString() == "bool"
+                    && method.ParameterList.Parameters.Count == 0)
+                .Select(method => method.Identifier.ValueText)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(methodName => methodName, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Contains("FoxRun_Publish_value", generatedPublicMethods);
+            var generatedApiStub = @"
+namespace Demo
+{
+    public partial class RemovedTrigger
+    {
+" + string.Join(
+                    Environment.NewLine,
+                    generatedPublicMethods.Select(methodName =>
+                        "        public bool " + methodName + "() => false;")) + @"
+    }
+}";
+            var consumerCompilation = compilation.AddSyntaxTrees(
+                CSharpSyntaxTree.ParseText(generatedApiStub));
+            var errors = consumerCompilation.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToArray();
+
+            Assert.DoesNotContain(errors, diagnostic =>
+                diagnostic.Id != "CS0103");
+            var unresolved = Assert.Single(errors);
+            Assert.Equal("CS0103", unresolved.Id);
+            Assert.Contains("FoxRun_Trigger_value", unresolved.GetMessage(), StringComparison.Ordinal);
         }
 
         [Theory]
@@ -64,6 +153,8 @@ namespace Demo
 {
     public sealed class RemovedDeclaration
     {
+        private bool Enabled => true;
+
         [FoxRun(""/phase183/removed"", " + attributeArguments + @")]
         private float _value;
     }

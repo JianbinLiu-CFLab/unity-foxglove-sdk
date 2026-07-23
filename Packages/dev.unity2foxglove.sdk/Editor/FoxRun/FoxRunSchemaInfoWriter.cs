@@ -217,9 +217,8 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, contract.BindingHash, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.PolicyHash, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.Policy.Mode, ",");
-                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.RateHz) + ",");
-                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ChangeEpsilon) + ",");
-                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ForceIntervalSeconds) + ",");
+                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.Hz) + ",");
+                sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.Tolerance) + ",");
                 WriteFieldsArray(sb, contract.Fields, indentLevel + 2, trailingComma: true);
                 AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
                 AppendProtobufDescriptorSet(sb, inner, contract);

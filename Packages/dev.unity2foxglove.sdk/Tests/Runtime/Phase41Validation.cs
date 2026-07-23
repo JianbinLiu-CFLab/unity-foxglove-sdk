@@ -30,14 +30,14 @@ namespace Unity.FoxgloveSDK.Tests
             TestChangeFirstSample();
             TestChangeSkipsUnchanged();
             TestChangePublishesAfterChanged();
-            TestChangeOrIntervalHeartbeat();
+            TestChangeHeartbeat();
             TestHeartbeatDisabled();
             TestEpsilonSuppressesSmallChange();
             TestEpsilonAllowsLargeChange();
             TestRepeatedFloatNaNNoSpam();
             TestRepeatedDoubleNaNNoSpam();
             TestEmitterOutputPolicyMetadata();
-            TestBackwardCompatConstructor();
+            TestConvenienceConstructor();
             TestEnumValuesAreDistinct();
             TestEmitterIncludesGenericComparerUsing();
             TestEmitterPreservesChangeMode();
@@ -74,18 +74,18 @@ namespace Unity.FoxgloveSDK.Tests
             Check(r, "41A-4: Change publishes after value changed");
         }
 
-        private static void TestChangeOrIntervalHeartbeat()
+        private static void TestChangeHeartbeat()
         {
             var r = FoxRunUpdatePolicy.ShouldPublish(
-                FoxRunPolicy.ChangeOrInterval, 15, true, false, 10, 5);
+                FoxRunPolicy.Change, 15, true, false, 10, 5);
             Check(r, "41A-5: heartbeat fires after interval expiry (15 >= 10 + 5)");
         }
 
         private static void TestHeartbeatDisabled()
         {
             var r = FoxRunUpdatePolicy.ShouldPublish(
-                FoxRunPolicy.ChangeOrInterval, 12, true, false, 10, 0);
-            Check(!r, "41A-6: zero force interval does not trigger heartbeat");
+                FoxRunPolicy.Change, 12, true, false, 10, 0);
+            Check(!r, "41A-6: zero heartbeat interval does not trigger heartbeat");
         }
 
         private static void TestEpsilonSuppressesSmallChange()
@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Tests
                 hasPreviousValue: true,
                 valueChanged: changed,
                 lastPublishSec: 8,
-                forceIntervalSec: 0);
+                heartbeatIntervalSec: 0);
             Check(!changed && !shouldPublish, "41A-7: epsilon 0.1 suppresses diff 0.05 through publish policy");
         }
 
@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Tests
                 hasPreviousValue: true,
                 valueChanged: changed,
                 lastPublishSec: 8,
-                forceIntervalSec: 0);
+                heartbeatIntervalSec: 0);
             Check(changed && shouldPublish, "41A-8: epsilon 0.1 allows diff 0.2 through publish policy");
         }
 
@@ -131,27 +131,27 @@ namespace Unity.FoxgloveSDK.Tests
         private static void TestEmitterOutputPolicyMetadata()
         {
             var tm = new FoxgloveSourceEmitter.TopicMember("_val", "float", "/debug/x", 10f, "",
-                (int)FoxRunPolicy.Change, 0.01f, 2f);
+                (int)FoxRunPolicy.Change, 0.01f);
             Check(tm.Policy == (int)FoxRunPolicy.Change, "41A-11a: emitter topic member carries Change mode");
-            Check(tm.ChangeEpsilon == 0.01f, "41A-11b: emitter topic member carries epsilon");
-            Check(tm.ForceIntervalSeconds == 2f, "41A-11c: emitter topic member carries force interval");
+            Check(tm.Tolerance == 0.01f, "41A-11b: emitter topic member carries tolerance");
+            Check(tm.Hz == 10f, "41A-11c: emitter topic member carries heartbeat frequency");
         }
 
-        private static void TestBackwardCompatConstructor()
+        private static void TestConvenienceConstructor()
         {
             var tm = new FoxgloveSourceEmitter.TopicMember("_val", "float", "/debug/y", 10f, "");
             Check(tm.Policy == (int)FoxRunPolicy.FixedRate, "41A-12a: convenience constructor defaults to FixedRate");
-            Check(tm.ChangeEpsilon == 0f, "41A-12b: convenience constructor defaults epsilon to 0");
-            Check(tm.ForceIntervalSeconds == 0f, "41A-12c: convenience constructor defaults force interval to 0");
+            Check(tm.Tolerance == 0f, "41A-12b: convenience constructor defaults tolerance to 0");
+            Check(tm.Hz == 10f, "41A-12c: convenience constructor preserves Hz");
         }
 
         private static void TestEnumValuesAreDistinct()
         {
             Check(FoxRunPolicy.FixedRate != FoxRunPolicy.Change, "41A-13a: FixedRate != Change");
-            Check(FoxRunPolicy.Change != FoxRunPolicy.ChangeOrInterval, "41A-13b: Change != ChangeOrInterval");
+            Check(FoxRunPolicy.Change != FoxRunPolicy.Trigger, "41A-13b: Change != Trigger");
             Check((int)FoxRunPolicy.FixedRate == 1, "41A-13c: FixedRate integer value = 1");
             Check((int)FoxRunPolicy.Change == 2, "41A-13d: Change integer value = 2");
-            Check((int)FoxRunPolicy.ChangeOrInterval == 3, "41A-13e: ChangeOrInterval integer value = 3");
+            Check(!Enum.IsDefined(typeof(FoxRunPolicy), 3), "41A-13e: retired policy value 3 remains invalid");
             Check((int)FoxRunPolicy.Trigger == 4, "41A-13f: Trigger integer value = 4");
         }
 
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "PolicyStringSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("Name", "string", "/debug/name", 10f, "",
-                    (int)FoxRunPolicy.Change, 0f, 0f)
+                    (int)FoxRunPolicy.Change, 0f)
             });
             Check(source.Contains("using System.Collections.Generic;"),
                 "41C-1: generated policy source imports EqualityComparer namespace");
@@ -171,7 +171,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "PolicyModeSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("Value", "float", "/debug/value", 10f, "",
-                    (int)FoxRunPolicy.Change, 0f, 5f)
+                    (int)FoxRunPolicy.Change, 0f)
             });
             Check(source.Contains("FoxRunPolicy.Change, nowSec"),
                 "41C-2: generated source preserves Change instead of forcing heartbeat mode");
@@ -182,9 +182,9 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "PolicyMultiTopicSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("Value", "float", "/debug/a", 10f, "",
-                    (int)FoxRunPolicy.Change, 0f, 0f),
+                    (int)FoxRunPolicy.Change, 0f),
                 new FoxgloveSourceEmitter.TopicMember("Value", "float", "/debug/b", 10f, "",
-                    (int)FoxRunPolicy.Change, 0f, 0f)
+                    (int)FoxRunPolicy.Change, 0f)
             });
             Check(source.Contains("private float __last_0_0;") && source.Contains("private float __last_1_0;"),
                 "41C-3: generated last-value fields are unique per topic/member");
@@ -197,7 +197,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "PolicyNaNSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("Value", "float", "/debug/value", 10f, "",
-                    (int)FoxRunPolicy.Change, 0.01f, 0f)
+                    (int)FoxRunPolicy.Change, 0.01f)
             });
             Check(source.Contains("FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal),
                 "41C-4: generated float comparison uses FoxRunChangeHelper (NaN-safe by contract)");
@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "PolicyEpsilonSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("Value", "float", "/debug/value", 10f, "",
-                    (int)FoxRunPolicy.Change, 0.1f, 0f)
+                    (int)FoxRunPolicy.Change, 0.1f)
             });
 
             Check(source.Contains("FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal)

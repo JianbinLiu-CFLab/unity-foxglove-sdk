@@ -21,15 +21,15 @@ public partial class TestLog : MonoBehaviour
     [FoxRun("/debug/position")]
     private Vector3 _pos;
 
-    // RateHz is an option. It lowers this topic's scheduled publish rate to 5 Hz.
-    [FoxRun("/debug/health", RateHz = 5)]
+    // Hz overrides this topic's scheduled publish rate to 5 Hz.
+    [FoxRun("/debug/health", Hz = 5)]
     private float _health = 100f;
 
     // Change-driven options:
-    // - Policy = ChangeOrInterval publishes changed values.
-    // - ChangeEpsilon suppresses tiny Vector jitter.
-    // - ForceIntervalSeconds still sends a heartbeat every second.
-    [FoxRun("/debug/position2", RateHz = 10, Policy = FoxRunPolicy.ChangeOrInterval, ChangeEpsilon = 0.01f, ForceIntervalSeconds = 1f)]
+    // - Policy = Change publishes semantic changes.
+    // - Tolerance suppresses tiny Vector jitter.
+    // - Hz = 1 adds a one-second heartbeat.
+    [FoxRun("/debug/position2", Policy = FoxRunPolicy.Change, Hz = 1, Tolerance = 0.01f)]
     private Vector3 _position2;
 
     // Conditional publish gates.
@@ -37,14 +37,15 @@ public partial class TestLog : MonoBehaviour
     // true allows it to publish again.
     public bool telemetryEnabled = true;
 
-    // Toggle this in the Inspector: true suppresses /debug/unless_health,
+    // Toggle this in the Inspector: true suppresses /debug/conditional_health,
     // false allows it to publish again.
     public bool isPaused = false;
+    private bool healthPublishingEnabled => !isPaused;
 
-    [FoxRun("/debug/conditional_position", RateHz = 15, When = nameof(telemetryEnabled))]
+    [FoxRun("/debug/conditional_position", Hz = 15, OnlyIf = nameof(telemetryEnabled))]
     public Vector3 conditionalPosition;
 
-    [FoxRun("/debug/unless_health", RateHz = 15, Unless = nameof(isPaused))]
+    [FoxRun("/debug/conditional_health", Hz = 15, OnlyIf = nameof(healthPublishingEnabled))]
     public int conditionalHealth = 100;
 
     void Awake()

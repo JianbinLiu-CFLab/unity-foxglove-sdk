@@ -49,9 +49,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Ros2Qos = Require(ros2Qos, nameof(ros2Qos));
             Mode = FoxRunFlow.Publish;
             Policy = FoxRunPolicy.FixedRate;
-            RateHz = 0f;
-            HasExplicitRateHz = false;
-            ForceIntervalSeconds = 0f;
+            Hz = 0f;
+            HasExplicitHz = false;
+            HeartbeatIntervalSeconds = 0f;
             SubscriptionProvider = FoxRunSubscriptionProvider.Inherit;
             QosPreset = FoxRunRos2QosPreset.Inherit;
             SupportsRos2Native = false;
@@ -85,9 +85,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             CanonicalRosType = Require(canonicalRosType, nameof(canonicalRosType));
             Mode = mode;
             Policy = FoxRunPolicy.FixedRate;
-            RateHz = 0f;
-            HasExplicitRateHz = false;
-            ForceIntervalSeconds = 0f;
+            Hz = 0f;
+            HasExplicitHz = false;
+            HeartbeatIntervalSeconds = 0f;
             SubscriptionProvider = subscriptionProvider;
             QosPreset = qosPreset;
             SupportsRos2Native = supportsRos2Native;
@@ -116,9 +116,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2QosPreset qosPreset,
             bool supportsRos2Native,
             FoxRunPolicy policy,
-            float rateHz,
-            bool hasExplicitRateHz,
-            float forceIntervalSeconds)
+            float hz,
+            bool hasExplicitHz,
+            float heartbeatIntervalSeconds)
             : this(
                 id,
                 topic,
@@ -131,9 +131,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 supportsRos2Native)
         {
             Policy = policy;
-            RateHz = rateHz;
-            HasExplicitRateHz = hasExplicitRateHz;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Hz = hz;
+            HasExplicitHz = hasExplicitHz;
+            HeartbeatIntervalSeconds = heartbeatIntervalSeconds;
         }
 
         /// <summary>
@@ -160,9 +160,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string baseRuntimePackageId,
             string canonicalPayloadType,
             FoxRunPolicy policy = FoxRunPolicy.FixedRate,
-            float rateHz = 0f,
-            bool hasExplicitRateHz = false,
-            float forceIntervalSeconds = 0f)
+            float hz = 0f,
+            bool hasExplicitHz = false,
+            float heartbeatIntervalSeconds = 0f)
             : this(
                 id,
                 topic,
@@ -183,9 +183,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 canonicalPayloadType,
                 null,
                 policy,
-                rateHz,
-                hasExplicitRateHz,
-                forceIntervalSeconds)
+                hz,
+                hasExplicitHz,
+                heartbeatIntervalSeconds)
         {
         }
 
@@ -215,9 +215,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string canonicalPayloadType,
             Func<object, string> customEnvelopeOriginAccessor,
             FoxRunPolicy policy = FoxRunPolicy.FixedRate,
-            float rateHz = 0f,
-            bool hasExplicitRateHz = false,
-            float forceIntervalSeconds = 0f)
+            float hz = 0f,
+            bool hasExplicitHz = false,
+            float heartbeatIntervalSeconds = 0f)
         {
             Id = Require(id, nameof(id));
             Topic = Require(topic, nameof(topic));
@@ -226,9 +226,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             CanonicalRosType = Require(canonicalEnvelopeType, nameof(canonicalEnvelopeType));
             Mode = mode;
             Policy = policy;
-            RateHz = rateHz;
-            HasExplicitRateHz = hasExplicitRateHz;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Hz = hz;
+            HasExplicitHz = hasExplicitHz;
+            HeartbeatIntervalSeconds = heartbeatIntervalSeconds;
             SubscriptionProvider = subscriptionProvider;
             QosPreset = qosPreset;
             SupportsRos2Native = supportsRos2Native;
@@ -257,9 +257,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public bool HasCompleteMetadata { get; }
         public FoxRunFlow Mode { get; }
         public FoxRunPolicy Policy { get; }
-        public float RateHz { get; }
-        public bool HasExplicitRateHz { get; }
-        public float ForceIntervalSeconds { get; }
+        public float Hz { get; }
+        public bool HasExplicitHz { get; }
+        public float HeartbeatIntervalSeconds { get; }
         public FoxRunSubscriptionProvider SubscriptionProvider { get; }
         public FoxRunRos2QosPreset QosPreset { get; }
         public bool SupportsRos2Native { get; }

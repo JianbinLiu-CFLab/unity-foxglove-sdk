@@ -80,7 +80,7 @@ namespace Unity.FoxgloveSDK.Components
                     ["flow"] = contract.Flow,
                     ["encoding"] = FoxRunWireEncodingResolver.ToProtocolEncoding(entry.EffectiveEncoding),
                     ["schemaName"] = contract.SchemaName,
-                    ["rateHz"] = contract.RateHz,
+                    ["hz"] = contract.Hz,
                     ["writableFieldCount"] = contract.Fields?.Count ?? 0,
                     ["protobufDescriptorAvailable"] = descriptor.Length > 0,
                     ["protobufDescriptorDigest"] = descriptor.Length > 0 ? ComputeSha256Hex(descriptor) : string.Empty

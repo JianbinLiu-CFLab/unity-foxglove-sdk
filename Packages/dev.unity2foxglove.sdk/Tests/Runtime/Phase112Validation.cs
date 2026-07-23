@@ -49,12 +49,12 @@ namespace Unity.FoxgloveSDK.Tests
             var manifest = FoxRunManifestBuilder.Build(FixtureMembers());
             var json = FoxRunManifestJsonWriter.WriteCanonical(manifest);
 
-            const string expectedJson = "{\"manifestVersion\":1,\"package\":\"Unity2Foxglove\",\"generator\":{\"name\":\"FoxRun\",\"majorVersion\":1},\"sections\":{\"foxrun\":{\"manifestHash\":\"30dd39c87dc41e598db5156bdffc37b0bb62c4cd3e0123e3bb8b66f3131fee2f\",\"types\":[{\"declaringType\":\"Demo.RobotState\",\"contracts\":[{\"topic\":\"/phase112/battery\",\"schemaName\":\"\",\"encoding\":\"json\",\"contractHash\":\"d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16\",\"bindingHash\":\"dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52\",\"policyHash\":\"1fd5c38de9789f7a2a824d09da04656be31b7a0255ac77722ebd05c62b4521f2\",\"fields\":[{\"jsonName\":\"batteryLevel\",\"memberName\":\"_batteryLevel\",\"memberKind\":\"field\",\"type\":\"float32\",\"nullable\":false,\"array\":false}],\"policy\":{\"mode\":\"Change\",\"rateHz\":10,\"changeEpsilon\":0.00100000005,\"forceIntervalSeconds\":0}}]}]}},\"globalManifestHash\":\"cacb85941d9dcce0f4887655da5d90de56f8a46951757d524cad17553ff7ea02\"}";
+            const string expectedJson = "{\"manifestVersion\":1,\"package\":\"Unity2Foxglove\",\"generator\":{\"name\":\"FoxRun\",\"majorVersion\":1},\"sections\":{\"foxrun\":{\"manifestHash\":\"594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e\",\"types\":[{\"declaringType\":\"Demo.RobotState\",\"contracts\":[{\"topic\":\"/phase112/battery\",\"schemaName\":\"\",\"encoding\":\"json\",\"contractHash\":\"d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16\",\"bindingHash\":\"dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52\",\"policyHash\":\"86bde8645ea3d1246bb10dc5a648b52c2da83848b7c63e30931e30a9cdd4f20d\",\"fields\":[{\"jsonName\":\"batteryLevel\",\"memberName\":\"_batteryLevel\",\"memberKind\":\"field\",\"type\":\"float32\",\"nullable\":false,\"array\":false}],\"policy\":{\"mode\":\"Change\",\"hz\":10,\"tolerance\":0.00100000005}}]}]}},\"globalManifestHash\":\"1ac1f1a3fe37b3857369362d3744a015284a91e4b3f5927c4408de7652f75f76\"}";
             const string expectedContractHash = "d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16";
             const string expectedBindingHash = "dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52";
-            const string expectedPolicyHash = "1fd5c38de9789f7a2a824d09da04656be31b7a0255ac77722ebd05c62b4521f2";
-            const string expectedManifestHash = "30dd39c87dc41e598db5156bdffc37b0bb62c4cd3e0123e3bb8b66f3131fee2f";
-            const string expectedGlobalManifestHash = "cacb85941d9dcce0f4887655da5d90de56f8a46951757d524cad17553ff7ea02";
+            const string expectedPolicyHash = "86bde8645ea3d1246bb10dc5a648b52c2da83848b7c63e30931e30a9cdd4f20d";
+            const string expectedManifestHash = "594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e";
+            const string expectedGlobalManifestHash = "1ac1f1a3fe37b3857369362d3744a015284a91e4b3f5927c4408de7652f75f76";
 
             var contract = manifest.Sections.FoxRun.Types[0].Contracts[0];
             Check(json == expectedJson, "112-A1: fixture canonical JSON is exact and compact");
@@ -74,12 +74,12 @@ namespace Unity.FoxgloveSDK.Tests
             var baseline = FoxRunManifestBuilder.Build(FixtureMembers());
             var baselineContract = baseline.Sections.FoxRun.Types[0].Contracts[0];
 
-            var rateChanged = FoxRunManifestBuilder.Build(FixtureMembers(rateHz: 5f));
+            var rateChanged = FoxRunManifestBuilder.Build(FixtureMembers(hz: 5f));
             var rateContract = rateChanged.Sections.FoxRun.Types[0].Contracts[0];
             Check(rateContract.PolicyHash != baselineContract.PolicyHash
                   && rateContract.ContractHash == baselineContract.ContractHash
                   && rateChanged.Sections.FoxRun.ManifestHash != baseline.Sections.FoxRun.ManifestHash,
-                "112-B1: RateHz changes policyHash and manifestHash only");
+                "112-B1: Hz changes policyHash and manifestHash only");
 
             var typeChanged = FoxRunManifestBuilder.Build(FixtureMembers(typeName: "System.Double"));
             var typeContract = typeChanged.Sections.FoxRun.Types[0].Contracts[0];
@@ -100,11 +100,11 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 Member("Demo", "RobotState", "_temperatures", "field",
                     "System.Collections.Generic.List`1[[System.Single]]", true, true, "System.Single",
-                    "/phase112/temperature", 1f, "", (int)FoxRunPolicy.FixedRate, 0f, 0f),
+                    "/phase112/temperature", 1f, "", (int)FoxRunPolicy.FixedRate, 0f),
                 Member("Demo", "RobotState", "_name", "field",
-                    "System.String", false, false, "", "/phase112/name", 1f, "", (int)FoxRunPolicy.FixedRate, 0f, 0f),
+                    "System.String", false, false, "", "/phase112/name", 1f, "", (int)FoxRunPolicy.FixedRate, 0f),
                 Member("Demo", "RobotState", "_batteryLevel", "field",
-                    "System.Single", true, false, "", "/phase112/battery", -10f, "", (int)FoxRunPolicy.Change, -1f, -2f)
+                    "System.Single", true, false, "", "/phase112/battery", -10f, "", (int)FoxRunPolicy.Change, -1f)
             };
 
             var sorted = shuffled.OrderBy(m => m.Topic, StringComparer.Ordinal).ToList();
@@ -121,9 +121,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(battery.Fields[0].Type == "float32"
                   && !battery.Fields[0].Nullable
                   && !battery.Fields[0].Array
-                  && battery.Policy.RateHz == 10f
-                  && battery.Policy.ChangeEpsilon == 0f
-                  && battery.Policy.ForceIntervalSeconds == 0f,
+                  && battery.Policy.Hz == 10f
+                  && battery.Policy.Tolerance == 0f,
                 "112-C2: scalar value types and unspecified or negative policy knobs are normalized");
             Check(name.Fields[0].Type == "string" && name.Fields[0].Nullable,
                 "112-C3: string fields are nullable scalar manifest fields");
@@ -196,8 +195,7 @@ namespace Unity.FoxgloveSDK.Tests
                     10f,
                     "",
                     (int)FoxRunPolicy.Change,
-                    0.01f,
-                    0f)
+                    0.01f)
             });
 
             Check(source.Contains("partial class", StringComparison.Ordinal)
@@ -288,12 +286,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static IReadOnlyList<FoxRunManifestMember> FixtureMembers(
             string typeName = "System.Single",
             string topic = "/phase112/battery",
-            float rateHz = 10f)
+            float hz = 10f)
         {
             return new[]
             {
                 Member("Demo", "RobotState", "_batteryLevel", "field",
-                    typeName, true, false, "", topic, rateHz, "", (int)FoxRunPolicy.Change, 0.001f, 0f)
+                    typeName, true, false, "", topic, hz, "", (int)FoxRunPolicy.Change, 0.001f)
             };
         }
 
@@ -307,11 +305,10 @@ namespace Unity.FoxgloveSDK.Tests
             bool isArray,
             string elementTypeName,
             string topic,
-            float rateHz,
+            float hz,
             string schemaName,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds)
+            float tolerance)
         {
             return new FoxRunManifestMember(
                 ns,
@@ -323,11 +320,10 @@ namespace Unity.FoxgloveSDK.Tests
                 isArray,
                 elementTypeName,
                 topic,
-                rateHz,
+                hz,
                 schemaName,
                 policy,
-                changeEpsilon,
-                forceIntervalSeconds);
+                tolerance);
         }
 
         private static IEnumerable<string> TextFiles(string relativePath)

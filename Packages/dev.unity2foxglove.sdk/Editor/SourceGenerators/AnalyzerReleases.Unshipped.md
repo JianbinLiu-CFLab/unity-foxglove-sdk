@@ -23,7 +23,6 @@ FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority o
 FOXRUN401 | FoxRun | Error | PublishAndSubscribe requires an explicit Protobuf or Json Encoding.
 FOXRUN402 | FoxRun | Error | Native PublishAndSubscribe requires a complete custom DTO interface contract.
 FOXRUN600 | FoxRun | Error | FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe.
-FOXRUN601 | FoxRun | Error | FoxRun Unless conditional gate member is missing or invalid.
 FOXRUN602 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
 FOXRUN603 | FoxRun | Error | FoxRun ProtobufFieldNumber must be a legal non-reserved tag or zero for automatic assignment.
 FOXRUN604 | FoxRun | Error | Same-topic FoxRun members cannot mix Encoding declarations.
@@ -31,7 +30,8 @@ FOXRUN605 | FoxRun | Error | FoxRun ProtobufFieldNumber values must be unique pe
 FOXRUN606 | FoxRun | Error | Custom ROS2 DTO member graph contains an unsupported or lossy type.
 FOXRUN607 | FoxRun | Error | Custom ROS2 DTO root or nested value lacks a public parameterless constructor.
 FOXRUN608 | FoxRun | Error | Custom ROS2 DTO inbound member is not readable and writable.
-FOXRUN609 | FoxRun | Error | FoxRun Trigger cannot be combined with an explicit positive RateHz.
+FOXRUN609 | FoxRun | Error | FoxRun Trigger cannot be combined with an explicit Hz.
+FOXRUN610 | FoxRun | Error | Generated FoxRun method conflicts with an existing member.
 
 ### Removed Rules
 
@@ -44,6 +44,7 @@ FOXRUN026 | FoxRun | Warning | Retired; renumbered as FOXRUN400 and permanently 
 FOXRUN027 | FoxRun | Warning | Retired; renumbered as FOXRUN202 and permanently reserved.
 FOXRUN028 | FoxRun | Error | Retired; renumbered as FOXRUN203 and permanently reserved.
 FOXRUN029 | FoxRun | Error | Retired; renumbered as FOXRUN601 and permanently reserved.
+; FOXRUN601 was retired before release with the removed Unless declaration and remains permanently reserved.
 FOXRUN030 | FoxRun | Error | Retired; renumbered as FOXRUN602 and permanently reserved.
 FOXRUN031 | FoxRun | Error | Retired; renumbered as FOXRUN603 and permanently reserved.
 FOXRUN032 | FoxRun | Error | Retired; renumbered as FOXRUN604 and permanently reserved.
@@ -59,4 +60,4 @@ FOXRUN041 | FoxRun | Error | Retired; renumbered as FOXRUN210 and permanently re
 FOXRUN042 | FoxRun | Error | Retired; renumbered as FOXRUN211 and permanently reserved.
 FOXRUN043 | FoxRun | Error | Retired; renumbered as FOXRUN212 and permanently reserved.
 FOXRUN044 | FoxRun | Warning | Retired; renumbered as FOXRUN213 and permanently reserved.
-FOXRUN201 | FoxRun | Warning | Retired before release; subscription policy now applies symmetrically and this ID is permanently reserved.
+; FOXRUN201 was retired before release; subscription policy now applies symmetrically and this ID remains permanently reserved.

@@ -38,6 +38,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("FoxRunSubscriptionProvider subscriptionProvider", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2QosPreset qosPreset", contract, StringComparison.Ordinal);
             Assert.Contains("HasCompleteMetadata", contract, StringComparison.Ordinal);
+            Assert.Contains("public float Hz { get; }", contract, StringComparison.Ordinal);
+            Assert.Contains("public bool HasExplicitHz { get; }", contract, StringComparison.Ordinal);
+            Assert.Contains("public float HeartbeatIntervalSeconds { get; }", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("RateHz", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("ForceIntervalSeconds", contract, StringComparison.Ordinal);
             Assert.DoesNotContain("reflection", registrar, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("dynamic", registrar, StringComparison.Ordinal);
         }

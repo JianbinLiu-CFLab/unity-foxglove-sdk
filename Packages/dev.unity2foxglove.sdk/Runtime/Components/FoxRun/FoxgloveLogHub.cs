@@ -18,28 +18,24 @@ namespace Unity.FoxgloveSDK.Components
     public readonly struct FoxgloveLogTopicInfo
     {
         public readonly string Topic;
-        public readonly float RateHz;
+        public readonly float Hz;
         public readonly FoxRunPolicy Policy;
-        public readonly float ChangeEpsilon;
-        public readonly float ForceIntervalSeconds;
+        public readonly float Tolerance;
 
-        public FoxgloveLogTopicInfo(string topic, float rateHz)
+        public FoxgloveLogTopicInfo(string topic, float hz)
         {
             Topic = topic;
-            RateHz = rateHz;
+            Hz = hz;
             Policy = FoxRunPolicy.FixedRate;
-            ChangeEpsilon = 0f;
-            ForceIntervalSeconds = 0f;
+            Tolerance = 0f;
         }
 
-        public FoxgloveLogTopicInfo(string topic, float rateHz, FoxRunPolicy policy,
-            float changeEpsilon, float forceIntervalSeconds)
+        public FoxgloveLogTopicInfo(string topic, float hz, FoxRunPolicy policy, float tolerance)
         {
             Topic = topic;
-            RateHz = rateHz;
+            Hz = hz;
             Policy = policy;
-            ChangeEpsilon = changeEpsilon < 0 ? 0 : changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Tolerance = tolerance < 0 ? 0 : tolerance;
         }
     }
 
@@ -108,7 +104,7 @@ namespace Unity.FoxgloveSDK.Components
     /// <summary>
     /// Optional interface for event-driven FoxRun sources.
     /// Sources that implement this interface can suppress unchanged values
-    /// and publish heartbeat frames. Sources that do not implement it
+    /// and publish Change-policy heartbeat frames. Sources that do not implement it
     /// continue to publish at fixed rate.
     /// </summary>
     public interface IFoxgloveLogPolicySource
@@ -367,24 +363,45 @@ namespace Unity.FoxgloveSDK.Components
         {
             try
             {
-                if (info.Policy == FoxRunPolicy.Trigger)
+                if (info.Policy != FoxRunPolicy.FixedRate
+                    && info.Policy != FoxRunPolicy.Change)
+                {
+                    // Trigger is explicit-only. Unknown serialized policy
+                    // values fail closed rather than becoming fixed-rate.
                     return false;
+                }
 
-                var rateHz = info.RateHz;
                 if (!TryResolvePublishRoutes(source, topicIndex, "scheduled publish", out var publishLive, out var publishBus))
                     return false;
 
-                if (!FixedRatePublishScheduler.ShouldPublish(
-                        nowSec,
-                        rateHz,
-                        ref timer,
-                        nonPositivePublishesEveryFrame: false))
-                    return false;
+                switch (info.Policy)
+                {
+                    case FoxRunPolicy.FixedRate:
+                        if (!FixedRatePublishScheduler.ShouldPublish(
+                                nowSec,
+                                info.Hz,
+                                ref timer,
+                                nonPositivePublishesEveryFrame: false))
+                            return false;
+                        break;
+
+                    case FoxRunPolicy.Change:
+                        // Change detection and its optional Hz-derived heartbeat
+                        // must be evaluated every frame so a local mutation is
+                        // not delayed by the heartbeat cadence.
+                        timer = default;
+                        break;
+
+                    default:
+                        return false;
+                }
 
                 if (!CanPublishSourceTopic(source, topicIndex, "scheduled publish"))
                     return false;
 
                 var policySource = source as IFoxgloveLogPolicySource;
+                if (info.Policy == FoxRunPolicy.Change && policySource == null)
+                    return false;
                 if (policySource != null && !policySource.FoxgloveLog_ShouldPublish(topicIndex, nowSec))
                     return false;
 
@@ -404,6 +421,9 @@ namespace Unity.FoxgloveSDK.Components
         {
             try
             {
+                if (source.FoxgloveLog_GetTopic(topicIndex).Policy != FoxRunPolicy.Trigger)
+                    return false;
+
                 if (!TryResolvePublishRoutes(source, topicIndex, "trigger publish", out var publishLive, out var publishBus))
                     return false;
 

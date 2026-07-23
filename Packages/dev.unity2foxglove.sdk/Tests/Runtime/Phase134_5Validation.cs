@@ -222,9 +222,8 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyContractPolicyNormalization()
         {
             var source = ReadRepoText(SchemaContractInfoPath);
-            Check(source.Contains("NormalizeRateHz(rateHz)", StringComparison.Ordinal)
-                  && source.Contains("NormalizeNonNegative(changeEpsilon)", StringComparison.Ordinal)
-                  && source.Contains("NormalizeNonNegative(forceIntervalSeconds)", StringComparison.Ordinal),
+            Check(source.Contains("NormalizeHz(hz)", StringComparison.Ordinal)
+                  && source.Contains("NormalizeNonNegative(tolerance)", StringComparison.Ordinal),
                 "134-5D-1: FoxRun contract policy metadata normalizes non-negative values");
 
             var contract = new FoxRunSchemaContractInfo(
@@ -238,10 +237,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "FixedRate",
                 1f,
                 -0.5f,
-                float.NaN,
                 Array.Empty<FoxRunSchemaFieldInfo>());
-            Check(contract.ChangeEpsilon == 0f && contract.ForceIntervalSeconds == 0f,
-                "134-5D-2: FoxRun contract policy constructor clamps negative and NaN values");
+            Check(contract.Tolerance == 0f,
+                "134-5D-2: FoxRun contract policy constructor clamps negative tolerance");
 
             var invalidRateContract = new FoxRunSchemaContractInfo(
                 "Type",
@@ -254,9 +252,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "FixedRate",
                 float.NaN,
                 0f,
-                0f,
                 Array.Empty<FoxRunSchemaFieldInfo>());
-            Check(invalidRateContract.RateHz == 0f,
+            Check(invalidRateContract.Hz == 0f,
                 "134-5D-3: FoxRun contract policy constructor clamps NaN rate");
         }
 
@@ -285,7 +282,6 @@ namespace Unity.FoxgloveSDK.Tests
                                 hash,
                                 "FixedRate",
                                 1f,
-                                0f,
                                 0f,
                                 Array.Empty<FoxRunSchemaFieldInfo>())
                         })

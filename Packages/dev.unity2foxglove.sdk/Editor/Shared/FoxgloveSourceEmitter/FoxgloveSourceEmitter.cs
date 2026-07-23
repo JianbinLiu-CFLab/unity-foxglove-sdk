@@ -29,7 +29,6 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const int PolicyFixedRate = 1;
         private const int PolicyChange = 2;
-        private const int PolicyChangeOrInterval = 3;
         private const int PolicyTrigger = 4;
         private const int FlowPublish = 1;
         private const int FlowSubscribe = 2;
@@ -52,23 +51,21 @@ namespace Unity.FoxgloveSDK.Editor
             /// <summary>Topic string from <c>[FoxRun("/topic")]</c>.</summary>
             public readonly string Topic;
             /// <summary>Publishing rate in Hz.</summary>
-            public readonly float RateHz;
-            /// <summary>True when the declaration supplied a positive per-contract rate.</summary>
-            public readonly bool HasExplicitRateHz;
+            public readonly float Hz;
+            /// <summary>True when the declaration explicitly supplied Hz.</summary>
+            public readonly bool HasExplicitHz;
             /// <summary>Optional schema name.</summary>
             public readonly string SchemaName;
             /// <summary>Publish mode from the attribute.</summary>
             public readonly int Policy;
             /// <summary>FoxRun data-flow mode from the attribute.</summary>
             public readonly int Mode;
-            /// <summary>Change epsilon for numeric comparison.</summary>
-            public readonly float ChangeEpsilon;
-            /// <summary>Heartbeat interval for ChangeOrInterval.</summary>
-            public readonly float ForceIntervalSeconds;
-            /// <summary>Optional bool member that must be true to publish.</summary>
-            public readonly string When;
-            /// <summary>Optional bool member that must be false to publish.</summary>
-            public readonly string Unless;
+            /// <summary>Change tolerance for numeric comparison.</summary>
+            public readonly float Tolerance;
+            /// <summary>Optional bool member that must be true at the directional boundary.</summary>
+            public readonly string OnlyIf;
+            /// <summary>Resolved field/property/method shape for <see cref="OnlyIf"/>.</summary>
+            public readonly FoxRunConditionMemberKind ConditionMemberKind;
             /// <summary>True when the member belongs to a class-level FoxRun aggregate message.</summary>
             public readonly bool IsAggregateMember;
             /// <summary>JSON property name emitted for aggregate and dictionary payloads.</summary>
@@ -97,8 +94,8 @@ namespace Unity.FoxgloveSDK.Editor
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
             /// </summary>
-            public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName)
-                : this(memberName, typeName, topic, rateHz, schemaName, PolicyFixedRate, 0f, 0f, mode: FlowPublish) { }
+            public TopicMember(string memberName, string typeName, string topic, float hz, string schemaName)
+                : this(memberName, typeName, topic, hz, schemaName, PolicyFixedRate, 0f, mode: FlowPublish) { }
 
             /// <summary>
             /// Creates a topic-member descriptor with an explicit wire contract.
@@ -107,7 +104,7 @@ namespace Unity.FoxgloveSDK.Editor
                 string memberName,
                 string typeName,
                 string topic,
-                float rateHz,
+                float hz,
                 string schemaName,
                 string encoding,
                 int protobufFieldNumber = 0,
@@ -116,10 +113,9 @@ namespace Unity.FoxgloveSDK.Editor
                     memberName,
                     typeName,
                     topic,
-                    rateHz,
+                    hz,
                     schemaName,
                     PolicyFixedRate,
-                    0f,
                     0f,
                     encoding: encoding,
                     protobufFieldNumber: protobufFieldNumber,
@@ -129,8 +125,8 @@ namespace Unity.FoxgloveSDK.Editor
             /// <summary>
             /// Creates a topic-member descriptor with publish policy.
             /// </summary>
-            public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName,
-                int policy, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
+            public TopicMember(string memberName, string typeName, string topic, float hz, string schemaName,
+                int policy, float tolerance, string onlyIf = "",
                 bool isAggregateMember = false, string jsonFieldName = "", int mode = FlowPublish, string canonicalType = "",
                 string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding, int protobufFieldNumber = 0,
                 FoxRunProtobufTypeShape protobufTypeShape = null,
@@ -141,7 +137,8 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunRos2MessageShape ros2MessageShape = null,
                 FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
                 FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
-                bool hasExplicitRateHz = true)
+                bool hasExplicitHz = true,
+                FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -149,15 +146,14 @@ namespace Unity.FoxgloveSDK.Editor
                     ? FoxRunCanonicalTypeNormalizer.NormalizeTypeName(typeName)
                     : FoxRunCanonicalTypeNormalizer.NormalizeTypeName(canonicalType);
                 Topic = topic;
-                RateHz = rateHz;
-                HasExplicitRateHz = hasExplicitRateHz;
+                Hz = hz;
+                HasExplicitHz = hasExplicitHz;
                 SchemaName = schemaName;
                 Policy = policy;
                 Mode = mode;
-                ChangeEpsilon = changeEpsilon;
-                ForceIntervalSeconds = forceIntervalSeconds;
-                When = when ?? string.Empty;
-                Unless = unless ?? string.Empty;
+                Tolerance = tolerance;
+                OnlyIf = onlyIf ?? string.Empty;
+                ConditionMemberKind = conditionMemberKind;
                 IsAggregateMember = isAggregateMember;
                 JsonFieldName = string.IsNullOrWhiteSpace(jsonFieldName)
                     ? DefaultJsonFieldName(memberName)
@@ -235,6 +231,15 @@ namespace Unity.FoxgloveSDK.Editor
             return EmitClassCore(ns, className, members, emitRos2NativePartial: true);
         }
 
+        internal static IReadOnlyList<string> GeneratedMethodNames(FoxRunGenerationType type)
+        {
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            return TriggerEmitter.BuildGeneratedMethodNames(
+                type.Members.Select(member => member.ToTopicMember()).ToList());
+        }
+
         private static string EmitClassCore(
             string ns,
             string className,
@@ -276,7 +281,6 @@ namespace Unity.FoxgloveSDK.Editor
             var customNativeInputMembers = inputMembers
                 .Where(IsCustomNativeMember)
                 .ToList();
-            var inputTriggerMethods = new InputTriggerMethodRegistry(inputMembers);
 
             foreach (var m in inputMembers)
             {
@@ -320,7 +324,7 @@ namespace Unity.FoxgloveSDK.Editor
                 .Select(pair => pair.Value)
                 .ToList();
             var hasPolicy = publishMembers.Any(m => m.Policy != PolicyFixedRate);
-            var hasConditions = publishMembers.Any(m => !string.IsNullOrWhiteSpace(m.When) || !string.IsNullOrWhiteSpace(m.Unless));
+            var hasConditions = publishMembers.Any(m => !string.IsNullOrWhiteSpace(m.OnlyIf));
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
 
@@ -350,17 +354,19 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
                 ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
             }
-            InputDispatchEmitter.EmitInput(
+            InputDispatchEmitter.EmitInput(sb, ns, className, webSocketInputMembers, topics, pad);
+            var applyMethods = TriggerEmitter.BuildApplyMembers(inputMembers);
+            TriggerEmitter.EmitApplyMethods(
                 sb,
-                ns,
-                className,
+                applyMethods,
                 webSocketInputMembers,
-                topics,
+                nativeInputMembers,
+                customNativeInputMembers,
                 pad,
-                inputTriggerMethods);
+                emitRos2NativePartial);
 
-            var triggerMembers = TriggerEmitter.BuildTriggerMembers(publishMembers, topics, topicModes);
-            TriggerEmitter.EmitTriggers(sb, triggerMembers, topics, topicModes, pad);
+            var publishMethods = TriggerEmitter.BuildPublishMembers(publishMembers, topics);
+            TriggerEmitter.EmitPublishMethods(sb, publishMethods, pad);
 
             if (topics.Count > 0)
                 PolicyEmitter.EmitPolicy(sb, topics, topicMap, topicModes, pad);
@@ -370,18 +376,8 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (emitRos2NativePartial)
             {
-                Ros2InputDispatchEmitter.EmitConditionalPartial(
-                    sb,
-                    ns,
-                    className,
-                    nativeInputMembers,
-                    inputTriggerMethods);
-                Ros2CustomDtoMapperEmitter.EmitConditionalPartial(
-                    sb,
-                    ns,
-                    className,
-                    customNativeInputMembers,
-                    inputTriggerMethods);
+                Ros2InputDispatchEmitter.EmitConditionalPartial(sb, ns, className, nativeInputMembers);
+                Ros2CustomDtoMapperEmitter.EmitConditionalPartial(sb, ns, className, customNativeInputMembers);
                 Ros2CustomPublishEmitter.EmitConditionalPartial(sb, ns, className, customNativePublishMembers);
             }
 
@@ -404,8 +400,6 @@ namespace Unity.FoxgloveSDK.Editor
         {
             if (fields.Any(f => f.Policy == PolicyTrigger))
                 return PolicyTrigger;
-            if (fields.Any(f => f.Policy == PolicyChangeOrInterval))
-                return PolicyChangeOrInterval;
             if (fields.Any(f => f.Policy == PolicyChange))
                 return PolicyChange;
             return PolicyFixedRate;

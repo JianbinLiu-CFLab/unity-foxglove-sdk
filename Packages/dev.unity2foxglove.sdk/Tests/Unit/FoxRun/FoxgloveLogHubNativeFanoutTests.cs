@@ -78,6 +78,24 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal(0, fixture.Source.MarkPublishedCalls);
         }
 
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(99)]
+        public void ExplicitTriggerRejectsNonTriggerRetiredAndUnknownPolicies(int policyValue)
+        {
+            var fixture = new HubFixture(isRunning: true);
+            fixture.Source.Policy = (FoxRunPolicy)policyValue;
+            fixture.Subscribe();
+
+            Assert.False(fixture.Trigger());
+            Assert.Equal(0, fixture.Source.LivePublishes);
+            Assert.Equal(0, fixture.Source.BusPublishes);
+            Assert.Equal(0, fixture.BusDeliveries);
+            Assert.Equal(0, fixture.Source.MarkPublishedCalls);
+        }
+
         [Fact]
         public void WarmedWebSocketOnlyTriggerDoesNotAllocatePerDispatch()
         {
@@ -192,11 +210,12 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public int BusPublishes { get; private set; }
             public int MarkPublishedCalls { get; private set; }
             public bool ThrowOnLivePublish { get; set; }
+            public FoxRunPolicy Policy { get; set; } = FoxRunPolicy.Trigger;
 
             public FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index)
             {
                 Assert.Equal(0, index);
-                return new FoxgloveLogTopicInfo(Topic, 30f, FoxRunPolicy.Trigger, 0f, 0f);
+                return new FoxgloveLogTopicInfo(Topic, 30f, Policy, 0f);
             }
 
             public void FoxgloveLog_Publish(int topicIndex, FoxgloveManager manager, ulong nowNs)
@@ -249,7 +268,6 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     "/phase181/websocket-only",
                     30f,
                     FoxRunPolicy.Trigger,
-                    0f,
                     0f);
             }
 

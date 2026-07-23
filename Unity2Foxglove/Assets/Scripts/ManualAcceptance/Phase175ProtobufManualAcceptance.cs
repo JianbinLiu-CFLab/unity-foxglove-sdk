@@ -28,7 +28,7 @@ public partial class Phase175ProtobufManualAcceptance : MonoBehaviour
 
     [Header("Bidirectional Protobuf")]
 #pragma warning disable FOXRUN400 // This probe treats Foxglove input as the remote-authoritative shared observation; generated PublishAndSubscribe suppresses its immediate echo.
-    [FoxRun("/phase175/protobuf/shared-state", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1, RateHz = 2f)]
+    [FoxRun("/phase175/protobuf/shared-state", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 1, Hz = 2f)]
     [SerializeField] private float sharedState;
 #pragma warning restore FOXRUN400
 

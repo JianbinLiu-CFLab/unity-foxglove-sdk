@@ -20,7 +20,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Demo.Count",
                 (int)FoxRunPolicy.FixedRate,
                 0f,
-                0f,
                 mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: "protobuf",
                 protobufFieldNumber: 17,
@@ -49,7 +48,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Demo.Count",
                 (int)FoxRunPolicy.FixedRate,
                 0f,
-                0f,
                 mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: "json");
 
@@ -70,7 +68,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 10f,
                 "",
                 (int)FoxRunPolicy.FixedRate,
-                0f,
                 0f,
                 encoding: "inherit",
                 protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
@@ -106,7 +103,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "",
                 (int)FoxRunPolicy.FixedRate,
                 0f,
-                0f,
                 mode: (int)FoxRunFlow.Subscribe,
                 encoding: "protobuf",
                 protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
@@ -141,7 +137,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 });
             var member = new FoxgloveSourceEmitter.TopicMember(
                 "_telemetry", "Demo.Telemetry", "/phase175/telemetry", 10f, "Demo.Telemetry",
-                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                (int)FoxRunPolicy.FixedRate, 0f,
                 mode: (int)FoxRunFlow.Subscribe, encoding: "protobuf", protobufTypeShape: telemetry);
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "TelemetrySource", new[] { member });
@@ -157,7 +153,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var rootNullable = new FoxgloveSourceEmitter.TopicMember(
                 "_optionalCount", "System.Nullable<System.Int32>", "/phase175/optional", 10f, "Demo.Optional",
-                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                (int)FoxRunPolicy.FixedRate, 0f,
                 encoding: "protobuf", protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
             var nested = FoxRunProtobufTypeShape.Object(
                 "Demo.OptionalPayload",
@@ -177,7 +173,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 });
             var nestedNullable = new FoxgloveSourceEmitter.TopicMember(
                 "_payload", "Demo.OptionalPayload", "/phase175/optional-payload", 10f, "Demo.OptionalPayload",
-                (int)FoxRunPolicy.FixedRate, 0f, 0f, encoding: "protobuf", protobufTypeShape: nested);
+                (int)FoxRunPolicy.FixedRate, 0f, encoding: "protobuf", protobufTypeShape: nested);
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "NullableSource", new[] { rootNullable, nestedNullable });
 

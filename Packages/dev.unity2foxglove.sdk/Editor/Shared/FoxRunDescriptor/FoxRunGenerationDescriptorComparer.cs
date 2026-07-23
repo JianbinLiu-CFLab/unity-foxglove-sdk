@@ -138,13 +138,23 @@ namespace Unity.FoxgloveSDK.Editor
             CompareRos2MessageShape(key, left.Ros2MessageShape, right.Ros2MessageShape, semantic);
             CompareRos2CustomDtoShape(key, left.Ros2CustomDtoShape, right.Ros2CustomDtoShape, semantic);
             CompareSemantic(key, "protobufFieldNumber", left.ProtobufFieldNumber.ToString(), right.ProtobufFieldNumber.ToString(), semantic);
-            CompareSemantic(key, "rateHz", left.RateHz, right.RateHz, semantic);
+            CompareSemantic(key, "hz", left.Hz, right.Hz, semantic);
             CompareSemantic(key, "policy", left.PolicyName, right.PolicyName, semantic);
             CompareSemantic(key, "mode", left.FlowName, right.FlowName, semantic);
-            CompareSemantic(key, "changeEpsilon", left.ChangeEpsilon, right.ChangeEpsilon, semantic);
-            CompareSemantic(key, "forceIntervalSeconds", left.ForceIntervalSeconds, right.ForceIntervalSeconds, semantic);
-            CompareSemantic(key, "when", left.When, right.When, semantic);
-            CompareSemantic(key, "unless", left.Unless, right.Unless, semantic);
+            CompareSemantic(key, "tolerance", left.Tolerance, right.Tolerance, semantic);
+            CompareSemantic(key, "onlyIf", left.OnlyIf, right.OnlyIf, semantic);
+            CompareSemantic(
+                key,
+                "onlyIfMemberKind",
+                FoxRunGenerationMember.ConditionMemberKindToName(left.ConditionMemberKind),
+                FoxRunGenerationMember.ConditionMemberKindToName(right.ConditionMemberKind),
+                semantic);
+            CompareSemantic(
+                key,
+                "explicitArguments",
+                FoxRunGenerationMember.ExplicitArgumentsToText(left.NamedArgumentPresence),
+                FoxRunGenerationMember.ExplicitArgumentsToText(right.NamedArgumentPresence),
+                semantic);
             CompareSemantic(key, "isAggregateMember", left.IsAggregateMember ? "true" : "false", right.IsAggregateMember ? "true" : "false", semantic);
             CompareSemantic(key, "jsonFieldName", left.JsonFieldName, right.JsonFieldName, semantic);
             CompareProvenance(key, "hostKind", left.HostKind, right.HostKind, provenance);

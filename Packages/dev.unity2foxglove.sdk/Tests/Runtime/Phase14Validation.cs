@@ -30,7 +30,7 @@ namespace Unity.FoxgloveSDK.Tests
             _passCount = 0;
             TestFoxRunAttribute();
             TestFoxRunAttributeTopic();
-            TestFoxRunAttributeRateHz();
+            TestFoxRunAttributeHz();
             TestFoxRunAttributeSchemaName();
             TestFoxRunAllowMultiple();
             Console.WriteLine($"Phase 14: {_passCount} checks passed.");
@@ -40,13 +40,13 @@ namespace Unity.FoxgloveSDK.Tests
 
         /// <summary>
         /// Verifies FoxRunAttribute stores the topic, leaves
-        /// <c>RateHz</c> unspecified, and defaults <c>SchemaName</c> to null.
+        /// <c>Hz</c> unspecified, and defaults <c>SchemaName</c> to null.
         /// </summary>
         static void TestFoxRunAttribute()
         {
             var attr = new Components.FoxRunAttribute("/test/topic");
             Assert(attr.Topic == "/test/topic", "Attribute Topic stored correctly");
-            Assert(attr.RateHz == -1f, "Default RateHz is unspecified");
+            Assert(attr.Hz == -1f, "Default Hz is unspecified");
             Assert(attr.SchemaName == null, "Default SchemaName is null");
         }
 
@@ -68,12 +68,12 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         /// <summary>
-        /// Custom <c>RateHz</c> value must be stored as set.
+        /// Custom <c>Hz</c> value must be stored as set.
         /// </summary>
-        static void TestFoxRunAttributeRateHz()
+        static void TestFoxRunAttributeHz()
         {
-            var attr = new Components.FoxRunAttribute("/t") { RateHz = 30f };
-            Assert(attr.RateHz == 30f, "Custom RateHz stored");
+            var attr = new Components.FoxRunAttribute("/t") { Hz = 30f };
+            Assert(attr.Hz == 30f, "Custom Hz stored");
         }
 
         /// <summary>

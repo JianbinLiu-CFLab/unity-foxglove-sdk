@@ -166,7 +166,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     continue;
 
                 string topic = ReadStringConstructorArgument(attr);
-                float rateHz = -1f;
+                float hz = -1f;
                 string schemaName = "";
                 int policy = 1;
                 int mode = 1;
@@ -174,26 +174,67 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 int subscriptionProvider = 0;
                 int ros2Qos = 0;
                 int protobufFieldNumber = 0;
-                float changeEpsilon = 0f;
-                float forceIntervalSeconds = 0f;
-                string when = "";
-                string unless = "";
+                float tolerance = 0f;
+                string onlyIf = "";
+                var presence = FoxRunNamedArgumentPresence.None;
                 foreach (var named in attr.NamedArguments)
                 {
-                    if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
-                    if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                    if (named.Key == "Policy" && TryReadIntConstant(named.Value, out var pm)) policy = pm;
-                    if (named.Key == "Mode" && TryReadIntConstant(named.Value, out var flow)) mode = flow;
-                    if (named.Key == "Encoding" && TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
-                    if (named.Key == "SubscriptionProvider" && TryReadIntConstant(named.Value, out var provider)) subscriptionProvider = provider;
-                    if (named.Key == "Ros2Qos" && TryReadIntConstant(named.Value, out var qos)) ros2Qos = qos;
-                    if (named.Key == "ProtobufFieldNumber" && TryReadIntConstant(named.Value, out var fieldNumber)) protobufFieldNumber = fieldNumber;
-                    if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
-                    if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
-                    if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
-                    if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
+                    switch (named.Key)
+                    {
+                        case "Hz":
+                            presence |= FoxRunNamedArgumentPresence.Hz;
+                            if (TryReadFloatConstant(named.Value, out var readHz)) hz = readHz;
+                            break;
+                        case "Tolerance":
+                            presence |= FoxRunNamedArgumentPresence.Tolerance;
+                            if (TryReadFloatConstant(named.Value, out var readTolerance)) tolerance = readTolerance;
+                            break;
+                        case "OnlyIf":
+                            presence |= FoxRunNamedArgumentPresence.OnlyIf;
+                            onlyIf = named.Value.Value as string ?? string.Empty;
+                            break;
+                        case "SchemaName":
+                            presence |= FoxRunNamedArgumentPresence.SchemaName;
+                            schemaName = named.Value.Value as string ?? string.Empty;
+                            break;
+                        case "Policy":
+                            presence |= FoxRunNamedArgumentPresence.Policy;
+                            if (TryReadIntConstant(named.Value, out var pm)) policy = pm;
+                            break;
+                        case "Mode":
+                            presence |= FoxRunNamedArgumentPresence.Mode;
+                            if (TryReadIntConstant(named.Value, out var flow)) mode = flow;
+                            break;
+                        case "Encoding":
+                            presence |= FoxRunNamedArgumentPresence.Encoding;
+                            if (TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
+                            break;
+                        case "SubscriptionProvider":
+                            presence |= FoxRunNamedArgumentPresence.SubscriptionProvider;
+                            if (TryReadIntConstant(named.Value, out var provider)) subscriptionProvider = provider;
+                            break;
+                        case "Ros2Qos":
+                            presence |= FoxRunNamedArgumentPresence.Ros2Qos;
+                            if (TryReadIntConstant(named.Value, out var qos)) ros2Qos = qos;
+                            break;
+                        case "ProtobufFieldNumber":
+                            presence |= FoxRunNamedArgumentPresence.ProtobufFieldNumber;
+                            if (TryReadIntConstant(named.Value, out var fieldNumber)) protobufFieldNumber = fieldNumber;
+                            break;
+                    }
                 }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName, policy, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode, encoding: encoding, protobufFieldNumber: protobufFieldNumber, subscriptionProvider: subscriptionProvider, ros2Qos: ros2Qos));
+                topics.Add(new TopicEntry(
+                    topic, hz, schemaName, policy, tolerance, onlyIf,
+                    mode: mode,
+                    encoding: encoding,
+                    protobufFieldNumber: protobufFieldNumber,
+                    subscriptionProvider: subscriptionProvider,
+                    ros2Qos: ros2Qos,
+                    namedArgumentPresence: presence,
+                    conditionMemberKind: ResolveConditionMemberKind(
+                        containingType,
+                        onlyIf,
+                        presence)));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -209,24 +250,42 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     return MemberData.ForDiagnostic(memberLocation, "FOXRUN018");
 
                 var topic = ReadStringConstructorArgument(messageAttr);
-                var rateHz = -1f;
+                var hz = -1f;
                 var schemaName = "";
                 var policy = 1;
                 var encoding = 0;
-                var changeEpsilon = 0f;
-                var forceIntervalSeconds = 0f;
-                var when = "";
-                var unless = "";
+                var tolerance = 0f;
+                var onlyIf = "";
+                var presence = FoxRunNamedArgumentPresence.None;
                 foreach (var named in messageAttr.NamedArguments)
                 {
-                    if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
-                    if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                    if (named.Key == "Policy" && TryReadIntConstant(named.Value, out var pm)) policy = pm;
-                    if (named.Key == "Encoding" && TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
-                    if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
-                    if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
-                    if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
-                    if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
+                    switch (named.Key)
+                    {
+                        case "Hz":
+                            presence |= FoxRunNamedArgumentPresence.Hz;
+                            if (TryReadFloatConstant(named.Value, out var readHz)) hz = readHz;
+                            break;
+                        case "Tolerance":
+                            presence |= FoxRunNamedArgumentPresence.Tolerance;
+                            if (TryReadFloatConstant(named.Value, out var readTolerance)) tolerance = readTolerance;
+                            break;
+                        case "OnlyIf":
+                            presence |= FoxRunNamedArgumentPresence.OnlyIf;
+                            onlyIf = named.Value.Value as string ?? string.Empty;
+                            break;
+                        case "SchemaName":
+                            presence |= FoxRunNamedArgumentPresence.SchemaName;
+                            schemaName = named.Value.Value as string ?? string.Empty;
+                            break;
+                        case "Policy":
+                            presence |= FoxRunNamedArgumentPresence.Policy;
+                            if (TryReadIntConstant(named.Value, out var pm)) policy = pm;
+                            break;
+                        case "Encoding":
+                            presence |= FoxRunNamedArgumentPresence.Encoding;
+                            if (TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
+                            break;
+                    }
                 }
 
                 if (string.IsNullOrWhiteSpace(schemaName))
@@ -237,26 +296,29 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 foreach (var named in aggregateFieldAttr.NamedArguments)
                 {
                     if (named.Key == "ProtobufFieldNumber" && TryReadIntConstant(named.Value, out var fieldNumber))
+                    {
                         protobufFieldNumber = fieldNumber;
+                        presence |= FoxRunNamedArgumentPresence.ProtobufFieldNumber;
+                    }
                 }
                 topics.Add(new TopicEntry(
                     topic,
-                    rateHz,
+                    hz,
                     schemaName,
                     policy,
-                    changeEpsilon,
-                    forceIntervalSeconds,
-                    when,
-                    unless,
+                    tolerance,
+                    onlyIf,
                     isAggregateMember: true,
                     jsonFieldName: jsonFieldName,
                     encoding: encoding,
-                    protobufFieldNumber: protobufFieldNumber));
+                    protobufFieldNumber: protobufFieldNumber,
+                    namedArgumentPresence: presence,
+                    conditionMemberKind: ResolveConditionMemberKind(
+                        containingType,
+                        onlyIf,
+                        presence)));
             }
             if (topics.Count == 0) return null;
-
-            if (TryGetConditionDiagnostic(containingType, topics, out var conditionDiagnosticId))
-                return MemberData.ForDiagnostic(memberLocation, conditionDiagnosticId);
 
             bool isPartial = containingType.DeclaringSyntaxReferences
                 .Any(r => r.GetSyntax(ct) is TypeDeclarationSyntax tds &&
@@ -326,8 +388,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             string ns = containingType.ContainingNamespace != null
                 && !containingType.ContainingNamespace.IsGlobalNamespace
                 ? containingType.ContainingNamespace.ToDisplayString() : "";
+            var declaredMemberNames = containingType.GetMembers()
+                .Where(member => !member.IsImplicitlyDeclared)
+                .Select(member => member.Name)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
 
-            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind);
+            return new MemberData(ns, containingType.Name, isPartial, memberName, memberKind, memberType, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, topics.ToArray(), protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames);
         }
 
         private static string DeclaringTypeName(INamedTypeSymbol containingType)
@@ -367,61 +435,56 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             return string.Empty;
         }
 
-        private static bool TryGetConditionDiagnostic(
+        private static FoxRunConditionMemberKind ResolveConditionMemberKind(
             INamedTypeSymbol containingType,
-            IEnumerable<TopicEntry> topics,
-            out string diagnosticId)
+            string conditionName,
+            FoxRunNamedArgumentPresence presence)
         {
-            foreach (var topic in topics)
-            {
-                if (TryGetConditionDiagnostic(containingType, topic.When, "FOXRUN015", out diagnosticId)
-                    || TryGetConditionDiagnostic(containingType, topic.Unless, "FOXRUN601", out diagnosticId))
-                {
-                    return true;
-                }
-            }
-
-            diagnosticId = string.Empty;
-            return false;
-        }
-
-        private static bool TryGetConditionDiagnostic(INamedTypeSymbol containingType, string conditionName, string missingDiagnosticId, out string diagnosticId)
-        {
-            diagnosticId = string.Empty;
+            if ((presence & FoxRunNamedArgumentPresence.OnlyIf) == 0)
+                return FoxRunConditionMemberKind.None;
             if (containingType == null || string.IsNullOrWhiteSpace(conditionName))
-                return false;
+                return FoxRunConditionMemberKind.Missing;
 
-            if (!SyntaxFacts.IsValidIdentifier(conditionName))
-            {
-                diagnosticId = missingDiagnosticId;
-                return true;
-            }
+            if (!IsConditionIdentifier(conditionName))
+                return FoxRunConditionMemberKind.Missing;
 
             var candidates = containingType.GetMembers(conditionName);
             if (candidates.Length == 0)
+                return FoxRunConditionMemberKind.Missing;
+
+            foreach (var candidate in candidates)
             {
-                diagnosticId = missingDiagnosticId;
-                return true;
+                switch (candidate)
+                {
+                    case IFieldSymbol field when IsBoolType(field.Type):
+                        return FoxRunConditionMemberKind.Field;
+                    case IPropertySymbol property when IsBoolType(property.Type):
+                        return FoxRunConditionMemberKind.Property;
+                    case IMethodSymbol method
+                        when method.MethodKind == MethodKind.Ordinary
+                             && method.Arity == 0
+                             && method.Parameters.Length == 0
+                             && IsBoolType(method.ReturnType):
+                        return FoxRunConditionMemberKind.Method;
+                }
             }
 
-            if (candidates.Any(IsBoolConditionMember))
-                return false;
-
-            diagnosticId = "FOXRUN016";
-            return true;
+            return FoxRunConditionMemberKind.Invalid;
         }
 
-        private static bool IsBoolConditionMember(ISymbol symbol)
+        private static bool IsConditionIdentifier(string value)
         {
-            switch (symbol)
+            if (string.IsNullOrEmpty(value)
+                || !(value[0] == '_' || char.IsLetter(value[0])))
             {
-                case IFieldSymbol field:
-                    return IsBoolType(field.Type);
-                case IPropertySymbol property:
-                    return IsBoolType(property.Type);
-                default:
+                return false;
+            }
+            for (var index = 1; index < value.Length; index++)
+            {
+                if (value[index] != '_' && !char.IsLetterOrDigit(value[index]))
                     return false;
             }
+            return true;
         }
 
         private static bool IsBoolType(ITypeSymbol type)
@@ -682,6 +745,29 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     invalidDeclaringTypes.Add(DiagnosticDeclaringType(diagnostic));
             }
 
+            foreach (var type in model.Types)
+            {
+                var key = (type.Namespace, type.ClassName);
+                if (!firstMemberByClass.TryGetValue(key, out var first))
+                    continue;
+
+                var declaredNames = new HashSet<string>(
+                    first.DeclaredMemberNames,
+                    StringComparer.Ordinal);
+                foreach (var generatedName in FoxgloveSourceEmitter.GeneratedMethodNames(type))
+                {
+                    if (!declaredNames.Contains(generatedName))
+                        continue;
+
+                    spc.ReportDiagnostic(Diagnostic.Create(
+                        Diags.GeneratedMethodConflict,
+                        first.MemberLocation,
+                        type.DeclaringType,
+                        generatedName));
+                    invalidDeclaringTypes.Add(type.DeclaringType);
+                }
+            }
+
             var emittedTypes = new List<FoxRunGenerationType>();
             foreach (var type in model.Types)
             {
@@ -817,7 +903,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (!IsPublicInstanceOrdinaryVoid(method)
                         || method.Arity != 1
-                        || method.Parameters.Length != 7)
+                        || method.Parameters.Length != 8)
                         continue;
                     var typeParameter = method.TypeParameters[0];
                     if (!typeParameter.HasConstructorConstraint
@@ -840,6 +926,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             typeParameter,
                             typeParameter,
                             compilation.GetSpecialType(SpecialType.System_Boolean)),
+                        func1.Construct(compilation.GetSpecialType(SpecialType.System_Boolean)),
                         func1.Construct(compilation.GetSpecialType(SpecialType.System_Boolean))
                     };
                     var matches = true;

@@ -306,9 +306,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             };
             var contracts = new[]
             {
-                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", string.Empty, "json", "json-output", "json-output", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Publish"),
-                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "json-input", "json", "json-input", "json-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Subscribe"),
-                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "protobuf-input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Subscribe", protobufDescriptorSet: new byte[] { 4, 5, 6 })
+                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", string.Empty, "json", "json-output", "json-output", "policy", "FixedRate", 10f, 0f, fields, flow: "Publish"),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "json-input", "json", "json-input", "json-input", "policy", "FixedRate", 10f, 0f, fields, flow: "Subscribe"),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "protobuf-input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, fields, flow: "Subscribe", protobufDescriptorSet: new byte[] { 4, 5, 6 })
             };
             return new FoxRunSchemaManifestInfo(
                 1,
@@ -337,7 +337,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     "policy",
                     "FixedRate",
                     10f,
-                    0f,
                     0f,
                     fields,
                     flow: "Subscribe",
@@ -472,7 +471,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "policy",
                 "FixedRate",
                 10f,
-                0f,
                 0f,
                 fields,
                 flow: "Subscribe",

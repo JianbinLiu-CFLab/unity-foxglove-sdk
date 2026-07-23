@@ -131,6 +131,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>Non-null when this represents a diagnostic-only placeholder.</summary>
         public readonly Location DiagnosticLocation;
         public readonly string DiagnosticId;
+        public readonly IReadOnlyList<string> DeclaredMemberNames;
 
         /// <summary>
         /// Factory for diagnostic-only instances (e.g. multi-variable declaration error).
@@ -141,8 +142,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>
         /// Creates a valid member-data record with no diagnostic.
         /// </summary>
-        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
-            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind)
+        public MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null)
+            : this(ns, cn, partial, mn, memberKind, mt, emissionTypeName, isValueType, isArray, elementTypeName, rawMemberOrder, memberLocation, t, null, string.Empty, protobufTypeShape, ros2MessageShape, ros2CustomDtoShape, ros2ContractKind, declaredMemberNames)
         {
         }
 
@@ -155,7 +156,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
         }
 
-        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+        private MemberData(string ns, string cn, bool partial, string mn, string memberKind, string mt, string emissionTypeName, bool isValueType, bool isArray, string elementTypeName, int rawMemberOrder, Location memberLocation, TopicEntry[] t, Location diagnosticLocation, string diagnosticId, FoxRunProtobufTypeShape protobufTypeShape = null, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, IReadOnlyList<string> declaredMemberNames = null)
         {
             Ns = ns;
             ClassName = cn;
@@ -179,6 +180,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Topics = t;
             DiagnosticLocation = diagnosticLocation;
             DiagnosticId = string.IsNullOrEmpty(diagnosticId) ? "FOXRUN004" : diagnosticId;
+            DeclaredMemberNames = declaredMemberNames == null
+                ? Array.Empty<string>()
+                : new List<string>(declaredMemberNames).AsReadOnly();
         }
 
         public IReadOnlyList<FoxRunRoslynGenerationMember> ToRoslynMembers()
@@ -211,14 +215,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ElementTypeName,
                 topic.Topic,
                 topic.SchemaName,
-                topic.RateHz,
+                topic.Hz,
                 topic.Policy,
-                topic.ChangeEpsilon,
-                topic.ForceIntervalSeconds,
+                topic.Tolerance,
                 RawMemberOrder,
                 string.Empty,
-                topic.When,
-                topic.Unless,
+                topic.OnlyIf,
                 topic.IsAggregateMember,
                 topic.JsonFieldName,
                 topic.Mode,
@@ -238,7 +240,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     Ros2CustomDtoShape),
                 Ros2MessageShape,
                 Ros2CustomDtoShape,
-                Ros2ContractKind);
+                Ros2ContractKind,
+                topic.NamedArgumentPresence,
+                topic.ConditionMemberKind);
         }
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(
@@ -274,7 +278,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>Optional schema name from the attribute's named argument.</summary>
         public readonly string SchemaName;
         /// <summary>Optional update rate in Hz.</summary>
-        public readonly float RateHz;
+        public readonly float Hz;
         /// <summary>Update policy enum value.</summary>
         public readonly int Policy;
         public readonly int Mode;
@@ -282,40 +286,41 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly int SubscriptionProvider;
         public readonly int Ros2Qos;
         public readonly int ProtobufFieldNumber;
-        /// <summary>Change epsilon.</summary>
-        public readonly float ChangeEpsilon;
-        /// <summary>Heartbeat interval.</summary>
-        public readonly float ForceIntervalSeconds;
-        public readonly string When;
-        public readonly string Unless;
+        /// <summary>Change tolerance.</summary>
+        public readonly float Tolerance;
+        public readonly string OnlyIf;
+        public readonly FoxRunConditionMemberKind ConditionMemberKind;
+        public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
         public readonly bool IsAggregateMember;
         public readonly string JsonFieldName;
 
         /// <summary>
         /// Creates a topic entry with the given topic, rate, and schema.
         /// </summary>
-        public TopicEntry(string topic, float rate, string schema)
-            : this(topic, rate, schema, 1, 0f, 0f) { }
+        public TopicEntry(string topic, float hz, string schema)
+            : this(topic, hz, schema, 1, 0f) { }
 
         /// <summary>
         /// Creates a topic entry with update policy.
         /// </summary>
-        public TopicEntry(string topic, float rate, string schema,
-            int policy, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
+        public TopicEntry(string topic, float hz, string schema,
+            int policy, float tolerance, string onlyIf = "",
             bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0,
-            int subscriptionProvider = 0, int ros2Qos = 0)
+            int subscriptionProvider = 0, int ros2Qos = 0,
+            FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
         {
-            Topic = topic; RateHz = rate; SchemaName = schema;
+            Topic = topic; Hz = hz; SchemaName = schema;
             Policy = policy;
             Mode = mode;
             Encoding = encoding;
             SubscriptionProvider = subscriptionProvider;
             Ros2Qos = ros2Qos;
             ProtobufFieldNumber = protobufFieldNumber;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
-            When = when ?? string.Empty;
-            Unless = unless ?? string.Empty;
+            Tolerance = tolerance;
+            OnlyIf = onlyIf ?? string.Empty;
+            ConditionMemberKind = conditionMemberKind;
+            NamedArgumentPresence = namedArgumentPresence;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
         }

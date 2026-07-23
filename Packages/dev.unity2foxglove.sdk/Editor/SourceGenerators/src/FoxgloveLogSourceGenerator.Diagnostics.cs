@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         /// <summary>FOXRUN005: same-topic members have mixed publish policy settings.</summary>
         public static readonly DiagnosticDescriptor MixedTopicPolicy = new DiagnosticDescriptor(
             "FOXRUN005", "Mixed same-topic Policy policy",
-            "Topic '{0}' has mixed Policy, ChangeEpsilon, or ForceIntervalSeconds values. Generated code uses Trigger precedence before scheduled policy settings.",
+            "Topic '{0}' has mixed Policy, Hz, or Tolerance values",
             "FoxRun", DiagnosticSeverity.Warning, true);
 
         public static readonly DiagnosticDescriptor UnsupportedCanonicalType = new DiagnosticDescriptor(
@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor DisabledRate = new DiagnosticDescriptor(
             "FOXRUN009", "FoxRun scheduled publishing disabled",
-            "{0}: RateHz <= 0 disables scheduled publishing unless the topic is trigger-only",
+            "{0}: Hz must be finite and positive when an explicit cadence is required",
             "FoxRun", DiagnosticSeverity.Warning, true);
 
         public static readonly DiagnosticDescriptor BinaryType = new DiagnosticDescriptor(
@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor InvalidPolicy = new DiagnosticDescriptor(
             "FOXRUN013", "FoxRun policy out of range",
-            "{0}: FoxRun Policy must be FixedRate, Change, ChangeOrInterval, or Trigger",
+            "{0}: FoxRun Policy must be FixedRate, Change, or Trigger",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor InvalidMemberKind = new DiagnosticDescriptor(
@@ -94,7 +94,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor ConditionMissing = new DiagnosticDescriptor(
             "FOXRUN015", "FoxRun condition member missing",
-            "{0}: FoxRun condition member could not be resolved",
+            "{0}: FoxRun OnlyIf condition member could not be resolved",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor ConditionNotBool = new DiagnosticDescriptor(
@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor MixedTopicConditions = new DiagnosticDescriptor(
             "FOXRUN017", "Mixed same-topic conditional gates",
-            "Topic '{0}' has mixed When or Unless values across FoxRun members",
+            "Topic '{0}' has mixed OnlyIf values across FoxRun members",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor AggregateFieldWithoutMessage = new DiagnosticDescriptor(
@@ -239,11 +239,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor UnlessConditionMissing = new DiagnosticDescriptor(
-            "FOXRUN601", "FoxRun Unless condition member missing",
-            "{0}: FoxRun Unless condition member could not be resolved",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
         public static readonly DiagnosticDescriptor InvalidWireEncoding = new DiagnosticDescriptor(
             "FOXRUN602", "FoxRun wire encoding invalid",
             "{0}: FoxRun Encoding must be inherit, json, or protobuf",
@@ -281,7 +276,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor TriggerRateConflict = new DiagnosticDescriptor(
             "FOXRUN609", "FoxRun Trigger rate conflict",
-            "{0}: FoxRun Trigger cannot be combined with an explicit positive RateHz",
+            "{0}: FoxRun Trigger cannot be combined with an explicit Hz",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor GeneratedMethodConflict = new DiagnosticDescriptor(
+            "FOXRUN610", "Generated FoxRun method conflicts with an existing member",
+            "{0}: generated FoxRun method '{1}' conflicts with an existing member",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         #endregion
@@ -372,7 +372,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN015": return ConditionMissing;
                 case "FOXRUN016": return ConditionNotBool;
                 case "FOXRUN017": return MixedTopicConditions;
-                case "FOXRUN601": return UnlessConditionMissing;
                 case "FOXRUN602": return InvalidWireEncoding;
                 case "FOXRUN603": return InvalidProtobufFieldNumber;
                 case "FOXRUN604": return MixedTopicWireEncoding;
@@ -427,7 +426,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN004": return MultiVariableDeclaration;
                 case "FOXRUN015": return ConditionMissing;
                 case "FOXRUN016": return ConditionNotBool;
-                case "FOXRUN601": return UnlessConditionMissing;
                 case "FOXRUN018": return AggregateFieldWithoutMessage;
                 case "FOXRUN021": return StaticAggregateMember;
                 case "FOXRUN203": return InboundTargetNotWritable;

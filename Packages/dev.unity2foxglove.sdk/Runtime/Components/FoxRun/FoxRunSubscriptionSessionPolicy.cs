@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Components
 
         /// <summary>
         /// Frozen default subscription frequency inherited by a
-        /// subscription declaration that does not specify a positive RateHz.
+        /// subscription declaration that does not specify a positive Hz.
         /// </summary>
         public int DefaultSubscribeRateHz { get; }
 

@@ -43,16 +43,14 @@ namespace Unity.FoxgloveSDK.Tests
                         isArray: BoolValue(member, "isArray"),
                         elementTypeName: StringValue(member, "elementTypeName"),
                         topic: StringValue(member, "topic"),
-                        rateHz: FloatValue(member, "rateHz"),
+                        hz: FloatValue(member, "hz"),
                         schemaName: StringValue(member, "schemaName"),
                         policy: PolicyValue(member),
-                        changeEpsilon: FloatValue(member, "changeEpsilon"),
-                        forceIntervalSeconds: FloatValue(member, "forceIntervalSeconds"),
+                        tolerance: FloatValue(member, "tolerance"),
                         hostKind: StringValue(member, "hostKind"),
                         rawMemberOrder: IntValue(member, "rawMemberOrder"),
                         conditionalSymbols: StringValue(member, "conditionalSymbols"),
-                        when: StringValue(member, "when"),
-                        unless: StringValue(member, "unless"),
+                        onlyIf: StringValue(member, "onlyIf"),
                         isAggregateMember: BoolValue(member, "isAggregateMember"),
                         jsonFieldName: StringValue(member, "jsonFieldName"),
                         mode: ModeValue(member),
@@ -71,7 +69,9 @@ namespace Unity.FoxgloveSDK.Tests
                             "generatesWebSocketCodec",
                             isLegacyV1),
                         generatesRos2NativeRegistration: BoolValue(member, "generatesRos2NativeRegistration"),
-                        ros2MessageShape: Ros2MessageShapeValue(member)));
+                        ros2MessageShape: Ros2MessageShapeValue(member),
+                        namedArgumentPresence: ExplicitArgumentsValue(member),
+                        conditionMemberKind: ConditionMemberKindValue(member)));
                 }
                 types.Add(new FoxRunGenerationType(ns, className, members));
             }
@@ -162,7 +162,6 @@ namespace Unity.FoxgloveSDK.Tests
                 case "":
                 case "FixedRate": return (int)FoxRunPolicy.FixedRate;
                 case "Change": return (int)FoxRunPolicy.Change;
-                case "ChangeOrInterval": return (int)FoxRunPolicy.ChangeOrInterval;
                 case "Trigger": return (int)FoxRunPolicy.Trigger;
                 default: throw new InvalidOperationException("Unknown FoxRun policy: " + mode);
             }
@@ -179,6 +178,34 @@ namespace Unity.FoxgloveSDK.Tests
                 case "PublishAndSubscribe": return (int)FoxRunFlow.PublishAndSubscribe;
                 default: throw new InvalidOperationException("Unknown FoxRun mode: " + mode);
             }
+        }
+
+        private static FoxRunNamedArgumentPresence? ExplicitArgumentsValue(JObject member)
+        {
+            if (!member.TryGetValue("explicitArguments", out var token))
+                return null;
+
+            var result = FoxRunNamedArgumentPresence.None;
+            foreach (var name in (token.Value<string>() ?? string.Empty)
+                         .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!Enum.TryParse(name, ignoreCase: false, out FoxRunNamedArgumentPresence value)
+                    || value == FoxRunNamedArgumentPresence.None)
+                    throw new InvalidOperationException("Unknown FoxRun explicit argument: " + name);
+                result |= value;
+            }
+
+            return result;
+        }
+
+        private static FoxRunConditionMemberKind ConditionMemberKindValue(JObject member)
+        {
+            var name = StringValue(member, "onlyIfMemberKind");
+            if (string.IsNullOrEmpty(name))
+                return FoxRunConditionMemberKind.None;
+            if (Enum.TryParse(name, ignoreCase: false, out FoxRunConditionMemberKind value))
+                return value;
+            throw new InvalidOperationException("Unknown FoxRun OnlyIf member kind: " + name);
         }
     }
 }

@@ -57,15 +57,20 @@ public partial class RobotStateView : MonoBehaviour
     [FoxRun("/robot/pose")]
     private PoseState _pose;
 
-    [FoxRun("/robot/state", Mode = Subscribe, Policy = Change, RateHz = 30)]
+    [FoxRun("/robot/state", Mode = Subscribe, Policy = Change, Hz = 30)]
     private RobotState _state;
 
-    [FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, RateHz = 10)]
+    [FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, Hz = 10)]
     private DebugState _debugState;
 }
 ```
 
-One subscribed member resolves one input source for a session. Published data can fan out to more than one enabled destination. `RateHz` limits output cadence and/or Unity main-thread apply cadence; it does not change network receive rate or ROS2 QoS.
+One subscribed member resolves one input source for a session. Published data
+can fan out to more than one enabled destination. `Hz` overrides the
+directional cadence. `Policy = Change, Hz = ...` adds a bounded heartbeat;
+`Tolerance` controls supported semantic comparisons, and `OnlyIf` names one
+positive condition. None of these settings changes network receive rate or
+ROS2 QoS.
 
 See [FoxRun shared-emitter architecture](docs/research-shared-emitter-architecture.md) for the complete flow/policy semantics and AOT boundary.
 

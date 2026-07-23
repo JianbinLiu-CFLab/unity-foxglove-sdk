@@ -340,14 +340,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return false;
             }
             if (!Enum.IsDefined(typeof(FoxRunPolicy), contract.Policy)
-                || float.IsNaN(contract.RateHz)
-                || float.IsInfinity(contract.RateHz)
-                || contract.RateHz < 0f
-                || float.IsNaN(contract.ForceIntervalSeconds)
-                || float.IsInfinity(contract.ForceIntervalSeconds)
-                || contract.ForceIntervalSeconds < 0f
-                || (contract.HasExplicitRateHz && contract.RateHz <= 0f)
-                || (contract.Policy == FoxRunPolicy.Trigger && contract.HasExplicitRateHz))
+                || float.IsNaN(contract.Hz)
+                || float.IsInfinity(contract.Hz)
+                || contract.Hz < 0f
+                || float.IsNaN(contract.HeartbeatIntervalSeconds)
+                || float.IsInfinity(contract.HeartbeatIntervalSeconds)
+                || contract.HeartbeatIntervalSeconds < 0f
+                || (contract.HasExplicitHz && contract.Hz <= 0f)
+                || (contract.Policy == FoxRunPolicy.Trigger && contract.HasExplicitHz))
             {
                 diagnostic = "Generated ROS2 contract has invalid update-policy metadata.";
                 return false;
@@ -908,7 +908,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private void AddBinding<T>(SourceCandidate source, FoxRunRos2GeneratedContract contract,
             Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose, Action<T> apply,
             Func<T, bool> clearIfOwned, Func<T, T, bool> valuesEqual = null,
-            Func<bool> consumeTrigger = null)
+            Func<bool> consumeTrigger = null, Func<bool> canApply = null)
             where T : ROS2.Message, new()
         {
             var identity = source.InstanceId + "|" + contract.Id;
@@ -990,6 +990,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     dropBeforeApply: dropBeforeApply,
                     valuesEqual: valuesEqual,
                     consumeTrigger: consumeTrigger,
+                    canApply: canApply,
                     transportAdmissionRateLimitHz: _policy.TransportAdmissionRateLimitHz);
                 binding.WaitForRuntime();
                 if (Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
@@ -1023,11 +1024,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             int managerDefaultSubscribeRateHz,
             int transportAdmissionRateLimitHz)
             => Math.Min(
-                contract.HasExplicitRateHz
-               && !float.IsNaN(contract.RateHz)
-               && !float.IsInfinity(contract.RateHz)
-               && contract.RateHz > 0f
-                ? contract.RateHz
+                contract.HasExplicitHz
+               && !float.IsNaN(contract.Hz)
+               && !float.IsInfinity(contract.Hz)
+               && contract.Hz > 0f
+                ? contract.Hz
                 : Math.Max(1, managerDefaultSubscribeRateHz),
                 Math.Max(1, transportAdmissionRateLimitHz));
 
@@ -1161,19 +1162,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             public void Register<T>(FoxRunRos2GeneratedContract contract,
                 Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
-                Action<T> apply, Func<T, bool> clearIfOwned)
-                where T : ROS2.Message, new()
-                => FoxRunRos2RegistrationIsolation.TryRun(
-                    () => _hub.AddBinding(_source, contract, copy, dispose, apply, clearIfOwned),
-                    exception => _hub.RecordFailed(
-                        _source.InstanceId + "|" + contract.Id,
-                        contract,
-                        exception));
-
-            public void Register<T>(FoxRunRos2GeneratedContract contract,
-                Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
                 Action<T> apply, Func<T, bool> clearIfOwned,
-                Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger)
+                Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
+                Func<bool> canApply)
                 where T : ROS2.Message, new()
                 => FoxRunRos2RegistrationIsolation.TryRun(
                     () => _hub.AddBinding(
@@ -1184,7 +1175,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         apply,
                         clearIfOwned,
                         valuesEqual,
-                        consumeTrigger),
+                        consumeTrigger,
+                        canApply),
                     exception => _hub.RecordFailed(
                         _source.InstanceId + "|" + contract.Id,
                         contract,

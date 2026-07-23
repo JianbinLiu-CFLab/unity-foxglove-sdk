@@ -193,15 +193,15 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(sourceGenerator.Contains("Convert.ToSingle", StringComparison.Ordinal)
                   && !sourceGenerator.Contains("named.Value.Value is float eps", StringComparison.Ordinal),
-                "115G-E2: Roslyn ChangeEpsilon accepts numeric constants beyond float literals");
+                "115G-E2: Roslyn Tolerance accepts numeric constants beyond float literals");
 
             var epsilonModel = GenerateDescriptorModel(EpsilonPolicyFixtureSource(), "FoxRunEpsilonPolicy115G", out var epsilonDiagnostics);
             Check(!epsilonDiagnostics.Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error),
                 "115G-E3: epsilon policy fixture compiles without generator errors",
                 string.Join(Environment.NewLine, epsilonDiagnostics.Select(diagnostic => diagnostic.ToString())));
-            Check(ContainsTopicWithEpsilon(epsilonModel, "/debug/epsilon/integer", 1f)
-                  && ContainsTopicWithEpsilon(epsilonModel, "/debug/epsilon/float", 1f),
-                "115G-E4: Roslyn ChangeEpsilon preserves integer and float literal values");
+            Check(ContainsTopicWithTolerance(epsilonModel, "/debug/epsilon/integer", 1f)
+                  && ContainsTopicWithTolerance(epsilonModel, "/debug/epsilon/float", 1f),
+                "115G-E4: Roslyn Tolerance preserves integer and float literal values");
         }
 
         private static void VerifyNestedObjectClassification()
@@ -236,7 +236,6 @@ namespace Unity.FoxgloveSDK.Tests
                         10f,
                         string.Empty,
                         0,
-                        0f,
                         0f,
                         "Roslyn",
                         1,
@@ -292,12 +291,12 @@ namespace Unity.FoxgloveSDK.Tests
         private static string ReadRepoText(string relativePath)
             => File.ReadAllText(RepoPath(relativePath));
 
-        private static bool ContainsTopicWithEpsilon(FoxRunGenerationModel model, string topic, float expected)
+        private static bool ContainsTopicWithTolerance(FoxRunGenerationModel model, string topic, float expected)
         {
             return model.Types
                 .SelectMany(type => type.Members)
                 .Any(member => string.Equals(member.Topic, topic, StringComparison.Ordinal)
-                               && Math.Abs(member.ChangeEpsilon - expected) < 0.000001f);
+                               && Math.Abs(member.Tolerance - expected) < 0.000001f);
         }
 
         private static FoxRunGenerationModel GenerateDescriptorModel(
@@ -364,10 +363,10 @@ using Unity.FoxgloveSDK.Components;
 /// </summary>
 public partial class EpsilonPolicyProbe
 {
-    [FoxRun(""/debug/epsilon/integer"", Policy = FoxRunPolicy.Change, ChangeEpsilon = 1)]
+    [FoxRun(""/debug/epsilon/integer"", Policy = FoxRunPolicy.Change, Tolerance = 1)]
     public float integerLiteral;
 
-    [FoxRun(""/debug/epsilon/float"", Policy = FoxRunPolicy.Change, ChangeEpsilon = 1f)]
+    [FoxRun(""/debug/epsilon/float"", Policy = FoxRunPolicy.Change, Tolerance = 1f)]
     public float floatLiteral;
 }
 ";

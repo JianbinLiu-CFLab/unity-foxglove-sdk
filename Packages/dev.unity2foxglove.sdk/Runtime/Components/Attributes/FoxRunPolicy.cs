@@ -19,8 +19,8 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Move the first value and later semantic changes.</summary>
         Change = 2,
 
-        /// <summary>Move changes and fresh duplicates after the configured interval.</summary>
-        ChangeOrInterval = 3,
+        // Numeric value 3 is retired permanently. Do not reuse it for a new
+        // public policy because serialized declarations may still contain it.
 
         /// <summary>Move a value only through a generated explicit trigger.</summary>
         Trigger = 4

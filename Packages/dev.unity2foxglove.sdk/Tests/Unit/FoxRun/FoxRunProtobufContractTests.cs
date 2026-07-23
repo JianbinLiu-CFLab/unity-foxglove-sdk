@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 {
                     new FoxRunManifestMember(
                         "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
-                        "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f, 0f,
+                        "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f,
                         encoding: (int)FoxRunWireEncoding.Json)
                 },
                 manifestVersion: 1);
@@ -36,8 +36,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             Assert.Equal("d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16", jsonContract.ContractHash);
             Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", jsonContract.BindingHash);
-            Assert.Equal("1fd5c38de9789f7a2a824d09da04656be31b7a0255ac77722ebd05c62b4521f2", jsonContract.PolicyHash);
-            Assert.Equal("30dd39c87dc41e598db5156bdffc37b0bb62c4cd3e0123e3bb8b66f3131fee2f", jsonManifest.Sections.FoxRun.ManifestHash);
+            Assert.Equal("86bde8645ea3d1246bb10dc5a648b52c2da83848b7c63e30931e30a9cdd4f20d", jsonContract.PolicyHash);
+            Assert.Equal("594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e", jsonManifest.Sections.FoxRun.ManifestHash);
 
             var protobuf = FoxRunProtobufContractBuilder.Build(CreateContract());
             Assert.Equal(
@@ -74,13 +74,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var json = new FoxRunManifestMember(
                 "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
-                "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f, 0f,
+                "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f,
                 encoding: (int)FoxRunWireEncoding.Json,
                 subscriptionProvider: FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
                 generatesWebSocketCodec: true);
             var native = new FoxRunManifestMember(
                 "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
-                "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
                 flow: (int)FoxRunFlow.Subscribe,
                 encoding: (int)FoxRunWireEncoding.Inherit,
                 subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", contract.BindingHash);
             Assert.Single(manifest.Sections.Subscriptions.Bindings);
             Assert.True(FoxRunManifestHasher.IsLowercaseSha256Hex(manifest.Sections.Subscriptions.ManifestHash));
-            Assert.Equal("30dd39c87dc41e598db5156bdffc37b0bb62c4cd3e0123e3bb8b66f3131fee2f", jsonOnlyV1.Sections.FoxRun.ManifestHash);
+            Assert.Equal("594de9104932f9719fc70c4132c65aa0b3b106b57262ea7b6b64d324c14e1f8e", jsonOnlyV1.Sections.FoxRun.ManifestHash);
 
             var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
             Assert.Contains("\"subscriptions\"", canonical, StringComparison.Ordinal);
@@ -108,7 +108,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var qosChanged = new FoxRunManifestMember(
                 "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
-                "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
                 flow: (int)FoxRunFlow.Subscribe,
                 encoding: (int)FoxRunWireEncoding.Inherit,
                 subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
@@ -138,7 +138,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 {
                     new FoxRunManifestMember(
                         "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
-                        "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                        "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
                         flow: (int)FoxRunFlow.Subscribe,
                         encoding: (int)FoxRunWireEncoding.Inherit,
                         subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
@@ -173,7 +173,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 {
                     new FoxRunManifestMember(
                         "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
-                        "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f, 0f,
+                        "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f,
                         encoding: (int)FoxRunWireEncoding.Json)
                 },
                 manifestVersion: 1);
@@ -285,7 +285,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 new FoxRunManifestMember(
                     "Demo", "Counter", "_count", "field", "System.Int32", true, false, "",
-                    "/phase175/implicit", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                    "/phase175/implicit", 10f, "", (int)FoxRunPolicy.FixedRate, 0f,
                     encoding: 0, protobufFieldNumber: 17)
             });
             var protobufContract = Assert.Single(
@@ -374,11 +374,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 new FoxRunGenerationMember(
                     "Demo", "WireState", "_count", "field", "System.Int32", true, false, "",
-                    "/phase175/wire_state", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, 0f, "UnitTest", 0, "",
+                    "/phase175/wire_state", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, "UnitTest", 0, "",
                     encoding: "json", protobufFieldNumber: 17),
                 new FoxRunGenerationMember(
                     "Demo", "WireState", "_otherCount", "field", "System.Int32", true, false, "",
-                    "/phase175/wire_state", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, 0f, "UnitTest", 1, "",
+                    "/phase175/wire_state", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, "UnitTest", 1, "",
                     encoding: "protobuf", protobufFieldNumber: 17)
             });
 
@@ -395,11 +395,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 new FoxRunGenerationMember(
                     "Demo", "WireState", "_first", "field", "System.Int32", true, false, "",
-                    "/phase175/duplicate", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, 0f, "UnitTest", 0, "",
+                    "/phase175/duplicate", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, "UnitTest", 0, "",
                     encoding: "protobuf", protobufFieldNumber: 17),
                 new FoxRunGenerationMember(
                     "Demo", "WireState", "_second", "field", "System.Int32", true, false, "",
-                    "/phase175/duplicate", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, 0f, "UnitTest", 1, "",
+                    "/phase175/duplicate", 10f, "", (int)FoxRunPolicy.FixedRate, 0f, "UnitTest", 1, "",
                     encoding: "protobuf", protobufFieldNumber: 17)
             });
 
@@ -419,7 +419,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 new FoxRunManifestMember(
                     "Demo", "WireState", "_count", "field", "System.Int32", true, false, "",
-                    "/phase175/wire_state", 10f, "Demo.WireState", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                    "/phase175/wire_state", 10f, "Demo.WireState", (int)FoxRunPolicy.FixedRate, 0f,
                     encoding: 1, protobufFieldNumber: 17)
             });
 
@@ -476,7 +476,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "FixedRate",
                 10f,
                 0f,
-                0f,
                 new[] { new FoxRunSchemaFieldInfo("count", "_count", "field", "int32", false, false, false, 17) },
                 protobufDescriptorSet: descriptor);
             var manifest = new FoxRunSchemaManifestInfo(
@@ -510,10 +509,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var fields = new[] { new FoxRunSchemaFieldInfo("count", "_count", "field", "int32", false, false, false, 17) };
             var json = new FoxRunSchemaContractInfo(
                 "Demo.Counter", "/phase175/implicit", string.Empty, "json",
-                "json-contract", "json-binding", "policy", "FixedRate", 10f, 0f, 0f, fields);
+                "json-contract", "json-binding", "policy", "FixedRate", 10f, 0f, fields);
             var protobuf = new FoxRunSchemaContractInfo(
                 "Demo.Counter", "/phase175/implicit", "unity2foxglove.foxrun.Demo_Counter_a1b2c3d4", "protobuf",
-                "protobuf-contract", "protobuf-binding", "policy", "FixedRate", 10f, 0f, 0f, fields,
+                "protobuf-contract", "protobuf-binding", "policy", "FixedRate", 10f, 0f, fields,
                 protobufDescriptorSet: new byte[] { 1 });
             var manifest = new FoxRunSchemaManifestInfo(
                 1,
@@ -547,10 +546,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var fields = new[] { new FoxRunSchemaFieldInfo("count", "_count", "field", "int32", false, false, false, 17) };
             var contracts = new[]
             {
-                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", string.Empty, "json", "json-output", "json-output", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Publish"),
-                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", "unity2foxglove.foxrun.Demo_Output", "protobuf", "protobuf-output", "protobuf-output", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Publish", protobufDescriptorSet: new byte[] { 1 }),
-                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", string.Empty, "json", "json-input", "json-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Subscribe"),
-                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "unity2foxglove.foxrun.Demo_Input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Subscribe", protobufDescriptorSet: new byte[] { 2 })
+                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", string.Empty, "json", "json-output", "json-output", "policy", "FixedRate", 10f, 0f, fields, flow: "Publish"),
+                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", "unity2foxglove.foxrun.Demo_Output", "protobuf", "protobuf-output", "protobuf-output", "policy", "FixedRate", 10f, 0f, fields, flow: "Publish", protobufDescriptorSet: new byte[] { 1 }),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", string.Empty, "json", "json-input", "json-input", "policy", "FixedRate", 10f, 0f, fields, flow: "Subscribe"),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "unity2foxglove.foxrun.Demo_Input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, fields, flow: "Subscribe", protobufDescriptorSet: new byte[] { 2 })
             };
             var manifest = new FoxRunSchemaManifestInfo(
                 1,
@@ -647,7 +646,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 new FoxRunManifestMember(
                     "Demo", "WireState", "_telemetry", "field", "Demo.Telemetry", false, false, "",
-                    "/phase175/wire_state", 10f, "Demo.WireState", (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                    "/phase175/wire_state", 10f, "Demo.WireState", (int)FoxRunPolicy.FixedRate, 0f,
                     encoding: (int)FoxRunWireEncoding.Protobuf,
                     protobufTypeShape: shape)
             });

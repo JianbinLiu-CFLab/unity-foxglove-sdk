@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.SourceGenerators;
@@ -16,7 +17,7 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
-    public sealed class FoxRunFlowTests
+    public sealed class FoxRunDeclarationModelTests
     {
         [Fact]
         public void FoxRunAttributeDefaultsToPublishFlow()
@@ -41,14 +42,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new[] { "Publish", "Subscribe", "PublishAndSubscribe" },
                 Enum.GetNames(flowType));
             Assert.Equal(
-                new[] { "FixedRate", "Change", "ChangeOrInterval", "Trigger" },
+                new[] { "FixedRate", "Change", "Trigger" },
                 Enum.GetNames(policyType));
             Assert.Equal(1, Convert.ToInt32(Enum.Parse(flowType, "Publish")));
             Assert.Equal(2, Convert.ToInt32(Enum.Parse(flowType, "Subscribe")));
             Assert.Equal(3, Convert.ToInt32(Enum.Parse(flowType, "PublishAndSubscribe")));
             Assert.Equal(1, Convert.ToInt32(Enum.Parse(policyType, "FixedRate")));
             Assert.Equal(2, Convert.ToInt32(Enum.Parse(policyType, "Change")));
-            Assert.Equal(3, Convert.ToInt32(Enum.Parse(policyType, "ChangeOrInterval")));
             Assert.Equal(4, Convert.ToInt32(Enum.Parse(policyType, "Trigger")));
         }
 
@@ -60,7 +60,37 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("FixedRate", message, StringComparison.Ordinal);
             Assert.Contains("Change", message, StringComparison.Ordinal);
             Assert.Contains("Trigger", message, StringComparison.Ordinal);
+            Assert.DoesNotContain("ChangeOrInterval", message, StringComparison.Ordinal);
             Assert.DoesNotContain("between 0 and 3", message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void ShortSchedulingDeclarationGrammarCompiles()
+        {
+            var output = CreateCompilation(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace Demo
+{
+    public partial class SchedulingGrammar
+    {
+        private bool TelemetryEnabled => true;
+
+        [FoxRun(""/phase184/change"", Policy = Change, Hz = 10f,
+            Tolerance = 0.01f, OnlyIf = nameof(TelemetryEnabled))]
+        private float _changed;
+
+        [FoxRun(""/phase184/subscribe"", Mode = Subscribe, Hz = 20f,
+            OnlyIf = nameof(TelemetryEnabled))]
+        private int _subscribed;
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
         }
 
         [Fact]
@@ -101,25 +131,39 @@ namespace Demo
         }
 
         [Fact]
-        public void UpdatePolicySeparatesFreshInputFromStaleTimerTicks()
+        public void ChangeWithoutHzPublishesAndAppliesOnlyFreshSemanticChanges()
         {
             Assert.True(FoxRunUpdatePolicy.ShouldPublish(
                 FoxRunPolicy.Change, 1d, false, false, 0d, 0d));
             Assert.False(FoxRunUpdatePolicy.ShouldPublish(
                 FoxRunPolicy.Change, 2d, true, false, 1d, 0d));
-            Assert.True(FoxRunUpdatePolicy.ShouldPublish(
-                FoxRunPolicy.ChangeOrInterval, 3d, true, false, 1d, 2d));
 
-            Assert.False(FoxRunUpdatePolicy.ShouldApply(
-                FoxRunPolicy.FixedRate, false, true, false, 3d, 1d, 0d));
             Assert.True(FoxRunUpdatePolicy.ShouldApply(
                 FoxRunPolicy.Change, true, false, false, 3d, 0d, 0d));
             Assert.False(FoxRunUpdatePolicy.ShouldApply(
                 FoxRunPolicy.Change, true, true, false, 3d, 1d, 0d));
-            Assert.True(FoxRunUpdatePolicy.ShouldApply(
-                FoxRunPolicy.ChangeOrInterval, true, true, false, 3d, 1d, 2d));
             Assert.False(FoxRunUpdatePolicy.ShouldApply(
-                FoxRunPolicy.ChangeOrInterval, false, true, false, 4d, 1d, 2d));
+                FoxRunPolicy.Change, false, true, true, 3d, 1d, 0d));
+        }
+
+        [Fact]
+        public void ChangeWithHzProvidesPublishHeartbeatAndFreshDuplicateRefresh()
+        {
+            Assert.True(FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.Change, 3d, true, false, 1d, 2d));
+            Assert.True(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, true, true, false, 3d, 1d, 2d));
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.Change, false, true, false, 4d, 1d, 2d));
+        }
+
+        [Fact]
+        public void FixedRateAndTriggerRetainDirectionIndependentDecisions()
+        {
+            Assert.False(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.FixedRate, false, true, false, 3d, 1d, 0d));
+            Assert.True(FoxRunUpdatePolicy.ShouldApply(
+                FoxRunPolicy.FixedRate, true, true, false, 3d, 1d, 0d));
             Assert.False(FoxRunUpdatePolicy.ShouldApply(
                 FoxRunPolicy.Trigger, true, false, true, 1d, 0d, 0d));
         }
@@ -193,11 +237,11 @@ namespace Demo
                     new FoxRunGenerationMember(
                         "Demo", "CommandInput", "_status", "field", "System.String",
                         true, false, "", "/phase157/status", 10f, "",
-                        0, 0f, 0f, "UnitTest", 0, ""),
+                        0, 0f, "UnitTest", 0, ""),
                     new FoxRunGenerationMember(
                         "Demo", "CommandInput", "_incomingVelocity", "field", "UnityEngine.Vector3",
                         true, false, "", "/phase157/cmd_vel", 10f, "",
-                        0, 0f, 0f, "UnitTest", 1, "",
+                        0, 0f, "UnitTest", 1, "",
                         mode: (int)FoxRunFlow.Subscribe)
                 });
 
@@ -269,7 +313,7 @@ namespace Demo
                 generated.Replace("\"", string.Empty, StringComparison.Ordinal),
                 StringComparison.Ordinal);
             Assert.Contains("policy: FoxRunPolicy.FixedRate", generated, StringComparison.Ordinal);
-            Assert.Contains("hasExplicitRateHz: false", generated, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitHz: false", generated, StringComparison.Ordinal);
             Assert.Contains("string.Equals(encoding, \"protobuf\", global::System.StringComparison.OrdinalIgnoreCase)", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundJson.TryRead(payload, \"incomingVelocity\", out global::UnityEngine.Vector3 __value", generated, StringComparison.Ordinal);
             Assert.Contains("FoxRunInboundProtobuf.TryRead", generated, StringComparison.Ordinal);
@@ -304,6 +348,54 @@ namespace Demo
             Assert.Contains("this._state = __foxRunInputPending_0", generated, StringComparison.Ordinal);
             Assert.Contains("__foxRunSuppressNextPublish_0 = true", generated, StringComparison.Ordinal);
             Assert.Contains("if (__foxRunSuppressNextPublish_0)", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TriggerMethodsAreDirectionSpecificAndExposeBulkOperations()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace Demo
+{
+    public partial class DirectionalTriggers
+    {
+        [FoxRun(""/phase184/publish"", Policy = Trigger)]
+        private int _outbound;
+
+        [FoxRun(""/phase184/subscribe"", Mode = Subscribe, Policy = Trigger)]
+        private int _inbound;
+
+        [FoxRun(""/phase184/full-duplex"", Mode = PublishAndSubscribe,
+            Policy = Trigger, Encoding = FoxRunWireEncoding.Protobuf)]
+        private int _shared;
+    }
+}");
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class DirectionalTriggers", StringComparison.Ordinal));
+            var methods = CSharpSyntaxTree.ParseText(generated)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .ToArray();
+
+            AssertGeneratedBooleanMethod(methods, "FoxRun_Publish_outbound");
+            Assert.DoesNotContain(methods, method =>
+                method.Identifier.ValueText == "FoxRun_Apply_outbound");
+            AssertGeneratedBooleanMethod(methods, "FoxRun_Apply_inbound");
+            Assert.DoesNotContain(methods, method =>
+                method.Identifier.ValueText == "FoxRun_Publish_inbound");
+            AssertGeneratedBooleanMethod(methods, "FoxRun_Publish_shared");
+            AssertGeneratedBooleanMethod(methods, "FoxRun_Apply_shared");
+            AssertGeneratedBooleanMethod(methods, "FoxRun_PublishAll");
+            AssertGeneratedBooleanMethod(methods, "FoxRun_ApplyAll");
+            Assert.DoesNotContain(methods, method =>
+                method.Identifier.ValueText.StartsWith("FoxRun_Trigger_", StringComparison.Ordinal));
+            Assert.DoesNotContain(methods, method =>
+                method.Identifier.ValueText == "FoxRun_TriggerAll");
         }
 
         [Fact]
@@ -480,7 +572,7 @@ namespace Demo
         }
 
         [Fact]
-        public void RoslynGeneratorRejectsTriggerWithExplicitRateUsingReservedDiagnostic()
+        public void RoslynGeneratorRejectsTriggerWithExplicitHzUsingReservedDiagnostic()
         {
             var result = RunGenerator(@"
 using Unity.FoxgloveSDK.Components;
@@ -490,13 +582,173 @@ namespace Demo
 {
     public partial class TriggerState
     {
-        [FoxRun(""/phase183/trigger"", Policy = Trigger, RateHz = 10f)]
+        [FoxRun(""/phase184/trigger"", Policy = Trigger, Hz = 10f)]
         private int _count;
     }
 }");
 
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN609");
             Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN000");
+        }
+
+        [Theory]
+        [InlineData("0f")]
+        [InlineData("-1f")]
+        [InlineData("float.NaN")]
+        [InlineData("float.PositiveInfinity")]
+        public void RoslynGeneratorRejectsTriggerWithEveryExplicitHzValue(string hzExpression)
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace Demo
+{
+    public partial class TriggerState
+    {
+        [FoxRun(""/phase184/trigger"", Policy = Trigger, Hz = " + hzExpression + @")]
+        private int _count;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN609");
+        }
+
+        [Fact]
+        public void RoslynGeneratorSupportsZeroArgumentBoolMethodOnlyIf()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class ConditionalState
+    {
+        private bool CanSend() => true;
+
+        [FoxRun(""/phase184/conditional"", OnlyIf = nameof(CanSend))]
+        private int _count;
+    }
+}");
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class ConditionalState", StringComparison.Ordinal));
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN015" || diagnostic.Id == "FOXRUN016");
+            Assert.Contains("CanSend()", generated, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynGeneratorRejectsExplicitEmptyOnlyIf()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class ConditionalState
+    {
+        [FoxRun(""/phase184/conditional"", OnlyIf = """")]
+        private int _count;
+    }
+}");
+
+            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN015");
+        }
+
+        [Fact]
+        public void RoslynAndReflectionRejectWhitespacePaddedOnlyIf()
+        {
+            var roslyn = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class ConditionalState
+    {
+        private bool Enabled => true;
+
+        [FoxRun(""/phase184/conditional"", OnlyIf = "" Enabled "")]
+        private int _count;
+    }
+}");
+            var snapshot = ReadReflectionAttributeSnapshot(
+                typeof(ReflectionArgumentsFixture).GetField(
+                    nameof(ReflectionArgumentsFixture.WhitespaceCondition)));
+            var onlyIf = ReadField<string>(snapshot, "OnlyIf");
+            var presence = (FoxRunNamedArgumentPresence)ReadInt64Field(
+                snapshot,
+                "NamedArgumentPresence");
+            var reflection = FoxRunReflectionGenerationModelLowerer.Lower(
+                new[]
+                {
+                    new FoxRunReflectionGenerationMember(
+                        "Demo", "ReflectionArgumentsFixture", "WhitespaceCondition",
+                        "field", "System.Single", "float",
+                        true, false, "", "/phase184/reflection/whitespace-condition",
+                        "", -1f, 1, 0f, 0, "",
+                        onlyIf: onlyIf,
+                        namedArgumentPresence: presence,
+                        conditionMemberKind: FoxRunConditionMemberKind.Missing)
+                });
+
+            Assert.Contains(roslyn.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN015");
+            Assert.Equal(" Enabled ", onlyIf);
+            Assert.Contains(
+                FoxRunGenerationModelValidator.Validate(reflection),
+                diagnostic => diagnostic.Id == "FOXRUN015");
+        }
+
+        [Fact]
+        public void GeneratedMethodNameCollisionsReportStableFoxRunDiagnostic()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+namespace Demo
+{
+    public partial class TriggerCollisions
+    {
+        [FoxRun(""/phase184/publish-a"", Policy = Trigger)]
+        private int _command;
+
+        [FoxRun(""/phase184/publish-b"", Policy = Trigger)]
+        private int command;
+
+        [FoxRun(""/phase184/subscribe"", Mode = Subscribe, Policy = Trigger,
+            Encoding = FoxRunWireEncoding.Json)]
+        private int _incoming;
+
+        public bool FoxRun_Publish_command_2() => false;
+        public bool FoxRun_PublishAll() => false;
+        public bool FoxRun_Apply_incoming() => false;
+        public bool FoxRun_ApplyAll() => false;
+    }
+}";
+            var compilation = CreateCompilation(source);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var output,
+                out _);
+            var messages = driver.GetRunResult().Diagnostics
+                .Where(diagnostic => diagnostic.Id == "FOXRUN610")
+                .Select(diagnostic => diagnostic.GetMessage())
+                .ToArray();
+
+            Assert.Contains(messages, message =>
+                message.Contains("FoxRun_Publish_command_2", StringComparison.Ordinal));
+            Assert.Contains(messages, message =>
+                message.Contains("FoxRun_PublishAll", StringComparison.Ordinal));
+            Assert.Contains(messages, message =>
+                message.Contains("FoxRun_Apply_incoming", StringComparison.Ordinal));
+            Assert.Contains(messages, message =>
+                message.Contains("FoxRun_ApplyAll", StringComparison.Ordinal));
+            Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Id == "CS0111");
         }
 
         [Fact]
@@ -668,7 +920,7 @@ namespace Demo
             {
                 new FoxRunReflectionGenerationMember(
                     "Demo", "WireState", "_count", "field", "System.Int32", "int",
-                    true, false, "", "/phase175/wire_state", "", 10f, 0, 0f, 0f, 0, "",
+                    true, false, "", "/phase175/wire_state", "", 10f, 0, 0f, 0, "",
                     encoding: (int)FoxRunWireEncoding.Protobuf,
                     protobufFieldNumber: 17)
             });
@@ -679,6 +931,132 @@ namespace Demo
         }
 
         [Fact]
+        public void ReflectionScannerPreservesOmittedAndExplicitDefaultNamedArguments()
+        {
+            var omitted = ReadReflectionAttributeSnapshot(
+                typeof(ReflectionArgumentsFixture).GetField(
+                    nameof(ReflectionArgumentsFixture.Omitted)));
+            var explicitDefaults = ReadReflectionAttributeSnapshot(
+                typeof(ReflectionArgumentsFixture).GetField(
+                    nameof(ReflectionArgumentsFixture.ExplicitDefaults)));
+            const long scheduling = (1L << 0) | (1L << 1) | (1L << 2);
+            const long existingAxes = (1L << 4) | (1L << 5) | (1L << 6)
+                                      | (1L << 7) | (1L << 8);
+
+            Assert.Equal(0L, ReadInt64Field(omitted, "NamedArgumentPresence") & scheduling);
+            Assert.Equal(0L, ReadInt64Field(omitted, "NamedArgumentPresence") & existingAxes);
+
+            Assert.Equal(scheduling, ReadInt64Field(explicitDefaults, "NamedArgumentPresence") & scheduling);
+            Assert.Equal(existingAxes, ReadInt64Field(explicitDefaults, "NamedArgumentPresence") & existingAxes);
+            Assert.Equal(-1f, ReadField<float>(explicitDefaults, "Hz"));
+            Assert.Equal(0f, ReadField<float>(explicitDefaults, "Tolerance"));
+            Assert.Equal(string.Empty, ReadField<string>(explicitDefaults, "OnlyIf"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "Policy"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "Mode"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "Encoding"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "SubscriptionProvider"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "Ros2Qos"));
+        }
+
+        [Fact]
+        public void ReflectionScannerPreservesInvalidExplicitEnumCast()
+        {
+            var invalid = ReadReflectionAttributeSnapshot(
+                typeof(ReflectionArgumentsFixture).GetField(
+                    nameof(ReflectionArgumentsFixture.InvalidPolicy)));
+
+            Assert.Equal(99, ReadField<int>(invalid, "Policy"));
+            Assert.NotEqual(
+                0L,
+                ReadInt64Field(invalid, "NamedArgumentPresence") & (1L << 4));
+        }
+
+        [Fact]
+        public void ReflectionAndRoslynLowerersProduceEquivalentCanonicalConditionModel()
+        {
+            const FoxRunNamedArgumentPresence presence =
+                FoxRunNamedArgumentPresence.Hz
+                | FoxRunNamedArgumentPresence.Tolerance
+                | FoxRunNamedArgumentPresence.OnlyIf
+                | FoxRunNamedArgumentPresence.Policy
+                | FoxRunNamedArgumentPresence.Mode;
+            var reflection = FoxRunReflectionGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunReflectionGenerationMember(
+                    "Demo", "Parity", "_value", "field", "System.Int32", "int",
+                    true, false, "", "/phase184/parity", "", 12f, 2, 0.5f, 0, "",
+                    onlyIf: "CanApply",
+                    mode: 2,
+                    namedArgumentPresence: presence,
+                    conditionMemberKind: FoxRunConditionMemberKind.Method)
+            });
+            var roslyn = FoxRunRoslynGenerationModelLowerer.Lower(new[]
+            {
+                new FoxRunRoslynGenerationMember(
+                    "Demo", "Parity", "_value", "field", "System.Int32", "int",
+                    true, false, "", "/phase184/parity", "", 12f, 2, 0.5f, 0, "",
+                    onlyIf: "CanApply",
+                    mode: 2,
+                    namedArgumentPresence: presence,
+                    conditionMemberKind: FoxRunConditionMemberKind.Method)
+            });
+
+            var comparison = FoxRunGenerationDescriptorComparer.Compare(reflection, roslyn);
+
+            Assert.True(
+                comparison.IsSemanticEqual,
+                string.Join(Environment.NewLine, comparison.SemanticDifferences));
+            Assert.Equal(
+                FoxRunConditionMemberKind.Method,
+                reflection.Types.Single().Members.Single().ConditionMemberKind);
+            Assert.Equal(
+                FoxRunConditionMemberKind.Method,
+                roslyn.Types.Single().Members.Single().ConditionMemberKind);
+        }
+
+        [Fact]
+        public void RoslynDescriptorRecordsOnlyExplicitNewNamedArguments()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class PresenceProbe
+    {
+        private bool Enabled => true;
+
+        [FoxRun(""/phase184/omitted"")]
+        private float _omitted;
+
+        [FoxRun(""/phase184/explicit"", Hz = 10f, Tolerance = 0f,
+            OnlyIf = nameof(Enabled), Policy = FoxRunPolicy.FixedRate,
+            Mode = FoxRunFlow.Publish, Encoding = FoxRunWireEncoding.Inherit,
+            SubscriptionProvider = FoxRunSubscriptionProvider.Inherit,
+            Ros2Qos = FoxRunRos2QosPreset.Inherit)]
+        private float _explicit;
+    }
+}");
+            var descriptor = result.Results
+                .Single()
+                .GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+
+            Assert.Contains(
+                "\\\"explicitArguments\\\":\\\"Hz,Tolerance,OnlyIf,Policy,Mode,Encoding,SubscriptionProvider,Ros2Qos\\\"",
+                descriptor,
+                StringComparison.Ordinal);
+            Assert.Contains("\\\"explicitArguments\\\":\\\"\\\"", descriptor, StringComparison.Ordinal);
+            Assert.DoesNotContain("\\\"rateHz\\\"", descriptor, StringComparison.Ordinal);
+            Assert.DoesNotContain("\\\"changeEpsilon\\\"", descriptor, StringComparison.Ordinal);
+            Assert.DoesNotContain("\\\"forceIntervalSeconds\\\"", descriptor, StringComparison.Ordinal);
+            Assert.DoesNotContain("\\\"when\\\"", descriptor, StringComparison.Ordinal);
+            Assert.DoesNotContain("\\\"unless\\\"", descriptor, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DescriptorJsonIncludesExplicitFoxRunFlow()
         {
             var model = FoxRunGenerationModel.FromMembers(new[]
@@ -686,7 +1064,7 @@ namespace Demo
                 new FoxRunGenerationMember(
                     "Demo", "CommandInput", "_incomingVelocity", "field", "UnityEngine.Vector3",
                     true, false, "", "/phase157/cmd_vel", 10f, "",
-                    1, 0f, 0f, "UnitTest", 0, "",
+                    1, 0f, "UnitTest", 0, "",
                     mode: (int)FoxRunFlow.Subscribe)
             });
 
@@ -739,7 +1117,6 @@ namespace Demo
                 "policy",
                 "FixedRate",
                 10f,
-                0f,
                 0f,
                 new[]
                 {
@@ -801,7 +1178,6 @@ namespace Demo
                     "Demo.WireState",
                     1,
                     0f,
-                    0f,
                     encoding: (int)FoxRunWireEncoding.Inherit,
                     protobufFieldNumber: 17)
             });
@@ -829,13 +1205,12 @@ namespace Demo
                 10f,
                 "",
                 99,
-                0f,
                 0f);
 
             var ex = Assert.Throws<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[] { member }));
 
             Assert.Contains("Policy", ex.Message, StringComparison.Ordinal);
-            Assert.Contains("1..4", ex.Message, StringComparison.Ordinal);
+            Assert.Contains("FixedRate, Change, or Trigger", ex.Message, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -861,12 +1236,13 @@ namespace Demo
             var hashInput = FoxRunManifestJsonWriter.WritePolicyHashInput(new FoxRunManifestPolicy(
                 "Change",
                 float.NaN,
-                float.PositiveInfinity,
-                float.NegativeInfinity));
+                float.PositiveInfinity));
 
-            Assert.Contains("\"rateHz\":0", hashInput, StringComparison.Ordinal);
-            Assert.Contains("\"changeEpsilon\":0", hashInput, StringComparison.Ordinal);
-            Assert.Contains("\"forceIntervalSeconds\":0", hashInput, StringComparison.Ordinal);
+            Assert.Contains("\"hz\":0", hashInput, StringComparison.Ordinal);
+            Assert.Contains("\"tolerance\":0", hashInput, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"rateHz\"", hashInput, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"changeEpsilon\"", hashInput, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"forceIntervalSeconds\"", hashInput, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -877,7 +1253,7 @@ namespace Demo
                 new FoxRunGenerationMember(
                     "Demo", "CommandInput", "_incomingSamples", "field", "System.Single[]",
                     false, true, "System.Single", "/phase157/samples", 10f, "",
-                    1, 0.1f, 2f, "UnitTest", 0, "",
+                    1, 0.1f, "UnitTest", 0, "",
                     mode: (int)FoxRunFlow.Subscribe)
             });
 
@@ -895,7 +1271,7 @@ namespace Demo
                 new FoxRunGenerationMember(
                     "Demo", "CommandInput", "_incomingSamples", "field", "System.Single[]",
                     false, true, "System.Single", "/phase175/samples", 10f, "",
-                    1, 0.1f, 2f, "UnitTest", 0, "",
+                    1, 0.1f, "UnitTest", 0, "",
                     mode: (int)FoxRunFlow.Subscribe,
                     encoding: "protobuf",
                     protobufTypeShape: FoxRunProtobufTypeShape.Canonical("float32"))
@@ -972,7 +1348,7 @@ namespace Demo
                     new FoxRunGenerationMember(
                         "Demo", "CommandInput", "", "field", "System.Single",
                         false, false, "", "/phase173/input", 10f, "",
-                        0, 0f, 0f, "UnitTest", 0, "",
+                        0, 0f, "UnitTest", 0, "",
                         mode: (int)FoxRunFlow.Subscribe)
                 });
 
@@ -988,9 +1364,53 @@ namespace Demo
                 new FoxRunGenerationMember(
                     "Demo", "CommandInput", "_incomingVelocity", "field", "UnityEngine.Vector3",
                     true, false, "", "/phase157/cmd_vel", 10f, "",
-                    1, 0f, 0f, "UnitTest", 0, "",
+                    1, 0f, "UnitTest", 0, "",
                     mode: (int)mode)
             });
+        }
+
+        private static void AssertGeneratedBooleanMethod(
+            IEnumerable<MethodDeclarationSyntax> methods,
+            string methodName)
+        {
+            var method = Assert.Single(
+                methods,
+                candidate => candidate.Identifier.ValueText == methodName);
+
+            Assert.Contains(method.Modifiers, modifier =>
+                modifier.IsKind(SyntaxKind.PublicKeyword));
+            Assert.Equal("bool", method.ReturnType.ToString());
+            Assert.Empty(method.ParameterList.Parameters);
+        }
+
+        private static object ReadReflectionAttributeSnapshot(FieldInfo field)
+        {
+            Assert.NotNull(field);
+            var reader = typeof(FoxrunCodeGenerator).GetMethod(
+                "ReadFoxRunAttributeSnapshots",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(reader);
+            var snapshots = Assert.IsAssignableFrom<System.Collections.IEnumerable>(
+                reader.Invoke(null, new object[] { field }));
+            return Assert.Single(snapshots.Cast<object>());
+        }
+
+        private static T ReadField<T>(object value, string name)
+        {
+            var field = value.GetType().GetField(
+                name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(field);
+            return Assert.IsType<T>(field.GetValue(value));
+        }
+
+        private static long ReadInt64Field(object value, string name)
+        {
+            var field = value.GetType().GetField(
+                name,
+                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(field);
+            return Convert.ToInt64(field.GetValue(value));
         }
 
         private static FoxRunManifestMember ManifestMember(FoxRunFlow mode)
@@ -1008,7 +1428,6 @@ namespace Demo
                 10f,
                 "",
                 1,
-                0f,
                 0f,
                 flow: (int)mode);
         }
@@ -1028,7 +1447,6 @@ namespace Demo
                 10f,
                 "",
                 1,
-                0f,
                 0f,
                 jsonFieldName: jsonFieldName);
         }
@@ -1076,6 +1494,36 @@ namespace Demo
                 new[] { CSharpSyntaxTree.ParseText(source) },
                 BasicReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        }
+
+        private sealed class ReflectionArgumentsFixture
+        {
+            private bool Enabled => true;
+
+            [FoxRun("/phase184/reflection/omitted")]
+            public float Omitted;
+
+        [FoxRun(
+                "/phase184/reflection/explicit",
+                Hz = -1f,
+                Tolerance = 0f,
+                OnlyIf = "",
+                Policy = (FoxRunPolicy)0,
+                Mode = (FoxRunFlow)0,
+                Encoding = (FoxRunWireEncoding)0,
+                SubscriptionProvider = (FoxRunSubscriptionProvider)0,
+                Ros2Qos = (FoxRunRos2QosPreset)0)]
+            public float ExplicitDefaults;
+
+            [FoxRun(
+                "/phase184/reflection/invalid-policy",
+                Policy = (FoxRunPolicy)99)]
+            public float InvalidPolicy;
+
+            [FoxRun(
+                "/phase184/reflection/whitespace-condition",
+                OnlyIf = " Enabled ")]
+            public float WhitespaceCondition;
         }
     }
 }

@@ -1398,7 +1398,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void ChangeOrIntervalDefersFreshDuplicateUntilItsInterval()
+        public void NativeOnlyIfDropsPendingAndInvalidatesSemanticHistoryUntilRecovery()
+        {
+            var backend = new FakeBackend();
+            FakeMessage applied = null;
+            var condition = true;
+            var binding = CreateBinding(
+                backend,
+                186,
+                () => 186,
+                value => applied = value,
+                value =>
+                {
+                    if (!ReferenceEquals(applied, value))
+                        return false;
+                    applied = null;
+                    return true;
+                },
+                contract: PolicyContract(Unity.FoxgloveSDK.Components.FoxRunPolicy.Change),
+                valuesEqual: (left, right) => left.Data == right.Data,
+                canApply: () => condition);
+            binding.WaitForRuntime();
+            Assert.True(binding.TryRegister().Succeeded);
+
+            backend.Invoke(Message("same"));
+            Assert.True(binding.TryApplyLatest(186, 0d));
+            Assert.Equal(1, binding.AppliedCount);
+            Assert.Equal("same", applied.Data);
+
+            condition = false;
+            backend.Invoke(Message("same"));
+            Assert.False(binding.TryApplyLatest(186, 1d));
+            Assert.Equal(1, binding.AppliedCount);
+            Assert.Equal("same", applied.Data);
+
+            condition = true;
+            backend.Invoke(Message("same"));
+            Assert.True(binding.TryApplyLatest(186, 2d));
+            Assert.Equal(2, binding.AppliedCount);
+            Assert.Equal("same", applied.Data);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void ChangeWithHeartbeatDefersFreshDuplicateUntilItsInterval()
         {
             var backend = new FakeBackend();
             FakeMessage applied = null;
@@ -1409,8 +1452,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 value => applied = value,
                 value => ReferenceEquals(applied, value),
                 contract: PolicyContract(
-                    Unity.FoxgloveSDK.Components.FoxRunPolicy.ChangeOrInterval,
-                    forceIntervalSeconds: 2f),
+                    Unity.FoxgloveSDK.Components.FoxRunPolicy.Change,
+                    heartbeatIntervalSeconds: 2f),
                 valuesEqual: (left, right) => left.Data == right.Data);
             binding.WaitForRuntime();
             Assert.True(binding.TryRegister().Succeeded);
@@ -1466,6 +1509,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             FoxRunRos2GeneratedContract contract = null,
             Func<FakeMessage, FakeMessage, bool> valuesEqual = null,
             Func<bool> consumeTrigger = null,
+            Func<bool> canApply = null,
             int transportAdmissionRateLimitHz = int.MaxValue,
             Func<long> admissionTimestamp = null)
         {
@@ -1483,13 +1527,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 new ManagedQosFactory(),
                 valuesEqual: valuesEqual,
                 consumeTrigger: consumeTrigger,
+                canApply: canApply,
                 transportAdmissionRateLimitHz: transportAdmissionRateLimitHz,
                 admissionTimestamp: admissionTimestamp);
         }
 
         private static FoxRunRos2GeneratedContract PolicyContract(
             Unity.FoxgloveSDK.Components.FoxRunPolicy policy,
-            float forceIntervalSeconds = 0f)
+            float heartbeatIntervalSeconds = 0f)
             => new FoxRunRos2GeneratedContract(
                 "policy-contract-" + policy,
                 "/native/policy",
@@ -1503,7 +1548,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 policy,
                 0f,
                 false,
-                forceIntervalSeconds);
+                heartbeatIntervalSeconds);
 
         private static FoxRunRos2GeneratedContract Contract()
             => new FoxRunRos2GeneratedContract(

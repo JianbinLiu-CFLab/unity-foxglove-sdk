@@ -28,7 +28,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(256)] private int _foxRunInboundMaxPayloadBytes = 64 * 1024;
         [Tooltip("Hard per-topic transport-admission ceiling shared by Foxglove WebSocket and ROS 2 Native subscriptions. Excess input is dropped before avoidable decode or native deep-copy work.")]
         [SerializeField, Min(1)] private int _foxRunInboundMaxMessagesPerSecondPerTopic = 60;
-        [Tooltip("Default subscription rate inherited by subscription declarations that do not specify a positive RateHz.")]
+        [Tooltip("Default subscription rate inherited by subscription declarations that do not specify a positive Hz.")]
         [FormerlySerializedAs("_foxRunDefaultApplyRateHz")]
         [SerializeField, Min(1)] private int _foxRunDefaultSubscribeRateHz = 10;
 

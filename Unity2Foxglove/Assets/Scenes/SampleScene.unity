@@ -380,11 +380,11 @@ MonoBehaviour:
   _playbackDurationSeconds: 60
   _enableRecording: 0
   _recordingPrefix: foxglove
-  _recordingDirectory: 
+  _recordingDirectory:
   _recordingChunkSizeKB: 1024
   _recordingCompression: 0
   _enableReplay: 0
-  _replayFilePath: 
+  _replayFilePath:
   _replayAutoPlay: 0
   _disableLivePublishers: 0
   _enableRemoteMcapFileServer: 0
@@ -402,13 +402,13 @@ MonoBehaviour:
   _allowHostedFoxgloveWeb: 1
   _allowedBrowserOrigins:
   - https://app.foxglove.dev
-  _certificatePfxPath: UserSettings/Unity2Foxglove/Certificates/unity2foxglove-local-dev.pfx
-  _certificatePassword: 
-  _rootCaDistributorEnabled: 1
+  _certificatePfxPath:
+  _certificatePassword:
+  _rootCaDistributorEnabled: 0
   _rootCaDistributorHost: 127.0.0.1
   _rootCaDistributorPort: 8766
-  _rootCaFilePath: UserSettings/Unity2Foxglove/Certificates/unity2foxglove-local-dev-root.crt
-  _sharedToken: 
+  _rootCaFilePath:
+  _sharedToken:
 --- !u!4 &346350282
 Transform:
   m_ObjectHideFlags: 0
@@ -594,7 +594,7 @@ GameObject:
   - component: {fileID: 534487834}
   - component: {fileID: 534487833}
   m_Layer: 0
-  m_Name: 'FoxRun_Trigger_Smoke '
+  m_Name: 'FoxRun_Publish_Smoke '
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

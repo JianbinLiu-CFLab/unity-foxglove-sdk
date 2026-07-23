@@ -38,11 +38,11 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 [FoxRun("/robot/pose")]
 private PoseState _pose;
 
-[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, RateHz = 30)]
+[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, Hz = 30)]
 private RobotCommand _command;
 
 [FoxRun("/debug/state", Mode = PublishAndSubscribe,
-    Policy = FixedRate, RateHz = 10,
+    Policy = FixedRate, Hz = 10,
     Encoding = FoxRunWireEncoding.Protobuf)]
 private DebugState _debugState;
 ```
@@ -62,25 +62,26 @@ private DebugState _debugState;
 | 值 | 发布行为 | 订阅行为 |
 |---|---|---|
 | `FixedRate` | 按有效节拍发送当前值。 | 只有存在更新的暂存值时才应用，不会因定时器重复应用旧值。 |
-| `Change` | 首次及语义变化时发送。 | 仅在值与上次应用结果不同时应用。 |
-| `ChangeOrInterval` | 变化时发送，并按间隔发送心跳。 | 应用变化值，或间隔到期后新收到的重复值；不会凭空制造重复值。 |
+| `Change`（无 `Hz`） | 首次及语义变化时发送。 | 在下一次主线程机会应用变化值，并受最大订阅频率保护。 |
+| `Change`（带 `Hz`） | 变化时发送，并按 `Hz` 发送心跳。 | 立即应用变化值；新收到的相同值可按 `Hz` 刷新，但不会用旧暂存值制造刷新。 |
 | `Trigger` | 仅在调用生成的发布触发方法时发送。 | 保留最新暂存值，直到调用生成的应用触发方法。 |
 
-`Trigger` 不能同时设置正数 `RateHz`；生成器会报告 `FOXRUN609`，不会静默忽略其中一个设置。
+`Trigger` 不能同时设置正数 `Hz`；生成器会报告 `FOXRUN609`，不会静默忽略其中一个设置。
 
-`ChangeEpsilon` 控制浮点数、双精度数和向量的变化阈值；`ForceIntervalSeconds`
-控制 `ChangeOrInterval` 的心跳间隔。同一 topic 的成员必须使用一致的 `Policy`、
-`ChangeEpsilon` 和 `ForceIntervalSeconds`，否则生成器报告 `FOXRUN005`。
+`Tolerance` 控制支持的浮点数、双精度数和向量变化阈值；`Change + Hz`
+直接表达心跳，不再需要第二种策略。`OnlyIf` 指向一个 bool 字段、属性或零参数方法，
+只表达正向条件。同一 topic 的成员必须使用一致的 `Policy`、`Hz`、`Tolerance`
+和 `OnlyIf`，否则生成器报告 `FOXRUN005`。
 
 ## 4. 频率与准入
 
-`RateHz` 表示边界更新节拍：
+`Hz` 表示声明级的边界更新节拍：
 
 - `Publish`：生成代码的最大发布频率。
 - `Subscribe`：通过传输准入后，在 Unity 主线程应用值的最大频率。
 - `PublishAndSubscribe`：同一个显式值分别控制两个方向。
 
-省略 `RateHz` 时，发布使用 10 Hz；订阅继承 Manager 会话冻结的 **Default Subscribe Rate Hz**（默认 10 Hz）。
+省略 `Hz` 时，FixedRate 发布使用 10 Hz；FixedRate 订阅继承 Manager 会话冻结的 **Default Subscribe Rate Hz**（默认 10 Hz）。`Change` 不带 `Hz` 时在下一次主线程机会应用变化值；带 `Hz` 时增加心跳或新重复值刷新节拍。
 
 在 **Foxglove Manager > Data Transport > Subscribe Data > Subscription Delivery** 中有两个相邻但职责不同的设置：
 
@@ -102,7 +103,7 @@ using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
-        Policy = Change, RateHz = 30,
+        Policy = Change, Hz = 30,
         Encoding = FoxRunWireEncoding.Json)]
     private float _requestedTargetSpeed;
 
@@ -123,7 +124,7 @@ public partial class SpeedController : MonoBehaviour
 
 ## 7. Trigger 与全双工
 
-发布触发先更新值，再调用生成的 `FoxRun_Trigger_<member>()`。订阅触发只暂存最新输入，直到用户代码在 Unity 主线程调用 `FoxRun_Apply_<member>()`。
+发布触发先更新值，再调用生成的 `FoxRun_Publish_<member>()`。订阅触发只暂存最新输入，直到用户代码在 Unity 主线程调用 `FoxRun_Apply_<member>()`。
 
 `PublishAndSubscribe` 为同一个声明生成独立的发布与应用节拍。应用外部值后，该版本会被标记，避免立即作为本地变化回传；之后真正发生的本地修改仍可正常发布。生产环境权属边界通常应拆成独立的 `Publish` 和 `Subscribe` 声明。
 

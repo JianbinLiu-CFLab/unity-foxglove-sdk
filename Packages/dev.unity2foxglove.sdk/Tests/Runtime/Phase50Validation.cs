@@ -159,7 +159,7 @@ namespace Unity.FoxgloveSDK.Tests
             foreach (var topic in declaredTopics)
                 Check(generated.Contains(topic), $"50C-2: generated file contains declared topic {topic}");
             Check(generated.Contains("IFoxgloveLogPolicySource")
-                  && generated.Contains("FoxRunPolicy.ChangeOrInterval")
+                  && generated.Contains("FoxRunPolicy.Change")
                   && generated.Contains("0.01f")
                   && generated.Contains("1f"),
                 "50C-3: generated file contains policy metadata for /debug/position2");

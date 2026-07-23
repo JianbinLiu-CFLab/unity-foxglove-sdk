@@ -294,7 +294,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "System.Single",
                 true,
                 false);
-            var policy = new FoxRunManifestPolicy("", rateHz, 0f, 0f);
+            var policy = new FoxRunManifestPolicy("", rateHz, 0f);
             var contract = new FoxRunManifestContract(
                 "Validation." + className,
                 topic,
@@ -331,7 +331,6 @@ namespace Unity.FoxgloveSDK.Tests
                     rateHz,
                     "",
                     0,
-                    0f,
                     0f)
             });
         }

@@ -17,9 +17,8 @@ namespace Unity.FoxgloveSDK.Components
                 supportsWebSocket: true,
                 supportsRos2Native: false,
                 policy: FoxRunPolicy.FixedRate,
-                rateHz: -1f,
-                hasExplicitRateHz: false,
-                forceIntervalSeconds: 0f)
+                hz: -1f,
+                hasExplicitHz: false)
         {
         }
 
@@ -32,9 +31,8 @@ namespace Unity.FoxgloveSDK.Components
                 supportsWebSocket: true,
                 supportsRos2Native: false,
                 policy: FoxRunPolicy.FixedRate,
-                rateHz: -1f,
-                hasExplicitRateHz: false,
-                forceIntervalSeconds: 0f)
+                hz: -1f,
+                hasExplicitHz: false)
         {
         }
 
@@ -54,8 +52,7 @@ namespace Unity.FoxgloveSDK.Components
                 supportsRos2Native,
                 FoxRunPolicy.FixedRate,
                 -1f,
-                false,
-                0f)
+                false)
         {
         }
 
@@ -67,9 +64,8 @@ namespace Unity.FoxgloveSDK.Components
             bool supportsWebSocket,
             bool supportsRos2Native,
             FoxRunPolicy policy = FoxRunPolicy.FixedRate,
-            float rateHz = -1f,
-            bool hasExplicitRateHz = false,
-            float forceIntervalSeconds = 0f)
+            float hz = -1f,
+            bool hasExplicitHz = false)
         {
             Topic = topic ?? string.Empty;
             DeclaredWireEncoding = declaredWireEncoding;
@@ -81,9 +77,13 @@ namespace Unity.FoxgloveSDK.Components
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
             Policy = policy;
-            RateHz = rateHz;
-            HasExplicitRateHz = hasExplicitRateHz;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Hz = hz;
+            HasExplicitHz = hasExplicitHz;
+            HeartbeatIntervalSeconds = policy == FoxRunPolicy.Change
+                                       && hasExplicitHz
+                                       && hz > 0f
+                ? 1f / hz
+                : 0f;
         }
 
         public string Topic { get; }
@@ -95,12 +95,12 @@ namespace Unity.FoxgloveSDK.Components
         public bool SupportsRos2Native { get; }
         /// <summary>Per-contract policy applied after transport admission.</summary>
         public FoxRunPolicy Policy { get; }
-        /// <summary>Declared effective output rate; input uses it only when <see cref="HasExplicitRateHz"/> is true.</summary>
-        public float RateHz { get; }
-        /// <summary>True only when the author supplied a positive per-contract rate.</summary>
-        public bool HasExplicitRateHz { get; }
-        /// <summary>Fresh-duplicate interval used only by <see cref="FoxRunPolicy.ChangeOrInterval"/>.</summary>
-        public float ForceIntervalSeconds { get; }
+        /// <summary>Declared cadence; input uses it only when <see cref="HasExplicitHz"/> is true and positive.</summary>
+        public float Hz { get; }
+        /// <summary>True when the author explicitly supplied Hz.</summary>
+        public bool HasExplicitHz { get; }
+        /// <summary>Derived fresh-duplicate heartbeat interval for Change policy.</summary>
+        public float HeartbeatIntervalSeconds { get; }
     }
 
     public interface IFoxgloveInputSource

@@ -594,7 +594,7 @@ GameObject:
   - component: {fileID: 534487834}
   - component: {fileID: 534487833}
   m_Layer: 0
-  m_Name: 'FoxRun_Trigger_Smoke '
+  m_Name: 'FoxRun_Publish_Smoke '
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

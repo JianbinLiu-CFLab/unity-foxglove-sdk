@@ -20,13 +20,13 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             switch (index)
             {
-                case 0: return new FoxgloveLogTopicInfo("/debug/array", 10f, FoxRunPolicy.Change, 0f, 0f);
-                case 1: return new FoxgloveLogTopicInfo("/debug/extra", 10f, FoxRunPolicy.FixedRate, 0f, 0f);
-                case 2: return new FoxgloveLogTopicInfo("/debug/list", 10f, FoxRunPolicy.Change, 0f, 0f);
-                case 3: return new FoxgloveLogTopicInfo("/debug/nullable", 10f, FoxRunPolicy.Change, 0f, 0f);
-                case 4: return new FoxgloveLogTopicInfo("/debug/trigger", 10f, FoxRunPolicy.Trigger, 0f, 0f);
-                case 5: return new FoxgloveLogTopicInfo("/debug/value", 10f, FoxRunPolicy.Change, 0.01f, 0f);
-                case 6: return new FoxgloveLogTopicInfo("/debug/vector", 10f, FoxRunPolicy.Change, 0.001f, 0f);
+                case 0: return new FoxgloveLogTopicInfo("/debug/array", 10f, FoxRunPolicy.Change, 0f);
+                case 1: return new FoxgloveLogTopicInfo("/debug/extra", 10f, FoxRunPolicy.FixedRate, 0f);
+                case 2: return new FoxgloveLogTopicInfo("/debug/list", 10f, FoxRunPolicy.Change, 0f);
+                case 3: return new FoxgloveLogTopicInfo("/debug/nullable", 10f, FoxRunPolicy.Change, 0f);
+                case 4: return new FoxgloveLogTopicInfo("/debug/trigger", 10f, FoxRunPolicy.Trigger, 0f);
+                case 5: return new FoxgloveLogTopicInfo("/debug/value", 10f, FoxRunPolicy.Change, 0.01f);
+                case 6: return new FoxgloveLogTopicInfo("/debug/vector", 10f, FoxRunPolicy.Change, 0.001f);
                 default: return default;
             }
         }
@@ -406,14 +406,14 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             }
         }
 
-        public bool FoxRun_Trigger_trigger()
+        public bool FoxRun_Publish_trigger()
         {
             var published = false;
             published |= FoxgloveLogHub.Trigger(this, 4);
             return published;
         }
 
-        public bool FoxRun_TriggerAll()
+        public bool FoxRun_PublishAll()
         {
             var published = false;
             published |= FoxgloveLogHub.Trigger(this, 4);
@@ -460,7 +460,7 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     changed = !__hasLast_5;
                     if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._value, __last_5_0, 0f);
                     if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._valueMirror, __last_5_1, 0.00999999978f);
-                    return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, nowSec, __hasLast_5, changed, __lastPublishSec_5, 0f);
+                    return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, nowSec, __hasLast_5, changed, __lastPublishSec_5, 0.200000003f);
                 case 6:
                     changed = !__hasLast_6;
                     if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.x, __last_6_0.x, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.y, __last_6_0.y, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.z, __last_6_0.z, 0.00100000005f);

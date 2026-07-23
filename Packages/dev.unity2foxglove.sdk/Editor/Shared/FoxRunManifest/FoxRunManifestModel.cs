@@ -20,15 +20,14 @@ namespace Unity.FoxgloveSDK.Editor
         public bool IsArray { get; }
         public string ElementTypeName { get; }
         public string Topic { get; }
-        public float RateHz { get; }
+        public float Hz { get; }
         public string SchemaName { get; }
         public int Policy { get; }
         public int Flow { get; }
         public int Encoding { get; }
         public int ProtobufFieldNumber { get; }
         public FoxRunProtobufTypeShape ProtobufTypeShape { get; }
-        public float ChangeEpsilon { get; }
-        public float ForceIntervalSeconds { get; }
+        public float Tolerance { get; }
         public bool IsAggregateMember { get; }
         public string JsonFieldName { get; }
         public string SubscriptionProvider { get; }
@@ -49,11 +48,10 @@ namespace Unity.FoxgloveSDK.Editor
             bool isArray,
             string elementTypeName,
             string topic,
-            float rateHz,
+            float hz,
             string schemaName,
             int policy,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float tolerance,
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int flow = 1,
@@ -77,15 +75,14 @@ namespace Unity.FoxgloveSDK.Editor
             IsArray = isArray;
             ElementTypeName = elementTypeName ?? string.Empty;
             Topic = topic ?? string.Empty;
-            RateHz = rateHz;
+            Hz = hz;
             SchemaName = schemaName ?? string.Empty;
             Policy = policy;
             Flow = flow;
             Encoding = encoding;
             ProtobufFieldNumber = protobufFieldNumber;
             ProtobufTypeShape = protobufTypeShape;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Tolerance = tolerance;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
             SubscriptionProvider = subscriptionProvider ?? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
@@ -139,11 +136,10 @@ namespace Unity.FoxgloveSDK.Editor
                 member.IsArray,
                 member.ElementTypeName,
                 member.Topic,
-                member.RateHz,
+                member.Hz,
                 member.SchemaName,
                 member.Policy,
-                member.ChangeEpsilon,
-                member.ForceIntervalSeconds,
+                member.Tolerance,
                 member.IsAggregateMember,
                 member.JsonFieldName,
                 member.Mode,
@@ -466,20 +462,17 @@ namespace Unity.FoxgloveSDK.Editor
     public sealed class FoxRunManifestPolicy
     {
         public string Mode { get; }
-        public float RateHz { get; }
-        public float ChangeEpsilon { get; }
-        public float ForceIntervalSeconds { get; }
+        public float Hz { get; }
+        public float Tolerance { get; }
 
         public FoxRunManifestPolicy(
             string mode,
-            float rateHz,
-            float changeEpsilon,
-            float forceIntervalSeconds)
+            float hz,
+            float tolerance)
         {
             Mode = mode ?? string.Empty;
-            RateHz = rateHz;
-            ChangeEpsilon = changeEpsilon;
-            ForceIntervalSeconds = forceIntervalSeconds;
+            Hz = hz;
+            Tolerance = tolerance;
         }
     }
 }

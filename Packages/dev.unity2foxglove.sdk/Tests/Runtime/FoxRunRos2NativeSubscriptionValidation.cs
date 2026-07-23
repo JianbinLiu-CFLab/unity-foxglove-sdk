@@ -313,7 +313,6 @@ namespace Unity.FoxgloveSDK.Tests
             var infrastructure = new[]
             {
                 new KeyValuePair<string, string>("InvalidFoxRunFlow", "FOXRUN600"),
-                new KeyValuePair<string, string>("UnlessConditionMissing", "FOXRUN601"),
                 new KeyValuePair<string, string>("InvalidWireEncoding", "FOXRUN602"),
                 new KeyValuePair<string, string>("InvalidProtobufFieldNumber", "FOXRUN603"),
                 new KeyValuePair<string, string>("MixedTopicWireEncoding", "FOXRUN604"),

@@ -68,7 +68,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 diagnostics: System.Array.Empty<string>());
             var member = new FoxRunManifestMember(
                 "Demo", "Publisher", "Payload", "field", "Demo.Payload", false, false, string.Empty,
-                "/custom", 10f, "", 0, 0f, 0f,
+                "/custom", 10f, "", 0, 0f,
                 flow: (int)FoxRunFlow.Publish,
                 subscriptionProvider: FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
                 ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,

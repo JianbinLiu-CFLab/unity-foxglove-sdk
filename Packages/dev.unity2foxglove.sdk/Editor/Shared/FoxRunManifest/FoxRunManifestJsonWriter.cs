@@ -516,14 +516,11 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "mode");
             AppendString(sb, policy.Mode);
             sb.Append(',');
-            AppendPropertyName(sb, "rateHz");
-            AppendFloat(sb, policy.RateHz);
+            AppendPropertyName(sb, "hz");
+            AppendFloat(sb, policy.Hz);
             sb.Append(',');
-            AppendPropertyName(sb, "changeEpsilon");
-            AppendFloat(sb, policy.ChangeEpsilon);
-            sb.Append(',');
-            AppendPropertyName(sb, "forceIntervalSeconds");
-            AppendFloat(sb, policy.ForceIntervalSeconds);
+            AppendPropertyName(sb, "tolerance");
+            AppendFloat(sb, policy.Tolerance);
             sb.Append('}');
         }
 

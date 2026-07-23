@@ -60,6 +60,44 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 CountOccurrences(source, "public bool FoxRun_Apply_command_2()"));
         }
 
+        [Fact]
+        public void NativeTriggerSourceExposesDirectionalApplyAndBulkMethods()
+        {
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Phase184",
+                "NativeTriggerSource",
+                new[]
+                {
+                    new FoxgloveSourceEmitter.TopicMember(
+                        "_incoming",
+                        "vendor_msgs.msg.Command",
+                        "/phase184/native-trigger",
+                        0f,
+                        "vendor_msgs/msg/Command",
+                        policy: (int)FoxRunPolicy.Trigger,
+                        tolerance: 0f,
+                        mode: (int)FoxRunFlow.Subscribe,
+                        canonicalType: "vendor_msgs/msg/Command",
+                        encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
+                        subscriptionProvider:
+                            FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                        ros2Qos: FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+                        generatesWebSocketCodec: false,
+                        generatesRos2NativeRegistration: true,
+                        ros2MessageShape: ValidShape(),
+                        hasExplicitHz: false,
+                        onlyIf: "CanApply",
+                        conditionMemberKind: FoxRunConditionMemberKind.Method)
+                });
+
+            Assert.Contains("public bool FoxRun_Apply_incoming()", source, StringComparison.Ordinal);
+            Assert.Contains("public bool FoxRun_ApplyAll()", source, StringComparison.Ordinal);
+            Assert.Contains("() => CanApply()", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("if (!CanApply()) return;", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxRun_Trigger_", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxRun_TriggerAll", source, StringComparison.Ordinal);
+        }
+
         [Theory]
         [InlineData("invalid", "inherit", (int)FoxRunFlow.Subscribe, "FOXRUN204")]
         [InlineData("ros2-native", "inherit", (int)FoxRunFlow.Publish, "FOXRUN214")]
@@ -689,8 +727,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Unity.FoxgloveSDK.Components.FoxRunFlow mode,
             Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
             Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative,
-            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float rateHz,
-            bool hasExplicitRateHz, float forceIntervalSeconds) { }
+            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float hz,
+            bool hasExplicitHz, float heartbeatIntervalSeconds) { }
     }
     public sealed class FoxRunRos2CopyContext { public void RequireBytes(long value) { } }
     public interface IFoxRunRos2SubscriptionSource
@@ -703,7 +741,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         void Register<T>(FoxRunRos2GeneratedContract contract,
             Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
             Action<T> apply, Func<T, bool> clearIfOwned,
-            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger) where T : ROS2.Message, new();
+            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
+            Func<bool> canApply) where T : ROS2.Message, new();
     }
 }");
             var host = CSharpSyntaxTree.ParseText(@"
@@ -763,6 +802,34 @@ namespace Demo { public partial class Receiver { private sensor_msgs.msg.Imu _in
             Assert.Contains("\\\"generatesRos2NativeRegistration\\\":true", descriptor, StringComparison.Ordinal);
             Assert.Contains("\\\"ros2ContractKind\\\":\\\"CustomDto\\\"", descriptor, StringComparison.Ordinal);
             Assert.Contains("\\\"ros2MessageShape\\\":null", descriptor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void CustomNativeOnlyIfUsesRegistrarConditionDelegateInsteadOfApplySideEffect()
+        {
+            var result = RunGenerator(
+                @"namespace vendor_msgs.msg
+{
+    public sealed class Command
+    {
+        public Command() { }
+        public int Value { get; set; }
+    }
+}",
+                "vendor_msgs/msg/Command",
+                nativeDefine: true,
+                nativeReference: true,
+                subscriptionProvider: "Ros2Native",
+                mode: "PublishAndSubscribe",
+                encoding: "Json",
+                onlyIf: "CanApply");
+
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            var generated = string.Join(
+                Environment.NewLine,
+                result.Results.Single().GeneratedSources.Select(source => source.SourceText.ToString()));
+            Assert.Contains("() => CanApply()", generated, StringComparison.Ordinal);
+            Assert.DoesNotContain("if (!CanApply()) return;", generated, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -963,8 +1030,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 "registrar omits scheduling delegates and constructor constraint",
                 CompleteNativeSeamSource.Replace(
-                    "Action<T> apply, Func<T, bool> clearIfOwned,\n            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger) where T : ROS2.Message, new();",
+                    "Action<T> apply, Func<T, bool> clearIfOwned,\n            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,\n            Func<bool> canApply) where T : ROS2.Message, new();",
                     "Action<T> apply) where T : ROS2.Message;")
+            };
+            yield return new object[]
+            {
+                "registrar omits main-thread condition delegate",
+                CompleteNativeSeamSource.Replace(
+                    ", Func<bool> consumeTrigger,\n            Func<bool> canApply) where T : ROS2.Message, new();",
+                    ", Func<bool> consumeTrigger) where T : ROS2.Message, new();")
             };
             yield return new object[]
             {
@@ -1120,7 +1194,7 @@ namespace Demo
                 "Demo", "Receiver", "_incoming", "field",
                 "vendor_msgs.msg.Command", "global::vendor_msgs.msg.Command", "vendor_msgs.msg.Command",
                 false, false, "", "/command", 10f, schemaName,
-                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                (int)FoxRunPolicy.FixedRate, 0f,
                 "Roslyn", 1, "", mode: mode, encoding: encoding,
                 protobufFieldNumber: protobufFieldNumber,
                 protobufTypeShape: protobufTypeShape,
@@ -1178,11 +1252,10 @@ namespace Demo
                 isArray: false,
                 elementTypeName: "",
                 topic: "/phase179/native",
-                rateHz: 10f,
+                hz: 10f,
                 schemaName: shape.CanonicalRosType,
                 policy: (int)FoxRunPolicy.FixedRate,
-                changeEpsilon: 0f,
-                forceIntervalSeconds: 0f,
+                tolerance: 0f,
                 hostKind: "UnitTest",
                 rawMemberOrder: 0,
                 conditionalSymbols: "",
@@ -1276,11 +1349,10 @@ namespace Demo
                 isArray: false,
                 elementTypeName: "",
                 topic: jsonTopic,
-                rateHz: 10f,
+                hz: 10f,
                 schemaName: "",
                 policy: (int)FoxRunPolicy.FixedRate,
-                changeEpsilon: 0f,
-                forceIntervalSeconds: 0f,
+                tolerance: 0f,
                 hostKind: "UnitTest",
                 rawMemberOrder: 0,
                 conditionalSymbols: "",
@@ -1297,11 +1369,10 @@ namespace Demo
                 isArray: false,
                 elementTypeName: "",
                 topic: protobufTopic,
-                rateHz: 10f,
+                hz: 10f,
                 schemaName: "Demo.CountInput",
                 policy: (int)FoxRunPolicy.FixedRate,
-                changeEpsilon: 0f,
-                forceIntervalSeconds: 0f,
+                tolerance: 0f,
                 hostKind: "UnitTest",
                 rawMemberOrder: 1,
                 conditionalSymbols: "",
@@ -1320,11 +1391,10 @@ namespace Demo
                 isArray: false,
                 elementTypeName: "",
                 topic: nativeTopic,
-                rateHz: 10f,
+                hz: 10f,
                 schemaName: "std_msgs/msg/String",
                 policy: (int)FoxRunPolicy.FixedRate,
-                changeEpsilon: 0f,
-                forceIntervalSeconds: 0f,
+                tolerance: 0f,
                 hostKind: "UnitTest",
                 rawMemberOrder: 2,
                 conditionalSymbols: "",
@@ -1456,8 +1526,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Unity.FoxgloveSDK.Components.FoxRunFlow mode,
             Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
             Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative,
-            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float rateHz,
-            bool hasExplicitRateHz, float forceIntervalSeconds) { }
+            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float hz,
+            bool hasExplicitHz, float heartbeatIntervalSeconds) { }
     }
     public sealed class FoxRunRos2CopyContext
     {
@@ -1473,7 +1543,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         void Register<T>(FoxRunRos2GeneratedContract contract,
             Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
             Action<T> apply, Func<T, bool> clearIfOwned,
-            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger) where T : ROS2.Message, new();
+            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
+            Func<bool> canApply) where T : ROS2.Message, new();
     }
 }");
             var sources = new[]
@@ -1538,8 +1609,7 @@ namespace Demo
                 10f,
                 canonical,
                 policy: (int)FoxRunPolicy.FixedRate,
-                changeEpsilon: 0f,
-                forceIntervalSeconds: 0f,
+                tolerance: 0f,
                 mode: (int)FoxRunFlow.Subscribe,
                 canonicalType: canonical,
                 encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
@@ -1572,7 +1642,7 @@ namespace ROS2 { public interface Message { } }
 namespace Unity.FoxgloveSDK.Components
 {
     public enum FoxRunFlow { Publish = 1, Subscribe = 2, PublishAndSubscribe = 3 }
-    public enum FoxRunPolicy { FixedRate = 1, Change = 2, ChangeOrInterval = 3, Trigger = 4 }
+    public enum FoxRunPolicy { FixedRate = 1, Change = 2, Trigger = 4 }
     public enum FoxRunSubscriptionProvider { Inherit, FoxgloveWebSocket, Ros2Native }
     public enum FoxRunRos2QosPreset { Inherit, Default, Reliable, SensorData, TransientLocal }
 }
@@ -1585,8 +1655,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Unity.FoxgloveSDK.Components.FoxRunFlow mode,
             Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
             Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative,
-            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float rateHz,
-            bool hasExplicitRateHz, float forceIntervalSeconds)
+            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float hz,
+            bool hasExplicitHz, float heartbeatIntervalSeconds)
         {
             Id = id; Topic = topic; DeclaringType = declaringType; MemberName = memberName;
             CanonicalRosType = canonicalRosType; Mode = mode; SubscriptionProvider = provider;
@@ -1613,7 +1683,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         void Register<T>(FoxRunRos2GeneratedContract contract,
             Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
             Action<T> apply, Func<T, bool> clearIfOwned,
-            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger) where T : ROS2.Message, new();
+            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
+            Func<bool> canApply) where T : ROS2.Message, new();
     }
 }
 namespace std_msgs.msg
@@ -1633,7 +1704,8 @@ namespace TestSupport
         public void Register<T>(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract contract,
             Func<T, Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext, T> copy,
             Action<T> dispose, Action<T> apply, Func<T, bool> clearIfOwned,
-            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger) where T : ROS2.Message, new()
+            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
+            Func<bool> canApply) where T : ROS2.Message, new()
             => Contract = contract;
     }
 }
@@ -1704,7 +1776,7 @@ namespace UnityEngine.Scripting { public sealed class PreserveAttribute : Attrib
 namespace Unity.FoxgloveSDK.Components
 {
     public enum FoxRunFlow { Publish = 1, Subscribe = 2, PublishAndSubscribe = 3 }
-    public enum FoxRunPolicy { FixedRate = 1, Change = 2, ChangeOrInterval = 3, Trigger = 4 }
+    public enum FoxRunPolicy { FixedRate = 1, Change = 2, Trigger = 4 }
     public enum FoxRunSubscriptionProvider { Inherit, FoxgloveWebSocket, Ros2Native }
     public enum FoxRunRos2QosPreset { Inherit, Default, Reliable, SensorData, TransientLocal }
 }
@@ -1718,8 +1790,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Unity.FoxgloveSDK.Components.FoxRunFlow mode,
             Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
             Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative,
-            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float rateHz,
-            bool hasExplicitRateHz, float forceIntervalSeconds) { }
+            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float hz,
+            bool hasExplicitHz, float heartbeatIntervalSeconds) { }
     }
     public sealed class FoxRunRos2CopyContext
     {
@@ -1741,7 +1813,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         void Register<T>(FoxRunRos2GeneratedContract contract,
             Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
             Action<T> apply, Func<T, bool> clearIfOwned,
-            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger) where T : ROS2.Message, new();
+            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
+            Func<bool> canApply) where T : ROS2.Message, new();
     }
 }
 namespace test_msgs.msg
@@ -2151,7 +2224,7 @@ namespace Demo
                     "Demo", "Receiver", "_incoming", "field",
                     "test_msgs.msg.Complex", "global::test_msgs.msg.Complex",
                     false, false, "", "/phase179/native", "test_msgs/msg/Complex",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 0, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe,
                     encoding: 0,
                     subscriptionProvider: 2,
@@ -2166,7 +2239,7 @@ namespace Demo
                     "Demo", "Receiver", "_incoming", "field",
                     "test_msgs.msg.Complex", "global::test_msgs.msg.Complex",
                     false, false, "", "/phase179/native", "test_msgs/msg/Complex",
-                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0f, 0, "",
+                    10f, (int)FoxRunPolicy.FixedRate, 0f, 0, "",
                     mode: (int)FoxRunFlow.Subscribe,
                     encoding: 0,
                     subscriptionProvider: 2,
@@ -2217,8 +2290,8 @@ namespace Demo
                 typeName, "global::" + typeName,
                 canonicalType: shape.CanonicalRosType,
                 isValueType: false, isArray: false, elementTypeName: "",
-                topic: "/phase179/native", rateHz: 10f, schemaName: shape.CanonicalRosType,
-                policy: (int)FoxRunPolicy.FixedRate, changeEpsilon: 0f, forceIntervalSeconds: 0f,
+                topic: "/phase179/native", hz: 10f, schemaName: shape.CanonicalRosType,
+                policy: (int)FoxRunPolicy.FixedRate, tolerance: 0f,
                 hostKind: "UnitTest", rawMemberOrder: 0, conditionalSymbols: "",
                 mode: (int)FoxRunFlow.Subscribe,
                 encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
@@ -2237,8 +2310,8 @@ namespace Demo
                 "std_msgs.msg.String", "global::std_msgs.msg.String",
                 canonicalType: "std_msgs/msg/String",
                 isValueType: false, isArray: false, elementTypeName: "",
-                topic: topic, rateHz: 0f, schemaName: "std_msgs/msg/String",
-                policy: (int)FoxRunPolicy.Trigger, changeEpsilon: 0f, forceIntervalSeconds: 0f,
+                topic: topic, hz: 0f, schemaName: "std_msgs/msg/String",
+                policy: (int)FoxRunPolicy.Trigger, tolerance: 0f,
                 hostKind: "UnitTest", rawMemberOrder: rawMemberOrder, conditionalSymbols: "",
                 mode: (int)FoxRunFlow.Subscribe,
                 encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
@@ -2506,8 +2579,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Unity.FoxgloveSDK.Components.FoxRunFlow mode,
             Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider provider,
             Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset qos, bool supportsNative,
-            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float rateHz,
-            bool hasExplicitRateHz, float forceIntervalSeconds) { }
+            Unity.FoxgloveSDK.Components.FoxRunPolicy policy, float hz,
+            bool hasExplicitHz, float heartbeatIntervalSeconds) { }
     }
     public sealed class FoxRunRos2CopyContext
     {
@@ -2523,7 +2596,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         void Register<T>(FoxRunRos2GeneratedContract contract,
             Func<T, FoxRunRos2CopyContext, T> copy, Action<T> dispose,
             Action<T> apply, Func<T, bool> clearIfOwned,
-            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger) where T : ROS2.Message, new();
+            Func<T, T, bool> valuesEqual, Func<bool> consumeTrigger,
+            Func<bool> canApply) where T : ROS2.Message, new();
     }
 }";
 
@@ -2586,7 +2660,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string mode = "Subscribe",
             string subscriptionProviderExpression = null,
             string nativeReferenceSource = null,
-            string encoding = null)
+            string encoding = null,
+            string onlyIf = null)
         {
             var parseOptions = new CSharpParseOptions(
                 LanguageVersion.CSharp9,
@@ -2606,8 +2681,14 @@ namespace Demo
             " + (string.IsNullOrEmpty(encoding)
                 ? string.Empty
                 : "Encoding = Unity.FoxgloveSDK.Components.FoxRunWireEncoding." + encoding + ",") + @"
+            " + (string.IsNullOrEmpty(onlyIf)
+                ? string.Empty
+                : "OnlyIf = nameof(" + onlyIf + "),") + @"
             SchemaName = """ + schemaName + @""")]
         private " + messageTypeName + @" _incoming;
+        " + (string.IsNullOrEmpty(onlyIf)
+            ? string.Empty
+            : "private bool " + onlyIf + "() => true;") + @"
     }
 }";
             var references = PlatformReferences()

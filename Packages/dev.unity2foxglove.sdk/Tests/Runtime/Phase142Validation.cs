@@ -105,7 +105,7 @@ namespace Unity.FoxgloveSDK.Tests
         // policy=1 ->Change policy triggers ChangeExpr code path
         private static FoxgloveSourceEmitter.TopicMember Change(string name, string type, string topic)
             => new(name, type, topic, 10f, "", policy: (int)FoxRunPolicy.Change,
-                changeEpsilon: 0.001f, forceIntervalSeconds: 0f);
+                tolerance: 0.001f);
 
         private static void VerifyNoInlineHelpers()
         {
@@ -240,12 +240,11 @@ namespace Unity.FoxgloveSDK.Tests
                 { "FOXRUN010", ("Binary FoxRun values unsupported", "Warning") },
                 { "FOXRUN011", ("FoxRun declaring class name required", "Error") },
                 { "FOXRUN012", ("FoxRun member name required", "Error") },
-                { "FOXRUN013", ("FoxRun publish mode out of range", "Error") },
+                { "FOXRUN013", ("FoxRun policy out of range", "Error") },
                 { "FOXRUN014", ("FoxRun member kind invalid", "Error") },
                 { "FOXRUN015", ("FoxRun condition member missing", "Error") },
                 { "FOXRUN016", ("FoxRun condition member must be bool", "Error") },
                 { "FOXRUN017", ("Mixed same-topic conditional gates", "Error") },
-                { "FOXRUN601", ("FoxRun Unless condition member missing", "Error") },
             };
 
             foreach (var kv in expected)
@@ -295,7 +294,7 @@ namespace Unity.FoxgloveSDK.Tests
                 rawType, rawType, canonicalType,
                 true, isArray, isArray ? "float" : "",
                 "/test/" + memberName, 10f, "",
-                (int)FoxRunPolicy.FixedRate, 0f, 0f, "Reflection", 0, "");
+                (int)FoxRunPolicy.FixedRate, 0f, "Reflection", 0, "");
         }
     }
 }

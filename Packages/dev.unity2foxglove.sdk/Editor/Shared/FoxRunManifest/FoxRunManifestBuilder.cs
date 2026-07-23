@@ -324,9 +324,8 @@ namespace Unity.FoxgloveSDK.Editor
         {
             return new FoxRunManifestPolicy(
                 PolicyName(TopicPolicy(members)),
-                members.Count == 0 ? 0f : members.Max(member => NormalizeRateHz(member.RateHz)),
-                members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ChangeEpsilon)),
-                members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.ForceIntervalSeconds)));
+                members.Count == 0 ? 0f : members.Max(member => NormalizeHz(member.Hz)),
+                members.Count == 0 ? 0f : members.Max(member => NormalizeNonNegative(member.Tolerance)));
         }
 
         private static string BuildFlow(IReadOnlyList<FoxRunManifestMember> members)
@@ -338,10 +337,10 @@ namespace Unity.FoxgloveSDK.Editor
             return FoxRunGenerationMember.FlowToName(modes.Count == 0 ? 1 : modes[0]);
         }
 
-        private static float NormalizeRateHz(float rateHz)
+        private static float NormalizeHz(float hz)
         {
-            return !float.IsNaN(rateHz) && !float.IsInfinity(rateHz) && rateHz > 0f
-                ? rateHz
+            return !float.IsNaN(hz) && !float.IsInfinity(hz) && hz > 0f
+                ? hz
                 : 10f;
         }
 
@@ -354,16 +353,15 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static int TopicPolicy(IReadOnlyList<FoxRunManifestMember> members)
         {
-            var invalid = members.FirstOrDefault(member => member.Policy < 1 || member.Policy > 4);
+            var invalid = members.FirstOrDefault(member =>
+                member.Policy != 1 && member.Policy != 2 && member.Policy != 4);
             if (invalid != null)
                 throw new InvalidOperationException(
-                    "FoxRun manifest Policy is outside the supported range 1..4 for " +
+                    "FoxRun manifest Policy must be FixedRate, Change, or Trigger for " +
                     DeclaringType(invalid) + "." + invalid.MemberName + ".");
 
             if (members.Any(member => member.Policy == 4))
                 return 4;
-            if (members.Any(member => member.Policy == 3))
-                return 3;
             if (members.Any(member => member.Policy == 2))
                 return 2;
             return members.Count == 0 ? 1 : members.Max(member => member.Policy);
@@ -375,7 +373,6 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 case 1: return "FixedRate";
                 case 2: return "Change";
-                case 3: return "ChangeOrInterval";
                 case 4: return "Trigger";
                 default: return "Unknown";
             }

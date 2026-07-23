@@ -78,12 +78,11 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var doc = ReadRepoText("Packages/dev.unity2foxglove.sdk/Documentation~/zh/07_FoxRun自动发布.md");
 
-            Check(!doc.Contains("RateHz = 0"),
-                "56C-1: Chinese FoxRun docs no longer claim RateHz = 0 publishes every frame");
-            Check(doc.Contains("省略 `RateHz`") && doc.Contains("Default Subscribe Rate Hz"),
-                "56C-1a: Chinese FoxRun docs explain omitted RateHz inherits direction-specific defaults");
-            Check(doc.Contains("Policy") && doc.Contains("Trigger") && doc.Contains("ChangeEpsilon")
-                && doc.Contains("ForceIntervalSeconds") && doc.Contains("FOXRUN005"),
+            Check(!doc.Contains("RateHz =") && doc.Contains("省略 `Hz`")
+                && doc.Contains("Default Subscribe Rate Hz"),
+                "56C-1: Chinese FoxRun docs use the short Hz declaration and explain directional defaults");
+            Check(doc.Contains("Policy") && doc.Contains("Trigger") && doc.Contains("Tolerance")
+                && doc.Contains("OnlyIf") && doc.Contains("FOXRUN005"),
                 "56C-2: Chinese FoxRun docs cover current publish policy and FOXRUN005 behavior");
         }
 

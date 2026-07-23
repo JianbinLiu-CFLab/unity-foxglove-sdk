@@ -39,13 +39,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(field.Mode == FoxRunFlow.Publish
                   && field.Policy == FoxRunPolicy.FixedRate
-                  && field.RateHz < 0f
+                  && field.Hz < 0f
                   && aggregate.Policy == FoxRunPolicy.FixedRate
-                  && aggregate.RateHz < 0f,
+                  && aggregate.Hz < 0f,
                 "Behavior 183A-1: field and aggregate declarations use Publish/FixedRate with an explicit unspecified-rate sentinel");
             Check(Enum.GetValues(typeof(FoxRunFlow)).Cast<int>().SequenceEqual(new[] { 1, 2, 3 })
-                  && Enum.GetValues(typeof(FoxRunPolicy)).Cast<int>().SequenceEqual(new[] { 1, 2, 3, 4 }),
-                "Behavior 183A-2: all three flows and four policies use fresh non-zero values");
+                  && Enum.GetValues(typeof(FoxRunPolicy)).Cast<int>().SequenceEqual(new[] { 1, 2, 4 }),
+                "Behavior 183A-2: all three flows and three policies use fresh non-zero values while retired value 3 stays invalid");
         }
 
         private static void VerifyDirectionAwareUpdatePolicies()
@@ -58,9 +58,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, true, 2d, 1d, 0d)
                   && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, false, 2d, 1d, 0d),
                 "Behavior 183A-4: Change accepts first or changed values and suppresses fresh duplicates");
-            Check(FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.ChangeOrInterval, true, true, false, 3d, 1d, 2d)
-                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.ChangeOrInterval, false, true, false, 4d, 1d, 2d),
-                "Behavior 183A-5: ChangeOrInterval requires a newly received duplicate and never invents a stale heartbeat");
+            Check(FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, true, true, false, 3d, 1d, 2d)
+                  && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Change, false, true, false, 4d, 1d, 2d),
+                "Behavior 183A-5: Change with Hz requires a newly received duplicate and never invents a stale heartbeat");
             Check(!FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Trigger, 1d, false, true, 0d, 0d)
                   && !FoxRunUpdatePolicy.ShouldApply(FoxRunPolicy.Trigger, true, false, true, 1d, 0d, 0d),
                 "Behavior 183A-6: Trigger blocks automatic publication and application");
@@ -113,16 +113,17 @@ namespace Unity.FoxgloveSDK.Tests
             var input = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/InputDispatchEmitter.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var native = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/Ros2InputDispatchEmitter.cs");
+            var trigger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/TriggerEmitter.cs");
 
-            Check(input.Contains("member.HasExplicitRateHz", StringComparison.Ordinal)
+            Check(input.Contains("member.HasExplicitHz", StringComparison.Ordinal)
                   && input.Contains("inheritedSubscribeRateHz", StringComparison.Ordinal)
-                  && input.Contains("var baseName = \"FoxRun_Apply_\"", StringComparison.Ordinal)
+                  && trigger.Contains("var baseName = \"FoxRun_Apply_\"", StringComparison.Ordinal)
                   && input.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal),
                 "Structural 183A-9: generated WebSocket input inherits or overrides subscription rate, exposes Trigger apply, and marks remote-echo suppression");
             Check(publish.Contains("fields.Any(field => field.Mode == 3)", StringComparison.Ordinal)
                   && publish.Contains("__foxRunSuppressNextPublish_", StringComparison.Ordinal)
-                  && native.Contains("member.HasExplicitRateHz", StringComparison.Ordinal)
-                  && native.Contains("member.RateHz", StringComparison.Ordinal),
+                  && native.Contains("member.HasExplicitHz", StringComparison.Ordinal)
+                  && native.Contains("member.Hz", StringComparison.Ordinal),
                 "Structural 183A-10: PublishAndSubscribe generates both independently scheduled directions with one-shot echo suppression");
         }
 
@@ -137,19 +138,17 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
             var expectedProperties = new[]
             {
-                "ChangeEpsilon",
                 "Encoding",
-                "ForceIntervalSeconds",
+                "Hz",
                 "Mode",
+                "OnlyIf",
                 "Policy",
                 "ProtobufFieldNumber",
-                "RateHz",
                 "Ros2Qos",
                 "SchemaName",
                 "SubscriptionProvider",
+                "Tolerance",
                 "Topic",
-                "Unless",
-                "When",
             };
             Check(declaredProperties.SequenceEqual(expectedProperties, StringComparer.Ordinal)
                   && typeof(FoxRunAttribute).GetProperty("Mode")?.PropertyType == typeof(FoxRunFlow)

@@ -37,14 +37,13 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                var rate = fields.Max(m => m.RateHz);
+                var hz = fields.Max(m => m.Hz);
                 var mode = topicModes[topics[i]];
-                var eps = fields.Max(m => m.ChangeEpsilon);
-                var forceInt = fields.Max(m => m.ForceIntervalSeconds);
+                var tolerance = fields.Max(m => m.Tolerance);
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, {6}f);",
-                    pad, i, topic, rate, PolicyLiteral(mode), eps, forceInt));
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f);",
+                    pad, i, topic, hz, PolicyLiteral(mode), tolerance));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
@@ -85,8 +84,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         /// <summary>
         /// Returns the <c>FoxRunPolicy</c> enum literal for the given
-        /// numeric policy value (1=FixedRate, 2=Change, 3=ChangeOrInterval,
-        /// 4=Trigger).
+        /// numeric policy value (1=FixedRate, 2=Change, 4=Trigger).
         /// </summary>
         internal static string PolicyLiteral(int policy)
         {
@@ -94,7 +92,6 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 case 1: return "FoxRunPolicy.FixedRate";
                 case 2: return "FoxRunPolicy.Change";
-                case 3: return "FoxRunPolicy.ChangeOrInterval";
                 case 4: return "FoxRunPolicy.Trigger";
                 default: return FormattableString.Invariant($"(FoxRunPolicy){policy}");
             }

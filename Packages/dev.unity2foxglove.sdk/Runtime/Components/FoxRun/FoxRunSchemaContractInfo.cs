@@ -22,9 +22,8 @@ namespace Unity.FoxgloveSDK.Components
         public string Mode { get; }
         public string Flow { get; }
         public byte[] ProtobufDescriptorSet { get; }
-        public float RateHz { get; }
-        public float ChangeEpsilon { get; }
-        public float ForceIntervalSeconds { get; }
+        public float Hz { get; }
+        public float Tolerance { get; }
         public IReadOnlyList<FoxRunSchemaFieldInfo> Fields { get; }
 
         public FoxRunSchemaContractInfo(
@@ -36,9 +35,8 @@ namespace Unity.FoxgloveSDK.Components
             string bindingHash,
             string policyHash,
             string mode,
-            float rateHz,
-            float changeEpsilon,
-            float forceIntervalSeconds,
+            float hz,
+            float tolerance,
             IReadOnlyList<FoxRunSchemaFieldInfo> fields,
             string flow = "Publish",
             byte[] protobufDescriptorSet = null)
@@ -52,14 +50,13 @@ namespace Unity.FoxgloveSDK.Components
             PolicyHash = policyHash ?? string.Empty;
             Mode = mode ?? string.Empty;
             Flow = string.IsNullOrWhiteSpace(flow) ? "Publish" : flow;
-            RateHz = NormalizeRateHz(rateHz);
-            ChangeEpsilon = NormalizeNonNegative(changeEpsilon);
-            ForceIntervalSeconds = NormalizeNonNegative(forceIntervalSeconds);
+            Hz = NormalizeHz(hz);
+            Tolerance = NormalizeNonNegative(tolerance);
             Fields = new List<FoxRunSchemaFieldInfo>(fields ?? Array.Empty<FoxRunSchemaFieldInfo>()).AsReadOnly();
             ProtobufDescriptorSet = protobufDescriptorSet == null ? Array.Empty<byte>() : (byte[])protobufDescriptorSet.Clone();
         }
 
-        private static float NormalizeRateHz(float value)
+        private static float NormalizeHz(float value)
             => float.IsNaN(value) || float.IsInfinity(value) || value < 0f ? 0f : value;
 
         private static float NormalizeNonNegative(float value)

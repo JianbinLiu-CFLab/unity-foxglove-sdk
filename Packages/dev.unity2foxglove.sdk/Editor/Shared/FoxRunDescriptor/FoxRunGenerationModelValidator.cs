@@ -15,7 +15,6 @@ namespace Unity.FoxgloveSDK.Editor
         private const string ConditionMissingDiagnosticId = "FOXRUN015";
         private const string ConditionNotBoolDiagnosticId = "FOXRUN016";
         private const string MixedConditionDiagnosticId = "FOXRUN017";
-        private const string UnlessConditionMissingDiagnosticId = "FOXRUN601";
         private const string InvalidWireEncodingDiagnosticId = "FOXRUN602";
         private const string InvalidProtobufFieldNumberDiagnosticId = "FOXRUN603";
         private const string MixedWireEncodingDiagnosticId = "FOXRUN604";
@@ -29,7 +28,6 @@ namespace Unity.FoxgloveSDK.Editor
         private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN210";
         private const string IgnoredRos2QosDiagnosticId = "FOXRUN213";
         private const string TriggerRateConflictDiagnosticId = "FOXRUN609";
-        private const float DefaultRateHz = 10f;
 
         private static readonly string[] UnityNativeContainerPrefixes =
         {
@@ -107,19 +105,19 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrWhiteSpace(member.MemberName))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN012", target, member.MemberName, "FoxRun member name is required."));
 
-            if (member.Policy < 1 || member.Policy > 4)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun Policy must be FixedRate, Change, ChangeOrInterval, or Trigger."));
+            if (member.Policy != 1 && member.Policy != 2 && member.Policy != 4)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN013", target, member.MemberName, "FoxRun Policy must be FixedRate, Change, or Trigger."));
 
             if (member.Mode < 1 || member.Mode > 3)
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN600", target, member.MemberName, "FoxRun Mode must be Publish, Subscribe, or PublishAndSubscribe."));
 
-            if (member.Policy == 4 && member.HasExplicitRateHz)
+            if (member.Policy == 4 && member.HasExplicitHz)
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
                     TriggerRateConflictDiagnosticId,
                     target,
                     member.MemberName,
-                    "FoxRun Trigger cannot be combined with an explicit positive RateHz."));
+                    "FoxRun Trigger cannot be combined with an explicit Hz."));
             }
 
             if (!IsKnownDeclaredEncoding(member.Encoding))
@@ -246,11 +244,26 @@ namespace Unity.FoxgloveSDK.Editor
             if (!IsKnownMemberKind(member.MemberKind))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN014", target, member.MemberName, "FoxRun member kind must be 'field' or 'property'."));
 
-            if (IsInvalidConditionName(member.When))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(ConditionMissingDiagnosticId, target, member.MemberName, "FoxRun When condition member name is invalid or missing."));
-
-            if (IsInvalidConditionName(member.Unless))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(UnlessConditionMissingDiagnosticId, target, member.MemberName, "FoxRun Unless condition member name is invalid or missing."));
+            if (member.HasExplicitOnlyIf
+                && (string.IsNullOrWhiteSpace(member.OnlyIf)
+                    || IsInvalidConditionName(member.OnlyIf)
+                    || member.ConditionMemberKind == FoxRunConditionMemberKind.Missing))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    ConditionMissingDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun OnlyIf condition member name is invalid or missing."));
+            }
+            else if (member.HasExplicitOnlyIf
+                     && member.ConditionMemberKind == FoxRunConditionMemberKind.Invalid)
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    ConditionNotBoolDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun OnlyIf must name a bool field, bool property, or zero-argument bool method."));
+            }
 
             if (requiresWebSocketShapeValidation
                 && !IsNativeCustomBidirectionalOutputContract(member)
@@ -281,13 +294,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.IsNullOrEmpty(member.Topic) || !member.Topic.StartsWith("/", StringComparison.Ordinal))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error("FOXRUN008", target, member.MemberName, "FoxRun topic must be absolute and start with '/'."));
 
-            if (member.HasNonFiniteRateHz)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "RateHz must be finite; use Trigger or a positive finite rate for periodic output."));
-            if (member.HasNonFiniteChangeEpsilon)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "ChangeEpsilon must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
-
-            if (member.HasNonFiniteForceIntervalSeconds)
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "ForceIntervalSeconds must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
+            if (member.HasNonFiniteHz)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "Hz must be finite; use Trigger or a positive finite cadence."));
+            if (member.HasNonFiniteTolerance)
+                diagnostics.Add(FoxRunGenerationDiagnostic.Warning("FOXRUN009", target, member.MemberName, "Tolerance must be finite; non-finite policy values are not emitted into FoxRun descriptor evidence."));
 
             if (requiresWebSocketShapeValidation
                 && (IsBinaryLike(member.RawObservedTypeName) || IsBinaryLike(member.EmissionTypeName) || IsBinaryLike(member.CanonicalType)
@@ -574,8 +584,8 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 var mixedPolicy = members.Select(member => member.Policy).Distinct().Count() > 1
-                    || members.Select(member => member.ChangeEpsilon).Distinct().Count() > 1
-                    || members.Select(member => member.ForceIntervalSeconds).Distinct().Count() > 1;
+                    || members.Select(member => member.Hz).Distinct().Count() > 1
+                    || members.Select(member => member.Tolerance).Distinct().Count() > 1;
                 if (mixedPolicy)
                 {
                     var first = members[0];
@@ -583,11 +593,10 @@ namespace Unity.FoxgloveSDK.Editor
                         "FOXRUN005",
                         first.DeclaringType + "." + first.MemberName,
                         first.MemberName,
-                        "Topic '" + group.Key + "' has mixed Policy, ChangeEpsilon, or ForceIntervalSeconds values."));
+                        "Topic '" + group.Key + "' has mixed Policy, Hz, or Tolerance values."));
                 }
 
-                var mixedConditions = members.Select(member => member.When).Distinct(StringComparer.Ordinal).Count() > 1
-                    || members.Select(member => member.Unless).Distinct(StringComparer.Ordinal).Count() > 1;
+                var mixedConditions = members.Select(member => member.OnlyIf).Distinct(StringComparer.Ordinal).Count() > 1;
                 if (mixedConditions)
                 {
                     var first = members[0];
@@ -595,7 +604,7 @@ namespace Unity.FoxgloveSDK.Editor
                         MixedConditionDiagnosticId,
                         first.DeclaringType + "." + first.MemberName,
                         first.MemberName,
-                        "Topic '" + group.Key + "' has mixed When or Unless values."));
+                        "Topic '" + group.Key + "' has mixed OnlyIf values."));
                 }
             }
         }
@@ -606,8 +615,6 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
 
             var value = name.Trim();
-            if (value.EndsWith("()", StringComparison.Ordinal))
-                value = value.Substring(0, value.Length - 2);
             if (value.Length == 0)
                 return true;
 
