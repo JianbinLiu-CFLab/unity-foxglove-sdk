@@ -13,8 +13,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
         [FoxRun(
             "/phase181/custom_state",
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Encoding = FoxRunWireEncoding.Json,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+            Encoding = FoxRunEncoding.JSON,
+            Source = FoxRunEndpoint.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         public Phase181State State { get; set; }
     }

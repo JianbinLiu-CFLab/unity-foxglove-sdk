@@ -40,7 +40,7 @@ namespace Unity.FoxgloveSDK.Editor
                     encoding: FoxRunGenerationMember.DeclaredEncodingToText(member.Encoding),
                     protobufFieldNumber: member.ProtobufFieldNumber,
                     protobufTypeShape: member.ProtobufTypeShape,
-                    subscriptionProvider: FoxRunGenerationMember.DeclaredSubscriptionProviderToText(member.SubscriptionProvider),
+                    source: FoxRunGenerationMember.DeclaredSourceToText(member.Source),
                     ros2Qos: FoxRunGenerationMember.DeclaredRos2QosToText(member.Ros2Qos),
                     generatesWebSocketCodec: member.GeneratesWebSocketCodec,
                     generatesRos2NativeRegistration: member.GeneratesRos2NativeRegistration,
@@ -48,7 +48,8 @@ namespace Unity.FoxgloveSDK.Editor
                     ros2CustomDtoShape: member.Ros2CustomDtoShape,
                     ros2ContractKind: member.Ros2ContractKind,
                     namedArgumentPresence: member.NamedArgumentPresence,
-                    conditionMemberKind: member.ConditionMemberKind))
+                    conditionMemberKind: member.ConditionMemberKind,
+                    targets: FoxRunGenerationMember.DeclaredTargetsToText(member.Targets)))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -71,7 +72,8 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly int Policy;
         public readonly int Mode;
         public readonly int Encoding;
-        public readonly int SubscriptionProvider;
+        public readonly int Source;
+        public readonly int Targets;
         public readonly int Ros2Qos;
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
@@ -113,7 +115,7 @@ namespace Unity.FoxgloveSDK.Editor
             int encoding = 0,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            int subscriptionProvider = 0,
+            int source = 0,
             int ros2Qos = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
@@ -121,7 +123,8 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
-            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            int targets = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -140,7 +143,8 @@ namespace Unity.FoxgloveSDK.Editor
             Policy = policy;
             Mode = mode;
             Encoding = encoding;
-            SubscriptionProvider = subscriptionProvider;
+            Source = source;
+            Targets = targets;
             Ros2Qos = ros2Qos;
             GeneratesWebSocketCodec = generatesWebSocketCodec
                 ?? (protobufTypeShape != null
@@ -191,7 +195,7 @@ namespace Unity.FoxgloveSDK.Editor
             int encoding = 0,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            int subscriptionProvider = 0,
+            int source = 0,
             int ros2Qos = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
@@ -199,7 +203,8 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
-            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            int targets = 0)
             : this(
                 ns,
                 className,
@@ -224,7 +229,7 @@ namespace Unity.FoxgloveSDK.Editor
                 encoding,
                 protobufFieldNumber,
                 protobufTypeShape,
-                subscriptionProvider,
+                source,
                 ros2Qos,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
@@ -232,7 +237,8 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2CustomDtoShape,
                 ros2ContractKind,
                 namedArgumentPresence,
-                conditionMemberKind)
+                conditionMemberKind,
+                targets)
         {
         }
     }

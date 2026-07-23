@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
             var model = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModel.cs");
             var builder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunProtobufContractBuilder.cs");
 
-            Check(attributes.Contains("FoxRunWireEncoding Encoding", StringComparison.Ordinal)
+            Check(attributes.Contains("FoxRunEncoding Encoding", StringComparison.Ordinal)
                   && attributes.Contains("ProtobufFieldNumber", StringComparison.Ordinal)
                   && model.Contains("DeclaredEncodingToText", StringComparison.Ordinal),
                 "175A-1: FoxRun source policy and field-number overrides flow into the shared model");

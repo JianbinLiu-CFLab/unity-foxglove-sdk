@@ -19,7 +19,7 @@ namespace Unity.FoxgloveSDK.Editor
         private void DrawSubscribeDataSection()
         {
             var manager = target as FoxgloveManager;
-            var providerProperty = FindCachedProperty("_defaultFoxRunSubscriptionProvider");
+            var sourceProperty = FindCachedProperty("_defaultFoxRunSubscriptionSource");
             var encodingProperty = FindCachedProperty("_defaultFoxRunSubscriptionEncoding");
 
             FoxgloveManagerInspectorLayout.Subheader("FoxRun Subscription Control");
@@ -28,42 +28,49 @@ namespace Unity.FoxgloveSDK.Editor
                 "Unity subscribes to data published by a ROS2 or Foxglove client. This is independent from Unity publish output.",
                 MessageType.Info);
 
-            FoxRunSubscriptionProvider selectedProvider;
-            bool showWebSocket;
+            FoxRunEndpoint selectedSource;
+            bool showFoxglove;
             bool showRos2Native;
             using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
             {
-                FoxgloveManagerInspectorLayout.Subheader("Input Transport");
-                FoxRunSubscriptionProtocolEditorLabels.Draw(
-                    providerProperty,
-                    encodingProperty,
-                    "Default Input Transport");
-                selectedProvider = providerProperty != null
-                    && providerProperty.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
-                    ? FoxRunSubscriptionProvider.Ros2Native
-                    : FoxRunSubscriptionProvider.FoxgloveWebSocket;
-                showWebSocket = selectedProvider == FoxRunSubscriptionProvider.FoxgloveWebSocket
-                                || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.FoxgloveWebSocket);
-                showRos2Native = selectedProvider == FoxRunSubscriptionProvider.Ros2Native
-                                 || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.Ros2Native);
+                FoxgloveManagerInspectorLayout.Subheader("FoxRun Subscribe Profile");
+                selectedSource = FoxRunEndpointEditorLabels.DrawSource(
+                    sourceProperty,
+                    "Source");
+                showFoxglove = selectedSource == FoxRunEndpoint.Foxglove
+                               || HasExplicitSource(FoxRunEndpoint.Foxglove);
+                showRos2Native = selectedSource == FoxRunEndpoint.Ros2Native
+                                 || HasExplicitSource(FoxRunEndpoint.Ros2Native);
                 if (manager != null && manager.ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled)
                 {
                     EditorGUILayout.HelpBox(
-                        "Subscription-policy changes apply after subscriptions are re-enabled. The active FoxRun session keeps its captured provider, WebSocket encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate.",
+                        "FoxRun Subscribe Profile changes apply after subscriptions are disabled and re-enabled. The active session keeps its captured source, Foxglove encoding, QoS, copy budget, default subscribe rate, and maximum subscribe rate.",
                         MessageType.Info);
                 }
 
-                FoxgloveManagerInspectorLayout.Subheader("Subscription Delivery");
-                DrawProperty("_foxRunDefaultSubscribeRateHz", "Default Subscribe Rate Hz");
-                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Maximum Subscribe Rate Hz (per Topic)");
-
-                if (showWebSocket)
+                if (showFoxglove)
                 {
-                    FoxgloveManagerInspectorLayout.Subheader("Foxglove WebSocket Input");
-                    DrawProperty("_allowRemoteFoxRunInboundWithSharedToken", "Allow Remote FoxRun Subscriptions With Shared Token");
-                    DrawProperty("_foxRunInboundMaxPayloadBytes", "Subscription Max Payload Bytes");
+                    FoxgloveManagerInspectorLayout.Subheader("Foxglove");
+                    FoxRunEncodingEditorLabels.DrawFoxRunEncoding(
+                        encodingProperty,
+                        "Foxglove Encoding");
+                    DrawProperty(
+                        "_allowRemoteFoxRunInboundWithSharedToken",
+                        "Allow Remote FoxRun Subscriptions With Shared Token");
+                    DrawProperty(
+                        "_foxRunInboundMaxPayloadBytes",
+                        "Subscription Max Payload Bytes");
                 }
 
+                if (showRos2Native)
+                {
+                    FoxgloveManagerInspectorLayout.Subheader("ROS 2 Native");
+                    DrawRos2NativeSubscriptionQos();
+                    DrawRos2NativeCopyBudget();
+                }
+
+                DrawProperty("_foxRunDefaultSubscribeRateHz", "Default Subscribe Rate Hz");
+                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Maximum Subscribe Rate Hz (per Topic)");
             }
 
             FoxgloveManagerInspectorLayout.Subheader("Coordinate System");
@@ -74,13 +81,6 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (showRos2Native)
             {
-                using (new EditorGUI.DisabledScope(!GetBool("_enableFoxRunInbound")))
-                {
-                    FoxgloveManagerInspectorLayout.Subheader("ROS 2 Native Input");
-                    DrawRos2NativeSubscriptionQos();
-                    DrawRos2NativeCopyBudget();
-                }
-
                 DrawOptionalR2fuNativeSubscriptionDiagnostics();
             }
             if (HasR2fuNativeSubscriptionDemand())
@@ -90,9 +90,9 @@ namespace Unity.FoxgloveSDK.Editor
                     MessageType.Info);
             }
             if (GetBool("_enableFoxRunInbound")
-                && (providerProperty == null
-                    || providerProperty.enumValueIndex != (int)FoxRunSubscriptionProvider.Ros2Native
-                    || HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider.FoxgloveWebSocket))
+                && (sourceProperty == null
+                    || selectedSource != FoxRunEndpoint.Ros2Native
+                    || HasExplicitSource(FoxRunEndpoint.Foxglove))
                 && !FoxgloveManager.IsLoopbackHost(GetString("_host", "127.0.0.1"))
                 && (!GetBool("_allowRemoteFoxRunInboundWithSharedToken")
                     || string.IsNullOrWhiteSpace(GetString("_sharedToken", ""))))
@@ -113,6 +113,16 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
+            DrawFoxRunRos2Qos(qosProperty, "ROS 2 Native QoS Profile");
+        }
+
+        private static void DrawFoxRunRos2Qos(
+            SerializedProperty qosProperty,
+            string label)
+        {
+            if (qosProperty == null)
+                return;
+
             var normalizedPreset = FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(
                 (FoxRunRos2QosPreset)qosProperty.enumValueIndex);
             if (qosProperty.enumValueIndex != (int)normalizedPreset)
@@ -127,7 +137,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var changedIndex = EditorGUILayout.Popup(
-                "ROS 2 Native Subscription QoS",
+                label,
                 selectedIndex,
                 FoxRunRos2SubscriptionInspectorPresentation.ManagerQosLabels);
             var selectedChoice = choices[changedIndex];
@@ -201,7 +211,7 @@ namespace Unity.FoxgloveSDK.Editor
                 : FoxRunRos2NativeCopyBudgetUnit.MB;
         }
 
-        private static bool HasExplicitSubscriptionProvider(FoxRunSubscriptionProvider provider)
-            => HasGeneratedExplicitSubscriptionProvider(provider);
+        private static bool HasExplicitSource(FoxRunEndpoint provider)
+            => HasGeneratedExplicitSource(provider);
     }
 }

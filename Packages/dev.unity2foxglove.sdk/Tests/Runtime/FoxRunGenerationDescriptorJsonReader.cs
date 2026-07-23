@@ -18,7 +18,12 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var root = JObject.Parse(json ?? throw new ArgumentNullException(nameof(json)));
             var descriptorVersion = IntValue(root, "descriptorVersion");
-            var isLegacyV1 = descriptorVersion <= 1;
+            if (descriptorVersion != FoxRunGenerationDescriptorConstants.DescriptorVersion)
+            {
+                throw new InvalidOperationException(
+                    "Unsupported FoxRun generation descriptor version: "
+                    + descriptorVersion);
+            }
             var types = new List<FoxRunGenerationType>();
             foreach (var typeToken in root["types"] as JArray ?? new JArray())
             {
@@ -56,18 +61,10 @@ namespace Unity.FoxgloveSDK.Tests
                         mode: ModeValue(member),
                         encoding: StringValue(member, "encoding"),
                         protobufFieldNumber: IntValue(member, "protobufFieldNumber"),
-                        subscriptionProvider: StringValueOrDefault(
-                            member,
-                            "subscriptionProvider",
-                            isLegacyV1 ? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider : string.Empty),
-                        ros2Qos: StringValueOrDefault(
-                            member,
-                            "ros2Qos",
-                            isLegacyV1 ? FoxRunGenerationDescriptorConstants.InheritRos2Qos : string.Empty),
-                        generatesWebSocketCodec: BoolValueOrDefault(
-                            member,
-                            "generatesWebSocketCodec",
-                            isLegacyV1),
+                        source: StringValue(member, "source"),
+                        ros2Qos: StringValue(member, "ros2Qos"),
+                        targets: StringValue(member, "targets"),
+                        generatesWebSocketCodec: BoolValue(member, "generatesWebSocketCodec"),
                         generatesRos2NativeRegistration: BoolValue(member, "generatesRos2NativeRegistration"),
                         ros2MessageShape: Ros2MessageShapeValue(member),
                         namedArgumentPresence: ExplicitArgumentsValue(member),
@@ -85,17 +82,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static string StringValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) ? token.Value<string>() ?? string.Empty : string.Empty;
 
-        private static string StringValueOrDefault(JObject obj, string name, string defaultValue)
-            => obj.TryGetValue(name, out var token) ? token.Value<string>() ?? string.Empty : defaultValue ?? string.Empty;
-
         private static int IntValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) ? token.Value<int>() : 0;
 
         private static bool BoolValue(JObject obj, string name)
             => obj.TryGetValue(name, out var token) && token.Value<bool>();
-
-        private static bool BoolValueOrDefault(JObject obj, string name, bool defaultValue)
-            => obj.TryGetValue(name, out var token) ? token.Value<bool>() : defaultValue;
 
         private static float FloatValue(JObject obj, string name)
         {

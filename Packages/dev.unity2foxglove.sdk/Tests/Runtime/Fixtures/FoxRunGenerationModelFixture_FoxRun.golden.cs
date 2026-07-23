@@ -54,43 +54,43 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             switch (topicIndex)
             {
                 case 0:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/array", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_ec5506f3", __BuildFoxRunProtobuf_0(), nowNs);
                     else
                         mgr.PublishJson("/debug/array", "", new Dictionary<string, object> { ["samples"] = this._samples }, nowNs);
                     break;
                 case 1:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/extra", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_24e6e6b0", __BuildFoxRunProtobuf_1(), nowNs);
                     else
                         mgr.PublishJson("/debug/extra", "", new Dictionary<string, object> { ["extra"] = this._extra }, nowNs);
                     break;
                 case 2:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/list", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_38cbea4e", __BuildFoxRunProtobuf_2(), nowNs);
                     else
                         mgr.PublishJson("/debug/list", "", new Dictionary<string, object> { ["sampleList"] = this._sampleList }, nowNs);
                     break;
                 case 3:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/nullable", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_432b270f", __BuildFoxRunProtobuf_3(), nowNs);
                     else
                         mgr.PublishJson("/debug/nullable", "", new Dictionary<string, object> { ["optionalCount"] = this._optionalCount }, nowNs);
                     break;
                 case 4:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/trigger", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_307d8952", __BuildFoxRunProtobuf_4(), nowNs);
                     else
                         mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = this._trigger }, nowNs);
                     break;
                 case 5:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/value", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_7d41f57b", __BuildFoxRunProtobuf_5(), nowNs);
                     else
                         mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, nowNs);
                     break;
                 case 6:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunEncoding((FoxRunEncoding)0, FoxRunFlow.Publish) == FoxRunEncoding.Protobuf)
                         mgr.PublishProto("/debug/vector", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_efb474f9", __BuildFoxRunProtobuf_6(), nowNs);
                     else
                         mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, nowNs);

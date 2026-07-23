@@ -272,8 +272,11 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPropertyName(sb, "flow");
             AppendString(sb, binding.Flow);
             sb.Append(',');
-            AppendPropertyName(sb, "declaredProvider");
-            AppendString(sb, binding.DeclaredProvider);
+            AppendPropertyName(sb, "declaredSource");
+            AppendString(sb, binding.DeclaredSource);
+            sb.Append(',');
+            AppendPropertyName(sb, "declaredTargets");
+            AppendString(sb, binding.DeclaredTargets);
             sb.Append(',');
             AppendPropertyName(sb, "ros2Qos");
             AppendString(sb, binding.Ros2Qos);

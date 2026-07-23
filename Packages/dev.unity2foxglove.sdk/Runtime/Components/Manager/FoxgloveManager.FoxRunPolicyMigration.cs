@@ -26,12 +26,12 @@ namespace Unity.FoxgloveSDK.Components
                 ref _inputCoordinateMode);
 
 #pragma warning disable CS0618
-            FoxRunWireEncodingPolicyMigration.Migrate(
+            FoxRunEncodingPolicyMigration.Migrate(
                 ref _foxRunPolicySerializationVersion,
-                _defaultFoxRunWireEncoding,
+                _defaultFoxRunEncoding,
                 ref _defaultFoxRunPublishEncoding,
                 ref _defaultFoxRunSubscriptionEncoding,
-                ref _defaultFoxRunSubscriptionProvider,
+                ref _defaultFoxRunSubscriptionSource,
                 ref _defaultFoxRunRos2Qos,
                 ref _foxRunRos2NativeCopyBudgetBytes);
 #pragma warning restore CS0618

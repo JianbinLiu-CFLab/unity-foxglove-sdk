@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifyTypeIdentityContract();
             VerifyReaderAndRoundTripCoverage();
             VerifyDescriptorReaderRoundTripBehavior();
-            VerifyLegacyV1ReaderMigration();
+            VerifyLegacyV1ReaderRejection();
             VerifySupportedListDiagnostics();
             VerifyFixtureCoversHardEmissionTypes();
             VerifyReaderMediatedCrossHostEquivalence();
@@ -121,19 +121,22 @@ namespace Unity.FoxgloveSDK.Tests
                 "115F-B5: descriptor reader round-trip preserves deterministic JSON bytes");
         }
 
-        private static void VerifyLegacyV1ReaderMigration()
+        private static void VerifyLegacyV1ReaderRejection()
         {
             const string json = "{\"descriptorVersion\":1,\"generatorVersion\":\"1.0.0\",\"types\":[{\"namespace\":\"Demo\",\"className\":\"Legacy\",\"members\":[{\"memberName\":\"_value\",\"memberKind\":\"field\",\"rawTypeName\":\"System.Single\",\"emissionTypeName\":\"float\",\"canonicalType\":\"float32\",\"topic\":\"/legacy\",\"encoding\":\"json\"}]}]}";
-            var parsed = FoxRunGenerationDescriptorJsonReader.Read(json);
-            var member = parsed.Types.Single().Members.Single();
-
-            Check(
-                member.SubscriptionProvider == FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider
-                && member.Ros2Qos == FoxRunGenerationDescriptorConstants.InheritRos2Qos
-                && member.GeneratesWebSocketCodec
-                && !member.GeneratesRos2NativeRegistration
-                && member.Ros2MessageShape == null,
-                "115F-B6: legacy v1 descriptors migrate missing subscription metadata to inherited WebSocket-only capability");
+            try
+            {
+                FoxRunGenerationDescriptorJsonReader.Read(json);
+                Check(false, "115F-B6: incompatible legacy descriptors fail closed instead of inventing current directional defaults");
+            }
+            catch (InvalidOperationException exception)
+            {
+                Check(
+                    exception.Message.Contains(
+                        "Unsupported FoxRun generation descriptor version: 1",
+                        StringComparison.Ordinal),
+                    "115F-B6: incompatible legacy descriptors fail closed instead of inventing current directional defaults");
+            }
         }
 
         private static void VerifySupportedListDiagnostics()

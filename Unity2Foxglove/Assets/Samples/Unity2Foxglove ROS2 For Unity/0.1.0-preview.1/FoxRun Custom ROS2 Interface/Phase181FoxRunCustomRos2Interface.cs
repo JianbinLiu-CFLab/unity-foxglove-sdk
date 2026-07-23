@@ -72,7 +72,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         [FoxRun(
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+            Source = FoxRunEndpoint.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         [SerializeField] private Phase181State _inputPort;
 
@@ -87,8 +87,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         [FoxRun(
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Encoding = FoxRunWireEncoding.Json,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+            Encoding = FoxRunEncoding.JSON,
+            Source = FoxRunEndpoint.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
 #pragma warning restore FOXRUN400

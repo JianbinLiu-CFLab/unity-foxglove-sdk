@@ -22,7 +22,7 @@ public sealed partial class Phase175JsonManualAcceptance : MonoBehaviour
     private const string LegacyJsonTopic = "/phase175/json/legacy-state";
 
     [Header("Explicit JSON Legacy")]
-    [FoxRun(LegacyJsonTopic, Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Json)]
+    [FoxRun(LegacyJsonTopic, Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON)]
     [SerializeField] private float requestedLegacyJsonState;
 
     [Header("Observed State")]

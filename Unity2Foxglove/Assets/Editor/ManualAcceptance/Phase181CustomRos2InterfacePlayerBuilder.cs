@@ -363,12 +363,12 @@ public static class Phase181CustomRos2InterfacePlayerBuilder
         SetBoolean(serialized, "_enableFoxRunInbound", true);
         SetEnumByName(
             serialized,
-            "_defaultFoxRunSubscriptionProvider",
-            nameof(FoxRunSubscriptionProvider.Ros2Native));
+            "_defaultFoxRunSubscriptionSource",
+            nameof(FoxRunEndpoint.Ros2Native));
         serialized.ApplyModifiedPropertiesWithoutUndo();
         // Use the public setter too, so a later migration cannot restore the
         // legacy WebSocket provider over this serialized value.
-        manager.DefaultFoxRunSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native;
+        manager.DefaultFoxRunSubscriptionSource = FoxRunEndpoint.Ros2Native;
         EditorUtility.SetDirty(manager);
     }
 
@@ -422,8 +422,8 @@ public static class Phase181CustomRos2InterfacePlayerBuilder
             if (!GetBoolean(serialized, "_foxgloveOutputEnabled")
                 || !GetBoolean(serialized, "_ros2NativeEnabled")
                 || !GetBoolean(serialized, "_enableFoxRunInbound")
-                || GetEnumName(serialized, "_defaultFoxRunSubscriptionProvider")
-                    != nameof(FoxRunSubscriptionProvider.Ros2Native))
+                || GetEnumName(serialized, "_defaultFoxRunSubscriptionSource")
+                    != nameof(FoxRunEndpoint.Ros2Native))
             {
                 throw new InvalidOperationException(
                     "The Phase181 acceptance Manager must enable native output, WebSocket output, and native FoxRun subscriptions.");

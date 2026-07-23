@@ -138,7 +138,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 {
                     CreateCustomMember(
                         mode: (int)FoxRunFlow.Publish,
-                        subscriptionProvider: FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider)
+                        source: FoxRunGenerationDescriptorConstants.InheritSource)
                 });
 
             Assert.Contains("IFoxRunRos2CustomPublisherSource", source, StringComparison.Ordinal);
@@ -149,7 +149,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
 
         private static FoxgloveSourceEmitter.TopicMember CreateCustomMember(
             int mode = (int)FoxRunFlow.PublishAndSubscribe,
-            string subscriptionProvider = FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider)
+            string source = FoxRunGenerationDescriptorConstants.Ros2NativeSource)
         {
             var nested = new FoxRunRos2CustomDtoShape(
                 "Phase181.NestedState",
@@ -207,7 +207,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 mode: mode,
                 canonicalType: "phase181/State",
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
-                subscriptionProvider: subscriptionProvider,
+                source: source,
                 ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: true,

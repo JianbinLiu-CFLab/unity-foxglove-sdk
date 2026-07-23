@@ -53,24 +53,45 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         private bool HasR2fuNativeRuntimeDemand()
-            => GetBool("_ros2NativeEnabled")
-               || HasR2fuNativeSubscriptionDemand()
-               || HasCustomNativeSubscriptionDemand();
+        {
+            var customContracts = GetCurrentCustomNativeContractsForInspector();
+            return FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
+                       nativeOutputEnabled: GetBool("_ros2NativeEnabled"),
+                       defaultPublishTargets: GetDefaultPublishTargets(),
+                       hasExplicitNativePublishContract:
+                           FoxRunCustomNativeContractDemandPolicy.HasExplicitNativePublishContract(
+                               customContracts),
+                       subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
+                       defaultSubscriptionSource: GetDefaultSubscriptionSource(),
+                       hasExplicitNativeContract: HasGeneratedExplicitSource(
+                           FoxRunEndpoint.Ros2Native))
+                   || FoxRunCustomNativeContractDemandPolicy.HasDemand(
+                       customContracts,
+                       GetDefaultPublishTargets(),
+                       GetBool("_enableFoxRunInbound"),
+                       GetDefaultSubscriptionSource());
+        }
 
         private bool HasR2fuNativeSubscriptionDemand()
         {
-            var provider = GetDefaultSubscriptionProvider();
+            var provider = GetDefaultSubscriptionSource();
             return FoxRunNativeDemandPolicy.HasNativeRuntimeDemand(
                 nativeOutputEnabled: false,
+                defaultPublishTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitNativePublishContract: false,
                 subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
-                defaultSubscriptionProvider: provider,
-                hasExplicitNativeContract: HasGeneratedExplicitSubscriptionProvider(
-                    FoxRunSubscriptionProvider.Ros2Native));
+                defaultSubscriptionSource: provider,
+                hasExplicitNativeContract: HasGeneratedExplicitSource(
+                    FoxRunEndpoint.Ros2Native));
         }
 
         private void DrawR2fuRuntimeSection()
         {
-            var outputDemand = GetBool("_ros2NativeEnabled");
+            var customContracts = GetCurrentCustomNativeContractsForInspector();
+            var outputDemand = GetBool("_ros2NativeEnabled")
+                               || (GetDefaultPublishTargets() & FoxRunEndpoint.Ros2Native) != 0
+                               || FoxRunCustomNativeContractDemandPolicy.HasExplicitNativePublishContract(
+                                   customContracts);
             var subscriptionDemand = HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand();
             if (outputDemand && subscriptionDemand)
             {
@@ -218,39 +239,47 @@ namespace Unity.FoxgloveSDK.Editor
             return _r2fuNativeSubscriptionDiagnosticsDrawMethod;
         }
 
-        private static bool HasGeneratedExplicitSubscriptionProvider(FoxRunSubscriptionProvider provider)
+        private static bool HasGeneratedExplicitSource(FoxRunEndpoint provider)
         {
             return HasExplicitProvider(GetGeneratedSubscriptionBindings(), provider);
         }
 
-        private FoxRunSubscriptionProvider GetDefaultSubscriptionProvider()
+        private FoxRunEndpoint GetDefaultSubscriptionSource()
         {
-            var providerProperty = FindCachedProperty("_defaultFoxRunSubscriptionProvider");
-            return providerProperty != null
-                   && providerProperty.enumValueIndex == (int)FoxRunSubscriptionProvider.Ros2Native
-                ? FoxRunSubscriptionProvider.Ros2Native
-                : FoxRunSubscriptionProvider.FoxgloveWebSocket;
+            var sourceProperty = FindCachedProperty("_defaultFoxRunSubscriptionSource");
+            return sourceProperty == null
+                ? FoxRunEndpoint.Foxglove
+                : FoxRunEndpointEditorModel.NormalizeSource(
+                    (FoxRunEndpoint)sourceProperty.intValue);
+        }
+
+        private FoxRunEndpoint GetDefaultPublishTargets()
+        {
+            var targetsProperty = FindCachedProperty("_defaultFoxRunPublishTargets");
+            return targetsProperty == null
+                ? FoxRunEndpoint.Foxglove
+                : FoxRunEndpointEditorModel.NormalizeTargets(
+                    (FoxRunEndpoint)targetsProperty.intValue);
         }
 
         private bool HasCustomNativeContractDemand()
             => FoxRunCustomNativeContractDemandPolicy.HasDemand(
                 GetCurrentCustomNativeContractsForInspector(),
-                nativeOutputEnabled: GetBool("_ros2NativeEnabled"),
+                defaultPublishTargets: GetDefaultPublishTargets(),
                 subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
-                defaultSubscriptionProvider: GetDefaultSubscriptionProvider());
+                defaultSubscriptionSource: GetDefaultSubscriptionSource());
 
         private bool HasCustomNativeSubscriptionDemand()
-            => FoxRunCustomNativeContractDemandPolicy.HasDemand(
+            => FoxRunCustomNativeContractDemandPolicy.HasSubscriptionDemand(
                 GetCurrentCustomNativeContractsForInspector(),
-                nativeOutputEnabled: false,
                 subscriptionsEnabled: GetBool("_enableFoxRunInbound"),
-                defaultSubscriptionProvider: GetDefaultSubscriptionProvider());
+                defaultSubscriptionSource: GetDefaultSubscriptionSource());
 
         private static bool HasExplicitProvider(
             System.Collections.Generic.IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> bindings,
-            FoxRunSubscriptionProvider provider)
+            FoxRunEndpoint provider)
         {
-            if (provider == FoxRunSubscriptionProvider.Ros2Native)
+            if (provider == FoxRunEndpoint.Ros2Native)
                 return FoxRunNativeDemandPolicy.HasExplicitNativeContract(bindings);
 
             if (bindings == null)
@@ -258,7 +287,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             for (var i = 0; i < bindings.Count; i++)
             {
-                if (bindings[i] != null && bindings[i].DeclaredProvider == provider)
+                if (bindings[i] != null && bindings[i].DeclaredSource == provider)
                     return true;
             }
 

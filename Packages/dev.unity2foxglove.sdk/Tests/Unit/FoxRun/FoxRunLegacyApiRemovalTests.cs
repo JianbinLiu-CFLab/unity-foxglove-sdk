@@ -8,17 +8,44 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.SourceGenerators;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
     public sealed class FoxRunLegacyApiRemovalTests
     {
+        [Fact]
+        public void LegacyEndpointEncodingTypesAndAliasesAreAbsent()
+        {
+            var assembly = typeof(FoxRunAttribute).Assembly;
+
+            Assert.Null(assembly.GetType(
+                "Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider",
+                throwOnError: false));
+            Assert.Null(assembly.GetType(
+                "Unity.FoxgloveSDK.Components.FoxRunWireEncoding",
+                throwOnError: false));
+
+            Assert.Null(typeof(FoxRunInputRouter).GetProperty(
+                "DefaultWireEncoding",
+                BindingFlags.Instance | BindingFlags.Public));
+            var managerSource = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
+            Assert.DoesNotContain("public FoxRunEncoding DefaultFoxRunEncoding", managerSource, StringComparison.Ordinal);
+            Assert.DoesNotContain("public FoxRunEncoding ActiveFoxRunDefaultWireEncoding", managerSource, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "public FoxRunEncoding ResolveFoxRunEncoding(FoxRunEncoding declaredEncoding)",
+                managerSource,
+                StringComparison.Ordinal);
+        }
+
         public static IEnumerable<object[]> RemovedSpellings()
         {
             yield return Case("FoxRunMode", "Mode = FoxRunMode.SubscribeOnly");

@@ -77,7 +77,7 @@ namespace Unity.FoxgloveSDK.Editor
                 declaringType,
                 member.MemberName,
                 member.Topic,
-                member.SubscriptionProvider,
+                member.Source,
                 shape.CanonicalRosType,
                 member.Ros2Qos);
             sb.AppendLine(pad + "        registrar.Register<" + typeName + ">(");
@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(member.MemberName) + "\",");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(shape.CanonicalRosType) + "\",");
             sb.AppendLine(pad + "                " + ModeLiteral(member.Mode) + ",");
-            sb.AppendLine(pad + "                " + SubscriptionProviderLiteral(member.SubscriptionProvider) + ",");
+            sb.AppendLine(pad + "                " + SourceLiteral(member.Source) + ",");
             sb.AppendLine(pad + "                " + QosLiteral(member.Ros2Qos) + ",");
             sb.AppendLine(pad + "                " + (member.GeneratesRos2NativeRegistration ? "true" : "false") + ",");
             sb.AppendLine(pad + "                " + PolicyLiteral(member.Policy) + ",");
@@ -124,15 +124,15 @@ namespace Unity.FoxgloveSDK.Editor
                        (member.MemberName ?? string.Empty) + "|" + (member.Topic ?? string.Empty))
                    .Substring(0, 8);
 
-        private static string SubscriptionProviderLiteral(string provider)
+        private static string SourceLiteral(string provider)
         {
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                     StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Ros2Native";
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                return "global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native";
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                     StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.FoxgloveWebSocket";
-            return "global::Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider.Inherit";
+                return "global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove";
+            return "(global::Unity.FoxgloveSDK.Components.FoxRunEndpoint)0";
         }
 
         private static string QosLiteral(string qos)
@@ -152,7 +152,7 @@ namespace Unity.FoxgloveSDK.Editor
             string declaringType,
             string memberName,
             string topic,
-            string subscriptionProvider,
+            string source,
             string canonicalRosType,
             string ros2Qos)
         {
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Editor
             AppendContractIdSegment(id, declaringType);
             AppendContractIdSegment(id, memberName);
             AppendContractIdSegment(id, topic);
-            AppendContractIdSegment(id, subscriptionProvider);
+            AppendContractIdSegment(id, source);
             AppendContractIdSegment(id, canonicalRosType);
             AppendContractIdSegment(id, ros2Qos);
             return id.ToString();

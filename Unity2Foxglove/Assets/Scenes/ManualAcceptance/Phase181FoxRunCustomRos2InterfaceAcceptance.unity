@@ -156,9 +156,9 @@ MonoBehaviour:
   _foxRunPolicySerializationVersion: 2
   _coordinateTransportPolicySerializationVersion: 1
   _defaultFoxRunPublishEncoding: 1
-  _defaultFoxRunWireEncoding: 1
+  _defaultFoxRunEncoding: 1
   _defaultFoxRunSubscriptionEncoding: 1
-  _defaultFoxRunSubscriptionProvider: 2
+  _defaultFoxRunEndpoint: 2
   _defaultFoxRunRos2Qos: 1
   _foxRunRos2NativeCopyBudgetBytes: 4194304
   _enableFoxRunInbound: 1

@@ -11,9 +11,11 @@ namespace Unity.FoxgloveSDK.Components
         public FoxgloveInputTopicInfo(string topic, string encoding, FoxRunFlow mode)
             : this(
                 topic,
-                FoxRunWireEncodingResolver.FromProtocolEncoding(encoding),
+                FoxRunEncodingResolver.FromProtocolEncoding(encoding),
                 mode,
-                FoxRunSubscriptionProvider.Inherit,
+                (FoxRunEndpoint)0,
+                hasExplicitSource: false,
+                hasExplicitEncoding: true,
                 supportsWebSocket: true,
                 supportsRos2Native: false,
                 policy: FoxRunPolicy.FixedRate,
@@ -22,12 +24,14 @@ namespace Unity.FoxgloveSDK.Components
         {
         }
 
-        public FoxgloveInputTopicInfo(string topic, FoxRunWireEncoding declaredWireEncoding, FoxRunFlow mode)
+        public FoxgloveInputTopicInfo(string topic, FoxRunEncoding declaredEncoding, FoxRunFlow mode)
             : this(
                 topic,
-                declaredWireEncoding,
+                declaredEncoding,
                 mode,
-                FoxRunSubscriptionProvider.Inherit,
+                (FoxRunEndpoint)0,
+                hasExplicitSource: false,
+                hasExplicitEncoding: declaredEncoding != 0,
                 supportsWebSocket: true,
                 supportsRos2Native: false,
                 policy: FoxRunPolicy.FixedRate,
@@ -38,16 +42,18 @@ namespace Unity.FoxgloveSDK.Components
 
         public FoxgloveInputTopicInfo(
             string topic,
-            FoxRunWireEncoding declaredWireEncoding,
+            FoxRunEncoding declaredEncoding,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider declaredSubscriptionProvider,
+            FoxRunEndpoint declaredSource,
             bool supportsWebSocket,
             bool supportsRos2Native)
             : this(
                 topic,
-                declaredWireEncoding,
+                declaredEncoding,
                 mode,
-                declaredSubscriptionProvider,
+                declaredSource,
+                hasExplicitSource: declaredSource != 0,
+                hasExplicitEncoding: declaredEncoding != 0,
                 supportsWebSocket,
                 supportsRos2Native,
                 FoxRunPolicy.FixedRate,
@@ -58,9 +64,36 @@ namespace Unity.FoxgloveSDK.Components
 
         public FoxgloveInputTopicInfo(
             string topic,
-            FoxRunWireEncoding declaredWireEncoding,
+            FoxRunEncoding declaredEncoding,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider declaredSubscriptionProvider,
+            FoxRunEndpoint declaredSource,
+            bool supportsWebSocket,
+            bool supportsRos2Native,
+            FoxRunPolicy policy = FoxRunPolicy.FixedRate,
+            float hz = -1f,
+            bool hasExplicitHz = false)
+            : this(
+                topic,
+                declaredEncoding,
+                mode,
+                declaredSource,
+                hasExplicitSource: declaredSource != 0,
+                hasExplicitEncoding: declaredEncoding != 0,
+                supportsWebSocket,
+                supportsRos2Native,
+                policy,
+                hz,
+                hasExplicitHz)
+        {
+        }
+
+        public FoxgloveInputTopicInfo(
+            string topic,
+            FoxRunEncoding declaredEncoding,
+            FoxRunFlow mode,
+            FoxRunEndpoint declaredSource,
+            bool hasExplicitSource,
+            bool hasExplicitEncoding,
             bool supportsWebSocket,
             bool supportsRos2Native,
             FoxRunPolicy policy = FoxRunPolicy.FixedRate,
@@ -68,12 +101,14 @@ namespace Unity.FoxgloveSDK.Components
             bool hasExplicitHz = false)
         {
             Topic = topic ?? string.Empty;
-            DeclaredWireEncoding = declaredWireEncoding;
-            Encoding = declaredWireEncoding == FoxRunWireEncoding.Inherit
+            DeclaredEncoding = declaredEncoding;
+            Encoding = declaredEncoding == (FoxRunEncoding)0
                 ? "inherit"
-                : FoxRunWireEncodingResolver.ToProtocolEncoding(declaredWireEncoding);
+                : FoxRunEncodingResolver.ToProtocolEncoding(declaredEncoding);
             Mode = mode;
-            DeclaredSubscriptionProvider = declaredSubscriptionProvider;
+            DeclaredSource = declaredSource;
+            HasExplicitSource = hasExplicitSource;
+            HasExplicitEncoding = hasExplicitEncoding;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
             Policy = policy;
@@ -87,10 +122,12 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         public string Topic { get; }
-        public FoxRunWireEncoding DeclaredWireEncoding { get; }
+        public FoxRunEncoding DeclaredEncoding { get; }
         public string Encoding { get; }
         public FoxRunFlow Mode { get; }
-        public FoxRunSubscriptionProvider DeclaredSubscriptionProvider { get; }
+        public FoxRunEndpoint DeclaredSource { get; }
+        public bool HasExplicitSource { get; }
+        public bool HasExplicitEncoding { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
         /// <summary>Per-contract policy applied after transport admission.</summary>

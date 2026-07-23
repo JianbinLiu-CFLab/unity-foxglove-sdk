@@ -6,14 +6,14 @@ using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
-    public sealed class FoxRunSubscriptionProviderPolicyTests
+    public sealed class FoxRunEndpointPolicyTests
     {
         [Fact]
-        public void SubscriptionProviderValuesRemainStable()
+        public void SourceValuesRemainStable()
         {
-            Assert.Equal(0, (int)FoxRunSubscriptionProvider.Inherit);
-            Assert.Equal(1, (int)FoxRunSubscriptionProvider.FoxgloveWebSocket);
-            Assert.Equal(2, (int)FoxRunSubscriptionProvider.Ros2Native);
+            Assert.Equal(0, (int)(FoxRunEndpoint)0);
+            Assert.Equal(1, (int)FoxRunEndpoint.Foxglove);
+            Assert.Equal(2, (int)FoxRunEndpoint.Ros2Native);
         }
 
         [Fact]
@@ -31,16 +31,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var attribute = new FoxRunAttribute("/phase179/default");
 
-            Assert.Equal(FoxRunSubscriptionProvider.Inherit, attribute.SubscriptionProvider);
+            Assert.Equal((FoxRunEndpoint)0, attribute.Source);
             Assert.Equal(FoxRunRos2QosPreset.Inherit, attribute.Ros2Qos);
         }
 
         [Fact]
         public void SubscriptionPolicyBelongsOnlyToFoxRunAttribute()
         {
-            Assert.NotNull(typeof(FoxRunAttribute).GetProperty(nameof(FoxRunAttribute.SubscriptionProvider)));
+            Assert.NotNull(typeof(FoxRunAttribute).GetProperty(nameof(FoxRunAttribute.Source)));
             Assert.NotNull(typeof(FoxRunAttribute).GetProperty(nameof(FoxRunAttribute.Ros2Qos)));
-            Assert.Null(typeof(FoxRunMessageAttribute).GetProperty("SubscriptionProvider"));
+            Assert.Null(typeof(FoxRunMessageAttribute).GetProperty("Source"));
             Assert.Null(typeof(FoxRunMessageAttribute).GetProperty("Ros2Qos"));
         }
 
@@ -49,17 +49,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var migrated = Migrate(
                 serializationVersion: 0,
-                legacyDefault: FoxRunWireEncoding.Json,
-                publishDefault: FoxRunWireEncoding.Protobuf,
-                subscriptionDefault: FoxRunWireEncoding.Protobuf,
-                providerDefault: FoxRunSubscriptionProvider.Ros2Native,
+                legacyDefault: FoxRunEncoding.JSON,
+                publishDefault: FoxRunEncoding.Protobuf,
+                subscriptionDefault: FoxRunEncoding.Protobuf,
+                providerDefault: FoxRunEndpoint.Ros2Native,
                 qosDefault: FoxRunRos2QosPreset.SensorData,
                 nativeCopyBudgetBytes: 1024);
 
             Assert.Equal(2, migrated.SerializationVersion);
-            Assert.Equal(FoxRunWireEncoding.Json, migrated.PublishDefault);
-            Assert.Equal(FoxRunWireEncoding.Json, migrated.SubscriptionDefault);
-            Assert.Equal(FoxRunSubscriptionProvider.FoxgloveWebSocket, migrated.ProviderDefault);
+            Assert.Equal(FoxRunEncoding.JSON, migrated.PublishDefault);
+            Assert.Equal(FoxRunEncoding.JSON, migrated.SubscriptionDefault);
+            Assert.Equal(FoxRunEndpoint.Foxglove, migrated.ProviderDefault);
             Assert.Equal(FoxRunRos2QosPreset.Default, migrated.QosDefault);
             Assert.Equal(FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes, migrated.NativeCopyBudgetBytes);
         }
@@ -69,42 +69,42 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var migrated = Migrate(
                 serializationVersion: 1,
-                legacyDefault: FoxRunWireEncoding.Protobuf,
-                publishDefault: FoxRunWireEncoding.Protobuf,
-                subscriptionDefault: FoxRunWireEncoding.Json,
-                providerDefault: FoxRunSubscriptionProvider.Ros2Native,
+                legacyDefault: FoxRunEncoding.Protobuf,
+                publishDefault: FoxRunEncoding.Protobuf,
+                subscriptionDefault: FoxRunEncoding.JSON,
+                providerDefault: FoxRunEndpoint.Ros2Native,
                 qosDefault: FoxRunRos2QosPreset.TransientLocal,
                 nativeCopyBudgetBytes: 32 * 1024 * 1024);
 
             Assert.Equal(2, migrated.SerializationVersion);
-            Assert.Equal(FoxRunWireEncoding.Protobuf, migrated.PublishDefault);
-            Assert.Equal(FoxRunWireEncoding.Json, migrated.SubscriptionDefault);
-            Assert.Equal(FoxRunSubscriptionProvider.FoxgloveWebSocket, migrated.ProviderDefault);
+            Assert.Equal(FoxRunEncoding.Protobuf, migrated.PublishDefault);
+            Assert.Equal(FoxRunEncoding.JSON, migrated.SubscriptionDefault);
+            Assert.Equal(FoxRunEndpoint.Foxglove, migrated.ProviderDefault);
             Assert.Equal(FoxRunRos2QosPreset.Default, migrated.QosDefault);
             Assert.Equal(FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes, migrated.NativeCopyBudgetBytes);
         }
 
         [Theory]
-        [InlineData(FoxRunWireEncoding.Json, FoxRunSubscriptionProvider.FoxgloveWebSocket, FoxRunRos2QosPreset.Reliable, 1024 * 1024)]
-        [InlineData(FoxRunWireEncoding.Protobuf, FoxRunSubscriptionProvider.FoxgloveWebSocket, FoxRunRos2QosPreset.Default, 4 * 1024 * 1024)]
-        [InlineData(FoxRunWireEncoding.Json, FoxRunSubscriptionProvider.Ros2Native, FoxRunRos2QosPreset.SensorData, 8 * 1024 * 1024)]
+        [InlineData(FoxRunEncoding.JSON, FoxRunEndpoint.Foxglove, FoxRunRos2QosPreset.Reliable, 1024 * 1024)]
+        [InlineData(FoxRunEncoding.Protobuf, FoxRunEndpoint.Foxglove, FoxRunRos2QosPreset.Default, 4 * 1024 * 1024)]
+        [InlineData(FoxRunEncoding.JSON, FoxRunEndpoint.Ros2Native, FoxRunRos2QosPreset.SensorData, 8 * 1024 * 1024)]
         public void CurrentVersionRoundTripsConcreteSubscriptionPolicy(
-            FoxRunWireEncoding subscriptionDefault,
-            FoxRunSubscriptionProvider providerDefault,
+            FoxRunEncoding subscriptionDefault,
+            FoxRunEndpoint providerDefault,
             FoxRunRos2QosPreset qosDefault,
             int nativeCopyBudgetBytes)
         {
             var migrated = Migrate(
                 serializationVersion: 2,
-                legacyDefault: FoxRunWireEncoding.Protobuf,
-                publishDefault: FoxRunWireEncoding.Protobuf,
+                legacyDefault: FoxRunEncoding.Protobuf,
+                publishDefault: FoxRunEncoding.Protobuf,
                 subscriptionDefault: subscriptionDefault,
                 providerDefault: providerDefault,
                 qosDefault: qosDefault,
                 nativeCopyBudgetBytes: nativeCopyBudgetBytes);
 
             Assert.Equal(2, migrated.SerializationVersion);
-            Assert.Equal(FoxRunWireEncoding.Protobuf, migrated.PublishDefault);
+            Assert.Equal(FoxRunEncoding.Protobuf, migrated.PublishDefault);
             Assert.Equal(subscriptionDefault, migrated.SubscriptionDefault);
             Assert.Equal(providerDefault, migrated.ProviderDefault);
             Assert.Equal(qosDefault, migrated.QosDefault);
@@ -116,16 +116,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var migrated = Migrate(
                 serializationVersion: 2,
-                legacyDefault: FoxRunWireEncoding.Protobuf,
-                publishDefault: FoxRunWireEncoding.Json,
-                subscriptionDefault: FoxRunWireEncoding.Json,
-                providerDefault: (FoxRunSubscriptionProvider)99,
+                legacyDefault: FoxRunEncoding.Protobuf,
+                publishDefault: FoxRunEncoding.JSON,
+                subscriptionDefault: FoxRunEncoding.JSON,
+                providerDefault: (FoxRunEndpoint)99,
                 qosDefault: (FoxRunRos2QosPreset)99,
                 nativeCopyBudgetBytes: -1);
 
-            Assert.Equal(FoxRunWireEncoding.Json, migrated.PublishDefault);
-            Assert.Equal(FoxRunWireEncoding.Json, migrated.SubscriptionDefault);
-            Assert.Equal(FoxRunSubscriptionProvider.FoxgloveWebSocket, migrated.ProviderDefault);
+            Assert.Equal(FoxRunEncoding.JSON, migrated.PublishDefault);
+            Assert.Equal(FoxRunEncoding.JSON, migrated.SubscriptionDefault);
+            Assert.Equal(FoxRunEndpoint.Foxglove, migrated.ProviderDefault);
             Assert.Equal(FoxRunRos2QosPreset.Default, migrated.QosDefault);
             Assert.Equal(FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes, migrated.NativeCopyBudgetBytes);
         }
@@ -138,13 +138,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(4 * 1024 * 1024, FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes);
             Assert.Equal(
                 FoxRunRos2NativeCopyBudgetPolicy.MinBytes,
-                FoxRunWireEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes);
+                FoxRunEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes);
             Assert.Equal(
                 FoxRunRos2NativeCopyBudgetPolicy.MaxBytes,
-                FoxRunWireEncodingPolicyMigration.MaxRos2NativeCopyBudgetBytes);
+                FoxRunEncodingPolicyMigration.MaxRos2NativeCopyBudgetBytes);
             Assert.Equal(
                 FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes,
-                FoxRunWireEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes);
+                FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes);
         }
 
         [Theory]
@@ -163,7 +163,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configured));
             Assert.Equal(
                 expected,
-                FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(configured));
+                FoxRunEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(configured));
         }
 
         [Theory]
@@ -184,14 +184,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private static MigrationResult Migrate(
             int serializationVersion,
-            FoxRunWireEncoding legacyDefault,
-            FoxRunWireEncoding publishDefault,
-            FoxRunWireEncoding subscriptionDefault,
-            FoxRunSubscriptionProvider providerDefault,
+            FoxRunEncoding legacyDefault,
+            FoxRunEncoding publishDefault,
+            FoxRunEncoding subscriptionDefault,
+            FoxRunEndpoint providerDefault,
             FoxRunRos2QosPreset qosDefault,
             int nativeCopyBudgetBytes)
         {
-            FoxRunWireEncodingPolicyMigration.Migrate(
+            FoxRunEncodingPolicyMigration.Migrate(
                 ref serializationVersion,
                 legacyDefault,
                 ref publishDefault,
@@ -212,9 +212,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             internal MigrationResult(
                 int serializationVersion,
-                FoxRunWireEncoding publishDefault,
-                FoxRunWireEncoding subscriptionDefault,
-                FoxRunSubscriptionProvider providerDefault,
+                FoxRunEncoding publishDefault,
+                FoxRunEncoding subscriptionDefault,
+                FoxRunEndpoint providerDefault,
                 FoxRunRos2QosPreset qosDefault,
                 int nativeCopyBudgetBytes)
             {
@@ -227,9 +227,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             }
 
             internal int SerializationVersion { get; }
-            internal FoxRunWireEncoding PublishDefault { get; }
-            internal FoxRunWireEncoding SubscriptionDefault { get; }
-            internal FoxRunSubscriptionProvider ProviderDefault { get; }
+            internal FoxRunEncoding PublishDefault { get; }
+            internal FoxRunEncoding SubscriptionDefault { get; }
+            internal FoxRunEndpoint ProviderDefault { get; }
             internal FoxRunRos2QosPreset QosDefault { get; }
             internal int NativeCopyBudgetBytes { get; }
         }

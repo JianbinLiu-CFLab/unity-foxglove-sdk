@@ -41,10 +41,10 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [Tooltip("Immutable FoxRun subscription-session snapshot captured when the assigned Manager starts or ends a session.")]
     [SerializeField] private bool capturedSessionEnabled;
     [SerializeField] private ulong capturedSessionGeneration;
-    [SerializeField] private FoxRunSubscriptionProvider capturedDefaultSubscriptionProvider =
-        FoxRunSubscriptionProvider.FoxgloveWebSocket;
-    [SerializeField] private FoxRunWireEncoding capturedWebSocketSubscriptionEncoding =
-        FoxRunWireEncoding.Protobuf;
+    [SerializeField] private FoxRunEndpoint capturedDefaultSubscriptionSource =
+        FoxRunEndpoint.Foxglove;
+    [SerializeField] private FoxRunEncoding capturedFoxgloveEncoding =
+        FoxRunEncoding.Protobuf;
     [SerializeField] private FoxRunRos2QosPreset capturedDefaultRos2Qos =
         FoxRunRos2QosPreset.Default;
     [SerializeField] private int capturedNativeCopyBudgetBytes = 4 * 1024 * 1024;
@@ -56,7 +56,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
     [FoxRun(
         Topic,
         Mode = FoxRunFlow.Subscribe,
-        SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+        Source = FoxRunEndpoint.Ros2Native,
         Ros2Qos = FoxRunRos2QosPreset.Reliable)]
     private std_msgs.msg.String inputString;
 #else
@@ -215,8 +215,8 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
 
         capturedSessionEnabled = policy.SubscriptionsEnabled;
         capturedSessionGeneration = policy.SessionGeneration;
-        capturedDefaultSubscriptionProvider = policy.DefaultProvider;
-        capturedWebSocketSubscriptionEncoding = policy.WebSocketSubscriptionEncoding;
+        capturedDefaultSubscriptionSource = policy.DefaultSource;
+        capturedFoxgloveEncoding = policy.FoxgloveEncoding;
         capturedDefaultRos2Qos = policy.DefaultRos2Qos;
         capturedNativeCopyBudgetBytes = policy.NativeCopyBudgetBytes;
     }

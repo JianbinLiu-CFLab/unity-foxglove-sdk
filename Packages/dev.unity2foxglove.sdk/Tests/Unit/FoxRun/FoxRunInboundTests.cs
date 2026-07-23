@@ -28,17 +28,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void InputTopicAndRouterExposeProviderCapabilitySessionSurface()
         {
-            Assert.NotNull(typeof(FoxgloveInputTopicInfo).GetProperty("DeclaredSubscriptionProvider"));
+            Assert.NotNull(typeof(FoxgloveInputTopicInfo).GetProperty("DeclaredSource"));
             Assert.NotNull(typeof(FoxgloveInputTopicInfo).GetProperty("SupportsWebSocket"));
             Assert.NotNull(typeof(FoxgloveInputTopicInfo).GetProperty("SupportsRos2Native"));
-            Assert.NotNull(typeof(FoxRunInputRouter).GetProperty("DefaultSubscriptionProvider"));
+            Assert.NotNull(typeof(FoxRunInputRouter).GetProperty("DefaultSubscriptionSource"));
 
             var constructor = typeof(FoxgloveInputTopicInfo).GetConstructor(new[]
             {
                 typeof(string),
-                typeof(FoxRunWireEncoding),
+                typeof(FoxRunEncoding),
                 typeof(FoxRunFlow),
-                typeof(FoxRunSubscriptionProvider),
+                typeof(FoxRunEndpoint),
                 typeof(bool),
                 typeof(bool)
             });
@@ -51,8 +51,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var input = new MultiProviderInput();
             var router = new FoxRunInputRouter
             {
-                DefaultSubscriptionProvider = FoxRunSubscriptionProvider.FoxgloveWebSocket,
-                DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Protobuf
+                DefaultSubscriptionSource = FoxRunEndpoint.Foxglove,
+                DefaultSubscriptionEncoding = FoxRunEncoding.Protobuf
             };
             router.Register(input);
 
@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunInputDispatchStatus.UnknownTopic,
                 router.Dispatch("/phase179/native", Array.Empty<byte>(), "protobuf", 3).Status);
 
-            router.DefaultSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native;
+            router.DefaultSubscriptionSource = FoxRunEndpoint.Ros2Native;
 
             Assert.Equal(
                 FoxRunInputDispatchStatus.Staged,
@@ -74,8 +74,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var nativeDefaultRouter = new FoxRunInputRouter
             {
-                DefaultSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-                DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Json
+                DefaultSubscriptionSource = FoxRunEndpoint.Ros2Native,
+                DefaultSubscriptionEncoding = FoxRunEncoding.JSON
             };
             nativeDefaultRouter.Register(input);
 
@@ -97,8 +97,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var input = new NativeUnavailableCoexistenceInput();
             var router = new FoxRunInputRouter
             {
-                DefaultSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
-                DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Protobuf
+                DefaultSubscriptionSource = FoxRunEndpoint.Ros2Native,
+                DefaultSubscriptionEncoding = FoxRunEncoding.Protobuf
             };
             router.Register(input);
 
@@ -264,7 +264,7 @@ namespace Demo
         }
 
         [FoxRun(""/phase184/conditional"", Mode = Subscribe,
-            Encoding = FoxRunWireEncoding.Json, Policy = FoxRunPolicy.Change,
+            Encoding = FoxRunEncoding.JSON, Policy = FoxRunPolicy.Change,
             OnlyIf = nameof(CanApply))]
         public int Value;
     }
@@ -389,7 +389,7 @@ namespace Demo
                 router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "json", 2).Status);
             Assert.Equal(1, input.ApplyCount);
 
-            router.DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Json;
+            router.DefaultSubscriptionEncoding = FoxRunEncoding.JSON;
 
             Assert.Equal(
                 FoxRunInputDispatchStatus.Staged,
@@ -596,11 +596,11 @@ namespace Demo
                 managerPolicy,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "_router.DefaultSubscriptionWireEncoding = policy.WebSocketSubscriptionEncoding;",
+                "_router.DefaultSubscriptionEncoding = policy.FoxgloveEncoding;",
                 sessionPolicy,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "_router.DefaultSubscriptionProvider = policy.DefaultProvider;",
+                "_router.DefaultSubscriptionSource = policy.DefaultSource;",
                 sessionPolicy,
                 StringComparison.Ordinal);
             Assert.Contains(
@@ -620,8 +620,8 @@ namespace Demo
                 new DefaultSchemaRegistry());
             var sessionState = new FoxRunSubscriptionSessionState();
             var policy = sessionState.BeginIfNeeded(
-                FoxRunSubscriptionProvider.FoxgloveWebSocket,
-                FoxRunWireEncoding.Protobuf,
+                FoxRunEndpoint.Foxglove,
+                FoxRunEncoding.Protobuf,
                 FoxRunRos2QosPreset.Default,
                 nativeCopyBudgetBytes: 4 * 1024 * 1024,
                 transportAdmissionRateLimitHz: 60,
@@ -636,7 +636,7 @@ namespace Demo
             void StartAndAttach(FoxRunSubscriptionSessionPolicy activePolicy)
             {
                 runtime.Start("phase179-restart", enableCdrClientPublish: false);
-                router.DefaultSubscriptionWireEncoding = activePolicy.WebSocketSubscriptionEncoding;
+                router.DefaultSubscriptionEncoding = activePolicy.FoxgloveEncoding;
                 router.MaxMessagesPerSecondPerTopic = activePolicy.TransportAdmissionRateLimitHz;
                 runtime.Session.OnClientMessageWithEncoding += (_, _, topic, encoding, payload) =>
                     dispatches.Add(router.Dispatch(topic, payload, encoding, nowSeconds += 2d));
@@ -671,15 +671,15 @@ namespace Demo
             runtime.Stop();
 
             var frozenPolicy = sessionState.BeginIfNeeded(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunWireEncoding.Json,
+                FoxRunEndpoint.Ros2Native,
+                FoxRunEncoding.JSON,
                 FoxRunRos2QosPreset.SensorData,
                 nativeCopyBudgetBytes: 1024,
                 transportAdmissionRateLimitHz: 1,
                 defaultSubscribeRateHz: 1);
             Assert.Same(policy, frozenPolicy);
             Assert.Equal(generation, frozenPolicy.SessionGeneration);
-            Assert.Equal(FoxRunWireEncoding.Protobuf, frozenPolicy.WebSocketSubscriptionEncoding);
+            Assert.Equal(FoxRunEncoding.Protobuf, frozenPolicy.FoxgloveEncoding);
             Assert.Equal(60, frozenPolicy.TransportAdmissionRateLimitHz);
             Assert.Equal(60, frozenPolicy.DefaultSubscribeRateHz);
 
@@ -893,23 +893,23 @@ namespace Demo
             {
                 new(
                     "/phase179/json",
-                    FoxRunWireEncoding.Json,
+                    FoxRunEncoding.JSON,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    FoxRunEndpoint.Foxglove,
                     supportsWebSocket: true,
                     supportsRos2Native: false),
                 new(
                     "/phase179/dual",
-                    FoxRunWireEncoding.Inherit,
+                    (FoxRunEncoding)0,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.Inherit,
+                    (FoxRunEndpoint)0,
                     supportsWebSocket: true,
                     supportsRos2Native: true),
                 new(
                     "/phase179/native",
-                    FoxRunWireEncoding.Inherit,
+                    (FoxRunEncoding)0,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.Ros2Native,
+                    FoxRunEndpoint.Ros2Native,
                     supportsWebSocket: true,
                     supportsRos2Native: true)
             };
@@ -938,23 +938,23 @@ namespace Demo
             {
                 new(
                     "/phase179/coexist/json",
-                    FoxRunWireEncoding.Json,
+                    FoxRunEncoding.JSON,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    FoxRunEndpoint.Foxglove,
                     supportsWebSocket: true,
                     supportsRos2Native: false),
                 new(
                     "/phase179/coexist/protobuf",
-                    FoxRunWireEncoding.Protobuf,
+                    FoxRunEncoding.Protobuf,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    FoxRunEndpoint.Foxglove,
                     supportsWebSocket: true,
                     supportsRos2Native: false),
                 new(
                     "/phase179/coexist/ordinary-dto",
-                    FoxRunWireEncoding.Protobuf,
+                    FoxRunEncoding.Protobuf,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.Inherit,
+                    (FoxRunEndpoint)0,
                     supportsWebSocket: true,
                     supportsRos2Native: false)
             };
@@ -1029,7 +1029,7 @@ namespace Demo
 
             public InheritedRecordingInput(string topic)
             {
-                _topic = new FoxgloveInputTopicInfo(topic, FoxRunWireEncoding.Inherit, FoxRunFlow.Subscribe);
+                _topic = new FoxgloveInputTopicInfo(topic, (FoxRunEncoding)0, FoxRunFlow.Subscribe);
             }
 
             public int ApplyCount { get; private set; }
@@ -1059,8 +1059,8 @@ namespace Demo
         {
             private readonly FoxgloveInputTopicInfo[] _topics =
             {
-                new("/phase179/json", FoxRunWireEncoding.Json, FoxRunFlow.Subscribe),
-                new("/phase179/protobuf", FoxRunWireEncoding.Inherit, FoxRunFlow.Subscribe)
+                new("/phase179/json", FoxRunEncoding.JSON, FoxRunFlow.Subscribe),
+                new("/phase179/protobuf", (FoxRunEncoding)0, FoxRunFlow.Subscribe)
             };
 
             public int JsonValue { get; private set; }

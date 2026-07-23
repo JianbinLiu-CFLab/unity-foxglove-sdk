@@ -67,8 +67,8 @@ namespace Unity.FoxgloveSDK.Editor
                                  // Subscribe native contracts remain absent
                                  // so this never creates a fallback input path.
                                  && (!string.Equals(
-                                         member.SubscriptionProvider,
-                                         FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                                         member.Source,
+                                         FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                                          StringComparison.Ordinal)
                                      || member.Flow == (int)FoxRunFlow.PublishAndSubscribe))
                 .GroupBy(DeclaringType)
@@ -89,7 +89,7 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.SubscriptionProvider,
+                    member.Source,
                     member.Ros2Qos,
                     member.GeneratesWebSocketCodec,
                     member.GeneratesRos2NativeRegistration,
@@ -99,7 +99,8 @@ namespace Unity.FoxgloveSDK.Editor
                     member.Ros2ContractKind,
                     member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
                     member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member)))
+                    ResolveCustomEnvelopeIdentity(member),
+                    member.Targets))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
@@ -118,12 +119,13 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
-                    member.SubscriptionProvider,
+                    member.Source,
                     member.Ros2Qos,
                     true,
                     member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
                     member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
-                    ResolveCustomEnvelopeIdentity(member)))
+                    ResolveCustomEnvelopeIdentity(member),
+                    member.Targets))
                 .OrderBy(contract => contract.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(contract => contract.Topic, StringComparer.Ordinal)
                 .ThenBy(contract => contract.MemberName, StringComparer.Ordinal)

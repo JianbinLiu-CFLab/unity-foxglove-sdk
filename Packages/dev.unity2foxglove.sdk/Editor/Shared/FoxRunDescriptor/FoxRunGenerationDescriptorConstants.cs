@@ -21,9 +21,13 @@ namespace Unity.FoxgloveSDK.Editor
         public const string InheritEncoding = "inherit";
         public const string ProtobufEncoding = "protobuf";
         public const string JsonEncoding = "json";
-        public const string InheritSubscriptionProvider = "inherit";
-        public const string FoxgloveWebSocketSubscriptionProvider = "foxglove-websocket";
-        public const string Ros2NativeSubscriptionProvider = "ros2-native";
+        public const string InheritSource = "inherit";
+        public const string FoxgloveWebSocketSource = "foxglove-websocket";
+        public const string Ros2NativeSource = "ros2-native";
+        public const string InheritTargets = "inherit";
+        public const string FoxgloveTarget = "foxglove";
+        public const string Ros2NativeTarget = "ros2-native";
+        public const string Ros2BridgeTarget = "ros2-bridge";
         public const string InheritRos2Qos = "inherit";
         public const string DefaultRos2Qos = "default";
         public const string ReliableRos2Qos = "reliable";

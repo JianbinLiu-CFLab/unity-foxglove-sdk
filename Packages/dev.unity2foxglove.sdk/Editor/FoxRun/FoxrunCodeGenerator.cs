@@ -265,7 +265,7 @@ namespace Unity.FoxgloveSDK.Editor
                 contract.MemberName,
                 contract.Topic,
                 contract.Flow,
-                ToSubscriptionProvider(contract.DeclaredProvider),
+                ToSource(contract.DeclaredSource),
                 ToRos2QosPreset(contract.Ros2Qos),
                 contract.SupportsRos2Native,
                 contract.CustomDtoIdentity,
@@ -273,13 +273,13 @@ namespace Unity.FoxgloveSDK.Editor
                 contract.CustomEnvelopeIdentity);
         }
 
-        private static FoxRunSubscriptionProvider ToSubscriptionProvider(string provider)
+        private static FoxRunEndpoint ToSource(string provider)
         {
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal))
-                return FoxRunSubscriptionProvider.Ros2Native;
-            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal))
-                return FoxRunSubscriptionProvider.FoxgloveWebSocket;
-            return FoxRunSubscriptionProvider.Inherit;
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal))
+                return FoxRunEndpoint.Ros2Native;
+            if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
+                return FoxRunEndpoint.Foxglove;
+            return (FoxRunEndpoint)0;
         }
 
         private static FoxRunRos2QosPreset ToRos2QosPreset(string qos)

@@ -31,10 +31,16 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunPolicy Policy { get; set; } = FoxRunPolicy.FixedRate;
 
         /// <summary>
-        /// Declared wire encoding for this aggregate topic. The default is
-        /// resolved by FoxgloveManager when the topic is registered.
+        /// Publish targets. Omission inherits the frozen Publish Profile.
+        /// An explicit non-empty flags set replaces the profile target set.
         /// </summary>
-        public FoxRunWireEncoding Encoding { get; set; } = FoxRunWireEncoding.Inherit;
+        public FoxRunEndpoint Targets { get; set; }
+
+        /// <summary>
+        /// Foxglove encoding when the effective targets include Foxglove.
+        /// Omission inherits the frozen Publish Profile.
+        /// </summary>
+        public FoxRunEncoding Encoding { get; set; }
 
         /// <summary>Tolerance for supported numeric change detection.</summary>
         public float Tolerance { get; set; } = 0f;

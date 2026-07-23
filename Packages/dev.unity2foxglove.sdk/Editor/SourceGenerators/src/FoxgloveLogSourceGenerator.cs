@@ -171,7 +171,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 int policy = 1;
                 int mode = 1;
                 int encoding = 0;
-                int subscriptionProvider = 0;
+                int source = 0;
+                int targets = 0;
                 int ros2Qos = 0;
                 int protobufFieldNumber = 0;
                 float tolerance = 0f;
@@ -209,9 +210,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             presence |= FoxRunNamedArgumentPresence.Encoding;
                             if (TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
                             break;
-                        case "SubscriptionProvider":
-                            presence |= FoxRunNamedArgumentPresence.SubscriptionProvider;
-                            if (TryReadIntConstant(named.Value, out var provider)) subscriptionProvider = provider;
+                        case "Source":
+                            presence |= FoxRunNamedArgumentPresence.Source;
+                            if (TryReadIntConstant(named.Value, out var provider)) source = provider;
+                            break;
+                        case "Targets":
+                            presence |= FoxRunNamedArgumentPresence.Targets;
+                            if (TryReadIntConstant(named.Value, out var publishTargets)) targets = publishTargets;
                             break;
                         case "Ros2Qos":
                             presence |= FoxRunNamedArgumentPresence.Ros2Qos;
@@ -228,13 +233,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     mode: mode,
                     encoding: encoding,
                     protobufFieldNumber: protobufFieldNumber,
-                    subscriptionProvider: subscriptionProvider,
+                    source: source,
                     ros2Qos: ros2Qos,
                     namedArgumentPresence: presence,
                     conditionMemberKind: ResolveConditionMemberKind(
                         containingType,
                         onlyIf,
-                        presence)));
+                        presence),
+                    targets: targets));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -254,6 +260,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var schemaName = "";
                 var policy = 1;
                 var encoding = 0;
+                var targets = 0;
                 var tolerance = 0f;
                 var onlyIf = "";
                 var presence = FoxRunNamedArgumentPresence.None;
@@ -284,6 +291,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         case "Encoding":
                             presence |= FoxRunNamedArgumentPresence.Encoding;
                             if (TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
+                            break;
+                        case "Targets":
+                            presence |= FoxRunNamedArgumentPresence.Targets;
+                            if (TryReadIntConstant(named.Value, out var publishTargets)) targets = publishTargets;
                             break;
                     }
                 }
@@ -316,7 +327,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     conditionMemberKind: ResolveConditionMemberKind(
                         containingType,
                         onlyIf,
-                        presence)));
+                        presence),
+                    targets: targets));
             }
             if (topics.Count == 0) return null;
 
@@ -705,8 +717,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     && item.Ros2MessageShape.Diagnostics.Count == 0
                     && item.Topics.Any(topic =>
                         topic.Mode == 2
-                        && (topic.SubscriptionProvider == 0
-                            || topic.SubscriptionProvider == 2)))
+                        && (topic.Source == 0
+                            || topic.Source == 2)))
                 {
                     spc.ReportDiagnostic(Diagnostic.Create(
                         Diags.MissingNativeAssemblyReference,
@@ -810,8 +822,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "Unity.FoxgloveSDK.Components.FoxRunFlow";
             private const string FoxRunPolicyMetadataName =
                 "Unity.FoxgloveSDK.Components.FoxRunPolicy";
-            private const string SubscriptionProviderMetadataName =
-                "Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider";
+            private const string SourceMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunEndpoint";
             private const string Ros2QosMetadataName =
                 "Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset";
 
@@ -953,7 +965,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var boolType = compilation.GetSpecialType(SpecialType.System_Boolean);
                 var mode = compilation.GetTypeByMetadataName(FoxRunFlowMetadataName);
                 var policy = compilation.GetTypeByMetadataName(FoxRunPolicyMetadataName);
-                var provider = compilation.GetTypeByMetadataName(SubscriptionProviderMetadataName);
+                var provider = compilation.GetTypeByMetadataName(SourceMetadataName);
                 var qos = compilation.GetTypeByMetadataName(Ros2QosMetadataName);
                 if (mode == null || policy == null || provider == null || qos == null)
                     return false;

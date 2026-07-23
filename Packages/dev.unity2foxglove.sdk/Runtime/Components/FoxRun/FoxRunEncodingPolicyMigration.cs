@@ -6,7 +6,7 @@
 
 namespace Unity.FoxgloveSDK.Components
 {
-    internal static class FoxRunWireEncodingPolicyMigration
+    internal static class FoxRunEncodingPolicyMigration
     {
         private const int DirectionalSerializationVersion = 1;
         internal const int CurrentSerializationVersion = 2;
@@ -20,9 +20,9 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public static void Migrate(
             ref int serializationVersion,
-            FoxRunWireEncoding legacyDefault,
-            ref FoxRunWireEncoding publishDefault,
-            ref FoxRunWireEncoding subscriptionDefault)
+            FoxRunEncoding legacyDefault,
+            ref FoxRunEncoding publishDefault,
+            ref FoxRunEncoding subscriptionDefault)
         {
             if (serializationVersion >= DirectionalSerializationVersion)
                 return;
@@ -30,24 +30,24 @@ namespace Unity.FoxgloveSDK.Components
             // Unity can invoke this deserialization callback off the main thread, so this
             // player-safe migration must recover without logging or throwing. Old Inherit
             // and malformed enum values both fall back to the historic safe default.
-            var concreteLegacyDefault = legacyDefault == FoxRunWireEncoding.Json
-                ? FoxRunWireEncoding.Json
-                : FoxRunWireEncoding.Protobuf;
+            var concreteLegacyDefault = legacyDefault == FoxRunEncoding.JSON
+                ? FoxRunEncoding.JSON
+                : FoxRunEncoding.Protobuf;
             publishDefault = concreteLegacyDefault;
             subscriptionDefault = concreteLegacyDefault;
             serializationVersion = DirectionalSerializationVersion;
         }
 
         /// <summary>
-        /// Adds subscription provider, ROS2 QoS, and native copy-budget policy
+        /// Adds subscription source, ROS2 QoS, and native copy-budget policy
         /// while preserving the directional encoding migration.
         /// </summary>
         public static void Migrate(
             ref int serializationVersion,
-            FoxRunWireEncoding legacyDefault,
-            ref FoxRunWireEncoding publishDefault,
-            ref FoxRunWireEncoding subscriptionDefault,
-            ref FoxRunSubscriptionProvider providerDefault,
+            FoxRunEncoding legacyDefault,
+            ref FoxRunEncoding publishDefault,
+            ref FoxRunEncoding subscriptionDefault,
+            ref FoxRunEndpoint sourceDefault,
             ref FoxRunRos2QosPreset qosDefault,
             ref int nativeCopyBudgetBytes)
         {
@@ -59,14 +59,14 @@ namespace Unity.FoxgloveSDK.Components
 
             if (serializationVersion < CurrentSerializationVersion)
             {
-                providerDefault = FoxRunSubscriptionProvider.FoxgloveWebSocket;
+                sourceDefault = FoxRunEndpoint.Foxglove;
                 qosDefault = FoxRunRos2QosPreset.Default;
                 nativeCopyBudgetBytes = DefaultRos2NativeCopyBudgetBytes;
                 serializationVersion = CurrentSerializationVersion;
                 return;
             }
 
-            providerDefault = NormalizeSubscriptionProvider(providerDefault);
+            sourceDefault = NormalizeSubscriptionSource(sourceDefault);
             qosDefault = NormalizeRos2Qos(qosDefault);
             nativeCopyBudgetBytes = NormalizeRos2NativeCopyBudgetBytes(nativeCopyBudgetBytes);
         }
@@ -75,11 +75,11 @@ namespace Unity.FoxgloveSDK.Components
         public static int NormalizeRos2NativeCopyBudgetBytes(int configuredBytes)
             => FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configuredBytes);
 
-        private static FoxRunSubscriptionProvider NormalizeSubscriptionProvider(
-            FoxRunSubscriptionProvider provider)
-            => provider == FoxRunSubscriptionProvider.Ros2Native
-                ? FoxRunSubscriptionProvider.Ros2Native
-                : FoxRunSubscriptionProvider.FoxgloveWebSocket;
+        private static FoxRunEndpoint NormalizeSubscriptionSource(
+            FoxRunEndpoint source)
+            => source == FoxRunEndpoint.Ros2Native
+                ? FoxRunEndpoint.Ros2Native
+                : FoxRunEndpoint.Foxglove;
 
         private static FoxRunRos2QosPreset NormalizeRos2Qos(FoxRunRos2QosPreset qos)
             => FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(qos);

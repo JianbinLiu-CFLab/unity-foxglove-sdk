@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Editor
                 declaringType,
                 member.MemberName,
                 member.Topic,
-                member.SubscriptionProvider,
+                member.Source,
                 canonicalEnvelope,
                 member.Ros2Qos);
             sb.AppendLine(pad + "        registrar.Register<" + dto + ", " + envelope + ">(");

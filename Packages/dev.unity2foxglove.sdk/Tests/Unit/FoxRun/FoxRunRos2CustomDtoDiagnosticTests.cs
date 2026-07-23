@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void PackagedNativePublishAndSubscribeKeepsThePhase179Foxrun205TextAndMeaning()
+        public void PackagedNativePublishAndSubscribeIsLegalWithDirectionalSource()
         {
             var packagedShape = new FoxRunRos2MessageShape(
                 "global::Example.Packaged",
@@ -74,18 +74,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 conditionalSymbols: "",
                 mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: true,
                 ros2MessageShape: packagedShape,
                 ros2ContractKind: FoxRunRos2ContractKind.PackagedRos2Message);
 
-            var diagnostic = Assert.Single(Validate(member), value => value.Id == "FOXRUN205");
-            Assert.Equal("Ros2Native subscriptions are supported only for Subscribe members.", diagnostic.Message);
+            var diagnostics = Validate(member);
+
+            Assert.DoesNotContain(diagnostics, value => value.Id == "FOXRUN205");
+            Assert.DoesNotContain(diagnostics, value => value.Id == "FOXRUN612");
         }
 
         [Fact]
-        public void IncompleteCustomNativeBidirectionalContractFailsClosedWithoutFoxrun205()
+        public void IncompleteCustomNativeBidirectionalContractFailsClosedWithoutLegacyDirectionDiagnostics()
         {
             var shape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(typeof(InvalidDto));
             var diagnostics = Validate(CreateMember(
@@ -97,11 +99,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN402");
             Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN606");
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN205");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN206");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN214");
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN006");
         }
 
         [Fact]
-        public void NativeSubscriptionProviderIsRejectedForPublishEvenWhenTheDtoShapeIsValid()
+        public void NativeSourceIsRejectedForPublishEvenWhenTheDtoShapeIsValid()
         {
             var diagnostics = Validate(CreateMember(
                 FoxRunRos2ContractKind.CustomDto,
@@ -109,7 +113,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 mode: (int)FoxRunFlow.Publish,
                 encoding: FoxRunGenerationDescriptorConstants.InheritEncoding));
 
-            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN214");
+            Assert.Contains(diagnostics, diagnostic => diagnostic.Id == "FOXRUN612");
+            Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN214");
         }
 
         [Fact]
@@ -120,8 +125,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Example", "Host", "Incoming", "field", typeof(ValidDto).FullName, false, false, string.Empty,
                 "/custom", 10f, "example/Custom", (int)FoxRunPolicy.FixedRate, 0f,
                 flow: (int)FoxRunFlow.PublishAndSubscribe,
-                encoding: (int)FoxRunWireEncoding.Json,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                encoding: (int)FoxRunEncoding.JSON,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: false,
                 ros2CustomDtoShape: shape,
@@ -155,8 +160,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Example", "Host", "Incoming", "field", typeof(ValidDto).FullName, false, false, string.Empty,
                 "/custom", 10f, "", (int)FoxRunPolicy.FixedRate, 0f,
                 flow: (int)FoxRunFlow.PublishAndSubscribe,
-                encoding: (int)FoxRunWireEncoding.Json,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                encoding: (int)FoxRunEncoding.JSON,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: true,
                 ros2MessageShape: misleadingPackagedShape,
@@ -207,7 +212,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 conditionalSymbols: "",
                 mode: mode,
                 encoding: encoding,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: false,
                 ros2CustomDtoShape: shape,

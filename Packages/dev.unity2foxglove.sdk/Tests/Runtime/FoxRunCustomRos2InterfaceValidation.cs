@@ -313,53 +313,69 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyDirectionalProviderPolicy()
         {
-            var customBidirectional = FoxRunSubscriptionProviderResolver.Resolve(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunSubscriptionProvider.Ros2Native,
+            var customBidirectional = FoxRunEndpointResolver.Resolve(
                 FoxRunFlow.PublishAndSubscribe,
-                FoxRunWireEncoding.Json,
-                supportsWebSocket: true,
-                supportsRos2Native: true,
-                allowsNativePublishAndSubscribe: true);
-            var inheritedCustomBidirectional = FoxRunSubscriptionProviderResolver.Resolve(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunSubscriptionProvider.Ros2Native,
+                FoxRunEndpoint.Ros2Native,
+                hasExplicitSource: true,
+                declaredTargets: FoxRunEndpoint.Foxglove,
+                hasExplicitTargets: true,
+                FoxRunEncoding.JSON,
+                hasExplicitEncoding: true,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
+            var inheritedCustomBidirectional = FoxRunEndpointResolver.Resolve(
                 FoxRunFlow.PublishAndSubscribe,
-                FoxRunWireEncoding.Inherit,
-                supportsWebSocket: true,
-                supportsRos2Native: true,
-                allowsNativePublishAndSubscribe: true);
-            var packagedBidirectional = FoxRunSubscriptionProviderResolver.Resolve(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunFlow.PublishAndSubscribe,
-                FoxRunWireEncoding.Json,
-                supportsWebSocket: true,
-                supportsRos2Native: true,
-                allowsNativePublishAndSubscribe: false);
-            var nativeSubscribeJson = FoxRunSubscriptionProviderResolver.Resolve(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunSubscriptionProvider.Ros2Native,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                (FoxRunEncoding)0,
+                hasExplicitEncoding: false,
+                defaultSource: FoxRunEndpoint.Ros2Native,
+                defaultTargets: FoxRunEndpoint.Ros2Native,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON);
+            var nativeSubscribeJson = FoxRunEndpointResolver.Resolve(
                 FoxRunFlow.Subscribe,
-                FoxRunWireEncoding.Json,
-                supportsWebSocket: true,
-                supportsRos2Native: true);
-            var nativePublish = FoxRunSubscriptionProviderResolver.Resolve(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunSubscriptionProvider.Ros2Native,
+                FoxRunEndpoint.Ros2Native,
+                hasExplicitSource: true,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                FoxRunEncoding.JSON,
+                hasExplicitEncoding: true,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
+            var publishWithSource = FoxRunEndpointResolver.Resolve(
                 FoxRunFlow.Publish,
-                FoxRunWireEncoding.Inherit,
-                supportsWebSocket: true,
-                supportsRos2Native: true);
+                FoxRunEndpoint.Ros2Native,
+                hasExplicitSource: true,
+                declaredTargets: FoxRunEndpoint.Ros2Native,
+                hasExplicitTargets: true,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
 
             Check(customBidirectional.Success
-                  && customBidirectional.Provider == FoxRunSubscriptionProvider.Ros2Native
+                  && customBidirectional.Topology.Source == FoxRunEndpoint.Ros2Native
+                  && customBidirectional.Topology.Targets == FoxRunEndpoint.Foxglove
+                  && customBidirectional.Topology.PublishEncoding == FoxRunEncoding.JSON
                   && inheritedCustomBidirectional.Success
-                  && inheritedCustomBidirectional.Provider == FoxRunSubscriptionProvider.Ros2Native
-                  && packagedBidirectional.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.NativeEncodingConflict
-                  && nativeSubscribeJson.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.NativeEncodingConflict
-                  && nativePublish.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.NativeRequiresSubscribe,
-                "181A-6: JSON/Protobuf is allowed only as custom P&S WebSocket output; native remains the input provider");
+                  && inheritedCustomBidirectional.Topology.Source == FoxRunEndpoint.Ros2Native
+                  && inheritedCustomBidirectional.Topology.Targets == FoxRunEndpoint.Ros2Native
+                  && inheritedCustomBidirectional.Topology.PublishEncoding == 0
+                  && inheritedCustomBidirectional.Topology.SubscribeEncoding == 0
+                  && nativeSubscribeJson.DiagnosticCode
+                     == FoxRunEndpointDiagnosticCode.EncodingRequiresFoxglove
+                  && publishWithSource.DiagnosticCode
+                     == FoxRunEndpointDiagnosticCode.SourceNotAllowed,
+                "181A-6: directional Source, Targets, and Foxglove Encoding resolve independently and contradictions fail closed");
         }
 
         private static void VerifyNoImplicitWebSocketInputFallback(
@@ -369,13 +385,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             Check(validator.Contains("CustomNativeBidirectionalContractDiagnosticId", StringComparison.Ordinal)
                   && validator.Contains("never falls back to WebSocket input", StringComparison.Ordinal)
-                  && validator.Contains("!IsNativeCustomBidirectionalOutputContract(member)", StringComparison.Ordinal)
-                  && validator.Contains("NativeSubscribeDiagnosticId", StringComparison.Ordinal),
-                "181A-7: validator preserves legacy packaged native rejection and gives custom P&S a no-fallback diagnostic path");
+                  && validator.Contains("IsNativeCustomBidirectionalOutputContract(member)", StringComparison.Ordinal)
+                  && validator.Contains("InvalidDirectionalEndpointDiagnosticId", StringComparison.Ordinal)
+                  && !validator.Contains("NativeSubscribeDiagnosticId", StringComparison.Ordinal)
+                  && !validator.Contains("NativeEncodingDiagnosticId", StringComparison.Ordinal)
+                  && !validator.Contains("NativeSourcePublishDiagnosticId", StringComparison.Ordinal),
+                "181A-7: validator retires legacy direction diagnostics while custom native P&S keeps a no-fallback diagnostic path");
 
             Check(emitter.Contains("webSocketInputMembers", StringComparison.Ordinal)
                   && emitter.Contains("!string.Equals(", StringComparison.Ordinal)
-                  && emitter.Contains("Ros2NativeSubscriptionProvider", StringComparison.Ordinal)
+                  && emitter.Contains("Ros2NativeSource", StringComparison.Ordinal)
                   && manifestBuilder.Contains("Subscribe native contracts remain absent", StringComparison.Ordinal)
                   && manifestBuilder.Contains("ResolvePackagedCanonicalRosType", StringComparison.Ordinal)
                   && manifestBuilder.Contains("ResolvePackagedCopyShapeIdentity", StringComparison.Ordinal)
@@ -390,13 +409,19 @@ namespace Unity.FoxgloveSDK.Tests
             string unshippedLedger,
             string shippedLedger)
         {
-            var expectedIds = new[] { "FOXRUN214", "FOXRUN402", "FOXRUN606", "FOXRUN607", "FOXRUN608" };
+            var expectedIds = new[] { "FOXRUN402", "FOXRUN606", "FOXRUN607", "FOXRUN608", "FOXRUN612" };
             Check(expectedIds.All(id => diagnostics.Contains("\"" + id + "\"", StringComparison.Ordinal))
                   && expectedIds.All(id => unshippedLedger.Contains(id + " | FoxRun |", StringComparison.Ordinal))
+                  && !diagnostics.Contains("\"FOXRUN205\"", StringComparison.Ordinal)
+                  && !diagnostics.Contains("\"FOXRUN206\"", StringComparison.Ordinal)
+                  && !diagnostics.Contains("\"FOXRUN214\"", StringComparison.Ordinal)
+                  && unshippedLedger.Contains("FOXRUN205 | FoxRun | Error | Retired before release;", StringComparison.Ordinal)
+                  && unshippedLedger.Contains("FOXRUN206 | FoxRun | Error | Retired before release;", StringComparison.Ordinal)
+                  && unshippedLedger.Contains("FOXRUN214 | FoxRun | Error | Retired before release;", StringComparison.Ordinal)
                   && !diagnostics.Contains("\"FOXRUN036\"", StringComparison.Ordinal)
                   && shippedLedger.Contains("FOXRUN036 | FoxRun |", StringComparison.Ordinal)
                   && unshippedLedger.Contains("FOXRUN036 | FoxRun | Error | Retired;", StringComparison.Ordinal),
-                "181A-9: new diagnostics use subscribe, bidirectional, and system ranges while retired FOXRUN036 remains reserved");
+                "181A-9: active custom/directional diagnostics remain while legacy native direction IDs and FOXRUN036 stay reserved");
         }
 
         private static void VerifyStaticSourcePackageBoundary(
@@ -668,8 +693,12 @@ namespace Unity.FoxgloveSDK.Tests
             var runtimeDemandBody = runtimeDemandStart >= 0 && runtimeDemandEnd > runtimeDemandStart
                 ? managerR2fuRuntimeInspector.Substring(runtimeDemandStart, runtimeDemandEnd - runtimeDemandStart)
                 : string.Empty;
-            Check(runtimeDemandBody.Contains("HasCustomNativeSubscriptionDemand()", StringComparison.Ordinal),
-                "181E-3: custom native input independently creates shared R2FU Runtime demand");
+            Check(runtimeDemandBody.Contains(
+                      "FoxRunCustomNativeContractDemandPolicy.HasDemand(",
+                      StringComparison.Ordinal)
+                  && runtimeDemandBody.Contains("GetDefaultPublishTargets()", StringComparison.Ordinal)
+                  && runtimeDemandBody.Contains("GetDefaultSubscriptionSource()", StringComparison.Ordinal),
+                "181E-3: resolved custom native publish and subscribe directions independently create shared R2FU Runtime demand");
 
             var runtimeSectionStart = managerR2fuRuntimeInspector.IndexOf(
                 "private void DrawR2fuRuntimeSection()",
@@ -684,12 +713,18 @@ namespace Unity.FoxgloveSDK.Tests
                       "HasR2fuNativeSubscriptionDemand() || HasCustomNativeSubscriptionDemand()",
                       StringComparison.Ordinal)
                   && runtimeSectionBody.Contains(
+                      "GetDefaultPublishTargets() & FoxRunEndpoint.Ros2Native",
+                      StringComparison.Ordinal)
+                  && runtimeSectionBody.Contains(
+                      "HasExplicitNativePublishContract",
+                      StringComparison.Ordinal)
+                  && runtimeSectionBody.Contains(
                       "if (HasCustomNativeContractDemand())",
                       StringComparison.Ordinal)
                   && runtimeSectionBody.Contains(
                       "DrawOptionalR2fuCustomTypesupportInspector();",
                       StringComparison.Ordinal),
-                "181E-4: shared Runtime direction text includes custom native input demand and conditionally renders the custom preflight");
+                "181E-4: shared Runtime direction text includes profile and explicit native demand and conditionally renders the custom preflight");
         }
 
         private static void VerifyEditModeCustomContractSnapshot(
@@ -757,8 +792,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(sample.Contains("FoxRunFlow.Publish", StringComparison.Ordinal)
                   && sample.Contains("FoxRunFlow.Subscribe", StringComparison.Ordinal)
                   && sample.Contains("FoxRunFlow.PublishAndSubscribe", StringComparison.Ordinal)
-                  && sample.Contains("SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native", StringComparison.Ordinal)
-                  && sample.Contains("Encoding = FoxRunWireEncoding.Json", StringComparison.Ordinal)
+                  && sample.Contains("Source = FoxRunEndpoint.Ros2Native", StringComparison.Ordinal)
+                  && sample.Contains("Encoding = FoxRunEncoding.JSON", StringComparison.Ordinal)
                   && sample.Contains("byte[]", StringComparison.Ordinal)
                   && sample.Contains("List<long>", StringComparison.Ordinal)
                   && sample.Contains("int?", StringComparison.Ordinal),

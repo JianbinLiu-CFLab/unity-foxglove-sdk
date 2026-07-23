@@ -77,7 +77,9 @@ namespace Unity.FoxgloveSDK.Editor
             /// <summary>DTO/enum shape used for direct Protobuf code generation.</summary>
             public readonly FoxRunProtobufTypeShape ProtobufTypeShape;
             /// <summary>Normalized declared subscription provider.</summary>
-            public readonly string SubscriptionProvider;
+            public readonly string Source;
+            /// <summary>Normalized declared publish-target set.</summary>
+            public readonly string Targets;
             /// <summary>Normalized portable ROS2 QoS policy.</summary>
             public readonly string Ros2Qos;
             /// <summary>True when a byte-router codec is valid for this member.</summary>
@@ -90,6 +92,8 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly FoxRunRos2ContractKind Ros2ContractKind;
             /// <summary>Schema for a generated custom ROS2 interface, if applicable.</summary>
             public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
+            /// <summary>Exact optional arguments written on the source declaration.</summary>
+            public readonly FoxRunNamedArgumentPresence NamedArgumentPresence;
 
             /// <summary>
             /// Creates a topic-member descriptor for the shared emitter.
@@ -130,7 +134,7 @@ namespace Unity.FoxgloveSDK.Editor
                 bool isAggregateMember = false, string jsonFieldName = "", int mode = FlowPublish, string canonicalType = "",
                 string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding, int protobufFieldNumber = 0,
                 FoxRunProtobufTypeShape protobufTypeShape = null,
-                string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                string source = FoxRunGenerationDescriptorConstants.InheritSource,
                 string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
                 bool generatesWebSocketCodec = true,
                 bool generatesRos2NativeRegistration = false,
@@ -138,7 +142,9 @@ namespace Unity.FoxgloveSDK.Editor
                 FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
                 FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
                 bool hasExplicitHz = true,
-                FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+                FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+                FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
+                string targets = FoxRunGenerationDescriptorConstants.InheritTargets)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -163,13 +169,15 @@ namespace Unity.FoxgloveSDK.Editor
                     : encoding;
                 ProtobufFieldNumber = protobufFieldNumber;
                 ProtobufTypeShape = protobufTypeShape;
-                SubscriptionProvider = subscriptionProvider ?? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
+                Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
+                Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
                 Ros2Qos = ros2Qos ?? FoxRunGenerationDescriptorConstants.InheritRos2Qos;
                 GeneratesWebSocketCodec = generatesWebSocketCodec;
                 GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
                 Ros2MessageShape = ros2MessageShape;
                 Ros2CustomDtoShape = ros2CustomDtoShape;
                 Ros2ContractKind = ros2ContractKind;
+                NamedArgumentPresence = namedArgumentPresence;
             }
         }
 
@@ -266,16 +274,16 @@ namespace Unity.FoxgloveSDK.Editor
             var webSocketInputMembers = inputMembers
                 .Where(member => member.GeneratesWebSocketCodec
                                  && !string.Equals(
-                                     member.SubscriptionProvider,
-                                     FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                                     member.Source,
+                                     FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                                      StringComparison.Ordinal))
                 .ToList();
             var nativeInputMembers = inputMembers
                 .Where(member => member.GeneratesRos2NativeRegistration
                                  && member.Ros2MessageShape != null
                                  && !string.Equals(
-                                     member.SubscriptionProvider,
-                                     FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                                     member.Source,
+                                     FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                                      StringComparison.Ordinal))
                 .ToList();
             var customNativeInputMembers = inputMembers

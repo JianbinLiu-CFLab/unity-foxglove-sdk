@@ -72,10 +72,10 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var publishDefault = manager != null
                 ? manager.ActiveFoxRunPublishEncoding
-                : FoxRunWireEncoding.Protobuf;
+                : FoxRunEncoding.Protobuf;
             var subscriptionDefault = manager != null
                 ? manager.ActiveFoxRunSubscriptionEncoding
-                : FoxRunWireEncoding.Protobuf;
+                : FoxRunEncoding.Protobuf;
             var summaries = FoxRunSchemaInfoRegistry.GetTopicSummaries(publishDefault, subscriptionDefault);
             if (summaries.Count == 0)
             {
@@ -102,8 +102,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
 
             var defaultProvider = manager == null
-                ? FoxRunSubscriptionProvider.FoxgloveWebSocket
-                : manager.ActiveFoxRunSubscriptionProvider;
+                ? FoxRunEndpoint.Foxglove
+                : manager.ActiveFoxRunSubscriptionSource;
             var nativeBindings = new System.Collections.Generic.List<FoxRunSchemaSubscriptionBindingInfo>();
             for (var i = 0; i < bindings.Count; i++)
             {
@@ -114,8 +114,8 @@ namespace Unity.FoxgloveSDK.Editor
                     continue;
                 }
 
-                if (binding.DeclaredProvider == FoxRunSubscriptionProvider.Ros2Native
-                    || (defaultProvider == FoxRunSubscriptionProvider.Ros2Native
+                if (binding.DeclaredSource == FoxRunEndpoint.Ros2Native
+                    || (defaultProvider == FoxRunEndpoint.Ros2Native
                         && binding.SupportsRos2Native))
                 {
                     nativeBindings.Add(binding);
@@ -137,17 +137,23 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DrawFoxRunNativeUnityContract(
             FoxRunSchemaSubscriptionBindingInfo binding,
-            FoxRunSubscriptionProvider defaultProvider)
+            FoxRunEndpoint defaultProvider)
         {
-            var resolution = FoxRunSubscriptionProviderResolver.Resolve(
-                binding.DeclaredProvider,
-                defaultProvider,
+            var resolution = FoxRunEndpointResolver.Resolve(
                 FoxRunFlow.Subscribe,
-                FoxRunWireEncoding.Inherit,
-                binding.SupportsWebSocket,
-                binding.SupportsRos2Native);
+                binding.DeclaredSource,
+                hasExplicitSource: binding.DeclaredSource != 0,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource: defaultProvider,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.Protobuf);
             var status = resolution.Success
-                         && resolution.Provider == FoxRunSubscriptionProvider.Ros2Native
+                         && resolution.Topology.Source == FoxRunEndpoint.Ros2Native
+                         && binding.SupportsRos2Native
                 ? "Native subscription eligible"
                 : string.IsNullOrWhiteSpace(resolution.DiagnosticMessage)
                     ? "Native subscription unavailable"

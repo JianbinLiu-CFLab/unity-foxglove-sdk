@@ -130,7 +130,8 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "isArray", left.IsArray ? "true" : "false", right.IsArray ? "true" : "false", semantic);
             CompareSemantic(key, "elementTypeName", left.ElementTypeName, right.ElementTypeName, semantic);
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
-            CompareSemantic(key, "subscriptionProvider", left.SubscriptionProvider, right.SubscriptionProvider, semantic);
+            CompareSemantic(key, "source", left.Source, right.Source, semantic);
+            CompareSemantic(key, "targets", left.Targets, right.Targets, semantic);
             CompareSemantic(key, "ros2Qos", left.Ros2Qos, right.Ros2Qos, semantic);
             CompareSemantic(key, "generatesWebSocketCodec", left.GeneratesWebSocketCodec ? "true" : "false", right.GeneratesWebSocketCodec ? "true" : "false", semantic);
             CompareSemantic(key, "generatesRos2NativeRegistration", left.GeneratesRos2NativeRegistration ? "true" : "false", right.GeneratesRos2NativeRegistration ? "true" : "false", semantic);

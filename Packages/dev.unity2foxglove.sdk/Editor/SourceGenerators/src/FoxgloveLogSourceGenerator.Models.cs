@@ -227,7 +227,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic.Encoding,
                 topic.ProtobufFieldNumber,
                 ProtobufTypeShape,
-                topic.SubscriptionProvider,
+                topic.Source,
                 topic.Ros2Qos,
                 ProtobufTypeShape != null
                     || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
@@ -242,7 +242,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 Ros2CustomDtoShape,
                 Ros2ContractKind,
                 topic.NamedArgumentPresence,
-                topic.ConditionMemberKind);
+                topic.ConditionMemberKind,
+                topic.Targets);
         }
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(
@@ -283,7 +284,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly int Policy;
         public readonly int Mode;
         public readonly int Encoding;
-        public readonly int SubscriptionProvider;
+        public readonly int Source;
+        public readonly int Targets;
         public readonly int Ros2Qos;
         public readonly int ProtobufFieldNumber;
         /// <summary>Change tolerance.</summary>
@@ -306,15 +308,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public TopicEntry(string topic, float hz, string schema,
             int policy, float tolerance, string onlyIf = "",
             bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0,
-            int subscriptionProvider = 0, int ros2Qos = 0,
+            int source = 0, int ros2Qos = 0,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
-            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            int targets = 0)
         {
             Topic = topic; Hz = hz; SchemaName = schema;
             Policy = policy;
             Mode = mode;
             Encoding = encoding;
-            SubscriptionProvider = subscriptionProvider;
+            Source = source;
+            Targets = targets;
             Ros2Qos = ros2Qos;
             ProtobufFieldNumber = protobufFieldNumber;
             Tolerance = tolerance;

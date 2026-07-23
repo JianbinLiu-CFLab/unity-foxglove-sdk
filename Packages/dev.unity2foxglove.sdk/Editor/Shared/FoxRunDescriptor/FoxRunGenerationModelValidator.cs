@@ -15,15 +15,13 @@ namespace Unity.FoxgloveSDK.Editor
         private const string ConditionMissingDiagnosticId = "FOXRUN015";
         private const string ConditionNotBoolDiagnosticId = "FOXRUN016";
         private const string MixedConditionDiagnosticId = "FOXRUN017";
-        private const string InvalidWireEncodingDiagnosticId = "FOXRUN602";
+        private const string InvalidEncodingDiagnosticId = "FOXRUN602";
         private const string InvalidProtobufFieldNumberDiagnosticId = "FOXRUN603";
-        private const string MixedWireEncodingDiagnosticId = "FOXRUN604";
+        private const string MixedEncodingDiagnosticId = "FOXRUN604";
         private const string DuplicateProtobufFieldNumberDiagnosticId = "FOXRUN605";
-        private const string BidirectionalInheritedWireEncodingDiagnosticId = "FOXRUN401";
-        private const string InvalidSubscriptionProviderDiagnosticId = "FOXRUN204";
-        private const string NativeSubscribeDiagnosticId = "FOXRUN205";
-        private const string NativeEncodingDiagnosticId = "FOXRUN206";
-        private const string NativeProviderPublishDiagnosticId = "FOXRUN214";
+        private const string InvalidSourceDiagnosticId = "FOXRUN204";
+        private const string InvalidTargetsDiagnosticId = "FOXRUN611";
+        private const string InvalidDirectionalEndpointDiagnosticId = "FOXRUN612";
         private const string CustomNativeBidirectionalContractDiagnosticId = "FOXRUN402";
         private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN210";
         private const string IgnoredRos2QosDiagnosticId = "FOXRUN213";
@@ -120,35 +118,57 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun Trigger cannot be combined with an explicit Hz."));
             }
 
-            if (!IsKnownDeclaredEncoding(member.Encoding))
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidWireEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be inherit, json, or protobuf."));
+            var hasExplicitEncoding = member.HasNamedArgument(FoxRunNamedArgumentPresence.Encoding);
+            var hasExplicitSource = member.HasNamedArgument(FoxRunNamedArgumentPresence.Source);
+            var hasExplicitTargets = member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets);
 
-            if (!IsKnownSubscriptionProvider(member.SubscriptionProvider))
+            if (!IsKnownDeclaredEncoding(member.Encoding, hasExplicitEncoding))
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be omitted, Protobuf, or JSON."));
+
+            if (!IsKnownSource(member.Source, hasExplicitSource))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    InvalidSubscriptionProviderDiagnosticId,
+                    InvalidSourceDiagnosticId,
                     target,
                     member.MemberName,
-                    "FoxRun SubscriptionProvider must be inherit, foxglove-websocket, or ros2-native."));
+                    "FoxRun Source must be omitted or select exactly Foxglove or Ros2Native."));
             }
 
-            AppendNativeProviderDirectionDiagnostics(member, target, diagnostics);
-
-            if (IsNativeProvider(member.SubscriptionProvider)
-                && !string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal)
-                && !AllowsNativeBidirectionalOutputEncoding(member))
+            if (!IsKnownTargets(member.Targets, hasExplicitTargets))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    NativeEncodingDiagnosticId,
+                    InvalidTargetsDiagnosticId,
                     target,
                     member.MemberName,
-                    "Ros2Native is a typed native subscription and cannot declare JSON or Protobuf Encoding."));
+                    "FoxRun Targets must be omitted or a non-empty set of Foxglove, Ros2Native, and Ros2Bridge."));
+            }
+
+            AppendDirectionalEndpointDiagnostics(member, target, diagnostics);
+
+            if (IsNativeCustomBidirectionalOutputContract(member)
+                && !HasCompleteCustomBidirectionalContract(member))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    CustomNativeBidirectionalContractDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "Native PublishAndSubscribe requires a supported CustomDto with complete static canonical and payload identities; it never falls back to WebSocket input."));
+            }
+
+            if (hasExplicitEncoding && !CanExplicitEncodingReachFoxglove(member))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidDirectionalEndpointDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun Encoding requires at least one Foxglove direction; explicit Source and Targets select only ROS 2 endpoints."));
             }
 
             if (string.Equals(
-                    member.SubscriptionProvider,
-                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                    member.Source,
+                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                     StringComparison.Ordinal)
+                && member.Mode == 2
                 && !string.Equals(member.Ros2Qos, FoxRunGenerationDescriptorConstants.InheritRos2Qos, StringComparison.Ordinal))
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
@@ -160,7 +180,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             AppendNativeShapeDiagnostics(member, target, diagnostics);
 
-            if (IsNativeProvider(member.SubscriptionProvider)
+            if (IsNativeProvider(member.Source)
                 && member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
                 && member.Ros2MessageShape != null
                 && !string.IsNullOrWhiteSpace(member.SchemaName)
@@ -173,18 +193,6 @@ namespace Unity.FoxgloveSDK.Editor
                     member.MemberName,
                     "Explicit SchemaName '" + member.SchemaName + "' does not match validated ROS type '"
                     + member.Ros2MessageShape.CanonicalRosType + "'."));
-            }
-
-            if (requiresWebSocketShapeValidation
-                && member.Mode == 3
-                && !IsNativeCustomBidirectionalOutputContract(member)
-                && string.Equals(member.Encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
-            {
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    BidirectionalInheritedWireEncodingDiagnosticId,
-                    target,
-                    member.MemberName,
-                    "PublishAndSubscribe requires an explicit Protobuf or Json Encoding because it has one shared bidirectional wire contract."));
             }
 
             if (requiresWebSocketShapeValidation && member.ProtobufFieldNumber != 0)
@@ -380,11 +388,20 @@ namespace Unity.FoxgloveSDK.Editor
             // WebSocket codec can still resolve only through native input and
             // must surface its packaged shape failure.  A custom DTO keeps
             // targeted native diagnostics until its provider is explicit.
-            return IsNativeProvider(member?.SubscriptionProvider)
+            return IsNativeProvider(member?.Source)
+                   || (member != null
+                       && (member.Mode == 1 || member.Mode == 3)
+                       && member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets)
+                       && (TargetsContain(
+                               member.Targets,
+                               FoxRunGenerationDescriptorConstants.Ros2NativeTarget)
+                           || TargetsContain(
+                               member.Targets,
+                               FoxRunGenerationDescriptorConstants.Ros2BridgeTarget)))
                    || (member?.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message
                        && string.Equals(
-                           member.SubscriptionProvider,
-                           FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                           member.Source,
+                           FoxRunGenerationDescriptorConstants.InheritSource,
                            StringComparison.Ordinal)
                        && !member.GeneratesWebSocketCodec);
         }
@@ -393,18 +410,42 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunGenerationMember member,
             bool hasValidNativeCapability)
         {
+            var publishes = member.Mode == 1 || member.Mode == 3;
+            var subscribes = member.Mode == 2 || member.Mode == 3;
+            var hasExplicitTargets = member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets);
+            var hasExplicitSource = member.HasNamedArgument(FoxRunNamedArgumentPresence.Source);
+            var explicitFoxglovePublish = publishes
+                                          && hasExplicitTargets
+                                          && TargetsContain(
+                                              member.Targets,
+                                              FoxRunGenerationDescriptorConstants.FoxgloveTarget);
+            var explicitFoxgloveSubscribe = subscribes
+                                            && hasExplicitSource
+                                            && string.Equals(
+                                                member.Source,
+                                                FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
+                                                StringComparison.Ordinal);
+            if (explicitFoxglovePublish || explicitFoxgloveSubscribe)
+                return true;
+
+            var everyDirectionExplicit = (!publishes || hasExplicitTargets)
+                                         && (!subscribes || hasExplicitSource);
+            if (everyDirectionExplicit)
+                return false;
+
             if (string.Equals(
-                member.SubscriptionProvider,
-                FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
-                StringComparison.Ordinal))
+                    member.Source,
+                    FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                    StringComparison.Ordinal))
             {
-                return AllowsNativeBidirectionalOutputEncoding(member)
+                return publishes
+                       && !hasExplicitTargets
                        && member.GeneratesWebSocketCodec;
             }
 
             if (string.Equals(
-                member.SubscriptionProvider,
-                FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+                member.Source,
+                FoxRunGenerationDescriptorConstants.InheritSource,
                 StringComparison.Ordinal))
             {
                 // Publish has no inbound provider to resolve.  A valid
@@ -413,59 +454,42 @@ namespace Unity.FoxgloveSDK.Editor
                 // shape is not a canonical WebSocket field shape.  Keep the
                 // existing validation for every inbound/P&S declaration: an
                 // inherited provider there can still resolve to WebSocket.
-                if (IsNativeCustomPublishOutputContract(member, hasValidNativeCapability))
+                if (IsNativeCustomPublishOutputContract(member, hasValidNativeCapability)
+                    && !subscribes)
                     return false;
 
                 return member.GeneratesWebSocketCodec || !hasValidNativeCapability;
             }
 
             return string.Equals(
-                member.SubscriptionProvider,
-                FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                member.Source,
+                FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                 StringComparison.Ordinal);
         }
 
-        private static void AppendNativeProviderDirectionDiagnostics(
+        private static void AppendDirectionalEndpointDiagnostics(
             FoxRunGenerationMember member,
             string target,
             ICollection<FoxRunGenerationDiagnostic> diagnostics)
         {
-            if (!IsNativeProvider(member.SubscriptionProvider))
-                return;
-
-            if (member.Mode == 1)
+            if (member.HasNamedArgument(FoxRunNamedArgumentPresence.Source)
+                && member.Mode == 1)
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    NativeProviderPublishDiagnosticId,
+                    InvalidDirectionalEndpointDiagnosticId,
                     target,
                     member.MemberName,
-                    "Ros2Native is an inbound SubscriptionProvider and is invalid for Publish. Configure ROS2 Native output on the Manager instead."));
-                return;
+                    "FoxRun Source is valid only for Subscribe or PublishAndSubscribe."));
             }
 
-            if (member.Mode != 3)
-                return;
-
-            if (member.Ros2ContractKind == FoxRunRos2ContractKind.PackagedRos2Message)
-            {
-                // FOXRUN205 is shipped Phase179 behavior. It remains limited to
-                // real packaged ROS2.Message contracts and is never repurposed
-                // for a Phase181 custom interface failure.
-                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    NativeSubscribeDiagnosticId,
-                    target,
-                    member.MemberName,
-                    "Ros2Native subscriptions are supported only for Subscribe members."));
-                return;
-            }
-
-            if (!HasCompleteCustomBidirectionalContract(member))
+            if (member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets)
+                && member.Mode == 2)
             {
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                    CustomNativeBidirectionalContractDiagnosticId,
+                    InvalidDirectionalEndpointDiagnosticId,
                     target,
                     member.MemberName,
-                    "Native PublishAndSubscribe requires a supported CustomDto with complete static canonical and payload identities; it never falls back to WebSocket input."));
+                    "FoxRun Targets is valid only for Publish or PublishAndSubscribe."));
             }
         }
 
@@ -475,7 +499,7 @@ namespace Unity.FoxgloveSDK.Editor
                && member.Ros2ContractKind == FoxRunRos2ContractKind.CustomDto;
 
         private static bool IsNativeCustomBidirectionalOutputContract(FoxRunGenerationMember member)
-            => IsNativeProvider(member?.SubscriptionProvider)
+            => IsNativeProvider(member?.Source)
                && AllowsNativeBidirectionalOutputEncoding(member);
 
         private static bool IsNativeCustomPublishOutputContract(
@@ -526,7 +550,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     var first = members[0];
                     diagnostics.Add(FoxRunGenerationDiagnostic.Error(
-                        MixedWireEncodingDiagnosticId,
+                        MixedEncodingDiagnosticId,
                         first.DeclaringType + "." + first.MemberName,
                         first.MemberName,
                         "Topic '" + group.Key + "' has mixed Encoding declarations. Use one policy for every member on the topic."));
@@ -629,20 +653,93 @@ namespace Unity.FoxgloveSDK.Editor
             return false;
         }
 
-        private static bool IsKnownDeclaredEncoding(string encoding)
+        private static bool IsKnownDeclaredEncoding(string encoding, bool hasExplicitEncoding)
         {
-            return string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal)
-                   || string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal)
+            if (!hasExplicitEncoding)
+                return string.Equals(
+                    encoding,
+                    FoxRunGenerationDescriptorConstants.InheritEncoding,
+                    StringComparison.Ordinal);
+
+            return string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal)
                    || string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, StringComparison.Ordinal);
         }
 
-        private static bool IsKnownSubscriptionProvider(string provider)
-            => string.Equals(provider, FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider, StringComparison.Ordinal)
-               || string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal)
-               || IsNativeProvider(provider);
+        private static bool IsKnownSource(string provider, bool hasExplicitSource)
+        {
+            if (!hasExplicitSource)
+                return string.Equals(
+                    provider,
+                    FoxRunGenerationDescriptorConstants.InheritSource,
+                    StringComparison.Ordinal);
+
+            return string.Equals(
+                       provider,
+                       FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
+                       StringComparison.Ordinal)
+                   || IsNativeProvider(provider);
+        }
+
+        private static bool IsKnownTargets(string targets, bool hasExplicitTargets)
+        {
+            if (!hasExplicitTargets)
+            {
+                return string.Equals(
+                    targets,
+                    FoxRunGenerationDescriptorConstants.InheritTargets,
+                    StringComparison.Ordinal);
+            }
+
+            if (string.IsNullOrWhiteSpace(targets)
+                || string.Equals(
+                    targets,
+                    FoxRunGenerationDescriptorConstants.InheritTargets,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var parts = targets.Split(',');
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var part in parts)
+            {
+                if ((!string.Equals(part, FoxRunGenerationDescriptorConstants.FoxgloveTarget, StringComparison.Ordinal)
+                     && !string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2NativeTarget, StringComparison.Ordinal)
+                     && !string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2BridgeTarget, StringComparison.Ordinal))
+                    || !seen.Add(part))
+                {
+                    return false;
+                }
+            }
+
+            return seen.Count > 0;
+        }
+
+        private static bool CanExplicitEncodingReachFoxglove(FoxRunGenerationMember member)
+        {
+            var publishes = member.Mode == 1 || member.Mode == 3;
+            var subscribes = member.Mode == 2 || member.Mode == 3;
+            var publishCouldUseFoxglove = publishes
+                                         && (!member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets)
+                                             || TargetsContain(
+                                                 member.Targets,
+                                                 FoxRunGenerationDescriptorConstants.FoxgloveTarget));
+            var subscribeCouldUseFoxglove = subscribes
+                                           && (!member.HasNamedArgument(FoxRunNamedArgumentPresence.Source)
+                                               || string.Equals(
+                                                   member.Source,
+                                                   FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
+                                                   StringComparison.Ordinal));
+            return publishCouldUseFoxglove || subscribeCouldUseFoxglove;
+        }
+
+        private static bool TargetsContain(string targets, string target)
+            => (targets ?? string.Empty)
+                .Split(',')
+                .Any(value => string.Equals(value, target, StringComparison.Ordinal));
 
         private static bool IsNativeProvider(string provider)
-            => string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal);
+            => string.Equals(provider, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal);
 
         private static bool IsInboundAssignable(FoxRunProtobufTypeShape shape)
         {

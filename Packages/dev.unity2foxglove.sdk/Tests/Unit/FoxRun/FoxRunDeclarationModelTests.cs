@@ -115,7 +115,7 @@ namespace Demo
         private float _subscribedValue;
 
         [FoxRun(""/phase183/full-duplex"", Mode = PublishAndSubscribe,
-            Policy = FixedRate, Encoding = FoxRunWireEncoding.Protobuf)]
+            Policy = FixedRate, Encoding = FoxRunEncoding.Protobuf)]
         private float _sharedValue;
     }
 }");
@@ -182,35 +182,32 @@ namespace Demo
         }
 
         [Fact]
-        public void FoxRunWireEncodingMembersAndValuesRemainStable()
+        public void FoxRunEncodingMembersAndValuesRemainStable()
         {
-            var values = Enum.GetValues(typeof(FoxRunWireEncoding))
-                .Cast<FoxRunWireEncoding>()
+            var values = Enum.GetValues(typeof(FoxRunEncoding))
+                .Cast<FoxRunEncoding>()
                 .ToArray();
 
             Assert.Equal(
                 new[]
                 {
-                    FoxRunWireEncoding.Inherit,
-                    FoxRunWireEncoding.Protobuf,
-                    FoxRunWireEncoding.Json
+                    FoxRunEncoding.Protobuf,
+                    FoxRunEncoding.JSON
                 },
                 values);
-            Assert.Equal(0, (int)FoxRunWireEncoding.Inherit);
-            Assert.Equal(1, (int)FoxRunWireEncoding.Protobuf);
-            Assert.Equal(2, (int)FoxRunWireEncoding.Json);
+            Assert.Equal(0, (int)(FoxRunEncoding)0);
+            Assert.Equal(1, (int)FoxRunEncoding.Protobuf);
+            Assert.Equal(2, (int)FoxRunEncoding.JSON);
         }
 
         [Fact]
-        public void FoxRunWirePolicyDefaultsToInheritAcrossRegularAndAggregateDeclarations()
+        public void FoxRunEncodingOmissionUsesAnInternalZeroSentinel()
         {
             var assembly = typeof(FoxRunAttribute).Assembly;
-            var encodingType = assembly.GetType("Unity.FoxgloveSDK.Components.FoxRunWireEncoding");
+            var encodingType = assembly.GetType("Unity.FoxgloveSDK.Components.FoxRunEncoding");
 
             Assert.NotNull(encodingType);
             Assert.True(encodingType.IsEnum);
-            var inherit = Enum.Parse(encodingType, "Inherit");
-
             var regularEncoding = typeof(FoxRunAttribute).GetProperty("Encoding");
             var regularFieldNumber = typeof(FoxRunAttribute).GetProperty("ProtobufFieldNumber");
             var aggregateEncoding = typeof(FoxRunMessageAttribute).GetProperty("Encoding");
@@ -220,9 +217,10 @@ namespace Demo
             Assert.NotNull(regularFieldNumber);
             Assert.NotNull(aggregateEncoding);
             Assert.NotNull(aggregateFieldNumber);
-            Assert.Equal(inherit, regularEncoding.GetValue(new FoxRunAttribute("/phase175/regular")));
+            Assert.DoesNotContain("Inherit", Enum.GetNames(encodingType));
+            Assert.Equal((FoxRunEncoding)0, regularEncoding.GetValue(new FoxRunAttribute("/phase175/regular")));
             Assert.Equal(0, regularFieldNumber.GetValue(new FoxRunAttribute("/phase175/regular")));
-            Assert.Equal(inherit, aggregateEncoding.GetValue(new FoxRunMessageAttribute("/phase175/aggregate")));
+            Assert.Equal((FoxRunEncoding)0, aggregateEncoding.GetValue(new FoxRunMessageAttribute("/phase175/aggregate")));
             Assert.Equal(0, aggregateFieldNumber.GetValue(new FoxRunFieldAttribute()));
         }
 
@@ -333,7 +331,7 @@ namespace Demo
 {
     public partial class SharedState
     {
-        [FoxRun(""/phase157/state"", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase157/state"", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunEncoding.Protobuf)]
         private string _state;
     }
 }";
@@ -369,7 +367,7 @@ namespace Demo
         private int _inbound;
 
         [FoxRun(""/phase184/full-duplex"", Mode = PublishAndSubscribe,
-            Policy = Trigger, Encoding = FoxRunWireEncoding.Protobuf)]
+            Policy = Trigger, Encoding = FoxRunEncoding.Protobuf)]
         private int _shared;
     }
 }");
@@ -462,7 +460,7 @@ namespace Demo
 {
     public partial class CommandInput
     {
-        [FoxRun(""/phase157/shared-state"", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Json)]
+        [FoxRun(""/phase157/shared-state"", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunEncoding.JSON)]
         private float sharedState;
 
         [FoxRun(""/phase157/target-speed"", Mode = FoxRunFlow.Subscribe)]
@@ -480,7 +478,7 @@ namespace Demo
         }
 
         [Fact]
-        public void RoslynGeneratorRejectsBidirectionalInheritedWireEncoding()
+        public void RoslynGeneratorAllowsBidirectionalDirectionalProfileEncodings()
         {
             var result = RunGenerator(@"
 using Unity.FoxgloveSDK.Components;
@@ -494,7 +492,17 @@ namespace Demo
     }
 }");
 
-            Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN401");
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN401");
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            var descriptor = result.Results
+                .Single()
+                .GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+            Assert.Contains("\\\"encoding\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -529,19 +537,31 @@ namespace Demo
         }
 
         [Fact]
-        public void RoslynGeneratorPreservesDeclaredWireEncodingAndFieldNumberInDescriptor()
+        public void RoslynGeneratorPreservesDeclaredTargetsEncodingAndFieldNumberInDescriptor()
         {
             var result = RunGenerator(@"
 using Unity.FoxgloveSDK.Components;
 
 namespace Demo
 {
+    public sealed class WirePayload
+    {
+        public int Count { get; set; }
+    }
+
     public partial class WireState
     {
-        [FoxRun(""/phase175/wire_state"", Encoding = FoxRunWireEncoding.Protobuf, ProtobufFieldNumber = 17)]
-        private int _count;
+        [FoxRun(
+            ""/phase175/wire_state"",
+            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Bridge,
+            Encoding = FoxRunEncoding.Protobuf,
+            ProtobufFieldNumber = 17)]
+        private WirePayload _payload;
     }
 }");
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
             var descriptor = result.Results
                 .Single()
                 .GeneratedSources
@@ -550,11 +570,16 @@ namespace Demo
                 .ToString();
 
             Assert.Contains("\\\"encoding\\\":\\\"protobuf\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"targets\\\":\\\"foxglove,ros2-bridge\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains(
+                "\\\"explicitArguments\\\":\\\"Encoding,Targets,ProtobufFieldNumber\\\"",
+                descriptor,
+                StringComparison.Ordinal);
             Assert.Contains("\\\"protobufFieldNumber\\\":17", descriptor, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void RoslynGeneratorRejectsInvalidDeclaredWireEncoding()
+        public void RoslynGeneratorRejectsInvalidDeclaredEncoding()
         {
             var result = RunGenerator(@"
 using Unity.FoxgloveSDK.Components;
@@ -563,7 +588,7 @@ namespace Demo
 {
     public partial class WireState
     {
-        [FoxRun(""/phase175/wire_state"", Encoding = (FoxRunWireEncoding)99)]
+        [FoxRun(""/phase175/wire_state"", Encoding = (FoxRunEncoding)99)]
         private int _count;
     }
 }");
@@ -720,7 +745,7 @@ namespace Demo
         private int command;
 
         [FoxRun(""/phase184/subscribe"", Mode = Subscribe, Policy = Trigger,
-            Encoding = FoxRunWireEncoding.Json)]
+            Encoding = FoxRunEncoding.JSON)]
         private int _incoming;
 
         public bool FoxRun_Publish_command_2() => false;
@@ -799,7 +824,7 @@ namespace Demo
 
     public partial class WireState
     {
-        [FoxRun(""/phase175/dto"", Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/dto"", Encoding = FoxRunEncoding.Protobuf)]
         private VehicleTelemetry _telemetry;
     }
 }");
@@ -831,10 +856,10 @@ namespace Demo
 
     public partial class CommandInput
     {
-        [FoxRun(""/phase175/telemetry_in"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/telemetry_in"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private Telemetry _incomingTelemetry;
 
-        [FoxRun(""/phase175/samples_in"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/samples_in"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private float[] _incomingSamples;
     }
 }");
@@ -864,7 +889,7 @@ namespace Demo
 
     public partial class CommandInput
     {
-        [FoxRun(""/phase175/readonly_dto"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/readonly_dto"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private Command _incomingCommand;
     }
 }");
@@ -897,13 +922,13 @@ namespace Demo
 
     public partial class CommandInput
     {
-        [FoxRun(""/phase175/commands"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/commands"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private Command _incomingCommand;
 
-        [FoxRun(""/phase175/ints"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/ints"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private int[] _incomingInts;
 
-        [FoxRun(""/phase175/kind"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/kind"", Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.Protobuf)]
         private CommandKind _incomingKind;
     }
 }");
@@ -921,7 +946,7 @@ namespace Demo
                 new FoxRunReflectionGenerationMember(
                     "Demo", "WireState", "_count", "field", "System.Int32", "int",
                     true, false, "", "/phase175/wire_state", "", 10f, 0, 0f, 0, "",
-                    encoding: (int)FoxRunWireEncoding.Protobuf,
+                    encoding: (int)FoxRunEncoding.Protobuf,
                     protobufFieldNumber: 17)
             });
             var member = model.Types.Single().Members.Single();
@@ -941,7 +966,7 @@ namespace Demo
                     nameof(ReflectionArgumentsFixture.ExplicitDefaults)));
             const long scheduling = (1L << 0) | (1L << 1) | (1L << 2);
             const long existingAxes = (1L << 4) | (1L << 5) | (1L << 6)
-                                      | (1L << 7) | (1L << 8);
+                                      | (1L << 7) | (1L << 8) | (1L << 10);
 
             Assert.Equal(0L, ReadInt64Field(omitted, "NamedArgumentPresence") & scheduling);
             Assert.Equal(0L, ReadInt64Field(omitted, "NamedArgumentPresence") & existingAxes);
@@ -954,7 +979,8 @@ namespace Demo
             Assert.Equal(0, ReadField<int>(explicitDefaults, "Policy"));
             Assert.Equal(0, ReadField<int>(explicitDefaults, "Mode"));
             Assert.Equal(0, ReadField<int>(explicitDefaults, "Encoding"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "SubscriptionProvider"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "Source"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "Targets"));
             Assert.Equal(0, ReadField<int>(explicitDefaults, "Ros2Qos"));
         }
 
@@ -1031,8 +1057,8 @@ namespace Demo
 
         [FoxRun(""/phase184/explicit"", Hz = 10f, Tolerance = 0f,
             OnlyIf = nameof(Enabled), Policy = FoxRunPolicy.FixedRate,
-            Mode = FoxRunFlow.Publish, Encoding = FoxRunWireEncoding.Inherit,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Inherit,
+            Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunEncoding.Protobuf,
+            Source = FoxRunEndpoint.Foxglove, Targets = FoxRunEndpoint.Foxglove,
             Ros2Qos = FoxRunRos2QosPreset.Inherit)]
         private float _explicit;
     }
@@ -1045,7 +1071,7 @@ namespace Demo
                 .ToString();
 
             Assert.Contains(
-                "\\\"explicitArguments\\\":\\\"Hz,Tolerance,OnlyIf,Policy,Mode,Encoding,SubscriptionProvider,Ros2Qos\\\"",
+                "\\\"explicitArguments\\\":\\\"Hz,Tolerance,OnlyIf,Policy,Mode,Encoding,Source,Targets,Ros2Qos\\\"",
                 descriptor,
                 StringComparison.Ordinal);
             Assert.Contains("\\\"explicitArguments\\\":\\\"\\\"", descriptor, StringComparison.Ordinal);
@@ -1178,7 +1204,7 @@ namespace Demo
                     "Demo.WireState",
                     1,
                     0f,
-                    encoding: (int)FoxRunWireEncoding.Inherit,
+                    encoding: (int)(FoxRunEncoding)0,
                     protobufFieldNumber: 17)
             });
 
@@ -1306,10 +1332,10 @@ namespace Demo
 
     public partial class NullablePublisher
     {
-        [FoxRun(""/phase175/optional-root"", Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/optional-root"", Encoding = FoxRunEncoding.Protobuf)]
         public int? OptionalRoot;
 
-        [FoxRun(""/phase175/optional-payload"", Encoding = FoxRunWireEncoding.Protobuf)]
+        [FoxRun(""/phase175/optional-payload"", Encoding = FoxRunEncoding.Protobuf)]
         public OptionalPayload Payload = new OptionalPayload();
     }
 }");
@@ -1510,8 +1536,9 @@ namespace Demo
                 OnlyIf = "",
                 Policy = (FoxRunPolicy)0,
                 Mode = (FoxRunFlow)0,
-                Encoding = (FoxRunWireEncoding)0,
-                SubscriptionProvider = (FoxRunSubscriptionProvider)0,
+                Encoding = (FoxRunEncoding)0,
+                Source = (FoxRunEndpoint)0,
+                Targets = (FoxRunEndpoint)0,
                 Ros2Qos = (FoxRunRos2QosPreset)0)]
             public float ExplicitDefaults;
 

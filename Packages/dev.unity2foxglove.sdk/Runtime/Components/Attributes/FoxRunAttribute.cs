@@ -46,17 +46,23 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunFlow Mode { get; set; } = FoxRunFlow.Publish;
 
         /// <summary>
-        /// Declared wire encoding for this topic. The default is resolved by
-        /// FoxgloveManager when the topic is registered for a session.
+        /// Subscribe source. Omission inherits the frozen Subscribe Profile.
+        /// Exactly one endpoint is legal; ROS 2 Bridge subscribe is reserved.
         /// </summary>
-        public FoxRunWireEncoding Encoding { get; set; } = FoxRunWireEncoding.Inherit;
+        public FoxRunEndpoint Source { get; set; }
 
         /// <summary>
-        /// Subscription provider for inbound data. The default is resolved by
-        /// FoxgloveManager when subscriptions are registered for a session.
+        /// Publish targets. Omission inherits the frozen Publish Profile.
+        /// An explicit non-empty flags set replaces, rather than extends, the
+        /// profile target set.
         /// </summary>
-        public FoxRunSubscriptionProvider SubscriptionProvider { get; set; } =
-            FoxRunSubscriptionProvider.Inherit;
+        public FoxRunEndpoint Targets { get; set; }
+
+        /// <summary>
+        /// Foxglove encoding for every Foxglove direction selected by this
+        /// declaration. Omission inherits each directional profile.
+        /// </summary>
+        public FoxRunEncoding Encoding { get; set; }
 
         /// <summary>
         /// ROS2 QoS preset for an optional native subscription. The default is

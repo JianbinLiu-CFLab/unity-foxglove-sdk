@@ -192,7 +192,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && guard.Contains("Ros2NativeEnabledSerializedProperty", StringComparison.Ordinal)
                   && guard.Contains("_ros2NativeEnabled", StringComparison.Ordinal)
                   && guard.Contains("FoxRunInboundEnabledSerializedProperty", StringComparison.Ordinal)
-                  && guard.Contains("_defaultFoxRunSubscriptionProvider", StringComparison.Ordinal)
+                  && guard.Contains("_defaultFoxRunSubscriptionSource", StringComparison.Ordinal)
                   && nativeDemand.Contains("FoxRunNativeDemandPolicy.HasNativeRuntimeDemand", StringComparison.Ordinal)
                   && nativeDemand.Contains("FindProperty(Ros2NativeEnabledSerializedProperty)", StringComparison.Ordinal)
                   && nativeDemand.Contains("Resources.FindObjectsOfTypeAll<MonoBehaviour>()", StringComparison.Ordinal)

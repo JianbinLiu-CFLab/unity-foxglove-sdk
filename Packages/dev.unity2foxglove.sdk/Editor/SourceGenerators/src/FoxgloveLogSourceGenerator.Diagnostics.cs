@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
     /// </summary>
     internal static class Diags
     {
-        // Legacy FoxRun diagnostic IDs 023 through 044 and unshipped ID 201 are permanently retired and must never be reused.
+        // Legacy FoxRun diagnostic IDs 023 through 044 and unshipped IDs 201, 205, 206, 214, 401, and 601 are permanently retired and must never be reused.
 
         #region FoxRun publish diagnostics (FOXRUN001-199)
 
@@ -156,19 +156,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor InvalidSubscriptionProvider = new DiagnosticDescriptor(
-            "FOXRUN204", "FoxRun subscription provider invalid",
-            "{0}: FoxRun SubscriptionProvider must be inherit, foxglove-websocket, or ros2-native",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor NativeSubscribe = new DiagnosticDescriptor(
-            "FOXRUN205", "Native ROS2 subscription mode invalid",
-            "{0}: Ros2Native subscriptions are supported only for Subscribe members",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
-        public static readonly DiagnosticDescriptor NativeEncoding = new DiagnosticDescriptor(
-            "FOXRUN206", "Native ROS2 encoding invalid",
-            "{0}: Ros2Native subscriptions cannot declare JSON or Protobuf Encoding",
+        public static readonly DiagnosticDescriptor InvalidSource = new DiagnosticDescriptor(
+            "FOXRUN204", "FoxRun Source invalid",
+            "{0}: FoxRun Source must be omitted or select exactly Foxglove or Ros2Native",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor Ros2MessageIdentity = new DiagnosticDescriptor(
@@ -206,11 +196,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription",
             "FoxRun", DiagnosticSeverity.Warning, true);
 
-        public static readonly DiagnosticDescriptor NativeProviderPublish = new DiagnosticDescriptor(
-            "FOXRUN214", "Native subscription provider invalid for Publish",
-            "{0}",
-            "FoxRun", DiagnosticSeverity.Error, true);
-
         #endregion
 
         #region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)
@@ -219,11 +204,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "FOXRUN400", "PublishAndSubscribe authority",
             "{0}: PublishAndSubscribe requires explicit authority ownership",
             "FoxRun", DiagnosticSeverity.Warning, true);
-
-        public static readonly DiagnosticDescriptor BidirectionalInheritedWireEncoding = new DiagnosticDescriptor(
-            "FOXRUN401", "PublishAndSubscribe wire encoding",
-            "{0}: PublishAndSubscribe requires an explicit Protobuf or Json Encoding",
-            "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor CustomNativeBidirectionalContract = new DiagnosticDescriptor(
             "FOXRUN402", "Custom native PublishAndSubscribe contract invalid",
@@ -239,9 +219,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor InvalidWireEncoding = new DiagnosticDescriptor(
-            "FOXRUN602", "FoxRun wire encoding invalid",
-            "{0}: FoxRun Encoding must be inherit, json, or protobuf",
+        public static readonly DiagnosticDescriptor InvalidEncoding = new DiagnosticDescriptor(
+            "FOXRUN602", "FoxRun Encoding invalid",
+            "{0}: FoxRun Encoding must be omitted, Protobuf, or JSON",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor InvalidProtobufFieldNumber = new DiagnosticDescriptor(
@@ -249,8 +229,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: FoxRun ProtobufFieldNumber must be 0 or a legal non-reserved Protobuf field number",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor MixedTopicWireEncoding = new DiagnosticDescriptor(
-            "FOXRUN604", "Mixed same-topic wire encoding",
+        public static readonly DiagnosticDescriptor MixedTopicEncoding = new DiagnosticDescriptor(
+            "FOXRUN604", "Mixed same-topic Encoding",
             "Topic '{0}' has mixed FoxRun Encoding declarations",
             "FoxRun", DiagnosticSeverity.Error, true);
 
@@ -282,6 +262,16 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public static readonly DiagnosticDescriptor GeneratedMethodConflict = new DiagnosticDescriptor(
             "FOXRUN610", "Generated FoxRun method conflicts with an existing member",
             "{0}: generated FoxRun method '{1}' conflicts with an existing member",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidTargets = new DiagnosticDescriptor(
+            "FOXRUN611", "FoxRun publish targets invalid",
+            "{0}: FoxRun Targets must be a non-empty set of known publish endpoints",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidDirectionalEndpoint = new DiagnosticDescriptor(
+            "FOXRUN612", "FoxRun directional endpoint policy invalid",
+            "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         #endregion
@@ -372,19 +362,18 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN015": return ConditionMissing;
                 case "FOXRUN016": return ConditionNotBool;
                 case "FOXRUN017": return MixedTopicConditions;
-                case "FOXRUN602": return InvalidWireEncoding;
+                case "FOXRUN602": return InvalidEncoding;
                 case "FOXRUN603": return InvalidProtobufFieldNumber;
-                case "FOXRUN604": return MixedTopicWireEncoding;
+                case "FOXRUN604": return MixedTopicEncoding;
                 case "FOXRUN605": return DuplicateProtobufFieldNumber;
                 case "FOXRUN606": return CustomDtoShapeUnsupported;
                 case "FOXRUN607": return CustomDtoNonConstructible;
                 case "FOXRUN608": return CustomDtoMemberNotWritable;
                 case "FOXRUN609": return TriggerRateConflict;
-                case "FOXRUN401": return BidirectionalInheritedWireEncoding;
+                case "FOXRUN611": return InvalidTargets;
+                case "FOXRUN612": return InvalidDirectionalEndpoint;
                 case "FOXRUN402": return CustomNativeBidirectionalContract;
-                case "FOXRUN204": return InvalidSubscriptionProvider;
-                case "FOXRUN205": return NativeSubscribe;
-                case "FOXRUN206": return NativeEncoding;
+                case "FOXRUN204": return InvalidSource;
                 case "FOXRUN207": return Ros2MessageIdentity;
                 case "FOXRUN208": return Ros2MessageConstructor;
                 case "FOXRUN209": return Ros2MessageNamespace;
@@ -392,7 +381,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN211": return Ros2MessageShape;
                 case "FOXRUN212": return MissingNativeAssemblyReference;
                 case "FOXRUN213": return IgnoredRos2Qos;
-                case "FOXRUN214": return NativeProviderPublish;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
@@ -417,7 +405,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                || id == "FOXRUN606"
                || id == "FOXRUN607"
                || id == "FOXRUN608"
-               || id == "FOXRUN214";
+               || id == "FOXRUN612";
 
         public static DiagnosticDescriptor Member(string id)
         {

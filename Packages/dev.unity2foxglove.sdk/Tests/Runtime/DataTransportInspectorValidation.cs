@@ -77,7 +77,7 @@ namespace Unity.FoxgloveSDK.Tests
             var dataTransport = FindMethod(editorSources, "DrawDataTransportSection");
             var publishData = FindMethod(editorSources, "DrawPublishDataSection");
             var subscribeData = FindMethod(editorSources, "DrawSubscribeDataSection");
-            var nativeQos = FindMethod(editorSources, "DrawRos2NativeSubscriptionQos");
+            var nativeQos = FindMethod(editorSources, "DrawFoxRunRos2Qos");
             var nativeBudget = FindMethod(editorSources, "DrawRos2NativeCopyBudget");
             var nativeBudgetUnit = FindMethod(editorSources, "GetNativeCopyBudgetDisplayUnit");
             var nativeRuntime = FindMethod(editorSources, "DrawR2fuRuntimeSection");
@@ -213,7 +213,7 @@ namespace Unity.FoxgloveSDK.Tests
                                      && HasStringHeading(invocation, "ROS 2 Bridge Output"))
                 .ToArray();
             var bridgeEnabledBranches = DirectIfStatements(publishData)
-                .Where(statement => HasSerializedBooleanCondition(statement, "_ros2BridgeEnabled"))
+                .Where(HasBridgeDemandCondition)
                 .ToArray();
             var branchBridgeSubsections = bridgeEnabledBranches
                 .SelectMany(DirectThenStatements)
@@ -309,13 +309,22 @@ namespace Unity.FoxgloveSDK.Tests
                       "DrawProperty",
                       "_allowPublisherOverride",
                       "Allow Component Publisher Override")
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawFoxRunWireEncoding")
-                                                 && HasStringArgument(invocation, 1, "FoxRun Contract Encoding")) == 1
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
+                                                 && HasStringHeading(invocation, "FoxRun Publish Profile")) == 1
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawTargets")
+                                                 && HasStringArgument(invocation, 1, "Targets")) == 1
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawFoxRunEncoding")
+                                                 && HasStringArgument(invocation, 1, "Foxglove Encoding")) == 1
+                  && HasExactlyOneLabeledInvocation(
+                      allInvocations,
+                      "DrawFloatProperty",
+                      "_defaultPublishRateHz",
+                      "Default Publish Rate Hz")
                   && ContainsStringLiteral(
                       publishData,
                       "Component publishers and generated FoxRun contracts use independent default encodings.")
-                  && !ContainsStringLiteral(publishData, "Default FoxRun Publish Encoding"),
-                "180E-2: Publish labels the independent component and FoxRun contract encoding defaults by source");
+                  && !ContainsStringLiteral(publishData, "FoxRun Contract Encoding"),
+                "180E-2: Publish keeps component encoding separate from the FoxRun Targets, Foxglove Encoding, and rate profile");
             Check(nativeOutputBranches.Length == 1
                   && nativeQosHelp.Length == 1,
                 "180E-3: selected ROS 2 Native output explains that Manager has no global publish QoS override");
@@ -345,7 +354,7 @@ namespace Unity.FoxgloveSDK.Tests
             var directInvocations = DirectInvocations(subscribeData).ToArray();
             var webSocketBranches = subscribeData.DescendantNodes()
                 .OfType<IfStatementSyntax>()
-                .Where(statement => HasIdentifierCondition(statement, "showWebSocket"))
+                .Where(statement => HasIdentifierCondition(statement, "showFoxglove"))
                 .ToArray();
             var nativeBranches = subscribeData.DescendantNodes()
                 .OfType<IfStatementSyntax>()
@@ -376,15 +385,13 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
 
             Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                && HasStringHeading(invocation, "Input Transport")) == 1
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "Draw")
-                                                && HasStringArgument(invocation, 2, "Default Input Transport")) == 1
+                                                && HasStringHeading(invocation, "FoxRun Subscribe Profile")) == 1
+                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawSource")
+                                                && HasStringArgument(invocation, 1, "Source")) == 1
                   && !ContainsStringLiteral(subscribeData, "Subscription Protocol")
-                  && !ContainsStringLiteral(subscribeData, "Default Subscription Protocol"),
-                "180F-1: Subscribe names its provider and encoding selector Input Transport without the obsolete protocol terminology");
+                  && !ContainsStringLiteral(subscribeData, "Default Input Transport"),
+                "180F-1: Subscribe exposes Source independently inside the FoxRun Subscribe Profile");
             Check(HasExactlyOneLabeledProperty(directInvocations, "_enableFoxRunInbound", "Enable FoxRun Subscriptions")
-                  && allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                && HasStringHeading(invocation, "Subscription Delivery")) == 1
                   && HasExactlyOneLabeledProperty(
                       allInvocations,
                        "_foxRunDefaultSubscribeRateHz",
@@ -397,8 +404,8 @@ namespace Unity.FoxgloveSDK.Tests
                       < subscribeSource.IndexOf("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
                   && ContainsStringLiteralFragment(
                       subscribeData,
-                       "captured provider, WebSocket encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate."),
-                "180F-2: Subscribe keeps its enable gate, maximum and default subscription rates, and complete frozen-session policy boundary");
+                       "captured source, Foxglove encoding, QoS, copy budget, default subscribe rate, and maximum subscribe rate."),
+                "180F-2: Subscribe keeps its enable gate, ordered rates, and complete frozen-session policy boundary");
             Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
                                                 && HasStringHeading(invocation, "Coordinate System")) == 1
                   && HasExactlyOneLabeledProperty(
@@ -412,10 +419,12 @@ namespace Unity.FoxgloveSDK.Tests
             Check(webSocketBranches.Length == 1
                   && HasProviderVisibilityRule(
                       subscribeData,
-                      "showWebSocket",
-                      "FoxgloveWebSocket")
+                      "showFoxglove",
+                      "Foxglove")
                   && webSocketBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                         && HasStringHeading(invocation, "Foxglove WebSocket Input")) == 1
+                                                         && HasStringHeading(invocation, "Foxglove")) == 1
+                  && webSocketBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawFoxRunEncoding")
+                                                         && HasStringArgument(invocation, 1, "Foxglove Encoding")) == 1
                   && HasExactlyOneLabeledProperty(
                       webSocketBranchInvocations,
                       "_allowRemoteFoxRunInboundWithSharedToken",
@@ -425,13 +434,13 @@ namespace Unity.FoxgloveSDK.Tests
                       "_foxRunInboundMaxPayloadBytes",
                       "Subscription Max Payload Bytes"),
                 "180F-3: WebSocket input remains visible for a selected or explicit generated WebSocket contract");
-            Check(nativeBranches.Length == 1
+            Check(nativeBranches.Length == 2
                   && HasProviderVisibilityRule(
                       subscribeData,
                       "showRos2Native",
                       "Ros2Native")
                   && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
-                                                      && HasStringHeading(invocation, "ROS 2 Native Input")) == 1
+                                                      && HasStringHeading(invocation, "ROS 2 Native")) == 1
                   && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeSubscriptionQos")) == 1
                   && nativeBranchInvocations.Count(invocation => IsInvocationNamed(invocation, "DrawRos2NativeCopyBudget")) == 1
                   && nativeDiagnostics.Length == 1
@@ -840,6 +849,16 @@ namespace Unity.FoxgloveSDK.Tests
                    && HasStringArgument(invocation, 0, propertyName);
         }
 
+        private static bool HasBridgeDemandCondition(IfStatementSyntax statement)
+        {
+            return statement?.Condition is BinaryExpressionSyntax condition
+                   && condition.IsKind(SyntaxKind.LogicalOrExpression)
+                   && condition.Left is InvocationExpressionSyntax bridgeEnabled
+                   && IsInvocationNamed(bridgeEnabled, "GetBool")
+                   && HasStringArgument(bridgeEnabled, 0, "_ros2BridgeEnabled")
+                   && IsIdentifierNamed(condition.Right, "includesRos2Bridge");
+        }
+
         private static bool HasIdentifierCondition(IfStatementSyntax statement, string identifier)
         {
             return statement?.Condition is IdentifierNameSyntax condition
@@ -906,17 +925,17 @@ namespace Unity.FoxgloveSDK.Tests
             }
 
             return (HasSelectedProviderComparison(binary.Left, providerMemberName)
-                    && HasExplicitSubscriptionProviderInvocation(binary.Right, providerMemberName))
-                   || (HasExplicitSubscriptionProviderInvocation(binary.Left, providerMemberName)
+                    && HasExplicitSourceInvocation(binary.Right, providerMemberName))
+                   || (HasExplicitSourceInvocation(binary.Left, providerMemberName)
                        && HasSelectedProviderComparison(binary.Right, providerMemberName));
         }
 
-        private static bool HasExplicitSubscriptionProviderInvocation(
+        private static bool HasExplicitSourceInvocation(
             ExpressionSyntax expression,
             string providerMemberName)
         {
             return expression is InvocationExpressionSyntax invocation
-                   && IsInvocationNamed(invocation, "HasExplicitSubscriptionProvider")
+                   && IsInvocationNamed(invocation, "HasExplicitSource")
                    && HasProviderMemberArgument(invocation, providerMemberName);
         }
 
@@ -954,10 +973,10 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return comparison is BinaryExpressionSyntax binary
                    && binary.IsKind(SyntaxKind.EqualsExpression)
-                   && ((IsIdentifierNamed(binary.Left, "selectedProvider")
+                   && ((IsIdentifierNamed(binary.Left, "selectedSource")
                         && IsProviderMember(binary.Right, providerMemberName))
                        || (IsProviderMember(binary.Left, providerMemberName)
-                           && IsIdentifierNamed(binary.Right, "selectedProvider")));
+                           && IsIdentifierNamed(binary.Right, "selectedSource")));
         }
 
         private static bool IsIdentifierNamed(ExpressionSyntax expression, string identifier)
@@ -970,7 +989,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             return expression is MemberAccessExpressionSyntax memberAccess
                    && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "FoxRunSubscriptionProvider"
+                   && receiver.Identifier.ValueText == "FoxRunEndpoint"
                    && memberAccess.Name.Identifier.ValueText == memberName;
         }
 
@@ -982,7 +1001,7 @@ namespace Unity.FoxgloveSDK.Tests
                    && invocation.ArgumentList.Arguments.Count == 1
                    && invocation.ArgumentList.Arguments[0].Expression is MemberAccessExpressionSyntax memberAccess
                    && memberAccess.Expression is IdentifierNameSyntax receiver
-                   && receiver.Identifier.ValueText == "FoxRunSubscriptionProvider"
+                   && receiver.Identifier.ValueText == "FoxRunEndpoint"
                    && memberAccess.Name.Identifier.ValueText == memberName;
         }
 

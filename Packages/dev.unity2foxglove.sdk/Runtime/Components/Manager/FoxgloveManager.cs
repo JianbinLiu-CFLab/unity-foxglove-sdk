@@ -467,6 +467,7 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnEnable()
         {
+            BeginFoxRunPublishSessionIfNeeded();
             BeginFoxRunSubscriptionSessionIfNeeded();
 
             if (_startOnEnable)
@@ -512,6 +513,7 @@ namespace Unity.FoxgloveSDK.Components
             EndFoxRunSubscriptionSession();
             _ros2BridgeRuntime?.Stop();
             StopServer(restoreLivePublishers: true);
+            EndFoxRunPublishSession();
             _connectionState.OutputModeWatchInitialized = false;
             FoxgloveProfiler.ResetGlobal(this);
         }
@@ -531,6 +533,7 @@ namespace Unity.FoxgloveSDK.Components
             _certificateDistributor = null;
             _runtime?.Dispose();
             _runtime = null;
+            EndFoxRunPublishSession();
             FoxgloveProfiler.ResetGlobal(this);
         }
 

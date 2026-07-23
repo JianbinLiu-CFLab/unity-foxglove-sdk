@@ -60,7 +60,7 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+            Source = FoxRunEndpoint.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         [SerializeField] private Phase181State _inputPort;
 
@@ -68,8 +68,8 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             NativeBidirectionalTopic,
             Mode = FoxRunFlow.PublishAndSubscribe,
-            Encoding = FoxRunWireEncoding.Json,
-            SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
+            Encoding = FoxRunEncoding.JSON,
+            Source = FoxRunEndpoint.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput;
 #pragma warning restore FOXRUN400

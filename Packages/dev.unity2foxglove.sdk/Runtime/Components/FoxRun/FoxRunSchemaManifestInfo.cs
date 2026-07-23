@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Components
             string memberName,
             string topic,
             string flow,
-            FoxRunSubscriptionProvider declaredProvider,
+            FoxRunEndpoint declaredSource,
             FoxRunRos2QosPreset ros2Qos,
             bool supportsWebSocket,
             bool supportsRos2Native,
@@ -97,13 +97,15 @@ namespace Unity.FoxgloveSDK.Components
             string ros2ContractKind = "Unsupported",
             string customDtoIdentity = "",
             string customPayloadIdentity = "",
-            string customEnvelopeIdentity = "")
+            string customEnvelopeIdentity = "",
+            FoxRunEndpoint declaredTargets = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider;
+            DeclaredSource = declaredSource;
+            DeclaredTargets = declaredTargets;
             Ros2Qos = ros2Qos;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
@@ -120,7 +122,8 @@ namespace Unity.FoxgloveSDK.Components
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public FoxRunSubscriptionProvider DeclaredProvider { get; }
+        public FoxRunEndpoint DeclaredSource { get; }
+        public FoxRunEndpoint DeclaredTargets { get; }
         public FoxRunRos2QosPreset Ros2Qos { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
@@ -150,18 +153,20 @@ namespace Unity.FoxgloveSDK.Components
             string memberName,
             string topic,
             string flow,
-            FoxRunSubscriptionProvider declaredProvider,
+            FoxRunEndpoint declaredSource,
             FoxRunRos2QosPreset ros2Qos,
             bool supportsRos2Native,
             string customDtoIdentity,
             string customPayloadIdentity,
-            string customEnvelopeIdentity)
+            string customEnvelopeIdentity,
+            FoxRunEndpoint declaredTargets = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider;
+            DeclaredSource = declaredSource;
+            DeclaredTargets = declaredTargets;
             Ros2Qos = ros2Qos;
             SupportsRos2Native = supportsRos2Native;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;
@@ -173,7 +178,8 @@ namespace Unity.FoxgloveSDK.Components
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public FoxRunSubscriptionProvider DeclaredProvider { get; }
+        public FoxRunEndpoint DeclaredSource { get; }
+        public FoxRunEndpoint DeclaredTargets { get; }
         public FoxRunRos2QosPreset Ros2Qos { get; }
         public bool SupportsRos2Native { get; }
         public string CustomDtoIdentity { get; }

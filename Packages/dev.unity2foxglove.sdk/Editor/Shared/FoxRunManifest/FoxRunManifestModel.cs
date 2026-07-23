@@ -30,7 +30,8 @@ namespace Unity.FoxgloveSDK.Editor
         public float Tolerance { get; }
         public bool IsAggregateMember { get; }
         public string JsonFieldName { get; }
-        public string SubscriptionProvider { get; }
+        public string Source { get; }
+        public string Targets { get; }
         public string Ros2Qos { get; }
         public bool GeneratesWebSocketCodec { get; }
         public bool GeneratesRos2NativeRegistration { get; }
@@ -58,13 +59,14 @@ namespace Unity.FoxgloveSDK.Editor
             int encoding = 2,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
+            string source = FoxRunGenerationDescriptorConstants.InheritSource,
             string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+            FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -85,7 +87,8 @@ namespace Unity.FoxgloveSDK.Editor
             Tolerance = tolerance;
             IsAggregateMember = isAggregateMember;
             JsonFieldName = jsonFieldName ?? string.Empty;
-            SubscriptionProvider = subscriptionProvider ?? FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider;
+            Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
+            Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
             Ros2Qos = ros2Qos ?? FoxRunGenerationDescriptorConstants.InheritRos2Qos;
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
@@ -146,13 +149,14 @@ namespace Unity.FoxgloveSDK.Editor
                 EncodingValue(member.Encoding),
                 member.ProtobufFieldNumber,
                 member.ProtobufTypeShape,
-                member.SubscriptionProvider,
+                member.Source,
                 member.Ros2Qos,
                 member.GeneratesWebSocketCodec,
                 member.GeneratesRos2NativeRegistration,
                 member.Ros2MessageShape,
                 member.Ros2CustomDtoShape,
-                member.Ros2ContractKind);
+                member.Ros2ContractKind,
+                member.Targets);
         }
 
         private static int EncodingValue(string encoding)
@@ -267,7 +271,8 @@ namespace Unity.FoxgloveSDK.Editor
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public string DeclaredProvider { get; }
+        public string DeclaredSource { get; }
+        public string DeclaredTargets { get; }
         public string Ros2Qos { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
@@ -284,7 +289,7 @@ namespace Unity.FoxgloveSDK.Editor
             string memberName,
             string topic,
             string flow,
-            string declaredProvider,
+            string declaredSource,
             string ros2Qos,
             bool supportsWebSocket,
             bool supportsRos2Native,
@@ -294,13 +299,15 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             string customDtoIdentity = "",
             string customPayloadIdentity = "",
-            string customEnvelopeIdentity = "")
+            string customEnvelopeIdentity = "",
+            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider ?? string.Empty;
+            DeclaredSource = declaredSource ?? string.Empty;
+            DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
             Ros2Qos = ros2Qos ?? string.Empty;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
@@ -325,7 +332,8 @@ namespace Unity.FoxgloveSDK.Editor
         public string MemberName { get; }
         public string Topic { get; }
         public string Flow { get; }
-        public string DeclaredProvider { get; }
+        public string DeclaredSource { get; }
+        public string DeclaredTargets { get; }
         public string Ros2Qos { get; }
         public bool SupportsRos2Native { get; }
         public string CustomDtoIdentity { get; }
@@ -337,18 +345,20 @@ namespace Unity.FoxgloveSDK.Editor
             string memberName,
             string topic,
             string flow,
-            string declaredProvider,
+            string declaredSource,
             string ros2Qos,
             bool supportsRos2Native,
             string customDtoIdentity,
             string customPayloadIdentity,
-            string customEnvelopeIdentity)
+            string customEnvelopeIdentity,
+            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
             Flow = flow ?? string.Empty;
-            DeclaredProvider = declaredProvider ?? string.Empty;
+            DeclaredSource = declaredSource ?? string.Empty;
+            DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
             Ros2Qos = ros2Qos ?? string.Empty;
             SupportsRos2Native = supportsRos2Native;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;

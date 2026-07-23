@@ -323,9 +323,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 diagnostic = "FoxRun subscriptions are disabled for the captured session.";
                 return false;
             }
-            if (!Enum.IsDefined(typeof(FoxRunSubscriptionProvider), contract.SubscriptionProvider))
+            if (contract.Source != 0
+                && !Enum.IsDefined(typeof(FoxRunEndpoint), contract.Source))
             {
-                diagnostic = "Generated ROS2 contract has an invalid provider declaration.";
+                diagnostic = "Generated ROS2 contract has an invalid Source declaration.";
                 return false;
             }
             if (!Enum.IsDefined(typeof(FoxRunRos2QosPreset), contract.QosPreset))
@@ -369,22 +370,25 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return false;
             }
 
-            var provider = FoxRunSubscriptionProviderResolver.Resolve(
-                contract.SubscriptionProvider,
-                policy.DefaultProvider,
+            var topology = FoxRunEndpointResolver.Resolve(
                 contract.Mode,
+                contract.Source,
+                hasExplicitSource: contract.Source != 0,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
                 contract.DeclaredSubscriptionEncoding,
-                supportsWebSocket: false,
-                supportsRos2Native: contract.SupportsRos2Native,
-                allowsNativePublishAndSubscribe: permitsNativePublishAndSubscribe);
-            if (!provider.Success || provider.Provider != FoxRunSubscriptionProvider.Ros2Native)
+                hasExplicitEncoding: contract.DeclaredSubscriptionEncoding != 0,
+                defaultSource: policy.DefaultSource,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: policy.FoxgloveEncoding);
+            if (!topology.Success
+                || topology.Topology.Source != FoxRunEndpoint.Ros2Native)
             {
-                error = provider.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.Unsupported
-                    ? FoxRunRos2RegistrationError.UnsupportedMessageType
-                    : FoxRunRos2RegistrationError.RegistrationRejected;
-                diagnostic = provider.Success
+                error = FoxRunRos2RegistrationError.RegistrationRejected;
+                diagnostic = topology.Success
                     ? "The captured provider is not native ROS2."
-                    : provider.DiagnosticMessage;
+                    : topology.DiagnosticMessage;
                 return false;
             }
 

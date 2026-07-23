@@ -164,7 +164,7 @@ namespace Unity.FoxgloveSDK.Editor
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.Hz, a.SchemaName,
                         a.Policy, a.Tolerance, fi.MetadataToken, "",
                         a.OnlyIf, mode: a.Mode, encoding: a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
-                        subscriptionProvider: a.SubscriptionProvider, ros2Qos: a.Ros2Qos,
+                        source: a.Source, ros2Qos: a.Ros2Qos, targets: a.Targets,
                         namedArgumentPresence: a.NamedArgumentPresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -182,6 +182,7 @@ namespace Unity.FoxgloveSDK.Editor
                         aggregateMessage.Policy, aggregateMessage.Tolerance, fi.MetadataToken, "",
                         aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
                         encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
+                        targets: aggregateMessage.Targets,
                         namedArgumentPresence: aggregatePresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -200,7 +201,7 @@ namespace Unity.FoxgloveSDK.Editor
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.Hz, a.SchemaName,
                         a.Policy, a.Tolerance, pi.MetadataToken, "",
                         a.OnlyIf, mode: a.Mode, encoding: a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
-                        subscriptionProvider: a.SubscriptionProvider, ros2Qos: a.Ros2Qos,
+                        source: a.Source, ros2Qos: a.Ros2Qos, targets: a.Targets,
                         namedArgumentPresence: a.NamedArgumentPresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -218,6 +219,7 @@ namespace Unity.FoxgloveSDK.Editor
                         aggregateMessage.Policy, aggregateMessage.Tolerance, pi.MetadataToken, "",
                         aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
                         encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
+                        targets: aggregateMessage.Targets,
                         namedArgumentPresence: aggregatePresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,

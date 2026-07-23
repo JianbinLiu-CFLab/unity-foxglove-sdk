@@ -93,7 +93,9 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "encoding", member.Encoding);
             sb.Append(',');
-            WriteStringField(sb, "subscriptionProvider", member.SubscriptionProvider);
+            WriteStringField(sb, "source", member.Source);
+            sb.Append(',');
+            WriteStringField(sb, "targets", member.Targets);
             sb.Append(',');
             WriteStringField(sb, "ros2Qos", member.Ros2Qos);
             sb.Append(',');

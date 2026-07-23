@@ -55,7 +55,7 @@ private RobotCommand _command;
 
 [FoxRun("/debug/state", Mode = PublishAndSubscribe,
     Policy = FixedRate, Hz = 10,
-    Encoding = FoxRunWireEncoding.Protobuf)]
+    Encoding = FoxRunEncoding.Protobuf)]
 private DebugState _debugState;
 ```
 
@@ -64,11 +64,11 @@ private DebugState _debugState;
 | `Mode` | Meaning |
 |---|---|
 | `Publish` | Unity is the source and sends the current value. This is the default. |
-| `Subscribe` | One selected external provider is the source; Unity applies accepted values on the main thread. |
+| `Subscribe` | One selected external endpoint is the source; Unity applies accepted values on the main thread. |
 | `PublishAndSubscribe` | Both directions are generated. This is intended for debugging and integration, not as the normal production default. |
 
-One subscription declaration resolves to exactly one input provider. Publishing
-may fan out to multiple enabled destinations.
+One subscription declaration resolves to exactly one `Source`. Publishing may
+fan out to one or more `Targets`.
 
 ### Policies
 
@@ -105,7 +105,7 @@ Delivery**, two adjacent controls have different jobs:
 
 - **Default Subscribe Rate Hz** is 10 Hz by default and is inherited only by
   fixed-rate declarations without a positive `Hz`.
-- **Maximum Subscribe Rate Hz (per Topic)** is the hard provider-neutral
+- **Maximum Subscribe Rate Hz (per Topic)** is the hard source-neutral
   admission ceiling for Foxglove WebSocket and ROS 2 Native input. Excess
   messages are dropped before avoidable DTO decode or native deep-copy work.
 
@@ -130,7 +130,7 @@ public partial class SpeedController : MonoBehaviour
 {
     [FoxRun("/control/target-speed", Mode = Subscribe,
         Policy = Change, Hz = 30,
-        Encoding = FoxRunWireEncoding.Json)]
+        Encoding = FoxRunEncoding.JSON)]
     private float _requestedTargetSpeed;
 
     private void Update()
@@ -142,29 +142,45 @@ public partial class SpeedController : MonoBehaviour
 ```
 
 Inbound targets must be writable. Generated allowlists, payload bounds,
-encoding checks, provider checks, transport admission, owned latest-wins
+encoding checks, source checks, transport admission, owned latest-wins
 staging, and main-thread application all remain in force. A non-loopback
 listener remains fail-closed unless the Manager's explicit remote-input and
 authentication policy allows it.
 
-## 6. Wire Encoding and Input Provider
+## 6. Directional Endpoints and Encoding
 
-`Encoding = FoxRunWireEncoding.Inherit` resolves through the Manager's frozen
-directional defaults. `PublishAndSubscribe` uses one wire contract in both
-directions and must therefore choose JSON or Protobuf explicitly.
+Omit `Source`, `Targets`, or `Encoding` to inherit the relevant frozen Manager
+profile. Do not write a numeric zero sentinel in user code. A full-duplex
+declaration may inherit different Foxglove encodings for publish and subscribe;
+an explicit `Encoding` applies to every Foxglove direction selected by that
+declaration.
 
 ```csharp
 [FoxRun("/control/command", Mode = PublishAndSubscribe,
-    Encoding = FoxRunWireEncoding.Protobuf)]
+    Encoding = FoxRunEncoding.Protobuf)]
 private DriveCommand _command;
 ```
 
-`SubscriptionProvider` chooses the one input source. The normal core SDK path
-uses Foxglove WebSocket. `Ros2Native` requires the optional
+`Source` chooses the one input source. The normal core SDK path is
+`FoxRunEndpoint.Foxglove`. `FoxRunEndpoint.Ros2Native` requires the optional
 `dev.unity2foxglove.ros2forunity` facade, one selected distro runtime package,
-and a supported native message or matching custom typesupport add-on. Provider,
-encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate
-are frozen for one enabled subscription session.
+and a supported native message or matching custom typesupport add-on.
+`FoxRunEndpoint.Ros2Bridge` is reserved as a publish target; it is not currently
+a subscribe source.
+
+`Targets` accepts one or more endpoint flags and replaces, rather than extends,
+the Publish Profile default:
+
+```csharp
+[FoxRun("/robot/state",
+    Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native)]
+private RobotState _state;
+```
+
+JSON and Protobuf are Foxglove wire encodings. Native and Bridge targets use
+their generated ROS 2 message contracts; CDR is not a public `Encoding` option.
+Source, targets, encoding, QoS, copy budget, maximum subscribe rate, and
+directional default rates are frozen for the corresponding enabled session.
 
 ## 7. Explicit Triggers
 
@@ -278,7 +294,7 @@ suppresses live WebSocket and native fanout while replay is authoritative.
 | Symptom | Check |
 |---|---|
 | No topic appears | The class is `partial`, the topic starts with `/`, the component is enabled, and Play Mode is running. |
-| Subscribe receives nothing | Enable subscriptions, verify the selected provider and encoding, and inspect transport-admission diagnostics. |
+| Subscribe receives nothing | Enable subscriptions, verify the selected source and encoding, and inspect transport-admission diagnostics. |
 | Input arrives but applies slowly | Check declaration `Hz` or the Manager's **Default Subscribe Rate Hz**. |
 | Messages are dropped | Check **Maximum Subscribe Rate Hz (per Topic)**, payload bounds, encoding, and native copy budget. |
 | Trigger value does not move | Call the correct generated publish or apply trigger from the Unity main thread. |

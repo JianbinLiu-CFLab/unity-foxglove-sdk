@@ -44,9 +44,9 @@ namespace Unity.FoxgloveSDK.Components
             new(StringComparer.Ordinal);
         private readonly List<IFoxgloveInputSource> _registeredSources = new();
         private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
-        private FoxRunWireEncoding _defaultSubscriptionWireEncoding = FoxRunWireEncoding.Protobuf;
-        private FoxRunSubscriptionProvider _defaultSubscriptionProvider =
-            FoxRunSubscriptionProvider.FoxgloveWebSocket;
+        private FoxRunEncoding _defaultSubscriptionEncoding = FoxRunEncoding.Protobuf;
+        private FoxRunEndpoint _defaultSubscriptionSource =
+            FoxRunEndpoint.Foxglove;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
@@ -57,39 +57,39 @@ namespace Unity.FoxgloveSDK.Components
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
 
-        /// <summary>Manager-resolved provider used only when later registrations inherit.</summary>
-        public FoxRunSubscriptionProvider DefaultSubscriptionProvider
+        /// <summary>Manager-resolved source used only when later registrations omit Source.</summary>
+        public FoxRunEndpoint DefaultSubscriptionSource
         {
             get
             {
                 lock (_gate)
-                    return _defaultSubscriptionProvider;
+                    return _defaultSubscriptionSource;
             }
             set
             {
-                value = FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(value);
+                value = FoxRunEndpointResolver.ValidateProfileSource(value);
                 lock (_gate)
-                    _defaultSubscriptionProvider = value;
+                    _defaultSubscriptionSource = value;
             }
         }
 
         /// <summary>Manager-resolved default used only for inherited subscription topics.</summary>
-        public FoxRunWireEncoding DefaultSubscriptionWireEncoding
+        public FoxRunEncoding DefaultSubscriptionEncoding
         {
             get
             {
                 lock (_gate)
-                    return _defaultSubscriptionWireEncoding;
+                    return _defaultSubscriptionEncoding;
             }
             set
             {
-                value = FoxRunWireEncodingResolver.ValidateManagerDefault(value);
+                value = FoxRunEncodingResolver.ValidateProfileDefault(value);
                 lock (_gate)
                 {
-                    if (_defaultSubscriptionWireEncoding == value)
+                    if (_defaultSubscriptionEncoding == value)
                         return;
 
-                    _defaultSubscriptionWireEncoding = value;
+                    _defaultSubscriptionEncoding = value;
                     foreach (var pair in _registrations)
                     {
                         var registrations = pair.Value;
@@ -99,14 +99,6 @@ namespace Unity.FoxgloveSDK.Components
                     }
                 }
             }
-        }
-
-        /// <summary>Compatibility alias for the pre-Phase176 input router policy name.</summary>
-        [Obsolete("Use DefaultSubscriptionWireEncoding.")]
-        public FoxRunWireEncoding DefaultWireEncoding
-        {
-            get => DefaultSubscriptionWireEncoding;
-            set => DefaultSubscriptionWireEncoding = value;
         }
 
         public void Register(IFoxgloveInputSource source)
@@ -122,15 +114,21 @@ namespace Unity.FoxgloveSDK.Components
                     var info = source.FoxgloveInput_GetTopic(index);
                     if (string.IsNullOrWhiteSpace(info.Topic))
                         continue;
-                    var provider = FoxRunSubscriptionProviderResolver.Resolve(
-                        info.DeclaredSubscriptionProvider,
-                        _defaultSubscriptionProvider,
+                    var topology = FoxRunEndpointResolver.Resolve(
                         info.Mode,
-                        info.DeclaredWireEncoding,
-                        info.SupportsWebSocket,
-                        info.SupportsRos2Native);
-                    if (!provider.Success
-                        || provider.Provider != FoxRunSubscriptionProvider.FoxgloveWebSocket)
+                        info.DeclaredSource,
+                        info.HasExplicitSource,
+                        declaredTargets: 0,
+                        hasExplicitTargets: false,
+                        info.DeclaredEncoding,
+                        info.HasExplicitEncoding,
+                        _defaultSubscriptionSource,
+                        defaultTargets: FoxRunEndpoint.Foxglove,
+                        publishDefaultEncoding: _defaultSubscriptionEncoding,
+                        subscribeDefaultEncoding: _defaultSubscriptionEncoding);
+                    if (!topology.Success
+                        || topology.Topology.Source != FoxRunEndpoint.Foxglove
+                        || !info.SupportsWebSocket)
                     {
                         continue;
                     }
@@ -141,9 +139,10 @@ namespace Unity.FoxgloveSDK.Components
                     registrations.Add(new Registration(
                         source,
                         index,
-                        info.DeclaredWireEncoding,
+                        info.DeclaredEncoding,
+                        info.HasExplicitEncoding,
                         info.Mode,
-                        _defaultSubscriptionWireEncoding));
+                        _defaultSubscriptionEncoding));
                     _registrationSnapshots[info.Topic] = registrations.ToArray();
                     addedRegistration = true;
                 }
@@ -413,30 +412,37 @@ namespace Unity.FoxgloveSDK.Components
             public Registration(
                 IFoxgloveInputSource source,
                 int topicIndex,
-                FoxRunWireEncoding declaredWireEncoding,
+                FoxRunEncoding declaredEncoding,
+                bool hasExplicitEncoding,
                 FoxRunFlow mode,
-                FoxRunWireEncoding subscriptionDefault)
+                FoxRunEncoding subscriptionDefault)
             {
                 Source = source;
                 TopicIndex = topicIndex;
-                DeclaredWireEncoding = declaredWireEncoding;
+                DeclaredEncoding = declaredEncoding;
+                HasExplicitEncoding = hasExplicitEncoding;
                 Mode = mode;
-                Encoding = FoxRunWireEncodingResolver.ToProtocolEncoding(
-                    FoxRunWireEncodingResolver.Resolve(
-                        declaredWireEncoding,
-                        mode,
-                        subscriptionDefault,
-                        subscriptionDefault));
+                Encoding = FoxRunEncodingResolver.ToProtocolEncoding(
+                    hasExplicitEncoding
+                        ? FoxRunEncodingResolver.ValidateProfileDefault(declaredEncoding)
+                        : FoxRunEncodingResolver.ValidateProfileDefault(subscriptionDefault));
             }
 
             public IFoxgloveInputSource Source { get; }
             public int TopicIndex { get; }
-            public FoxRunWireEncoding DeclaredWireEncoding { get; }
+            public FoxRunEncoding DeclaredEncoding { get; }
+            public bool HasExplicitEncoding { get; }
             public FoxRunFlow Mode { get; }
             public string Encoding { get; }
 
-            public Registration Resolve(FoxRunWireEncoding subscriptionDefault)
-                => new(Source, TopicIndex, DeclaredWireEncoding, Mode, subscriptionDefault);
+            public Registration Resolve(FoxRunEncoding subscriptionDefault)
+                => new(
+                    Source,
+                    TopicIndex,
+                    DeclaredEncoding,
+                    HasExplicitEncoding,
+                    Mode,
+                    subscriptionDefault);
         }
     }
 }

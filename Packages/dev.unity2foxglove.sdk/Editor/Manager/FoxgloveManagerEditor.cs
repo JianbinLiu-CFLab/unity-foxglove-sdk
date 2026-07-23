@@ -63,9 +63,11 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _ros2NativeEnabledProperty;
         private SerializedProperty _ros2BridgeEnabledProperty;
         private SerializedProperty _enableFoxRunInboundProperty;
+        private SerializedProperty _defaultFoxRunPublishTargetsProperty;
         private SerializedProperty _defaultFoxRunPublishEncodingProperty;
+        private SerializedProperty _defaultFoxRunNativePublishRos2QosProperty;
         private SerializedProperty _defaultFoxRunSubscriptionEncodingProperty;
-        private SerializedProperty _defaultFoxRunSubscriptionProviderProperty;
+        private SerializedProperty _defaultFoxRunSubscriptionSourceProperty;
         private SerializedProperty _defaultFoxRunRos2QosProperty;
         private SerializedProperty _foxRunRos2NativeCopyBudgetBytesProperty;
         private SerializedProperty _allowRemoteFoxRunInboundWithSharedTokenProperty;
@@ -153,9 +155,11 @@ namespace Unity.FoxgloveSDK.Editor
             _ros2NativeEnabledProperty = serializedObject.FindProperty("_ros2NativeEnabled");
             _ros2BridgeEnabledProperty = serializedObject.FindProperty("_ros2BridgeEnabled");
             _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
+            _defaultFoxRunPublishTargetsProperty = serializedObject.FindProperty("_defaultFoxRunPublishTargets");
             _defaultFoxRunPublishEncodingProperty = serializedObject.FindProperty("_defaultFoxRunPublishEncoding");
+            _defaultFoxRunNativePublishRos2QosProperty = serializedObject.FindProperty("_defaultFoxRunNativePublishRos2Qos");
             _defaultFoxRunSubscriptionEncodingProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionEncoding");
-            _defaultFoxRunSubscriptionProviderProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionProvider");
+            _defaultFoxRunSubscriptionSourceProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionSource");
             _defaultFoxRunRos2QosProperty = serializedObject.FindProperty("_defaultFoxRunRos2Qos");
             _foxRunRos2NativeCopyBudgetBytesProperty = serializedObject.FindProperty("_foxRunRos2NativeCopyBudgetBytes");
             _allowRemoteFoxRunInboundWithSharedTokenProperty = serializedObject.FindProperty("_allowRemoteFoxRunInboundWithSharedToken");
@@ -392,9 +396,11 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_ros2NativeEnabled": return _ros2NativeEnabledProperty;
                 case "_ros2BridgeEnabled": return _ros2BridgeEnabledProperty;
                 case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
+                case "_defaultFoxRunPublishTargets": return _defaultFoxRunPublishTargetsProperty;
                 case "_defaultFoxRunPublishEncoding": return _defaultFoxRunPublishEncodingProperty;
+                case "_defaultFoxRunNativePublishRos2Qos": return _defaultFoxRunNativePublishRos2QosProperty;
                 case "_defaultFoxRunSubscriptionEncoding": return _defaultFoxRunSubscriptionEncodingProperty;
-                case "_defaultFoxRunSubscriptionProvider": return _defaultFoxRunSubscriptionProviderProperty;
+                case "_defaultFoxRunSubscriptionSource": return _defaultFoxRunSubscriptionSourceProperty;
                 case "_defaultFoxRunRos2Qos": return _defaultFoxRunRos2QosProperty;
                 case "_foxRunRos2NativeCopyBudgetBytes": return _foxRunRos2NativeCopyBudgetBytesProperty;
                 case "_allowRemoteFoxRunInboundWithSharedToken": return _allowRemoteFoxRunInboundWithSharedTokenProperty;

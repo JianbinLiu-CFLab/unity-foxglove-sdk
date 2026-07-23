@@ -173,7 +173,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 conditionalSymbols: string.Empty,
                 mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                 ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: true,

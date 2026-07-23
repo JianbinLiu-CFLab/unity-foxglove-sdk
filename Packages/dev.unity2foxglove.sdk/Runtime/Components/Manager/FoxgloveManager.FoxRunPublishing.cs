@@ -10,34 +10,73 @@ namespace Unity.FoxgloveSDK.Components
 {
     public partial class FoxgloveManager
     {
-        [SerializeField] private FoxRunWireEncoding _defaultFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
-        private FoxRunWireEncoding _activeFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
-        private bool _hasActiveFoxRunPublishEncoding;
+        [SerializeField] private FoxRunEndpoint _defaultFoxRunPublishTargets = FoxRunEndpoint.Foxglove;
+        [SerializeField] private FoxRunEncoding _defaultFoxRunPublishEncoding = FoxRunEncoding.Protobuf;
+        [SerializeField] private FoxRunRos2QosPreset _defaultFoxRunNativePublishRos2Qos =
+            FoxRunRos2QosPreset.Default;
+        private readonly FoxRunPublishSessionState _foxRunPublishSessionState = new();
+
+        /// <summary>Current immutable publish-profile snapshot.</summary>
+        public FoxRunPublishSessionPolicy ActiveFoxRunPublishSessionPolicy =>
+            _foxRunPublishSessionState.Current;
+
+        /// <summary>Serialized default targets used by inherited Publish contracts.</summary>
+        public FoxRunEndpoint DefaultFoxRunPublishTargets
+        {
+            get => FoxRunEndpointResolver.ValidateProfileTargets(_defaultFoxRunPublishTargets);
+            set => _defaultFoxRunPublishTargets =
+                FoxRunEndpointResolver.ValidateProfileTargets(value);
+        }
 
         /// <summary>Serialized default used by inherited Publish contracts.</summary>
-        public FoxRunWireEncoding DefaultFoxRunPublishEncoding
+        public FoxRunEncoding DefaultFoxRunPublishEncoding
         {
-            get => _defaultFoxRunPublishEncoding == FoxRunWireEncoding.Inherit
-                ? FoxRunWireEncoding.Protobuf
-                : FoxRunWireEncodingResolver.ValidateManagerDefault(_defaultFoxRunPublishEncoding);
-            set => _defaultFoxRunPublishEncoding = FoxRunWireEncodingResolver.ValidateManagerDefault(value);
+            get => _defaultFoxRunPublishEncoding == (FoxRunEncoding)0
+                ? FoxRunEncoding.Protobuf
+                : FoxRunEncodingResolver.ValidateProfileDefault(_defaultFoxRunPublishEncoding);
+            set => _defaultFoxRunPublishEncoding = FoxRunEncodingResolver.ValidateProfileDefault(value);
         }
 
-        /// <summary>Effective publish default for the active server session, or the current configuration while stopped.</summary>
-        public FoxRunWireEncoding ActiveFoxRunPublishEncoding => _hasActiveFoxRunPublishEncoding
-            ? _activeFoxRunPublishEncoding
-            : DefaultFoxRunPublishEncoding;
+        /// <summary>Effective publish targets for the active Manager lifetime.</summary>
+        public FoxRunEndpoint ActiveFoxRunPublishTargets =>
+            ActiveFoxRunPublishSessionPolicy.SessionActive
+                ? ActiveFoxRunPublishSessionPolicy.DefaultTargets
+                : DefaultFoxRunPublishTargets;
 
-        internal void CaptureFoxRunPublishEncodingForServer()
+        /// <summary>Effective publish encoding for the active Manager lifetime.</summary>
+        public FoxRunEncoding ActiveFoxRunPublishEncoding =>
+            ActiveFoxRunPublishSessionPolicy.SessionActive
+                ? ActiveFoxRunPublishSessionPolicy.FoxgloveEncoding
+                : DefaultFoxRunPublishEncoding;
+
+        /// <summary>Effective default cadence for the active Manager lifetime.</summary>
+        public float ActiveFoxRunDefaultPublishRateHz =>
+            ActiveFoxRunPublishSessionPolicy.SessionActive
+                ? ActiveFoxRunPublishSessionPolicy.DefaultPublishRateHz
+                : DefaultPublishRateHz;
+
+        /// <summary>Serialized native publish QoS default retained until Phase184-C resolves the official profile.</summary>
+        public FoxRunRos2QosPreset DefaultFoxRunNativePublishRos2Qos
         {
-            _activeFoxRunPublishEncoding = DefaultFoxRunPublishEncoding;
-            _hasActiveFoxRunPublishEncoding = true;
+            get => FoxRunRos2QosResolver.NormalizeManagerDefault(
+                _defaultFoxRunNativePublishRos2Qos);
+            set => _defaultFoxRunNativePublishRos2Qos =
+                FoxRunRos2QosResolver.NormalizeManagerDefault(value);
         }
 
-        internal void ClearFoxRunPublishEncodingForServer()
+        internal void BeginFoxRunPublishSessionIfNeeded()
         {
-            _hasActiveFoxRunPublishEncoding = false;
-            _activeFoxRunPublishEncoding = FoxRunWireEncoding.Protobuf;
+            _foxRunPublishSessionState.BeginIfNeeded(
+                DefaultFoxRunPublishTargets,
+                DefaultFoxRunPublishEncoding,
+                DefaultPublishRateHz,
+                DefaultFoxRunNativePublishRos2Qos,
+                ResolveRos2BridgeQos());
+        }
+
+        internal void EndFoxRunPublishSession()
+        {
+            _foxRunPublishSessionState.End();
         }
     }
 }

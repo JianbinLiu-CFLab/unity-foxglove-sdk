@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunManifestMember(
                         "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
                         "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f,
-                        encoding: (int)FoxRunWireEncoding.Json)
+                        encoding: (int)FoxRunEncoding.JSON)
                 },
                 manifestVersion: 1);
             var jsonContract = Assert.Single(Assert.Single(jsonManifest.Sections.FoxRun.Types).Contracts);
@@ -57,7 +57,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         public void CanonicalManifestExposesSeparateSubscriptionBindingSection()
         {
             Assert.NotNull(typeof(FoxRunManifestSections).GetProperty("Subscriptions"));
-            Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("SubscriptionProvider"));
+            Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("Source"));
             Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("GeneratesWebSocketCodec"));
             Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("GeneratesRos2NativeRegistration"));
 
@@ -75,15 +75,15 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var json = new FoxRunManifestMember(
                 "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
                 "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f,
-                encoding: (int)FoxRunWireEncoding.Json,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                encoding: (int)FoxRunEncoding.JSON,
+                source: FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                 generatesWebSocketCodec: true);
             var native = new FoxRunManifestMember(
                 "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
                 "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
                 flow: (int)FoxRunFlow.Subscribe,
-                encoding: (int)FoxRunWireEncoding.Inherit,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                encoding: (int)(FoxRunEncoding)0,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                 ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
                 generatesWebSocketCodec: false,
                 generatesRos2NativeRegistration: true);
@@ -102,7 +102,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
             Assert.Contains("\"subscriptions\"", canonical, StringComparison.Ordinal);
-            Assert.Contains("\"declaredProvider\":\"ros2-native\"", canonical, StringComparison.Ordinal);
+            Assert.Contains("\"declaredSource\":\"ros2-native\"", canonical, StringComparison.Ordinal);
             Assert.DoesNotContain("\"encoding\":\"cdr\"", canonical, StringComparison.Ordinal);
             Assert.DoesNotContain("\"encoding\":\"ros2\"", canonical, StringComparison.Ordinal);
 
@@ -110,8 +110,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
                 "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
                 flow: (int)FoxRunFlow.Subscribe,
-                encoding: (int)FoxRunWireEncoding.Inherit,
-                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                encoding: (int)(FoxRunEncoding)0,
+                source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                 ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
                 generatesWebSocketCodec: false,
                 generatesRos2NativeRegistration: true);
@@ -140,8 +140,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         "Demo", "RobotState", "_nativeText", "field", "std_msgs.msg.String", false, false, "",
                         "/phase179/native", 0f, "std_msgs/msg/String", (int)FoxRunPolicy.FixedRate, 0f,
                         flow: (int)FoxRunFlow.Subscribe,
-                        encoding: (int)FoxRunWireEncoding.Inherit,
-                        subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                        encoding: (int)(FoxRunEncoding)0,
+                        source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                         ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
                         generatesWebSocketCodec: false,
                         generatesRos2NativeRegistration: true,
@@ -156,7 +156,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Contains("public const int CustomNativeContractCount = 0;", source, StringComparison.Ordinal);
             Assert.Contains("public const string SubscriptionManifestHash =", source, StringComparison.Ordinal);
             Assert.Contains("new FoxRunSchemaSubscriptionBindingInfo(", source, StringComparison.Ordinal);
-            Assert.Contains("FoxRunSubscriptionProvider.Ros2Native", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunEndpoint.Ros2Native", source, StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2QosPreset.SensorData", source, StringComparison.Ordinal);
             Assert.Contains("\"std_msgs.msg.String\"", source, StringComparison.Ordinal);
             Assert.Contains("\"std_msgs/msg/String\"", source, StringComparison.Ordinal);
@@ -174,7 +174,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new FoxRunManifestMember(
                         "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
                         "/phase112/battery", 10f, "", (int)FoxRunPolicy.Change, 0.001f,
-                        encoding: (int)FoxRunWireEncoding.Json)
+                        encoding: (int)FoxRunEncoding.JSON)
                 },
                 manifestVersion: 1);
             var canonical = FoxRunManifestJsonWriter.WriteCanonical(manifest);
@@ -528,10 +528,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
 
-                var summary = Assert.Single(FoxRunSchemaInfoRegistry.GetTopicSummaries(FoxRunWireEncoding.Protobuf));
+                var summary = Assert.Single(FoxRunSchemaInfoRegistry.GetTopicSummaries(FoxRunEncoding.Protobuf));
 
-                Assert.Equal(FoxRunWireEncoding.Inherit, summary.DeclaredEncoding);
-                Assert.Equal(FoxRunWireEncoding.Protobuf, summary.EffectiveEncoding);
+                Assert.Equal((FoxRunEncoding)0, summary.DeclaredEncoding);
+                Assert.Equal(FoxRunEncoding.Protobuf, summary.EffectiveEncoding);
                 Assert.Equal(protobuf.SchemaName, summary.SchemaName);
             }
             finally
@@ -566,20 +566,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunSchemaInfoRegistry.RegisterGenerated(manifest);
 
                 var summaries = FoxRunSchemaInfoRegistry.GetTopicSummaries(
-                    FoxRunWireEncoding.Protobuf,
-                    FoxRunWireEncoding.Json);
+                    FoxRunEncoding.Protobuf,
+                    FoxRunEncoding.JSON);
 
                 Assert.Collection(
                     summaries,
                     input =>
                     {
                         Assert.Equal("/phase176/input", input.Topic);
-                        Assert.Equal(FoxRunWireEncoding.Json, input.EffectiveEncoding);
+                        Assert.Equal(FoxRunEncoding.JSON, input.EffectiveEncoding);
                     },
                     output =>
                     {
                         Assert.Equal("/phase176/output", output.Topic);
-                        Assert.Equal(FoxRunWireEncoding.Protobuf, output.EffectiveEncoding);
+                        Assert.Equal(FoxRunEncoding.Protobuf, output.EffectiveEncoding);
                     });
             }
             finally
@@ -600,7 +600,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "/phase175/wire_state",
                 10f,
                 "Demo.WireState",
-                encoding: (int)FoxRunWireEncoding.Protobuf);
+                encoding: (int)FoxRunEncoding.Protobuf);
             var member = FoxRunReflectionGenerationModelLowerer.Lower(new[] { reflected.ToReflectionMember() })
                 .Types[0]
                 .Members[0];
@@ -647,7 +647,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new FoxRunManifestMember(
                     "Demo", "WireState", "_telemetry", "field", "Demo.Telemetry", false, false, "",
                     "/phase175/wire_state", 10f, "Demo.WireState", (int)FoxRunPolicy.FixedRate, 0f,
-                    encoding: (int)FoxRunWireEncoding.Protobuf,
+                    encoding: (int)FoxRunEncoding.Protobuf,
                     protobufTypeShape: shape)
             });
         }

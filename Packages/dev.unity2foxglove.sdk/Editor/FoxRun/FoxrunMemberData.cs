@@ -46,7 +46,8 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly int Policy;
             public readonly int Mode;
             public readonly int Encoding;
-            public readonly int SubscriptionProvider;
+            public readonly int Source;
+            public readonly int Targets;
             public readonly int Ros2Qos;
             public readonly FoxRunRos2MessageShape Ros2MessageShape;
             public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
@@ -68,7 +69,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float hz, string schema,
-                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0)
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -85,12 +86,13 @@ namespace Unity.FoxgloveSDK.Editor
                 Policy = policy;
                 Mode = mode;
                 Encoding = encoding;
-                SubscriptionProvider = subscriptionProvider;
+                Source = source;
+                Targets = targets;
                 Ros2Qos = ros2Qos;
                 Ros2MessageShape = ros2MessageShape
-                    ?? TryBuildRos2MessageShape(type, subscriptionProvider);
+                    ?? TryBuildRos2MessageShape(type, source);
                 Ros2CustomDtoShape = ros2CustomDtoShape
-                    ?? TryBuildRos2CustomDtoShape(type, Ros2MessageShape, subscriptionProvider);
+                    ?? TryBuildRos2CustomDtoShape(type, Ros2MessageShape, source);
                 Ros2ContractKind = ResolveRos2ContractKind(
                     ros2ContractKind,
                     Ros2MessageShape,
@@ -112,7 +114,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float hz, string schema,
-                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int subscriptionProvider = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0)
             {
                 if (LooksLikeArrayType(rawType))
                     throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
@@ -132,7 +134,8 @@ namespace Unity.FoxgloveSDK.Editor
                 Policy = policy;
                 Mode = mode;
                 Encoding = encoding;
-                SubscriptionProvider = subscriptionProvider;
+                Source = source;
+                Targets = targets;
                 Ros2Qos = ros2Qos;
                 Ros2MessageShape = ros2MessageShape;
                 Ros2CustomDtoShape = ros2CustomDtoShape;
@@ -187,7 +190,7 @@ namespace Unity.FoxgloveSDK.Editor
                     Encoding,
                     ProtobufFieldNumber,
                     ProtobufTypeShape,
-                    SubscriptionProvider,
+                    Source,
                     Ros2Qos,
                     ProtobufTypeShape != null
                         || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
@@ -202,7 +205,8 @@ namespace Unity.FoxgloveSDK.Editor
                     Ros2CustomDtoShape,
                     Ros2ContractKind,
                     NamedArgumentPresence,
-                    ConditionMemberKind);
+                    ConditionMemberKind,
+                    Targets);
             }
         }
 
@@ -321,9 +325,13 @@ namespace Unity.FoxgloveSDK.Editor
                         snapshot.Encoding = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Encoding;
                         break;
-                    case "SubscriptionProvider":
-                        snapshot.SubscriptionProvider = Convert.ToInt32(argument.TypedValue.Value);
-                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.SubscriptionProvider;
+                    case "Source":
+                        snapshot.Source = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Source;
+                        break;
+                    case "Targets":
+                        snapshot.Targets = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Targets;
                         break;
                     case "Ros2Qos":
                         snapshot.Ros2Qos = Convert.ToInt32(argument.TypedValue.Value);
@@ -369,6 +377,10 @@ namespace Unity.FoxgloveSDK.Editor
                         snapshot.Encoding = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Encoding;
                         break;
+                    case "Targets":
+                        snapshot.Targets = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Targets;
+                        break;
                 }
             }
         }
@@ -390,7 +402,8 @@ namespace Unity.FoxgloveSDK.Editor
             public int Policy = (int)FoxRunPolicy.FixedRate;
             public int Mode;
             public int Encoding;
-            public int SubscriptionProvider;
+            public int Source;
+            public int Targets;
             public int Ros2Qos;
             public int ProtobufFieldNumber;
             public FoxRunNamedArgumentPresence NamedArgumentPresence;
@@ -411,6 +424,7 @@ namespace Unity.FoxgloveSDK.Editor
             public string SchemaName = string.Empty;
             public int Policy = (int)FoxRunPolicy.FixedRate;
             public int Encoding;
+            public int Targets;
             public FoxRunNamedArgumentPresence NamedArgumentPresence;
 
             public FoxRunMessageAttributeSnapshot(string topic)
@@ -435,11 +449,11 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static FoxRunRos2MessageShape TryBuildRos2MessageShape(Type type, int subscriptionProvider)
+        private static FoxRunRos2MessageShape TryBuildRos2MessageShape(Type type, int source)
         {
             var shape = FoxRunReflectionRos2MessageShapeBuilder.Build(type);
             return shape.ImplementsRos2Message
-                   || (subscriptionProvider == 2 && IsTopLevelPackagedRos2MessageCollection(type))
+                   || (source == 2 && IsTopLevelPackagedRos2MessageCollection(type))
                 ? shape
                 : null;
         }
@@ -447,7 +461,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static FoxRunRos2CustomDtoShape TryBuildRos2CustomDtoShape(
             Type type,
             FoxRunRos2MessageShape packagedShape,
-            int subscriptionProvider)
+            int source)
         {
             // Native output is selected at the Manager route.  A custom DTO
             // therefore needs a stable shape even when its subscription

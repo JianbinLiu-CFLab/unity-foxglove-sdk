@@ -30,7 +30,7 @@ namespace Unity.FoxgloveSDK.Components
         public static FoxRunSchemaManifestInfo Current { get { lock (Sync) return _current; } }
 
         /// <summary>Builds Inspector-friendly effective topic contracts from generated metadata.</summary>
-        public static IReadOnlyList<FoxRunTopicSummary> GetTopicSummaries(FoxRunWireEncoding managerDefault)
+        public static IReadOnlyList<FoxRunTopicSummary> GetTopicSummaries(FoxRunEncoding managerDefault)
             => GetTopicSummaries(managerDefault, managerDefault);
 
         /// <summary>
@@ -38,11 +38,11 @@ namespace Unity.FoxgloveSDK.Components
         /// independent defaults for Unity output and client subscriptions.
         /// </summary>
         public static IReadOnlyList<FoxRunTopicSummary> GetTopicSummaries(
-            FoxRunWireEncoding publishDefault,
-            FoxRunWireEncoding subscriptionDefault)
+            FoxRunEncoding publishDefault,
+            FoxRunEncoding subscriptionDefault)
         {
-            publishDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(publishDefault);
-            subscriptionDefault = FoxRunWireEncodingResolver.ValidateManagerDefault(subscriptionDefault);
+            publishDefault = FoxRunEncodingResolver.ValidateProfileDefault(publishDefault);
+            subscriptionDefault = FoxRunEncodingResolver.ValidateProfileDefault(subscriptionDefault);
             lock (Sync)
             {
                 if (_current == null)
@@ -62,15 +62,15 @@ namespace Unity.FoxgloveSDK.Components
                         var hasJson = contracts.Any(contract => string.Equals(contract.Encoding, "json", StringComparison.Ordinal));
                         var hasProtobuf = contracts.Any(contract => string.Equals(contract.Encoding, "protobuf", StringComparison.Ordinal));
                         var declared = hasJson && hasProtobuf
-                            ? FoxRunWireEncoding.Inherit
-                            : hasProtobuf ? FoxRunWireEncoding.Protobuf : FoxRunWireEncoding.Json;
+                            ? (FoxRunEncoding)0
+                            : hasProtobuf ? FoxRunEncoding.Protobuf : FoxRunEncoding.JSON;
                         var mode = ParseFlow(group.Key.Flow);
-                        var effective = FoxRunWireEncodingResolver.Resolve(
+                        var effective = FoxRunEncodingResolver.Resolve(
                             declared,
                             mode,
                             publishDefault,
                             subscriptionDefault);
-                        var protocolEncoding = FoxRunWireEncodingResolver.ToProtocolEncoding(effective);
+                        var protocolEncoding = FoxRunEncodingResolver.ToProtocolEncoding(effective);
                         var contract = contracts.FirstOrDefault(candidate =>
                             string.Equals(candidate.Encoding, protocolEncoding, StringComparison.Ordinal)) ?? contracts[0];
                         summaries.Add(new FoxRunTopicSummary(

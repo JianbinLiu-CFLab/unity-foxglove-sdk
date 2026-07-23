@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     FoxRunGenerationMember.DeclaredEncodingToText(member.Encoding),
                     member.ProtobufFieldNumber,
                     member.ProtobufTypeShape,
-                    FoxRunGenerationMember.DeclaredSubscriptionProviderToText(member.SubscriptionProvider),
+                    FoxRunGenerationMember.DeclaredSourceToText(member.Source),
                     FoxRunGenerationMember.DeclaredRos2QosToText(member.Ros2Qos),
                     member.GeneratesWebSocketCodec,
                     member.GeneratesRos2NativeRegistration,
@@ -49,7 +49,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     member.Ros2CustomDtoShape,
                     member.Ros2ContractKind,
                     member.NamedArgumentPresence,
-                    member.ConditionMemberKind))
+                    member.ConditionMemberKind,
+                    FoxRunGenerationMember.DeclaredTargetsToText(member.Targets)))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -72,7 +73,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly int Policy;
         public readonly int Mode;
         public readonly int Encoding;
-        public readonly int SubscriptionProvider;
+        public readonly int Source;
+        public readonly int Targets;
         public readonly int Ros2Qos;
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
@@ -114,7 +116,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int encoding = 0,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            int subscriptionProvider = 0,
+            int source = 0,
             int ros2Qos = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
@@ -122,7 +124,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
-            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            int targets = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -141,7 +144,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Policy = policy;
             Mode = mode;
             Encoding = encoding;
-            SubscriptionProvider = subscriptionProvider;
+            Source = source;
+            Targets = targets;
             Ros2Qos = ros2Qos;
             GeneratesWebSocketCodec = generatesWebSocketCodec
                 ?? (protobufTypeShape != null
@@ -192,7 +196,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int encoding = 0,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
-            int subscriptionProvider = 0,
+            int source = 0,
             int ros2Qos = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
@@ -200,7 +204,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
-            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None)
+            FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
+            int targets = 0)
             : this(
                 ns,
                 className,
@@ -225,7 +230,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 encoding,
                 protobufFieldNumber,
                 protobufTypeShape,
-                subscriptionProvider,
+                source,
                 ros2Qos,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
@@ -233,7 +238,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ros2CustomDtoShape,
                 ros2ContractKind,
                 namedArgumentPresence,
-                conditionMemberKind)
+                conditionMemberKind,
+                targets)
         {
         }
     }

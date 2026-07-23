@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Topic, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Flow, ",");
-                sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(binding.DeclaredProvider) + ",");
+                sb.AppendLine(inner + "    " + SourceLiteral(binding.DeclaredSource) + ",");
                 sb.AppendLine(inner + "    " + Ros2QosLiteral(binding.Ros2Qos) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsWebSocket) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsRos2Native) + ",");
@@ -253,7 +253,8 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.Ros2ContractKind.ToString(), ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.CustomDtoIdentity, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, string.Empty);
+                AppendIndentedStringLiteralLine(sb, inner, binding.CustomEnvelopeIdentity, ",");
+                sb.AppendLine(inner + "    " + TargetsLiteral(binding.DeclaredTargets));
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");
@@ -275,24 +276,47 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, contract.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.Topic, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
-                sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(contract.DeclaredProvider) + ",");
+                sb.AppendLine(inner + "    " + SourceLiteral(contract.DeclaredSource) + ",");
                 sb.AppendLine(inner + "    " + Ros2QosLiteral(contract.Ros2Qos) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(contract.SupportsRos2Native) + ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.CustomDtoIdentity, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.CustomPayloadIdentity, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.CustomEnvelopeIdentity, string.Empty);
+                AppendIndentedStringLiteralLine(sb, inner, contract.CustomEnvelopeIdentity, ",");
+                sb.AppendLine(inner + "    " + TargetsLiteral(contract.DeclaredTargets));
                 sb.AppendLine(inner + "),");
             }
             sb.Append(indent + "}");
         }
 
-        private static string SubscriptionProviderLiteral(string value)
+        private static string SourceLiteral(string value)
         {
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider, StringComparison.Ordinal))
-                return "FoxRunSubscriptionProvider.FoxgloveWebSocket";
-            if (string.Equals(value, FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider, StringComparison.Ordinal))
-                return "FoxRunSubscriptionProvider.Ros2Native";
-            return "FoxRunSubscriptionProvider.Inherit";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
+                return "FoxRunEndpoint.Foxglove";
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.Ros2NativeSource, StringComparison.Ordinal))
+                return "FoxRunEndpoint.Ros2Native";
+            return "(FoxRunEndpoint)0";
+        }
+
+        private static string TargetsLiteral(string value)
+        {
+            if (string.Equals(value, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
+                return "(FoxRunEndpoint)0";
+
+            var parts = (value ?? string.Empty).Split(',');
+            var literals = new List<string>();
+            foreach (var part in parts)
+            {
+                if (string.Equals(part, FoxRunGenerationDescriptorConstants.FoxgloveTarget, StringComparison.Ordinal))
+                    literals.Add("FoxRunEndpoint.Foxglove");
+                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2NativeTarget, StringComparison.Ordinal))
+                    literals.Add("FoxRunEndpoint.Ros2Native");
+                else if (string.Equals(part, FoxRunGenerationDescriptorConstants.Ros2BridgeTarget, StringComparison.Ordinal))
+                    literals.Add("FoxRunEndpoint.Ros2Bridge");
+            }
+
+            return literals.Count == 0
+                ? "(FoxRunEndpoint)0"
+                : string.Join(" | ", literals);
         }
 
         private static string Ros2QosLiteral(string value)

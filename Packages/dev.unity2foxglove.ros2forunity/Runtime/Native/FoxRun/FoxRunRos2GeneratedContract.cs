@@ -37,7 +37,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string declaringType,
             string memberName,
             string canonicalRosType,
-            string declaredProvider,
+            string declaredSource,
             string ros2Qos)
         {
             Id = Require(id, nameof(id));
@@ -45,19 +45,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             DeclaringType = Require(declaringType, nameof(declaringType));
             MemberName = Require(memberName, nameof(memberName));
             CanonicalRosType = Require(canonicalRosType, nameof(canonicalRosType));
-            DeclaredProvider = Require(declaredProvider, nameof(declaredProvider));
+            DeclaredSource = Require(declaredSource, nameof(declaredSource));
             Ros2Qos = Require(ros2Qos, nameof(ros2Qos));
             Mode = FoxRunFlow.Publish;
             Policy = FoxRunPolicy.FixedRate;
             Hz = 0f;
             HasExplicitHz = false;
             HeartbeatIntervalSeconds = 0f;
-            SubscriptionProvider = FoxRunSubscriptionProvider.Inherit;
+            Source = (FoxRunEndpoint)0;
             QosPreset = FoxRunRos2QosPreset.Inherit;
             SupportsRos2Native = false;
             HasCompleteMetadata = false;
             ContractKind = FoxRunRos2GeneratedContractKind.PackagedMessage;
-            DeclaredSubscriptionEncoding = FoxRunWireEncoding.Inherit;
+            DeclaredSubscriptionEncoding = (FoxRunEncoding)0;
             CanonicalPayloadType = CanonicalRosType;
             CanonicalEnvelopeType = CanonicalRosType;
             StaticInterfacePackageId = string.Empty;
@@ -74,7 +74,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string memberName,
             string canonicalRosType,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider subscriptionProvider,
+            FoxRunEndpoint source,
             FoxRunRos2QosPreset qosPreset,
             bool supportsRos2Native)
         {
@@ -88,14 +88,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Hz = 0f;
             HasExplicitHz = false;
             HeartbeatIntervalSeconds = 0f;
-            SubscriptionProvider = subscriptionProvider;
+            Source = source;
             QosPreset = qosPreset;
             SupportsRos2Native = supportsRos2Native;
             HasCompleteMetadata = true;
-            DeclaredProvider = ProviderText(subscriptionProvider);
+            DeclaredSource = ProviderText(source);
             Ros2Qos = QosText(qosPreset);
             ContractKind = FoxRunRos2GeneratedContractKind.PackagedMessage;
-            DeclaredSubscriptionEncoding = FoxRunWireEncoding.Inherit;
+            DeclaredSubscriptionEncoding = (FoxRunEncoding)0;
             CanonicalPayloadType = CanonicalRosType;
             CanonicalEnvelopeType = CanonicalRosType;
             StaticInterfacePackageId = string.Empty;
@@ -112,7 +112,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string memberName,
             string canonicalRosType,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider subscriptionProvider,
+            FoxRunEndpoint source,
             FoxRunRos2QosPreset qosPreset,
             bool supportsRos2Native,
             FoxRunPolicy policy,
@@ -126,7 +126,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 memberName,
                 canonicalRosType,
                 mode,
-                subscriptionProvider,
+                source,
                 qosPreset,
                 supportsRos2Native)
         {
@@ -148,10 +148,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string memberName,
             string canonicalEnvelopeType,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider subscriptionProvider,
+            FoxRunEndpoint source,
             FoxRunRos2QosPreset qosPreset,
             bool supportsRos2Native,
-            FoxRunWireEncoding declaredSubscriptionEncoding,
+            FoxRunEncoding declaredSubscriptionEncoding,
             FoxRunRos2GeneratedContractKind contractKind,
             string staticInterfacePackageId,
             string rosPackageName,
@@ -170,7 +170,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 memberName,
                 canonicalEnvelopeType,
                 mode,
-                subscriptionProvider,
+                source,
                 qosPreset,
                 supportsRos2Native,
                 declaredSubscriptionEncoding,
@@ -202,10 +202,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string memberName,
             string canonicalEnvelopeType,
             FoxRunFlow mode,
-            FoxRunSubscriptionProvider subscriptionProvider,
+            FoxRunEndpoint source,
             FoxRunRos2QosPreset qosPreset,
             bool supportsRos2Native,
-            FoxRunWireEncoding declaredSubscriptionEncoding,
+            FoxRunEncoding declaredSubscriptionEncoding,
             FoxRunRos2GeneratedContractKind contractKind,
             string staticInterfacePackageId,
             string rosPackageName,
@@ -229,11 +229,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Hz = hz;
             HasExplicitHz = hasExplicitHz;
             HeartbeatIntervalSeconds = heartbeatIntervalSeconds;
-            SubscriptionProvider = subscriptionProvider;
+            Source = source;
             QosPreset = qosPreset;
             SupportsRos2Native = supportsRos2Native;
             HasCompleteMetadata = true;
-            DeclaredProvider = ProviderText(subscriptionProvider);
+            DeclaredSource = ProviderText(source);
             Ros2Qos = QosText(qosPreset);
             DeclaredSubscriptionEncoding = declaredSubscriptionEncoding;
             ContractKind = contractKind;
@@ -252,7 +252,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string CanonicalRosType { get; }
-        public string DeclaredProvider { get; }
+        public string DeclaredSource { get; }
         public string Ros2Qos { get; }
         public bool HasCompleteMetadata { get; }
         public FoxRunFlow Mode { get; }
@@ -260,11 +260,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public float Hz { get; }
         public bool HasExplicitHz { get; }
         public float HeartbeatIntervalSeconds { get; }
-        public FoxRunSubscriptionProvider SubscriptionProvider { get; }
+        public FoxRunEndpoint Source { get; }
         public FoxRunRos2QosPreset QosPreset { get; }
         public bool SupportsRos2Native { get; }
         /// <summary>Actual generated subscription encoding; it is independent from provider.</summary>
-        public FoxRunWireEncoding DeclaredSubscriptionEncoding { get; }
+        public FoxRunEncoding DeclaredSubscriptionEncoding { get; }
         /// <summary>Explicit packaged-message versus generated-interface category.</summary>
         public FoxRunRos2GeneratedContractKind ContractKind { get; }
         /// <summary>Canonical DTO payload type identity for custom interfaces.</summary>
@@ -329,13 +329,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return value;
         }
 
-        private static string ProviderText(FoxRunSubscriptionProvider provider)
+        private static string ProviderText(FoxRunEndpoint provider)
         {
             switch (provider)
             {
-                case FoxRunSubscriptionProvider.Inherit: return "inherit";
-                case FoxRunSubscriptionProvider.FoxgloveWebSocket: return "foxglove-websocket";
-                case FoxRunSubscriptionProvider.Ros2Native: return "ros2-native";
+                case (FoxRunEndpoint)0: return "inherit";
+                case FoxRunEndpoint.Foxglove: return "foxglove-websocket";
+                case FoxRunEndpoint.Ros2Native: return "ros2-native";
                 default: return ((int)provider).ToString();
             }
         }

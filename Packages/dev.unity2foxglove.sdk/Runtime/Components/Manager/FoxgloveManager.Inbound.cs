@@ -14,12 +14,13 @@ namespace Unity.FoxgloveSDK.Components
     {
         // Kept as the source for one-to-two migration of scenes serialized before Phase176.
         [SerializeField, HideInInspector, Obsolete("Use directional FoxRun encoding defaults.")]
-        private FoxRunWireEncoding _defaultFoxRunWireEncoding = FoxRunWireEncoding.Protobuf;
-        [SerializeField] private FoxRunWireEncoding _defaultFoxRunSubscriptionEncoding = FoxRunWireEncoding.Protobuf;
-        [SerializeField] private FoxRunSubscriptionProvider _defaultFoxRunSubscriptionProvider = FoxRunSubscriptionProvider.FoxgloveWebSocket;
+        private FoxRunEncoding _defaultFoxRunEncoding = FoxRunEncoding.Protobuf;
+        [SerializeField] private FoxRunEncoding _defaultFoxRunSubscriptionEncoding = FoxRunEncoding.Protobuf;
+        [FormerlySerializedAs("_defaultFoxRunEndpoint")]
+        [SerializeField] private FoxRunEndpoint _defaultFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove;
         [SerializeField] private FoxRunRos2QosPreset _defaultFoxRunRos2Qos = FoxRunRos2QosPreset.Default;
-        [SerializeField, Min(FoxRunWireEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes)]
-        private int _foxRunRos2NativeCopyBudgetBytes = FoxRunWireEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes;
+        [SerializeField, Min(FoxRunEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes)]
+        private int _foxRunRos2NativeCopyBudgetBytes = FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes;
 
         [Tooltip("Allow generated Subscribe and PublishAndSubscribe FoxRun members to receive client-published Protobuf or JSON. Disabled by default.")]
         [SerializeField] private bool _enableFoxRunInbound;
@@ -52,25 +53,25 @@ namespace Unity.FoxgloveSDK.Components
         public int DefaultFoxRunSubscriptionRateHz => ConfiguredFoxRunDefaultSubscribeRateHz;
 
         /// <summary>Serialized default used by inherited Subscribe contracts.</summary>
-        public FoxRunWireEncoding DefaultFoxRunSubscriptionEncoding
+        public FoxRunEncoding DefaultFoxRunSubscriptionEncoding
         {
-            get => _defaultFoxRunSubscriptionEncoding == FoxRunWireEncoding.Inherit
-                ? FoxRunWireEncoding.Protobuf
-                : FoxRunWireEncodingResolver.ValidateManagerDefault(_defaultFoxRunSubscriptionEncoding);
-            set => _defaultFoxRunSubscriptionEncoding = FoxRunWireEncodingResolver.ValidateManagerDefault(value);
+            get => _defaultFoxRunSubscriptionEncoding == (FoxRunEncoding)0
+                ? FoxRunEncoding.Protobuf
+                : FoxRunEncodingResolver.ValidateProfileDefault(_defaultFoxRunSubscriptionEncoding);
+            set => _defaultFoxRunSubscriptionEncoding = FoxRunEncodingResolver.ValidateProfileDefault(value);
         }
 
-        /// <summary>Serialized default provider used by inherited subscription contracts.</summary>
-        public FoxRunSubscriptionProvider DefaultFoxRunSubscriptionProvider
+        /// <summary>Serialized default source used by inherited Subscribe contracts.</summary>
+        public FoxRunEndpoint DefaultFoxRunSubscriptionSource
         {
-            get => FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(
-                _defaultFoxRunSubscriptionProvider);
+            get => FoxRunEndpointResolver.ValidateProfileSource(
+                _defaultFoxRunSubscriptionSource);
             set
             {
-                _defaultFoxRunSubscriptionProvider =
-                    FoxRunSubscriptionProviderResolver.NormalizeManagerDefault(value);
+                _defaultFoxRunSubscriptionSource =
+                    FoxRunEndpointResolver.ValidateProfileSource(value);
                 _foxRunPolicySerializationVersion =
-                    FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion;
+                    FoxRunEncodingPolicyMigration.CurrentSerializationVersion;
             }
         }
 
@@ -82,35 +83,35 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _defaultFoxRunRos2Qos = FoxRunRos2QosResolver.NormalizeManagerDefault(value);
                 _foxRunPolicySerializationVersion =
-                    FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion;
+                    FoxRunEncodingPolicyMigration.CurrentSerializationVersion;
             }
         }
 
         /// <summary>Configured copied-data budget for optional native subscriptions.</summary>
         public int FoxRunRos2NativeCopyBudgetBytes
         {
-            get => FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(
+            get => FoxRunEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(
                 _foxRunRos2NativeCopyBudgetBytes);
             set
             {
                 _foxRunRos2NativeCopyBudgetBytes =
-                    FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(value);
+                    FoxRunEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(value);
                 _foxRunPolicySerializationVersion =
-                    FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion;
+                    FoxRunEncodingPolicyMigration.CurrentSerializationVersion;
             }
         }
 
         /// <summary>Effective subscription encoding for the active subscription session.</summary>
-        public FoxRunWireEncoding ActiveFoxRunSubscriptionEncoding =>
+        public FoxRunEncoding ActiveFoxRunSubscriptionEncoding =>
             ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
-                ? ActiveFoxRunSubscriptionSessionPolicy.WebSocketSubscriptionEncoding
+                ? ActiveFoxRunSubscriptionSessionPolicy.FoxgloveEncoding
                 : DefaultFoxRunSubscriptionEncoding;
 
-        /// <summary>Effective provider for the active subscription session.</summary>
-        public FoxRunSubscriptionProvider ActiveFoxRunSubscriptionProvider =>
+        /// <summary>Effective source for the active subscription session.</summary>
+        public FoxRunEndpoint ActiveFoxRunSubscriptionSource =>
             ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
-                ? ActiveFoxRunSubscriptionSessionPolicy.DefaultProvider
-                : DefaultFoxRunSubscriptionProvider;
+                ? ActiveFoxRunSubscriptionSessionPolicy.DefaultSource
+                : DefaultFoxRunSubscriptionSource;
 
         /// <summary>Effective ROS2 QoS for the active subscription session.</summary>
         public FoxRunRos2QosPreset ActiveFoxRunRos2Qos =>
@@ -124,45 +125,13 @@ namespace Unity.FoxgloveSDK.Components
                 ? ActiveFoxRunSubscriptionSessionPolicy.NativeCopyBudgetBytes
                 : FoxRunRos2NativeCopyBudgetBytes;
 
-        /// <summary>Compatibility alias for code compiled against the pre-Phase176 input policy.</summary>
-        [Obsolete("Use FoxRunSubscriptionMaxPayloadBytes.")]
-        public int FoxRunInboundMaxPayloadBytes => FoxRunSubscriptionMaxPayloadBytes;
-
-        /// <summary>Compatibility alias for code compiled against the pre-Phase176 input policy.</summary>
-        [Obsolete("Use FoxRunSubscriptionMaxMessagesPerSecondPerTopic.")]
-        public int FoxRunInboundMaxMessagesPerSecondPerTopic => FoxRunSubscriptionMaxMessagesPerSecondPerTopic;
-
-        /// <summary>Compatibility alias for the former single FoxRun default.</summary>
-        [Obsolete("Use DefaultFoxRunPublishEncoding or DefaultFoxRunSubscriptionEncoding.")]
-        public FoxRunWireEncoding DefaultFoxRunWireEncoding
-        {
-            get => DefaultFoxRunSubscriptionEncoding;
-            set
-            {
-                value = FoxRunWireEncodingResolver.ValidateManagerDefault(value);
-                _defaultFoxRunWireEncoding = value;
-                DefaultFoxRunPublishEncoding = value;
-                DefaultFoxRunSubscriptionEncoding = value;
-                _foxRunPolicySerializationVersion = FoxRunWireEncodingPolicyMigration.CurrentSerializationVersion;
-            }
-        }
-
-        /// <summary>Compatibility alias for the former single active FoxRun default.</summary>
-        [Obsolete("Use ActiveFoxRunPublishEncoding or ActiveFoxRunSubscriptionEncoding.")]
-        public FoxRunWireEncoding ActiveFoxRunDefaultWireEncoding => ActiveFoxRunSubscriptionEncoding;
-
         /// <summary>Resolves a generated declaration against the active directional session policy.</summary>
-        public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding, FoxRunFlow mode)
-            => FoxRunWireEncodingResolver.Resolve(
+        public FoxRunEncoding ResolveFoxRunEncoding(FoxRunEncoding declaredEncoding, FoxRunFlow mode)
+            => FoxRunEncodingResolver.Resolve(
                 declaredEncoding,
                 mode,
                 ActiveFoxRunPublishEncoding,
                 ActiveFoxRunSubscriptionEncoding);
-
-        /// <summary>Compatibility resolver for older generated input dispatch.</summary>
-        [Obsolete("Generated FoxRun code must pass its flow mode.")]
-        public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding)
-            => ResolveFoxRunWireEncoding(declaredEncoding, FoxRunFlow.Subscribe);
 
         public bool IsFoxRunInboundAuthorized
         {

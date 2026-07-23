@@ -70,15 +70,15 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var state = new FoxRunSubscriptionSessionState();
             var policy = state.BeginIfNeeded(
-                FoxRunSubscriptionProvider.FoxgloveWebSocket,
-                FoxRunWireEncoding.Protobuf,
+                FoxRunEndpoint.Foxglove,
+                FoxRunEncoding.Protobuf,
                 FoxRunRos2QosPreset.Default,
                 4 * 1024 * 1024,
                 transportAdmissionRateLimitHz: 120,
                 defaultSubscribeRateHz: 30);
             var frozen = state.BeginIfNeeded(
-                FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunWireEncoding.Json,
+                FoxRunEndpoint.Ros2Native,
+                FoxRunEncoding.JSON,
                 FoxRunRos2QosPreset.SensorData,
                 1,
                 transportAdmissionRateLimitHz: 1,
@@ -146,14 +146,18 @@ namespace Unity.FoxgloveSDK.Tests
                 "ProtobufFieldNumber",
                 "Ros2Qos",
                 "SchemaName",
-                "SubscriptionProvider",
+                "Source",
+                "Targets",
                 "Tolerance",
                 "Topic",
             };
             Check(declaredProperties.SequenceEqual(expectedProperties, StringComparer.Ordinal)
                   && typeof(FoxRunAttribute).GetProperty("Mode")?.PropertyType == typeof(FoxRunFlow)
-                  && typeof(FoxRunAttribute).GetProperty("Policy")?.PropertyType == typeof(FoxRunPolicy),
-                "Structural 183A-11: the public attribute surface exposes only the fresh flow and policy model");
+                  && typeof(FoxRunAttribute).GetProperty("Policy")?.PropertyType == typeof(FoxRunPolicy)
+                  && typeof(FoxRunAttribute).GetProperty("Source")?.PropertyType == typeof(FoxRunEndpoint)
+                  && typeof(FoxRunAttribute).GetProperty("Targets")?.PropertyType == typeof(FoxRunEndpoint)
+                  && typeof(FoxRunAttribute).GetProperty("Encoding")?.PropertyType == typeof(FoxRunEncoding),
+                "Structural 183A-11: the public attribute surface exposes only the fresh flow, policy, endpoint, and encoding model");
             Check(!assembly.GetReferencedAssemblies().Any(reference =>
                     reference.Name.IndexOf("Ros2ForUnity", StringComparison.OrdinalIgnoreCase) >= 0
                     || reference.Name.Equals("ros2cs_common", StringComparison.OrdinalIgnoreCase)),
@@ -196,9 +200,9 @@ namespace Unity.FoxgloveSDK.Tests
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index)
                 => new(
                     "/phase183/latest",
-                    FoxRunWireEncoding.Json,
+                    FoxRunEncoding.JSON,
                     FoxRunFlow.Subscribe,
-                    FoxRunSubscriptionProvider.FoxgloveWebSocket,
+                    FoxRunEndpoint.Foxglove,
                     supportsWebSocket: true,
                     supportsRos2Native: false);
 

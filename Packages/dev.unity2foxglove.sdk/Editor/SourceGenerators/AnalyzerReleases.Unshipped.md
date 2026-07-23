@@ -8,9 +8,7 @@ Rule ID | Category | Severity | Notes
 FOXRUN200 | FoxRun | Error | FoxRun inbound arrays and aggregate members are not supported.
 FOXRUN202 | FoxRun | Warning | Subscribe member names should communicate input-port authority.
 FOXRUN203 | FoxRun | Error | FoxRun inbound targets must be writable.
-FOXRUN204 | FoxRun | Error | FoxRun SubscriptionProvider must be a known provider value.
-FOXRUN205 | FoxRun | Error | Ros2Native subscriptions are supported only for Subscribe members.
-FOXRUN206 | FoxRun | Error | Ros2Native cannot declare JSON or Protobuf Encoding.
+FOXRUN204 | FoxRun | Error | FoxRun Source must be a known provider value.
 FOXRUN207 | FoxRun | Error | Native member type must implement ROS2.Message from ros2cs_common.
 FOXRUN208 | FoxRun | Error | Native message type requires a public parameterless constructor.
 FOXRUN209 | FoxRun | Error | Native message type must be declared directly in a package msg namespace.
@@ -18,9 +16,7 @@ FOXRUN210 | FoxRun | Error | Explicit SchemaName must match the validated canoni
 FOXRUN211 | FoxRun | Error | Native message graph cannot be deep-copied safely.
 FOXRUN212 | FoxRun | Error | Native generation requires the optional Native assembly reference.
 FOXRUN213 | FoxRun | Warning | Ros2Qos is ignored for explicit WebSocket-only subscriptions.
-FOXRUN214 | FoxRun | Error | Ros2Native SubscriptionProvider is invalid for Publish; use the Manager native output route.
 FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
-FOXRUN401 | FoxRun | Error | PublishAndSubscribe requires an explicit Protobuf or Json Encoding.
 FOXRUN402 | FoxRun | Error | Native PublishAndSubscribe requires a complete custom DTO interface contract.
 FOXRUN600 | FoxRun | Error | FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe.
 FOXRUN602 | FoxRun | Error | FoxRun Encoding must be inherit, json, or protobuf.
@@ -32,6 +28,8 @@ FOXRUN607 | FoxRun | Error | Custom ROS2 DTO root or nested value lacks a public
 FOXRUN608 | FoxRun | Error | Custom ROS2 DTO inbound member is not readable and writable.
 FOXRUN609 | FoxRun | Error | FoxRun Trigger cannot be combined with an explicit Hz.
 FOXRUN610 | FoxRun | Error | Generated FoxRun method conflicts with an existing member.
+FOXRUN611 | FoxRun | Error | FoxRun Targets must be a non-empty set of known publish endpoints.
+FOXRUN612 | FoxRun | Error | Source, Targets, and Encoding must be legal for their declared directions.
 
 ### Removed Rules
 
@@ -44,7 +42,6 @@ FOXRUN026 | FoxRun | Warning | Retired; renumbered as FOXRUN400 and permanently 
 FOXRUN027 | FoxRun | Warning | Retired; renumbered as FOXRUN202 and permanently reserved.
 FOXRUN028 | FoxRun | Error | Retired; renumbered as FOXRUN203 and permanently reserved.
 FOXRUN029 | FoxRun | Error | Retired; renumbered as FOXRUN601 and permanently reserved.
-; FOXRUN601 was retired before release with the removed Unless declaration and remains permanently reserved.
 FOXRUN030 | FoxRun | Error | Retired; renumbered as FOXRUN602 and permanently reserved.
 FOXRUN031 | FoxRun | Error | Retired; renumbered as FOXRUN603 and permanently reserved.
 FOXRUN032 | FoxRun | Error | Retired; renumbered as FOXRUN604 and permanently reserved.
@@ -60,4 +57,12 @@ FOXRUN041 | FoxRun | Error | Retired; renumbered as FOXRUN210 and permanently re
 FOXRUN042 | FoxRun | Error | Retired; renumbered as FOXRUN211 and permanently reserved.
 FOXRUN043 | FoxRun | Error | Retired; renumbered as FOXRUN212 and permanently reserved.
 FOXRUN044 | FoxRun | Warning | Retired; renumbered as FOXRUN213 and permanently reserved.
-; FOXRUN201 was retired before release; subscription policy now applies symmetrically and this ID remains permanently reserved.
+
+; Reserved before release. These are comments instead of Removed Rules rows
+; because Roslyn release tracking permits removal rows only for shipped rules.
+; FOXRUN201 | FoxRun | Warning | Retired before release; subscription policy now applies symmetrically and this ID is permanently reserved.
+; FOXRUN205 | FoxRun | Error | Retired before release; Ros2Native is now a legal Subscribe or PublishAndSubscribe Source and this ID remains permanently reserved.
+; FOXRUN206 | FoxRun | Error | Retired before release; directional Encoding legality now uses FOXRUN612 and this ID remains permanently reserved.
+; FOXRUN214 | FoxRun | Error | Retired before release; directional Source legality now uses FOXRUN612 and this ID remains permanently reserved.
+; FOXRUN401 | FoxRun | Error | Retired before release; directional profiles resolve full-duplex encodings independently and this ID remains permanently reserved.
+; FOXRUN601 | FoxRun | Error | Retired before release with the removed Unless declaration and remains permanently reserved.

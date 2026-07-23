@@ -13,8 +13,8 @@ namespace Unity.FoxgloveSDK.Components
             string declaringType,
             string topic,
             string direction,
-            FoxRunWireEncoding declaredEncoding,
-            FoxRunWireEncoding effectiveEncoding,
+            FoxRunEncoding declaredEncoding,
+            FoxRunEncoding effectiveEncoding,
             string schemaName)
         {
             DeclaringType = declaringType ?? string.Empty;
@@ -28,8 +28,8 @@ namespace Unity.FoxgloveSDK.Components
         public string DeclaringType { get; }
         public string Topic { get; }
         public string Direction { get; }
-        public FoxRunWireEncoding DeclaredEncoding { get; }
-        public FoxRunWireEncoding EffectiveEncoding { get; }
+        public FoxRunEncoding DeclaredEncoding { get; }
+        public FoxRunEncoding EffectiveEncoding { get; }
         public string SchemaName { get; }
     }
 }

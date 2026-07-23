@@ -40,7 +40,9 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(
                     $"{pad}            case {i}: return new FoxgloveInputTopicInfo(" +
                     $"\"{topic}\", {WireEncodingLiteral(member.Encoding)}, {mode}, " +
-                    $"{SubscriptionProviderLiteral(member.SubscriptionProvider)}, " +
+                    $"{SourceLiteral(member.Source)}, " +
+                    $"hasExplicitSource: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Source))}, " +
+                    $"hasExplicitEncoding: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Encoding))}, " +
                     $"supportsWebSocket: {BoolLiteral(member.GeneratesWebSocketCodec)}, " +
                     $"supportsRos2Native: {BoolLiteral(member.GeneratesRos2NativeRegistration)}, " +
                     $"policy: {TopicMetadataEmitter.PolicyLiteral(member.Policy)}, " +
@@ -65,6 +67,11 @@ namespace Unity.FoxgloveSDK.Editor
             EmitInputFlush(sb, members, publishTopics, pad);
             ProtobufInputDispatchEmitter.EmitReaders(sb, declaringType, members, pad);
         }
+
+        private static bool HasExplicit(
+            FoxgloveSourceEmitter.TopicMember member,
+            FoxRunNamedArgumentPresence argument)
+            => (member.NamedArgumentPresence & argument) == argument;
 
         private static void EmitStagingFields(
             StringBuilder sb,
@@ -317,29 +324,29 @@ namespace Unity.FoxgloveSDK.Editor
         private static string WireEncodingLiteral(string encoding)
         {
             if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.ProtobufEncoding, System.StringComparison.Ordinal))
-                return "FoxRunWireEncoding.Protobuf";
+                return "FoxRunEncoding.Protobuf";
             if (string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, System.StringComparison.Ordinal))
-                return "FoxRunWireEncoding.Json";
-            return "FoxRunWireEncoding.Inherit";
+                return "FoxRunEncoding.JSON";
+            return "(FoxRunEncoding)0";
         }
 
-        private static string SubscriptionProviderLiteral(string provider)
+        private static string SourceLiteral(string provider)
         {
             if (string.Equals(
                     provider,
-                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSubscriptionProvider,
+                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
                     System.StringComparison.Ordinal))
             {
-                return "FoxRunSubscriptionProvider.FoxgloveWebSocket";
+                return "FoxRunEndpoint.Foxglove";
             }
             if (string.Equals(
                     provider,
-                    FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                    FoxRunGenerationDescriptorConstants.Ros2NativeSource,
                     System.StringComparison.Ordinal))
             {
-                return "FoxRunSubscriptionProvider.Ros2Native";
+                return "FoxRunEndpoint.Ros2Native";
             }
-            return "FoxRunSubscriptionProvider.Inherit";
+            return "(FoxRunEndpoint)0";
         }
 
         private static string BoolLiteral(bool value) => value ? "true" : "false";
