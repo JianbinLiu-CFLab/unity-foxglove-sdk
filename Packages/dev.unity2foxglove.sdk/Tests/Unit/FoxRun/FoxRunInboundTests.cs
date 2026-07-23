@@ -31,7 +31,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 typeof(string),
                 typeof(FoxRunWireEncoding),
-                typeof(FoxRunMode),
+                typeof(FoxRunFlow),
                 typeof(FoxRunSubscriptionProvider),
                 typeof(bool),
                 typeof(bool)
@@ -51,10 +51,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.Register(input);
 
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase179/json", Array.Empty<byte>(), "json", 1).Status);
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase179/dual", Array.Empty<byte>(), "protobuf", 2).Status);
             Assert.Equal(
                 FoxRunInputDispatchStatus.UnknownTopic,
@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.DefaultSubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native;
 
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase179/dual", Array.Empty<byte>(), "protobuf", 4).Status);
 
             var nativeDefaultRouter = new FoxRunInputRouter
@@ -74,7 +74,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             nativeDefaultRouter.Register(input);
 
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 nativeDefaultRouter.Dispatch("/phase179/json", Array.Empty<byte>(), "json", 5).Status);
             Assert.Equal(
                 FoxRunInputDispatchStatus.UnknownTopic,
@@ -97,10 +97,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.Register(input);
 
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase179/coexist/json", Array.Empty<byte>(), "json", 1).Status);
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase179/coexist/protobuf", Array.Empty<byte>(), "protobuf", 2).Status);
             Assert.Equal(
                 FoxRunInputDispatchStatus.UnknownTopic,
@@ -201,9 +201,30 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "json",
                 nowSeconds: 1);
 
-            Assert.Equal(FoxRunInputDispatchStatus.Applied, result.Status);
+            Assert.Equal(FoxRunInputDispatchStatus.Staged, result.Status);
             Assert.Equal(1, first.ApplyCount);
             Assert.Equal(1, second.ApplyCount);
+        }
+
+        [Fact]
+        public void RouterStagesNewestValueUntilTheMainThreadFlush()
+        {
+            var input = new StagedRecordingInput("/phase183/staged");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                router.Dispatch("/phase183/staged", new byte[] { 1 }, "json", nowSeconds: 1).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                router.Dispatch("/phase183/staged", new byte[] { 2 }, "json", nowSeconds: 1.01).Status);
+            Assert.Equal(0, input.AppliedCount);
+
+            Assert.Equal(1, router.Flush(nowSeconds: 2, inheritedSubscribeRateHz: 60));
+            Assert.Equal(1, input.AppliedCount);
+            Assert.Equal(2, input.LastAppliedValue);
+            Assert.Equal(0, router.Flush(nowSeconds: 3, inheritedSubscribeRateHz: 60));
         }
 
         [Fact]
@@ -220,7 +241,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunInputDispatchStatus.PayloadTooLarge,
                 router.Dispatch("/phase157/cmd", new byte[17], "json", 0).Status);
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase157/cmd", Encoding.UTF8.GetBytes("{}"), "json", 1).Status);
             Assert.Equal(
                 FoxRunInputDispatchStatus.RateLimited,
@@ -249,7 +270,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.Register(input);
 
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "protobuf", 1).Status);
             Assert.Equal(
                 FoxRunInputDispatchStatus.DecodeRejected,
@@ -259,7 +280,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.DefaultSubscriptionWireEncoding = FoxRunWireEncoding.Json;
 
             Assert.Equal(
-                FoxRunInputDispatchStatus.Applied,
+                FoxRunInputDispatchStatus.Staged,
                 router.Dispatch("/phase175/inherit", Array.Empty<byte>(), "json", 3).Status);
             Assert.Equal(2, input.ApplyCount);
         }
@@ -302,7 +323,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 nowSeconds: 1.2);
 
             Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, wrongEncoding.Status);
-            Assert.Equal(FoxRunInputDispatchStatus.Applied, matchingEncoding.Status);
+            Assert.Equal(FoxRunInputDispatchStatus.Staged, matchingEncoding.Status);
             Assert.Equal(FoxRunInputDispatchStatus.RateLimited, rateLimited.Status);
             Assert.Equal(1, input.ApplyCount);
         }
@@ -327,7 +348,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "protobuf",
                 nowSeconds: 1.1);
 
-            Assert.Equal(FoxRunInputDispatchStatus.Applied, matching.Status);
+            Assert.Equal(FoxRunInputDispatchStatus.Staged, matching.Status);
             Assert.Equal(0, json.ApplyCount);
             Assert.Equal(1, protobuf.ApplyCount);
             Assert.Equal(FoxRunInputDispatchStatus.RateLimited, rateLimited.Status);
@@ -471,7 +492,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 sessionPolicy,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "_router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;",
+                "_router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;",
                 sessionPolicy,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("cdr", source, StringComparison.OrdinalIgnoreCase);
@@ -491,7 +512,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Protobuf,
                 FoxRunRos2QosPreset.Default,
                 nativeCopyBudgetBytes: 4 * 1024 * 1024,
-                mainThreadApplyRateLimitHz: 60);
+                transportAdmissionRateLimitHz: 60,
+                defaultSubscribeRateHz: 60);
             var generation = policy.SessionGeneration;
             var input = new RestartDecodingInput();
             var router = new FoxRunInputRouter();
@@ -503,7 +525,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 runtime.Start("phase179-restart", enableCdrClientPublish: false);
                 router.DefaultSubscriptionWireEncoding = activePolicy.WebSocketSubscriptionEncoding;
-                router.MaxMessagesPerSecondPerTopic = activePolicy.MainThreadApplyRateLimitHz;
+                router.MaxMessagesPerSecondPerTopic = activePolicy.TransportAdmissionRateLimitHz;
                 runtime.Session.OnClientMessageWithEncoding += (_, _, topic, encoding, payload) =>
                     dispatches.Add(router.Dispatch(topic, payload, encoding, nowSeconds += 2d));
             }
@@ -523,6 +545,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 var protobuf = new List<byte>();
                 FoxRunProtobufWire.WriteInt32(protobuf, 1, protobufValue);
                 transport.ReceiveBinary(17, ClientMessageFrame(2, protobuf.ToArray()));
+                Assert.Equal(
+                    2,
+                    router.Flush(
+                        nowSeconds += 0.1d,
+                        inheritedSubscribeRateHz: 60));
             }
 
             StartAndAttach(policy);
@@ -536,11 +563,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunWireEncoding.Json,
                 FoxRunRos2QosPreset.SensorData,
                 nativeCopyBudgetBytes: 1024,
-                mainThreadApplyRateLimitHz: 1);
+                transportAdmissionRateLimitHz: 1,
+                defaultSubscribeRateHz: 1);
             Assert.Same(policy, frozenPolicy);
             Assert.Equal(generation, frozenPolicy.SessionGeneration);
             Assert.Equal(FoxRunWireEncoding.Protobuf, frozenPolicy.WebSocketSubscriptionEncoding);
-            Assert.Equal(60, frozenPolicy.MainThreadApplyRateLimitHz);
+            Assert.Equal(60, frozenPolicy.TransportAdmissionRateLimitHz);
+            Assert.Equal(60, frozenPolicy.DefaultSubscribeRateHz);
 
             StartAndAttach(frozenPolicy);
             PublishBoth(jsonValue: 12, protobufValue: 16);
@@ -548,7 +577,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(12, input.JsonValue);
             Assert.Equal(16, input.ProtobufValue);
             Assert.Equal(4, dispatches.Count);
-            Assert.All(dispatches, result => Assert.Equal(FoxRunInputDispatchStatus.Applied, result.Status));
+            Assert.All(dispatches, result => Assert.Equal(FoxRunInputDispatchStatus.Staged, result.Status));
             Assert.Equal(generation, sessionState.Current.SessionGeneration);
         }
 
@@ -567,9 +596,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "json",
                 nowSeconds: 1);
 
-            Assert.Equal(FoxRunInputDispatchStatus.Applied, result.Status);
-            Assert.Equal(1, result.AppliedCount);
-            Assert.Contains("assignment failed", result.Diagnostic, StringComparison.Ordinal);
+            Assert.Equal(FoxRunInputDispatchStatus.Staged, result.Status);
+            Assert.Equal(1, result.StagedCount);
+            Assert.Contains("staging failed", result.Diagnostic, StringComparison.Ordinal);
             Assert.Equal(1, recording.ApplyCount);
         }
 
@@ -634,7 +663,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         public void RouterDispatchUsesRegistrationSnapshotWithoutPerMessageArrayCopy()
         {
             var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
-            var dispatch = TestSources.Slice(source, "public FoxRunInputDispatchResult Dispatch", "        private bool AcceptRate");
+            var dispatch = TestSources.Slice(
+                source,
+                "public FoxRunInputDispatchResult Dispatch",
+                "        private void AddSourceSnapshotEntry");
 
             Assert.Contains("Dictionary<string, Registration[]> _registrationSnapshots", source, StringComparison.Ordinal);
             Assert.DoesNotContain(".ToArray()", dispatch, StringComparison.Ordinal);
@@ -646,18 +678,56 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             public RecordingInput(string topic)
             {
-                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunMode.SubscribeOnly);
+                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunFlow.Subscribe);
             }
 
             public int ApplyCount { get; private set; }
             public int FoxgloveInput_TopicCount => 1;
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
 
-            public bool FoxgloveInput_TryApply(int topicIndex, byte[] payload, string encoding, out string error)
+            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
             {
                 ApplyCount++;
                 error = string.Empty;
                 return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private sealed class StagedRecordingInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+            private bool _hasPending;
+            private byte _pending;
+
+            public StagedRecordingInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunFlow.Subscribe);
+            }
+
+            public int AppliedCount { get; private set; }
+            public byte LastAppliedValue { get; private set; }
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
+            {
+                _pending = payload[0];
+                _hasPending = true;
+                error = string.Empty;
+                return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)
+            {
+                if (!_hasPending)
+                    return 0;
+
+                LastAppliedValue = _pending;
+                AppliedCount++;
+                _hasPending = false;
+                return 1;
             }
         }
 
@@ -668,21 +738,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new(
                     "/phase179/json",
                     FoxRunWireEncoding.Json,
-                    FoxRunMode.SubscribeOnly,
+                    FoxRunFlow.Subscribe,
                     FoxRunSubscriptionProvider.FoxgloveWebSocket,
                     supportsWebSocket: true,
                     supportsRos2Native: false),
                 new(
                     "/phase179/dual",
                     FoxRunWireEncoding.Inherit,
-                    FoxRunMode.SubscribeOnly,
+                    FoxRunFlow.Subscribe,
                     FoxRunSubscriptionProvider.Inherit,
                     supportsWebSocket: true,
                     supportsRos2Native: true),
                 new(
                     "/phase179/native",
                     FoxRunWireEncoding.Inherit,
-                    FoxRunMode.SubscribeOnly,
+                    FoxRunFlow.Subscribe,
                     FoxRunSubscriptionProvider.Ros2Native,
                     supportsWebSocket: true,
                     supportsRos2Native: true)
@@ -692,7 +762,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public int FoxgloveInput_TopicCount => _topics.Length;
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
 
-            public bool FoxgloveInput_TryApply(
+            public bool FoxgloveInput_TryStage(
                 int topicIndex,
                 byte[] payload,
                 string encoding,
@@ -702,6 +772,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 error = string.Empty;
                 return true;
             }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private sealed class NativeUnavailableCoexistenceInput : IFoxgloveInputSource
@@ -711,21 +783,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new(
                     "/phase179/coexist/json",
                     FoxRunWireEncoding.Json,
-                    FoxRunMode.SubscribeOnly,
+                    FoxRunFlow.Subscribe,
                     FoxRunSubscriptionProvider.FoxgloveWebSocket,
                     supportsWebSocket: true,
                     supportsRos2Native: false),
                 new(
                     "/phase179/coexist/protobuf",
                     FoxRunWireEncoding.Protobuf,
-                    FoxRunMode.SubscribeOnly,
+                    FoxRunFlow.Subscribe,
                     FoxRunSubscriptionProvider.FoxgloveWebSocket,
                     supportsWebSocket: true,
                     supportsRos2Native: false),
                 new(
                     "/phase179/coexist/ordinary-dto",
                     FoxRunWireEncoding.Protobuf,
-                    FoxRunMode.SubscribeOnly,
+                    FoxRunFlow.Subscribe,
                     FoxRunSubscriptionProvider.Inherit,
                     supportsWebSocket: true,
                     supportsRos2Native: false)
@@ -735,7 +807,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             public int FoxgloveInput_TopicCount => _topics.Length;
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
 
-            public bool FoxgloveInput_TryApply(
+            public bool FoxgloveInput_TryStage(
                 int topicIndex,
                 byte[] payload,
                 string encoding,
@@ -745,6 +817,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 error = string.Empty;
                 return true;
             }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private sealed class ThrowingInput : IFoxgloveInputSource
@@ -753,16 +827,18 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             public ThrowingInput(string topic)
             {
-                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunMode.SubscribeOnly);
+                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunFlow.Subscribe);
             }
 
             public int FoxgloveInput_TopicCount => 1;
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
 
-            public bool FoxgloveInput_TryApply(int topicIndex, byte[] payload, string encoding, out string error)
+            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
             {
-                throw new InvalidOperationException("assignment failed");
+                throw new InvalidOperationException("staging failed");
             }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private sealed class InheritedRecordingInput : IFoxgloveInputSource
@@ -771,19 +847,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             public InheritedRecordingInput(string topic)
             {
-                _topic = new FoxgloveInputTopicInfo(topic, FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly);
+                _topic = new FoxgloveInputTopicInfo(topic, FoxRunWireEncoding.Inherit, FoxRunFlow.Subscribe);
             }
 
             public int ApplyCount { get; private set; }
             public int FoxgloveInput_TopicCount => 1;
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
 
-            public bool FoxgloveInput_TryApply(int topicIndex, byte[] payload, string encoding, out string error)
+            public bool FoxgloveInput_TryStage(int topicIndex, byte[] payload, string encoding, out string error)
             {
                 ApplyCount++;
                 error = string.Empty;
                 return true;
             }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
         }
 
         private static byte[] ClientMessageFrame(uint channelId, byte[] payload)
@@ -799,16 +877,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             private readonly FoxgloveInputTopicInfo[] _topics =
             {
-                new("/phase179/json", FoxRunWireEncoding.Json, FoxRunMode.SubscribeOnly),
-                new("/phase179/protobuf", FoxRunWireEncoding.Inherit, FoxRunMode.SubscribeOnly)
+                new("/phase179/json", FoxRunWireEncoding.Json, FoxRunFlow.Subscribe),
+                new("/phase179/protobuf", FoxRunWireEncoding.Inherit, FoxRunFlow.Subscribe)
             };
 
             public int JsonValue { get; private set; }
             public int ProtobufValue { get; private set; }
+            private bool HasPendingJson { get; set; }
+            private bool HasPendingProtobuf { get; set; }
+            private int PendingJsonValue { get; set; }
+            private int PendingProtobufValue { get; set; }
             public int FoxgloveInput_TopicCount => _topics.Length;
             public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topics[index];
 
-            public bool FoxgloveInput_TryApply(
+            public bool FoxgloveInput_TryStage(
                 int topicIndex,
                 byte[] payload,
                 string encoding,
@@ -818,14 +900,34 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 {
                     if (!FoxRunInboundJson.TryRead(payload, "value", out int value, out error))
                         return false;
-                    JsonValue = value;
+                    PendingJsonValue = value;
+                    HasPendingJson = true;
                     return true;
                 }
 
                 if (!FoxRunInboundProtobuf.TryRead(payload, 1, out int protobufValue, out error))
                     return false;
-                ProtobufValue = protobufValue;
+                PendingProtobufValue = protobufValue;
+                HasPendingProtobuf = true;
                 return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)
+            {
+                var applied = 0;
+                if (HasPendingJson)
+                {
+                    JsonValue = PendingJsonValue;
+                    HasPendingJson = false;
+                    applied++;
+                }
+                if (HasPendingProtobuf)
+                {
+                    ProtobufValue = PendingProtobufValue;
+                    HasPendingProtobuf = false;
+                    applied++;
+                }
+                return applied;
             }
         }
 

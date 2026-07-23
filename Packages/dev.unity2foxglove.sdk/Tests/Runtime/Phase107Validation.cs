@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Tests
         private const string OptionalPackageValidator = "Scripts/ros2forunity/windows/jazzy/validate_ros2forunity_package.py";
         private const string JazzyArtifactName = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip";
         // Mirrors the adoption manifest and release-side hash sidecar; this check catches accidental artifact swaps.
-        private const string JazzyArtifactSha256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74";
+        private const string JazzyArtifactSha256 = "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d";
 
         private static readonly string[] OptionalEditorForbiddenTokenList =
         {
@@ -266,8 +266,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && readme.Contains("Packages/dev.unity2foxglove.ros2forunity", StringComparison.Ordinal)
                   && readme.Contains("Unity2Foxglove demo project", StringComparison.Ordinal),
                 "107-D1: README describes core, optional ROS2, and demo project package model");
-            Check(readme.Contains("normal Foxglove WebSocket streaming, MCAP recording, or replay", StringComparison.Ordinal)
-                  && readme.Contains("no ROS2", StringComparison.OrdinalIgnoreCase),
+            Check(readme.Contains("does not require ROS for its core WebSocket, MCAP, Replay, or FoxRun workflows", StringComparison.Ordinal)
+                  && readme.IndexOf("Quick Start", StringComparison.Ordinal) < readme.IndexOf("Package Combinations", StringComparison.Ordinal),
                 "107-D2: README keeps no-ROS default prominent");
             Check(combined.Contains("Windows Firewall", StringComparison.Ordinal)
                   && combined.Contains("Fast DDS", StringComparison.Ordinal)

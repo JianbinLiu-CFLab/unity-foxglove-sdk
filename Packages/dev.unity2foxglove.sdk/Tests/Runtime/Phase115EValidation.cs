@@ -346,7 +346,7 @@ namespace Unity.FoxgloveSDK.Tests
                 var topic = (string)attrType.GetProperty("Topic").GetValue(attr, null);
                 var rateHz = (float)attrType.GetProperty("RateHz").GetValue(attr, null);
                 var schemaName = (string)attrType.GetProperty("SchemaName").GetValue(attr, null) ?? string.Empty;
-                var publishMode = Convert.ToInt32(attrType.GetProperty("PublishMode").GetValue(attr, null));
+                var policy = Convert.ToInt32(attrType.GetProperty("Policy").GetValue(attr, null));
                 var changeEpsilon = (float)attrType.GetProperty("ChangeEpsilon").GetValue(attr, null);
                 var forceIntervalSeconds = (float)attrType.GetProperty("ForceIntervalSeconds").GetValue(attr, null);
                 var isArray = TryGetArrayElementType(memberType, out var elementType);
@@ -367,7 +367,7 @@ namespace Unity.FoxgloveSDK.Tests
                     topic,
                     schemaName,
                     rateHz,
-                    publishMode,
+                    policy,
                     changeEpsilon,
                     forceIntervalSeconds,
                     rawMemberOrder,

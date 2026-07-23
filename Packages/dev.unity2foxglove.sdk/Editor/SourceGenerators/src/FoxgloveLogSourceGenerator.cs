@@ -166,10 +166,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     continue;
 
                 string topic = ReadStringConstructorArgument(attr);
-                float rateHz = 10f;
+                float rateHz = -1f;
                 string schemaName = "";
-                int publishMode = 0;
-                int mode = 0;
+                int policy = 1;
+                int mode = 1;
                 int encoding = 0;
                 int subscriptionProvider = 0;
                 int ros2Qos = 0;
@@ -182,8 +182,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                    if (named.Key == "PublishMode" && TryReadIntConstant(named.Value, out var pm)) publishMode = pm;
-                    if (named.Key == "Mode" && TryReadIntConstant(named.Value, out var flowMode)) mode = flowMode;
+                    if (named.Key == "Policy" && TryReadIntConstant(named.Value, out var pm)) policy = pm;
+                    if (named.Key == "Mode" && TryReadIntConstant(named.Value, out var flow)) mode = flow;
                     if (named.Key == "Encoding" && TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
                     if (named.Key == "SubscriptionProvider" && TryReadIntConstant(named.Value, out var provider)) subscriptionProvider = provider;
                     if (named.Key == "Ros2Qos" && TryReadIntConstant(named.Value, out var qos)) ros2Qos = qos;
@@ -193,7 +193,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     if (named.Key == "When" && named.Value.Value is string whenValue) when = whenValue;
                     if (named.Key == "Unless" && named.Value.Value is string unlessValue) unless = unlessValue;
                 }
-                topics.Add(new TopicEntry(topic, rateHz, schemaName, publishMode, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode, encoding: encoding, protobufFieldNumber: protobufFieldNumber, subscriptionProvider: subscriptionProvider, ros2Qos: ros2Qos));
+                topics.Add(new TopicEntry(topic, rateHz, schemaName, policy, changeEpsilon, forceIntervalSeconds, when, unless, mode: mode, encoding: encoding, protobufFieldNumber: protobufFieldNumber, subscriptionProvider: subscriptionProvider, ros2Qos: ros2Qos));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -209,9 +209,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     return MemberData.ForDiagnostic(memberLocation, "FOXRUN018");
 
                 var topic = ReadStringConstructorArgument(messageAttr);
-                var rateHz = 10f;
+                var rateHz = -1f;
                 var schemaName = "";
-                var publishMode = 0;
+                var policy = 1;
                 var encoding = 0;
                 var changeEpsilon = 0f;
                 var forceIntervalSeconds = 0f;
@@ -221,7 +221,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 {
                     if (named.Key == "RateHz" && TryReadFloatConstant(named.Value, out var rate)) rateHz = rate;
                     if (named.Key == "SchemaName" && named.Value.Value is string sn) schemaName = sn;
-                    if (named.Key == "PublishMode" && TryReadIntConstant(named.Value, out var pm)) publishMode = pm;
+                    if (named.Key == "Policy" && TryReadIntConstant(named.Value, out var pm)) policy = pm;
                     if (named.Key == "Encoding" && TryReadIntConstant(named.Value, out var wireEncoding)) encoding = wireEncoding;
                     if (named.Key == "ChangeEpsilon" && TryReadFloatConstant(named.Value, out var eps)) changeEpsilon = eps;
                     if (named.Key == "ForceIntervalSeconds" && TryReadFloatConstant(named.Value, out var fis)) forceIntervalSeconds = fis;
@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     topic,
                     rateHz,
                     schemaName,
-                    publishMode,
+                    policy,
                     changeEpsilon,
                     forceIntervalSeconds,
                     when,
@@ -281,7 +281,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 typeSymbol = null;
             }
 
-            var hasInboundTopic = topics.Any(topic => topic.Mode == 1 || topic.Mode == 2);
+            var hasInboundTopic = topics.Any(topic => topic.Mode == 2 || topic.Mode == 3);
             if (hasInboundTopic
                 && ((symbol is IFieldSymbol inboundField && inboundField.IsReadOnly)
                     || (symbol is IPropertySymbol inboundProperty && inboundProperty.SetMethod == null)))
@@ -306,7 +306,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ctx.SemanticModel.Compilation);
             // Native output is a Manager route, not a subscription-provider
             // declaration.  Build the portable custom DTO shape for every
-            // ordinary FoxRun DTO so PublishOnly contracts can opt into the
+            // ordinary FoxRun DTO so Publish contracts can opt into the
             // custom native publisher without pretending to be native input.
             var ros2CustomDtoShape = !ros2MessageShape.ImplementsRos2Message
                                      && !isTopLevelPackagedCollection
@@ -641,7 +641,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     && item.Ros2MessageShape.HasPublicParameterlessConstructor
                     && item.Ros2MessageShape.Diagnostics.Count == 0
                     && item.Topics.Any(topic =>
-                        topic.Mode == 1
+                        topic.Mode == 2
                         && (topic.SubscriptionProvider == 0
                             || topic.SubscriptionProvider == 2)))
                 {
@@ -720,8 +720,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             private const string CopyContextMetadataName =
                 "Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2CopyContext";
             private const string Ros2MessageMetadataName = "ROS2.Message";
-            private const string FoxRunModeMetadataName =
-                "Unity.FoxgloveSDK.Components.FoxRunMode";
+            private const string FoxRunFlowMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunFlow";
+            private const string FoxRunPolicyMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunPolicy";
             private const string SubscriptionProviderMetadataName =
                 "Unity.FoxgloveSDK.Components.FoxRunSubscriptionProvider";
             private const string Ros2QosMetadataName =
@@ -804,17 +806,18 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 INamedTypeSymbol context,
                 INamedTypeSymbol ros2Message)
             {
+                var func1 = compilation.GetTypeByMetadataName("System.Func`1");
                 var func3 = compilation.GetTypeByMetadataName("System.Func`3");
                 var func2 = compilation.GetTypeByMetadataName("System.Func`2");
                 var action1 = compilation.GetTypeByMetadataName("System.Action`1");
-                if (func3 == null || func2 == null || action1 == null)
+                if (func1 == null || func3 == null || func2 == null || action1 == null)
                     return false;
 
                 foreach (var method in registrar.GetMembers("Register").OfType<IMethodSymbol>())
                 {
                     if (!IsPublicInstanceOrdinaryVoid(method)
                         || method.Arity != 1
-                        || method.Parameters.Length != 5)
+                        || method.Parameters.Length != 7)
                         continue;
                     var typeParameter = method.TypeParameters[0];
                     if (!typeParameter.HasConstructorConstraint
@@ -832,7 +835,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         func3.Construct(typeParameter, context, typeParameter),
                         action1.Construct(typeParameter),
                         action1.Construct(typeParameter),
-                        func2.Construct(typeParameter, compilation.GetSpecialType(SpecialType.System_Boolean))
+                        func2.Construct(typeParameter, compilation.GetSpecialType(SpecialType.System_Boolean)),
+                        func3.Construct(
+                            typeParameter,
+                            typeParameter,
+                            compilation.GetSpecialType(SpecialType.System_Boolean)),
+                        func1.Construct(compilation.GetSpecialType(SpecialType.System_Boolean))
                     };
                     var matches = true;
                     for (var i = 0; i < expected.Length; i++)
@@ -856,11 +864,13 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             {
                 var stringType = compilation.GetSpecialType(SpecialType.System_String);
                 var boolType = compilation.GetSpecialType(SpecialType.System_Boolean);
-                var mode = compilation.GetTypeByMetadataName(FoxRunModeMetadataName);
+                var mode = compilation.GetTypeByMetadataName(FoxRunFlowMetadataName);
+                var policy = compilation.GetTypeByMetadataName(FoxRunPolicyMetadataName);
                 var provider = compilation.GetTypeByMetadataName(SubscriptionProviderMetadataName);
                 var qos = compilation.GetTypeByMetadataName(Ros2QosMetadataName);
-                if (mode == null || provider == null || qos == null)
+                if (mode == null || policy == null || provider == null || qos == null)
                     return false;
+                var floatType = compilation.GetSpecialType(SpecialType.System_Single);
                 var expected = new ITypeSymbol[]
                 {
                     stringType,
@@ -871,7 +881,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     mode,
                     provider,
                     qos,
-                    boolType
+                    boolType,
+                    policy,
+                    floatType,
+                    boolType,
+                    floatType
                 };
                 return contract.InstanceConstructors.Any(constructor =>
                     constructor.DeclaredAccessibility == Accessibility.Public

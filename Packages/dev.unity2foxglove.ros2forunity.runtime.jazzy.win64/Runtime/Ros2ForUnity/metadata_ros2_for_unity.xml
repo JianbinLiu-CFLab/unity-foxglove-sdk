@@ -2,9 +2,9 @@
 <ros2_for_unity>
    <ros2>jazzy</ros2>
    <version>
-      <sha>3995d8b57c733e5e17fddd6cd4071236efa0a99f</sha>
-      <desc>v0.8.3</desc>
-      <date>2026-07-21 13:08:34 +0200</date>
+      <sha>6ae8e285115e7ca72c48932df5d673f512b56dd7</sha>
+      <desc>v0.9.0</desc>
+      <date>2026-07-22 02:02:30 +0200</date>
       <branch>HEAD</branch>
    </version>
 </ros2_for_unity>

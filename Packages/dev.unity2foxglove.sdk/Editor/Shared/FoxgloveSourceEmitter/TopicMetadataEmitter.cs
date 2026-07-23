@@ -44,7 +44,7 @@ namespace Unity.FoxgloveSDK.Editor
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
                     "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, {6}f);",
-                    pad, i, topic, rate, PublishModeLiteral(mode), eps, forceInt));
+                    pad, i, topic, rate, PolicyLiteral(mode), eps, forceInt));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");
@@ -84,19 +84,19 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>
-        /// Returns the <c>FoxRunPublishMode</c> enum literal for the given
-        /// numeric mode value (0=FixedRate, 1=OnChange, 2=OnChangeOrInterval,
-        /// 3=OnTrigger).
+        /// Returns the <c>FoxRunPolicy</c> enum literal for the given
+        /// numeric policy value (1=FixedRate, 2=Change, 3=ChangeOrInterval,
+        /// 4=Trigger).
         /// </summary>
-        internal static string PublishModeLiteral(int mode)
+        internal static string PolicyLiteral(int policy)
         {
-            switch (mode)
+            switch (policy)
             {
-                case 0: return "FoxRunPublishMode.FixedRate";
-                case 1: return "FoxRunPublishMode.OnChange";
-                case 2: return "FoxRunPublishMode.OnChangeOrInterval";
-                case 3: return "FoxRunPublishMode.OnTrigger";
-                default: return FormattableString.Invariant($"(FoxRunPublishMode){mode}");
+                case 1: return "FoxRunPolicy.FixedRate";
+                case 2: return "FoxRunPolicy.Change";
+                case 3: return "FoxRunPolicy.ChangeOrInterval";
+                case 4: return "FoxRunPolicy.Trigger";
+                default: return FormattableString.Invariant($"(FoxRunPolicy){policy}");
             }
         }
 
@@ -149,7 +149,7 @@ namespace Unity.FoxgloveSDK.Editor
             return sb.ToString();
         }
 
-        private static string Sha256Hex(string value)
+        internal static string Sha256Hex(string value)
         {
             var bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
             byte[] hash;

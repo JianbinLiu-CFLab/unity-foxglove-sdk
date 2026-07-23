@@ -12,6 +12,50 @@ using Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
+    /// <summary>
+    /// Lock-free fixed-window admission gate for a single generated native
+    /// subscription. The packed state keeps the stopwatch-second bucket and
+    /// accepted count in one compare/exchange operation so callback threads
+    /// never allocate or block before generated deep copy.
+    /// </summary>
+    internal sealed class FoxRunRos2TransportAdmissionGate
+    {
+        private readonly int _maximumAcceptedPerSecond;
+        private long _state;
+
+        internal FoxRunRos2TransportAdmissionGate(int maximumAcceptedPerSecond)
+        {
+            _maximumAcceptedPerSecond = Math.Max(1, maximumAcceptedPerSecond);
+        }
+
+        internal bool TryAccept(long stopwatchTimestamp)
+        {
+            var bucket = stopwatchTimestamp / Stopwatch.Frequency;
+            while (true)
+            {
+                var observed = Volatile.Read(ref _state);
+                var observedBucket = (long)((ulong)observed >> 32);
+                var observedCount = (uint)observed;
+                if (observedBucket != bucket)
+                {
+                    var reset = Pack(bucket, 1U);
+                    if (Interlocked.CompareExchange(ref _state, reset, observed) == observed)
+                        return true;
+                    continue;
+                }
+
+                if (observedCount >= (uint)_maximumAcceptedPerSecond)
+                    return false;
+                var incremented = Pack(bucket, observedCount + 1U);
+                if (Interlocked.CompareExchange(ref _state, incremented, observed) == observed)
+                    return true;
+            }
+        }
+
+        private static long Pack(long bucket, uint count)
+            => unchecked((bucket << 32) | count);
+    }
+
     internal readonly struct FoxRunRos2SubscriptionBindingSnapshot
     {
         public FoxRunRos2SubscriptionBindingSnapshot(
@@ -173,7 +217,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// apply or stop. User code retaining a value must deep-copy it. Stop clears
     /// the member only when it still references the framework-owned value.
     /// </summary>
-    internal sealed class FoxRunRos2SubscriptionBinding<T> : IFoxRunRos2HostBinding
+    internal sealed class FoxRunRos2SubscriptionBinding<T> : IFoxRunRos2HostBinding, IFoxRunRos2TimedHostBinding
         where T : ROS2.Message, new()
     {
         private const long AcceptanceArming = -1;
@@ -187,15 +231,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly Action<T> _dispose;
         private readonly Func<T, bool> _clearIfOwned;
         private readonly Func<T, bool> _dropBeforeApply;
+        private readonly Func<T, T, bool> _valuesEqual;
+        private readonly Func<bool> _consumeTrigger;
+        private readonly FoxRunRos2TransportAdmissionGate _transportAdmission;
+        private readonly Func<long> _admissionTimestamp;
         private readonly IFoxRunRos2NativeBackend _backend;
         private readonly FoxRunRos2QosPreset _qosPreset;
         private readonly IFoxRunRos2NativeQosProfileFactory _qosFactory;
         private readonly FoxRunRos2OwnedLatestSlot<object> _slot;
         private readonly Func<T, object> _copyBorrowed;
         private readonly Action<object> _applyOwned;
-        private readonly Func<object, bool> _tryApplyOwned;
         private readonly Action<object> _disposeOwned;
         private readonly Func<object, bool> _clearOwned;
+        private readonly Func<object, object, FoxRunRos2PendingDecision> _decideOwned;
         private IFoxRunRos2NativeSubscriptionToken _token;
         private int _state;
         private int _stopping;
@@ -205,6 +253,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private long _lastReceiveStopwatchTimestamp;
         private long _lastApplyStopwatchTimestamp;
         private long _sameOriginDrops;
+        private long _transportAdmissionDrops;
+        private double _policyNowSeconds;
+        private double _lastSemanticApplySeconds = double.NegativeInfinity;
         private bool _registrationInFlight;
         private bool _stopCleanupInProgress;
         private bool _slotCleanupComplete;
@@ -234,7 +285,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             IFoxRunRos2NativeBackend backend,
             FoxRunRos2QosPreset qosPreset = FoxRunRos2QosPreset.Default,
             IFoxRunRos2NativeQosProfileFactory qosFactory = null,
-            Func<T, bool> dropBeforeApply = null)
+            Func<T, bool> dropBeforeApply = null,
+            Func<T, T, bool> valuesEqual = null,
+            Func<bool> consumeTrigger = null,
+            int transportAdmissionRateLimitHz = int.MaxValue,
+            Func<long> admissionTimestamp = null)
         {
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
             if (sessionGeneration < 0)
@@ -248,15 +303,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _apply = apply ?? throw new ArgumentNullException(nameof(apply));
             _clearIfOwned = clearIfOwned ?? throw new ArgumentNullException(nameof(clearIfOwned));
             _dropBeforeApply = dropBeforeApply;
+            _valuesEqual = valuesEqual;
+            _consumeTrigger = consumeTrigger;
+            _transportAdmission = new FoxRunRos2TransportAdmissionGate(
+                transportAdmissionRateLimitHz);
+            _admissionTimestamp = admissionTimestamp ?? Stopwatch.GetTimestamp;
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
             _qosPreset = qosPreset;
             _qosFactory = qosFactory;
             _dispose = dispose ?? throw new ArgumentNullException(nameof(dispose));
             _copyBorrowed = CopyBorrowed;
             _applyOwned = ApplyOwned;
-            _tryApplyOwned = TryApplyOwned;
             _disposeOwned = DisposeOwned;
             _clearOwned = ClearOwned;
+            _decideOwned = DecideOwned;
             _slot = new FoxRunRos2OwnedLatestSlot<object>(_disposeOwned);
             _state = (int)FoxRunRos2SubscriptionBindingState.Configured;
             _lastRegistration = FoxRunRos2RegistrationResult.Failure(
@@ -276,6 +336,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public long CopyFailedCount => _slot.CopyFailedCount;
         public long StaleCallbackCount => Interlocked.Read(ref _staleCallbacks);
         internal long SameOriginDropCount => Interlocked.Read(ref _sameOriginDrops);
+        internal long TransportAdmissionDropCount =>
+            Interlocked.Read(ref _transportAdmissionDrops);
 
         public void WaitForRuntime()
         {
@@ -482,6 +544,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         public bool TryApplyLatest(long activeSessionGeneration)
+            => TryApplyLatest(
+                activeSessionGeneration,
+                (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency);
+
+        public bool TryApplyLatest(long activeSessionGeneration, double nowSeconds)
         {
             if (Volatile.Read(ref _stopping) != 0)
                 return false;
@@ -501,11 +568,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 : acceptanceAdmission == AcceptanceCompleting
                     ? Volatile.Read(ref _acceptanceCompletingEpoch)
                     : 0;
-            var applied = _dropBeforeApply == null
-                ? _slot.TryApplyLatest(_applyOwned, _clearOwned)
-                : _slot.TryApplyLatest(_tryApplyOwned, _clearOwned);
+            var usesPolicy = Contract.Policy != FoxRunPolicy.FixedRate
+                             || _dropBeforeApply != null;
+            _policyNowSeconds = nowSeconds;
+            var applied = usesPolicy
+                ? _slot.TryApplyLatest(_decideOwned, _applyOwned, _clearOwned)
+                : _slot.TryApplyLatest(_applyOwned, _clearOwned);
             if (applied)
+            {
+                _lastSemanticApplySeconds = nowSeconds;
                 Interlocked.Exchange(ref _lastApplyStopwatchTimestamp, Stopwatch.GetTimestamp());
+            }
             // A generated main-thread apply delegate can synchronously stop its
             // Manager/session. The slot correctly defers its drain while this
             // apply operation is on-stack, but the binding still owns the node
@@ -520,6 +593,38 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 && IsAcceptanceEpochStillOwned(acceptanceEpoch))
                 Interlocked.Increment(ref _acceptanceApplied);
             return applied;
+        }
+
+        private FoxRunRos2PendingDecision DecideOwned(object candidate, object applied)
+        {
+            var typedCandidate = (T)candidate;
+            if (_dropBeforeApply != null && _dropBeforeApply(typedCandidate))
+            {
+                Interlocked.Increment(ref _sameOriginDrops);
+                return FoxRunRos2PendingDecision.Drop;
+            }
+
+            if (Contract.Policy == FoxRunPolicy.Trigger)
+                return _consumeTrigger != null && _consumeTrigger()
+                    ? FoxRunRos2PendingDecision.Apply
+                    : FoxRunRos2PendingDecision.Defer;
+
+            var hasApplied = applied != null;
+            var changed = !hasApplied
+                          || _valuesEqual == null
+                          || !_valuesEqual(typedCandidate, (T)applied);
+            return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldApply(
+                Contract.Policy,
+                hasPendingValue: true,
+                hasLastAppliedValue: hasApplied,
+                valueChanged: changed,
+                nowSec: _policyNowSeconds,
+                lastApplySec: _lastSemanticApplySeconds,
+                forceIntervalSec: Contract.ForceIntervalSeconds)
+                ? FoxRunRos2PendingDecision.Apply
+                : Contract.Policy == FoxRunPolicy.Change
+                    ? FoxRunRos2PendingDecision.Drop
+                    : FoxRunRos2PendingDecision.Defer;
         }
 
         public FoxRunRos2AcceptanceArmStatus ArmAcceptanceAttempt(
@@ -919,6 +1024,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     Interlocked.Increment(ref _staleCallbacks);
                     return;
                 }
+                if (!_transportAdmission.TryAccept(_admissionTimestamp()))
+                {
+                    Interlocked.Increment(ref _transportAdmissionDrops);
+                    return;
+                }
 
                 var accepted = _slot.TryPublish(
                     borrowed,
@@ -983,19 +1093,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         private void ApplyOwned(object owned) => _apply((T)owned);
-
-        private bool TryApplyOwned(object owned)
-        {
-            var value = (T)owned;
-            if (_dropBeforeApply != null && _dropBeforeApply(value))
-            {
-                Interlocked.Increment(ref _sameOriginDrops);
-                return false;
-            }
-
-            _apply(value);
-            return true;
-        }
 
         private void DisposeOwned(object owned) => _dispose((T)owned);
 

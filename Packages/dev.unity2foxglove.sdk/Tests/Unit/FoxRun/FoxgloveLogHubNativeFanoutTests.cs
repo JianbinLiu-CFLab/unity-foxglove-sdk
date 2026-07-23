@@ -196,7 +196,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index)
             {
                 Assert.Equal(0, index);
-                return new FoxgloveLogTopicInfo(Topic, 30f, FoxRunPublishMode.OnTrigger, 0f, 0f);
+                return new FoxgloveLogTopicInfo(Topic, 30f, FoxRunPolicy.Trigger, 0f, 0f);
             }
 
             public void FoxgloveLog_Publish(int topicIndex, FoxgloveManager manager, ulong nowNs)
@@ -248,7 +248,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 return new FoxgloveLogTopicInfo(
                     "/phase181/websocket-only",
                     30f,
-                    FoxRunPublishMode.OnTrigger,
+                    FoxRunPolicy.Trigger,
                     0f,
                     0f);
             }

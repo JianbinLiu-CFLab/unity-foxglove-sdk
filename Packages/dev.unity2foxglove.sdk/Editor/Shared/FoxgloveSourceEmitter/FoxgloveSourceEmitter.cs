@@ -27,10 +27,13 @@ namespace Unity.FoxgloveSDK.Editor
     /// </remarks>
     public static class FoxgloveSourceEmitter
     {
-        private const int PublishModeFixedRate = 0;
-        private const int PublishModeOnChange = 1;
-        private const int PublishModeOnChangeOrInterval = 2;
-        private const int PublishModeOnTrigger = 3;
+        private const int PolicyFixedRate = 1;
+        private const int PolicyChange = 2;
+        private const int PolicyChangeOrInterval = 3;
+        private const int PolicyTrigger = 4;
+        private const int FlowPublish = 1;
+        private const int FlowSubscribe = 2;
+        private const int FlowPublishAndSubscribe = 3;
 
         /// <summary>
         /// Descriptor for a single topic-member mapping used by the shared
@@ -50,15 +53,17 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string Topic;
             /// <summary>Publishing rate in Hz.</summary>
             public readonly float RateHz;
+            /// <summary>True when the declaration supplied a positive per-contract rate.</summary>
+            public readonly bool HasExplicitRateHz;
             /// <summary>Optional schema name.</summary>
             public readonly string SchemaName;
             /// <summary>Publish mode from the attribute.</summary>
-            public readonly int PublishMode;
+            public readonly int Policy;
             /// <summary>FoxRun data-flow mode from the attribute.</summary>
             public readonly int Mode;
             /// <summary>Change epsilon for numeric comparison.</summary>
             public readonly float ChangeEpsilon;
-            /// <summary>Heartbeat interval for OnChangeOrInterval.</summary>
+            /// <summary>Heartbeat interval for ChangeOrInterval.</summary>
             public readonly float ForceIntervalSeconds;
             /// <summary>Optional bool member that must be true to publish.</summary>
             public readonly string When;
@@ -93,7 +98,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// Creates a topic-member descriptor for the shared emitter.
             /// </summary>
             public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName)
-                : this(memberName, typeName, topic, rateHz, schemaName, 0, 0f, 0f) { }
+                : this(memberName, typeName, topic, rateHz, schemaName, PolicyFixedRate, 0f, 0f, mode: FlowPublish) { }
 
             /// <summary>
             /// Creates a topic-member descriptor with an explicit wire contract.
@@ -113,19 +118,20 @@ namespace Unity.FoxgloveSDK.Editor
                     topic,
                     rateHz,
                     schemaName,
-                    0,
+                    PolicyFixedRate,
                     0f,
                     0f,
                     encoding: encoding,
                     protobufFieldNumber: protobufFieldNumber,
-                    protobufTypeShape: protobufTypeShape) { }
+                    protobufTypeShape: protobufTypeShape,
+                    mode: FlowPublish) { }
 
             /// <summary>
             /// Creates a topic-member descriptor with publish policy.
             /// </summary>
             public TopicMember(string memberName, string typeName, string topic, float rateHz, string schemaName,
-                int publishMode, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
-                bool isAggregateMember = false, string jsonFieldName = "", int mode = 0, string canonicalType = "",
+                int policy, float changeEpsilon, float forceIntervalSeconds, string when = "", string unless = "",
+                bool isAggregateMember = false, string jsonFieldName = "", int mode = FlowPublish, string canonicalType = "",
                 string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding, int protobufFieldNumber = 0,
                 FoxRunProtobufTypeShape protobufTypeShape = null,
                 string subscriptionProvider = FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
@@ -134,7 +140,8 @@ namespace Unity.FoxgloveSDK.Editor
                 bool generatesRos2NativeRegistration = false,
                 FoxRunRos2MessageShape ros2MessageShape = null,
                 FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
-                FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported)
+                FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
+                bool hasExplicitRateHz = true)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -143,8 +150,9 @@ namespace Unity.FoxgloveSDK.Editor
                     : FoxRunCanonicalTypeNormalizer.NormalizeTypeName(canonicalType);
                 Topic = topic;
                 RateHz = rateHz;
+                HasExplicitRateHz = hasExplicitRateHz;
                 SchemaName = schemaName;
-                PublishMode = publishMode;
+                Policy = policy;
                 Mode = mode;
                 ChangeEpsilon = changeEpsilon;
                 ForceIntervalSeconds = forceIntervalSeconds;
@@ -243,10 +251,10 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var publishMembers = members
-                .Where(member => member.Mode != 1)
+                .Where(member => member.Mode != FlowSubscribe)
                 .ToList();
             var inputMembers = members
-                .Where(member => member.Mode == 1 || member.Mode == 2)
+                .Where(member => member.Mode == FlowSubscribe || member.Mode == FlowPublishAndSubscribe)
                 .OrderBy(member => member.Topic, StringComparer.Ordinal)
                 .ThenBy(member => member.MemberName, StringComparer.Ordinal)
                 .ToList();
@@ -297,20 +305,20 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var topics = topicMap.Keys.OrderBy(topic => topic, StringComparer.Ordinal).ToList();
-            var topicModes = topicMap.ToDictionary(kvp => kvp.Key, kvp => TopicPublishMode(kvp.Value));
+            var topicModes = topicMap.ToDictionary(kvp => kvp.Key, kvp => TopicPolicy(kvp.Value));
             // A custom ROS2 contract is one ordinary DTO member per topic. A
             // field-level aggregate has a dictionary-shaped legacy bus payload
             // and must never be handed to the closed generic native publisher.
             var nativeBusMembers = topicMap
                 .Where(pair => pair.Value.Count == 1
-                               && pair.Value[0].Mode != 1
+                               && pair.Value[0].Mode != FlowSubscribe
                                && IsCustomNativeMember(pair.Value[0]))
                 .ToDictionary(pair => pair.Key, pair => pair.Value[0], StringComparer.Ordinal);
             var customNativePublishMembers = nativeBusMembers
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => pair.Value)
                 .ToList();
-            var hasPolicy = publishMembers.Any(m => m.PublishMode != 0);
+            var hasPolicy = publishMembers.Any(m => m.Policy != PolicyFixedRate);
             var hasConditions = publishMembers.Any(m => !string.IsNullOrWhiteSpace(m.When) || !string.IsNullOrWhiteSpace(m.Unless));
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
             var sb = new StringBuilder();
@@ -374,15 +382,15 @@ namespace Unity.FoxgloveSDK.Editor
                    && !string.IsNullOrWhiteSpace(member.Ros2CustomDtoShape.PayloadIdentity);
         }
 
-        private static int TopicPublishMode(IReadOnlyList<TopicMember> fields)
+        private static int TopicPolicy(IReadOnlyList<TopicMember> fields)
         {
-            if (fields.Any(f => f.PublishMode == PublishModeOnTrigger))
-                return PublishModeOnTrigger;
-            if (fields.Any(f => f.PublishMode == PublishModeOnChangeOrInterval))
-                return PublishModeOnChangeOrInterval;
-            if (fields.Any(f => f.PublishMode == PublishModeOnChange))
-                return PublishModeOnChange;
-            return PublishModeFixedRate;
+            if (fields.Any(f => f.Policy == PolicyTrigger))
+                return PolicyTrigger;
+            if (fields.Any(f => f.Policy == PolicyChangeOrInterval))
+                return PolicyChangeOrInterval;
+            if (fields.Any(f => f.Policy == PolicyChange))
+                return PolicyChange;
+            return PolicyFixedRate;
         }
 
         internal static string DefaultJsonFieldName(string memberName)

@@ -74,7 +74,7 @@ public partial class FoxRun115FManualProbe : MonoBehaviour
 
     // Negative diagnostic probe: uncomment this attribute to verify that
     // FOXRUN006 rejects non-canonical custom object payloads as an error.
-    // [FoxRun("/debug/115f/nested", PublishMode = FoxRunPublishMode.OnTrigger)]
+    // [FoxRun("/debug/115f/nested", Policy = FoxRunPolicy.Trigger)]
     public NestedPayload nestedPayload = new NestedPayload();
 
     private long _frameCount;

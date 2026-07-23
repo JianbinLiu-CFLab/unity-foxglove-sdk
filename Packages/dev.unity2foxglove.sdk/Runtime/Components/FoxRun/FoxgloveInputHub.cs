@@ -24,6 +24,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxgloveInputSource> _scanSources = new();
         private readonly HashSet<string> _warned = new(StringComparer.Ordinal);
         private bool _subscriptionsEnabled;
+        private int _inheritedSubscribeRateHz = 10;
         private float _managerSearchCooldown;
         private float _scanTimer;
 
@@ -71,6 +72,13 @@ namespace Unity.FoxgloveSDK.Components
                 _scanTimer = ScanIntervalSeconds;
                 Scan();
                 RemoveStaleSources();
+            }
+
+            if (_subscriptionsEnabled)
+            {
+                _router.Flush(
+                    Time.realtimeSinceStartupAsDouble,
+                    _inheritedSubscribeRateHz);
             }
         }
 
@@ -133,7 +141,8 @@ namespace Unity.FoxgloveSDK.Components
             _subscriptionsEnabled = policy.SubscriptionsEnabled;
             _router.DefaultSubscriptionProvider = policy.DefaultProvider;
             _router.DefaultSubscriptionWireEncoding = policy.WebSocketSubscriptionEncoding;
-            _router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;
+            _router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;
+            _inheritedSubscribeRateHz = policy.DefaultSubscribeRateHz;
         }
 
         private void RebuildRouterRegistrationsForActiveSession()
@@ -221,7 +230,7 @@ namespace Unity.FoxgloveSDK.Components
                 payload,
                 encoding,
                 Time.realtimeSinceStartupAsDouble);
-            if (result.Status != FoxRunInputDispatchStatus.Applied
+            if (result.Status != FoxRunInputDispatchStatus.Staged
                 && result.Status != FoxRunInputDispatchStatus.UnknownTopic)
             {
                 WarnOnce(topic + ": " + result.Diagnostic);

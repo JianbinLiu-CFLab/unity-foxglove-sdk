@@ -18,14 +18,14 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Foxglove topic name for the aggregate payload.</summary>
         public string Topic { get; }
 
-        /// <summary>Publish rate in Hz (default 10).</summary>
-        public float RateHz { get; set; } = 10f;
+        /// <summary>Optional output rate in Hz; an omitted value resolves to 10 Hz.</summary>
+        public float RateHz { get; set; } = -1f;
 
         /// <summary>Optional schema name. Defaults to the declaring type when empty.</summary>
         public string SchemaName { get; set; }
 
-        /// <summary>Publish mode for the aggregate topic.</summary>
-        public FoxRunPublishMode PublishMode { get; set; } = FoxRunPublishMode.FixedRate;
+        /// <summary>Scheduling policy for the aggregate topic.</summary>
+        public FoxRunPolicy Policy { get; set; } = FoxRunPolicy.FixedRate;
 
         /// <summary>
         /// Declared wire encoding for this aggregate topic. The default is
@@ -36,7 +36,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Epsilon for numeric and Unity value-type change detection.</summary>
         public float ChangeEpsilon { get; set; } = 0f;
 
-        /// <summary>Heartbeat interval in seconds for OnChangeOrInterval mode.</summary>
+        /// <summary>Heartbeat interval in seconds for ChangeOrInterval.</summary>
         public float ForceIntervalSeconds { get; set; } = 0f;
 
         /// <summary>Optional bool field, property, or zero-argument method that must be true to publish.</summary>

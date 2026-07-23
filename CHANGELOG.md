@@ -10,16 +10,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- FoxRun now supports source-generated Protobuf wire contracts for inherited
-  topics, including typed inbound DTO and collection decoding. The Manager
-  Inspector exposes a per-session Protobuf/JSON default while explicit JSON
-  declarations remain available for legacy clients.
+- FoxRun source generation now supports publish, subscribe, and full-duplex
+  bindings for typed JSON and Protobuf data. Inbound values use bounded staging,
+  main-thread application, session-frozen policy, and loop suppression.
+- Optional ROS2 Native subscriptions can consume packaged ROS2 messages through
+  the R2FU facade. Custom FoxRun DTOs can also generate a static ROS2 interface
+  package and matching distro/RMW typesupport add-ons without adding ROS2
+  dependencies to the core SDK.
+- The Manager Inspector now groups publish and subscribe settings under one
+  `Data Transport` workflow, with independently selected output destinations,
+  input providers, coordinate conversion, and a conditional shared R2FU
+  runtime section.
+- `Unity Replay Sync` lets Foxglove own the replay clock. Timeline and Plot
+  seeks drive Unity through bounded latest-at snapshots or short forward-range
+  updates while preserving deterministic pose ownership.
 
 ### Changed
 
+- FoxRun declarations use the concise `Mode = Publish`, `Mode = Subscribe`, or
+  `Mode = PublishAndSubscribe` model. Publish with `FixedRate` at 10 Hz remains
+  the implicit default; `Policy` and `RateHz` apply symmetrically to the active
+  direction or both halves of a full-duplex binding.
+- A FoxRun subscription has one selected input source, while publishing may
+  fan out to multiple enabled destinations. Full duplex remains available for
+  diagnostics but is discouraged when ownership would be ambiguous.
+- Replay no longer republishes replay-applied values to live Foxglove or native
+  ROS2 outputs. Competing pose channels are resolved by explicit ownership and
+  batch-boundary rules instead of arrival order.
 - Temporarily disabled declarative FoxService components now re-register their
   services when re-enabled, without requiring the component to be removed and
   added again.
+- The root README is shorter, keeps one current product image, and links only
+  the release notes matching the package version. Historical notes remain in
+  `docs/releases/` without being promoted in the primary navigation.
+
+### Fixed
+
+- Custom ROS2 typesupport selection, catalog identity, preflight diagnostics,
+  generated descriptor chunking, and batch-acceptance progress reporting were
+  hardened so failures identify build, discovery, type, QoS, or lifecycle
+  evidence instead of appearing as a silent wait.
+- Direct FoxRun connections now coalesce concurrent connection attempts, and
+  inbound admission diagnostics distinguish unsupported or contradictory
+  declarations without falling back to another provider or encoding.
+
+### Verified
+
+- Windows-local Unity Editor acceptance passed for Humble/FastDDS,
+  Jazzy/FastDDS, Lyrical/FastDDS, and Lyrical/Zenoh. This evidence covers the
+  local Editor custom-DTO apply/echo path only; Windows Player, Linux peer, and
+  cross-machine certification remain separate matrix cells.
+- Official MCAP differential checks, source-generator parity/freshness checks,
+  package boundaries, and the FoxRun panel behavior suite remain release gates.
 
 ## 1.9.6 - 2026-07-06
 

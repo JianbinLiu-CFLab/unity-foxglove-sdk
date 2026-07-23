@@ -36,7 +36,7 @@ MANIFEST = PACKAGE / "RuntimeSupport" / "runtime-manifest.json"
 INVENTORY = PACKAGE / "RuntimeSupport" / "r2fu-jazzy-win64-runtime-inventory.json"
 
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-EXPECTED_ARTIFACT_SHA256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74"
+EXPECTED_ARTIFACT_SHA256 = "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d"
 EXPECTED_RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"
 
 CRITICAL_DLLS = (

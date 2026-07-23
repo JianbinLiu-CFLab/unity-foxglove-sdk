@@ -5,8 +5,8 @@ the selected ROS2 For Unity runtime and its matching static typesupport add-on.
 
 It contains three independent contracts:
 
-- **Native PublishOnly** publishes a custom DTO through native ROS2.
-- **Native SubscribeOnly** receives the same custom DTO through native ROS2 and
+- **Native Publish** publishes a custom DTO through native ROS2.
+- **Native Subscribe** receives the same custom DTO through native ROS2 and
   lets the generated binding apply a managed DTO on Unity's main thread.
 - **Native PublishAndSubscribe** receives through native ROS2 while retaining
   an explicit JSON WebSocket output contract.

@@ -176,6 +176,54 @@ class RuntimePackageExtractionTests(unittest.TestCase):
         self.assertIn("must be constructed on the Unity main thread", patched_time)
         self.assertEqual(1, patched_startup.count("sourcedRosDistroBeforeStandalonePatch"))
 
+    def test_standalone_prefix_patch_removes_unused_prefix_source(self) -> None:
+        """Standalone isolation must not leave the removed AMENT log source behind."""
+        source = '''        string prefixPath = GetRos2ForUnityPath();
+        string prefixSource = "asset root";
+        string streamingAssetsPrefixPath = Path.Combine(Application.streamingAssetsPath, ros2ForUnityAssetFolderName);
+        string pluginPrefixPath = GetPluginPath();
+        if (Directory.Exists(Path.Combine(streamingAssetsPrefixPath, "share")))
+        {
+            prefixPath = streamingAssetsPrefixPath;
+            prefixSource = "StreamingAssets";
+        }
+        else if (Directory.Exists(Path.Combine(pluginPrefixPath, "share")))
+        {
+            prefixPath = pluginPrefixPath;
+            prefixSource = "plugin directory";
+        }
+        string currentPrefixPath = Environment.GetEnvironmentVariable("AMENT_PREFIX_PATH");
+        char envPathSep = GetOS() == Platform.Windows ? ';' : ':';
+
+        if (String.IsNullOrEmpty(currentPrefixPath))
+        {
+            SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);
+            Debug.Log("AMENT_PREFIX_PATH set to: " + prefixPath + " (source: " + prefixSource + ")");
+            return;
+        }
+
+        StringComparison comparison = GetOS() == Platform.Windows
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        foreach (string entry in currentPrefixPath.Split(envPathSep))
+        {
+            if (String.Equals(entry.Trim(), prefixPath, comparison))
+            {
+                Debug.Log("AMENT_PREFIX_PATH already contains: " + prefixPath + " (source: " + prefixSource + ")");
+                return;
+            }
+        }
+
+        SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath + envPathSep + currentPrefixPath);
+        Debug.Log("AMENT_PREFIX_PATH prepended with: " + prefixPath + " (source: " + prefixSource + ")");
+'''
+
+        patched = self.builder.patch_standalone_environment_isolation(source)
+
+        self.assertNotIn("prefixSource", patched)
+        self.assertIn('SetProcessEnvironmentVariable("AMENT_PREFIX_PATH", prefixPath);', patched)
+
     def test_require_inputs_rejects_mismatched_artifact_size(self) -> None:
         """Reject inventory files whose optional artifact size disagrees."""
         with tempfile.TemporaryDirectory() as temp:

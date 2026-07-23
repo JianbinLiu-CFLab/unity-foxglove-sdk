@@ -32,7 +32,7 @@ PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 PACKAGE_VERSION = "0.1.0-preview.1"
 RUNTIME_ID = "r2fu-jazzy-win64"
 ARTIFACT_NAME = "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
-EXPECTED_ARTIFACT_SHA256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74"
+EXPECTED_ARTIFACT_SHA256 = "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d"
 
 ROOT = Path(__file__).resolve().parents[REPO_ROOT_PARENT_DEPTH]
 DEFAULT_ARTIFACT = ROOT / "r2fu-runtime-artifacts" / "jazzy" / "windows_x86_64" / ARTIFACT_NAME

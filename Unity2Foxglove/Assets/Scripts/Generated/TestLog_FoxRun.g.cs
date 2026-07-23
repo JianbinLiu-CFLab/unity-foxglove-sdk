@@ -24,11 +24,11 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource, IFoxgloveL
     {
         switch (index)
         {
-            case 0: return new FoxgloveLogTopicInfo("/debug/conditional_position", 15f, FoxRunPublishMode.FixedRate, 0f, 0f);
-            case 1: return new FoxgloveLogTopicInfo("/debug/health", 5f, FoxRunPublishMode.FixedRate, 0f, 0f);
-            case 2: return new FoxgloveLogTopicInfo("/debug/position", 10f, FoxRunPublishMode.FixedRate, 0f, 0f);
-            case 3: return new FoxgloveLogTopicInfo("/debug/position2", 10f, FoxRunPublishMode.OnChangeOrInterval, 0.01f, 1f);
-            case 4: return new FoxgloveLogTopicInfo("/debug/unless_health", 15f, FoxRunPublishMode.FixedRate, 0f, 0f);
+            case 0: return new FoxgloveLogTopicInfo("/debug/conditional_position", 15f, FoxRunPolicy.FixedRate, 0f, 0f);
+            case 1: return new FoxgloveLogTopicInfo("/debug/health", 5f, FoxRunPolicy.FixedRate, 0f, 0f);
+            case 2: return new FoxgloveLogTopicInfo("/debug/position", 10f, FoxRunPolicy.FixedRate, 0f, 0f);
+            case 3: return new FoxgloveLogTopicInfo("/debug/position2", 10f, FoxRunPolicy.ChangeOrInterval, 0.01f, 1f);
+            case 4: return new FoxgloveLogTopicInfo("/debug/unless_health", 15f, FoxRunPolicy.FixedRate, 0f, 0f);
             default: return default;
         }
     }
@@ -73,7 +73,7 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveLogPolicySource, IFoxgloveL
             case 3:
                 changed = !__hasLast_3;
                 if (!changed) changed = __foxrun_float_changed(this._position2.x, __last_3_0.x, 0.00999999978f) || __foxrun_float_changed(this._position2.y, __last_3_0.y, 0.00999999978f) || __foxrun_float_changed(this._position2.z, __last_3_0.z, 0.00999999978f);
-                return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChangeOrInterval, nowSec, __hasLast_3, changed, __lastPublishSec_3, 1f);
+                return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.ChangeOrInterval, nowSec, __hasLast_3, changed, __lastPublishSec_3, 1f);
             case 4: return true;
             default: return true;
         }

@@ -8,7 +8,7 @@
 using System.Collections;
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
-using static Unity.FoxgloveSDK.Components.FoxRunPublishMode;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 
 // Minimal example for FoxRun trigger-driven telemetry.
 //
@@ -24,23 +24,23 @@ using static Unity.FoxgloveSDK.Components.FoxRunPublishMode;
 // The options are named C# attribute properties:
 // - RateHz: maximum scheduled publish rate. Default is 10 Hz.
 // - SchemaName: optional Foxglove schema name for this topic.
-// - PublishMode: when to publish. Current modes are FixedRate, OnChange,
-//   OnChangeOrInterval, and OnTrigger.
+// - Policy: when to publish. Current modes are FixedRate, Change,
+//   ChangeOrInterval, and Trigger.
 // - ChangeEpsilon: numeric tolerance used by change-driven modes.
-// - ForceIntervalSeconds: heartbeat interval used by OnChangeOrInterval.
+// - ForceIntervalSeconds: heartbeat interval used by ChangeOrInterval.
 //
-// OnTrigger is deliberately part of PublishMode rather than a separate
+// Trigger is deliberately part of Policy rather than a separate
 // TriggerMode because it answers the same question as the other modes:
 // "when should this topic publish?"
 //
-// This file uses `using static FoxRunPublishMode` so examples can write the
+// This file uses `using static FoxRunPolicy` so examples can write the
 // friendly short form:
-//   [FoxRun("/events/counter", PublishMode = OnTrigger)]
+//   [FoxRun("/events/counter", Policy = Trigger)]
 //
 // The explicit long form is equivalent and may be clearer in library code:
-//   [FoxRun("/events/counter", PublishMode = FoxRunPublishMode.OnTrigger)]
+//   [FoxRun("/events/counter", Policy = FoxRunPolicy.Trigger)]
 //
-// For OnTrigger fields, generated code adds a method named after the member:
+// For Trigger fields, generated code adds a method named after the member:
 //   triggerCounter -> FoxRun_Trigger_triggerCounter()
 // The method returns true when the publish dispatch succeeds.
 //
@@ -53,21 +53,21 @@ public partial class FoxRunTriggerTelemetrySmoke : MonoBehaviour
     public long fixedCounter;
 
     // Equivalent conceptual form:
-    //   [FoxRun("topic", PublishMode = OnTrigger)]
+    //   [FoxRun("topic", Policy = Trigger)]
     //
     // This topic publishes only when TriggerCounterEvent calls the generated
     // FoxRun_Trigger_triggerCounter() method.
-    [FoxRun("/events/counter", PublishMode = OnTrigger)]
+    [FoxRun("/events/counter", Policy = Trigger)]
     public int triggerCounter;
 
     // Multiple members can share one topic. Because this grouped topic has an
-    // OnTrigger member, the whole /events/state topic is trigger-only.
-    [FoxRun("/events/state", PublishMode = OnTrigger)]
+    // Trigger member, the whole /events/state topic is trigger-only.
+    [FoxRun("/events/state", Policy = Trigger)]
     public string eventName = "idle";
 
     // This value changes every frame, but it does not auto-publish because this
     // grouped topic is trigger-only.
-    [FoxRun("/events/state", PublishMode = OnTrigger)]
+    [FoxRun("/events/state", Policy = Trigger)]
     public float groupedTimerValue;
 
     public string lastTriggerResult = "not triggered";

@@ -316,7 +316,7 @@ namespace Unity.FoxgloveSDK.Tests
             var customBidirectional = FoxRunSubscriptionProviderResolver.Resolve(
                 FoxRunSubscriptionProvider.Ros2Native,
                 FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunMode.PublishAndSubscribe,
+                FoxRunFlow.PublishAndSubscribe,
                 FoxRunWireEncoding.Json,
                 supportsWebSocket: true,
                 supportsRos2Native: true,
@@ -324,7 +324,7 @@ namespace Unity.FoxgloveSDK.Tests
             var inheritedCustomBidirectional = FoxRunSubscriptionProviderResolver.Resolve(
                 FoxRunSubscriptionProvider.Ros2Native,
                 FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunMode.PublishAndSubscribe,
+                FoxRunFlow.PublishAndSubscribe,
                 FoxRunWireEncoding.Inherit,
                 supportsWebSocket: true,
                 supportsRos2Native: true,
@@ -332,7 +332,7 @@ namespace Unity.FoxgloveSDK.Tests
             var packagedBidirectional = FoxRunSubscriptionProviderResolver.Resolve(
                 FoxRunSubscriptionProvider.Ros2Native,
                 FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunMode.PublishAndSubscribe,
+                FoxRunFlow.PublishAndSubscribe,
                 FoxRunWireEncoding.Json,
                 supportsWebSocket: true,
                 supportsRos2Native: true,
@@ -340,14 +340,14 @@ namespace Unity.FoxgloveSDK.Tests
             var nativeSubscribeJson = FoxRunSubscriptionProviderResolver.Resolve(
                 FoxRunSubscriptionProvider.Ros2Native,
                 FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunMode.SubscribeOnly,
+                FoxRunFlow.Subscribe,
                 FoxRunWireEncoding.Json,
                 supportsWebSocket: true,
                 supportsRos2Native: true);
-            var nativePublishOnly = FoxRunSubscriptionProviderResolver.Resolve(
+            var nativePublish = FoxRunSubscriptionProviderResolver.Resolve(
                 FoxRunSubscriptionProvider.Ros2Native,
                 FoxRunSubscriptionProvider.Ros2Native,
-                FoxRunMode.PublishOnly,
+                FoxRunFlow.Publish,
                 FoxRunWireEncoding.Inherit,
                 supportsWebSocket: true,
                 supportsRos2Native: true);
@@ -358,7 +358,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && inheritedCustomBidirectional.Provider == FoxRunSubscriptionProvider.Ros2Native
                   && packagedBidirectional.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.NativeEncodingConflict
                   && nativeSubscribeJson.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.NativeEncodingConflict
-                  && nativePublishOnly.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.NativeRequiresSubscribeOnly,
+                  && nativePublish.DiagnosticCode == FoxRunSubscriptionProviderDiagnosticCode.NativeRequiresSubscribe,
                 "181A-6: JSON/Protobuf is allowed only as custom P&S WebSocket output; native remains the input provider");
         }
 
@@ -370,17 +370,19 @@ namespace Unity.FoxgloveSDK.Tests
             Check(validator.Contains("CustomNativeBidirectionalContractDiagnosticId", StringComparison.Ordinal)
                   && validator.Contains("never falls back to WebSocket input", StringComparison.Ordinal)
                   && validator.Contains("!IsNativeCustomBidirectionalOutputContract(member)", StringComparison.Ordinal)
-                  && validator.Contains("NativeSubscribeOnlyDiagnosticId", StringComparison.Ordinal),
+                  && validator.Contains("NativeSubscribeDiagnosticId", StringComparison.Ordinal),
                 "181A-7: validator preserves legacy packaged native rejection and gives custom P&S a no-fallback diagnostic path");
 
             Check(emitter.Contains("webSocketInputMembers", StringComparison.Ordinal)
                   && emitter.Contains("!string.Equals(", StringComparison.Ordinal)
                   && emitter.Contains("Ros2NativeSubscriptionProvider", StringComparison.Ordinal)
-                  && manifestBuilder.Contains("SubscribeOnly native contracts remain absent", StringComparison.Ordinal)
+                  && manifestBuilder.Contains("Subscribe native contracts remain absent", StringComparison.Ordinal)
                   && manifestBuilder.Contains("ResolvePackagedCanonicalRosType", StringComparison.Ordinal)
                   && manifestBuilder.Contains("ResolvePackagedCopyShapeIdentity", StringComparison.Ordinal)
-                  && manifestBuilder.Contains("member.FlowMode == 2", StringComparison.Ordinal),
-                "181A-8: generated WebSocket input excludes native contracts while custom P&S retains only output metadata");
+                  && manifestBuilder.Contains(
+                      "member.Flow == (int)FoxRunFlow.PublishAndSubscribe",
+                      StringComparison.Ordinal),
+                "181A-8: generated WebSocket input excludes native contracts while custom P&S retains WebSocket output metadata without input fallback");
         }
 
         private static void VerifyDiagnosticRanges(
@@ -587,8 +589,13 @@ namespace Unity.FoxgloveSDK.Tests
 
             Check(subscriptionBinding.Contains("dropBeforeApply", StringComparison.Ordinal)
                   && subscriptionBinding.Contains("SameOriginDropCount", StringComparison.Ordinal)
-                  && subscriptionBinding.Contains("_slot.TryApplyLatest(_tryApplyOwned", StringComparison.Ordinal),
-                "181D-4: custom P&S drops its own origin only after bounded callback copying and before DTO construction");
+                  && subscriptionBinding.Contains(
+                      "_slot.TryApplyLatest(_decideOwned, _applyOwned, _clearOwned)",
+                      StringComparison.Ordinal)
+                  && subscriptionBinding.Contains(
+                      "return FoxRunRos2PendingDecision.Drop",
+                      StringComparison.Ordinal),
+                "181D-4: custom P&S drops its own origin through the policy decision after bounded callback copying and before DTO apply");
 
             Check(customOutboundPolicy.Contains("MaximumBytes = 4L * 1024L * 1024L", StringComparison.Ordinal)
                   && !customOutboundPolicy.Contains("foxRunRos2NativeCopyBudget", StringComparison.Ordinal)
@@ -747,9 +754,9 @@ namespace Unity.FoxgloveSDK.Tests
             string batchProbe,
             string typesupportPluginImporterBuilder)
         {
-            Check(sample.Contains("FoxRunMode.PublishOnly", StringComparison.Ordinal)
-                  && sample.Contains("FoxRunMode.SubscribeOnly", StringComparison.Ordinal)
-                  && sample.Contains("FoxRunMode.PublishAndSubscribe", StringComparison.Ordinal)
+            Check(sample.Contains("FoxRunFlow.Publish", StringComparison.Ordinal)
+                  && sample.Contains("FoxRunFlow.Subscribe", StringComparison.Ordinal)
+                  && sample.Contains("FoxRunFlow.PublishAndSubscribe", StringComparison.Ordinal)
                   && sample.Contains("SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native", StringComparison.Ordinal)
                   && sample.Contains("Encoding = FoxRunWireEncoding.Json", StringComparison.Ordinal)
                   && sample.Contains("byte[]", StringComparison.Ordinal)
@@ -779,9 +786,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && sample.Contains(inputPortView, StringComparison.Ordinal)
                   && importedSample.Contains(inputPortField, StringComparison.Ordinal)
                   && importedSample.Contains(inputPortView, StringComparison.Ordinal)
-                  && !sample.Contains("_nativeSubscribeOnly", StringComparison.Ordinal)
-                  && !importedSample.Contains("_nativeSubscribeOnly", StringComparison.Ordinal),
-                "181F-15: the SubscribeOnly sample member communicates input-port authority and is observably consumed");
+                  && !sample.Contains("_nativeSubscribe", StringComparison.Ordinal)
+                  && !importedSample.Contains("_nativeSubscribe", StringComparison.Ordinal),
+                "181F-15: the Subscribe sample member communicates input-port authority and is observably consumed");
 
             Check(sampleReadme.Contains("static interface lock", StringComparison.OrdinalIgnoreCase)
                   && sampleReadme.Contains("Windows-local", StringComparison.Ordinal)
@@ -839,6 +846,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && batchProbe.Contains("Phase181CustomRos2InterfacePlayerBuilder.AcceptanceSceneAssetPath", StringComparison.Ordinal)
                   && batchProbe.Contains("Application.logMessageReceived", StringComparison.Ordinal)
                   && batchProbe.Contains("PHASE181_CUSTOM_ROS2_SAME_ORIGIN_DROPPED", StringComparison.Ordinal)
+                  && batchProbe.Contains("PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_RETRY", StringComparison.Ordinal)
                   && batchProbe.Contains("EditorApplication.ExitPlaymode", StringComparison.Ordinal)
                   && batchProbe.Contains("EditorApplication.Exit", StringComparison.Ordinal)
                   && !batchProbe.Contains("using ROS2", StringComparison.Ordinal)

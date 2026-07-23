@@ -340,6 +340,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "ROS 2 Native Subscribe requires the shared ROS 2 Native Runtime (R2FU). Subscribe does not enable Publish.";
             const string subscribeCoordinateMessage =
                 "Defines the coordinate convention expected from supported external publishers. MCAP records original external input first; Unity converts an owned value only when applying it.";
+            var subscribeSource = subscribeData.ToFullString();
             var allInvocations = AllInvocations(subscribeData);
             var directInvocations = DirectInvocations(subscribeData).ToArray();
             var webSocketBranches = subscribeData.DescendantNodes()
@@ -386,12 +387,18 @@ namespace Unity.FoxgloveSDK.Tests
                                                 && HasStringHeading(invocation, "Subscription Delivery")) == 1
                   && HasExactlyOneLabeledProperty(
                       allInvocations,
-                      "_foxRunInboundMaxMessagesPerSecondPerTopic",
-                      "Subscription Rate Limit Hz (per Topic)")
+                       "_foxRunDefaultSubscribeRateHz",
+                       "Default Subscribe Rate Hz")
+                   && HasExactlyOneLabeledProperty(
+                       allInvocations,
+                       "_foxRunInboundMaxMessagesPerSecondPerTopic",
+                       "Maximum Subscribe Rate Hz (per Topic)")
+                   && subscribeSource.IndexOf("Default Subscribe Rate Hz", StringComparison.Ordinal)
+                      < subscribeSource.IndexOf("Maximum Subscribe Rate Hz (per Topic)", StringComparison.Ordinal)
                   && ContainsStringLiteralFragment(
                       subscribeData,
-                      "captured provider, WebSocket encoding, QoS, copy budget, and rate."),
-                "180F-2: Subscribe keeps its enable gate, delivery rate, and complete frozen-session policy boundary");
+                       "captured provider, WebSocket encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate."),
+                "180F-2: Subscribe keeps its enable gate, maximum and default subscription rates, and complete frozen-session policy boundary");
             Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
                                                 && HasStringHeading(invocation, "Coordinate System")) == 1
                   && HasExactlyOneLabeledProperty(

@@ -41,7 +41,7 @@ public sealed partial class Phase157ManualAcceptance : MonoBehaviour
 
     [Header("Inbound Command Buffer")]
     [Tooltip("Remote-authoritative command buffer. Publish {\"requestedTargetSpeed\":3.5} to /phase157/target-speed.")]
-    [FoxRun("/phase157/target-speed", Mode = FoxRunMode.SubscribeOnly)]
+    [FoxRun("/phase157/target-speed", Mode = FoxRunFlow.Subscribe)]
     [SerializeField] private float requestedTargetSpeed;
     [Tooltip("Validated state applied from Requested Target Speed during Update.")]
     [FoxRun("/phase157/applied-speed", RateHz = 2f)]
@@ -50,7 +50,7 @@ public sealed partial class Phase157ManualAcceptance : MonoBehaviour
     [Header("Bidirectional State")]
     [Tooltip("Low-frequency shared observed state used to verify PublishAndSubscribe echo suppression; not a closed-loop control command.")]
 #pragma warning disable FOXRUN400 // Acceptance intentionally models shared observed state with explicit bidirectional ownership.
-    [FoxRun("/phase157/shared-state", Mode = FoxRunMode.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Json, RateHz = 2f)]
+    [FoxRun("/phase157/shared-state", Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunWireEncoding.Json, RateHz = 2f)]
     [SerializeField] private float sharedState;
 #pragma warning restore FOXRUN400
 

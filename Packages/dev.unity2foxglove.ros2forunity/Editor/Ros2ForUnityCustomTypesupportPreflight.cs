@@ -355,15 +355,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 : directionalPolicy.Trim();
 
         internal static string DirectionalContractPolicyLabel(
-            string flowMode,
+            string flow,
             FoxRunRos2QosPreset qos)
         {
             var inbound = "Inbound / " + QosLabel(qos);
-            switch (flowMode)
+            switch (flow)
             {
-                case "PublishOnly":
+                case "Publish":
                     return "Outbound / publisher-default QoS";
-                case "SubscribeOnly":
+                case "Subscribe":
                     return inbound;
                 case "PublishAndSubscribe":
                     return inbound + "; outbound / publisher-default QoS";

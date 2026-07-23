@@ -295,17 +295,17 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void DescriptorReaderRejectsUnknownPublishMode()
+        public void DescriptorReaderRejectsUnknownPolicy()
         {
             var method = LoadRuntimeSyntax("FoxRunGenerationDescriptorJsonReader.cs")
                 .GetRoot()
                 .DescendantNodes()
                 .OfType<MethodDeclarationSyntax>()
-                .Single(node => node.Identifier.ValueText == "PublishModeValue");
+                .Single(node => node.Identifier.ValueText == "PolicyValue");
 
             Assert.Contains(
                 method.DescendantNodes().OfType<ThrowStatementSyntax>(),
-                statement => statement.ToString().Contains("Unknown FoxRun publishMode", StringComparison.Ordinal));
+                statement => statement.ToString().Contains("Unknown FoxRun policy", StringComparison.Ordinal));
         }
 
         private static async Task<ProcessResult> RunHarnessAsync(params string[] args)

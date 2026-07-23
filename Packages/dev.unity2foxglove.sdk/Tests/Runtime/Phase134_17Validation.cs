@@ -151,7 +151,7 @@ namespace Unity.FoxgloveSDK.Tests
                         "/demo/empty",
                         1f,
                         string.Empty,
-                        0,
+                        (int)FoxRunPolicy.FixedRate,
                         0f,
                         0f,
                         "Test",
@@ -205,10 +205,10 @@ namespace Unity.FoxgloveSDK.Tests
             var member = (JObject)root["types"][0]["members"][0];
             Check(member.Value<bool>("isArray") && member.Value<string>("elementTypeName") == "float",
                 "134-17-F1: descriptor JSON preserves array metadata");
-            Check(member.Value<float>("rateHz") == 0f
+            Check(member.Value<float>("rateHz") == 10f
                   && member.Value<float>("changeEpsilon") == 0f
                   && member.Value<float>("forceIntervalSeconds") == 0f,
-                "134-17-F2: descriptor JSON writes finite float values");
+                "134-17-F2: descriptor JSON writes finite values and resolves the default publish rate");
 
             var reread = FoxRunGenerationDescriptorJsonReader.Read(json);
             var comparison = FoxRunGenerationDescriptorComparer.Compare(model, reread);
@@ -246,7 +246,8 @@ namespace Unity.FoxgloveSDK.Tests
                     new FoxRunGenerationMember(
                         "Demo", "InboundProbe", "_command", "field", "float",
                         true, false, string.Empty, "/demo/command", 1f, string.Empty,
-                        0, 0f, 0f, "Test", 0, string.Empty, mode: 1)
+                        (int)FoxRunPolicy.FixedRate, 0f, 0f, "Test", 0, string.Empty,
+                        mode: (int)FoxRunFlow.Subscribe)
                 })
             });
             var inboundJson = FoxRunGenerationDescriptorJsonWriter.Write(inboundModel);
@@ -260,7 +261,8 @@ namespace Unity.FoxgloveSDK.Tests
                     new FoxRunGenerationMember(
                         "Demo", "InboundProbe", "_command", "field", "float",
                         true, false, string.Empty, "/demo/command", 1f, string.Empty,
-                        0, 0f, 0f, "Test", 0, string.Empty, mode: 0)
+                        (int)FoxRunPolicy.FixedRate, 0f, 0f, "Test", 0, string.Empty,
+                        mode: (int)FoxRunFlow.Publish)
                 })
             });
             Check(!FoxRunGenerationDescriptorComparer.Compare(outboundModel, inboundModel).IsSemanticEqual,
@@ -290,7 +292,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "/demo/value",
                 1f,
                 string.Empty,
-                0,
+                (int)FoxRunPolicy.FixedRate,
                 0f,
                 0f,
                 "Test",
@@ -326,7 +328,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(invalidDiagnostics.Any(d => d.Id == "FOXRUN011" && d.Severity == "Error")
                   && invalidDiagnostics.Any(d => d.Id == "FOXRUN012" && d.Severity == "Error")
                   && invalidDiagnostics.Any(d => d.Id == "FOXRUN013" && d.Severity == "Error"),
-                "134-17-G2: validator rejects missing identifiers and out-of-range publish modes");
+                "134-17-G2: validator rejects missing identifiers and out-of-range policy values");
 
             var binaryDiagnostics = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
             {
@@ -358,7 +360,7 @@ namespace Unity.FoxgloveSDK.Tests
                         "/demo/value",
                         1f,
                         string.Empty,
-                        0,
+                        (int)FoxRunPolicy.FixedRate,
                         0f,
                         0f,
                         "Test",
@@ -383,7 +385,7 @@ namespace Unity.FoxgloveSDK.Tests
                     "/demo/values",
                     1f,
                     string.Empty,
-                    0,
+                    (int)FoxRunPolicy.FixedRate,
                     0f,
                     0f)
             });
@@ -399,14 +401,14 @@ namespace Unity.FoxgloveSDK.Tests
 
             CheckThrows<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[]
                 {
-                    new FoxRunManifestMember("Demo", "CollisionProbe", "_", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, 0, 0f, 0f)
+                    new FoxRunManifestMember("Demo", "CollisionProbe", "_", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f, 0f)
                 }),
                 "134-17-G7: manifest builder rejects empty JSON field names");
 
             CheckThrows<InvalidOperationException>(() => FoxRunManifestBuilder.Build(new[]
                 {
-                    new FoxRunManifestMember("Demo", "CollisionProbe", "__value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, 0, 0f, 0f),
-                    new FoxRunManifestMember("Demo", "CollisionProbe", "value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, 0, 0f, 0f)
+                    new FoxRunManifestMember("Demo", "CollisionProbe", "__value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f, 0f),
+                    new FoxRunManifestMember("Demo", "CollisionProbe", "value", "field", "float", true, false, string.Empty, "/demo/a", 1f, string.Empty, (int)FoxRunPolicy.FixedRate, 0f, 0f)
                 }),
                 "134-17-G8: manifest builder rejects colliding JSON field names");
         }
@@ -479,7 +481,7 @@ namespace Unity.FoxgloveSDK.Tests
                         topic,
                         10f,
                         string.Empty,
-                        0,
+                        (int)FoxRunPolicy.FixedRate,
                         0f,
                         0f,
                         "Test",
@@ -508,7 +510,7 @@ namespace Unity.FoxgloveSDK.Tests
                 topic,
                 1f,
                 string.Empty,
-                0,
+                (int)FoxRunPolicy.FixedRate,
                 0f,
                 0f,
                 "Test",

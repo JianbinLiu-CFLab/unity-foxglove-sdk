@@ -84,6 +84,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             Ros2ForUnityRuntimeSelectionStatus status,
             Ros2ForUnityCustomTypesupportSelectionResult customTypesupport)
         {
+            var restartBlockedByEditorState =
+                EditorApplication.isPlayingOrWillChangePlaymode
+                || EditorApplication.isCompiling
+                || EditorApplication.isUpdating;
+
             if (status.SelectedRuntime != null)
             {
                 var sessionRuntime = Ros2ForUnityRuntimeSelection.GetSessionRuntimePackage();
@@ -101,7 +106,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                         + ". Unity cannot safely unload native ROS2 DLLs mid-session.",
                         MessageType.Error);
 
-                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    using (new EditorGUI.DisabledScope(restartBlockedByEditorState))
                     {
                         if (GUILayout.Button("Restart Unity"))
                             Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
@@ -117,7 +122,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                         + ". Unity cannot safely unload native ROS2 RMW DLLs mid-session.",
                         MessageType.Error);
 
-                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    using (new EditorGUI.DisabledScope(restartBlockedByEditorState))
                     {
                         if (GUILayout.Button("Restart Unity"))
                             Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
@@ -133,7 +138,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                         + ". Unity cannot safely change a native Zenoh session endpoint mid-session.",
                         MessageType.Error);
 
-                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    using (new EditorGUI.DisabledScope(restartBlockedByEditorState))
                     {
                         if (GUILayout.Button("Restart Unity"))
                             Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);
@@ -147,7 +152,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                         + ". Unity cannot safely unload native custom typesupport DLLs mid-session.",
                         MessageType.Error);
 
-                    using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode))
+                    using (new EditorGUI.DisabledScope(restartBlockedByEditorState))
                     {
                         if (GUILayout.Button("Restart Unity"))
                             Ros2ForUnityRuntimeSelection.RestartEditor(projectDirectory);

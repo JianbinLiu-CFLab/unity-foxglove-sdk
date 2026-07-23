@@ -30,7 +30,7 @@ The script assembly is intentionally named `Unity2Foxglove.Ros2ForUnity.Runtime`
 - RMW implementation: `rmw_fastrtps_cpp`
 - Runtime id: `r2fu-humble-win64`
 - Artifact source: `Ros2ForUnity_humble_standalone_windows_x86_64.zip`
-- SHA-256: `83894a21beec9c44555e2126f49b233977c7c16b2d469ce202ac49987ea103ba`
+- SHA-256: `6937f348b2abdf40614379173bb81ba55090dc1541cab616d1a0f1e248ceb5b0`
 
 The runtime manifest is `RuntimeSupport/runtime-manifest.json`. The file inventory is `RuntimeSupport/r2fu-humble-win64-runtime-inventory.json`.
 

@@ -19,7 +19,7 @@ const summary = {
     {
       declaringType: "Demo.Input",
       topic: "/zeta",
-      flowMode: "SubscribeOnly",
+      flowMode: "Subscribe",
       encoding: "protobuf",
       schemaName: "unity2foxglove.foxrun.Demo_Input",
       rateHz: 10,
@@ -30,7 +30,7 @@ const summary = {
     {
       declaringType: "Demo.Input",
       topic: "/alpha",
-      flowMode: "SubscribeOnly",
+      flowMode: "Subscribe",
       encoding: "json",
       schemaName: "Demo.Input",
       rateHz: 10,

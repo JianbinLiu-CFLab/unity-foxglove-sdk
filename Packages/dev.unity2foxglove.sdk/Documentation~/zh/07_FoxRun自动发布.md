@@ -1,233 +1,169 @@
-# 1. [FoxRun] -- 零代码自动发布
+# FoxRun 发布、订阅与全双工
 
-`[FoxRun]` 是一个 C# Attribute（实际类名为 `FoxRunAttribute`），标注在字段或属性上即可自动将其值按指定频率发布到 Foxglove，无需手动编写任何 channel 注册、序列化、Update 循环代码。
+## 1. 用途
 
-## 1.1 目的
+FoxRun 用一个特性声明生成 Unity 字段或属性的传输契约，支持遥测发布、外部数据订阅，以及显式的全双工调试通道。它适合状态、数值曲线、控制参数、小型 DTO 和事件快照；图像、点云、网格等大体积数据仍应使用专用发布组件。
 
-这份文档用于说明如何用 `[FoxRun]` 把 Unity 脚本里的调试字段自动发布到 Foxglove。
-
-## 1.2 应用场景
-
-当你想快速观察位置、健康状态、计数器、状态字符串等调试数据，但不想写完整 publisher 组件时，使用 `[FoxRun]`。
-
-## 1.3 基本用法
+## 2. 最小示例
 
 ```csharp
 using UnityEngine;
 using Unity.FoxgloveSDK.Components;
 
-public partial class TestLog : MonoBehaviour       // 必须是 partial
+public partial class RobotTelemetry : MonoBehaviour
 {
-    [FoxRun("/debug/position")]                    // 默认 10Hz，schemaless JSON
-    private Vector3 _pos;
+    [FoxRun("/robot/pose")]
+    private Vector3 _position;
 
-    [FoxRun("/debug/health", RateHz = 5)]          // 自定义频率 5Hz
-    private float _health = 100f;
-
-    [FoxRun("/debug/status", SchemaName = "")]      // SchemaName 留空即 schemaless JSON
-    private string _status = "idle";
-
-    void Update()
+    private void Update()
     {
-        _pos = transform.position;
-        _health -= Time.deltaTime;
+        _position = transform.position;
     }
 }
 ```
 
-## 要求
+`[FoxRun("/robot/pose")]` 默认表示 `Publish`、`FixedRate`、10 Hz。所在类型必须是 `partial`，topic 必须以 `/` 开头，值类型必须能生成受支持的线格式。
 
-| 要求 | 说明 |
-|------|------|
-| 类必须是 `partial` | 否则编译器报错 `FOXRUN001` |
-| 继承 `MonoBehaviour` | Hub 通过 `FindObjectsByType<MonoBehaviour>` 扫描 |
-| 挂到 GameObject | 必须挂到场景中的 GameObject 上 |
+## 3. 声明语法
 
-## Attribute 参数
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `topic` | `string` | 必填 | Foxglove 话题名，如 `"/debug/position"` |
-| `RateHz` | `float` | `10f` | 发布频率（Hz） |
-| `SchemaName` | `string` | `""` | Schema 名称。为空时发布 schemaless JSON；填写已注册的 schema 名则 3D 面板可渲染 |
-| `PublishMode` | `FoxRunPublishMode` | `FixedRate` | 发布策略：固定频率、变化触发、变化或心跳、手动触发 |
-| `ChangeEpsilon` | `float` | `0f` | `OnChange` / `OnChangeOrInterval` 的数值变化阈值 |
-| `ForceIntervalSeconds` | `float` | `0f` | `OnChangeOrInterval` 的强制心跳间隔 |
-| `When` | `string` | `""` | 指向 bool 字段、属性或无参方法；为 true 时才发布 |
-| `Unless` | `string` | `""` | 指向 bool 字段、属性或无参方法；为 true 时抑制发布 |
-
-### SchemaName 参数
-
-当指定 `SchemaName` 时，SDK 会调用 `RegisterSchemaChannel` 而非普通 channel，Foxglove 的 3D/Plot 等面板可直接按结构化数据渲染：
+需要显式选项时，建议静态导入短名称：
 
 ```csharp
-[FoxRun("/debug/pose", SchemaName = "foxglove.FrameTransform")]
-private Vector3 _pose;  // 3D 面板可识别并渲染
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 ```
 
-支持的内置 schema 名称见 `DefaultSchemaRegistry`：
-- `foxglove.FrameTransform`
-- `foxglove.SceneUpdate`
-- `foxglove.CompressedImage`
-
-### PublishMode 参数
-
-`PublishMode` 用于控制自动发布策略：
-
-| 模式 | 行为 |
-|------|------|
-| `FixedRate` | 按 `RateHz` 固定频率发布 |
-| `OnChange` | 值发生变化时发布；数值类型使用 `ChangeEpsilon` 判断变化 |
-| `OnChangeOrInterval` | 值变化时发布；长时间无变化时按 `ForceIntervalSeconds` 发送心跳 |
-| `OnTrigger` | 不按扫描 tick 自动发布，由生成的 `FoxRun_Trigger...()` 方法或 `FoxRun_TriggerAll()` 手动触发 |
-
-同一 topic 上的多个成员如果混用了不同 `PublishMode`、`ChangeEpsilon` 或 `ForceIntervalSeconds`，生成器会报告 `FOXRUN005`，提醒将 topic 拆分或统一策略。
-
-## 支持的类型
-
-| C# 类型 | 发布格式 |
-|---------|---------|
-| `Vector3` | `{"x":1.0,"y":2.0,"z":3.0}` |
-| `Vector2` | `{"x":1.0,"y":2.0}` |
-| `Quaternion` | `{"x":0.0,"y":0.0,"z":0.0,"w":1.0}` |
-| `Color` | `{"r":1.0,"g":0.0,"b":0.0,"a":1.0}` |
-| `float`、`int`、`string`、`bool`、`enum` | 直接输出值 |
-
-以上类型会自动展开为 JSON 对象，其他类型直接输出 `.ToString()`。
-
-## Phase 175 FoxRun Protobuf 默认编码
-
-`[FoxRun]` 的 `Encoding` 默认值是 `FoxRunWireEncoding.Inherit`。重新编译后，继承编码的话题使用 `FoxgloveManager > FoxRun > Default Wire Encoding`；默认是 **Protobuf**。Inspector 下拉菜单只提供 **Protobuf** 和 **JSON**，`Inherit` 只属于源码 attribute，不能由场景覆盖。
-
-旧 JSON 客户端需要保持既有合同时，请显式写出 JSON：
-
 ```csharp
-[FoxRun("/control/legacy-speed", Mode = FoxRunMode.SubscribeOnly,
-    Encoding = FoxRunWireEncoding.Json)]
-private float _legacyRequestedSpeed;
+[FoxRun("/robot/pose")]
+private PoseState _pose;
+
+[FoxRun("/robot/command", Mode = Subscribe, Policy = Change, RateHz = 30)]
+private RobotCommand _command;
+
+[FoxRun("/debug/state", Mode = PublishAndSubscribe,
+    Policy = FixedRate, RateHz = 10,
+    Encoding = FoxRunWireEncoding.Protobuf)]
+private DebugState _debugState;
 ```
 
-普通 scalar、Vector 和生成的 DTO/集合输入都可以使用继承策略；DTO 与集合的入站解码走 Protobuf。Manager 在 server 启动时冻结默认编码。Play Mode 中修改下拉菜单不会让已连接会话中途换协议，必须重启或重新启用 server。FoxRun Inspector 的 Runtime Topics 会显示 `Declared`、`Effective` 和 schema。
+### Mode
 
-编码属于 schema contract identity。继承话题在 Protobuf 与 JSON 下有不同的 schema/fingerprint evidence；切换有效编码后应重新录制 MCAP。必须保留 JSON 的外部客户端，请在录制前显式指定 JSON。
+| 值 | 含义 |
+|---|---|
+| `Publish` | Unity 是数据源并发送当前值；这是默认模式。 |
+| `Subscribe` | 一个选定的外部 provider 是数据源；Unity 在主线程应用已接收的值。 |
+| `PublishAndSubscribe` | 同时生成两个方向，主要用于调试和联调，不建议作为生产环境的默认权属模型。 |
 
-## 代码生成机制
+每个订阅声明只解析到一个输入 provider；发布可以扇出到多个已启用目的地。
 
-### Editor 模式（ISG）
+### Policy
 
-在 Unity Editor 中编译时，`FoxgloveLogSourceGenerator`（Roslyn Incremental Source Generator）会为每个含有 `[FoxRun]` 的 partial 类生成一个 `_FoxRun.g.cs` 文件，实现 `IFoxgloveLogSource` 接口。
+| 值 | 发布行为 | 订阅行为 |
+|---|---|---|
+| `FixedRate` | 按有效节拍发送当前值。 | 只有存在更新的暂存值时才应用，不会因定时器重复应用旧值。 |
+| `Change` | 首次及语义变化时发送。 | 仅在值与上次应用结果不同时应用。 |
+| `ChangeOrInterval` | 变化时发送，并按间隔发送心跳。 | 应用变化值，或间隔到期后新收到的重复值；不会凭空制造重复值。 |
+| `Trigger` | 仅在调用生成的发布触发方法时发送。 | 保留最新暂存值，直到调用生成的应用触发方法。 |
 
-生成的代码示例（以 `TestLog` 为例）：
+`Trigger` 不能同时设置正数 `RateHz`；生成器会报告 `FOXRUN609`，不会静默忽略其中一个设置。
+
+`ChangeEpsilon` 控制浮点数、双精度数和向量的变化阈值；`ForceIntervalSeconds`
+控制 `ChangeOrInterval` 的心跳间隔。同一 topic 的成员必须使用一致的 `Policy`、
+`ChangeEpsilon` 和 `ForceIntervalSeconds`，否则生成器报告 `FOXRUN005`。
+
+## 4. 频率与准入
+
+`RateHz` 表示边界更新节拍：
+
+- `Publish`：生成代码的最大发布频率。
+- `Subscribe`：通过传输准入后，在 Unity 主线程应用值的最大频率。
+- `PublishAndSubscribe`：同一个显式值分别控制两个方向。
+
+省略 `RateHz` 时，发布使用 10 Hz；订阅继承 Manager 会话冻结的 **Default Subscribe Rate Hz**（默认 10 Hz）。
+
+在 **Foxglove Manager > Data Transport > Subscribe Data > Subscription Delivery** 中有两个相邻但职责不同的设置：
+
+- **Default Subscribe Rate Hz**：默认值为 10 Hz，仅供未显式设置正数 `RateHz` 的订阅声明继承。
+- **Maximum Subscribe Rate Hz (per Topic)**：Foxglove WebSocket 与 ROS 2 Native 共用的硬准入上限。超额消息会尽量在 DTO 解码或原生深拷贝之前丢弃。
+
+声明级 `RateHz` 不能突破准入上限。通过准入的数据采用有界 latest-wins：Unity 来不及应用全部输入时，新值替换旧的待处理值。
+
+## 5. 订阅输入
+
+订阅是外部控制面，默认关闭。进入 Play Mode 前，在 Manager 中启用 **FoxRun Subscriptions**。建议先写入输入缓冲成员，再在普通 Unity 代码中做业务校验：
 
 ```csharp
-// <auto-generated/>
-partial class TestLog : IFoxgloveLogSource
+using UnityEngine;
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
+
+public partial class SpeedController : MonoBehaviour
 {
-    int IFoxgloveLogSource.FoxgloveLog_TopicCount => 2;
+    [FoxRun("/control/target-speed", Mode = Subscribe,
+        Policy = Change, RateHz = 30,
+        Encoding = FoxRunWireEncoding.Json)]
+    private float _requestedTargetSpeed;
 
-    FoxgloveLogTopicInfo IFoxgloveLogSource.FoxgloveLog_GetTopic(int index)
+    private void Update()
     {
-        switch (index)
-        {
-            case 0: return new FoxgloveLogTopicInfo("/debug/position", 10f);
-            case 1: return new FoxgloveLogTopicInfo("/debug/health", 5f);
-            default: return default;
-        }
-    }
-
-    void IFoxgloveLogSource.FoxgloveLog_Publish(int topicIndex, FoxgloveManager mgr, ulong nowNs)
-    {
-        switch (topicIndex)
-        {
-            case 0: mgr.PublishJson("/debug/position", "", new { position = new { x = _pos.x, y = _pos.y, z = _pos.z } }, nowNs); break;
-            case 1: mgr.PublishJson("/debug/health", "", new { health = _health }, nowNs); break;
-        }
+        ApplyValidatedTarget(Mathf.Clamp(_requestedTargetSpeed, 0f, 10f));
     }
 }
 ```
 
-ISG DLL 位置：`Editor/SourceGenerators/analyzers/dotnet/cs/FoxgloveLogSourceGenerator.dll`
+输入目标必须可写。生成的 allowlist、负载大小限制、编码与 provider 检查、传输准入、有界 latest-wins 暂存和主线程应用都会继续生效。非 loopback 监听默认 fail-closed，只有 Manager 明确允许远程输入并配置认证策略后才开放。
 
-### IL2CPP 构建（fallback）
+## 6. 编码与输入 Provider
 
-ISG 在 IL2CPP 编译时不生效，因此在 Player 构建前，`FoxrunBuildPreprocess`（`IPreprocessBuildWithReport`）会调用 `FoxrunCodeGenerator.GenerateSourceFiles()` 生成真实 `.g.cs` 文件到 `Assets/Scripts/Generated/`。
+`Encoding = FoxRunWireEncoding.Inherit` 使用 Manager 会话冻结的方向默认值。`PublishAndSubscribe` 的两个方向共用一个 wire contract，因此必须显式选择 JSON 或 Protobuf。
 
-生成的文件格式为 `{ClassName}_FoxRun.g.cs`；如果类位于命名空间中，则文件名会包含命名空间片段（例如 `Robotics_Sim_TestLog_FoxRun.g.cs`），避免同名类覆盖。生成文件包裹在 `#if !UNITY_EDITOR` 中，仅在 Player 编译时生效。
+核心 SDK 的常规输入路径是 Foxglove WebSocket。`SubscriptionProvider = Ros2Native` 需要可选的 `dev.unity2foxglove.ros2forunity` facade、一个已选发行版 runtime package，以及受支持的原生消息或匹配的 custom typesupport add-on。provider、编码、QoS、复制预算、最大订阅频率和默认订阅频率都会在一次已启用的订阅会话中冻结。
 
-### 生成文件对比
+## 7. Trigger 与全双工
 
-| 模式 | 生成方式 | 文件位置 |
-|------|---------|---------|
-| Editor | ISG（Roslyn 内存中） | 无物理文件 |
-| IL2CPP Build | IPreprocessBuildWithReport | `Assets/Scripts/Generated/` |
+发布触发先更新值，再调用生成的 `FoxRun_Trigger_<member>()`。订阅触发只暂存最新输入，直到用户代码在 Unity 主线程调用 `FoxRun_Apply_<member>()`。
 
-## FoxgloveLogHub
+`PublishAndSubscribe` 为同一个声明生成独立的发布与应用节拍。应用外部值后，该版本会被标记，避免立即作为本地变化回传；之后真正发生的本地修改仍可正常发布。生产环境权属边界通常应拆成独立的 `Publish` 和 `Subscribe` 声明。
 
-`FoxgloveLogHub` 是一个自动创建的 singleton GameObject（`[FoxRunHub]`），驱动所有 `[FoxRun]` 的频率调度：
+## 8. Foxglove 与 Player 工作流
 
-- 通过 `[RuntimeInitializeOnLoadMethod]` 在场景加载后自动创建
-- 不随场景销毁（`DontDestroyOnLoad`）
-- 每 **2 秒**扫描一次场景中所有 `IFoxgloveLogSource`，自动发现新挂载的脚本
-- Per-topic 独立计时器，按各自配置的 `RateHz` 频率触发发布
-- 自动清理已销毁的 MonoBehaviour 引用
+1. 在场景中添加业务组件和 `FoxgloveManager`。
+2. 在 Play Mode 前配置 Publish Data；需要输入时再配置并启用 Subscribe Data。
+3. 进入 Play Mode，让 Foxglove 连接 `ws://127.0.0.1:8765`。
+4. 使用 Topics、Raw Messages 或 Plot 查看输出。
+5. 可选的 **FoxRun Publish** 扩展只展示生成的可写 JSON/Protobuf 契约，不猜测 topic 或编码。
 
-## 冷却行为（Cooldown）
+Roslyn 生成器是创作期权威。Editor Play Mode 会刷新 canonical descriptor、manifest、hash 和 runtime schema info；Player 构建前还会生成物理 `.g.cs` fallback。MCAP 记录外部边界表示，Replay 会核对 FoxRun schema identity，并在回放权威期间抑制实时 WebSocket 与 native fanout。
 
-- 每个 topic 有自己的冷却时间：`cooldown = 1f / RateHz`
-- 当冷却计时器归零时才触发一次发布，然后重置
-- `RateHz` 小于或等于 0 时不进行定时发布，可用于临时关闭调试 topic
-- 多次标注同一 topic 的不同字段取最大的 `RateHz` 值
+规范清单（canonical manifest）是可确定的治理（governance）证据。仅供报告的时间戳
+（timestamps）和警告不参与契约指纹；生成的 manifest、descriptor、hash 与 fallback
+source 是已忽略的本机（machine-local）构建状态，不是需要纳入版本管理的创作输入。
 
-## 诊断
+Editor Play Mode 会注册包含 manifest hash 的 runtime schema info；该证据会写入 MCAP
+元数据，并在之后的 Replay 中用于检测契约漂移。
 
-ISG 会报告以下诊断：
+MCAP 以 `unity2foxglove.foxrun.schema` 元数据保存该证据，其中包含
+`globalManifestHash`。Replay 发现 schema mismatch 时会按 Manager 的 schema identity
+防护策略处理，不会静默应用不兼容的 FoxRun 数据。
 
-| 诊断 ID | 严重程度 | 触发条件 |
-|---------|---------|---------|
-| `FOXRUN001` | Error | 类未声明为 `partial`。必须添加 `partial` 关键字 |
-| `FOXRUN002` | Warning | 同一 topic 的多个字段指定了不同的 `SchemaName` 值 |
-| `FOXRUN003` | Warning | 去除下划线前缀后字段名碰撞（如 `_pos` 和 `pos`） |
-| `FOXRUN004` | Error | 在同一个字段声明里用 `[FoxRun]` 标注多个变量 |
-| `FOXRUN005` | Warning | 同一 topic 的多个成员混用了不同发布策略参数 |
+更广的 SDK schema manifest 还会编目 Protobuf 与已打包的 ROS2 覆盖面。该聚合清单与
+Replay 治理分离；Replay 使用随 MCAP 记录的 FoxRun 契约身份。
 
-## 常见问题
+调试覆盖层（debug overlay）是非契约（non-contract）诊断，不包含在（not included）
+规范 hash 中，也不是 Replay 的防护键。
 
-| 现象 | 原因 | 解决方法 |
-|------|------|---------|
-| 编译报错 Class not partial | FOXRUN001 | 给类添加 `partial` 关键字 |
-| Play Mode 无 topic | 脚本未挂到 GameObject | 将脚本拖到场景中的 GameObject 上 |
-| Play Mode 无 topic | Hub 尚未扫描到 | 等待 2-4 秒，Hub 扫描间隔为 2 秒 |
-| 非 Editor 模式无 topic | IL2CPP 未生成 .g.cs | 检查 `FoxrunBuildPreprocess` 构建日志 |
-| 数值不更新 | Update 未赋值 | 确保在 `Update`/`FixedUpdate` 中更新字段值 |
-| Schema not found | SchemaName 拼写错误 | 检查 schema 名称，参考 `DefaultSchemaRegistry` |
-## Phase 112 canonical manifest governance
+## 9. 常见问题
 
-FoxRun build-time generation also writes a canonical manifest under `Assets/Generated/FoxRun/`. Entering Editor Play Mode refreshes the same manifest artifacts before play starts, without writing physical `_FoxRun.g.cs` fallback files. This manifest is a governance and evidence artifact for the resolved `[FoxRun]` telemetry contract. The manifest artifact itself does not change runtime publishing behavior.
+| 现象 | 检查项 |
+|---|---|
+| 看不到 topic | 类型是否为 `partial`、topic 是否以 `/` 开头、组件是否启用、是否已进入 Play Mode。 |
+| 订阅没有数据 | 是否启用订阅、provider 与编码是否匹配、传输准入诊断是否出现丢弃。 |
+| 输入应用太慢 | 声明 `RateHz` 或 Manager 的 **Default Subscribe Rate Hz**。 |
+| 消息被丢弃 | **Maximum Subscribe Rate Hz (per Topic)**、负载大小、编码和 native copy budget。 |
+| Trigger 不生效 | 是否从 Unity 主线程调用了对应的发布或应用触发方法。 |
+| 全双工值没有立即回传 | 刚应用的外部版本会执行一次 echo suppression，这是设计行为。 |
+| Editor 正常、Player 异常 | 检查 build preprocess 日志与生成的 fallback source。 |
 
-Phase 112 also locks the FoxRun non-positive `RateHz` policy: `RateHz` values of `0` or less disable scheduled publishing for that topic. This keeps the runtime behavior aligned with the canonical policy value recorded as `0`.
-
-The canonical manifest and SHA-256 fingerprints are computed from deterministic JSON. They ignore generated timestamps, comments, file paths, Unity `Library/` contents, and machine-local state. Timestamps and warnings appear only in the report JSON, not in the canonical manifest hash input.
-
-Phase 112 covers FoxRun automatic telemetry only. Phase 113 embeds the current manifest hash values into generated runtime schema info so Editor Play Mode and Player runtime code can query the same evidence without reflection.
-
-## Phase 113 runtime schema info
-
-Editor Play Mode manifest refresh and Player build generation also write `Assets/Generated/FoxRun/FoxRunSchemaInfo.g.cs`. This generated runtime schema info registers the global manifest hash, the FoxRun section manifest hash, and type/contract/field metadata.
-
-This registry is evidence for MCAP and replay integrations. It does not change FoxRun runtime publishing behavior, does not recompute canonical hashes, and does not make runtime code read manifest JSON files.
-
-## SDK schema manifest aggregate
-
-Editor Play Mode manifest refresh and Player build generation also write the SDK schema manifest aggregate under `Assets/Generated/Unity2Foxglove/`. This aggregate records FoxRun evidence, the bundled protobuf registry, the bundled ROS2 `.msg` registry, and SDK typed publisher coverage in one deterministic JSON artifact.
-
-This aggregate is release evidence, not replay governance. Unity replay still compares only the FoxRun `globalManifestHash` recorded in MCAP metadata. Protobuf registry changes, ROS2 catalog changes, and typed publisher catalog changes are visible in the SDK schema manifest, but they do not become replay guard keys.
-
-## FoxRun MCAP schema metadata
-
-MCAP recording writes a metadata record named `unity2foxglove.foxrun.schema` when generated FoxRun runtime schema info exists. Its `value` is compact JSON with `globalManifestHash`, the FoxRun section `manifestHash`, manifest/generator versions, counts, and per-contract diagnostic hashes.
-
-Unity replay reads this metadata after loading the MCAP file and before playback starts. If the recorded `globalManifestHash` does not match the current runtime `globalManifestHash`, replay is blocked with a short-hash mismatch diagnostic. In explicit replay mode, a confirmed mismatch fails closed: the Manager aborts startup and does not restore live publishers as a fallback. Missing recorded metadata, missing current schema info, or malformed recorded metadata only logs a warning, so older MCAP recordings can still replay.
-
-## Phase 112B debug overlay topics
-
-`debug overlay` 是显式 `/debug/...` schemaless JSON 旁路，用于临时诊断而不是扩展 FoxRun 合同。Debug overlay messages are `non-contract` data: they are not included in `foxrun.manifest.json`, `foxrun.manifest.hash`, or canonical manifest fingerprints, and they are not replay guard keys. MCAP 可以把它们录成普通 JSON 帧，但 replay schema mismatch checks 应忽略这些旁路调试消息。
+Player 验证见 [09_IL2CPP构建](09_IL2CPP构建.md)，生成器与运行时边界见 [10_架构说明](10_架构说明.md)。

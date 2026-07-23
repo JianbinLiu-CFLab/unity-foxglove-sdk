@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             var decoder = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInboundJson.cs");
 
             Check(input.Contains("interface IFoxgloveInputSource", StringComparison.Ordinal)
-                  && emitter.Contains("FoxgloveInput_TryApply", StringComparison.Ordinal),
+                  && emitter.Contains("FoxgloveInput_TryStage", StringComparison.Ordinal),
                 "generated inbound members use a dedicated typed input interface");
             Check(decoder.Contains("ContainsForbiddenTypeHint", StringComparison.Ordinal)
                   && decoder.Contains("forbidden $type hint", StringComparison.Ordinal)
@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Tests
                       "ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic",
                       StringComparison.Ordinal)
                   && hub.Contains(
-                      "_router.MaxMessagesPerSecondPerTopic = policy.MainThreadApplyRateLimitHz;",
+                      "_router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;",
                       StringComparison.Ordinal),
                 "input dispatch receives manager-owned live payload and session-frozen per-topic rate limits");
         }

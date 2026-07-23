@@ -1,30 +1,21 @@
-# R2FU Jazzy Win64 Runtime Artifact Notices
+# Third-Party Notices
 
-This notice describes the local runtime artifact candidate:
+This runtime package redistributes a locally rebuilt ROS2 For Unity Jazzy Windows x64 runtime payload.
 
-```text
-Ros2ForUnity_jazzy_standalone_windows_x86_64.zip
-```
+Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, generated ROS2 message assemblies, generated native message support libraries, ROS2 Jazzy native libraries, Fast DDS, Fast CDR, RMW FastRTPS, or transitive runtime DLLs.
 
-The artifact is a candidate input for a future Unity runtime package. It is not published by this adapter package, it is not committed to git, and it is not a completed legal audit.
-
-## Artifact Identity
+## Runtime Artifact
 
 | Field | Value |
 |---|---|
+| Artifact | `Ros2ForUnity_jazzy_standalone_windows_x86_64.zip` |
 | Runtime id | `r2fu-jazzy-win64` |
 | ROS distro | `jazzy` |
 | Platform | Windows x64 |
 | Build type | standalone |
 | RMW | `rmw_fastrtps_cpp` |
-| SHA-256 | `f20f20047d1a2087aad1d9e280c7a04943935d9019793b3f11d399ec54899232` |
-| Inventory | `Compliance/r2fu-jazzy-win64-runtime-inventory.json` |
-
-## Attribution Boundary
-
-Unity2Foxglove does not claim authorship of RobotecAI ROS2 For Unity, ros2cs, generated ROS2 message assemblies, generated native message support libraries, ROS2 Jazzy native libraries, Fast DDS, Fast CDR, RMW FastRTPS, or transitive runtime DLLs.
-
-The adapter package remains source-only. Runtime binaries belong in a separate runtime package or release artifact that carries its own manifest, checksum, file inventory, third-party notices, and license inventory.
+| SHA-256 | `4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d` |
+| Inventory file count | `1204` |
 
 ## Known Upstream Components
 
@@ -39,7 +30,7 @@ The adapter package remains source-only. Runtime binaries belong in a separate r
 
 ## Critical Runtime Closure
 
-The artifact must contain these runtime closure DLLs:
+The package includes the transitive runtime DLLs required for Unity to load `rcl.dll`, including:
 
 ```text
 rcl.dll
@@ -48,12 +39,13 @@ spdlog.dll
 fmt.dll
 ```
 
-If the transitive DLLs are missing, Unity can report `UnsatisfiedLinkError: rcl.dll` even when `rcl.dll` itself is present.
+If these closure DLLs are removed, Unity can report `UnsatisfiedLinkError: rcl.dll` even when `rcl.dll` itself is present.
 
 ## Redistribution Caveats
 
-- This artifact is a candidate until a runtime package is produced and accepted in a fresh Unity project.
-- The inventory is an engineering inventory generated from the local zip, not a complete legal audit.
-- A future runtime package must include complete transitive license attribution before public distribution.
-- Candidate `deps.json` files may contain empty `sha512` fields because Unity does not consume them for runtime integrity; public runtime packages must populate or regenerate those fields before distribution through .NET tooling.
-- Windows Firewall may block inbound Fast DDS UDP discovery; configure allow rules for DDS ports. Windows ROS2 Jazzy, properly firewalled WSL2, or a real remote Linux topology should be used for acceptance.
+- This package is a prototype until fresh-project acceptance passes.
+- The inventory is an engineering inventory generated from the local runtime artifact, not a complete legal audit.
+- Public release should refresh transitive license attribution before registry or binary distribution.
+- WSL2 NAT can hide DDS discovery and should be treated as diagnostic-only for Windows package acceptance. Configure Windows Defender Firewall allow rules for Fast DDS UDP ports, then prefer Windows ROS2 Jazzy or a real remote Linux topology for final external-graph acceptance.
+
+RobotecAI states that ROS2 For Unity is officially supported for AWSIM/Autoware users and that the Robotec team cannot support and maintain the project for the general community. Unity2Foxglove must preserve that caveat and must not imply upstream community support for Unity2Foxglove-specific packaging.

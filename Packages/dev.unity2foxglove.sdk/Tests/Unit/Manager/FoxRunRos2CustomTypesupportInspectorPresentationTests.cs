@@ -43,17 +43,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Manager
         }
 
         [Theory]
-        [InlineData("PublishOnly", FoxRunRos2QosPreset.Default, "Outbound / publisher-default QoS")]
-        [InlineData("SubscribeOnly", FoxRunRos2QosPreset.Reliable, "Inbound / Reliable")]
+        [InlineData("Publish", FoxRunRos2QosPreset.Default, "Outbound / publisher-default QoS")]
+        [InlineData("Subscribe", FoxRunRos2QosPreset.Reliable, "Inbound / Reliable")]
         [InlineData("PublishAndSubscribe", FoxRunRos2QosPreset.SensorData, "Inbound / Sensor Data; outbound / publisher-default QoS")]
         public void GeneratedContractDirectionLabelsDescribeEachNativeTransportDirection(
-            string flowMode,
+            string flow,
             FoxRunRos2QosPreset qos,
             string expected)
         {
             Assert.Equal(
                 expected,
-                Ros2ForUnityCustomTypesupportInspectorPresentation.DirectionalContractPolicyLabel(flowMode, qos));
+                Ros2ForUnityCustomTypesupportInspectorPresentation.DirectionalContractPolicyLabel(flow, qos));
         }
     }
 }

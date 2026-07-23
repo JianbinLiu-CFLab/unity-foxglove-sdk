@@ -221,7 +221,7 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ChangeEpsilon) + ",");
                 sb.AppendLine(inner + "    " + FloatLiteral(contract.Policy.ForceIntervalSeconds) + ",");
                 WriteFieldsArray(sb, contract.Fields, indentLevel + 2, trailingComma: true);
-                AppendIndentedStringLiteralLine(sb, inner, contract.FlowMode, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
                 AppendProtobufDescriptorSet(sb, inner, contract);
                 sb.AppendLine(inner + "),");
             }
@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, binding.DeclaringType, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, binding.Topic, ",");
-                AppendIndentedStringLiteralLine(sb, inner, binding.FlowMode, ",");
+                AppendIndentedStringLiteralLine(sb, inner, binding.Flow, ",");
                 sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(binding.DeclaredProvider) + ",");
                 sb.AppendLine(inner + "    " + Ros2QosLiteral(binding.Ros2Qos) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(binding.SupportsWebSocket) + ",");
@@ -275,7 +275,7 @@ namespace Unity.FoxgloveSDK.Editor
                 AppendIndentedStringLiteralLine(sb, inner, contract.DeclaringType, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.MemberName, ",");
                 AppendIndentedStringLiteralLine(sb, inner, contract.Topic, ",");
-                AppendIndentedStringLiteralLine(sb, inner, contract.FlowMode, ",");
+                AppendIndentedStringLiteralLine(sb, inner, contract.Flow, ",");
                 sb.AppendLine(inner + "    " + SubscriptionProviderLiteral(contract.DeclaredProvider) + ",");
                 sb.AppendLine(inner + "    " + Ros2QosLiteral(contract.Ros2Qos) + ",");
                 sb.AppendLine(inner + "    " + BoolLiteral(contract.SupportsRos2Native) + ",");

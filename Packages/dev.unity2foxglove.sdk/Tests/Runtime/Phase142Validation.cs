@@ -102,13 +102,14 @@ namespace Unity.FoxgloveSDK.Tests
                 "142-16: float.MaxValue vs float.MinValue reports changed");
         }
 
-        // publishMode=1 ->OnChange policy triggers ChangeExpr code path
-        private static FoxgloveSourceEmitter.TopicMember OnChange(string name, string type, string topic)
-            => new(name, type, topic, 10f, "", publishMode: 1, changeEpsilon: 0.001f, forceIntervalSeconds: 0f);
+        // policy=1 ->Change policy triggers ChangeExpr code path
+        private static FoxgloveSourceEmitter.TopicMember Change(string name, string type, string topic)
+            => new(name, type, topic, 10f, "", policy: (int)FoxRunPolicy.Change,
+                changeEpsilon: 0.001f, forceIntervalSeconds: 0f);
 
         private static void VerifyNoInlineHelpers()
         {
-            var members = new List<FoxgloveSourceEmitter.TopicMember> { OnChange("_val", "System.Single", "/test") };
+            var members = new List<FoxgloveSourceEmitter.TopicMember> { Change("_val", "System.Single", "/test") };
             var output = FoxgloveSourceEmitter.EmitClass("Test", "NoInline", members);
 
             Check(!output.Contains("__foxrun_float_changed", StringComparison.Ordinal),
@@ -120,32 +121,32 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySharedHelperReference()
         {
             var floatOutput = FoxgloveSourceEmitter.EmitClass("Test", "FloatRef",
-                new List<FoxgloveSourceEmitter.TopicMember> { OnChange("_val", "System.Single", "/test/f") });
+                new List<FoxgloveSourceEmitter.TopicMember> { Change("_val", "System.Single", "/test/f") });
             Check(floatOutput.Contains("global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal),
                 "142-19: float member emits FoxRunChangeHelper.FloatChanged");
 
             var doubleOutput = FoxgloveSourceEmitter.EmitClass("Test", "DoubleRef",
-                new List<FoxgloveSourceEmitter.TopicMember> { OnChange("_val", "System.Double", "/test/d") });
+                new List<FoxgloveSourceEmitter.TopicMember> { Change("_val", "System.Double", "/test/d") });
             Check(doubleOutput.Contains("global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.DoubleChanged", StringComparison.Ordinal),
                 "142-20: double member emits FoxRunChangeHelper.DoubleChanged");
 
             var vec3Output = FoxgloveSourceEmitter.EmitClass("Test", "Vec3Ref",
-                new List<FoxgloveSourceEmitter.TopicMember> { OnChange("_pos", "UnityEngine.Vector3", "/test/v3") });
+                new List<FoxgloveSourceEmitter.TopicMember> { Change("_pos", "UnityEngine.Vector3", "/test/v3") });
             Check(vec3Output.Contains("global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal),
                 "142-21: Vector3 member emits FoxRunChangeHelper.FloatChanged");
 
             var vec2Output = FoxgloveSourceEmitter.EmitClass("Test", "Vec2Ref",
-                new List<FoxgloveSourceEmitter.TopicMember> { OnChange("_pos", "UnityEngine.Vector2", "/test/v2") });
+                new List<FoxgloveSourceEmitter.TopicMember> { Change("_pos", "UnityEngine.Vector2", "/test/v2") });
             Check(vec2Output.Contains("global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal),
                 "142-22: Vector2 member emits FoxRunChangeHelper.FloatChanged");
 
             var quatOutput = FoxgloveSourceEmitter.EmitClass("Test", "QuatRef",
-                new List<FoxgloveSourceEmitter.TopicMember> { OnChange("_rot", "UnityEngine.Quaternion", "/test/q") });
+                new List<FoxgloveSourceEmitter.TopicMember> { Change("_rot", "UnityEngine.Quaternion", "/test/q") });
             Check(quatOutput.Contains("global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal),
                 "142-23: Quaternion member emits FoxRunChangeHelper.FloatChanged");
 
             var colorOutput = FoxgloveSourceEmitter.EmitClass("Test", "ColorRef",
-                new List<FoxgloveSourceEmitter.TopicMember> { OnChange("_col", "UnityEngine.Color", "/test/c") });
+                new List<FoxgloveSourceEmitter.TopicMember> { Change("_col", "UnityEngine.Color", "/test/c") });
             Check(colorOutput.Contains("global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged", StringComparison.Ordinal),
                 "142-24: Color member emits FoxRunChangeHelper.FloatChanged");
         }
@@ -231,7 +232,7 @@ namespace Unity.FoxgloveSDK.Tests
                 { "FOXRUN002", ("Topic schema conflict", "Warning") },
                 { "FOXRUN003", ("Field name collision", "Warning") },
                 { "FOXRUN004", ("Multi-variable field declaration", "Error") },
-                { "FOXRUN005", ("Mixed same-topic PublishMode policy", "Warning") },
+                { "FOXRUN005", ("Mixed same-topic Policy policy", "Warning") },
                 { "FOXRUN006", ("Unsupported FoxRun type", "Error") },
                 { "FOXRUN007", ("Generic FoxRun type", "Warning") },
                 { "FOXRUN008", ("FoxRun topic must be absolute", "Error") },
@@ -294,7 +295,7 @@ namespace Unity.FoxgloveSDK.Tests
                 rawType, rawType, canonicalType,
                 true, isArray, isArray ? "float" : "",
                 "/test/" + memberName, 10f, "",
-                1, 0f, 0f, "Reflection", 0, "");
+                (int)FoxRunPolicy.FixedRate, 0f, 0f, "Reflection", 0, "");
         }
     }
 }

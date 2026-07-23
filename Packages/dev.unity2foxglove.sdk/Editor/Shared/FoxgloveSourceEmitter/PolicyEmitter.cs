@@ -19,11 +19,11 @@ namespace Unity.FoxgloveSDK.Editor
         /// <summary>
         /// Emits last-value storage fields and the <c>IFoxgloveLogPolicySource</c>
         /// implementation (<c>ShouldPublish</c> and <c>MarkPublished</c>) for
-        /// topics that use OnChange or OnChangeOrInterval publish modes.
+        /// topics that use Change or ChangeOrInterval publish modes.
         /// </summary>
         internal static void EmitPolicy(StringBuilder sb, IReadOnlyList<string> topics, Dictionary<string, List<FoxgloveSourceEmitter.TopicMember>> topicMap, Dictionary<string, int> topicModes, string pad)
         {
-            var hasPolicy = topicModes.Values.Any(m => m != 0);
+            var hasPolicy = topicModes.Values.Any(m => m != 1);
             if (!hasPolicy)
                 return;
 
@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[i]];
                 var mode = topicModes[topics[i]];
-                if (mode == 0 || mode == 3) continue;
+                if (mode == 1 || mode == 4) continue;
                 sb.AppendLine($"{pad}    private bool __hasLast_{i};");
                 sb.AppendLine($"{pad}    private double __lastPublishSec_{i};");
                 for (int j = 0; j < fields.Count; j++)
@@ -51,12 +51,12 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[i]];
                 var mode = topicModes[topics[i]];
-                if (mode == 0)
+                if (mode == 1)
                 {
                     sb.AppendLine($"{pad}            case {i}: return true;");
                     continue;
                 }
-                if (mode == 3)
+                if (mode == 4)
                 {
                     sb.AppendLine($"{pad}            case {i}: return false;");
                     continue;
@@ -70,8 +70,8 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine($"{pad}                if (!changed) changed = {TypeExprEmitter.ChangeExpr(f.MemberName, f.TypeName, "__last_" + i + "_" + j, eps)};");
                 }
                 var forceInt = fields.Max(f => f.ForceIntervalSeconds);
-                sb.AppendLine($"{pad}                return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(" +
-                    $"{TopicMetadataEmitter.PublishModeLiteral(mode)}, nowSec, __hasLast_{i}, changed, __lastPublishSec_{i}, {TypeExprEmitter.FloatLiteral(forceInt < 0 ? 0 : forceInt)});");
+                sb.AppendLine($"{pad}                return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(" +
+                    $"{TopicMetadataEmitter.PolicyLiteral(mode)}, nowSec, __hasLast_{i}, changed, __lastPublishSec_{i}, {TypeExprEmitter.FloatLiteral(forceInt < 0 ? 0 : forceInt)});");
             }
             sb.AppendLine($"{pad}            default: return false;");
             sb.AppendLine($"{pad}        }}");
@@ -87,7 +87,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var fields = topicMap[topics[i]];
                 var mode = topicModes[topics[i]];
-                if (mode == 0 || mode == 3) continue;
+                if (mode == 1 || mode == 4) continue;
                 sb.AppendLine($"{pad}            case {i}:");
                 for (int j = 0; j < fields.Count; j++)
                     sb.AppendLine($"{pad}                __last_{i}_{j} = {TypeExprEmitter.MemberAccess(fields[j].MemberName)};");

@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var contracts = (JArray)response["contracts"];
             var contract = Assert.Single(contracts);
             Assert.Equal("/phase176/input", contract.Value<string>("topic"));
-            Assert.Equal("SubscribeOnly", contract.Value<string>("flowMode"));
+            Assert.Equal("Subscribe", contract.Value<string>("flow"));
             Assert.Equal("json", contract.Value<string>("encoding"));
             Assert.Equal("json-input", contract.Value<string>("schemaName"));
             Assert.Equal(1, contract.Value<int>("writableFieldCount"));
@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var manifest = CreateV2CatalogIntegrityManifest(new[]
             {
                 new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_renamed", "/phase179/integrity", "SubscribeOnly",
+                    "Demo.Input", "_renamed", "/phase179/integrity", "Subscribe",
                     FoxRunSubscriptionProvider.FoxgloveWebSocket,
                     FoxRunRos2QosPreset.Inherit,
                     supportsWebSocket: true,
@@ -292,7 +292,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 handler,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "subscriptionPolicy.MainThreadApplyRateLimitHz",
+                "subscriptionPolicy.DefaultSubscribeRateHz",
                 handler,
                 StringComparison.Ordinal);
             Assert.DoesNotContain("_defaultFoxRunSubscriptionProvider", handler, StringComparison.Ordinal);
@@ -306,9 +306,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             };
             var contracts = new[]
             {
-                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", string.Empty, "json", "json-output", "json-output", "policy", "FixedRate", 10f, 0f, 0f, fields, flowMode: "PublishOnly"),
-                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "json-input", "json", "json-input", "json-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flowMode: "SubscribeOnly"),
-                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "protobuf-input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flowMode: "SubscribeOnly", protobufDescriptorSet: new byte[] { 4, 5, 6 })
+                new FoxRunSchemaContractInfo("Demo.Output", "/phase176/output", string.Empty, "json", "json-output", "json-output", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Publish"),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "json-input", "json", "json-input", "json-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Subscribe"),
+                new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "protobuf-input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, 0f, fields, flow: "Subscribe", protobufDescriptorSet: new byte[] { 4, 5, 6 })
             };
             return new FoxRunSchemaManifestInfo(
                 1,
@@ -340,7 +340,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     0f,
                     0f,
                     fields,
-                    flowMode: "SubscribeOnly",
+                    flow: "Subscribe",
                     protobufDescriptorSet: new byte[descriptorBytes]))
                 .ToArray();
             return new FoxRunSchemaManifestInfo(
@@ -396,7 +396,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var bindings = new[]
             {
                 new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_json", "/phase179/json", "SubscribeOnly",
+                    "Demo.Input", "_json", "/phase179/json", "Subscribe",
                     FoxRunSubscriptionProvider.FoxgloveWebSocket,
                     FoxRunRos2QosPreset.Inherit,
                     supportsWebSocket: true,
@@ -405,7 +405,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     canonicalRosType: string.Empty,
                     copyShapeIdentity: string.Empty),
                 new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_dual", "/phase179/dual", "SubscribeOnly",
+                    "Demo.Input", "_dual", "/phase179/dual", "Subscribe",
                     FoxRunSubscriptionProvider.Inherit,
                     FoxRunRos2QosPreset.SensorData,
                     supportsWebSocket: true,
@@ -414,7 +414,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     canonicalRosType: "std_msgs/msg/String",
                     copyShapeIdentity: "std-string-v1"),
                 new FoxRunSchemaSubscriptionBindingInfo(
-                    "Demo.Input", "_native", "/phase179/native", "SubscribeOnly",
+                    "Demo.Input", "_native", "/phase179/native", "Subscribe",
                     FoxRunSubscriptionProvider.Ros2Native,
                     FoxRunRos2QosPreset.Reliable,
                     supportsWebSocket: true,
@@ -475,7 +475,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 0f,
                 0f,
                 fields,
-                flowMode: "SubscribeOnly",
+                flow: "Subscribe",
                 protobufDescriptorSet: string.Equals(encoding, "protobuf", StringComparison.Ordinal)
                     ? new byte[] { 1, 2, 3 }
                     : null);

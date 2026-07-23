@@ -12,6 +12,13 @@ using System.Threading;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
+    internal enum FoxRunRos2PendingDecision
+    {
+        Apply = 0,
+        Drop = 1,
+        Defer = 2
+    }
+
     /// <summary>
     /// Owns at most one pending and one applied reference. Publishing replaces
     /// and disposes pending ownership on the producer thread; applying replaces
@@ -285,6 +292,121 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         {
                             primaryFailure = ExceptionDispatchInfo.Capture(exception);
                         }
+                    }
+                }
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeAppliers);
+                ExitCurrentOperation(operationMarker);
+                try
+                {
+                    TryCompleteDeferredStop();
+                }
+                catch (Exception exception)
+                {
+                    if (primaryFailure == null)
+                        primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            if (primaryFailure != null)
+                primaryFailure.Throw();
+            return applied;
+        }
+
+        /// <summary>
+        /// Applies, drops, or defers the newest owned candidate after comparing
+        /// it with the currently applied owned value. A deferred candidate is
+        /// restored only when no newer callback value arrived while the main
+        /// thread was deciding; otherwise the newer pending value wins.
+        /// </summary>
+        internal bool TryApplyLatest(
+            Func<T, T, FoxRunRos2PendingDecision> decide,
+            Action<T> apply,
+            Func<T, bool> clearIfOwned)
+        {
+            if (decide == null)
+                throw new ArgumentNullException(nameof(decide));
+            if (apply == null)
+                throw new ArgumentNullException(nameof(apply));
+            if (clearIfOwned == null)
+                throw new ArgumentNullException(nameof(clearIfOwned));
+
+            if (Volatile.Read(ref _stopState) != StopStateRunning)
+                return false;
+
+            Interlocked.Increment(ref _activeAppliers);
+            if (Volatile.Read(ref _stopState) != StopStateRunning)
+            {
+                Interlocked.Decrement(ref _activeAppliers);
+                return false;
+            }
+
+            var operationMarker = EnterCurrentOperation();
+            ExceptionDispatchInfo primaryFailure = null;
+            var applied = false;
+            try
+            {
+                var candidate = Interlocked.Exchange(ref _pending, null);
+                if (candidate != null)
+                {
+                    FoxRunRos2PendingDecision decision;
+                    try
+                    {
+                        decision = decide(candidate, Volatile.Read(ref _applied));
+                    }
+                    catch (Exception exception)
+                    {
+                        TryDispose(candidate);
+                        primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                        decision = FoxRunRos2PendingDecision.Drop;
+                    }
+
+                    if (primaryFailure == null && decision == FoxRunRos2PendingDecision.Defer)
+                    {
+                        var newer = Interlocked.CompareExchange(ref _pending, candidate, null);
+                        if (newer != null && !ReferenceEquals(newer, candidate))
+                            TryDispose(candidate);
+                    }
+                    else if (primaryFailure == null && decision == FoxRunRos2PendingDecision.Drop)
+                    {
+                        TryDispose(candidate);
+                    }
+                    else if (primaryFailure == null && decision == FoxRunRos2PendingDecision.Apply)
+                    {
+                        try
+                        {
+                            apply(candidate);
+                        }
+                        catch (Exception exception)
+                        {
+                            TryClear(clearIfOwned, candidate);
+                            TryDispose(candidate);
+                            primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                        }
+
+                        if (primaryFailure == null)
+                        {
+                            try
+                            {
+                                var previous = Interlocked.Exchange(ref _applied, candidate);
+                                Interlocked.Increment(ref _appliedCount);
+                                if (previous != null && !ReferenceEquals(previous, candidate))
+                                    _dispose(previous);
+                                applied = true;
+                            }
+                            catch (Exception exception)
+                            {
+                                primaryFailure = ExceptionDispatchInfo.Capture(exception);
+                            }
+                        }
+                    }
+                    else if (primaryFailure == null)
+                    {
+                        TryDispose(candidate);
+                        primaryFailure = ExceptionDispatchInfo.Capture(
+                            new InvalidOperationException("Unknown FoxRun ROS2 pending decision."));
                     }
                 }
             }

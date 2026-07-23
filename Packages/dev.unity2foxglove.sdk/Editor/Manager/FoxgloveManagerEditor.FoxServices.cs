@@ -88,8 +88,8 @@ namespace Unity.FoxgloveSDK.Editor
                 return;
             }
 
-            DrawFoxRunTopicGroup("Publish Topics", summaries, "PublishOnly");
-            DrawFoxRunTopicGroup("Subscribe Topics", summaries, "SubscribeOnly");
+            DrawFoxRunTopicGroup("Publish Topics", summaries, "Publish");
+            DrawFoxRunTopicGroup("Subscribe Topics", summaries, "Subscribe");
             DrawFoxRunTopicGroup("Publish And Subscribe Topics", summaries, "PublishAndSubscribe");
             DrawFoxRunNativeUnityContracts(manager);
         }
@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var binding = bindings[i];
                 if (binding == null
-                    || !string.Equals(binding.FlowMode, "SubscribeOnly", System.StringComparison.Ordinal))
+                    || !string.Equals(binding.Flow, "Subscribe", System.StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -142,7 +142,7 @@ namespace Unity.FoxgloveSDK.Editor
             var resolution = FoxRunSubscriptionProviderResolver.Resolve(
                 binding.DeclaredProvider,
                 defaultProvider,
-                FoxRunMode.SubscribeOnly,
+                FoxRunFlow.Subscribe,
                 FoxRunWireEncoding.Inherit,
                 binding.SupportsWebSocket,
                 binding.SupportsRos2Native);

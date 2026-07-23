@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Jianbin Liu and Unity2Foxglove contributors.
 // SPDX-License-Identifier: Apache-2.0
 
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Xunit;
 
@@ -17,10 +18,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "/phase175/count",
                 10f,
                 "Demo.Count",
-                0,
+                (int)FoxRunPolicy.FixedRate,
                 0f,
                 0f,
-                mode: 2,
+                mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: "protobuf",
                 protobufFieldNumber: 17,
                 protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
@@ -46,10 +47,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "/phase175/json_count",
                 10f,
                 "Demo.Count",
-                0,
+                (int)FoxRunPolicy.FixedRate,
                 0f,
                 0f,
-                mode: 2,
+                mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: "json");
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "Counter", new[] { member });
@@ -68,7 +69,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "/phase175/implicit",
                 10f,
                 "",
-                0,
+                (int)FoxRunPolicy.FixedRate,
                 0f,
                 0f,
                 encoding: "inherit",
@@ -103,10 +104,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "/phase175/samples",
                 10f,
                 "",
-                0,
+                (int)FoxRunPolicy.FixedRate,
                 0f,
                 0f,
-                mode: 1,
+                mode: (int)FoxRunFlow.Subscribe,
                 encoding: "protobuf",
                 protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
             var expectedSchemaName = FoxRunProtobufContractBuilder.ResolveMessageFullName(
@@ -140,7 +141,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 });
             var member = new FoxgloveSourceEmitter.TopicMember(
                 "_telemetry", "Demo.Telemetry", "/phase175/telemetry", 10f, "Demo.Telemetry",
-                0, 0f, 0f, mode: 1, encoding: "protobuf", protobufTypeShape: telemetry);
+                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                mode: (int)FoxRunFlow.Subscribe, encoding: "protobuf", protobufTypeShape: telemetry);
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "TelemetrySource", new[] { member });
 
@@ -155,7 +157,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var rootNullable = new FoxgloveSourceEmitter.TopicMember(
                 "_optionalCount", "System.Nullable<System.Int32>", "/phase175/optional", 10f, "Demo.Optional",
-                0, 0f, 0f, encoding: "protobuf", protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
+                (int)FoxRunPolicy.FixedRate, 0f, 0f,
+                encoding: "protobuf", protobufTypeShape: FoxRunProtobufTypeShape.Canonical("int32"));
             var nested = FoxRunProtobufTypeShape.Object(
                 "Demo.OptionalPayload",
                 new[]
@@ -174,7 +177,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 });
             var nestedNullable = new FoxgloveSourceEmitter.TopicMember(
                 "_payload", "Demo.OptionalPayload", "/phase175/optional-payload", 10f, "Demo.OptionalPayload",
-                0, 0f, 0f, encoding: "protobuf", protobufTypeShape: nested);
+                (int)FoxRunPolicy.FixedRate, 0f, 0f, encoding: "protobuf", protobufTypeShape: nested);
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "NullableSource", new[] { rootNullable, nestedNullable });
 

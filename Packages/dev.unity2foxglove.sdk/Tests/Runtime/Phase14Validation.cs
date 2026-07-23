@@ -39,14 +39,14 @@ namespace Unity.FoxgloveSDK.Tests
         // ── [FoxRun] Attribute ──
 
         /// <summary>
-        /// Verifies FoxRunAttribute stores the topic, defaults
-        /// <c>RateHz</c> to 10, and <c>SchemaName</c> to null.
+        /// Verifies FoxRunAttribute stores the topic, leaves
+        /// <c>RateHz</c> unspecified, and defaults <c>SchemaName</c> to null.
         /// </summary>
         static void TestFoxRunAttribute()
         {
             var attr = new Components.FoxRunAttribute("/test/topic");
             Assert(attr.Topic == "/test/topic", "Attribute Topic stored correctly");
-            Assert(attr.RateHz == 10f, "Default RateHz is 10");
+            Assert(attr.RateHz == -1f, "Default RateHz is unspecified");
             Assert(attr.SchemaName == null, "Default SchemaName is null");
         }
 

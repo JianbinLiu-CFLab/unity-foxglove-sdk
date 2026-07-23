@@ -22,7 +22,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunWireEncoding webSocketSubscriptionEncoding,
             FoxRunRos2QosPreset defaultRos2Qos,
             int nativeCopyBudgetBytes,
-            int mainThreadApplyRateLimitHz)
+            int transportAdmissionRateLimitHz,
+            int defaultSubscribeRateHz)
         {
             SessionGeneration = sessionGeneration;
             SubscriptionsEnabled = subscriptionsEnabled;
@@ -30,7 +31,8 @@ namespace Unity.FoxgloveSDK.Components
             WebSocketSubscriptionEncoding = webSocketSubscriptionEncoding;
             DefaultRos2Qos = defaultRos2Qos;
             NativeCopyBudgetBytes = nativeCopyBudgetBytes;
-            MainThreadApplyRateLimitHz = mainThreadApplyRateLimitHz;
+            TransportAdmissionRateLimitHz = transportAdmissionRateLimitHz;
+            DefaultSubscribeRateHz = defaultSubscribeRateHz;
         }
 
         /// <summary>Monotonic identifier for the captured subscription session.</summary>
@@ -54,8 +56,14 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Maximum copied native message data retained before main-thread apply.</summary>
         public int NativeCopyBudgetBytes { get; }
 
-        /// <summary>Per-topic main-thread apply-rate limit in hertz.</summary>
-        public int MainThreadApplyRateLimitHz { get; }
+        /// <summary>Frozen per-topic transport-admission safety limit in hertz.</summary>
+        public int TransportAdmissionRateLimitHz { get; }
+
+        /// <summary>
+        /// Frozen default subscription frequency inherited by a
+        /// subscription declaration that does not specify a positive RateHz.
+        /// </summary>
+        public int DefaultSubscribeRateHz { get; }
 
         internal static FoxRunSubscriptionSessionPolicy Disabled(ulong generation)
             => new(
@@ -65,6 +73,7 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunWireEncoding.Protobuf,
                 FoxRunRos2QosPreset.Default,
                 FoxRunWireEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes,
+                1,
                 1);
     }
 
@@ -85,7 +94,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunWireEncoding webSocketSubscriptionEncoding,
             FoxRunRos2QosPreset defaultRos2Qos,
             int nativeCopyBudgetBytes,
-            int mainThreadApplyRateLimitHz)
+            int transportAdmissionRateLimitHz,
+            int defaultSubscribeRateHz)
         {
             if (Current.SubscriptionsEnabled)
                 return Current;
@@ -105,7 +115,8 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunWireEncodingResolver.ValidateManagerDefault(webSocketSubscriptionEncoding),
                 FoxRunRos2QosResolver.NormalizeManagerDefault(defaultRos2Qos),
                 FoxRunWireEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(nativeCopyBudgetBytes),
-                Math.Max(1, mainThreadApplyRateLimitHz));
+                Math.Max(1, transportAdmissionRateLimitHz),
+                Math.Max(1, defaultSubscribeRateHz));
             return Current;
         }
 

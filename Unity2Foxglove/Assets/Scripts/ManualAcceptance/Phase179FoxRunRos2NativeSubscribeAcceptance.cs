@@ -69,28 +69,28 @@ public sealed partial class Phase179FoxRunRos2NativeSubscribeAcceptance : MonoBe
     // main thread and no callback-owned reference is stored separately.
     [FoxRun(
         StringTopic,
-        Mode = FoxRunMode.SubscribeOnly,
+        Mode = FoxRunFlow.Subscribe,
         SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
         Ros2Qos = FoxRunRos2QosPreset.Reliable)]
     private std_msgs.msg.String _inputString;
 
     [FoxRun(
         TwistTopic,
-        Mode = FoxRunMode.SubscribeOnly,
+        Mode = FoxRunFlow.Subscribe,
         SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
         Ros2Qos = FoxRunRos2QosPreset.Reliable)]
     private geometry_msgs.msg.Twist _inputTwist;
 
     [FoxRun(
         JoyTopic,
-        Mode = FoxRunMode.SubscribeOnly,
+        Mode = FoxRunFlow.Subscribe,
         SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
         Ros2Qos = FoxRunRos2QosPreset.SensorData)]
     private sensor_msgs.msg.Joy _inputJoy;
 
     [FoxRun(
         ImuTopic,
-        Mode = FoxRunMode.SubscribeOnly,
+        Mode = FoxRunFlow.Subscribe,
         SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
         Ros2Qos = FoxRunRos2QosPreset.SensorData)]
     private sensor_msgs.msg.Imu _inputImu;

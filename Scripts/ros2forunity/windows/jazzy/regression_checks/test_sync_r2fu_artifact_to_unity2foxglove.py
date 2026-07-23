@@ -75,6 +75,24 @@ class JazzyRuntimeSelectionTests(unittest.TestCase):
             self.assertEqual([sync.PACKAGE_NAME], sorted(lock["dependencies"]))
             self.assertEqual([sync.PACKAGE_NAME], result["lockRuntimePackages"])
 
+    def test_explicit_ros2_bin_is_forwarded_to_the_runtime_builder(self) -> None:
+        """An isolated worktree can reuse the repository-local ROS2 entrypoint explicitly."""
+        sync = load_sync_module()
+        ros2_bin = Path(r"D:\repo\ros2-windows\ros2_jazzy\bin")
+
+        args = sync.parse_args(["--ros2-bin", str(ros2_bin)])
+        command = sync.build_runtime_command(
+            Path("build_r2fu_runtime_package.py"),
+            Path("runtime.zip"),
+            Path("inventory.json"),
+            Path("runtime-package"),
+            args.ros2_bin,
+        )
+
+        self.assertEqual(ros2_bin, args.ros2_bin)
+        self.assertEqual("--ros2-bin", command[-2])
+        self.assertEqual(str(ros2_bin), command[-1])
+
 
 if __name__ == "__main__":
     unittest.main()

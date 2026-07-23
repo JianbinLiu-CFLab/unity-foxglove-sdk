@@ -4,7 +4,7 @@ This source-only sample demonstrates the existing ROS2 message input path. It le
 
 ## Contract
 
-Add the imported native subscribe sample component to a GameObject in a scene that has a `FoxgloveManager`. Configure the Manager with **Enable FoxRun Subscriptions** enabled and default subscription provider **ROS2 Native (R2FU)**. The component exposes these explicit `SubscribeOnly` contracts; its serialized topic fields retain source-defined defaults and can be inspected or changed in Unity:
+Add the imported native subscribe sample component to a GameObject in a scene that has a `FoxgloveManager`. Configure the Manager with **Enable FoxRun Subscriptions** enabled and default subscription provider **ROS2 Native (R2FU)**. The component exposes these explicit `Subscribe` contracts; its serialized topic fields retain source-defined defaults and can be inspected or changed in Unity:
 
 | ROS2 type | Inspector topic field | QoS preset |
 | --- | --- | --- |
@@ -118,5 +118,5 @@ Unity2Foxglove.Ros2ForUnity.Native
 
 - Foxglove Desktop is unrelated to native ROS2 traffic. These topics do not appear in **FoxRun Publish** and do not require a Foxglove connection.
 - ROS domain IDs isolate discovery; they are not authentication. Use the network and ROS2 security controls appropriate to the deployment.
-- This sample supports existing compiled `.msg` types and native `SubscribeOnly` only.
+- This sample supports existing compiled `.msg` types and native `Subscribe` only.
 - Arbitrary FoxRun DTO-to-custom-ROS2-message generation plus native Publish Data/bidirectional contracts are future work and are not available here.

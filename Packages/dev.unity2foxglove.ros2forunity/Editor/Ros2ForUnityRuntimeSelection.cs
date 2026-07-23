@@ -569,8 +569,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (string.IsNullOrWhiteSpace(projectDirectory))
                 throw new InvalidOperationException("Could not resolve the Unity project directory.");
 
-            if (EditorApplication.isPlayingOrWillChangePlaymode)
-                throw new InvalidOperationException("Cannot restart Unity while Play Mode is active or changing.");
+            if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                throw new InvalidOperationException(
+                    "Cannot restart Unity while Play Mode, compilation, or package refresh is active.");
+            }
 
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
                 return;
@@ -595,33 +598,38 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (string.IsNullOrWhiteSpace(editorExecutable) || !File.Exists(editorExecutable))
                 throw new InvalidOperationException("Could not resolve the current Unity Editor executable for a clean restart.");
 
-            var startInfo = new ProcessStartInfo
+            var replacementEnvironment = new ProcessStartInfo
             {
-                FileName = editorExecutable,
-                Arguments = "-projectPath " + QuoteEditorArgument(projectDirectory),
-                WorkingDirectory = projectDirectory,
                 UseShellExecute = false,
             };
 
-            startInfo.EnvironmentVariables[NativeLibraryPathVariableName()] =
+            replacementEnvironment.EnvironmentVariables[NativeLibraryPathVariableName()] =
                 BuildCleanRestartPath(projectDirectory, runtime, customTypesupport);
             if (!string.IsNullOrWhiteSpace(runtime.RosDistro))
-                startInfo.EnvironmentVariables["ROS_DISTRO"] = runtime.RosDistro;
+                replacementEnvironment.EnvironmentVariables["ROS_DISTRO"] = runtime.RosDistro;
 
             var communicationMode = GetCommunicationModeForRuntime(runtime);
             var rmwImplementation = GetRmwImplementationForCommunicationMode(runtime, communicationMode);
             if (!string.IsNullOrWhiteSpace(rmwImplementation))
-                startInfo.EnvironmentVariables["RMW_IMPLEMENTATION"] = rmwImplementation;
+                replacementEnvironment.EnvironmentVariables["RMW_IMPLEMENTATION"] = rmwImplementation;
 
             Ros2ForUnityZenohRouterSettings.ApplyToRestartProcess(
                 projectDirectory,
                 runtime,
                 rmwImplementation,
-                startInfo);
+                replacementEnvironment);
+
+            var restartRelayStartInfo = Ros2ForUnityEditorRestartRelay.CreateStartInfo(
+                Application.platform == RuntimePlatform.WindowsEditor,
+                ResolveRestartRelayExecutable(),
+                Process.GetCurrentProcess().Id,
+                editorExecutable,
+                projectDirectory,
+                replacementEnvironment);
 
             try
             {
-                if (Process.Start(startInfo) == null)
+                if (Process.Start(restartRelayStartInfo) == null)
                     throw new InvalidOperationException("Unity did not start a replacement Editor process.");
             }
             catch (Exception ex) when (!(ex is InvalidOperationException))
@@ -630,6 +638,31 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
 
             EditorApplication.Exit(0);
+        }
+
+        private static string ResolveRestartRelayExecutable()
+        {
+            if (Application.platform == RuntimePlatform.WindowsEditor)
+            {
+                var systemDirectory = Environment.GetFolderPath(Environment.SpecialFolder.System);
+                var powershell = Path.Combine(
+                    systemDirectory,
+                    "WindowsPowerShell",
+                    "v1.0",
+                    "powershell.exe");
+                if (File.Exists(powershell))
+                    return powershell;
+
+                throw new InvalidOperationException(
+                    "Could not resolve the Windows PowerShell executable required for a clean Unity restart.");
+            }
+
+            const string posixShell = "/bin/sh";
+            if (File.Exists(posixShell))
+                return posixShell;
+
+            throw new InvalidOperationException(
+                "Could not resolve the POSIX shell required for a clean Unity restart.");
         }
 
         private static string BuildCleanRestartPath(
@@ -753,9 +786,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
 
         private static string NativeLibraryPathVariableName()
             => Application.platform == RuntimePlatform.WindowsEditor ? "PATH" : "LD_LIBRARY_PATH";
-
-        private static string QuoteEditorArgument(string value)
-            => "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
 
         public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes(string projectDirectory)
         {

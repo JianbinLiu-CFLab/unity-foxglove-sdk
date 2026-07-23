@@ -49,12 +49,13 @@ namespace Unity.FoxgloveSDK.Editor
                 if (manager != null && manager.ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled)
                 {
                     EditorGUILayout.HelpBox(
-                        "Subscription-policy changes apply after subscriptions are re-enabled. The active FoxRun session keeps its captured provider, WebSocket encoding, QoS, copy budget, and rate.",
+                        "Subscription-policy changes apply after subscriptions are re-enabled. The active FoxRun session keeps its captured provider, WebSocket encoding, QoS, copy budget, maximum subscribe rate, and default subscribe rate.",
                         MessageType.Info);
                 }
 
                 FoxgloveManagerInspectorLayout.Subheader("Subscription Delivery");
-                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Subscription Rate Limit Hz (per Topic)");
+                DrawProperty("_foxRunDefaultSubscribeRateHz", "Default Subscribe Rate Hz");
+                DrawProperty("_foxRunInboundMaxMessagesPerSecondPerTopic", "Maximum Subscribe Rate Hz (per Topic)");
 
                 if (showWebSocket)
                 {

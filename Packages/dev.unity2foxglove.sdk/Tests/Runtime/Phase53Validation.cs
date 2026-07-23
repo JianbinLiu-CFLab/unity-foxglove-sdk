@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
             SourceCache.Clear();
             CachedRepoRoot = null;
 
-            VerifyOnTriggerModeContract();
+            VerifyTriggerModeContract();
             VerifyEmitterGeneratesTriggerMethods();
             VerifyEmitterSkipsTimerOnlyTriggers();
             VerifyEmitterRoutesMemberTriggerTopics();
@@ -43,22 +43,22 @@ namespace Unity.FoxgloveSDK.Tests
             Console.WriteLine($"Phase 53: {_passed} checks passed.");
         }
 
-        private static void VerifyOnTriggerModeContract()
+        private static void VerifyTriggerModeContract()
         {
-            Check((int)FoxRunPublishMode.OnTrigger == 3,
-                "53A-1: OnTrigger enum value is stable at 3");
+            Check((int)FoxRunPolicy.Trigger == 4,
+                "53A-1: Trigger enum value is stable at 4");
 
-            var shouldPublish = FoxRunPublishPolicy.ShouldPublish(
-                FoxRunPublishMode.OnTrigger, 10, false, true, 0, 0);
+            var shouldPublish = FoxRunUpdatePolicy.ShouldPublish(
+                FoxRunPolicy.Trigger, 10, false, true, 0, 0);
             Check(!shouldPublish,
-                "53A-2: OnTrigger never publishes from scheduled policy ticks");
+                "53A-2: Trigger never publishes from scheduled policy ticks");
 
-            Check(FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.FixedRate, 10, true, false, 8, 0),
+            Check(FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.FixedRate, 10, true, false, 8, 0),
                 "53A-3a: FixedRate behavior remains unchanged");
-            Check(!FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, 10, true, false, 8, 0),
-                "53A-3b: OnChange unchanged values still skip");
-            Check(FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChangeOrInterval, 15, true, false, 10, 5),
-                "53A-3c: OnChangeOrInterval heartbeat still publishes");
+            Check(!FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, 10, true, false, 8, 0),
+                "53A-3b: Change unchanged values still skip");
+            Check(FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.ChangeOrInterval, 15, true, false, 10, 5),
+                "53A-3c: ChangeOrInterval heartbeat still publishes");
         }
 
         private static void VerifyEmitterGeneratesTriggerMethods()
@@ -66,11 +66,11 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "TriggerSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_state", "System.String", "/events/state", 10f, "",
-                    (int)FoxRunPublishMode.OnTrigger, 0f, 0f)
+                    (int)FoxRunPolicy.Trigger, 0f, 0f)
             });
 
             Check(source.Contains("public bool FoxRun_Trigger_state()"),
-                "53B-1: emitter includes member trigger method for OnTrigger field");
+                "53B-1: emitter includes member trigger method for Trigger field");
             Check(source.Contains("public bool FoxRun_TriggerAll()"),
                 "53B-2: emitter includes TriggerAll when any trigger topic exists");
             Check(source.Contains("FoxgloveLogHub.Trigger(this, 0)"),
@@ -84,7 +84,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "TimerOnlySource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_value", "System.Int32", "/debug/value", 10f, "",
-                    (int)FoxRunPublishMode.OnChange, 0f, 0f)
+                    (int)FoxRunPolicy.Change, 0f, 0f)
             });
 
             Check(!source.Contains("FoxRun_Trigger_value") && !source.Contains("FoxRun_TriggerAll"),
@@ -98,11 +98,11 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "MultiTriggerSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.Int32", "/events/a", 10f, "",
-                    (int)FoxRunPublishMode.OnTrigger, 0f, 0f),
+                    (int)FoxRunPolicy.Trigger, 0f, 0f),
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.Int32", "/events/b", 10f, "",
-                    (int)FoxRunPublishMode.OnTrigger, 0f, 0f),
+                    (int)FoxRunPolicy.Trigger, 0f, 0f),
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.Int32", "/debug/timer", 10f, "",
-                    (int)FoxRunPublishMode.FixedRate, 0f, 0f)
+                    (int)FoxRunPolicy.FixedRate, 0f, 0f)
             });
 
             var body = ExtractMethodBody(source, "FoxRun_Trigger_event");
@@ -117,13 +117,13 @@ namespace Unity.FoxgloveSDK.Tests
             var source = FoxgloveSourceEmitter.EmitClass("", "MixedTriggerSource", new[]
             {
                 new FoxgloveSourceEmitter.TopicMember("_event", "System.String", "/events/mixed", 10f, "",
-                    (int)FoxRunPublishMode.OnTrigger, 0f, 0f),
+                    (int)FoxRunPolicy.Trigger, 0f, 0f),
                 new FoxgloveSourceEmitter.TopicMember("_counter", "System.Int32", "/events/mixed", 10f, "",
-                    (int)FoxRunPublishMode.OnChange, 0f, 0f)
+                    (int)FoxRunPolicy.Change, 0f, 0f)
             });
 
-            Check(source.Contains("FoxRunPublishMode.OnTrigger"),
-                "53C-1: mixed topic with any trigger member reports OnTrigger topic metadata");
+            Check(source.Contains("FoxRunPolicy.Trigger"),
+                "53C-1: mixed topic with any trigger member reports Trigger topic metadata");
             Check(source.Contains("case 0: return false;"),
                 "53C-2: mixed trigger topic is skipped by scheduled policy path");
             Check(source.Contains("public bool FoxRun_Trigger_event()"),

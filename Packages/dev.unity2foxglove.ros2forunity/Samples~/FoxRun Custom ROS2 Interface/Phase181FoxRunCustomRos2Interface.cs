@@ -64,20 +64,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         [Tooltip("Unity publishes this custom DTO through the selected native ROS2 typesupport add-on.")]
         [FoxRun(
             NativePublishTopic,
-            Mode = FoxRunMode.PublishOnly,
+            Mode = FoxRunFlow.Publish,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
-        [SerializeField] private Phase181State _nativePublishOnly = CreateState("publish-only", 1);
+        [SerializeField] private Phase181State _nativePublish = CreateState("publish-only", 1);
 
         [Tooltip("The selected native ROS2 runtime applies this custom DTO on Unity's main thread.")]
         [FoxRun(
             NativeSubscribeTopic,
-            Mode = FoxRunMode.SubscribeOnly,
+            Mode = FoxRunFlow.Subscribe,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         [SerializeField] private Phase181State _inputPort;
 
         /// <summary>
-        /// Gets the latest custom DTO applied through the native SubscribeOnly input port.
+        /// Gets the latest custom DTO applied through the native Subscribe input port.
         /// Keeping this observable makes the sample's ownership boundary explicit.
         /// </summary>
         public Phase181State NativeInputPort => _inputPort;
@@ -86,7 +86,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
 #pragma warning disable FOXRUN400 // The sample deliberately documents its bidirectional ownership and peer protocol.
         [FoxRun(
             NativeBidirectionalTopic,
-            Mode = FoxRunMode.PublishAndSubscribe,
+            Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunWireEncoding.Json,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
@@ -95,7 +95,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
 
         private void Reset()
         {
-            _nativePublishOnly = CreateState("publish-only", 1);
+            _nativePublish = CreateState("publish-only", 1);
             _inputPort = null;
             _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
         }

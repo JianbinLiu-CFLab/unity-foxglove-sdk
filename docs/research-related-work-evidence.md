@@ -6,7 +6,7 @@ It is a citation map for readers and reviewers. Each source is summarized by its
 
 ## Positioning Summary
 
-> The reviewed public literature, official documentation, and project documentation did not identify another Unity-native package that combines an in-process Foxglove WebSocket server, AOT-safe attribute-driven telemetry generation, MCAP recording/replay, and slow-client transport hardening in a single Unity package.
+> The reviewed public literature, official documentation, and project documentation did not identify another Unity-native package that combines an in-process Foxglove WebSocket server, AOT-safe attribute-driven bidirectional telemetry bindings, MCAP recording/replay, and slow-client transport hardening in a single Unity package.
 
 This is a scoped literature and project-survey claim. The contribution is the integration and validation of known techniques inside Unity, under IL2CPP/AOT constraints, for robotics visualization workflows.
 
@@ -21,10 +21,10 @@ The boundary is equally important:
 
 | Source | Link | Evidence Role | Boundary |
 | --- | --- | --- | --- |
-| Unity Manual: Scripting restrictions | https://docs.unity.cn/Manual/ScriptingRestrictions.html | Unity AOT platforms cannot implement `System.Reflection.Emit`; reflection-only usage can be affected by stripping; IL2CPP/AOT needs compile-time evidence. | Technical basis for FoxRun's generated publisher path; not a novelty source by itself. |
+| Unity Manual: Scripting restrictions | https://docs.unity.cn/Manual/ScriptingRestrictions.html | Unity AOT platforms cannot implement `System.Reflection.Emit`; reflection-only usage can be affected by stripping; IL2CPP/AOT needs compile-time evidence. | Technical basis for FoxRun's generated publish-and-subscribe binding path; not a novelty source by itself. |
 | Unity Manual: Roslyn analyzers and source generators | https://docs.unity.cn/Manual/roslyn-analyzers.html | Unity supports Roslyn analyzers/source generators as an additional script-compilation step, with Unity-specific packaging constraints. | Supports Editor-time generation feasibility; not the IL2CPP physical-file fallback by itself. |
-| System.Text.Json reflection versus source generation | https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation | Microsoft documents reflection metadata collection, source generation, reduced memory/startup cost, trimming support, and Native AOT constraints. | General .NET source-generation precedent; serialization contracts, not Unity telemetry publishers. |
-| MessagePack-CSharp AOT code generation | https://github.com/MessagePack-CSharp/MessagePack-CSharp | Shows Unity/Xamarin AOT support through source-generated formatters and explains that dynamic code generation is limited to Mono/.NET Framework targets. | Strong AOT-source-generation precedent, but focused on serialization rather than runtime telemetry publishing. |
+| System.Text.Json reflection versus source generation | https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/reflection-vs-source-generation | Microsoft documents reflection metadata collection, source generation, reduced memory/startup cost, trimming support, and Native AOT constraints. | General .NET source-generation precedent; serialization contracts, not bidirectional Unity telemetry bindings. |
+| MessagePack-CSharp AOT code generation | https://github.com/MessagePack-CSharp/MessagePack-CSharp | Shows Unity/Xamarin AOT support through source-generated formatters and explains that dynamic code generation is limited to Mono/.NET Framework targets. | Strong AOT-source-generation precedent, but focused on serialization rather than runtime telemetry binding and main-thread application. |
 | Foxglove SDK WebSocket Server guide | https://docs.foxglove.dev/docs/sdk/websocket-server | Official WebSocket server capability surface: default `127.0.0.1:8765`, status messages, time, and PlaybackControl semantics. | Official target semantics for Unity2Foxglove parity; not Unity-specific. |
 | foxglove_bridge ROS package docs | https://docs.ros.org/en/iron/p/foxglove_bridge/index.html | High-performance ROS 1/ROS 2 WebSocket bridge using the Foxglove protocol, written in C++, with parameters, graph introspection, and ROS schema support. | Strong comparison point: official/ROS bridge path, but requires ROS stack and is not embedded in Unity. |
 | rosbridge_suite GitHub | https://github.com/robotwebtools/rosbridge_suite | JSON interface to ROS over WebSocket/TCP for topics, services, and parameters. | Classic external ROS bridge; useful contrast for JSON/ROS bridge workflows and performance/visibility limitations. |
@@ -55,7 +55,7 @@ Core sources:
 
 Positioning:
 
-Existing bridge systems make ROS data visible to web or Foxglove clients, usually by running a separate ROS node/process. `foxglove_bridge` is the strongest protocol-level comparison because it uses the Foxglove WebSocket protocol and supports parameters and graph introspection. Unity2Foxglove differs by placing the Foxglove-compatible server directly inside Unity and by targeting Unity publishers, replay, and Inspector workflows without requiring a ROS runtime.
+Existing bridge systems make ROS data visible to web or Foxglove clients, usually by running a separate ROS node/process. `foxglove_bridge` is the strongest protocol-level comparison because it uses the Foxglove WebSocket protocol and supports parameters and graph introspection. Unity2Foxglove differs by placing the Foxglove-compatible server directly inside Unity and by targeting generated Unity publish/subscribe bindings, replay, and Inspector workflows without requiring a ROS runtime.
 
 ### Unity-ROS And Digital-Twin Integration
 
@@ -79,7 +79,7 @@ Core sources:
 
 Positioning:
 
-Rerun is the closest developer-experience neighbor: simple logging calls, multimodal data, temporal visualization, live/file workflows, and robotics/Physical AI positioning. Unity2Foxglove's distinction is Unity-specific: `[FoxRun]` field/property attributes, AOT-safe generated publisher paths, Foxglove protocol compatibility, and MCAP recording/replay inside a Unity package.
+Rerun is the closest developer-experience neighbor: simple logging calls, multimodal data, temporal visualization, live/file workflows, and robotics/Physical AI positioning. Unity2Foxglove's distinction is Unity-specific: `[FoxRun]` field/property attributes, AOT-safe generated publish/subscribe bindings with main-thread input application, Foxglove protocol compatibility, and MCAP recording/replay inside a Unity package.
 
 ### MCAP Ecosystem And Replay
 
@@ -90,7 +90,7 @@ Core sources:
 
 Positioning:
 
-MCAP already has a broad robotics ecosystem and readers/writers in several languages. Unity2Foxglove brings MCAP recording/replay into Unity workflows rather than defining the format itself. Its current replay model is snapshot-oriented scene reproduction and WebSocket playback, not deterministic execution replay.
+MCAP already has a broad robotics ecosystem and readers/writers in several languages. Unity2Foxglove brings MCAP recording/replay into Unity workflows rather than defining the format itself. Its current replay model lets Foxglove own the Remote files timeline while Unity combines forward range application with latest-at scene snapshots and deterministic pose-source arbitration. It is state reproduction, not deterministic execution replay.
 
 ### Unity Capture, Analytics, And XR Replay
 
@@ -116,7 +116,7 @@ Core sources:
 
 Positioning:
 
-AOT-safe source generation is a known and important pattern. Unity2Foxglove's narrower contribution is applying a dual-host/shared-emitter generation model to Unity telemetry publishing: Editor Roslyn generation for ergonomics plus physical `.g.cs` fallback for IL2CPP player builds.
+AOT-safe source generation is a known and important pattern. Unity2Foxglove's narrower contribution is applying a dual-host/shared-emitter generation model to bidirectional Unity telemetry bindings: Editor Roslyn generation for ergonomics plus physical `.g.cs` fallback for IL2CPP Player builds, with direct output access and generated staged main-thread input application.
 
 ## Claim-To-Source Map
 
@@ -128,7 +128,7 @@ AOT-safe source generation is a known and important pattern. Unity2Foxglove's na
 | Unity robotics pipelines commonly rely on ROS/ROS2 middleware | Unity ROS-TCP-Connector; Unity Robotics Hub; SimNav-XR; Unity and ROS as Digital and Communication Layer | These support the "external middleware/bridge" contrast. |
 | Foxglove and ROS bridges already exist | Foxglove WebSocket Server guide; `foxglove_bridge`; `rosbridge_suite` | Positions Unity2Foxglove as an in-Unity bridge, not as a replacement for ROS bridges. |
 | MCAP and Foxglove are existing ecosystems | MCAP getting started; Foxglove WebSocket Server guide; public repository evidence | Unity2Foxglove integrates with these ecosystems from Unity. |
-| Rerun is the closest declarative logging comparison | Rerun docs/GitHub | Frames FoxRun as a Unity/Foxglove-specific declarative telemetry layer, not as the first declarative visualization API. |
+| Rerun is the closest declarative logging comparison | Rerun docs/GitHub | Frames FoxRun as a Unity/Foxglove-specific declarative bidirectional telemetry layer, not as the first declarative visualization API. |
 | Unity capture/replay tools exist but target different artifacts | Unity Recorder; XREcho; psychomotor VR replay paper | Distinguishes media/XR replay from robotics telemetry replay and Foxglove playback. |
 | Unity2Foxglove contribution is a combined package, not isolated techniques | All verified sources + public repository evidence below | Tie the novelty claim to integration: in-process Foxglove server + AOT FoxRun + MCAP + backpressure. |
 
@@ -138,8 +138,8 @@ The following tracked files provide project-side evidence for claims made in thi
 
 - `PAPER.md` - current research positioning and related-work boundary.
 - `README.md` - public positioning, feature list, validation summary, release/test commands, and limitations.
-- `docs/research-shared-emitter-architecture.md` - FoxRun shared-generation-model, shared-emitter, and dual-host generation architecture.
-- `docs/research-remote-timeline-scene-reproduction.md` - replay/timeline scene reproduction research note.
+- `docs/research-shared-emitter-architecture.md` - FoxRun shared-generation-model, bidirectional shared-emitter, and dual-host generation architecture.
+- `docs/research-remote-timeline-scene-reproduction.md` - Foxglove-owned timeline and deterministic Unity scene-reproduction architecture.
 - `docs/research-related-work-evidence.md` - this citation map.
 - `Packages/dev.unity2foxglove.sdk/README.md` - package-level user-facing feature and setup summary.
 - `Packages/dev.unity2foxglove.sdk/Documentation~/en/10_Architecture.md` - runtime, protocol, MCAP, replay, FoxRun, transport, and security architecture.

@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 1,
                 Digest,
                 "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                FoxRunMode.PublishAndSubscribe);
+                FoxRunFlow.PublishAndSubscribe);
 
             Assert.True(contract.HasCompleteMetadata);
             Assert.True(contract.SupportsNativeOutput);

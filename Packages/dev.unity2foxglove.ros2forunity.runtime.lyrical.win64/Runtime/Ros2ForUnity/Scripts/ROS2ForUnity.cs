@@ -56,8 +56,10 @@ internal class ROS2ForUnity : IDisposable
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     [DllImport("ucrtbase.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
     private static extern int _wputenv_s(string name, string value);
+#endif
 #endif
 #endif
 #endif

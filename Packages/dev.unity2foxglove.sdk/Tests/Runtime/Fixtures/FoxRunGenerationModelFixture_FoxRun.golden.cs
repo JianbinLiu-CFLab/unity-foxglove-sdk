@@ -20,13 +20,13 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
         {
             switch (index)
             {
-                case 0: return new FoxgloveLogTopicInfo("/debug/array", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
-                case 1: return new FoxgloveLogTopicInfo("/debug/extra", 0f, FoxRunPublishMode.FixedRate, 0f, 0f);
-                case 2: return new FoxgloveLogTopicInfo("/debug/list", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
-                case 3: return new FoxgloveLogTopicInfo("/debug/nullable", 10f, FoxRunPublishMode.OnChange, 0f, 0f);
-                case 4: return new FoxgloveLogTopicInfo("/debug/trigger", 10f, FoxRunPublishMode.OnTrigger, 0f, 0f);
-                case 5: return new FoxgloveLogTopicInfo("/debug/value", 10f, FoxRunPublishMode.OnChange, 0.01f, 0f);
-                case 6: return new FoxgloveLogTopicInfo("/debug/vector", 10f, FoxRunPublishMode.OnChange, 0.001f, 0f);
+                case 0: return new FoxgloveLogTopicInfo("/debug/array", 10f, FoxRunPolicy.Change, 0f, 0f);
+                case 1: return new FoxgloveLogTopicInfo("/debug/extra", 10f, FoxRunPolicy.FixedRate, 0f, 0f);
+                case 2: return new FoxgloveLogTopicInfo("/debug/list", 10f, FoxRunPolicy.Change, 0f, 0f);
+                case 3: return new FoxgloveLogTopicInfo("/debug/nullable", 10f, FoxRunPolicy.Change, 0f, 0f);
+                case 4: return new FoxgloveLogTopicInfo("/debug/trigger", 10f, FoxRunPolicy.Trigger, 0f, 0f);
+                case 5: return new FoxgloveLogTopicInfo("/debug/value", 10f, FoxRunPolicy.Change, 0.01f, 0f);
+                case 6: return new FoxgloveLogTopicInfo("/debug/vector", 10f, FoxRunPolicy.Change, 0.001f, 0f);
                 default: return default;
             }
         }
@@ -54,43 +54,43 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             switch (topicIndex)
             {
                 case 0:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
                         mgr.PublishProto("/debug/array", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_ec5506f3", __BuildFoxRunProtobuf_0(), nowNs);
                     else
                         mgr.PublishJson("/debug/array", "", new Dictionary<string, object> { ["samples"] = this._samples }, nowNs);
                     break;
                 case 1:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
                         mgr.PublishProto("/debug/extra", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_24e6e6b0", __BuildFoxRunProtobuf_1(), nowNs);
                     else
                         mgr.PublishJson("/debug/extra", "", new Dictionary<string, object> { ["extra"] = this._extra }, nowNs);
                     break;
                 case 2:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
                         mgr.PublishProto("/debug/list", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_38cbea4e", __BuildFoxRunProtobuf_2(), nowNs);
                     else
                         mgr.PublishJson("/debug/list", "", new Dictionary<string, object> { ["sampleList"] = this._sampleList }, nowNs);
                     break;
                 case 3:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
                         mgr.PublishProto("/debug/nullable", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_432b270f", __BuildFoxRunProtobuf_3(), nowNs);
                     else
                         mgr.PublishJson("/debug/nullable", "", new Dictionary<string, object> { ["optionalCount"] = this._optionalCount }, nowNs);
                     break;
                 case 4:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
                         mgr.PublishProto("/debug/trigger", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_307d8952", __BuildFoxRunProtobuf_4(), nowNs);
                     else
                         mgr.PublishJson("/debug/trigger", "", new Dictionary<string, object> { ["trigger"] = this._trigger }, nowNs);
                     break;
                 case 5:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
                         mgr.PublishProto("/debug/value", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_7d41f57b", __BuildFoxRunProtobuf_5(), nowNs);
                     else
                         mgr.PublishJson("/debug/value", "", new Dictionary<string, object> { ["value"] = this._value, ["valueMirror"] = this._valueMirror }, nowNs);
                     break;
                 case 6:
-                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunMode.PublishOnly) == FoxRunWireEncoding.Protobuf)
+                    if (mgr.ResolveFoxRunWireEncoding(FoxRunWireEncoding.Inherit, FoxRunFlow.Publish) == FoxRunWireEncoding.Protobuf)
                         mgr.PublishProto("/debug/vector", "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_efb474f9", __BuildFoxRunProtobuf_6(), nowNs);
                     else
                         mgr.PublishJson("/debug/vector", "", new Dictionary<string, object> { ["position"] = new Dictionary<string, object> { ["x"] = this._position.x, ["y"] = this._position.y, ["z"] = this._position.z } }, nowNs);
@@ -445,26 +445,26 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                 case 0:
                     changed = !__hasLast_0;
                     if (!changed) changed = !EqualityComparer<float[]>.Default.Equals(this._samples, __last_0_0);
-                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_0, changed, __lastPublishSec_0, 0f);
+                    return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, nowSec, __hasLast_0, changed, __lastPublishSec_0, 0f);
                 case 1: return true;
                 case 2:
                     changed = !__hasLast_2;
                     if (!changed) changed = !EqualityComparer<System.Collections.Generic.List<float>>.Default.Equals(this._sampleList, __last_2_0);
-                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_2, changed, __lastPublishSec_2, 0f);
+                    return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, nowSec, __hasLast_2, changed, __lastPublishSec_2, 0f);
                 case 3:
                     changed = !__hasLast_3;
                     if (!changed) changed = !EqualityComparer<int?>.Default.Equals(this._optionalCount, __last_3_0);
-                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_3, changed, __lastPublishSec_3, 0f);
+                    return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, nowSec, __hasLast_3, changed, __lastPublishSec_3, 0f);
                 case 4: return false;
                 case 5:
                     changed = !__hasLast_5;
                     if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._value, __last_5_0, 0f);
                     if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._valueMirror, __last_5_1, 0.00999999978f);
-                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_5, changed, __lastPublishSec_5, 0f);
+                    return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, nowSec, __hasLast_5, changed, __lastPublishSec_5, 0f);
                 case 6:
                     changed = !__hasLast_6;
                     if (!changed) changed = global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.x, __last_6_0.x, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.y, __last_6_0.y, 0.00100000005f) || global::Unity.FoxgloveSDK.Components.FoxRunChangeHelper.FloatChanged(this._position.z, __last_6_0.z, 0.00100000005f);
-                    return Unity.FoxgloveSDK.Util.FoxRunPublishPolicy.ShouldPublish(FoxRunPublishMode.OnChange, nowSec, __hasLast_6, changed, __lastPublishSec_6, 0f);
+                    return Unity.FoxgloveSDK.Util.FoxRunUpdatePolicy.ShouldPublish(FoxRunPolicy.Change, nowSec, __hasLast_6, changed, __lastPublishSec_6, 0f);
                 default: return false;
             }
         }

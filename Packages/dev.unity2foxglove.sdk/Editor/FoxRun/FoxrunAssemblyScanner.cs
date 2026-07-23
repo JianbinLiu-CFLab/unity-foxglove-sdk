@@ -158,11 +158,11 @@ namespace Unity.FoxgloveSDK.Editor
                 var attrs = fi.GetCustomAttributes<FoxRunAttribute>();
                 foreach (var a in attrs)
                 {
-                    if (a.Mode != FoxRunMode.PublishOnly && fi.IsInitOnly)
+                    if (a.Mode != FoxRunFlow.Publish && fi.IsInitOnly)
                         throw CreateInboundTargetNotWritableException(type, fi.Name, "field", "readonly fields");
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
+                        (int)a.Policy, a.ChangeEpsilon, a.ForceIntervalSeconds, fi.MetadataToken, "",
                         a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
                         subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
                 }
@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     result.Add(new MemberData(
                         fi.Name, fi.FieldType, "field", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
-                        (int)aggregateMessage.PublishMode, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, fi.MetadataToken, "",
+                        (int)aggregateMessage.Policy, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, fi.MetadataToken, "",
                         aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName, encoding: (int)aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber));
                 }
             }
@@ -181,11 +181,11 @@ namespace Unity.FoxgloveSDK.Editor
                 var attrs = pi.GetCustomAttributes<FoxRunAttribute>();
                 foreach (var a in attrs)
                 {
-                    if (a.Mode != FoxRunMode.PublishOnly && !pi.CanWrite)
+                    if (a.Mode != FoxRunFlow.Publish && !pi.CanWrite)
                         throw CreateInboundTargetNotWritableException(type, pi.Name, "property", "properties without setters");
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.RateHz, a.SchemaName ?? "",
-                        (int)a.PublishMode, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
+                        (int)a.Policy, a.ChangeEpsilon, a.ForceIntervalSeconds, pi.MetadataToken, "",
                         a.When, a.Unless, mode: (int)a.Mode, encoding: (int)a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
                         subscriptionProvider: (int)a.SubscriptionProvider, ros2Qos: (int)a.Ros2Qos));
                 }
@@ -195,7 +195,7 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     result.Add(new MemberData(
                         pi.Name, pi.PropertyType, "property", ns, cn, aggregateMessage.Topic, aggregateMessage.RateHz, aggregateSchema,
-                        (int)aggregateMessage.PublishMode, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, pi.MetadataToken, "",
+                        (int)aggregateMessage.Policy, aggregateMessage.ChangeEpsilon, aggregateMessage.ForceIntervalSeconds, pi.MetadataToken, "",
                         aggregateMessage.When, aggregateMessage.Unless, isAggregateMember: true, jsonFieldName: aggregateField.JsonName, encoding: (int)aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber));
                 }
             }
@@ -213,7 +213,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "FOXRUN203 Error: " + target
                 + ": FoxRun inbound " + memberKind
                 + " target must be writable; " + unsupportedShape
-                + " cannot receive SubscribeOnly or PublishAndSubscribe messages.");
+                + " cannot receive Subscribe or PublishAndSubscribe messages.");
         }
 
         private sealed class FoxRunScanResult

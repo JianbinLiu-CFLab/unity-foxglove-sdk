@@ -23,8 +23,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 new FoxRunGenerationType("Demo", "Conflicts", new[]
                 {
-                    Member("_value", "/demo/conflict", "schema.A", publishMode: 0),
-                    Member("__value", "/demo/conflict", "schema.B", publishMode: 1)
+                    Member("_value", "/demo/conflict", "schema.A", policy: 0),
+                    Member("__value", "/demo/conflict", "schema.B", policy: 1)
                 })
             });
 
@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             string topic,
             string schemaName = "",
             float rateHz = 10f,
-            int publishMode = 0,
+            int policy = 0,
             float changeEpsilon = 0f,
             float forceIntervalSeconds = 0f)
         {
@@ -109,7 +109,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 topic,
                 rateHz,
                 schemaName,
-                publishMode,
+                policy,
                 changeEpsilon,
                 forceIntervalSeconds,
                 "Test",

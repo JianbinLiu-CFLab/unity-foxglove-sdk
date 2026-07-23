@@ -498,6 +498,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             if (_reloadAssembliesLockedForR2fu)
                 return;
 
+            if (SessionState.GetBool(ReloadAssembliesLockedForR2fuKey, false))
+            {
+                // A forced recompile can reset this static flag while Unity's
+                // editor-level reload lock remains active. Do not take a second lock.
+                _reloadAssembliesLockedForR2fu = true;
+                return;
+            }
+
             EditorApplication.LockReloadAssemblies();
             _reloadAssembliesLockedForR2fu = true;
             SessionState.SetBool(ReloadAssembliesLockedForR2fuKey, true);

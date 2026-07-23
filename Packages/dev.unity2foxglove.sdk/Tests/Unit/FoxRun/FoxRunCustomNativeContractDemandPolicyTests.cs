@@ -12,9 +12,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
     public sealed class FoxRunCustomNativeContractDemandPolicyTests
     {
         [Fact]
-        public void PublishOnlyCreatesDemandOnlyWhenNativeOutputIsEnabled()
+        public void PublishCreatesDemandOnlyWhenNativeOutputIsEnabled()
         {
-            var contract = Contract("PublishOnly", FoxRunSubscriptionProvider.Inherit);
+            var contract = Contract("Publish", FoxRunSubscriptionProvider.Inherit);
 
             Assert.False(FoxRunCustomNativeContractDemandPolicy.HasDemand(
                 new[] { contract }, false, false, FoxRunSubscriptionProvider.FoxgloveWebSocket));
@@ -23,10 +23,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void SubscribeOnlyRequiresEnabledNativeProvider()
+        public void SubscribeRequiresEnabledNativeProvider()
         {
-            var inherited = Contract("SubscribeOnly", FoxRunSubscriptionProvider.Inherit);
-            var explicitNative = Contract("SubscribeOnly", FoxRunSubscriptionProvider.Ros2Native);
+            var inherited = Contract("Subscribe", FoxRunSubscriptionProvider.Inherit);
+            var explicitNative = Contract("Subscribe", FoxRunSubscriptionProvider.Ros2Native);
 
             Assert.False(FoxRunCustomNativeContractDemandPolicy.HasDemand(
                 new[] { inherited }, false, true, FoxRunSubscriptionProvider.FoxgloveWebSocket));
@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         public void MissingEnvelopeNeverCreatesDemand()
         {
             var invalid = new FoxRunSchemaCustomNativeContractInfo(
-                "Demo.Source", "Value", "/value", "PublishOnly",
+                "Demo.Source", "Value", "/value", "Publish",
                 FoxRunSubscriptionProvider.Inherit, FoxRunRos2QosPreset.Default,
                 supportsRos2Native: true, "dto", "payload", string.Empty);
 
@@ -60,7 +60,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void GeneratedMetadataRetainsPublishOnlyCustomNativeContract()
+        public void GeneratedMetadataRetainsPublishCustomNativeContract()
         {
             var customShape = new FoxRunRos2CustomDtoShape(
                 "Demo.Payload", "dto", "payload", hasPublicParameterlessConstructor: true,
@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var member = new FoxRunManifestMember(
                 "Demo", "Publisher", "Payload", "field", "Demo.Payload", false, false, string.Empty,
                 "/custom", 10f, "", 0, 0f, 0f,
-                flowMode: (int)FoxRunMode.PublishOnly,
+                flow: (int)FoxRunFlow.Publish,
                 subscriptionProvider: FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider,
                 ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
                 generatesWebSocketCodec: false,
@@ -81,7 +81,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             var contract = Assert.Single(manifest.CustomNativeContracts);
             var generated = FoxRunSchemaInfoWriter.GenerateSource(manifest);
 
-            Assert.Equal("PublishOnly", contract.FlowMode);
+            Assert.Equal("Publish", contract.Flow);
             Assert.Equal("payloadEnvelope", contract.CustomEnvelopeIdentity);
             Assert.Contains("CustomNativeContractCount = 1", generated, System.StringComparison.Ordinal);
             Assert.Contains("new FoxRunSchemaCustomNativeContractInfo", generated, System.StringComparison.Ordinal);
@@ -89,10 +89,10 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         private static FoxRunSchemaCustomNativeContractInfo Contract(
-            string flowMode,
+            string flow,
             FoxRunSubscriptionProvider provider)
             => new FoxRunSchemaCustomNativeContractInfo(
-                "Demo.Source", "Value", "/value", flowMode, provider,
+                "Demo.Source", "Value", "/value", flow, provider,
                 FoxRunRos2QosPreset.Reliable, supportsRos2Native: true,
                 "dto", "payload", "PayloadEnvelope");
     }

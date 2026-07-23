@@ -700,6 +700,15 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
             )
         )
 
+    def test_windows_peer_keeps_the_short_workspace_alias_through_worker_startup(self):
+        """Verify Phase181 behavior: generated Python typesupport loads from the same short alias used to build it."""
+        source = PEER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("peer_workspace_alias_stack = contextlib.ExitStack()", source)
+        self.assertIn("peer_runtime_workspace = peer_workspace_alias_stack.enter_context(", source)
+        self.assertIn("peer_runtime_workspace / \"install\"", source)
+        self.assertIn("peer_workspace_alias_stack.close()", source)
+
     def test_windows_toolchain_requires_pinned_python_ros2_and_colcon(self):
         """Verify Phase181 behavior: windows toolchain requires pinned python ros2 and colcon."""
         peer = load_peer_module()
@@ -773,6 +782,15 @@ class Phase181CustomRos2PeerTests(unittest.TestCase):
         self.assertEqual(sys.executable, command[0])
         self.assertIn("validate_foxrun_custom_typesupport_addon.py", command[1])
         self.assertEqual(["--distro", "lyrical", "--require-rmw", "rmw_zenoh_cpp"], command[2:])
+
+    def test_addon_license_repair_command_is_profile_pinned_and_uses_current_python(self):
+        """The preflight may repair only the selected add-on's canonical legal text."""
+        peer = load_peer_module()
+        command = peer.build_addon_license_repair_command(ROOT, "lyrical")
+
+        self.assertEqual(sys.executable, command[0])
+        self.assertIn("build_foxrun_custom_typesupport_addon.py", command[1])
+        self.assertEqual(["--distro", "lyrical", "--repair-tracked-license-eol"], command[2:])
 
     def test_unity_readiness_requires_matching_profile_and_locked_digest_prefix(self):
         """Verify Phase181 behavior: unity readiness requires matching profile and locked digest prefix."""

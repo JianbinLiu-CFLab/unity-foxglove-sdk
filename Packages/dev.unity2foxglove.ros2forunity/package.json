@@ -11,12 +11,12 @@
   "samples": [
     {
       "displayName": "FoxRun ROS2 Native Subscribe",
-      "description": "Imports a source-only native ROS2 SubscribeOnly sample for String, Twist, Joy, and Imu through the selected ROS2 For Unity runtime.",
+      "description": "Imports a source-only native ROS2 Subscribe sample for String, Twist, Joy, and Imu through the selected ROS2 For Unity runtime.",
       "path": "Samples~/FoxRun ROS2 Native Subscribe"
     },
     {
       "displayName": "FoxRun Custom ROS2 Interface",
-      "description": "Imports a source-only Phase181 sample for locked custom FoxRun DTO native ROS2 PublishOnly, SubscribeOnly, and bidirectional contracts.",
+      "description": "Imports a source-only Phase181 sample for locked custom FoxRun DTO native ROS2 Publish, Subscribe, and bidirectional contracts.",
       "path": "Samples~/FoxRun Custom ROS2 Interface"
     },
     {

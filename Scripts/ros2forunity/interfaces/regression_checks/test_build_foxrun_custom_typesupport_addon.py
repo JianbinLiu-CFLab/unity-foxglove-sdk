@@ -16,8 +16,10 @@ from Scripts.ros2forunity.interfaces.build_foxrun_custom_typesupport_addon impor
     _catalog_source,
     _managed_package_assembly_path,
     _repair_tracked_addon_catalog,
+    _repair_tracked_addon_license_eol,
     _runtime_rmws,
     _unity_plugin_importer_arguments,
+    _write_candidate_texts,
     _write_inventory,
     build_candidate,
     candidate_package_root,
@@ -38,10 +40,11 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
     """Represent CustomTypesupportCandidateBuildTests."""
     def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
         """Verify check source cli does not invent machine specific toolchain sources."""
-        request, check_source, repair_catalog = parse_args(("--distro", "humble", "--check-source"))
+        request, check_source, repair_catalog, repair_license_eol = parse_args(("--distro", "humble", "--check-source"))
 
         self.assertTrue(check_source)
         self.assertFalse(repair_catalog)
+        self.assertFalse(repair_license_eol)
         self.assertIsNone(request.ros2cs_source)
         self.assertIsNone(request.ros2cs_install)
         self.assertIsNone(request.r2fu_source)
@@ -103,6 +106,54 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             inventory = json.loads((package / "RuntimeSupport" / "typesupport-inventory.json").read_text(encoding="utf-8"))
             paths = {entry["path"] for entry in inventory["entries"]}
             self.assertIn("Runtime/Ros2ForUnity/Plugins/Windows/x86_64/custom.dll.meta", paths)
+
+    def test_candidate_texts_canonicalize_license_before_inventory_hashing(self) -> None:
+        """Candidate legal text must use canonical LF bytes before inventory hashing."""
+        with self._fixture() as fixture:
+            package = fixture.root / "candidate" / "package"
+
+            _write_candidate_texts(package, fixture.root, "humble")
+            _write_inventory(package)
+
+            license_path = package / "LICENSE"
+            self.assertEqual(b"fixture license\nsecond line\n", license_path.read_bytes())
+            inventory = json.loads(
+                (package / "RuntimeSupport" / "typesupport-inventory.json").read_text(encoding="utf-8")
+            )
+            license_entry = next(entry for entry in inventory["entries"] if entry["path"] == "LICENSE")
+            self.assertEqual(license_path.stat().st_size, license_entry["byteLength"])
+            self.assertEqual(file_sha256(license_path), license_entry["sha256"])
+
+    def test_tracked_license_repair_restores_only_the_inventory_locked_lf_text(self) -> None:
+        """A preflight repair may restore only the source-locked legal text."""
+        with self._fixture() as fixture:
+            target = fixture.root / "Packages" / addon_package_id("humble")
+            license_path = target / "LICENSE"
+            payload_path = target / "Runtime" / "payload.bin"
+            payload_path.parent.mkdir(parents=True)
+            payload_path.write_bytes(b"payload must remain unchanged")
+            license_path.write_bytes(b"fixture license\nsecond line\n")
+            _write_inventory(target)
+            inventory_before = (target / "RuntimeSupport" / "typesupport-inventory.json").read_bytes()
+            license_path.write_bytes(b"fixture license\r\nsecond line\r\n")
+
+            changed = _repair_tracked_addon_license_eol(replace(fixture.request, repo_root=fixture.root))
+
+            self.assertTrue(changed)
+            self.assertEqual(b"fixture license\nsecond line\n", license_path.read_bytes())
+            self.assertEqual(b"payload must remain unchanged", payload_path.read_bytes())
+            self.assertEqual(inventory_before, (target / "RuntimeSupport" / "typesupport-inventory.json").read_bytes())
+
+    def test_tracked_license_repair_rejects_an_inventory_with_noncanonical_license_bytes(self) -> None:
+        """A repair must not rewrite an inventory whose legal-text hash is not canonical."""
+        with self._fixture() as fixture:
+            target = fixture.root / "Packages" / addon_package_id("humble")
+            target.mkdir(parents=True)
+            (target / "LICENSE").write_bytes(b"fixture license\r\nsecond line\r\n")
+            _write_inventory(target)
+
+            with self.assertRaisesRegex(CandidateBuildError, "repair-typesupport-license-inventory"):
+                _repair_tracked_addon_license_eol(replace(fixture.request, repo_root=fixture.root))
 
     def test_source_lock_drift_fails_before_build(self) -> None:
         """Verify source lock drift fails before build."""
@@ -251,6 +302,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             )
             stale_catalog = generated / "FoxRunCustomTypesupportCatalog.g.cs"
             stale_catalog.write_text("stale catalog", encoding="utf-8")
+            (target / "LICENSE").write_bytes(b"fixture license\r\nsecond line\r\n")
             # Unity can create this local importer beside a tracked package
             # asset; it is not package payload and must not become inventory.
             (target / "LICENSE.meta").write_text("unity-generated\n", encoding="utf-8")
@@ -284,6 +336,11 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
             self.assertEqual(file_sha256(repaired), catalog_entry["sha256"])
             self.assertNotIn("LICENSE.meta", {entry["path"] for entry in inventory["entries"]})
             self.assertNotIn(b"\r", repaired.read_bytes())
+            license_path = target / "LICENSE"
+            self.assertEqual(b"fixture license\nsecond line\n", license_path.read_bytes())
+            license_entry = next(entry for entry in inventory["entries"] if entry["path"] == "LICENSE")
+            self.assertEqual(license_path.stat().st_size, license_entry["byteLength"])
+            self.assertEqual(file_sha256(license_path), license_entry["sha256"])
 
     def _request(self) -> CandidateBuildRequest:
         """Implement the internal request step."""
@@ -310,6 +367,8 @@ class _Fixture:
         """Initialize this object."""
         self._temporary = temporary_directory("typesupport-build-")
         self.root = Path(self._temporary.name)
+        (self.root / "LICENSE").write_bytes(b"fixture license\r\nsecond line\r\n")
+        (self.root / "THIRD_PARTY_NOTICES.md").write_text("fixture notice\n", encoding="utf-8")
         self.static = self.root / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces"
         (self.static / "Ros2Package~" / "msg").mkdir(parents=True)
         (self.static / "Ros2Package~" / "msg" / "State.msg").write_text("string value\n", encoding="utf-8")

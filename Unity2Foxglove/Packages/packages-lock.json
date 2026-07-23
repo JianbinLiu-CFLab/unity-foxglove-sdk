@@ -206,13 +206,13 @@
       "source": "local",
       "dependencies": {}
     },
-    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64": {
-      "version": "file:../../Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64",
+    "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64": {
+      "version": "file:../../Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64",
       "depth": 0,
       "source": "local",
       "dependencies": {
         "dev.unity2foxglove.ros2forunity": "0.1.0-preview.1",
-        "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64": "0.1.0-preview.1"
+        "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64": "0.1.0-preview.1"
       }
     },
     "dev.unity2foxglove.ros2forunity": {
@@ -223,8 +223,8 @@
         "dev.unity2foxglove.sdk": "1.9.6"
       }
     },
-    "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64": {
-      "version": "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+    "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64": {
+      "version": "file:../../Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
       "depth": 0,
       "source": "local",
       "dependencies": {}

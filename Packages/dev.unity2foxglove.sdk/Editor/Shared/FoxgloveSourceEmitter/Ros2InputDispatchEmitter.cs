@@ -40,6 +40,8 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var typeName = GlobalTypeName(members[i].Ros2MessageShape.FullyQualifiedTypeName);
                 sb.AppendLine(pad + "    private " + typeName + " __foxRunRos2AppliedOwned_" + i + ";");
+                if (members[i].Policy == 4)
+                    sb.AppendLine(pad + "    private int __foxRunRos2Trigger_" + TriggerFieldSuffix(members[i]) + ";");
             }
 
             sb.AppendLine();
@@ -88,16 +90,35 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                " + ModeLiteral(member.Mode) + ",");
             sb.AppendLine(pad + "                " + SubscriptionProviderLiteral(member.SubscriptionProvider) + ",");
             sb.AppendLine(pad + "                " + QosLiteral(member.Ros2Qos) + ",");
-            sb.AppendLine(pad + "                " + (member.GeneratesRos2NativeRegistration ? "true" : "false") + "),");
+            sb.AppendLine(pad + "                " + (member.GeneratesRos2NativeRegistration ? "true" : "false") + ",");
+            sb.AppendLine(pad + "                " + PolicyLiteral(member.Policy) + ",");
+            sb.AppendLine(pad + "                " + TypeExprEmitter.FloatLiteral(member.RateHz) + ",");
+            sb.AppendLine(pad + "                " + (member.HasExplicitRateHz ? "true" : "false") + ",");
+            sb.AppendLine(pad + "                " + TypeExprEmitter.FloatLiteral(member.ForceIntervalSeconds < 0f ? 0f : member.ForceIntervalSeconds) + "),");
             sb.AppendLine(pad + "            static (source, budget) => __FoxRunRos2Copy_" + index + "(source, budget),");
             sb.AppendLine(pad + "            static owned => __FoxRunRos2Dispose_" + index + "(owned),");
             sb.AppendLine(pad + "            owned => __FoxRunRos2Apply_" + index + "(owned),");
-            sb.AppendLine(pad + "            owned => __FoxRunRos2ClearIfOwned_" + index + "(owned));");
+            sb.AppendLine(pad + "            owned => __FoxRunRos2ClearIfOwned_" + index + "(owned),");
+            sb.AppendLine(pad + "            static (left, right) => __FoxRunRos2Equals_" + index + "(left, right),");
+            sb.AppendLine(pad + "            " + (member.Policy == 4
+                ? "() => global::System.Threading.Interlocked.Exchange(ref __foxRunRos2Trigger_" + TriggerFieldSuffix(member) + ", 0) != 0"
+                : "static () => false") + ");");
         }
 
         private static string ModeLiteral(int mode)
-            => "(global::Unity.FoxgloveSDK.Components.FoxRunMode)" +
+            => "(global::Unity.FoxgloveSDK.Components.FoxRunFlow)" +
                mode.ToString(CultureInfo.InvariantCulture);
+
+        private static string PolicyLiteral(int policy)
+            => "(global::Unity.FoxgloveSDK.Components.FoxRunPolicy)" +
+               policy.ToString(CultureInfo.InvariantCulture);
+
+        private static string TriggerFieldSuffix(FoxgloveSourceEmitter.TopicMember member)
+            => IdentifierUtils.SanitizeIdentifier(member.MemberName.TrimStart('_'))
+               + "_"
+               + TopicMetadataEmitter.Sha256Hex(
+                       (member.MemberName ?? string.Empty) + "|" + (member.Topic ?? string.Empty))
+                   .Substring(0, 8);
 
         private static string SubscriptionProviderLiteral(string provider)
         {
@@ -172,6 +193,15 @@ namespace Unity.FoxgloveSDK.Editor
                 EmitDisposeMethod(sb, pad, helper.DisposeName, helper.Shape, helpers);
             }
 
+            sb.AppendLine();
+            EmitEqualsMethod(sb, pad, "__FoxRunRos2Equals_" + index, shape, helpers);
+            for (var helperIndex = 0; helperIndex < helpers.Count; helperIndex++)
+            {
+                var helper = helpers[helperIndex];
+                sb.AppendLine();
+                EmitEqualsMethod(sb, pad, helper.EqualsName, helper.Shape, helpers);
+            }
+
             var access = TypeExprEmitter.MemberAccess(member.MemberName);
             sb.AppendLine();
             sb.AppendLine(pad + "    private void __FoxRunRos2Apply_" + index + "(" + typeName + " owned)");
@@ -214,6 +244,95 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "            __foxRunRos2AppliedOwned_" + index + " = null;");
             sb.AppendLine(pad + "        return cleared;");
             sb.AppendLine(pad + "    }");
+
+            if (member.Policy == 4
+                && string.Equals(
+                    member.SubscriptionProvider,
+                    FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                    StringComparison.Ordinal))
+            {
+                var methodName = "FoxRun_Apply_"
+                                 + IdentifierUtils.SanitizeIdentifier(member.MemberName.TrimStart('_'));
+                sb.AppendLine();
+                sb.AppendLine(pad + "    public bool " + methodName + "()");
+                sb.AppendLine(pad + "    {");
+                sb.AppendLine(pad + "        global::System.Threading.Interlocked.Exchange(ref __foxRunRos2Trigger_" + TriggerFieldSuffix(member) + ", 1);");
+                sb.AppendLine(pad + "        return true;");
+                sb.AppendLine(pad + "    }");
+            }
+        }
+
+        private static void EmitEqualsMethod(
+            StringBuilder sb,
+            string pad,
+            string methodName,
+            FoxRunRos2MessageShape shape,
+            NestedHelperRegistry helpers)
+        {
+            var typeName = GlobalTypeName(shape.FullyQualifiedTypeName);
+            sb.AppendLine(pad + "    private static bool " + methodName + "(" + typeName + " left, " + typeName + " right)");
+            sb.AppendLine(pad + "    {");
+            sb.AppendLine(pad + "        if (global::System.Object.ReferenceEquals(left, right)) return true;");
+            sb.AppendLine(pad + "        if (left == null || right == null) return false;");
+            for (var memberIndex = 0; memberIndex < shape.Members.Count; memberIndex++)
+                EmitEqualsMember(sb, pad + "        ", shape.Members[memberIndex], memberIndex, helpers);
+            sb.AppendLine(pad + "        return true;");
+            sb.AppendLine(pad + "    }");
+        }
+
+        private static void EmitEqualsMember(
+            StringBuilder sb,
+            string pad,
+            FoxRunRos2MessageMemberShape member,
+            int memberIndex,
+            NestedHelperRegistry helpers)
+        {
+            var name = IdentifierUtils.EscapeIdentifier(member.Name);
+            var left = "left." + name;
+            var right = "right." + name;
+            if (member.Kind == FoxRunRos2MessageMemberKind.NestedMessage)
+            {
+                var helper = helpers.Get(member.NestedShape);
+                sb.AppendLine(pad + "if (!" + helper.EqualsName + "(" + left + ", " + right + ")) return false;");
+                return;
+            }
+
+            if (member.Kind != FoxRunRos2MessageMemberKind.Sequence)
+            {
+                var valueType = GlobalTypeName(member.FullyQualifiedTypeName);
+                sb.AppendLine(pad + "if (!global::System.Collections.Generic.EqualityComparer<" + valueType + ">.Default.Equals(" + left + ", " + right + ")) return false;");
+                return;
+            }
+
+            var suffix = memberIndex.ToString(CultureInfo.InvariantCulture);
+            var leftSequence = "__leftSequence_" + suffix;
+            var rightSequence = "__rightSequence_" + suffix;
+            var leftCount = member.SequenceRepresentation == FoxRunRos2SequenceRepresentation.List
+                ? leftSequence + ".Count"
+                : leftSequence + ".Length";
+            var rightCount = member.SequenceRepresentation == FoxRunRos2SequenceRepresentation.List
+                ? rightSequence + ".Count"
+                : rightSequence + ".Length";
+            sb.AppendLine(pad + "var " + leftSequence + " = " + left + ";");
+            sb.AppendLine(pad + "var " + rightSequence + " = " + right + ";");
+            sb.AppendLine(pad + "if (!global::System.Object.ReferenceEquals(" + leftSequence + ", " + rightSequence + "))");
+            sb.AppendLine(pad + "{");
+            sb.AppendLine(pad + "    if (" + leftSequence + " == null || " + rightSequence + " == null) return false;");
+            sb.AppendLine(pad + "    if (" + leftCount + " != " + rightCount + ") return false;");
+            sb.AppendLine(pad + "    for (var __i = 0; __i < " + leftCount + "; __i++)");
+            sb.AppendLine(pad + "    {");
+            if (member.NestedShape != null)
+            {
+                var helper = helpers.Get(member.NestedShape);
+                sb.AppendLine(pad + "        if (!" + helper.EqualsName + "(" + leftSequence + "[__i], " + rightSequence + "[__i])) return false;");
+            }
+            else
+            {
+                var elementType = GlobalTypeName(member.SequenceElementTypeName);
+                sb.AppendLine(pad + "        if (!global::System.Collections.Generic.EqualityComparer<" + elementType + ">.Default.Equals(" + leftSequence + "[__i], " + rightSequence + "[__i])) return false;");
+            }
+            sb.AppendLine(pad + "    }");
+            sb.AppendLine(pad + "}");
         }
 
         private static void EmitCopyMethod(
@@ -691,7 +810,8 @@ namespace Unity.FoxgloveSDK.Editor
                 var helper = new NestedHelper(
                     shape,
                     "__FoxRunRos2CopyNested_" + rootIndex + "_" + index,
-                    "__FoxRunRos2DisposeNested_" + rootIndex + "_" + index);
+                    "__FoxRunRos2DisposeNested_" + rootIndex + "_" + index,
+                    "__FoxRunRos2EqualsNested_" + rootIndex + "_" + index);
                 helpers.Add(helper);
                 byIdentity.Add(identity, helper);
                 return helper;
@@ -700,16 +820,22 @@ namespace Unity.FoxgloveSDK.Editor
 
         private sealed class NestedHelper
         {
-            public NestedHelper(FoxRunRos2MessageShape shape, string copyName, string disposeName)
+            public NestedHelper(
+                FoxRunRos2MessageShape shape,
+                string copyName,
+                string disposeName,
+                string equalsName)
             {
                 Shape = shape;
                 CopyName = copyName;
                 DisposeName = disposeName;
+                EqualsName = equalsName;
             }
 
             public FoxRunRos2MessageShape Shape { get; }
             public string CopyName { get; }
             public string DisposeName { get; }
+            public string EqualsName { get; }
         }
     }
 }

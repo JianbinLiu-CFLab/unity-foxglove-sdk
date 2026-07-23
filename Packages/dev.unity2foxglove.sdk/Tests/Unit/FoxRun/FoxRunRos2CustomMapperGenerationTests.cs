@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
 using Xunit;
 
@@ -115,12 +116,12 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void CustomSubscribeOnlyContractDoesNotEmitASecondNativePublisherSource()
+        public void CustomSubscribeContractDoesNotEmitASecondNativePublisherSource()
         {
             var source = FoxgloveSourceEmitter.EmitClass(
                 "Phase181",
-                "CustomSubscribeOnlySource",
-                new[] { CreateCustomMember(mode: 1) });
+                "CustomSubscribeSource",
+                new[] { CreateCustomMember(mode: (int)FoxRunFlow.Subscribe) });
 
             Assert.Contains("IFoxRunRos2CustomSubscriptionSource", source, StringComparison.Ordinal);
             Assert.DoesNotContain("IFoxRunRos2CustomPublisherSource", source, StringComparison.Ordinal);
@@ -128,15 +129,15 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
-        public void CustomPublishOnlyContractEmitsNativePublisherWithoutAnInboundSubscriptionSource()
+        public void CustomPublishContractEmitsNativePublisherWithoutAnInboundSubscriptionSource()
         {
             var source = FoxgloveSourceEmitter.EmitClass(
                 "Phase181",
-                "CustomPublishOnlySource",
+                "CustomPublishSource",
                 new[]
                 {
                     CreateCustomMember(
-                        mode: 0,
+                        mode: (int)FoxRunFlow.Publish,
                         subscriptionProvider: FoxRunGenerationDescriptorConstants.InheritSubscriptionProvider)
                 });
 
@@ -147,7 +148,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         private static FoxgloveSourceEmitter.TopicMember CreateCustomMember(
-            int mode = 2,
+            int mode = (int)FoxRunFlow.PublishAndSubscribe,
             string subscriptionProvider = FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider)
         {
             var nested = new FoxRunRos2CustomDtoShape(
@@ -201,7 +202,7 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 "/phase181/custom-state",
                 10f,
                 "phase181.State",
-                publishMode: 0,
+                policy: (int)FoxRunPolicy.FixedRate,
                 changeEpsilon: 0f,
                 forceIntervalSeconds: 0f,
                 mode: mode,

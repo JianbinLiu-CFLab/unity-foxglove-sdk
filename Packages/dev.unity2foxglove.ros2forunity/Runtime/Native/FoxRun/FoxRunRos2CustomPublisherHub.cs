@@ -95,7 +95,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             // Output policy is independent from the captured subscription
-            // session. A PublishOnly custom endpoint must stay available while
+            // session. A Publish custom endpoint must stay available while
             // subscriptions are disabled.
             if (!Ros2NativeOutputPolicy.Enabled
                 || Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(gameObject.scene))

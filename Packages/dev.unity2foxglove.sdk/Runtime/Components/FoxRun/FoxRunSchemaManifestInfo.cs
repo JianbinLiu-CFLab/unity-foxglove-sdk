@@ -24,7 +24,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>
         /// Generated direction-neutral metadata for custom ROS2 DTO contracts.
         /// Unlike <see cref="SubscriptionBindings"/>, this list includes eligible
-        /// native PublishOnly contracts as well as inbound and P&amp;S contracts.
+        /// native Publish contracts as well as inbound and P&amp;S contracts.
         /// It is ROS-free evidence used by Editor presentation and demand policy;
         /// endpoint readiness remains owned by the optional R2FU catalog.
         /// </summary>
@@ -86,7 +86,7 @@ namespace Unity.FoxgloveSDK.Components
             string declaringType,
             string memberName,
             string topic,
-            string flowMode,
+            string flow,
             FoxRunSubscriptionProvider declaredProvider,
             FoxRunRos2QosPreset ros2Qos,
             bool supportsWebSocket,
@@ -102,7 +102,7 @@ namespace Unity.FoxgloveSDK.Components
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
-            FlowMode = flowMode ?? string.Empty;
+            Flow = flow ?? string.Empty;
             DeclaredProvider = declaredProvider;
             Ros2Qos = ros2Qos;
             SupportsWebSocket = supportsWebSocket;
@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Components
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string Topic { get; }
-        public string FlowMode { get; }
+        public string Flow { get; }
         public FoxRunSubscriptionProvider DeclaredProvider { get; }
         public FoxRunRos2QosPreset Ros2Qos { get; }
         public bool SupportsWebSocket { get; }
@@ -149,7 +149,7 @@ namespace Unity.FoxgloveSDK.Components
             string declaringType,
             string memberName,
             string topic,
-            string flowMode,
+            string flow,
             FoxRunSubscriptionProvider declaredProvider,
             FoxRunRos2QosPreset ros2Qos,
             bool supportsRos2Native,
@@ -160,7 +160,7 @@ namespace Unity.FoxgloveSDK.Components
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             Topic = topic ?? string.Empty;
-            FlowMode = flowMode ?? string.Empty;
+            Flow = flow ?? string.Empty;
             DeclaredProvider = declaredProvider;
             Ros2Qos = ros2Qos;
             SupportsRos2Native = supportsRos2Native;
@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Components
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string Topic { get; }
-        public string FlowMode { get; }
+        public string Flow { get; }
         public FoxRunSubscriptionProvider DeclaredProvider { get; }
         public FoxRunRos2QosPreset Ros2Qos { get; }
         public bool SupportsRos2Native { get; }

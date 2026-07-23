@@ -19,16 +19,26 @@ import sys
 from pathlib import Path
 
 
+WINDOWS_SCRIPT_DIR = Path(__file__).resolve().parent.parent
+if str(WINDOWS_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(WINDOWS_SCRIPT_DIR))
+
+from runtime_adoption_manifest import sync_runtime_adoption_manifest
+
+
 ROOT = Path(__file__).resolve().parents[4]
 PACKAGE_NAME = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
 RUNTIME_PACKAGE_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
-EXPECTED_ARTIFACT_SHA256 = "792f3718cb3df464a898947923984e9d51aa4fcf174f33d6278c5f4811495e74"
+EXPECTED_ARTIFACT_SHA256 = "4e5cb8b0073d4a34d194b9a6ce0b3449220085f3cfd041b2fd33622e6442ff5d"
 DEFAULT_ARTIFACT_ROOT = Path(os.environ.get("R2FU_ARTIFACT_ROOT", str(ROOT / "r2fu-runtime-artifacts")))
 DEFAULT_ARTIFACT = (
     DEFAULT_ARTIFACT_ROOT
     / "jazzy"
     / "windows_x86_64"
     / "Ros2ForUnity_jazzy_standalone_windows_x86_64.zip"
+)
+DEFAULT_ROS2_BIN = Path(
+    os.environ.get("R2FU_JAZZY_ROS2_BIN", str(ROOT / "ros2-windows" / "ros2_jazzy" / "bin"))
 )
 DEFAULT_EVIDENCE_DIR = Path(os.environ.get("R2FU_EVIDENCE_DIR", str(ROOT / "build" / "r2fu-sync-evidence")))
 DEFAULT_UNITY_EXE = Path(r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe")
@@ -264,6 +274,28 @@ def run_unity_import(unity_exe: Path, project_path: Path, log_path: Path) -> Non
     )
 
 
+def build_runtime_command(
+    build_script: Path,
+    artifact: Path,
+    inventory_path: Path,
+    package_path: Path,
+    ros2_bin: Path,
+) -> list[str]:
+    """Build the explicit command used to reconstruct the Jazzy runtime package."""
+    return [
+        sys.executable,
+        str(build_script),
+        "--zip",
+        str(artifact),
+        "--inventory",
+        str(inventory_path),
+        "--package",
+        str(package_path),
+        "--ros2-bin",
+        str(ros2_bin),
+    ]
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -271,6 +303,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--artifact-manifest", type=Path, default=None)
     parser.add_argument("--project-root", type=Path, default=ROOT)
     parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
+    parser.add_argument(
+        "--ros2-bin",
+        type=Path,
+        default=DEFAULT_ROS2_BIN,
+        help="ROS 2 Jazzy bin directory that supplies supplemental runtime DLLs.",
+    )
     parser.add_argument("--update-project-manifest", action="store_true", help="Add the runtime package dependency if it is missing.")
     parser.add_argument(
         "--skip-project-manifest-check",
@@ -289,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     project_root = args.project_root.resolve()
     artifact = args.artifact_zip.resolve()
+    ros2_bin = args.ros2_bin.resolve()
     evidence_dir = args.evidence_dir.resolve()
     evidence_dir.mkdir(parents=True, exist_ok=True)
     timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -310,23 +349,22 @@ def main(argv: list[str] | None = None) -> int:
         print("[DRY-RUN] sha256:", artifact_info["sha256"])
         print("[DRY-RUN] inventory:", inventory_path)
         print("[DRY-RUN] package:", package_path)
+        print("[DRY-RUN] supplemental ROS2 bin:", ros2_bin)
         print("[DRY-RUN] direct Assets/Ros2ForUnity exists:", project_shape["directAssetsRos2ForUnityExists"])
         print("[DRY-RUN] lock has runtime package:", project_shape["lockHasRuntimePackage"])
         return 0
 
     run([sys.executable, str(inspect_script), "--zip", str(artifact), "--out", str(inventory_path)], cwd=project_root)
     run(
-        [
-            sys.executable,
-            str(build_script),
-            "--zip",
-            str(artifact),
-            "--inventory",
-            str(inventory_path),
-            "--package",
-            str(package_path),
-        ],
+        build_runtime_command(build_script, artifact, inventory_path, package_path, ros2_bin),
         cwd=project_root,
+    )
+    adapter_compliance = sync_runtime_adoption_manifest(
+        project_root,
+        package_path,
+        PACKAGE_NAME,
+        update_current_recommended=True,
+        notices_relative_path="r2fu-jazzy-win64-runtime-notices.md",
     )
     project_shape = ensure_project_uses_runtime_package(
         project_root,
@@ -365,6 +403,8 @@ def main(argv: list[str] | None = None) -> int:
             "name": PACKAGE_NAME,
             "manifest": package_manifest,
             "inventoryPath": str(inventory_path),
+            "supplementalRos2Bin": str(ros2_bin),
+            "adapterCompliance": adapter_compliance,
         },
         "projectShape": project_shape,
         "validation": {

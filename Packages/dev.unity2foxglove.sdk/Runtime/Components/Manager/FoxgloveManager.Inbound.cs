@@ -6,6 +6,7 @@
 
 using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -20,12 +21,16 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField, Min(FoxRunWireEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes)]
         private int _foxRunRos2NativeCopyBudgetBytes = FoxRunWireEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes;
 
-        [Tooltip("Allow generated SubscribeOnly and PublishAndSubscribe FoxRun members to receive client-published Protobuf or JSON. Disabled by default.")]
+        [Tooltip("Allow generated Subscribe and PublishAndSubscribe FoxRun members to receive client-published Protobuf or JSON. Disabled by default.")]
         [SerializeField] private bool _enableFoxRunInbound;
         [Tooltip("Permit non-loopback FoxRun inbound only when a configured shared token is required at WebSocket connect time. This is shared-token authorization, not per-client identity.")]
         [SerializeField] private bool _allowRemoteFoxRunInboundWithSharedToken;
         [SerializeField, Min(256)] private int _foxRunInboundMaxPayloadBytes = 64 * 1024;
+        [Tooltip("Hard per-topic transport-admission ceiling shared by Foxglove WebSocket and ROS 2 Native subscriptions. Excess input is dropped before avoidable decode or native deep-copy work.")]
         [SerializeField, Min(1)] private int _foxRunInboundMaxMessagesPerSecondPerTopic = 60;
+        [Tooltip("Default subscription rate inherited by subscription declarations that do not specify a positive RateHz.")]
+        [FormerlySerializedAs("_foxRunDefaultApplyRateHz")]
+        [SerializeField, Min(1)] private int _foxRunDefaultSubscribeRateHz = 10;
 
         public bool EnableFoxRunInbound
         {
@@ -36,12 +41,17 @@ namespace Unity.FoxgloveSDK.Components
         public int FoxRunSubscriptionMaxPayloadBytes => Math.Max(256, _foxRunInboundMaxPayloadBytes);
         private int ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic =>
             Math.Max(1, _foxRunInboundMaxMessagesPerSecondPerTopic);
+        private int ConfiguredFoxRunDefaultSubscribeRateHz =>
+            Math.Max(1, _foxRunDefaultSubscribeRateHz);
         public int FoxRunSubscriptionMaxMessagesPerSecondPerTopic =>
             ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
-                ? ActiveFoxRunSubscriptionSessionPolicy.MainThreadApplyRateLimitHz
+                ? ActiveFoxRunSubscriptionSessionPolicy.TransportAdmissionRateLimitHz
                 : ConfiguredFoxRunSubscriptionMaxMessagesPerSecondPerTopic;
 
-        /// <summary>Serialized default used by inherited SubscribeOnly contracts.</summary>
+        /// <summary>Configured default rate for inherited subscription declarations.</summary>
+        public int DefaultFoxRunSubscriptionRateHz => ConfiguredFoxRunDefaultSubscribeRateHz;
+
+        /// <summary>Serialized default used by inherited Subscribe contracts.</summary>
         public FoxRunWireEncoding DefaultFoxRunSubscriptionEncoding
         {
             get => _defaultFoxRunSubscriptionEncoding == FoxRunWireEncoding.Inherit
@@ -142,7 +152,7 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunWireEncoding ActiveFoxRunDefaultWireEncoding => ActiveFoxRunSubscriptionEncoding;
 
         /// <summary>Resolves a generated declaration against the active directional session policy.</summary>
-        public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding, FoxRunMode mode)
+        public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding, FoxRunFlow mode)
             => FoxRunWireEncodingResolver.Resolve(
                 declaredEncoding,
                 mode,
@@ -152,7 +162,7 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Compatibility resolver for older generated input dispatch.</summary>
         [Obsolete("Generated FoxRun code must pass its flow mode.")]
         public FoxRunWireEncoding ResolveFoxRunWireEncoding(FoxRunWireEncoding declaredEncoding)
-            => ResolveFoxRunWireEncoding(declaredEncoding, FoxRunMode.SubscribeOnly);
+            => ResolveFoxRunWireEncoding(declaredEncoding, FoxRunFlow.Subscribe);
 
         public bool IsFoxRunInboundAuthorized
         {

@@ -238,13 +238,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
             }
 
             var templatePath = Path.Combine(package.resolvedPath, SessionTemplateRelativePath.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(templatePath))
+            if (!FileExistsForVerification(templatePath))
                 throw new InvalidOperationException("The selected ROS2 For Unity runtime does not contain its Zenoh session template.");
 
             string template;
             try
             {
-                template = File.ReadAllText(templatePath);
+                template = ReadAllTextForVerification(templatePath);
             }
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
             {
@@ -282,6 +282,48 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 ["endpoint"] = endpoint.Endpoint,
             };
             WriteTextAtomically(path, document.ToString(Formatting.None));
+        }
+
+        private static bool FileExistsForVerification(string path)
+        {
+            try
+            {
+                using (OpenForVerificationRead(path))
+                    return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static string ReadAllTextForVerification(string path)
+        {
+            using (var stream = OpenForVerificationRead(path))
+            using (var reader = new StreamReader(stream, detectEncodingFromByteOrderMarks: true))
+                return reader.ReadToEnd();
+        }
+
+        private static FileStream OpenForVerificationRead(string path)
+            => new FileStream(
+                NormalizeWindowsLongPathForRead(path),
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+
+        private static string NormalizeWindowsLongPathForRead(string path)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (Path.DirectorySeparatorChar != '\\'
+                || fullPath.Length < 248
+                || fullPath.StartsWith(@"\\?\", StringComparison.Ordinal))
+            {
+                return fullPath;
+            }
+
+            return fullPath.StartsWith(@"\\", StringComparison.Ordinal)
+                ? @"\\?\UNC\" + fullPath.Substring(2)
+                : @"\\?\" + fullPath;
         }
 
         private static string GetAddressSettingsKey(Ros2ForUnityRuntimeDescriptor runtime)

@@ -1,107 +1,195 @@
+# Unity2Foxglove Roadmap
 
-This roadmap summarizes how Unity2Foxglove reached v1.0.0 and where it may go next. It is intentionally higher level than the private development notes: the goal is to give users and contributors useful context without exposing day-to-day implementation history.
+Updated: 2026-07-20
 
-## 1. Completed in v1.0.0
+This public roadmap describes the current development baseline and the remaining product directions. It is intentionally higher level than private implementation plans. A tagged release can lag this document; release notes remain the authority for the exact contents of a published package.
 
-### 1.1 Protocol Foundation
+## 1. Status at a Glance
 
-- Implemented the Foxglove WebSocket server path directly inside Unity.
-- Added schema advertisement, channel registration, subscriptions, and typed message publishing.
-- Built the managed WebSocket backend used by both Editor and standalone Player builds.
+| Area | Current status | Remaining boundary |
+| --- | --- | --- |
+| Foxglove WebSocket protocol | Product baseline complete | Continue parity work only when it supports a concrete Unity workflow. |
+| FoxRun generated bindings | Bidirectional development baseline complete | Broader complex-type depth, clearer diagnostics, and cross-target emitter reuse. |
+| MCAP recording and replay | Recording, indexed reading, scene reproduction, and Foxglove-owned timeline workflow complete | Large-file latency, multi-file/search workflows, and explicit deterministic-simulation contracts. |
+| Unity data transport | Independent output/input configuration, coordinate modes, recording boundary, and Inspector workflows complete | More end-user onboarding and cross-platform evidence. |
+| Optional ROS2 For Unity | Windows x64 Humble, Jazzy, and Lyrical package lines plus built-in/custom typed transport implemented | Windows Player and Linux-peer certification, Linux packaging, and broader redistribution evidence. |
+| Camera and point cloud | Async camera, raw/compressed point-cloud, QoS, sampling, and native ROS2 paths implemented | In-Unity renderer, repeatable multi-LiDAR fixtures, remote QoS, and hardware validation. |
+| Security | Local WSS, certificate tooling, Origin allowance, and token gates implemented | Identity and authorization for untrusted remote deployment. |
+| Platform support | Windows Editor/Player paths receive the strongest current evidence | Expand IL2CPP and package acceptance on Linux and macOS before claiming support. |
 
-### 1.2 Unity Visualization
+“Complete” in this table means the architecture and repository implementation exist with automated evidence. Platform-specific support is claimed only where its separate acceptance cell has actually run.
 
-- Added Unity publishers for transforms, scene primitives, camera images, and debug data.
-- Added coordinate conversion options for Unity/Foxglove axis conventions.
-- Added UPM samples for both minimal visualization and the full demo workflow.
+## 2. Current Product Baseline
 
-### 1.3 Runtime Interaction
+### 2.1 In-Process Foxglove Runtime
 
-- Added Foxglove Parameters and Services support for live control from Foxglove.
-- Added demo controls for cube color, scale, pose reset, and runtime state inspection.
-- Added connection graph and client-publish support for richer Foxglove protocol coverage.
+- A managed Foxglove WebSocket server runs directly inside Unity Editor and standalone Players.
+- The runtime covers server info, schemas, channels, subscriptions, time, status messages, graph updates, client publish, assets, parameters, services, and playback control used by the Unity workflows.
+- JSON and Protobuf are first-class wire formats. Typed schema catalogs and generated descriptors keep the runtime contract visible to Foxglove and MCAP.
+- Local development defaults remain simple: add `FoxgloveManager`, press Play, and connect Foxglove. WSS, token, certificate, and Origin controls are available when the deployment requires them.
 
-### 1.4 FoxRun Debug Publishing
+### 2.2 FoxRun: One Declaration, Two Directions
 
-- Added `[FoxRun]` attribute-based debug publishing for lightweight runtime telemetry.
-- Added source generation for Editor workflows.
-- Added generated-source fallback for IL2CPP Player builds.
+FoxRun is now a generated field/property binding rather than a publish-only shortcut:
 
-### 1.5 MCAP Recording and Replay
+```csharp
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+using static Unity.FoxgloveSDK.Components.FoxRunPolicy;
 
-- Added MCAP writer support with schemas, channels, chunks, indexes, summaries, and compression.
-- Added MCAP reader and replay engine for loading, seeking, playing, pausing, and replaying recorded sessions.
-- Added recording coverage for Unity-published data, parameters, services, client-published data, and coordinate metadata.
+[FoxRun("/robot/pose")]
+private PoseState _pose;
 
-### 1.6 Packaging, CI, and Release Hardening
+[FoxRun("/robot/state", Mode = Subscribe, Policy = Change, RateHz = 30)]
+private RobotState _state;
 
-- Migrated the package to `dev.unity2foxglove.sdk`.
-- Added package metadata, samples, license files, release notes, third-party notices, and CI checks.
-- Hardened IL2CPP behavior, package paths, WebSocket parsing, MCAP bounds checks, and sample import workflows.
+[FoxRun("/debug/state", Mode = PublishAndSubscribe, Policy = FixedRate, RateHz = 10)]
+private DebugState _debugState;
+```
 
-### 1.7 High-Throughput Point Clouds
+The current declaration model includes:
 
-- Added point-cloud QoS controls for point-count, packed-byte, stride, and voxel-grid sampling.
-- Added optional Draco compressed point-cloud output with a bundled Windows native plugin.
-- Kept raw `foxglove.PointCloud` as the default path while allowing `foxglove.CompressedPointCloud(draco)` as an opt-in mode.
+- `Publish`, `Subscribe`, and debug-oriented `PublishAndSubscribe` flows;
+- `FixedRate`, `Change`, `ChangeOrInterval`, and `Trigger` policies;
+- one resolved subscription source per member and multiple simultaneous output sinks;
+- independent direction scheduling under one explicit full-duplex policy/rate;
+- JSON and typed Protobuf WebSocket input/output;
+- generated input admission, latest-wins staging, main-thread apply, and echo suppression;
+- static custom DTO mapping for optional native ROS2 transport;
+- one shared emitter used by the Roslyn Editor host and the physical IL2CPP source host.
 
-### 1.8 Optional ROS2 Bridge
+The compact surface and its runtime safety rules are documented in [Shared-Emitter Dual-Host AOT Code Generation for Bidirectional Unity Telemetry](docs/research-shared-emitter-architecture.md).
 
-- Added an optional localhost ROS2 bridge mirror path for selected Unity publishers.
-- Added ROS2 message schema catalog support, CDR payload generation, bridge topic namespace controls, per-publisher topic overrides, simple QoS presets, and bridge health diagnostics.
-- Added a ROS2 bridge sample scene, Foxglove layout, launch file, WSL-friendly scripts, and manual validation notes for Unity, Foxglove, WSL Ubuntu, and ROS2 Jazzy.
+### 2.3 MCAP Recording, Analysis, and Scene Reproduction
 
-## 2. Candidate Future Work
+The MCAP path includes:
 
-### 2.1 Documentation and Onboarding
+- chunked recording, indexes, summaries, LZ4/Zstd compression, attachments, and summary CRC;
+- bounded reading, seeking, history queries, and decoded JSON/Protobuf/ROS2 CDR paths;
+- canonical schema evidence, `.schema` sidecars, and Off/Warn/Strict replay identity policy;
+- directional and coordinate-mode metadata at the external data boundary;
+- replay scene adapters for transforms, scene state, camera, IMU, point cloud, and other registered behaviors;
+- deterministic pose-source arbitration, initial-batch deferral, positive/negative target caches, and bounded callback queues.
 
-- Keep improving package docs, demo docs, and sample docs from the user's point of view.
-- Add more screenshots, short walkthroughs, and troubleshooting notes based on real user feedback.
-- Keep private development plans separate from public documentation.
+For interactive analysis, Foxglove opens the MCAP through the Manager's local Remote files URL. The `Unity Replay Sync` panel forwards Foxglove's global cursor to Unity, so the playback bar and Plot-driven seek control Unity scene time. Foxglove remains the time owner; Unity applies latest-at snapshots for seeks and complete forward ranges for normal playback. See [Foxglove-Owned Timeline and Deterministic Unity Scene Reproduction](docs/research-remote-timeline-scene-reproduction.md).
 
-### 2.2 Platform Validation
+This is deterministic state application, not deterministic execution of Unity physics, random state, user scripts, or external services.
 
-- Validate more Unity versions beyond the current Unity 6000.0+ package target.
-- Expand IL2CPP checks across Windows, Linux, and macOS.
-- Add clearer guidance for package installation in fresh Unity projects.
+### 2.4 Data Transport and High-Rate Sensors
 
-### 2.3 Protocol Coverage
+- The Manager Inspector groups `Publish Data` and `Subscribe Data` under one `Data Transport` workflow.
+- Output destinations remain independently selectable: Foxglove WebSocket, ROS2 Native, and ROS2 Bridge can coexist where the contract supports them.
+- Input and output coordinate modes are separate because conversion responsibility reverses with direction.
+- MCAP records the external boundary representation rather than applying an extra replay conversion.
+- Camera publishing supports bounded async JPEG work and optional video sidecar modes.
+- Point-cloud publishing includes point/byte budgets, stride and voxel sampling, raw `foxglove.PointCloud`, optional Draco compression, native ROS2 `PointCloud2`, and throughput instrumentation.
 
-- Protobuf schema catalog and protobuf publishing are implemented.
-- Expand examples for Assets, Playback Control, Client Publish, Parameters, Services, and Connection Graph.
-- Optional Unity-native `wss://` support, the local development certificate generator, Root CA distributor, hosted-browser Origin allowance, and shared token gate are implemented in v1.4.0. Future work should focus on clearer remote-access guidance and production deployment boundaries; local demos continue to default to `ws://127.0.0.1`.
+### 2.5 Optional ROS2 Package Line
 
-### 2.4 MCAP and Replay
+The core SDK remains ROS-free. Native ROS2 code is isolated into optional packages:
 
-- MCAP Attachment/AttachmentIndex and summary CRC are implemented.
-- MCAP writer hot-path allocation was reduced.
-- Add more replay adapters for Unity scene objects and custom user data.
-- Consider extracting reusable C# MCAP pieces if they become useful outside Unity.
+This remains a one-repo, multi-package design. The ROS2 For Unity adapter/runtime package line is the optional native mainline and supersedes the embedded rclcpp spike route. It builds on RobotecAI ROS2 For Unity under its Apache-2.0 boundary; Humble, Jazzy, and Lyrical are package/runtime choices rather than branches in the core SDK. Broad ROS2 schema expansion remains deferred until a concrete Unity workflow and acceptance fixture require it.
 
-### 2.5 Developer Experience
+| Package family | Role |
+| --- | --- |
+| `dev.unity2foxglove.sdk` | Foxglove WebSocket, MCAP, Replay, FoxRun, and normal Unity workflows. |
+| `dev.unity2foxglove.ros2forunity` | ROS2 For Unity facade, lifecycle, generated binding integration, diagnostics, and samples. |
+| `runtime.humble.win64`, `runtime.jazzy.win64`, `runtime.lyrical.win64` | Mutually exclusive Windows x64 ROS2 runtime artifacts and capability metadata. |
+| `foxrun.ros2.interfaces` | Static generated custom FoxRun ROS2 interface package. |
+| distro-specific `foxrun.ros2.interfaces.typesupport.*.win64` | Matching custom-interface native/managed typesupport add-ons. |
 
-- Transport health/observability Inspector section is implemented.
-- Improve `[FoxRun]` diagnostics and generated-source visibility.
-- Keep reducing setup friction for users who only want "press Play and connect Foxglove."
+The implemented path supports existing ROS2 message types and generated custom FoxRun DTO interfaces. Runtime/RMW selection is capability-driven rather than hard-coded into the core SDK.
 
-### 2.6 ROS2 and Data-Exchange Exploration
+The Windows-local Unity Editor matrix has passed four real peer rows:
 
-- The current ROS2 bridge is optional, disabled by default, and sidecar-based. It is intended for local ROS2 graph integration without changing the default Foxglove WebSocket or MCAP workflows.
-- RobotecAI ROS2 For Unity is the preferred ROS2 product mainline because it supports the goal that Unity users should not install ROS2 locally on the Windows Unity machine. This supersedes the embedded rclcpp spike route as historical evidence rather than the product path.
-- The repository uses a one-repo, multi-package model: `dev.unity2foxglove.sdk` remains the ROS-free core package; `dev.unity2foxglove.ros2forunity` owns facade, adapter samples, docs, and diagnostics; `dev.unity2foxglove.ros2forunity.runtime.jazzy.win64` owns the Jazzy Windows x64 runtime artifacts.
-- Packages work independently and compose cleanly: the core SDK works by itself, the ROS2 For Unity adapter package compiles and reports a missing runtime gracefully, a runtime package exposes metadata/diagnostics by itself, and adapter plus runtime enables Unity-as-ROS2-node publish/subscribe.
-- The delivered ROS2 For Unity runtime package (`dev.unity2foxglove.ros2forunity.runtime.jazzy.win64`) includes runtime inventory, SHA-256 checksum, third-party notices, license inventory, and has passed fresh-project Unity acceptance plus bidirectional `std_msgs/msg/String` data-path smoke through Windows ROS2 Jazzy. Humble remains legacy/fallback evidence, not the recommended new-user runtime line.
-- The ROS2 For Unity direction is Jazzy-first for Windows x64. Linux, macOS, Humble, Lyrical, and alternate RMW implementations are not yet included.
-- Windows Firewall may block inbound UDP for ROS2 For Unity DDS discovery; configure Inbound Allow rules for the Unity Editor or use a Fast DDS Discovery Server. WSL2 is a valid topology with proper firewall configuration.
-- Standard-message, RViz2, rosbag2, MarkerArray, PointCloud2, and MCAP fanout plans are deferred until the ROS2 For Unity adapter/runtime package line is stable.
+- Humble + FastDDS;
+- Jazzy + FastDDS;
+- Lyrical + FastDDS;
+- Lyrical + Zenoh with an owned router.
 
-## 3. Long-Term Ideas
+That evidence covers the local Editor data path and graph/type/QoS observations. It does not certify Windows Player, Linux peer, Linux Player, or cross-machine discovery.
 
-- Evaluate whether parts of the project should become standalone C# Foxglove protocol or MCAP libraries.
-- Keep the managed C# backend as the default path, with native backend exploration only if performance or platform needs justify it.
-- Explore higher-level logging APIs that feel closer to modern visual-debugging workflows while still using Foxglove and MCAP standards underneath.
-- Explore native ROS2 integration only if it can remain optional, well-isolated, and compatible with normal Unity package usage without ROS installed.
+### 2.6 Packaging, Evidence, and Maintenance
 
-## 4. Development Notes
+- The repository uses one source repository with a ROS-free core package and separately versioned optional integration/runtime packages.
+- CI separates default, adapter, and native compile/test lanes and keeps all build output below the repository `build/` root.
+- Schema manifests, artifact inventories, checksums, third-party notices, analyzer freshness, package validators, MCAP conformance, and Unity manual acceptance form separate evidence layers.
+- Large runtime packages and generated artifacts are validated as package content; temporary colcon, CMake, Unity, `bin`, and `obj` output is not source.
 
-Detailed planning notes are kept private. If you need implementation history or design context, please contact the author.
+## 3. Near-Term Priorities
+
+### 3.1 FoxRun and Source-Generation Platform
+
+1. Converge reusable source-generator build plumbing across related Unity telemetry targets.
+2. Expand explicitly supported complex-type depth while retaining bounded generated copy/dispose behavior.
+3. Extract a clearer multi-backend emitter seam only after shared infrastructure and type semantics are stable.
+4. Improve diagnostics, generated-source visibility, and first-error guidance without growing a second declaration model.
+
+### 3.2 Onboarding and Trust
+
+- Reduce first-success setup to a small, verifiable Unity workflow.
+- Keep Inspector terminology aligned with the user's data flow rather than internal transport classes.
+- Add screenshots and short walkthroughs for FoxRun input/output, Foxglove timeline replay, and optional ROS2 setup.
+- Publish platform and package evidence with explicit scope instead of presenting raw test counts as support claims.
+
+### 3.3 MCAP and Replay
+
+- Measure and reduce large-MCAP scrub latency.
+- Add user-driven recording search, hosted/range access, and multi-file timeline workflows.
+- Expand replay adapters only for concrete Unity scene or custom-data use cases.
+- Keep deterministic simulation/physics replay as a separate contract requiring captured inputs, seeds, lifecycle rules, and external-system ownership.
+- Evaluate a reusable managed MCAP library boundary only after dependencies can be separated cleanly from Unity lifecycle and component code.
+
+### 3.4 Cross-Platform Release Evidence
+
+- Run IL2CPP Player and fresh-package acceptance across Windows, Linux, and macOS.
+- Complete the pending custom ROS2 Windows Player and Linux-peer matrix cells before promoting those claims.
+- Evaluate Lyrical Ubuntu 26.04 standalone/runtime feasibility as an optional package track.
+- Verify artifact inventories, licenses, checksums, and native dependency closure independently for every platform package.
+
+### 3.5 Remote Deployment Security
+
+- Define identity, authorization, credential rotation, audit, and deployment ownership before enabling untrusted remote control.
+- Keep loopback/local-development defaults separate from a production remote-access claim.
+- Do not treat a bearer token or self-signed local certificate as a complete multi-user authorization system.
+
+### 3.6 Point-Cloud and Multi-Sensor Track
+
+1. Retain the current measured high-throughput publication path and add remote-QoS evidence only from real networks.
+2. Build a reusable in-Unity point-cloud renderer.
+3. Add repeatable bag-based multi-LiDAR fixtures and TF integration.
+4. Run Ouster/Livox hardware validation only after the renderer and recorded fixtures are stable.
+
+## 4. Longer-Term Candidates
+
+These are options, not release promises:
+
+- semantic telemetry graphs and run manifests;
+- indexed MCAP query and differential trace comparison;
+- runtime insight dashboards and rule/anomaly-driven capture;
+- bounded local agent/MCP query surfaces for existing telemetry and replay state;
+- cross-project emitter reuse for Foxglove/MCAP and Rerun/RRD;
+- standalone managed protocol or MCAP packages if a clean non-Unity consumer emerges.
+
+Each candidate should start from a concrete user workflow, fixture, and acceptance gate rather than a broad parity goal.
+
+## 5. Explicit Non-Goals
+
+- Replacing the official Foxglove SDK ecosystem or pursuing multi-language SDK parity.
+- Making the ROS2 optional package a dependency of the core SDK.
+- Supporting simultaneous subscription from multiple providers for one FoxRun member.
+- Claiming deterministic simulation from timestamped scene-state replay alone.
+- Adding ROS1, every ROS2 schema, or every Foxglove schema without a demonstrated Unity workflow.
+- Turning local WSS/token tooling into an unqualified production-security claim.
+- Committing generated build, Unity transient, CMake/colcon, `bin`, or `obj` output as source.
+
+## 6. Evidence Policy
+
+Roadmap status follows evidence scope:
+
+- automated behavior tests prove the tested contract, not every Unity/platform combination;
+- structural tests prove repository and architecture boundaries, not runtime interoperability;
+- conformance tests prove agreement with a specification or independent implementation for the tested fixture;
+- Unity/Foxglove/ROS2 manual acceptance proves only the recorded topology and application mode;
+- a local Editor PASS never becomes a Player, Linux, macOS, or cross-machine claim without that separate run.
+
+This policy keeps completed work visible while leaving the remaining cells honest.

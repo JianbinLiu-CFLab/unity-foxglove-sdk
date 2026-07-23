@@ -53,13 +53,13 @@ namespace Unity2Foxglove.ManualAcceptance
 
         [FoxRun(
             NativePublishTopic,
-            Mode = FoxRunMode.PublishOnly,
+            Mode = FoxRunFlow.Publish,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
-        [SerializeField] private Phase181State _nativePublishOnly;
+        [SerializeField] private Phase181State _nativePublish;
 
         [FoxRun(
             NativeSubscribeTopic,
-            Mode = FoxRunMode.SubscribeOnly,
+            Mode = FoxRunFlow.Subscribe,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
         [SerializeField] private Phase181State _inputPort;
@@ -67,7 +67,7 @@ namespace Unity2Foxglove.ManualAcceptance
 #pragma warning disable FOXRUN400 // The peer protocol explicitly owns the native inbound/output-loop evidence.
         [FoxRun(
             NativeBidirectionalTopic,
-            Mode = FoxRunMode.PublishAndSubscribe,
+            Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunWireEncoding.Json,
             SubscriptionProvider = FoxRunSubscriptionProvider.Ros2Native,
             Ros2Qos = FoxRunRos2QosPreset.Reliable)]
@@ -78,7 +78,7 @@ namespace Unity2Foxglove.ManualAcceptance
         // selected. Generated native bindings remain conditionally compiled,
         // while this public read-only surface prevents bootstrap builds from
         // treating the locked sample values as unused fields.
-        public Phase181State NativePublishValue => _nativePublishOnly;
+        public Phase181State NativePublishValue => _nativePublish;
         public Phase181State InputPort => _inputPort;
         public Phase181State NativeInputWebSocketOutput => _nativeInputWebSocketOutput;
 
@@ -186,7 +186,7 @@ namespace Unity2Foxglove.ManualAcceptance
             }
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
-            _nativePublishOnly = CreateState("unity-publish", 181, false);
+            _nativePublish = CreateState("unity-publish", 181, false);
             _nativeInputWebSocketOutput = CreateState("unity-bidirectional", 182, true);
             _status = _manager == null
                 ? "Assign a FoxgloveManager with custom native ROS2 enabled."
@@ -203,7 +203,7 @@ namespace Unity2Foxglove.ManualAcceptance
         {
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES
             ObserveRuntimeAndInterface();
-            ObserveSubscribeOnly();
+            ObserveSubscribe();
             ObserveBidirectional();
             EvaluatePlayerAutoQuit();
 #endif
@@ -257,7 +257,7 @@ namespace Unity2Foxglove.ManualAcceptance
             }
         }
 
-        private void ObserveSubscribeOnly()
+        private void ObserveSubscribe()
         {
             if (!TryGetNewlyApplied(
                     NativeSubscribeTopic,
@@ -276,12 +276,12 @@ namespace Unity2Foxglove.ManualAcceptance
             _sessionGeneration = snapshot.SessionGeneration;
             if (!IsCorrelatedInitialPayload(_inputPort))
             {
-                _status = "Ignored a custom native SubscribeOnly DTO that did not match this acceptance run.";
+                _status = "Ignored a custom native Subscribe DTO that did not match this acceptance run.";
                 return;
             }
 
             _correlatedSubscribeApplied = true;
-            _status = "Applied custom native ROS2 SubscribeOnly DTO on Unity's main thread.";
+            _status = "Applied custom native ROS2 Subscribe DTO on Unity's main thread.";
             EmitMarker(
                 "PHASE181_CUSTOM_ROS2_APPLIED",
                 "topic=" + NativeSubscribeTopic

@@ -175,10 +175,10 @@ namespace Unity.FoxgloveSDK.Tests
             var roadmap = ReadRepoText("ROADMAP.md");
             var combined = readme + "\n" + roadmap;
 
-            Check(readme.Contains("normal Foxglove WebSocket streaming, MCAP recording, or replay", StringComparison.Ordinal)
-                  && readme.Contains("ROS2 For Unity", StringComparison.Ordinal)
+            Check(readme.Contains("does not require ROS for its core WebSocket, MCAP, Replay, or FoxRun workflows", StringComparison.Ordinal)
+                  && readme.Contains("dev.unity2foxglove.ros2forunity", StringComparison.Ordinal)
                   && readme.Contains("optional", StringComparison.OrdinalIgnoreCase),
-                "106E-1: README preserves no-ROS default while naming optional ROS2 For Unity evaluation");
+                "106E-1: README preserves the no-ROS core default while naming the optional ROS2 For Unity facade");
             Check(combined.Contains("RobotecAI ROS2 For Unity", StringComparison.Ordinal)
                   && combined.Contains("Apache-2.0", StringComparison.Ordinal),
                 "106E-2: docs attribute RobotecAI ROS2 For Unity before any bundled adoption");

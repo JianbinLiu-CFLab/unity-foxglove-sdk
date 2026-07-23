@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.Tests
                 new List<FoxgloveSourceEmitter.TopicMember>
                 {
                     new("_position", "UnityEngine.Vector3", "/phase141a/position", 10f, "",
-                        publishMode: 1, changeEpsilon: 0f, forceIntervalSeconds: 0f,
+                        policy: 1, changeEpsilon: 0f, forceIntervalSeconds: 0f,
                         when: "TelemetryEnabled", unless: "IsPaused")
                 });
 
@@ -118,10 +118,10 @@ namespace Unity.FoxgloveSDK.Tests
                 new List<FoxgloveSourceEmitter.TopicMember>
                 {
                     new("conditionalPosition", "UnityEngine.Vector3", "/debug/conditional_position", 15f, "",
-                        publishMode: 0, changeEpsilon: 0f, forceIntervalSeconds: 0f,
+                        policy: 0, changeEpsilon: 0f, forceIntervalSeconds: 0f,
                         when: "telemetryEnabled"),
                     new("conditionalHealth", "System.Int32", "/debug/unless_health", 15f, "",
-                        publishMode: 0, changeEpsilon: 0f, forceIntervalSeconds: 0f,
+                        policy: 0, changeEpsilon: 0f, forceIntervalSeconds: 0f,
                         unless: "isPaused")
                 });
             var compiled = CompileRuntimeConditionFixture(source);
@@ -312,19 +312,19 @@ namespace UnityEngine.Scripting
 
 namespace Unity.FoxgloveSDK.Components
 {
-    public enum FoxRunPublishMode
+    public enum FoxRunPolicy
     {
         FixedRate = 0,
-        OnChange = 1,
-        OnChangeOrInterval = 2,
-        OnTrigger = 3
+        Change = 1,
+        ChangeOrInterval = 2,
+        Trigger = 3
     }
 
     public readonly struct FoxgloveLogTopicInfo
     {
         public readonly string Topic;
         public readonly float RateHz;
-        public readonly FoxRunPublishMode PublishMode;
+        public readonly FoxRunPolicy Policy;
         public readonly float ChangeEpsilon;
         public readonly float ForceIntervalSeconds;
 
@@ -332,16 +332,16 @@ namespace Unity.FoxgloveSDK.Components
         {
             Topic = topic;
             RateHz = rateHz;
-            PublishMode = FoxRunPublishMode.FixedRate;
+            Policy = FoxRunPolicy.FixedRate;
             ChangeEpsilon = 0f;
             ForceIntervalSeconds = 0f;
         }
 
-        public FoxgloveLogTopicInfo(string topic, float rateHz, FoxRunPublishMode publishMode, float changeEpsilon, float forceIntervalSeconds)
+        public FoxgloveLogTopicInfo(string topic, float rateHz, FoxRunPolicy policy, float changeEpsilon, float forceIntervalSeconds)
         {
             Topic = topic;
             RateHz = rateHz;
-            PublishMode = publishMode;
+            Policy = policy;
             ChangeEpsilon = changeEpsilon;
             ForceIntervalSeconds = forceIntervalSeconds;
         }

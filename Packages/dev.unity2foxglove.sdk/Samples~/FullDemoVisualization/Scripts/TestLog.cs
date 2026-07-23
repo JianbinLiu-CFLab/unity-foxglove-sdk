@@ -26,10 +26,10 @@ public partial class TestLog : MonoBehaviour
     private float _health = 100f;
 
     // Change-driven options:
-    // - PublishMode = OnChangeOrInterval publishes changed values.
+    // - Policy = ChangeOrInterval publishes changed values.
     // - ChangeEpsilon suppresses tiny Vector jitter.
     // - ForceIntervalSeconds still sends a heartbeat every second.
-    [FoxRun("/debug/position2", RateHz = 10, PublishMode = FoxRunPublishMode.OnChangeOrInterval, ChangeEpsilon = 0.01f, ForceIntervalSeconds = 1f)]
+    [FoxRun("/debug/position2", RateHz = 10, Policy = FoxRunPolicy.ChangeOrInterval, ChangeEpsilon = 0.01f, ForceIntervalSeconds = 1f)]
     private Vector3 _position2;
 
     // Conditional publish gates.

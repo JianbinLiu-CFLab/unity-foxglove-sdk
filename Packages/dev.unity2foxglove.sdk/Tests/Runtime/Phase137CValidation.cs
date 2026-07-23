@@ -29,7 +29,7 @@ namespace Unity.FoxgloveSDK.Tests
             VerifySubEmitterFiles();
             VerifyEmitClassOutputUnchanged();
             VerifyIsAnonymousPropertyNameRemoved();
-            VerifyTopicPublishModeFixed();
+            VerifyTopicPolicyFixed();
             VerifyCsprojGlobs();
             VerifyPublicApiPreserved();
 
@@ -74,15 +74,15 @@ namespace Unity.FoxgloveSDK.Tests
             Check(!allSource.Contains("IsAnonymousPropertyName", StringComparison.Ordinal), "137C-6: IsAnonymousPropertyName removed");
         }
 
-        private static void VerifyTopicPublishModeFixed()
+        private static void VerifyTopicPolicyFixed()
         {
             var entryPath = RepoPath("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/FoxgloveSourceEmitter.cs");
             Check(File.Exists(entryPath), "137C-7: FoxgloveSourceEmitter entry source exists");
             var entry = File.ReadAllText(entryPath);
-            Check(!entry.Contains("fields.Max(f => f.PublishMode)", StringComparison.Ordinal), "137C-8: unreachable Max call replaced");
-            Check(entry.Contains("return PublishModeFixedRate;", StringComparison.Ordinal)
-                  && entry.Contains("PublishModeOnTrigger", StringComparison.Ordinal),
-                "137C-9: TopicPublishMode returns named mode constants");
+            Check(!entry.Contains("fields.Max(f => f.Policy)", StringComparison.Ordinal), "137C-8: unreachable Max call replaced");
+            Check(entry.Contains("return PolicyFixedRate;", StringComparison.Ordinal)
+                  && entry.Contains("PolicyTrigger", StringComparison.Ordinal),
+                "137C-9: TopicPolicy returns named mode constants");
         }
 
         private static void VerifyCsprojGlobs()

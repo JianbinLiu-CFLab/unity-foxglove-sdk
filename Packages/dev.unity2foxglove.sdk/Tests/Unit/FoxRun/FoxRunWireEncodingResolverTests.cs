@@ -56,10 +56,10 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Theory]
-        [InlineData(FoxRunMode.PublishOnly, FoxRunWireEncoding.Protobuf)]
-        [InlineData(FoxRunMode.SubscribeOnly, FoxRunWireEncoding.Json)]
+        [InlineData(FoxRunFlow.Publish, FoxRunWireEncoding.Protobuf)]
+        [InlineData(FoxRunFlow.Subscribe, FoxRunWireEncoding.Json)]
         public void InheritResolvesUsingTheDefaultForItsFlowDirection(
-            FoxRunMode mode,
+            FoxRunFlow mode,
             FoxRunWireEncoding expected)
         {
             var resolved = InvokeDirectionalResolver(
@@ -76,7 +76,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var exception = Assert.Throws<TargetInvocationException>(() => InvokeDirectionalResolver(
                 FoxRunWireEncoding.Inherit,
-                FoxRunMode.PublishAndSubscribe,
+                FoxRunFlow.PublishAndSubscribe,
                 FoxRunWireEncoding.Protobuf,
                 FoxRunWireEncoding.Json));
 
@@ -125,7 +125,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private static FoxRunWireEncoding InvokeDirectionalResolver(
             FoxRunWireEncoding declared,
-            FoxRunMode mode,
+            FoxRunFlow mode,
             FoxRunWireEncoding publishDefault,
             FoxRunWireEncoding subscriptionDefault)
         {
@@ -136,7 +136,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 types: new[]
                 {
                     typeof(FoxRunWireEncoding),
-                    typeof(FoxRunMode),
+                    typeof(FoxRunFlow),
                     typeof(FoxRunWireEncoding),
                     typeof(FoxRunWireEncoding)
                 },

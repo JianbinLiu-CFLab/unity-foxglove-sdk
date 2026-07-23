@@ -253,6 +253,17 @@ def build_addon_validator_command(repository: pathlib.Path, distro: str, rmw: st
     return [sys.executable, str(validator), "--distro", distro, "--require-rmw", rmw]
 
 
+def build_addon_license_repair_command(repository: pathlib.Path, distro: str) -> list[str]:
+    """Build the narrowly scoped canonical-license repair before strict add-on validation."""
+
+    if distro not in {"humble", "jazzy", "lyrical"}:
+        raise PeerFailure("FAIL_TYPESUPPORT_PREFLIGHT", "The custom typesupport distribution is not valid.")
+    builder = pathlib.Path(repository) / "Scripts" / "ros2forunity" / "interfaces" / "build_foxrun_custom_typesupport_addon.py"
+    if not builder.is_file():
+        raise PeerFailure("FAIL_TYPESUPPORT_PREFLIGHT", "The custom typesupport repair helper is unavailable.")
+    return [sys.executable, str(builder), "--distro", distro, "--repair-tracked-license-eol"]
+
+
 def require_selected_typesupport_addon(repository: pathlib.Path, distro: str) -> str:
     """Require the Unity project to select exactly the matching runtime/add-on pair."""
 
@@ -1311,7 +1322,7 @@ def _normalize_probe_role(value: str) -> str:
 
 
 def _role_requires(role: str) -> tuple[bool, bool, bool]:
-    """Return whether a role needs PublishOnly, P&S, and null/empty proof."""
+    """Return whether a role needs Publish, full-duplex, and null/empty proof."""
 
     normalized = _normalize_probe_role(role)
     return (
@@ -2009,7 +2020,7 @@ def run_typed_worker(args: argparse.Namespace) -> int:
                     continue
                 observed_outbound_messages.add(id(message))
                 if _payload_evidence(message) != custom_payload_fields("unity-publish", null_empty=False):
-                    raise PeerFailure("FAIL_PAYLOAD_SHAPE", "Unity's native custom PublishOnly envelope did not preserve the locked payload.")
+                    raise PeerFailure("FAIL_PAYLOAD_SHAPE", "Unity's native custom Publish envelope did not preserve the locked payload.")
                 previous_outbound_sequence = protocol.require_envelope_metadata(
                     _envelope_metadata(message),
                     previous_outbound_sequence,
@@ -2321,6 +2332,7 @@ def _run_windows_surface(
     player_process: subprocess.Popen[str] | None = None
     editor_process: subprocess.Popen[str] | None = None
     editor_plugin_alias_stack = contextlib.ExitStack()
+    peer_workspace_alias_stack = contextlib.ExitStack()
     worker_stream = None
     peer_build_sealed = False
     exit_code = 1
@@ -2394,12 +2406,28 @@ def _run_windows_surface(
             cache_key,
             lock.ros_package_name,
         )
+        _, peer_runtime_workspace = peer_workspace_alias_stack.enter_context(
+            temporary_short_windows_peer_workspace(workspace)
+        )
         peer_build_sealed = peer_build_reused
         summary["processOwnership"] = {"workspaceOwned": True}
         summary["peerBuild"] = "reused" if peer_build_reused else "cold"
 
+        license_repair_command = build_addon_license_repair_command(repository, args.distro)
         validator_command = build_addon_validator_command(repository, args.distro, args.rmw)
-        summary["commandLabels"] = {"addonValidator": protocol.bounded_command_label(validator_command)}
+        summary["commandLabels"] = {
+            "addonLicenseEolRepair": protocol.bounded_command_label(license_repair_command),
+            "addonValidator": protocol.bounded_command_label(validator_command),
+        }
+        print("[phase181:" + profile_id + "] Verifying the selected custom typesupport legal-text inventory.", flush=True)
+        run_logged_owned_command(
+            license_repair_command,
+            cwd=repository,
+            env=ros2env.sanitized_subprocess_env(os.environ),
+            log_path=workspace / "typesupport-license-eol-repair.log",
+            timeout_seconds=min(60.0, ready_timeout),
+            failure_code="FAIL_TYPESUPPORT_PREFLIGHT",
+        )
         print("[phase181:" + profile_id + "] Checking the selected custom typesupport add-on.", flush=True)
         run_logged_owned_command(
             validator_command,
@@ -2430,25 +2458,24 @@ def _run_windows_surface(
                 + ".",
                 flush=True,
             )
-            with temporary_short_windows_peer_workspace(workspace) as (_, build_workspace):
-                stage_locked_ros_source(static_package, build_workspace, lock.ros_package_name)
-                run_logged_owned_command(
-                    colcon_command,
-                    cwd=build_workspace,
-                    env=build_environment,
-                    log_path=workspace / "colcon-build.log",
-                    timeout_seconds=peer_build_timeout_seconds(),
-                    failure_code="FAIL_PEER_BUILD",
-                    stream_output=True,
-                    output_prefix="[phase181:" + profile_id + "][build] ",
-                )
+            stage_locked_ros_source(static_package, peer_runtime_workspace, lock.ros_package_name)
+            run_logged_owned_command(
+                colcon_command,
+                cwd=peer_runtime_workspace,
+                env=build_environment,
+                log_path=workspace / "colcon-build.log",
+                timeout_seconds=peer_build_timeout_seconds(),
+                failure_code="FAIL_PEER_BUILD",
+                stream_output=True,
+                output_prefix="[phase181:" + profile_id + "][build] ",
+            )
             seal_peer_build_workspace(workspace, cache_key, lock.ros_package_name)
             peer_build_sealed = True
 
         peer_environment = build_peer_environment(
             build_environment,
             toolchain.ros2_root,
-            workspace / "install",
+            peer_runtime_workspace / "install",
             distro=args.distro,
             rmw=args.rmw,
             domain_id=args.domain_id,
@@ -2559,7 +2586,7 @@ def _run_windows_surface(
         )
         worker_process = subprocess.Popen(
             worker_command,
-            cwd=str(workspace),
+            cwd=str(peer_runtime_workspace),
             env=peer_environment,
             text=True,
             stdout=worker_stream,
@@ -2676,6 +2703,7 @@ def _run_windows_surface(
         if editor_process is not None and editor_process.poll() is None:
             _terminate_owned_child(editor_process)
         editor_plugin_alias_stack.close()
+        peer_workspace_alias_stack.close()
         if worker_stream is not None:
             worker_stream.close()
         if workspace is not None:
