@@ -165,6 +165,7 @@ MonoBehaviour:
   _allowRemoteFoxRunInboundWithSharedToken: 0
   _foxRunInboundMaxPayloadBytes: 65536
   _foxRunInboundMaxMessagesPerSecondPerTopic: 60
+  _foxRunDefaultSubscribeRateHz: 10
   _serverName: Unity Foxglove SDK
   _host: 127.0.0.1
   _port: 8765
@@ -176,7 +177,7 @@ MonoBehaviour:
   _ros2NativeEnabled: 1
   _profilingEnabled: 0
   _defaultPublishRateHz: 10
-  _defaultPublisherEncoding: 1
+  _defaultPublisherEncoding: 2
   _allowPublisherOverride: 1
   _ros2BridgeEnabled: 0
   _ros2BridgeHost: 127.0.0.1
