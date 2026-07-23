@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Tests
             RuntimeSelectionManifestSourceShapeIsHardened();
             RuntimeSelectorInspectorDefersResolveHelpBox();
             RuntimePlayModeGuardDocumentsReloadResidualRisk();
+            RuntimePlayModeGuardDoesNotRelockAfterDomainReload();
             RuntimePlayModeGuardUsesInfoForExpectedLifecycleNotifications();
             Ros2ValidationHelperReportsMissingGitClearly();
             Ros2BridgeFrameExposesNonAllocatingPayloadView();
@@ -131,6 +132,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && guard.Contains("native shutdown hook failed", StringComparison.Ordinal)
                   && guard.Contains("Debug.LogWarning(", StringComparison.Ordinal),
                 "163-20E-5: actual native reload and shutdown failures remain warnings");
+        }
+
+        private static void RuntimePlayModeGuardDoesNotRelockAfterDomainReload()
+        {
+            var guard = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity/Editor/Ros2ForUnityRuntimePlayModeGuard.cs");
+            var lockMethod = ExtractMethod(guard, "LockReloadAssembliesForNativePlayMode");
+            var persistedLockIndex = lockMethod.IndexOf(
+                "SessionState.GetBool(ReloadAssembliesLockedForR2fuKey, false)",
+                StringComparison.Ordinal);
+            var lockCallIndex = lockMethod.IndexOf("EditorApplication.LockReloadAssemblies()", StringComparison.Ordinal);
+
+            Check(persistedLockIndex >= 0
+                  && persistedLockIndex < lockCallIndex
+                  && lockMethod.Contains("_reloadAssembliesLockedForR2fu = true;", StringComparison.Ordinal),
+                "163-20E-2A: R2FU play-mode guard restores a persisted reload lock after domain reload instead of locking Unity twice");
         }
 
         private static void Ros2ValidationHelperReportsMissingGitClearly()
