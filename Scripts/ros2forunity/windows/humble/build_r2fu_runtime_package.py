@@ -1021,6 +1021,15 @@ def patch_standalone_environment_isolation(text: str) -> str:
         if prefix_start >= 0 and prefix_end > prefix_start:
             text = text[:prefix_start] + new_prefix.rstrip("\n") + text[prefix_end:]
 
+    # The standalone patch removes every diagnostic that used this provenance.
+    # Remove its upstream-only declaration and assignments as well, or Unity emits CS0219.
+    for obsolete_prefix_source_line in (
+        '        string prefixSource = "asset root";\n',
+        '            prefixSource = "StreamingAssets";\n',
+        '            prefixSource = "plugin directory";\n',
+    ):
+        text = text.replace(obsolete_prefix_source_line, "")
+
     old_rmw = '''        if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION")))
         {
             SetProcessEnvironmentVariable("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp");
