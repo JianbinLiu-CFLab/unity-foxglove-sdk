@@ -1367,6 +1367,60 @@ class R2fuArtifactHandoffTests(unittest.TestCase):
             self.assertEqual("new-jazzy", updated["currentRecommendedRuntime"]["artifactSha256"])
             self.assertEqual(["keep-current.dll"], updated["currentRecommendedRuntime"]["criticalRuntimeFiles"])
 
+    def test_runtime_adoption_sync_rejects_missing_core_artifact_metadata_before_write(self) -> None:
+        """A partial runtime manifest must not leave stale adoption fields behind."""
+        from Scripts.ros2forunity.windows.runtime_adoption_manifest import (
+            sync_runtime_adoption_manifest,
+        )
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package_name = "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
+            compliance = root / "Packages/dev.unity2foxglove.ros2forunity/Compliance"
+            package = root / "Packages" / package_name
+            (package / "RuntimeSupport").mkdir(parents=True)
+            compliance.mkdir(parents=True)
+            adoption_path = compliance / "ros2-for-unity-adoption-manifest.json"
+            original = {
+                "currentRecommendedRuntime": {
+                    "packageName": package_name,
+                    "artifactSha256": "verified-old",
+                    "artifactSize": 123,
+                    "inventoryFileCount": 456,
+                },
+                "supportedRuntimePackages": [
+                    {
+                        "packageName": package_name,
+                        "artifactSha256": "verified-old",
+                        "artifactSize": 123,
+                        "inventoryFileCount": 456,
+                    }
+                ],
+            }
+            adoption_path.write_text(json.dumps(original), encoding="utf-8")
+            (package / "RuntimeSupport/runtime-manifest.json").write_text(
+                json.dumps(
+                    {
+                        "artifactSize": 999,
+                        "inventoryFileCount": 1000,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "artifactSha256"):
+                sync_runtime_adoption_manifest(
+                    root,
+                    package,
+                    package_name,
+                    update_current_recommended=True,
+                )
+
+            self.assertEqual(
+                original,
+                json.loads(adoption_path.read_text(encoding="utf-8")),
+            )
+
     def test_inactive_runtime_syncs_can_preserve_the_selected_runtime(self) -> None:
         """Refreshing a non-selected payload must not rewrite the Unity runtime selection."""
         scripts = {

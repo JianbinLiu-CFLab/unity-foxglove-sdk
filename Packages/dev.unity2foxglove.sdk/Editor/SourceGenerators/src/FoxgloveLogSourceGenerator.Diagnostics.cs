@@ -83,8 +83,8 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor InvalidPolicy = new DiagnosticDescriptor(
-            "FOXRUN013", "FoxRun publish mode out of range",
-            "{0}: FoxRun publish mode must be between 0 and 3",
+            "FOXRUN013", "FoxRun policy out of range",
+            "{0}: FoxRun Policy must be FixedRate, Change, ChangeOrInterval, or Trigger",
             "FoxRun", DiagnosticSeverity.Error, true);
 
         public static readonly DiagnosticDescriptor InvalidMemberKind = new DiagnosticDescriptor(

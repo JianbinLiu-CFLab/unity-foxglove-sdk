@@ -53,6 +53,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void InvalidPolicyDiagnosticNamesTheSupportedPolicies()
+        {
+            var message = Diags.InvalidPolicy.MessageFormat.ToString();
+
+            Assert.Contains("FixedRate", message, StringComparison.Ordinal);
+            Assert.Contains("Change", message, StringComparison.Ordinal);
+            Assert.Contains("Trigger", message, StringComparison.Ordinal);
+            Assert.DoesNotContain("between 0 and 3", message, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void StaticImportDeclarationGrammarCompilesAllFlowsAndFixedRatePolicy()
         {
             var result = RunGenerator(@"

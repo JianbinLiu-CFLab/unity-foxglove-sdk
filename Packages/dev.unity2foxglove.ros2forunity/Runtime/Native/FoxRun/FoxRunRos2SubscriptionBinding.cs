@@ -13,47 +13,44 @@ using Unity.FoxgloveSDK.Components;
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
     /// <summary>
-    /// Lock-free fixed-window admission gate for a single generated native
-    /// subscription. The packed state keeps the stopwatch-second bucket and
-    /// accepted count in one compare/exchange operation so callback threads
-    /// never allocate or block before generated deep copy.
+    /// Lock-free minimum-interval admission gate for a single generated native
+    /// subscription. Spacing accepted callbacks prevents a burst at the start
+    /// of a wall-clock bucket from suppressing fresher values for its remainder.
     /// </summary>
     internal sealed class FoxRunRos2TransportAdmissionGate
     {
-        private readonly int _maximumAcceptedPerSecond;
-        private long _state;
+        private const long NoAcceptedTimestamp = long.MinValue;
+        private readonly long _minimumIntervalTicks;
+        private long _lastAcceptedTimestamp = NoAcceptedTimestamp;
 
         internal FoxRunRos2TransportAdmissionGate(int maximumAcceptedPerSecond)
         {
-            _maximumAcceptedPerSecond = Math.Max(1, maximumAcceptedPerSecond);
+            var normalized = Math.Max(1, maximumAcceptedPerSecond);
+            _minimumIntervalTicks = normalized == int.MaxValue
+                ? 0L
+                : Math.Max(1L, (Stopwatch.Frequency + normalized - 1L) / normalized);
         }
 
         internal bool TryAccept(long stopwatchTimestamp)
         {
-            var bucket = stopwatchTimestamp / Stopwatch.Frequency;
+            if (_minimumIntervalTicks == 0L)
+                return true;
+
             while (true)
             {
-                var observed = Volatile.Read(ref _state);
-                var observedBucket = (long)((ulong)observed >> 32);
-                var observedCount = (uint)observed;
-                if (observedBucket != bucket)
-                {
-                    var reset = Pack(bucket, 1U);
-                    if (Interlocked.CompareExchange(ref _state, reset, observed) == observed)
-                        return true;
-                    continue;
-                }
-
-                if (observedCount >= (uint)_maximumAcceptedPerSecond)
+                var observed = Volatile.Read(ref _lastAcceptedTimestamp);
+                if (observed != NoAcceptedTimestamp
+                    && (stopwatchTimestamp <= observed
+                        || stopwatchTimestamp - observed < _minimumIntervalTicks))
                     return false;
-                var incremented = Pack(bucket, observedCount + 1U);
-                if (Interlocked.CompareExchange(ref _state, incremented, observed) == observed)
+
+                if (Interlocked.CompareExchange(
+                        ref _lastAcceptedTimestamp,
+                        stopwatchTimestamp,
+                        observed) == observed)
                     return true;
             }
         }
-
-        private static long Pack(long bucket, uint count)
-            => unchecked((bucket << 32) | count);
     }
 
     internal readonly struct FoxRunRos2SubscriptionBindingSnapshot

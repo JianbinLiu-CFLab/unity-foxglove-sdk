@@ -46,6 +46,19 @@ def _copy_manifest_fields(
             target[key] = runtime_manifest[key]
 
 
+def _require_manifest_fields(
+    runtime_manifest: dict[str, object],
+    keys: Iterable[str],
+) -> None:
+    """Reject incomplete artifact identity before any adoption data is changed."""
+    missing = [key for key in keys if key not in runtime_manifest]
+    if missing:
+        raise RuntimeError(
+            "Runtime manifest is missing required artifact metadata: "
+            + ", ".join(missing)
+        )
+
+
 def sync_runtime_adoption_manifest(
     project_root: Path,
     package_path: Path,
@@ -59,6 +72,7 @@ def sync_runtime_adoption_manifest(
     compliance_dir = project_root / "Packages" / "dev.unity2foxglove.ros2forunity" / "Compliance"
     adoption_path = compliance_dir / "ros2-for-unity-adoption-manifest.json"
     runtime_manifest = read_json(package_path / "RuntimeSupport" / "runtime-manifest.json")
+    _require_manifest_fields(runtime_manifest, CORE_ARTIFACT_KEYS)
     adoption = read_json(adoption_path)
     runtimes = adoption.get("supportedRuntimePackages")
     if not isinstance(runtimes, list):

@@ -43,6 +43,23 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
             Assert.DoesNotContain("FoxgloveLog_HasBusSubscribers", source, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void GeneratedInputTriggerNamesAreUniqueAcrossSanitizedNativeMembers()
+        {
+            var first = BuildNativeTriggerMember("_command", "/phase184/first", 0);
+            var second = BuildNativeTriggerMember("command", "/phase184/second", 1);
+
+            var source = FoxgloveSourceEmitter.EmitClass(
+                FoxRunGenerationModel.FromMembers(new[] { first, second }).Types.Single());
+
+            Assert.Equal(
+                1,
+                CountOccurrences(source, "public bool FoxRun_Apply_command()"));
+            Assert.Equal(
+                1,
+                CountOccurrences(source, "public bool FoxRun_Apply_command_2()"));
+        }
+
         [Theory]
         [InlineData("invalid", "inherit", (int)FoxRunFlow.Subscribe, "FOXRUN204")]
         [InlineData("ros2-native", "inherit", (int)FoxRunFlow.Publish, "FOXRUN214")]
@@ -2210,6 +2227,38 @@ namespace Demo
                 generatesWebSocketCodec: false,
                 generatesRos2NativeRegistration: true,
                 ros2MessageShape: shape);
+
+        private static FoxRunGenerationMember BuildNativeTriggerMember(
+            string memberName,
+            string topic,
+            int rawMemberOrder)
+            => new FoxRunGenerationMember(
+                "Demo", "Receiver", memberName, "field",
+                "std_msgs.msg.String", "global::std_msgs.msg.String",
+                canonicalType: "std_msgs/msg/String",
+                isValueType: false, isArray: false, elementTypeName: "",
+                topic: topic, rateHz: 0f, schemaName: "std_msgs/msg/String",
+                policy: (int)FoxRunPolicy.Trigger, changeEpsilon: 0f, forceIntervalSeconds: 0f,
+                hostKind: "UnitTest", rawMemberOrder: rawMemberOrder, conditionalSymbols: "",
+                mode: (int)FoxRunFlow.Subscribe,
+                encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
+                subscriptionProvider: FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
+                ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
+                generatesWebSocketCodec: false,
+                generatesRos2NativeRegistration: true,
+                ros2MessageShape: BuildStringGoldenShape());
+
+        private static int CountOccurrences(string source, string value)
+        {
+            var count = 0;
+            var offset = 0;
+            while ((offset = source.IndexOf(value, offset, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                offset += value.Length;
+            }
+            return count;
+        }
 
         private static FoxRunRos2MessageShape BuildStringGoldenShape()
             => MessageShape(

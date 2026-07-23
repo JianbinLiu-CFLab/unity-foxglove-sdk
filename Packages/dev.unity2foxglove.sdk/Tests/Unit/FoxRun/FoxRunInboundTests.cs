@@ -602,6 +602,36 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(1, recording.ApplyCount);
         }
 
+        [Fact]
+        public void RouterReportsFlushExceptionsWithoutBlockingHealthySources()
+        {
+            var throwing = new ThrowingFlushInput("/phase184/throwing");
+            var healthy = new StagedRecordingInput("/phase184/healthy");
+            var diagnostics = new List<string>();
+            var router = new FoxRunInputRouter();
+            router.Register(throwing);
+            router.Register(healthy);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                router.Dispatch(
+                    "/phase184/healthy",
+                    new byte[] { 7 },
+                    "json",
+                    nowSeconds: 1).Status);
+
+            Assert.Equal(
+                1,
+                router.Flush(
+                    nowSeconds: 2,
+                    inheritedSubscribeRateHz: 60,
+                    reportApplyFailure: diagnostics.Add));
+
+            var diagnostic = Assert.Single(diagnostics);
+            Assert.Contains(nameof(ThrowingFlushInput), diagnostic, StringComparison.Ordinal);
+            Assert.Contains(nameof(InvalidOperationException), diagnostic, StringComparison.Ordinal);
+            Assert.Equal(7, healthy.LastAppliedValue);
+        }
+
         [Theory]
         [InlineData("127.0.0.1")]
         [InlineData("127.20.30.40")]
@@ -839,6 +869,32 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             }
 
             public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private sealed class ThrowingFlushInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+
+            public ThrowingFlushInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(topic, "json", FoxRunFlow.Subscribe);
+            }
+
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                error = string.Empty;
+                return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz)
+                => throw new InvalidOperationException("apply failed");
         }
 
         private sealed class InheritedRecordingInput : IFoxgloveInputSource

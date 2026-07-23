@@ -276,6 +276,7 @@ namespace Unity.FoxgloveSDK.Editor
             var customNativeInputMembers = inputMembers
                 .Where(IsCustomNativeMember)
                 .ToList();
+            var inputTriggerMethods = new InputTriggerMethodRegistry(inputMembers);
 
             foreach (var m in inputMembers)
             {
@@ -349,7 +350,14 @@ namespace Unity.FoxgloveSDK.Editor
                 PublishDispatchEmitter.EmitPublishToSinks(sb, ns, className, topics, topicMap, pad);
                 ConditionEmitter.EmitConditions(sb, topics, topicMap, pad);
             }
-            InputDispatchEmitter.EmitInput(sb, ns, className, webSocketInputMembers, topics, pad);
+            InputDispatchEmitter.EmitInput(
+                sb,
+                ns,
+                className,
+                webSocketInputMembers,
+                topics,
+                pad,
+                inputTriggerMethods);
 
             var triggerMembers = TriggerEmitter.BuildTriggerMembers(publishMembers, topics, topicModes);
             TriggerEmitter.EmitTriggers(sb, triggerMembers, topics, topicModes, pad);
@@ -362,8 +370,18 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (emitRos2NativePartial)
             {
-                Ros2InputDispatchEmitter.EmitConditionalPartial(sb, ns, className, nativeInputMembers);
-                Ros2CustomDtoMapperEmitter.EmitConditionalPartial(sb, ns, className, customNativeInputMembers);
+                Ros2InputDispatchEmitter.EmitConditionalPartial(
+                    sb,
+                    ns,
+                    className,
+                    nativeInputMembers,
+                    inputTriggerMethods);
+                Ros2CustomDtoMapperEmitter.EmitConditionalPartial(
+                    sb,
+                    ns,
+                    className,
+                    customNativeInputMembers,
+                    inputTriggerMethods);
                 Ros2CustomPublishEmitter.EmitConditionalPartial(sb, ns, className, customNativePublishMembers);
             }
 

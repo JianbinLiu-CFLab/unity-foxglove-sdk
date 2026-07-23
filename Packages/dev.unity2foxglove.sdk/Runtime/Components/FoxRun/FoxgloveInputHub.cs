@@ -78,7 +78,8 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _router.Flush(
                     Time.realtimeSinceStartupAsDouble,
-                    _inheritedSubscribeRateHz);
+                    _inheritedSubscribeRateHz,
+                    WarnOnce);
             }
         }
 

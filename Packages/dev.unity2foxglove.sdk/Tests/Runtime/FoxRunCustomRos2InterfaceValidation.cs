@@ -847,6 +847,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && batchProbe.Contains("Application.logMessageReceived", StringComparison.Ordinal)
                   && batchProbe.Contains("PHASE181_CUSTOM_ROS2_SAME_ORIGIN_DROPPED", StringComparison.Ordinal)
                   && batchProbe.Contains("PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_RETRY", StringComparison.Ordinal)
+                  && batchProbe.Contains("MaximumPlayEntryRetries", StringComparison.Ordinal)
+                  && batchProbe.Contains("play-entry-retry-limit", StringComparison.Ordinal)
                   && batchProbe.Contains("EditorApplication.ExitPlaymode", StringComparison.Ordinal)
                   && batchProbe.Contains("EditorApplication.Exit", StringComparison.Ordinal)
                   && !batchProbe.Contains("using ROS2", StringComparison.Ordinal)

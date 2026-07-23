@@ -193,6 +193,17 @@ namespace Unity.FoxgloveSDK.Components
         /// whether their latest owned value is eligible for application.
         /// </summary>
         public int Flush(double nowSeconds, int inheritedSubscribeRateHz)
+            => Flush(nowSeconds, inheritedSubscribeRateHz, reportApplyFailure: null);
+
+        /// <summary>
+        /// Invokes each registered generated source once and reports isolated
+        /// non-fatal apply failures without preventing other sources from
+        /// making main-thread progress.
+        /// </summary>
+        public int Flush(
+            double nowSeconds,
+            int inheritedSubscribeRateHz,
+            Action<string> reportApplyFailure)
         {
             IFoxgloveInputSource[] sources;
             lock (_gate)
@@ -214,10 +225,39 @@ namespace Unity.FoxgloveSDK.Components
                     // Generated sources own their individual typed state. One
                     // source must not prevent other independently allowlisted
                     // contracts from making main-thread progress.
+                    ReportApplyFailure(reportApplyFailure, source, ex);
                 }
             }
 
             return applied;
+        }
+
+        private static void ReportApplyFailure(
+            Action<string> reportApplyFailure,
+            IFoxgloveInputSource source,
+            Exception exception)
+        {
+            if (reportApplyFailure == null)
+                return;
+
+            var sourceType = source == null
+                ? "unknown"
+                : source.GetType().FullName ?? source.GetType().Name;
+            var diagnostic = "FoxRun input apply failed for "
+                             + sourceType
+                             + " ("
+                             + exception.GetType().Name
+                             + ").";
+            try
+            {
+                reportApplyFailure(diagnostic);
+            }
+            catch (Exception reportException) when (!(reportException is OutOfMemoryException)
+                                                    && !(reportException is StackOverflowException)
+                                                    && !(reportException is AccessViolationException))
+            {
+                // Diagnostics are best effort and must not undo source isolation.
+            }
         }
 
         public FoxRunInputDispatchResult Dispatch(

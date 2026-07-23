@@ -17,7 +17,8 @@ namespace Unity.FoxgloveSDK.Editor
             string className,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
             IReadOnlyList<string> publishTopics,
-            string pad)
+            string pad,
+            InputTriggerMethodRegistry inputTriggerMethods)
         {
             if (members == null || members.Count == 0)
                 return;
@@ -64,7 +65,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine($"{pad}        }}");
             sb.AppendLine($"{pad}    }}");
             EmitInputFlush(sb, members, publishTopics, pad);
-            EmitInputTriggers(sb, members, pad);
+            EmitInputTriggers(sb, members, pad, inputTriggerMethods);
             ProtobufInputDispatchEmitter.EmitReaders(sb, declaringType, members, pad);
         }
 
@@ -263,22 +264,17 @@ namespace Unity.FoxgloveSDK.Editor
         private static void EmitInputTriggers(
             StringBuilder sb,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
-            string pad)
+            string pad,
+            InputTriggerMethodRegistry inputTriggerMethods)
         {
-            var usedNames = new HashSet<string>(System.StringComparer.Ordinal);
             var emitted = false;
             for (var index = 0; index < members.Count; index++)
             {
                 var member = members[index];
-                if (member.Policy != 4)
+                if (member.Policy != 4
+                    || inputTriggerMethods == null
+                    || !inputTriggerMethods.TryClaim(member, out var methodName))
                     continue;
-
-                var baseName = "FoxRun_Apply_"
-                    + IdentifierUtils.SanitizeIdentifier((member.MemberName ?? string.Empty).TrimStart('_'));
-                var methodName = baseName;
-                var suffix = 2;
-                while (!usedNames.Add(methodName))
-                    methodName = baseName + "_" + suffix++;
 
                 if (!emitted)
                 {

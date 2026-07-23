@@ -29,6 +29,7 @@ public static class Phase181BatchModeCustomRos2InteropProbe
         "Phase181BatchModeCustomRos2InteropProbe.Run";
     private const double EvidenceTimeoutSeconds = 480.0;
     private const double CompletionDwellSeconds = 3.0;
+    private const int MaximumPlayEntryRetries = 3;
     private const string EnvelopeTypeName =
         "unity2foxglove_foxrun_interfaces_v1.msg.Phase181State48D288ED82F1Envelope";
     private const string GeneratedAssemblyName = "unity2foxglove_foxrun_interfaces_v1_assembly";
@@ -85,6 +86,7 @@ public static class Phase181BatchModeCustomRos2InteropProbe
             return;
 
         SessionState.SetBool(SessionKey("requested"), true);
+        SessionState.SetInt(SessionKey("play-entry-retries"), 0);
         EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
     }
 
@@ -165,7 +167,19 @@ public static class Phase181BatchModeCustomRos2InteropProbe
 
         if (!SessionState.GetBool(SessionKey("exit-requested"), false))
         {
-            Debug.Log("PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_RETRY reason=editor-returned-before-entry");
+            var retries = SessionState.GetInt(SessionKey("play-entry-retries"), 0) + 1;
+            SessionState.SetInt(SessionKey("play-entry-retries"), retries);
+            if (retries > MaximumPlayEntryRetries)
+            {
+                RequestEditorExit(6, "play-entry-retry-limit");
+                return;
+            }
+
+            Debug.Log(
+                "PHASE181_BATCH_CUSTOM_ROS2_PROBE_PLAY_RETRY"
+                + " reason=editor-returned-before-entry"
+                + " attempt=" + retries
+                + " maximum=" + MaximumPlayEntryRetries);
             EditorApplication.delayCall += OpenSceneAndEnterPlayMode;
             return;
         }
@@ -403,6 +417,20 @@ public static class Phase181BatchModeCustomRos2InteropProbe
             "PHASE181_BATCH_CUSTOM_ROS2_PROBE_EXIT outcome=" + outcome
             + " exitCode=" + exitCode);
         EditorApplication.delayCall += EditorApplication.ExitPlaymode;
+    }
+
+    private static void RequestEditorExit(int exitCode, string outcome)
+    {
+        if (SessionState.GetBool(SessionKey("exit-requested"), false))
+            return;
+
+        SessionState.SetBool(SessionKey("exit-requested"), true);
+        SessionState.SetInt(SessionKey("exit-code"), exitCode);
+        Debug.LogError(
+            "PHASE181_BATCH_CUSTOM_ROS2_PROBE_EXIT outcome=" + outcome
+            + " exitCode=" + exitCode);
+        DetachHandlers();
+        EditorApplication.delayCall += () => EditorApplication.Exit(exitCode);
     }
 
     private static bool IsRequestedBatchRun()

@@ -37,6 +37,19 @@ namespace Unity.FoxgloveSDK.Editor
             string ns,
             string className,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members)
+            => EmitConditionalPartial(
+                sb,
+                ns,
+                className,
+                members,
+                new InputTriggerMethodRegistry(members));
+
+        internal static void EmitConditionalPartial(
+            StringBuilder sb,
+            string ns,
+            string className,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            InputTriggerMethodRegistry inputTriggerMethods)
         {
             if (members == null || members.Count == 0)
                 return;
@@ -74,7 +87,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    }");
 
             for (var index = 0; index < members.Count; index++)
-                EmitMemberMappers(sb, pad, members[index], index);
+                EmitMemberMappers(sb, pad, members[index], index, inputTriggerMethods);
 
             sb.AppendLine(pad + "}");
             if (!string.IsNullOrEmpty(ns))
@@ -136,7 +149,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string pad,
             FoxgloveSourceEmitter.TopicMember member,
-            int index)
+            int index,
+            InputTriggerMethodRegistry inputTriggerMethods)
         {
             var registry = new ShapeRegistry(index);
             var root = registry.Get(member.Ros2CustomDtoShape);
@@ -145,7 +159,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine();
             EmitCopyEnvelope(sb, pad, member, index, root);
             sb.AppendLine();
-            EmitApplyAndClear(sb, pad, member, index, root);
+            EmitApplyAndClear(sb, pad, member, index, root, inputTriggerMethods);
             sb.AppendLine();
             EmitEnvelopeEquals(sb, pad, member, index, root);
 
@@ -264,7 +278,8 @@ namespace Unity.FoxgloveSDK.Editor
             string pad,
             FoxgloveSourceEmitter.TopicMember member,
             int index,
-            ShapeEntry root)
+            ShapeEntry root,
+            InputTriggerMethodRegistry inputTriggerMethods)
         {
             var envelope = EnvelopeType(member);
             var access = TypeExprEmitter.MemberAccess(member.MemberName);
@@ -292,12 +307,12 @@ namespace Unity.FoxgloveSDK.Editor
                 && string.Equals(
                     member.SubscriptionProvider,
                     FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal)
+                && inputTriggerMethods != null
+                && inputTriggerMethods.TryClaim(member, out var methodName))
             {
                 sb.AppendLine();
-                sb.AppendLine(pad + "    public bool FoxRun_Apply_"
-                              + IdentifierUtils.SanitizeIdentifier(member.MemberName.TrimStart('_'))
-                              + "()");
+                sb.AppendLine(pad + "    public bool " + methodName + "()");
                 sb.AppendLine(pad + "    {");
                 sb.AppendLine(pad + "        global::System.Threading.Interlocked.Exchange(ref __foxRunRos2Trigger_" + TriggerFieldSuffix(member) + ", 1);");
                 sb.AppendLine(pad + "        return true;");

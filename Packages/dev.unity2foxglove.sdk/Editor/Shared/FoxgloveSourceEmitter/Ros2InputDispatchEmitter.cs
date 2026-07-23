@@ -20,6 +20,19 @@ namespace Unity.FoxgloveSDK.Editor
             string ns,
             string className,
             IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members)
+            => EmitConditionalPartial(
+                sb,
+                ns,
+                className,
+                members,
+                new InputTriggerMethodRegistry(members));
+
+        internal static void EmitConditionalPartial(
+            StringBuilder sb,
+            string ns,
+            string className,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            InputTriggerMethodRegistry inputTriggerMethods)
         {
             if (members == null || members.Count == 0)
                 return;
@@ -56,7 +69,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    }");
 
             for (var i = 0; i < members.Count; i++)
-                EmitBindingMethods(sb, pad, members[i], i);
+                EmitBindingMethods(sb, pad, members[i], i, inputTriggerMethods);
 
             sb.AppendLine(pad + "}");
             if (!string.IsNullOrEmpty(ns))
@@ -174,7 +187,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string pad,
             FoxgloveSourceEmitter.TopicMember member,
-            int index)
+            int index,
+            InputTriggerMethodRegistry inputTriggerMethods)
         {
             var shape = member.Ros2MessageShape;
             var typeName = GlobalTypeName(shape.FullyQualifiedTypeName);
@@ -249,10 +263,10 @@ namespace Unity.FoxgloveSDK.Editor
                 && string.Equals(
                     member.SubscriptionProvider,
                     FoxRunGenerationDescriptorConstants.Ros2NativeSubscriptionProvider,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal)
+                && inputTriggerMethods != null
+                && inputTriggerMethods.TryClaim(member, out var methodName))
             {
-                var methodName = "FoxRun_Apply_"
-                                 + IdentifierUtils.SanitizeIdentifier(member.MemberName.TrimStart('_'));
                 sb.AppendLine();
                 sb.AppendLine(pad + "    public bool " + methodName + "()");
                 sb.AppendLine(pad + "    {");

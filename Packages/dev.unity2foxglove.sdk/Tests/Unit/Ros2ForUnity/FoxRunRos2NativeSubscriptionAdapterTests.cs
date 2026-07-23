@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -1328,11 +1329,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
-        public void NativeTransportAdmissionDropsBeforeGeneratedDeepCopy()
+        public void NativeTransportAdmissionPreservesTheNewestEligibleSampleBeforeDeepCopy()
         {
             var backend = new FakeBackend();
             FakeMessage applied = null;
             var copies = 0;
+            var interval = (Stopwatch.Frequency + 1L) / 2L;
+            var timestamps = new Queue<long>(new[]
+            {
+                100L,
+                100L + Math.Max(1L, interval / 2L),
+                100L + interval,
+            });
             var binding = CreateBinding(
                 backend,
                 182,
@@ -1345,21 +1353,21 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     return Message(value.Data);
                 },
                 transportAdmissionRateLimitHz: 2,
-                admissionTimestamp: () => 123456789L);
+                admissionTimestamp: () => timestamps.Dequeue());
             binding.WaitForRuntime();
             Assert.True(binding.TryRegister().Succeeded);
 
             using var first = Message("first");
-            using var second = Message("second");
             using var rejected = Message("rejected-before-copy");
+            using var newest = Message("newest");
             backend.Invoke(first);
-            backend.Invoke(second);
             backend.Invoke(rejected);
+            backend.Invoke(newest);
 
             Assert.Equal(2, copies);
             Assert.Equal(1, binding.TransportAdmissionDropCount);
             Assert.True(binding.TryApplyLatest(182, 0d));
-            Assert.Equal("second", applied.Data);
+            Assert.Equal("newest", applied.Data);
             binding.Stop();
         }
 
