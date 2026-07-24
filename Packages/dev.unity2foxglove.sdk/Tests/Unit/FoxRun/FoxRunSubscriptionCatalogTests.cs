@@ -10,6 +10,7 @@ using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
@@ -130,6 +131,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var fields = (JObject)contracts["items"]!["properties"]!["fields"]!;
             Assert.Equal("array", fields.Value<string>("type"));
             Assert.Equal("object", fields["items"]!.Value<string>("type"));
+
+            var actualResponse = FoxRunSubscriptionCatalog.BuildResponse(
+                CreateManifest(),
+                subscriptionsEnabled: true,
+                FoxRunEncoding.Protobuf,
+                FoxRunEncoding.Protobuf,
+                subscriptionRateLimitHz: 12,
+                requestedTopic: "/phase176/input",
+                includeDescriptor: true);
+            var actualContract = Assert.Single((JArray)actualResponse["contracts"]!);
+            var schemaKeys = ((JObject)contracts["items"]!["properties"]!)
+                .Properties()
+                .Select(property => property.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            var actualKeys = ((JObject)actualContract)
+                .Properties()
+                .Select(property => property.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+            Assert.Equal(schemaKeys, actualKeys);
+            Assert.Contains("hz", schemaKeys);
+            Assert.DoesNotContain("rateHz", schemaKeys);
+            Assert.Contains("hz", actualKeys);
+            Assert.DoesNotContain("rateHz", actualKeys);
         }
 
         [Fact]
@@ -220,9 +246,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void V2CatalogFailsClosedWhenSubscriptionBindingIsMissing()
+        public void CurrentCatalogFailsClosedWhenSubscriptionBindingIsMissing()
         {
-            var manifest = CreateV2CatalogIntegrityManifest(Array.Empty<FoxRunSchemaSubscriptionBindingInfo>());
+            var manifest = CreateCurrentCatalogIntegrityManifest(Array.Empty<FoxRunSchemaSubscriptionBindingInfo>());
 
             var response = FoxRunSubscriptionCatalog.BuildResponse(
                 manifest,
@@ -237,18 +263,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Empty((JArray)response["contracts"]);
         }
 
-        [Fact]
-        public void LegacyCatalogWithoutDirectionalBindingsFailsClosed()
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void LegacyCatalogVersionsFailClosedEvenWhenBindingsAreInjected(int manifestVersion)
         {
             var current = CreateManifest();
             var legacy = new FoxRunSchemaManifestInfo(
-                1,
+                manifestVersion,
                 current.PackageName,
                 current.GeneratorName,
                 current.GeneratorMajorVersion,
                 current.GlobalManifestHash,
                 current.FoxRunManifestHash,
-                current.Types);
+                current.Types,
+                current.SubscriptionManifestHash,
+                current.SubscriptionBindings);
 
             var response = FoxRunSubscriptionCatalog.BuildResponse(
                 legacy,
@@ -264,14 +294,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void V2CatalogFailsClosedWhenSubscriptionBindingIdentityDrifts()
+        public void CurrentCatalogFailsClosedWhenSubscriptionBindingIdentityDrifts()
         {
-            var manifest = CreateV2CatalogIntegrityManifest(new[]
+            var manifest = CreateCurrentCatalogIntegrityManifest(new[]
             {
                 new FoxRunSchemaSubscriptionBindingInfo(
                     "Demo.Input", "_renamed", "/phase179/integrity", "Subscribe",
                     FoxRunEndpoint.Foxglove,
-                    FoxRunRos2QosPreset.Inherit,
+                    (FoxRunQosProfile)0,
                     supportsWebSocket: true,
                     supportsRos2Native: false,
                     nativeType: string.Empty,
@@ -337,7 +367,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new FoxRunSchemaContractInfo("Demo.Input", "/phase176/input", "protobuf-input", "protobuf", "protobuf-input", "protobuf-input", "policy", "FixedRate", 10f, 0f, fields, flow: "Subscribe", protobufDescriptorSet: new byte[] { 4, 5, 6 })
             };
             return new FoxRunSchemaManifestInfo(
-                2,
+                FoxrunManifestWriter.CurrentManifestVersion,
                 "Unity2Foxglove",
                 "FoxRun",
                 1,
@@ -374,7 +404,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     protobufDescriptorSet: new byte[descriptorBytes]))
                 .ToArray();
             return new FoxRunSchemaManifestInfo(
-                2,
+                FoxrunManifestWriter.CurrentManifestVersion,
                 "Unity2Foxglove",
                 "FoxRun",
                 1,
@@ -405,7 +435,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 SubscriptionContract("/phase179/unknown", "yaml", fields)
             };
             return new FoxRunSchemaManifestInfo(
-                2,
+                FoxrunManifestWriter.CurrentManifestVersion,
                 "Unity2Foxglove",
                 "FoxRun",
                 1,
@@ -442,7 +472,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new FoxRunSchemaSubscriptionBindingInfo(
                     "Demo.Input", "_json", "/phase179/json", "Subscribe",
                     FoxRunEndpoint.Foxglove,
-                    FoxRunRos2QosPreset.Inherit,
+                    (FoxRunQosProfile)0,
                     supportsWebSocket: true,
                     supportsRos2Native: false,
                     nativeType: string.Empty,
@@ -451,7 +481,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new FoxRunSchemaSubscriptionBindingInfo(
                     "Demo.Input", "_dual", "/phase179/dual", "Subscribe",
                     (FoxRunEndpoint)0,
-                    FoxRunRos2QosPreset.SensorData,
+                    FoxRunQosProfile.SensorData,
                     supportsWebSocket: true,
                     supportsRos2Native: true,
                     nativeType: "std_msgs.msg.String",
@@ -460,15 +490,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new FoxRunSchemaSubscriptionBindingInfo(
                     "Demo.Input", "_native", "/phase179/native", "Subscribe",
                     FoxRunEndpoint.Ros2Native,
-                    FoxRunRos2QosPreset.Reliable,
+                    FoxRunQosProfile.Default,
                     supportsWebSocket: true,
                     supportsRos2Native: true,
                     nativeType: "geometry_msgs.msg.Twist",
                     canonicalRosType: "geometry_msgs/msg/Twist",
-                    copyShapeIdentity: "twist-v1")
+                    copyShapeIdentity: "twist-v1",
+                    qosReliability: FoxRunQosReliability.Reliable)
             };
             return new FoxRunSchemaManifestInfo(
-                2,
+                FoxrunManifestWriter.CurrentManifestVersion,
                 "Unity2Foxglove",
                 "FoxRun",
                 1,
@@ -479,7 +510,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 subscriptionBindings: bindings);
         }
 
-        private static FoxRunSchemaManifestInfo CreateV2CatalogIntegrityManifest(
+        private static FoxRunSchemaManifestInfo CreateCurrentCatalogIntegrityManifest(
             IReadOnlyList<FoxRunSchemaSubscriptionBindingInfo> bindings)
         {
             var fields = new[]
@@ -491,7 +522,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 SubscriptionContract("/phase179/integrity", "json", fields)
             };
             return new FoxRunSchemaManifestInfo(
-                2,
+                FoxrunManifestWriter.CurrentManifestVersion,
                 "Unity2Foxglove",
                 "FoxRun",
                 1,
@@ -533,7 +564,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 topic,
                 "Subscribe",
                 FoxRunEndpoint.Foxglove,
-                FoxRunRos2QosPreset.Inherit,
+                (FoxRunQosProfile)0,
                 supportsWebSocket: true,
                 supportsRos2Native: false,
                 nativeType: string.Empty,

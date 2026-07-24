@@ -5,8 +5,6 @@
 // Purpose: Immutable FoxRun publish-profile snapshot and lifecycle state.
 
 using System;
-using Unity.FoxgloveSDK.Ros2Bridge;
-
 namespace Unity.FoxgloveSDK.Components
 {
     /// <summary>
@@ -21,8 +19,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunEndpoint defaultTargets,
             FoxRunEncoding foxgloveEncoding,
             float defaultPublishRateHz,
-            FoxRunRos2QosPreset nativeRos2Qos,
-            Ros2BridgeQosProfile bridgeRos2Qos)
+            FoxRunResolvedQos nativeRos2Qos,
+            FoxRunResolvedQos bridgeRos2Qos)
         {
             SessionGeneration = sessionGeneration;
             SessionActive = sessionActive;
@@ -38,8 +36,8 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunEndpoint DefaultTargets { get; }
         public FoxRunEncoding FoxgloveEncoding { get; }
         public float DefaultPublishRateHz { get; }
-        public FoxRunRos2QosPreset NativeRos2Qos { get; }
-        public Ros2BridgeQosProfile BridgeRos2Qos { get; }
+        public FoxRunResolvedQos NativeRos2Qos { get; }
+        public FoxRunResolvedQos BridgeRos2Qos { get; }
 
         internal static FoxRunPublishSessionPolicy Disabled(ulong generation)
             => new(
@@ -48,8 +46,8 @@ namespace Unity.FoxgloveSDK.Components
                 defaultTargets: 0,
                 foxgloveEncoding: 0,
                 defaultPublishRateHz: 0f,
-                nativeRos2Qos: FoxRunRos2QosPreset.Default,
-                bridgeRos2Qos: Ros2BridgeQosProfile.ReliableDefault);
+                nativeRos2Qos: FoxRunResolvedQos.Default,
+                bridgeRos2Qos: FoxRunResolvedQos.Default);
     }
 
     internal sealed class FoxRunPublishSessionState
@@ -65,8 +63,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunEndpoint defaultTargets,
             FoxRunEncoding foxgloveEncoding,
             float defaultPublishRateHz,
-            FoxRunRos2QosPreset nativeRos2Qos,
-            Ros2BridgeQosProfile bridgeRos2Qos)
+            FoxRunResolvedQos nativeRos2Qos,
+            FoxRunResolvedQos bridgeRos2Qos)
         {
             if (Current.SessionActive)
                 return Current;
@@ -82,7 +80,7 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunEndpointResolver.ValidateProfileTargets(defaultTargets),
                 FoxRunEncodingResolver.ValidateProfileDefault(foxgloveEncoding),
                 NormalizeRate(defaultPublishRateHz),
-                FoxRunRos2QosResolver.NormalizeManagerDefault(nativeRos2Qos),
+                nativeRos2Qos,
                 bridgeRos2Qos);
             return Current;
         }

@@ -105,17 +105,27 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "unity2foxglove_foxrun_interfaces_v1/msg/Phase181StateEnvelope",
                 FoxRunFlow.PublishAndSubscribe,
                 FoxRunEndpoint.Ros2Native,
-                FoxRunRos2QosPreset.Reliable,
-                true,
-                FoxRunEncoding.JSON,
-                FoxRunRos2GeneratedContractKind.CustomInterface,
-                "dev.unity2foxglove.foxrun.ros2.interfaces",
-                "unity2foxglove_foxrun_interfaces_v1",
-                1,
-                Digest,
-                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State",
-                value => value is TestEnvelope envelope ? envelope.Origin : string.Empty);
+                FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                supportsRos2Native: true,
+                declaredSubscriptionEncoding: FoxRunEncoding.JSON,
+                contractKind: FoxRunRos2GeneratedContractKind.CustomInterface,
+                staticInterfacePackageId: "dev.unity2foxglove.foxrun.ros2.interfaces",
+                rosPackageName: "unity2foxglove_foxrun_interfaces_v1",
+                interfaceRevision: 1,
+                interfaceDigest: Digest,
+                baseRuntimePackageId: "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                canonicalPayloadType: "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State",
+                customEnvelopeOriginAccessor:
+                    value => value is TestEnvelope envelope ? envelope.Origin : string.Empty);
 
             return new FoxRunRos2SubscriptionBinding<TestEnvelope>(
                 contract,
@@ -138,7 +148,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 },
                 _ => false,
                 backend,
-                FoxRunRos2QosPreset.Reliable,
+                FoxRunResolvedQos.Default,
                 new ManagedQosFactory(),
                 value => contract.TryGetCustomEnvelopeOrigin(value, out var origin)
                          && FoxRunRos2CustomOriginRegistry.IsCurrentOrigin(identity, origin));

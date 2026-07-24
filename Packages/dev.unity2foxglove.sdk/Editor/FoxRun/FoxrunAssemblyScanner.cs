@@ -164,7 +164,9 @@ namespace Unity.FoxgloveSDK.Editor
                         fi.Name, fi.FieldType, "field", ns, cn, a.Topic, a.Hz, a.SchemaName,
                         a.Policy, a.Tolerance, fi.MetadataToken, "",
                         a.OnlyIf, mode: a.Mode, encoding: a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
-                        source: a.Source, ros2Qos: a.Ros2Qos, targets: a.Targets,
+                        source: a.Source, qosProfile: a.QosProfile, targets: a.Targets,
+                        qosReliability: a.QosReliability, qosDurability: a.QosDurability,
+                        qosHistory: a.QosHistory, qosDepth: a.QosDepth,
                         namedArgumentPresence: a.NamedArgumentPresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -183,6 +185,11 @@ namespace Unity.FoxgloveSDK.Editor
                         aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
                         encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
                         targets: aggregateMessage.Targets,
+                        qosProfile: aggregateMessage.QosProfile,
+                        qosReliability: aggregateMessage.QosReliability,
+                        qosDurability: aggregateMessage.QosDurability,
+                        qosHistory: aggregateMessage.QosHistory,
+                        qosDepth: aggregateMessage.QosDepth,
                         namedArgumentPresence: aggregatePresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -201,7 +208,9 @@ namespace Unity.FoxgloveSDK.Editor
                         pi.Name, pi.PropertyType, "property", ns, cn, a.Topic, a.Hz, a.SchemaName,
                         a.Policy, a.Tolerance, pi.MetadataToken, "",
                         a.OnlyIf, mode: a.Mode, encoding: a.Encoding, protobufFieldNumber: a.ProtobufFieldNumber,
-                        source: a.Source, ros2Qos: a.Ros2Qos, targets: a.Targets,
+                        source: a.Source, qosProfile: a.QosProfile, targets: a.Targets,
+                        qosReliability: a.QosReliability, qosDurability: a.QosDurability,
+                        qosHistory: a.QosHistory, qosDepth: a.QosDepth,
                         namedArgumentPresence: a.NamedArgumentPresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -220,6 +229,11 @@ namespace Unity.FoxgloveSDK.Editor
                         aggregateMessage.OnlyIf, isAggregateMember: true, jsonFieldName: aggregateField.JsonName,
                         encoding: aggregateMessage.Encoding, protobufFieldNumber: aggregateField.ProtobufFieldNumber,
                         targets: aggregateMessage.Targets,
+                        qosProfile: aggregateMessage.QosProfile,
+                        qosReliability: aggregateMessage.QosReliability,
+                        qosDurability: aggregateMessage.QosDurability,
+                        qosHistory: aggregateMessage.QosHistory,
+                        qosDepth: aggregateMessage.QosDepth,
                         namedArgumentPresence: aggregatePresence,
                         conditionMemberKind: ResolveConditionMemberKind(
                             type,
@@ -234,63 +248,10 @@ namespace Unity.FoxgloveSDK.Editor
             Type declaringType,
             string conditionName,
             FoxRunNamedArgumentPresence presence)
-        {
-            if ((presence & FoxRunNamedArgumentPresence.OnlyIf) == 0)
-                return FoxRunConditionMemberKind.None;
-            if (declaringType == null || string.IsNullOrWhiteSpace(conditionName))
-                return FoxRunConditionMemberKind.Missing;
-
-            var name = conditionName;
-            if (!IsCSharpIdentifier(name))
-                return FoxRunConditionMemberKind.Missing;
-
-            const BindingFlags flags = BindingFlags.Instance
-                                       | BindingFlags.Static
-                                       | BindingFlags.Public
-                                       | BindingFlags.NonPublic
-                                       | BindingFlags.DeclaredOnly;
-            var field = declaringType.GetField(name, flags);
-            if (field != null && field.FieldType == typeof(bool))
-                return FoxRunConditionMemberKind.Field;
-
-            var property = declaringType.GetProperty(name, flags);
-            if (property != null
-                && property.PropertyType == typeof(bool)
-                && property.GetIndexParameters().Length == 0)
-            {
-                return FoxRunConditionMemberKind.Property;
-            }
-
-            foreach (var method in declaringType.GetMethods(flags))
-            {
-                if (string.Equals(method.Name, name, StringComparison.Ordinal)
-                    && !method.IsGenericMethodDefinition
-                    && method.ReturnType == typeof(bool)
-                    && method.GetParameters().Length == 0)
-                {
-                    return FoxRunConditionMemberKind.Method;
-                }
-            }
-
-            return declaringType.GetMember(name, flags).Length == 0
-                ? FoxRunConditionMemberKind.Missing
-                : FoxRunConditionMemberKind.Invalid;
-        }
-
-        private static bool IsCSharpIdentifier(string value)
-        {
-            if (string.IsNullOrEmpty(value)
-                || !(value[0] == '_' || char.IsLetter(value[0])))
-            {
-                return false;
-            }
-            for (var index = 1; index < value.Length; index++)
-            {
-                if (value[index] != '_' && !char.IsLetterOrDigit(value[index]))
-                    return false;
-            }
-            return true;
-        }
+            => FoxRunReflectionConditionMemberResolver.Resolve(
+                declaringType,
+                conditionName,
+                presence);
 
         private static InvalidOperationException CreateInboundTargetNotWritableException(
             Type type,

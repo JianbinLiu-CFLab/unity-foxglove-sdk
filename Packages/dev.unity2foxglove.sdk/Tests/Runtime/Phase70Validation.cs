@@ -107,17 +107,18 @@ namespace Unity.FoxgloveSDK.Tests
                 editorSource,
                 "private void DrawPublishDataSection");
 
-            Check(section.Contains("Subheader(\"Publish Rate\")"),
-                "70A-14: Publish Data labels rate settings as Publish Rate");
+            Check(section.Contains("Subheader(\"FoxRun Publish Profile\")")
+                  && section.Contains("\"Default Publish Rate Hz\""),
+                "70A-14: Publish Data keeps the default publish rate inside the FoxRun Publish Profile");
             Check(section.Contains("Subheader(\"Publisher Encoding\")"),
                 "70A-15: Publish Data labels global encoding settings as Publisher Encoding");
             Check(!section.Contains("Subheader(\"Rate\")") && !section.Contains("Subheader(\"Encoding\")"),
                 "70A-16: Publish Data avoids ambiguous Rate and Encoding headings");
-            Check(IndexOf(section, "Subheader(\"Publish Rate\")") < IndexOf(section, "_defaultPublishRateHz")
+            Check(IndexOf(section, "Subheader(\"FoxRun Publish Profile\")") < IndexOf(section, "_defaultPublishRateHz")
                   && IndexOf(section, "_defaultPublishRateHz") < IndexOf(section, "Subheader(\"Publisher Encoding\")")
                   && IndexOf(section, "Subheader(\"Publisher Encoding\")") < IndexOf(section, "_defaultPublisherEncoding")
                   && IndexOf(section, "_defaultPublisherEncoding") < IndexOf(section, "_allowPublisherOverride"),
-                "70A-17: Publish Data header order is Publish Rate -> Publisher Encoding");
+                "70A-17: Publish Data header order is FoxRun Publish Profile -> Publisher Encoding");
             var publishRateHeader = IndexOf(managerSource, "[Header(\"Publish Rate\")]");
             var publishRateField = IndexOf(managerSource, "_defaultPublishRateHz");
             var publisherEncodingHeader = IndexOf(managerSource, "[Header(\"Publisher Encoding\")]");

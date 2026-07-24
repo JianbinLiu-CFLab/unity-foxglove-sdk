@@ -23,6 +23,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly FoxRunRos2CustomPublisherContract _contract;
         private readonly FoxTopicBus _bus;
         private readonly IFoxRunRos2NativePublisherBackend _backend;
+        private readonly FoxRunResolvedQos _qos;
         private readonly Func<TDto, string, ulong, ulong, FoxRunRos2CustomOutboundMappingContext, TEnvelope> _map;
         private readonly Action<TEnvelope> _dispose;
         private readonly string _origin;
@@ -38,6 +39,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2CustomPublisherContract contract,
             FoxTopicBus bus,
             IFoxRunRos2NativePublisherBackend backend,
+            FoxRunResolvedQos qos,
             Func<TDto, string, ulong, ulong, FoxRunRos2CustomOutboundMappingContext, TEnvelope> map,
             Action<TEnvelope> dispose,
             string origin,
@@ -48,6 +50,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
+            _qos = qos;
             _map = map ?? throw new ArgumentNullException(nameof(map));
             _dispose = dispose ?? throw new ArgumentNullException(nameof(dispose));
             _origin = origin ?? string.Empty;
@@ -83,7 +86,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "The selected custom ROS2 typesupport add-on is not ready.");
             }
 
-            var registration = _backend.Register<TEnvelope>(_contract);
+            var registration = _backend.Register<TEnvelope>(_contract, _qos);
             if (!registration.Succeeded || registration.Token == null || !registration.Token.IsUsable)
             {
                 if (registration.Token != null)
@@ -125,6 +128,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     {
                         _bus.Unsubscribe(_contract.Topic, _busCallback);
                     }
+                    catch (Exception)
+                    {
+                        // Teardown remains best-effort after the bus has begun
+                        // shutting down; later owned resources must still run.
+                    }
                     finally
                     {
                         _subscribed = false;
@@ -135,11 +143,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (token != null)
                     TryRemovePublisher(token);
             }
+            catch (Exception)
+            {
+                // Native endpoint teardown is best-effort during shutdown.
+            }
             finally
             {
                 try
                 {
                     _backend.ReleaseNodeOwnership();
+                }
+                catch (Exception)
+                {
+                    // Node ownership can already be gone after native shutdown.
                 }
                 finally
                 {

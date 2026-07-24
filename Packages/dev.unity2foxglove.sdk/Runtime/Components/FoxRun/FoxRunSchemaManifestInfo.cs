@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Components
             string topic,
             string flow,
             FoxRunEndpoint declaredSource,
-            FoxRunRos2QosPreset ros2Qos,
+            FoxRunQosProfile qosProfile,
             bool supportsWebSocket,
             bool supportsRos2Native,
             string nativeType,
@@ -98,7 +98,11 @@ namespace Unity.FoxgloveSDK.Components
             string customDtoIdentity = "",
             string customPayloadIdentity = "",
             string customEnvelopeIdentity = "",
-            FoxRunEndpoint declaredTargets = 0)
+            FoxRunEndpoint declaredTargets = 0,
+            FoxRunQosReliability qosReliability = 0,
+            FoxRunQosDurability qosDurability = 0,
+            FoxRunQosHistory qosHistory = 0,
+            int qosDepth = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -106,7 +110,11 @@ namespace Unity.FoxgloveSDK.Components
             Flow = flow ?? string.Empty;
             DeclaredSource = declaredSource;
             DeclaredTargets = declaredTargets;
-            Ros2Qos = ros2Qos;
+            QosProfile = qosProfile;
+            QosReliability = qosReliability;
+            QosDurability = qosDurability;
+            QosHistory = qosHistory;
+            QosDepth = qosDepth;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
             NativeType = nativeType ?? string.Empty;
@@ -124,7 +132,11 @@ namespace Unity.FoxgloveSDK.Components
         public string Flow { get; }
         public FoxRunEndpoint DeclaredSource { get; }
         public FoxRunEndpoint DeclaredTargets { get; }
-        public FoxRunRos2QosPreset Ros2Qos { get; }
+        public FoxRunQosProfile QosProfile { get; }
+        public FoxRunQosReliability QosReliability { get; }
+        public FoxRunQosDurability QosDurability { get; }
+        public FoxRunQosHistory QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
         public string NativeType { get; }
@@ -154,12 +166,16 @@ namespace Unity.FoxgloveSDK.Components
             string topic,
             string flow,
             FoxRunEndpoint declaredSource,
-            FoxRunRos2QosPreset ros2Qos,
+            FoxRunQosProfile qosProfile,
             bool supportsRos2Native,
             string customDtoIdentity,
             string customPayloadIdentity,
             string customEnvelopeIdentity,
-            FoxRunEndpoint declaredTargets = 0)
+            FoxRunEndpoint declaredTargets = 0,
+            FoxRunQosReliability qosReliability = 0,
+            FoxRunQosDurability qosDurability = 0,
+            FoxRunQosHistory qosHistory = 0,
+            int qosDepth = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -167,7 +183,11 @@ namespace Unity.FoxgloveSDK.Components
             Flow = flow ?? string.Empty;
             DeclaredSource = declaredSource;
             DeclaredTargets = declaredTargets;
-            Ros2Qos = ros2Qos;
+            QosProfile = qosProfile;
+            QosReliability = qosReliability;
+            QosDurability = qosDurability;
+            QosHistory = qosHistory;
+            QosDepth = qosDepth;
             SupportsRos2Native = supportsRos2Native;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;
             CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;
@@ -180,7 +200,11 @@ namespace Unity.FoxgloveSDK.Components
         public string Flow { get; }
         public FoxRunEndpoint DeclaredSource { get; }
         public FoxRunEndpoint DeclaredTargets { get; }
-        public FoxRunRos2QosPreset Ros2Qos { get; }
+        public FoxRunQosProfile QosProfile { get; }
+        public FoxRunQosReliability QosReliability { get; }
+        public FoxRunQosDurability QosDurability { get; }
+        public FoxRunQosHistory QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsRos2Native { get; }
         public string CustomDtoIdentity { get; }
         public string CustomPayloadIdentity { get; }

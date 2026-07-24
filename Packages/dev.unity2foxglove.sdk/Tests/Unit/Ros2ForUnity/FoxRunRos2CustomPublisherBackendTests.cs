@@ -22,16 +22,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         public void PublisherTokenPublishesThenReleasesTheSharedNodeLease()
         {
             var driver = new FakeNodeDriver();
-            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var qosFactory = new ManagedQosFactory();
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver, () => true, qosFactory);
             var publisher = owner.AcquirePublisherBackend();
             var subscriber = owner.AcquireBackend();
 
-            var registration = publisher.Register<TestEnvelope>(Contract());
+            var registration = publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default);
 
             Assert.True(registration.Succeeded);
             Assert.True(publisher.TryPublish(registration.Token, new TestEnvelope()));
             Assert.Equal(1, driver.CreatePublisherCount);
             Assert.Equal(1, driver.PublishCount);
+            var mapped = Assert.Single(qosFactory.Created);
+            Assert.Equal(ROS2.HistoryPolicy.QOS_POLICY_HISTORY_KEEP_LAST, mapped.History);
+            Assert.Equal(10, mapped.Depth);
+            Assert.Equal(ROS2.ReliabilityPolicy.QOS_POLICY_RELIABILITY_RELIABLE, mapped.Reliability);
+            Assert.Equal(ROS2.DurabilityPolicy.QOS_POLICY_DURABILITY_VOLATILE, mapped.Durability);
+            Assert.True(mapped.IsDisposed);
 
             publisher.RemovePublisher(registration.Token);
             publisher.ReleaseNodeOwnership();
@@ -49,9 +56,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var nativeRuntimeAvailable = true;
             var owner = new Ros2ForUnityFoxRunNodeOwner(
                 driver,
-                () => nativeRuntimeAvailable);
+                () => nativeRuntimeAvailable,
+                new ManagedQosFactory());
             var publisher = owner.AcquirePublisherBackend();
-            var registration = publisher.Register<TestEnvelope>(Contract());
+            var registration = publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default);
 
             nativeRuntimeAvailable = false;
 
@@ -68,14 +76,44 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         public void InvalidPublisherTokenRollsBackTheEndpointAndFailsClosed()
         {
             var driver = new FakeNodeDriver { PublisherUsable = false };
-            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory());
             var publisher = owner.AcquirePublisherBackend();
 
-            var registration = publisher.Register<TestEnvelope>(Contract());
+            var registration = publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default);
 
             Assert.False(registration.Succeeded);
             Assert.Equal(FoxRunRos2RegistrationError.InvalidPublisherToken, registration.Error);
             Assert.Equal(1, driver.RemovePublisherCount);
+            publisher.ReleaseNodeOwnership();
+            owner.ReleaseHostOwnership();
+            Assert.Equal(1, driver.ReleaseNodeCount);
+        }
+
+        [Fact]
+        public void QosDisposeFailureRollsBackTheCreatedPublisherExactlyOnce()
+        {
+            var driver = new FakeNodeDriver();
+            var qosFactory = new ManagedQosFactory
+            {
+                DisposeFailure = new InvalidOperationException("qos dispose failed"),
+            };
+            var owner = new Ros2ForUnityFoxRunNodeOwner(driver, () => true, qosFactory);
+            var publisher = owner.AcquirePublisherBackend();
+
+            var registration = publisher.Register<TestEnvelope>(
+                Contract(),
+                FoxRunResolvedQos.Default);
+
+            Assert.False(registration.Succeeded);
+            Assert.Equal(
+                FoxRunRos2RegistrationError.PublisherBackendFailure,
+                registration.Error);
+            Assert.Equal(1, driver.CreatePublisherCount);
+            Assert.Equal(1, driver.RemovePublisherCount);
+            Assert.True(Assert.Single(qosFactory.Created).IsDisposed);
             publisher.ReleaseNodeOwnership();
             owner.ReleaseHostOwnership();
             Assert.Equal(1, driver.ReleaseNodeCount);
@@ -89,10 +127,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 PublisherFailure = new TargetInvocationException(
                     new DllNotFoundException("ros2-native-path=phase181-secret"))
             };
-            var owner = new Ros2ForUnityFoxRunNodeOwner(driver);
+            var owner = new Ros2ForUnityFoxRunNodeOwner(
+                driver,
+                () => true,
+                new ManagedQosFactory());
             var publisher = owner.AcquirePublisherBackend();
 
-            var registration = publisher.Register<TestEnvelope>(Contract());
+            var registration = publisher.Register<TestEnvelope>(Contract(), FoxRunResolvedQos.Default);
 
             Assert.False(registration.Succeeded);
             Assert.Equal(FoxRunRos2RegistrationError.PublisherBackendFailure, registration.Error);
@@ -147,7 +188,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 1,
                 "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
                 "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                FoxRunFlow.Publish);
+                FoxRunFlow.Publish,
+                FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false);
 
         private sealed class TestEnvelope : ROS2.Message, IDisposable
         {
@@ -164,6 +215,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public int ReleaseNodeCount { get; private set; }
             public bool PublisherUsable { get; set; } = true;
             public Exception PublisherFailure { get; set; }
+            public ROS2.QualityOfServiceProfile LastPublisherQos { get; private set; }
 
             public object CreateSubscription<T>(string topic, Action<T> callback, ROS2.QualityOfServiceProfile qos)
                 where T : ROS2.Message, new()
@@ -172,10 +224,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public bool IsSubscriptionUsable(object subscription) => subscription != null;
             public bool RemoveSubscription(object subscription) => true;
 
-            public object CreatePublisher<T>(string topic)
+            public object CreatePublisher<T>(string topic, ROS2.QualityOfServiceProfile qos)
                 where T : ROS2.Message, new()
             {
                 CreatePublisherCount++;
+                LastPublisherQos = qos;
                 if (PublisherFailure != null)
                     throw PublisherFailure;
                 return new object();
@@ -204,6 +257,61 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
 
             public void ReleaseNode() => ReleaseNodeCount++;
+        }
+
+        private sealed class ManagedQosFactory : IFoxRunRos2NativeQosProfileFactory
+        {
+            public List<ManagedQosProfile> Created { get; } = new List<ManagedQosProfile>();
+            public Exception DisposeFailure { get; set; }
+
+            public IFoxRunRos2NativeQosProfile Create(ROS2.QosPresetProfile preset)
+            {
+                var profile = new ManagedQosProfile(DisposeFailure);
+                Created.Add(profile);
+                return profile;
+            }
+        }
+
+        private sealed class ManagedQosProfile : IFoxRunRos2NativeQosProfile
+        {
+            private readonly Exception _disposeFailure;
+
+            internal ManagedQosProfile(Exception disposeFailure = null)
+            {
+                _disposeFailure = disposeFailure;
+            }
+
+            public ROS2.QualityOfServiceProfile NativeProfile => null;
+            public ROS2.HistoryPolicy History { get; private set; }
+            public int Depth { get; private set; }
+            public ROS2.ReliabilityPolicy Reliability { get; private set; }
+            public ROS2.DurabilityPolicy Durability { get; private set; }
+            public bool IsDisposed { get; private set; }
+
+            public void SetHistory(ROS2.HistoryPolicy history, int depth)
+            {
+                History = history;
+                Depth = depth;
+            }
+
+            public void SetPolicies(
+                ROS2.HistoryPolicy history,
+                int depth,
+                ROS2.ReliabilityPolicy reliability,
+                ROS2.DurabilityPolicy durability)
+            {
+                History = history;
+                Depth = depth;
+                Reliability = reliability;
+                Durability = durability;
+            }
+
+            public void Dispose()
+            {
+                IsDisposed = true;
+                if (_disposeFailure != null)
+                    throw _disposeFailure;
+            }
         }
     }
 }

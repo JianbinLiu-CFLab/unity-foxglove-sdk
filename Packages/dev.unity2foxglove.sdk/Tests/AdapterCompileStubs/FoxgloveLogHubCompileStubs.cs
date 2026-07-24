@@ -132,7 +132,15 @@ namespace Unity.FoxgloveSDK.Components
         public bool Ros2NativeEnabled { get; set; }
         public bool SuppressLivePublishersForReplay { get; set; }
         public ulong NowNs { get; set; }
+        public FoxRunPublishSessionPolicy ActiveFoxRunPublishSessionPolicy { get; set; }
+        public FoxRunEndpoint ActiveFoxRunPublishTargets { get; set; } = FoxRunEndpoint.Foxglove;
+        public FoxRunEndpoint ActiveFoxRunSubscriptionSource { get; set; } = FoxRunEndpoint.Foxglove;
+        public FoxRunResolvedQos DefaultFoxRunNativePublishQos { get; set; }
         public FoxRunSubscriptionSessionPolicy ActiveFoxRunSubscriptionSessionPolicy { get; set; }
+        public event Action<FoxRunPublishSessionPolicy> FoxRunPublishSessionChanged;
         public event Action<FoxRunSubscriptionSessionPolicy> FoxRunSubscriptionSessionChanged;
+
+        public void RaiseFoxRunPublishSessionChanged()
+            => FoxRunPublishSessionChanged?.Invoke(ActiveFoxRunPublishSessionPolicy);
     }
 }

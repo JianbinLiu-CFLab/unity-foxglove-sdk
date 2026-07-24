@@ -190,8 +190,8 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>Resolved ROS2 Bridge QoS profile.</summary>
-        public Ros2BridgeQosProfile EffectiveRos2BridgeQos =>
-            _manager != null ? _manager.ResolveRos2BridgeQos() : Ros2BridgeQosProfile.ReliableDefault;
+        public FoxRunResolvedQos EffectiveRos2BridgeQos =>
+            _manager != null ? _manager.ActiveFoxRunBridgePublishQos : FoxRunResolvedQos.Default;
 
         /// <summary>
         /// Source used to resolve this publisher's effective publish rate.

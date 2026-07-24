@@ -100,7 +100,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 apply: apply,
                 clearIfOwned: clearIfOwned,
                 backend: backend,
-                qosPreset: FoxRunRos2QosPreset.Reliable,
+                qos: FoxRunResolvedQos.Default,
                 qosFactory: new ManagedQosFactory());
         }
 
@@ -114,7 +114,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope",
                 FoxRunFlow.PublishAndSubscribe,
                 FoxRunEndpoint.Ros2Native,
-                FoxRunRos2QosPreset.Reliable,
+                FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
                 supportsRos2Native: true,
                 declaredSubscriptionEncoding: FoxRunEncoding.JSON,
                 contractKind: FoxRunRos2GeneratedContractKind.CustomInterface,

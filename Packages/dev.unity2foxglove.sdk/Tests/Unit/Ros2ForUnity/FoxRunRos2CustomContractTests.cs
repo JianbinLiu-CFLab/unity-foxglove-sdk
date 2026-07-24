@@ -33,13 +33,85 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 1,
                 Digest,
                 "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                FoxRunFlow.PublishAndSubscribe);
+                FoxRunFlow.PublishAndSubscribe,
+                FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false);
 
             Assert.True(contract.HasCompleteMetadata);
             Assert.True(contract.SupportsNativeOutput);
             Assert.True(contract.IsPublishAndSubscribe);
             Assert.Equal("/phase181/state", contract.Topic);
             Assert.Equal("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", contract.BaseRuntimePackageId);
+            Assert.Equal((FoxRunEndpoint)0, contract.DeclaredSource);
+            Assert.False(contract.HasExplicitSource);
+            Assert.Equal((FoxRunEndpoint)0, contract.DeclaredTargets);
+            Assert.False(contract.HasExplicitTargets);
+            Assert.True(contract.HasExplicitQos);
+            var qos = contract.ResolveQos(FoxRunResolvedQos.SensorData);
+            Assert.True(qos.Success);
+            Assert.Equal(FoxRunResolvedQos.Default, qos.Qos);
+        }
+
+        [Fact]
+        public void PublisherRuntimeConstraintFailsClosedForAllFoxgloveInheritedTopology()
+        {
+            var contract = CreateContract(
+                mode: FoxRunFlow.Publish,
+                qosProfile: FoxRunQosProfile.SensorData,
+                hasExplicitQosProfile: true);
+
+            var shouldRegister = FoxRunRos2CustomPublisherHub.ShouldRegisterNativePublisher(
+                contract,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                out var resolution);
+
+            Assert.False(shouldRegister);
+            Assert.False(resolution.Success);
+            Assert.Equal(FoxRunEndpointDiagnosticCode.QosRequiresRos2, resolution.DiagnosticCode);
+            Assert.Equal(
+                "FoxRun QoS requires at least one resolved ROS 2 direction.",
+                resolution.DiagnosticMessage);
+        }
+
+        [Fact]
+        public void PublisherRuntimeConstraintRegistersOnlyWhenResolvedPublishTargetsIncludeNative()
+        {
+            var inherited = CreateContract(
+                mode: FoxRunFlow.Publish,
+                qosProfile: FoxRunQosProfile.SensorData,
+                hasExplicitQosProfile: true);
+            var bridgeOnly = CreateContract(
+                mode: FoxRunFlow.Publish,
+                qosProfile: FoxRunQosProfile.SensorData,
+                hasExplicitQosProfile: true,
+                declaredTargets: FoxRunEndpoint.Ros2Bridge,
+                hasExplicitTargets: true);
+
+            Assert.True(FoxRunRos2CustomPublisherHub.ShouldRegisterNativePublisher(
+                inherited,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Ros2Native,
+                out var nativeResolution));
+            Assert.True(nativeResolution.Success);
+            Assert.False(FoxRunRos2CustomPublisherHub.ShouldRegisterNativePublisher(
+                bridgeOnly,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Ros2Native,
+                out var bridgeResolution));
+            Assert.True(bridgeResolution.Success);
         }
 
         [Fact]
@@ -85,6 +157,40 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(ulong.MaxValue - 1UL, penultimate);
             Assert.Equal(ulong.MaxValue, terminal);
         }
+
+        private static FoxRunRos2CustomPublisherContract CreateContract(
+            FoxRunFlow mode,
+            FoxRunQosProfile qosProfile,
+            bool hasExplicitQosProfile,
+            FoxRunEndpoint declaredTargets = 0,
+            bool hasExplicitTargets = false)
+            => new(
+                "phase184.runtime-constraint",
+                "/phase184/runtime-constraint",
+                "Phase184.Source",
+                "State",
+                "unity2foxglove_foxrun_interfaces_v1/msg/Phase184State",
+                "unity2foxglove_foxrun_interfaces_v1/msg/Phase184StateEnvelope",
+                "dev.unity2foxglove.foxrun.ros2.interfaces",
+                "unity2foxglove_foxrun_interfaces_v1",
+                1,
+                Digest,
+                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                mode,
+                qosProfile,
+                hasExplicitQosProfile,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets,
+                hasExplicitTargets);
 
         [Fact]
         public void PublisherOriginRegistryDropsOnlyTheCurrentLocalOrigin()

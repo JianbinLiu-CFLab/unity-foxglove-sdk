@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -251,7 +252,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     internal interface IFoxRunRos2NativePublisherBackend
     {
         FoxRunRos2NativePublisherRegistration Register<T>(
-            FoxRunRos2CustomPublisherContract contract)
+            FoxRunRos2CustomPublisherContract contract,
+            FoxRunResolvedQos qos)
             where T : ROS2.Message, new();
 
         bool TryPublish<T>(IFoxRunRos2NativePublisherToken token, T message)

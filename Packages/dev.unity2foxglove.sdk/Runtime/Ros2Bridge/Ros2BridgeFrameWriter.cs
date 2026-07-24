@@ -8,6 +8,7 @@ using System;
 using System.IO;
 using System.Text;
 using Newtonsoft.Json;
+using Unity.FoxgloveSDK.Components;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
 {
@@ -68,11 +69,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             if (frame.Qos.HasValue)
             {
                 var qos = frame.Qos.Value;
-                header.ProfileName = frame.ProfileName;
+                header.ProfileName = ProfileWireValue(qos.Profile);
                 header.Qos = new FrameQos
                 {
-                    Reliability = qos.ReliabilityWireValue,
-                    Durability = qos.DurabilityWireValue,
+                    Profile = ProfileWireValue(qos.Profile),
+                    Reliability = ReliabilityWireValue(qos.Reliability),
+                    Durability = DurabilityWireValue(qos.Durability),
+                    History = HistoryWireValue(qos.History),
                     Depth = qos.Depth
                 };
             }
@@ -152,14 +155,80 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         private sealed class FrameQos
         {
-            [JsonProperty("reliability", Order = 1)]
+            [JsonProperty("profile", Order = 1)]
+            public string Profile { get; set; }
+
+            [JsonProperty("reliability", Order = 2)]
             public string Reliability { get; set; }
 
-            [JsonProperty("durability", Order = 2)]
+            [JsonProperty("durability", Order = 3)]
             public string Durability { get; set; }
 
-            [JsonProperty("depth", Order = 3)]
+            [JsonProperty("history", Order = 4)]
+            public string History { get; set; }
+
+            [JsonProperty("depth", Order = 5)]
             public int Depth { get; set; }
+        }
+
+        private static string ProfileWireValue(FoxRunQosProfile value)
+        {
+            switch (value)
+            {
+                case FoxRunQosProfile.Default:
+                    return "default";
+                case FoxRunQosProfile.SensorData:
+                    return "sensor_data";
+                case FoxRunQosProfile.SystemDefault:
+                    return "system_default";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown ROS 2 QoS profile.");
+            }
+        }
+
+        private static string ReliabilityWireValue(FoxRunQosReliability value)
+        {
+            switch (value)
+            {
+                case FoxRunQosReliability.SystemDefault:
+                    return "system_default";
+                case FoxRunQosReliability.Reliable:
+                    return "reliable";
+                case FoxRunQosReliability.BestEffort:
+                    return "best_effort";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown ROS 2 QoS reliability.");
+            }
+        }
+
+        private static string DurabilityWireValue(FoxRunQosDurability value)
+        {
+            switch (value)
+            {
+                case FoxRunQosDurability.SystemDefault:
+                    return "system_default";
+                case FoxRunQosDurability.Volatile:
+                    return "volatile";
+                case FoxRunQosDurability.TransientLocal:
+                    return "transient_local";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown ROS 2 QoS durability.");
+            }
+        }
+
+        private static string HistoryWireValue(FoxRunQosHistory value)
+        {
+            switch (value)
+            {
+                case FoxRunQosHistory.SystemDefault:
+                    return "system_default";
+                case FoxRunQosHistory.KeepLast:
+                    return "keep_last";
+                case FoxRunQosHistory.KeepAll:
+                    return "keep_all";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(value), value, "Unknown ROS 2 QoS history.");
+            }
         }
     }
 }

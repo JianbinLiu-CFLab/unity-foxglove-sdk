@@ -41,9 +41,25 @@ namespace Unity.FoxgloveSDK.Editor
                 var mode = topicModes[topics[i]];
                 var tolerance = fields.Max(m => m.Tolerance);
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
+                var endpoint = fields[0];
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f);",
-                    pad, i, topic, hz, PolicyLiteral(mode), tolerance));
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, declaredSource: {7}, hasExplicitSource: {8}, declaredTargets: {9}, hasExplicitTargets: {10}, hasExplicitQos: {11});",
+                    pad,
+                    i,
+                    topic,
+                    hz,
+                    PolicyLiteral(mode),
+                    tolerance,
+                    endpoint.Mode,
+                    InputDispatchEmitter.SourceLiteral(endpoint.Source),
+                    InputDispatchEmitter.BoolLiteral(
+                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Source)
+                        == FoxRunNamedArgumentPresence.Source),
+                    InputDispatchEmitter.TargetsLiteral(endpoint.Targets),
+                    InputDispatchEmitter.BoolLiteral(
+                        (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Targets)
+                        == FoxRunNamedArgumentPresence.Targets),
+                    InputDispatchEmitter.BoolLiteral(fields.Any(InputDispatchEmitter.HasExplicitQos))));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");

@@ -76,19 +76,20 @@ namespace Unity.FoxgloveSDK.Tests
                   && reconcile.Contains("return;", StringComparison.Ordinal)
                   && reconcile.IndexOf("if (!changed)", StringComparison.Ordinal) < reconcile.IndexOf("PlayerSettings.SetScriptingDefineSymbols", StringComparison.Ordinal),
                 "164-20D-1: R2FU define installer skips PlayerSettings writes when symbols are unchanged");
-            Check(onPlayMode.Contains("if (state != PlayModeStateChange.ExitingEditMode)", StringComparison.Ordinal)
+            Check(onPlayMode.Contains("if (state == PlayModeStateChange.ExitingEditMode)", StringComparison.Ordinal)
+                  && onPlayMode.Contains("OnExitingEditMode();", StringComparison.Ordinal)
                   && onPlayMode.Contains("return;", StringComparison.Ordinal)
                   && !playGuard.Contains("File.ReadAllText", StringComparison.Ordinal)
                   && !playGuard.Contains("Directory.GetFiles", StringComparison.Ordinal),
-                "164-20D-2: R2FU play mode guard avoids broad file I/O on unrelated state changes");
+                "164-20D-2: R2FU play mode guard isolates pre-Play work and avoids broad file I/O");
         }
 
         private static void VerifyQosProfileIsValueTyped()
         {
-            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Ros2Bridge/Ros2BridgeQosProfile.cs");
+            var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunResolvedQos.cs");
 
-            Check(source.Contains("public readonly struct Ros2BridgeQosProfile", StringComparison.Ordinal),
-                "164-20E-1: ROS2 bridge QoS profile stays value typed");
+            Check(source.Contains("public readonly struct FoxRunResolvedQos", StringComparison.Ordinal),
+                "164-20E-1: shared portable ROS 2 QoS contract stays value typed");
         }
 
         private static void VerifyRegistry()

@@ -191,11 +191,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             "{0}: native ROS2 generation requires an assembly reference to Unity2Foxglove.Ros2ForUnity.Native",
             "FoxRun", DiagnosticSeverity.Error, true);
 
-        public static readonly DiagnosticDescriptor IgnoredRos2Qos = new DiagnosticDescriptor(
-            "FOXRUN213", "ROS2 QoS policy ignored",
-            "{0}: Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription",
-            "FoxRun", DiagnosticSeverity.Warning, true);
-
         #endregion
 
         #region FoxRun PublishAndSubscribe diagnostics (FOXRUN400-599)
@@ -271,6 +266,21 @@ namespace Unity.FoxgloveSDK.SourceGenerators
 
         public static readonly DiagnosticDescriptor InvalidDirectionalEndpoint = new DiagnosticDescriptor(
             "FOXRUN612", "FoxRun directional endpoint policy invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor InvalidQos = new DiagnosticDescriptor(
+            "FOXRUN613", "FoxRun ROS 2 QoS policy invalid",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor QosRequiresRos2Direction = new DiagnosticDescriptor(
+            "FOXRUN614", "FoxRun ROS 2 QoS direction missing",
+            "{0}",
+            "FoxRun", DiagnosticSeverity.Error, true);
+
+        public static readonly DiagnosticDescriptor MixedDirectionalQosContract = new DiagnosticDescriptor(
+            "FOXRUN615", "FoxRun topic directional QoS contract mixed",
             "{0}",
             "FoxRun", DiagnosticSeverity.Error, true);
 
@@ -372,6 +382,9 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN609": return TriggerRateConflict;
                 case "FOXRUN611": return InvalidTargets;
                 case "FOXRUN612": return InvalidDirectionalEndpoint;
+                case "FOXRUN613": return InvalidQos;
+                case "FOXRUN614": return QosRequiresRos2Direction;
+                case "FOXRUN615": return MixedDirectionalQosContract;
                 case "FOXRUN402": return CustomNativeBidirectionalContract;
                 case "FOXRUN204": return InvalidSource;
                 case "FOXRUN207": return Ros2MessageIdentity;
@@ -380,7 +393,6 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 case "FOXRUN210": return Ros2SchemaMismatch;
                 case "FOXRUN211": return Ros2MessageShape;
                 case "FOXRUN212": return MissingNativeAssemblyReference;
-                case "FOXRUN213": return IgnoredRos2Qos;
                 case "FOXRUN019": return MixedAggregateTopic;
                 case "FOXRUN020": return AggregateArrayUnsupported;
                 case "FOXRUN022": return DuplicateAggregateJsonName;
@@ -405,7 +417,10 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                || id == "FOXRUN606"
                || id == "FOXRUN607"
                || id == "FOXRUN608"
-               || id == "FOXRUN612";
+               || id == "FOXRUN612"
+               || id == "FOXRUN613"
+               || id == "FOXRUN614"
+               || id == "FOXRUN615";
 
         public static DiagnosticDescriptor Member(string id)
         {

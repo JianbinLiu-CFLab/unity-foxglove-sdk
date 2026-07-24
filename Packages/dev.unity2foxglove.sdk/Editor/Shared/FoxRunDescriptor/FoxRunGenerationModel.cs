@@ -27,9 +27,13 @@ namespace Unity.FoxgloveSDK.Editor
         Mode = 1L << 5,
         Encoding = 1L << 6,
         Source = 1L << 7,
-        Ros2Qos = 1L << 8,
+        QoS = 1L << 8,
         ProtobufFieldNumber = 1L << 9,
-        Targets = 1L << 10
+        Targets = 1L << 10,
+        Reliability = 1L << 11,
+        Durability = 1L << 12,
+        History = 1L << 13,
+        Depth = 1L << 14
     }
 
     /// <summary>
@@ -194,7 +198,11 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly string Encoding;
         public readonly string Source;
         public readonly string Targets;
-        public readonly string Ros2Qos;
+        public readonly string QosProfile;
+        public readonly string QosReliability;
+        public readonly string QosDurability;
+        public readonly string QosHistory;
+        public readonly int QosDepth;
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
@@ -255,11 +263,11 @@ namespace Unity.FoxgloveSDK.Editor
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
-            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
@@ -267,7 +275,11 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence? namedArgumentPresence = null,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            string targets = FoxRunGenerationDescriptorConstants.InheritTargets)
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0)
             : this(
                 ns,
                 className,
@@ -294,7 +306,7 @@ namespace Unity.FoxgloveSDK.Editor
                 protobufFieldNumber,
                 protobufTypeShape,
                 source,
-                ros2Qos,
+                qosProfile,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
                 ros2MessageShape,
@@ -302,7 +314,11 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2ContractKind,
                 namedArgumentPresence,
                 conditionMemberKind,
-                targets)
+                targets,
+                qosReliability,
+                qosDurability,
+                qosHistory,
+                qosDepth)
         {
         }
 
@@ -328,11 +344,11 @@ namespace Unity.FoxgloveSDK.Editor
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
-            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
@@ -340,7 +356,11 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence? namedArgumentPresence = null,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            string targets = FoxRunGenerationDescriptorConstants.InheritTargets)
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0)
             : this(
                 ns,
                 className,
@@ -368,7 +388,7 @@ namespace Unity.FoxgloveSDK.Editor
                 protobufFieldNumber,
                 protobufTypeShape,
                 source,
-                ros2Qos,
+                qosProfile,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
                 ros2MessageShape,
@@ -376,7 +396,11 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2ContractKind,
                 namedArgumentPresence,
                 conditionMemberKind,
-                targets)
+                targets,
+                qosReliability,
+                qosDurability,
+                qosHistory,
+                qosDepth)
         {
         }
 
@@ -403,11 +427,11 @@ namespace Unity.FoxgloveSDK.Editor
             bool isAggregateMember = false,
             string jsonFieldName = "",
             int mode = 1,
-            string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding,
+            string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding,
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
@@ -415,7 +439,11 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence? namedArgumentPresence = null,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            string targets = FoxRunGenerationDescriptorConstants.InheritTargets)
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -435,7 +463,11 @@ namespace Unity.FoxgloveSDK.Editor
             Encoding = encoding ?? string.Empty;
             Source = source ?? string.Empty;
             Targets = targets ?? string.Empty;
-            Ros2Qos = ros2Qos ?? string.Empty;
+            QosProfile = qosProfile ?? string.Empty;
+            QosReliability = qosReliability ?? string.Empty;
+            QosDurability = qosDurability ?? string.Empty;
+            QosHistory = qosHistory ?? string.Empty;
+            QosDepth = qosDepth;
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
             Ros2MessageShape = ros2MessageShape;
@@ -457,7 +489,11 @@ namespace Unity.FoxgloveSDK.Editor
                     encoding,
                     source,
                     targets,
-                    ros2Qos,
+                    qosProfile,
+                    qosReliability,
+                    qosDurability,
+                    qosHistory,
+                    qosDepth,
                     protobufFieldNumber);
             DeclaredHz = hz;
             HasExplicitHz = HasNamedArgument(FoxRunNamedArgumentPresence.Hz);
@@ -516,7 +552,7 @@ namespace Unity.FoxgloveSDK.Editor
                 ProtobufFieldNumber,
                 ProtobufTypeShape,
                 Source,
-                Ros2Qos,
+                QosProfile,
                 GeneratesWebSocketCodec,
                 GeneratesRos2NativeRegistration,
                 Ros2MessageShape,
@@ -525,7 +561,11 @@ namespace Unity.FoxgloveSDK.Editor
                 hasExplicitHz: HasExplicitHz,
                 conditionMemberKind: ConditionMemberKind,
                 namedArgumentPresence: NamedArgumentPresence,
-                targets: Targets);
+                targets: Targets,
+                qosReliability: QosReliability,
+                qosDurability: QosDurability,
+                qosHistory: QosHistory,
+                qosDepth: QosDepth);
         }
 
         public bool HasNamedArgument(FoxRunNamedArgumentPresence argument)
@@ -602,15 +642,50 @@ namespace Unity.FoxgloveSDK.Editor
             return string.Join(",", values);
         }
 
-        public static string DeclaredRos2QosToText(int qos)
+        public static string DeclaredQosProfileToText(int qos)
         {
             switch (qos)
             {
-                case 0: return FoxRunGenerationDescriptorConstants.InheritRos2Qos;
-                case 1: return FoxRunGenerationDescriptorConstants.DefaultRos2Qos;
-                case 2: return FoxRunGenerationDescriptorConstants.ReliableRos2Qos;
-                case 3: return FoxRunGenerationDescriptorConstants.SensorDataRos2Qos;
-                case 4: return FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos;
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosProfile;
+                case 1: return FoxRunGenerationDescriptorConstants.DefaultQosProfile;
+                case 2: return FoxRunGenerationDescriptorConstants.SensorDataQosProfile;
+                case 3: return FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile;
+                default: return string.Empty;
+            }
+        }
+
+        public static string DeclaredQosReliabilityToText(int value)
+        {
+            switch (value)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                case 1: return FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy;
+                case 2: return FoxRunGenerationDescriptorConstants.ReliableQosReliability;
+                case 3: return FoxRunGenerationDescriptorConstants.BestEffortQosReliability;
+                default: return string.Empty;
+            }
+        }
+
+        public static string DeclaredQosDurabilityToText(int value)
+        {
+            switch (value)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                case 1: return FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy;
+                case 2: return FoxRunGenerationDescriptorConstants.VolatileQosDurability;
+                case 3: return FoxRunGenerationDescriptorConstants.TransientLocalQosDurability;
+                default: return string.Empty;
+            }
+        }
+
+        public static string DeclaredQosHistoryToText(int value)
+        {
+            switch (value)
+            {
+                case 0: return FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                case 1: return FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy;
+                case 2: return FoxRunGenerationDescriptorConstants.KeepLastQosHistory;
+                case 3: return FoxRunGenerationDescriptorConstants.KeepAllQosHistory;
                 default: return string.Empty;
             }
         }
@@ -670,7 +745,11 @@ namespace Unity.FoxgloveSDK.Editor
             AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Encoding, "Encoding");
             AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Source, "Source");
             AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Targets, "Targets");
-            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Ros2Qos, "Ros2Qos");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.QoS, "QoS");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Reliability, "Reliability");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Durability, "Durability");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.History, "History");
+            AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.Depth, "Depth");
             AppendPresenceName(names, presence, FoxRunNamedArgumentPresence.ProtobufFieldNumber, "ProtobufFieldNumber");
             return string.Join(",", names);
         }
@@ -695,7 +774,11 @@ namespace Unity.FoxgloveSDK.Editor
             string encoding,
             string source,
             string targets,
-            string ros2Qos,
+            string qosProfile,
+            string qosReliability,
+            string qosDurability,
+            string qosHistory,
+            int qosDepth,
             int protobufFieldNumber)
         {
             var presence = FoxRunNamedArgumentPresence.None;
@@ -705,15 +788,21 @@ namespace Unity.FoxgloveSDK.Editor
             if (!string.IsNullOrEmpty(schemaName)) presence |= FoxRunNamedArgumentPresence.SchemaName;
             if (policy != 1) presence |= FoxRunNamedArgumentPresence.Policy;
             if (mode != 1) presence |= FoxRunNamedArgumentPresence.Mode;
-            if (!string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal)
-                && !string.Equals(encoding, FoxRunGenerationDescriptorConstants.JsonEncoding, StringComparison.Ordinal))
+            if (!string.Equals(encoding, FoxRunGenerationDescriptorConstants.InheritEncoding, StringComparison.Ordinal))
                 presence |= FoxRunNamedArgumentPresence.Encoding;
             if (!string.Equals(source, FoxRunGenerationDescriptorConstants.InheritSource, StringComparison.Ordinal))
                 presence |= FoxRunNamedArgumentPresence.Source;
             if (!string.Equals(targets, FoxRunGenerationDescriptorConstants.InheritTargets, StringComparison.Ordinal))
                 presence |= FoxRunNamedArgumentPresence.Targets;
-            if (!string.Equals(ros2Qos, FoxRunGenerationDescriptorConstants.InheritRos2Qos, StringComparison.Ordinal))
-                presence |= FoxRunNamedArgumentPresence.Ros2Qos;
+            if (!string.Equals(qosProfile, FoxRunGenerationDescriptorConstants.InheritQosProfile, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.QoS;
+            if (!string.Equals(qosReliability, FoxRunGenerationDescriptorConstants.InheritQosPolicy, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.Reliability;
+            if (!string.Equals(qosDurability, FoxRunGenerationDescriptorConstants.InheritQosPolicy, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.Durability;
+            if (!string.Equals(qosHistory, FoxRunGenerationDescriptorConstants.InheritQosPolicy, StringComparison.Ordinal))
+                presence |= FoxRunNamedArgumentPresence.History;
+            if (qosDepth != 0) presence |= FoxRunNamedArgumentPresence.Depth;
             if (protobufFieldNumber != 0) presence |= FoxRunNamedArgumentPresence.ProtobufFieldNumber;
             return presence;
         }

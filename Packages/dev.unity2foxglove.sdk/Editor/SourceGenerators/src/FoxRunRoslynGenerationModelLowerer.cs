@@ -17,40 +17,44 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         {
             var lowered = (members ?? Array.Empty<FoxRunRoslynGenerationMember>())
                 .Select(member => new FoxRunGenerationMember(
-                    member.Namespace,
-                    member.ClassName,
-                    member.MemberName,
-                    member.MemberKind,
-                    member.RawTypeName,
-                    member.EmissionTypeName,
-                    member.IsValueType,
-                    member.IsArray,
-                    member.ElementTypeName,
-                    member.Topic,
-                    member.Hz,
-                    member.SchemaName,
-                    member.Policy,
-                    member.Tolerance,
-                    "Roslyn",
-                    member.RawMemberOrder,
-                    member.ConditionalSymbols,
-                    member.OnlyIf,
-                    member.IsAggregateMember,
-                    member.JsonFieldName,
-                    member.Mode,
-                    FoxRunGenerationMember.DeclaredEncodingToText(member.Encoding),
-                    member.ProtobufFieldNumber,
-                    member.ProtobufTypeShape,
-                    FoxRunGenerationMember.DeclaredSourceToText(member.Source),
-                    FoxRunGenerationMember.DeclaredRos2QosToText(member.Ros2Qos),
-                    member.GeneratesWebSocketCodec,
-                    member.GeneratesRos2NativeRegistration,
-                    member.Ros2MessageShape,
-                    member.Ros2CustomDtoShape,
-                    member.Ros2ContractKind,
-                    member.NamedArgumentPresence,
-                    member.ConditionMemberKind,
-                    FoxRunGenerationMember.DeclaredTargetsToText(member.Targets)))
+                    ns: member.Namespace,
+                    className: member.ClassName,
+                    memberName: member.MemberName,
+                    memberKind: member.MemberKind,
+                    rawObservedTypeName: member.RawTypeName,
+                    emissionTypeName: member.EmissionTypeName,
+                    isValueType: member.IsValueType,
+                    isArray: member.IsArray,
+                    elementTypeName: member.ElementTypeName,
+                    topic: member.Topic,
+                    hz: member.Hz,
+                    schemaName: member.SchemaName,
+                    policy: member.Policy,
+                    tolerance: member.Tolerance,
+                    hostKind: "Roslyn",
+                    rawMemberOrder: member.RawMemberOrder,
+                    conditionalSymbols: member.ConditionalSymbols,
+                    onlyIf: member.OnlyIf,
+                    isAggregateMember: member.IsAggregateMember,
+                    jsonFieldName: member.JsonFieldName,
+                    mode: member.Mode,
+                    encoding: FoxRunGenerationMember.DeclaredEncodingToText(member.Encoding),
+                    protobufFieldNumber: member.ProtobufFieldNumber,
+                    protobufTypeShape: member.ProtobufTypeShape,
+                    source: FoxRunGenerationMember.DeclaredSourceToText(member.Source),
+                    qosProfile: FoxRunGenerationMember.DeclaredQosProfileToText(member.QosProfile),
+                    generatesWebSocketCodec: member.GeneratesWebSocketCodec,
+                    generatesRos2NativeRegistration: member.GeneratesRos2NativeRegistration,
+                    ros2MessageShape: member.Ros2MessageShape,
+                    ros2CustomDtoShape: member.Ros2CustomDtoShape,
+                    ros2ContractKind: member.Ros2ContractKind,
+                    namedArgumentPresence: member.NamedArgumentPresence,
+                    conditionMemberKind: member.ConditionMemberKind,
+                    targets: FoxRunGenerationMember.DeclaredTargetsToText(member.Targets),
+                    qosReliability: FoxRunGenerationMember.DeclaredQosReliabilityToText(member.QosReliability),
+                    qosDurability: FoxRunGenerationMember.DeclaredQosDurabilityToText(member.QosDurability),
+                    qosHistory: FoxRunGenerationMember.DeclaredQosHistoryToText(member.QosHistory),
+                    qosDepth: member.QosDepth))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -75,7 +79,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly int Encoding;
         public readonly int Source;
         public readonly int Targets;
-        public readonly int Ros2Qos;
+        public readonly int QosProfile;
+        public readonly int QosReliability;
+        public readonly int QosDurability;
+        public readonly int QosHistory;
+        public readonly int QosDepth;
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
@@ -117,7 +125,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             int source = 0,
-            int ros2Qos = 0,
+            int qosProfile = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
             FoxRunRos2MessageShape ros2MessageShape = null,
@@ -125,7 +133,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            int targets = 0)
+            int targets = 0,
+            int qosReliability = 0,
+            int qosDurability = 0,
+            int qosHistory = 0,
+            int qosDepth = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -146,7 +158,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Encoding = encoding;
             Source = source;
             Targets = targets;
-            Ros2Qos = ros2Qos;
+            QosProfile = qosProfile;
+            QosReliability = qosReliability;
+            QosDurability = qosDurability;
+            QosHistory = qosHistory;
+            QosDepth = qosDepth;
             GeneratesWebSocketCodec = generatesWebSocketCodec
                 ?? (protobufTypeShape != null
                     || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
@@ -197,7 +213,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             int source = 0,
-            int ros2Qos = 0,
+            int qosProfile = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
             FoxRunRos2MessageShape ros2MessageShape = null,
@@ -205,7 +221,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            int targets = 0)
+            int targets = 0,
+            int qosReliability = 0,
+            int qosDurability = 0,
+            int qosHistory = 0,
+            int qosDepth = 0)
             : this(
                 ns,
                 className,
@@ -231,7 +251,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 protobufFieldNumber,
                 protobufTypeShape,
                 source,
-                ros2Qos,
+                qosProfile,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
                 ros2MessageShape,
@@ -239,7 +259,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 ros2ContractKind,
                 namedArgumentPresence,
                 conditionMemberKind,
-                targets)
+                targets,
+                qosReliability,
+                qosDurability,
+                qosHistory,
+                qosDepth)
         {
         }
     }

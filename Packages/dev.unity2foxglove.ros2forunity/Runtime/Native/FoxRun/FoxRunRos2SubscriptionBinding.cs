@@ -74,7 +74,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 string.Empty,
                 string.Empty,
                 string.Empty,
-                FoxRunRos2QosPreset.Inherit,
+                FoxRunResolvedQos.Default,
                 sessionGeneration,
                 state,
                 error,
@@ -99,7 +99,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         /// </summary>
         public FoxRunRos2SubscriptionBindingSnapshot(
             FoxRunRos2GeneratedContract contract,
-            FoxRunRos2QosPreset qosPreset,
+            FoxRunResolvedQos qos,
             long sessionGeneration,
             FoxRunRos2SubscriptionBindingState state,
             FoxRunRos2RegistrationError error,
@@ -120,7 +120,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 contract.DeclaringType,
                 contract.MemberName,
                 contract.CanonicalRosType,
-                qosPreset,
+                qos,
                 sessionGeneration,
                 state,
                 error,
@@ -144,7 +144,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             string declaringType,
             string memberName,
             string canonicalRosType,
-            FoxRunRos2QosPreset qosPreset,
+            FoxRunResolvedQos qos,
             long sessionGeneration,
             FoxRunRos2SubscriptionBindingState state,
             FoxRunRos2RegistrationError error,
@@ -165,7 +165,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
             CanonicalRosType = canonicalRosType ?? string.Empty;
-            QosPreset = qosPreset;
+            Qos = qos;
             SessionGeneration = sessionGeneration;
             State = state;
             Error = error;
@@ -187,7 +187,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public string DeclaringType { get; }
         public string MemberName { get; }
         public string CanonicalRosType { get; }
-        public FoxRunRos2QosPreset QosPreset { get; }
+        public FoxRunResolvedQos Qos { get; }
         public long SessionGeneration { get; }
         public FoxRunRos2SubscriptionBindingState State { get; }
         public FoxRunRos2RegistrationError Error { get; }
@@ -234,7 +234,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly FoxRunRos2TransportAdmissionGate _transportAdmission;
         private readonly Func<long> _admissionTimestamp;
         private readonly IFoxRunRos2NativeBackend _backend;
-        private readonly FoxRunRos2QosPreset _qosPreset;
+        private readonly FoxRunResolvedQos _qos;
         private readonly IFoxRunRos2NativeQosProfileFactory _qosFactory;
         private readonly FoxRunRos2OwnedLatestSlot<object> _slot;
         private readonly Func<T, object> _copyBorrowed;
@@ -282,7 +282,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Action<T> apply,
             Func<T, bool> clearIfOwned,
             IFoxRunRos2NativeBackend backend,
-            FoxRunRos2QosPreset qosPreset = FoxRunRos2QosPreset.Default,
+            FoxRunResolvedQos? qos = null,
             IFoxRunRos2NativeQosProfileFactory qosFactory = null,
             Func<T, bool> dropBeforeApply = null,
             Func<T, T, bool> valuesEqual = null,
@@ -310,7 +310,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 transportAdmissionRateLimitHz);
             _admissionTimestamp = admissionTimestamp ?? Stopwatch.GetTimestamp;
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
-            _qosPreset = qosPreset;
+            _qos = qos ?? FoxRunResolvedQos.Default;
             _qosFactory = qosFactory;
             _dispose = dispose ?? throw new ArgumentNullException(nameof(dispose));
             _copyBorrowed = CopyBorrowed;
@@ -417,8 +417,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             try
             {
                 var qosResult = _qosFactory == null
-                    ? Ros2ForUnityNativeQosMapper.TryCreate(_qosPreset, out qosProfile)
-                    : Ros2ForUnityNativeQosMapper.TryCreate(_qosPreset, _qosFactory, out qosProfile);
+                    ? Ros2ForUnityNativeQosMapper.TryCreate(_qos, out qosProfile)
+                    : Ros2ForUnityNativeQosMapper.TryCreate(_qos, _qosFactory, out qosProfile);
                 if (!qosResult.Succeeded)
                     return CompleteWithoutBackend(qosResult.Error, qosResult.Diagnostic);
 
@@ -847,7 +847,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 var registration = _lastRegistration;
                 snapshot = new FoxRunRos2SubscriptionBindingSnapshot(
                     Contract,
-                    _qosPreset,
+                    _qos,
                     SessionGeneration,
                     State,
                     registration.Error,

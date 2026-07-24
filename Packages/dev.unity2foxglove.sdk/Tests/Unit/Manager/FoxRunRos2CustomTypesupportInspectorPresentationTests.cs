@@ -43,17 +43,56 @@ namespace Unity.FoxgloveSDK.UnitTests.Manager
         }
 
         [Theory]
-        [InlineData("Publish", FoxRunRos2QosPreset.Default, "Outbound / publisher-default QoS")]
-        [InlineData("Subscribe", FoxRunRos2QosPreset.Reliable, "Inbound / Reliable")]
-        [InlineData("PublishAndSubscribe", FoxRunRos2QosPreset.SensorData, "Inbound / Sensor Data; outbound / publisher-default QoS")]
+        [InlineData(
+            "Publish",
+            FoxRunQosProfile.Default,
+            (FoxRunQosReliability)0,
+            (FoxRunQosDurability)0,
+            (FoxRunQosHistory)0,
+            0,
+            "Outbound / Default")]
+        [InlineData(
+            "Subscribe",
+            FoxRunQosProfile.Default,
+            FoxRunQosReliability.Reliable,
+            FoxRunQosDurability.Volatile,
+            FoxRunQosHistory.KeepLast,
+            10,
+            "Inbound / Default / Reliable / Volatile / Keep Last / Depth 10")]
+        [InlineData(
+            "PublishAndSubscribe",
+            FoxRunQosProfile.SensorData,
+            FoxRunQosReliability.BestEffort,
+            FoxRunQosDurability.Volatile,
+            FoxRunQosHistory.KeepLast,
+            5,
+            "Inbound and outbound / Sensor Data / Best Effort / Volatile / Keep Last / Depth 5")]
+        [InlineData(
+            "Subscribe",
+            FoxRunQosProfile.SystemDefault,
+            FoxRunQosReliability.SystemDefault,
+            FoxRunQosDurability.SystemDefault,
+            FoxRunQosHistory.SystemDefault,
+            0,
+            "Inbound / System Default / System Default Reliability / System Default Durability / System Default History")]
         public void GeneratedContractDirectionLabelsDescribeEachNativeTransportDirection(
             string flow,
-            FoxRunRos2QosPreset qos,
+            FoxRunQosProfile profile,
+            FoxRunQosReliability reliability,
+            FoxRunQosDurability durability,
+            FoxRunQosHistory history,
+            int depth,
             string expected)
         {
             Assert.Equal(
                 expected,
-                Ros2ForUnityCustomTypesupportInspectorPresentation.DirectionalContractPolicyLabel(flow, qos));
+                Ros2ForUnityCustomTypesupportInspectorPresentation.DirectionalContractPolicyLabel(
+                    flow,
+                    profile,
+                    reliability,
+                    durability,
+                    history,
+                    depth));
         }
     }
 }

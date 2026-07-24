@@ -165,7 +165,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         "Demo", "ArrayTelemetry", "_samples", "field", "System.Single[]",
                         true, false, "", "/phase155/array", 10f, "",
                         0, 0f, "UnitTest", 0, "",
-                        isAggregateMember: false, jsonFieldName: "samples")
+                        isAggregateMember: false,
+                        jsonFieldName: "samples",
+                        encoding: FoxRunGenerationDescriptorConstants.JsonEncoding)
                 });
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
@@ -208,12 +210,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         "Demo", "UnityTelemetry", "_vector", "field", "UnityEngine.Vector4",
                         true, false, "", "/phase173/unity", 10f, "",
                         0, 0f, "UnitTest", 0, "",
-                        isAggregateMember: false, jsonFieldName: "vector"),
+                        isAggregateMember: false,
+                        jsonFieldName: "vector",
+                        encoding: FoxRunGenerationDescriptorConstants.JsonEncoding),
                     new FoxRunGenerationMember(
                         "Demo", "UnityTelemetry", "_color", "field", "UnityEngine.Color32",
                         true, false, "", "/phase173/unity", 10f, "",
                         0, 0f, "UnitTest", 1, "",
-                        isAggregateMember: false, jsonFieldName: "color")
+                        isAggregateMember: false,
+                        jsonFieldName: "color",
+                        encoding: FoxRunGenerationDescriptorConstants.JsonEncoding)
                 });
 
             var source = FoxgloveSourceEmitter.EmitClass(type);

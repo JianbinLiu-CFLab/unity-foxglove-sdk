@@ -17,7 +17,6 @@ namespace Unity.FoxgloveSDK.Editor
         private static readonly string[] GlobalEncodingLabels = { "JSON", "Protobuf", "ROS2", "MsgPack" };
         private static readonly string[] PublisherOverrideLabels = { "Use Manager", "JSON", "Protobuf", "ROS2", "MsgPack" };
         private static readonly string[] BridgeOverrideLabels = { "Use Manager", "Disabled", "Enabled" };
-        private static readonly string[] BridgeQosPresetLabels = { "Reliable Default", "Sensor Data", "Transient Local", "Custom" };
         private const string MsgPackConsumerNotice =
             "MsgPack is a schemaless raw channel for custom clients. Foxglove Desktop does not currently parse or render live MsgPack panels.";
 
@@ -26,7 +25,6 @@ namespace Unity.FoxgloveSDK.Editor
             AssertLabelCount<GlobalEncoding>(GlobalEncodingLabels, nameof(GlobalEncodingLabels));
             AssertLabelCount<PublisherEncodingOverride>(PublisherOverrideLabels, nameof(PublisherOverrideLabels));
             AssertLabelCount<Ros2BridgeOutputOverride>(BridgeOverrideLabels, nameof(BridgeOverrideLabels));
-            AssertLabelCount<Ros2BridgeQosPreset>(BridgeQosPresetLabels, nameof(BridgeQosPresetLabels));
         }
 
         public static void DrawGlobalEncoding(SerializedProperty property, string label)
@@ -66,15 +64,6 @@ namespace Unity.FoxgloveSDK.Editor
         public static void DrawEffectiveRos2BridgeOutput(Ros2BridgeEffectiveOutput output, string label)
         {
             EditorGUILayout.TextField(label, Ros2BridgeOutputPolicy.ToDisplayLabel(output));
-        }
-
-        public static void DrawRos2BridgeQosPreset(SerializedProperty property, string label)
-        {
-            if (property == null)
-                return;
-
-            var current = ClampIndex(property.enumValueIndex, BridgeQosPresetLabels.Length);
-            property.enumValueIndex = EditorGUILayout.Popup(label, current, BridgeQosPresetLabels);
         }
 
         private static int ClampIndex(int index, int count)

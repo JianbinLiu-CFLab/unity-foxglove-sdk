@@ -42,6 +42,24 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         public FoxRunEncoding Encoding { get; set; }
 
+        /// <summary>
+        /// Optional portable ROS 2 QoS base profile. Omission inherits each
+        /// selected ROS 2 publish direction's frozen profile.
+        /// </summary>
+        public FoxRunQosProfile QoS { get; set; }
+
+        /// <summary>Optional ROS 2 reliability override.</summary>
+        public FoxRunQosReliability Reliability { get; set; }
+
+        /// <summary>Optional ROS 2 durability override.</summary>
+        public FoxRunQosDurability Durability { get; set; }
+
+        /// <summary>Optional ROS 2 history override.</summary>
+        public FoxRunQosHistory History { get; set; }
+
+        /// <summary>Optional positive Keep Last depth.</summary>
+        public int Depth { get; set; }
+
         /// <summary>Tolerance for supported numeric change detection.</summary>
         public float Tolerance { get; set; } = 0f;
 

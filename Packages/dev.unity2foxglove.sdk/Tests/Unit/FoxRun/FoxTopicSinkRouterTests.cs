@@ -176,6 +176,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void UnregisterNotifiesEveryOptionalLifecycleSinkAndIsolatesFailure()
+        {
+            var router = new FoxTopicSinkRouter();
+            var faults = new List<FoxTopicSinkFault>();
+            router.SinkFaulted += fault => faults.Add(fault);
+            var bad = new ThrowingUnregisterSink("bad");
+            var good = new LifecycleRecordingSink("good");
+            router.AddSink(bad);
+            router.AddSink(good);
+            var contract = Exported("/telemetry");
+            router.Register(contract);
+
+            Assert.True(router.Unregister(contract.Topic));
+
+            Assert.Equal(1, bad.UnregisterCalls);
+            Assert.Equal(1, good.UnregisterCalls);
+            Assert.Single(faults);
+            Assert.Equal("bad", faults[0].SinkName);
+            Assert.Equal("/telemetry", faults[0].Topic);
+            Assert.Equal("unregister", faults[0].Operation);
+        }
+
+        [Fact]
         public void DisposeDisposesEverySinkAndClearsRouter()
         {
             var router = new FoxTopicSinkRouter();
@@ -258,6 +281,40 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             public void Register(FoxTopicContract contract)
                 => throw new InvalidOperationException("register boom");
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class LifecycleRecordingSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
+        {
+            public LifecycleRecordingSink(string name) => Name = name;
+
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+            public int UnregisterCalls { get; private set; }
+
+            public void Register(FoxTopicContract contract) { }
+            public void Unregister(string topic) => UnregisterCalls++;
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class ThrowingUnregisterSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
+        {
+            public ThrowingUnregisterSink(string name) => Name = name;
+
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+            public int UnregisterCalls { get; private set; }
+
+            public void Register(FoxTopicContract contract) { }
+            public void Unregister(string topic)
+            {
+                UnregisterCalls++;
+                throw new InvalidOperationException("unregister boom");
+            }
             public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
             public void Flush() { }
             public void Dispose() { }

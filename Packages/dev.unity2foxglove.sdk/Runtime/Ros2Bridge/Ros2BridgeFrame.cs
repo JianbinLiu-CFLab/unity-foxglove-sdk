@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Schemas.Ros2Msg;
 
 namespace Unity.FoxgloveSDK.Ros2Bridge
@@ -30,7 +31,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             ulong logTimeNs,
             ulong sequence,
             byte[] payload,
-            Ros2BridgeQosProfile? qos)
+            FoxRunResolvedQos? qos)
             : this(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: true)
         {
         }
@@ -42,7 +43,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             ulong logTimeNs,
             ulong sequence,
             byte[] payload,
-            Ros2BridgeQosProfile? qos = null)
+            FoxRunResolvedQos? qos = null)
             => new Ros2BridgeFrame(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: false, validateSchema: false);
 
         internal static Ros2BridgeFrame CreateValidated(
@@ -52,7 +53,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             ulong logTimeNs,
             ulong sequence,
             byte[] payload,
-            Ros2BridgeQosProfile? qos = null)
+            FoxRunResolvedQos? qos = null)
             => new Ros2BridgeFrame(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload: true, validateSchema: false);
 
         private Ros2BridgeFrame(
@@ -62,7 +63,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             ulong logTimeNs,
             ulong sequence,
             byte[] payload,
-            Ros2BridgeQosProfile? qos,
+            FoxRunResolvedQos? qos,
             bool clonePayload)
             : this(topic, schemaName, encoding, logTimeNs, sequence, payload, qos, clonePayload, validateSchema: true)
         {
@@ -75,7 +76,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             ulong logTimeNs,
             ulong sequence,
             byte[] payload,
-            Ros2BridgeQosProfile? qos,
+            FoxRunResolvedQos? qos,
             bool clonePayload,
             bool validateSchema)
         {
@@ -93,6 +94,12 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 throw new ArgumentException("ROS 2 bridge encoding must be exactly 'cdr'.", nameof(encoding));
             if (payload == null || payload.Length == 0)
                 throw new ArgumentException("ROS 2 bridge payload must be non-empty.", nameof(payload));
+            if (qos.HasValue && !IsResolvedQos(qos.Value))
+            {
+                throw new ArgumentException(
+                    "ROS 2 bridge QoS must be a fully resolved portable contract.",
+                    nameof(qos));
+            }
 
             Topic = topic;
             SchemaName = schemaName;
@@ -101,8 +108,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             Sequence = sequence;
             _payload = clonePayload ? (byte[])payload.Clone() : payload;
             Qos = qos;
-            ProfileName = qos.HasValue ? qos.Value.PresetName : null;
         }
+
+        private static bool IsResolvedQos(FoxRunResolvedQos qos)
+            => FoxRunResolvedQos.IsDefined(qos.Profile)
+               && FoxRunResolvedQos.IsDefined(qos.Reliability)
+               && FoxRunResolvedQos.IsDefined(qos.Durability)
+               && FoxRunResolvedQos.IsDefined(qos.History)
+               && (qos.History == FoxRunQosHistory.KeepLast
+                   ? qos.Depth > 0
+                   : qos.Depth == 0);
 
         public string Topic { get; }
         public string SchemaName { get; }
@@ -113,8 +128,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         public ReadOnlyMemory<byte> PayloadMemory => _payload;
         [Obsolete("Payload returns a defensive copy on every call. Use PayloadMemory for a non-allocating read-only view, or cache Payload if a mutable copy is required.")]
         public byte[] Payload => (byte[])_payload.Clone();
-        public string ProfileName { get; }
-        public Ros2BridgeQosProfile? Qos { get; }
+        public FoxRunResolvedQos? Qos { get; }
 
         internal int PayloadLength => _payload.Length;
 

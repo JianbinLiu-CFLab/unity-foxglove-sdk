@@ -306,7 +306,6 @@ namespace Unity.FoxgloveSDK.Tests
                 new KeyValuePair<string, string>("Ros2SchemaMismatch", "FOXRUN210"),
                 new KeyValuePair<string, string>("Ros2MessageShape", "FOXRUN211"),
                 new KeyValuePair<string, string>("MissingNativeAssemblyReference", "FOXRUN212"),
-                new KeyValuePair<string, string>("IgnoredRos2Qos", "FOXRUN213"),
             };
             var bidirectional = new[]
             {
@@ -319,6 +318,9 @@ namespace Unity.FoxgloveSDK.Tests
                 new KeyValuePair<string, string>("InvalidProtobufFieldNumber", "FOXRUN603"),
                 new KeyValuePair<string, string>("MixedTopicEncoding", "FOXRUN604"),
                 new KeyValuePair<string, string>("DuplicateProtobufFieldNumber", "FOXRUN605"),
+                new KeyValuePair<string, string>("InvalidQos", "FOXRUN613"),
+                new KeyValuePair<string, string>("QosRequiresRos2Direction", "FOXRUN614"),
+                new KeyValuePair<string, string>("MixedDirectionalQosContract", "FOXRUN615"),
             };
             var retired = Enumerable.Range(23, 22)
                 .Select(number => "FOXRUN" + number.ToString("000"))
@@ -354,6 +356,10 @@ namespace Unity.FoxgloveSDK.Tests
                       unshipped,
                       "FOXRUN214",
                       "Retired before release; directional Source legality now uses FOXRUN612 and this ID remains permanently reserved.")
+                  && HasReservedBeforeReleaseRow(
+                      unshipped,
+                      "FOXRUN213",
+                      "Retired before release; explicit QoS without a ROS 2 direction now fails with FOXRUN614 and this ID remains permanently reserved.")
                   && HasReservedBeforeReleaseRow(
                       unshipped,
                       "FOXRUN601",
@@ -778,7 +784,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && probe.Contains(
                       "Source = FoxRunEndpoint.Ros2Native",
                       StringComparison.Ordinal)
-                  && probe.Contains("Ros2Qos = FoxRunRos2QosPreset.Reliable", StringComparison.Ordinal)
+                  && probe.Contains("QoS = FoxRunQosProfile.Default", StringComparison.Ordinal)
                   && probe.Contains("private std_msgs.msg.String inputString;", StringComparison.Ordinal)
                   && probe.Contains(
                       "BorrowedLifetimeEvidence => borrowedLifetimeEvidence",
@@ -794,9 +800,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && probe.Contains(
                       "[SerializeField] private FoxRunEncoding capturedFoxgloveEncoding",
                       StringComparison.Ordinal)
-                  && probe.Contains(
-                      "[SerializeField] private FoxRunRos2QosPreset capturedDefaultRos2Qos",
-                      StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private FoxRunQosProfile capturedQosProfile", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private FoxRunQosReliability capturedQosReliability", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private FoxRunQosDurability capturedQosDurability", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private FoxRunQosHistory capturedQosHistory", StringComparison.Ordinal)
+                  && probe.Contains("[SerializeField] private int capturedQosDepth", StringComparison.Ordinal)
                   && probe.Contains("[SerializeField] private int capturedNativeCopyBudgetBytes", StringComparison.Ordinal)
                   && probe.Contains("FoxRunSubscriptionSessionChanged +=", StringComparison.Ordinal)
                   && probe.Contains("FoxRunSubscriptionSessionChanged -=", StringComparison.Ordinal)
@@ -817,7 +825,11 @@ namespace Unity.FoxgloveSDK.Tests
                   && captureSessionPolicy.Contains("policy.SessionGeneration", StringComparison.Ordinal)
                   && captureSessionPolicy.Contains("policy.DefaultSource", StringComparison.Ordinal)
                   && captureSessionPolicy.Contains("policy.FoxgloveEncoding", StringComparison.Ordinal)
-                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Profile", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Reliability", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Durability", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.History", StringComparison.Ordinal)
+                  && captureSessionPolicy.Contains("policy.DefaultRos2Qos.Depth", StringComparison.Ordinal)
                   && captureSessionPolicy.Contains("policy.NativeCopyBudgetBytes", StringComparison.Ordinal)
                   && !captureSessionPolicy.Contains("Create", StringComparison.Ordinal)
                   && !captureSessionPolicy.Contains("Selector", StringComparison.Ordinal),
@@ -950,8 +962,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && sample.Contains("sensor_msgs.msg.Joy", StringComparison.Ordinal)
                   && sample.Contains("sensor_msgs.msg.Imu", StringComparison.Ordinal)
                   && sample.Contains("Source = FoxRunEndpoint.Ros2Native", StringComparison.Ordinal)
-                  && sample.Contains("Ros2Qos = FoxRunRos2QosPreset.Reliable", StringComparison.Ordinal)
-                  && sample.Contains("Ros2Qos = FoxRunRos2QosPreset.SensorData", StringComparison.Ordinal)
+                  && sample.Contains("QoS = FoxRunQosProfile.Default", StringComparison.Ordinal)
+                  && sample.Contains("QoS = FoxRunQosProfile.SensorData", StringComparison.Ordinal)
                   && sample.Contains("#if UNITY2FOXGLOVE_ROS2_FOR_UNITY", StringComparison.Ordinal)
                   && sample.Contains("CopyBounded", StringComparison.Ordinal)
                   && packageJson.Contains("FoxRun ROS2 Native Subscribe", StringComparison.Ordinal),

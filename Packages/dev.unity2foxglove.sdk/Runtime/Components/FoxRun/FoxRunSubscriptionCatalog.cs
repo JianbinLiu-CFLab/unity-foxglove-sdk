@@ -161,7 +161,7 @@ namespace Unity.FoxgloveSDK.Components
             if (bindings.Length == 0)
                 return false;
 
-            if (manifest.ManifestVersion < 2
+            if (manifest.ManifestVersion < 3
                 || !BindingIdentityMatchesContracts(contracts, bindings))
                 return false;
 
@@ -335,7 +335,7 @@ namespace Unity.FoxgloveSDK.Components
                 ["flow"] = TypeSchema("string"),
                 ["encoding"] = TypeSchema("string"),
                 ["schemaName"] = TypeSchema("string"),
-                ["rateHz"] = TypeSchema("number"),
+                ["hz"] = TypeSchema("number"),
                 ["writableFieldCount"] = TypeSchema("integer"),
                 ["protobufDescriptorAvailable"] = TypeSchema("boolean"),
                 ["protobufDescriptorDigest"] = TypeSchema("string"),

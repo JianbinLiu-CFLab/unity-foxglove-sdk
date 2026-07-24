@@ -65,10 +65,25 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunEncoding Encoding { get; set; }
 
         /// <summary>
-        /// ROS2 QoS preset for an optional native subscription. The default is
-        /// resolved by FoxgloveManager when subscriptions are registered.
+        /// Optional portable ROS 2 QoS base profile. Omission inherits each
+        /// selected ROS 2 direction's frozen profile.
         /// </summary>
-        public FoxRunRos2QosPreset Ros2Qos { get; set; } = FoxRunRos2QosPreset.Inherit;
+        public FoxRunQosProfile QoS { get; set; }
+
+        /// <summary>Optional ROS 2 reliability override.</summary>
+        public FoxRunQosReliability Reliability { get; set; }
+
+        /// <summary>Optional ROS 2 durability override.</summary>
+        public FoxRunQosDurability Durability { get; set; }
+
+        /// <summary>Optional ROS 2 history override.</summary>
+        public FoxRunQosHistory History { get; set; }
+
+        /// <summary>
+        /// Optional positive Keep Last depth. It is invalid when the resolved
+        /// history is Keep All or System Default.
+        /// </summary>
+        public int Depth { get; set; }
 
         /// <summary>
         /// Optional pinned Protobuf field number for this member. Zero uses the

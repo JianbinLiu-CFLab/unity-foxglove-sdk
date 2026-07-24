@@ -97,7 +97,7 @@ namespace Unity.FoxgloveSDK.Editor
                 member.Topic,
                 member.Source,
                 canonicalEnvelope,
-                member.Ros2Qos);
+                member);
             sb.AppendLine(pad + "        registrar.Register<" + envelope + ">(");
             sb.AppendLine(pad + "            new " + NativeNamespace + "FoxRunRos2GeneratedContract(");
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(id) + "\",");
@@ -107,7 +107,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                \"" + StringLiteralEmitter.CSharpStringLiteral(canonicalEnvelope) + "\",");
             sb.AppendLine(pad + "                " + ModeLiteral(member.Mode) + ",");
             sb.AppendLine(pad + "                " + ProviderLiteral(member.Source) + ",");
-            sb.AppendLine(pad + "                " + QosLiteral(member.Ros2Qos) + ",");
+            Ros2InputDispatchEmitter.AppendQosArguments(sb, pad + "                ", member);
             sb.AppendLine(pad + "                true,");
             sb.AppendLine(pad + "                " + EncodingLiteral(member.Encoding) + ",");
             sb.AppendLine(pad + "                " + NativeNamespace + "FoxRunRos2GeneratedContractKind.CustomInterface,");
@@ -722,19 +722,6 @@ namespace Unity.FoxgloveSDK.Editor
             if (string.Equals(provider, FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource, StringComparison.Ordinal))
                 return "global::Unity.FoxgloveSDK.Components.FoxRunEndpoint.Foxglove";
             return "(global::Unity.FoxgloveSDK.Components.FoxRunEndpoint)0";
-        }
-
-        private static string QosLiteral(string qos)
-        {
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.DefaultRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Default";
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.ReliableRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Reliable";
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.SensorDataRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData";
-            if (string.Equals(qos, FoxRunGenerationDescriptorConstants.TransientLocalRos2Qos, StringComparison.Ordinal))
-                return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.TransientLocal";
-            return "global::Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.Inherit";
         }
 
         private static string EncodingLiteral(string encoding)

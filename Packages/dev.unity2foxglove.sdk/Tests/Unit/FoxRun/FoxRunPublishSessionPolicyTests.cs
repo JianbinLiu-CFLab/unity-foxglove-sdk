@@ -3,7 +3,7 @@
 
 using System;
 using Unity.FoxgloveSDK.Components;
-using Unity.FoxgloveSDK.Ros2Bridge;
+using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -25,17 +25,18 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         public void BeginCapturesEveryDirectionalDefault()
         {
             var state = new FoxRunPublishSessionState();
-            var bridgeQos = new Ros2BridgeQosProfile(
-                Ros2BridgeReliability.BestEffort,
-                Ros2BridgeDurability.TransientLocal,
-                7,
-                "Test");
+            var bridgeQos = new FoxRunResolvedQos(
+                FoxRunQosProfile.SystemDefault,
+                FoxRunQosReliability.BestEffort,
+                FoxRunQosDurability.TransientLocal,
+                FoxRunQosHistory.KeepAll,
+                0);
 
             var policy = state.BeginIfNeeded(
                 FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
                 FoxRunEncoding.JSON,
                 defaultPublishRateHz: 25f,
-                FoxRunRos2QosPreset.SensorData,
+                FoxRunResolvedQos.SensorData,
                 bridgeQos);
 
             Assert.True(policy.SessionActive);
@@ -45,8 +46,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 policy.DefaultTargets);
             Assert.Equal(FoxRunEncoding.JSON, policy.FoxgloveEncoding);
             Assert.Equal(25f, policy.DefaultPublishRateHz);
-            Assert.Equal(FoxRunRos2QosPreset.SensorData, policy.NativeRos2Qos);
-            Assert.Equal("Test", policy.BridgeRos2Qos.PresetName);
+            Assert.Equal(FoxRunResolvedQos.SensorData, policy.NativeRos2Qos);
+            Assert.Equal(bridgeQos, policy.BridgeRos2Qos);
         }
 
         [Fact]
@@ -57,25 +58,27 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunEndpoint.Foxglove,
                 FoxRunEncoding.Protobuf,
                 10f,
-                FoxRunRos2QosPreset.Default,
-                Ros2BridgeQosProfile.ReliableDefault);
+                FoxRunResolvedQos.Default,
+                FoxRunResolvedQos.SystemDefault);
 
             var repeated = state.BeginIfNeeded(
                 FoxRunEndpoint.Ros2Bridge,
                 FoxRunEncoding.JSON,
                 90f,
-                FoxRunRos2QosPreset.TransientLocal,
-                new Ros2BridgeQosProfile(
-                    Ros2BridgeReliability.BestEffort,
-                    Ros2BridgeDurability.TransientLocal,
-                    99,
-                    "Changed"));
+                FoxRunResolvedQos.SensorData,
+                new FoxRunResolvedQos(
+                    FoxRunQosProfile.Default,
+                    FoxRunQosReliability.BestEffort,
+                    FoxRunQosDurability.TransientLocal,
+                    FoxRunQosHistory.KeepLast,
+                    99));
 
             Assert.Same(first, repeated);
             Assert.Equal(FoxRunEndpoint.Foxglove, repeated.DefaultTargets);
             Assert.Equal(FoxRunEncoding.Protobuf, repeated.FoxgloveEncoding);
             Assert.Equal(10f, repeated.DefaultPublishRateHz);
-            Assert.Equal("Reliable Default", repeated.BridgeRos2Qos.PresetName);
+            Assert.Equal(FoxRunResolvedQos.Default, repeated.NativeRos2Qos);
+            Assert.Equal(FoxRunResolvedQos.SystemDefault, repeated.BridgeRos2Qos);
         }
 
         [Fact]
@@ -86,8 +89,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunEndpoint.Foxglove,
                 FoxRunEncoding.Protobuf,
                 10f,
-                FoxRunRos2QosPreset.Default,
-                Ros2BridgeQosProfile.ReliableDefault);
+                FoxRunResolvedQos.Default,
+                FoxRunResolvedQos.SystemDefault);
 
             var disabled = state.End();
             var repeatedEnd = state.End();
@@ -95,13 +98,20 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 FoxRunEndpoint.Ros2Native,
                 FoxRunEncoding.JSON,
                 20f,
-                FoxRunRos2QosPreset.Reliable,
-                Ros2BridgeQosProfile.ReliableDefault);
+                FoxRunResolvedQos.SensorData,
+                new FoxRunResolvedQos(
+                    FoxRunQosProfile.Default,
+                    FoxRunQosReliability.Reliable,
+                    FoxRunQosDurability.TransientLocal,
+                    FoxRunQosHistory.KeepAll,
+                    0));
 
             Assert.False(disabled.SessionActive);
             Assert.Same(disabled, repeatedEnd);
             Assert.Equal(first.SessionGeneration + 1UL, second.SessionGeneration);
             Assert.Equal(FoxRunEndpoint.Ros2Native, second.DefaultTargets);
+            Assert.Equal(FoxRunResolvedQos.SensorData, second.NativeRos2Qos);
+            Assert.Equal(FoxRunQosHistory.KeepAll, second.BridgeRos2Qos.History);
         }
 
         [Fact]
@@ -113,14 +123,35 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 0,
                 FoxRunEncoding.Protobuf,
                 10f,
-                FoxRunRos2QosPreset.Default,
-                Ros2BridgeQosProfile.ReliableDefault));
+                FoxRunResolvedQos.Default,
+                FoxRunResolvedQos.Default));
             Assert.Throws<ArgumentOutOfRangeException>(() => state.BeginIfNeeded(
                 FoxRunEndpoint.Foxglove,
                 0,
                 10f,
-                FoxRunRos2QosPreset.Default,
-                Ros2BridgeQosProfile.ReliableDefault));
+                FoxRunResolvedQos.Default,
+                FoxRunResolvedQos.Default));
+        }
+
+        [Fact]
+        public void ManagerNotifiesPublishSessionBeginAndEndSynchronously()
+        {
+            var source = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/"
+                + "FoxgloveManager.FoxRunPublishing.cs");
+
+            Assert.Contains(
+                "public event Action<FoxRunPublishSessionPolicy> FoxRunPublishSessionChanged;",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "NotifyFoxRunPublishSessionChanged(policy);",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "((Action<FoxRunPublishSessionPolicy>)subscriber)(policy);",
+                source,
+                StringComparison.Ordinal);
         }
     }
 }

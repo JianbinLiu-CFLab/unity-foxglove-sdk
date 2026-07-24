@@ -155,10 +155,24 @@ namespace Unity.FoxgloveSDK.Tests
                   && source.Contains("ScopedFd listen_fd", StringComparison.Ordinal)
                   && source.Contains("ScopedFd client_fd", StringComparison.Ordinal),
                 "134-16H-1: ROS2 sidecar wraps listen/client sockets in RAII handles");
-            Check(source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
-                  && source.IndexOf("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
-                  < source.IndexOf("ScopedFd client_fd", StringComparison.Ordinal),
-                "134-16H-2: sidecar publisher maps survive client reconnects");
+            var processClient = source.IndexOf("void process_client(", StringComparison.Ordinal);
+            var sessionBridge = processClient >= 0
+                ? source.IndexOf(
+                    "BridgeNode bridge(node, payload_format);",
+                    processClient,
+                    StringComparison.Ordinal)
+                : -1;
+            var sessionLoop = sessionBridge >= 0
+                ? source.IndexOf("while (rclcpp::ok())", sessionBridge, StringComparison.Ordinal)
+                : -1;
+            Check(processClient >= 0
+                  && sessionBridge > processClient
+                  && sessionLoop > sessionBridge
+                  && !source.Contains("BridgeNode bridge(node, options.payload_format);", StringComparison.Ordinal)
+                  && source.Contains(
+                      "process_client(client_fd.get(), node, options.payload_format);",
+                      StringComparison.Ordinal),
+                "134-16H-2: each sidecar client session owns fresh publisher maps so restarted sessions may apply replacement QoS");
             Check(!source.Contains("value(\"op\", \"publish\")", StringComparison.Ordinal)
                   && source.Contains("reject frame: missing or invalid op", StringComparison.Ordinal)
                   && source.Contains("topic must not contain newline", StringComparison.Ordinal)

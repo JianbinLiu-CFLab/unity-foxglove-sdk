@@ -72,14 +72,14 @@ namespace Unity.FoxgloveSDK.Tests
             var policy = state.BeginIfNeeded(
                 FoxRunEndpoint.Foxglove,
                 FoxRunEncoding.Protobuf,
-                FoxRunRos2QosPreset.Default,
+                FoxRunResolvedQos.Default,
                 4 * 1024 * 1024,
                 transportAdmissionRateLimitHz: 120,
                 defaultSubscribeRateHz: 30);
             var frozen = state.BeginIfNeeded(
                 FoxRunEndpoint.Ros2Native,
                 FoxRunEncoding.JSON,
-                FoxRunRos2QosPreset.SensorData,
+                FoxRunResolvedQos.SensorData,
                 1,
                 transportAdmissionRateLimitHz: 1,
                 defaultSubscribeRateHz: 1);
@@ -138,13 +138,17 @@ namespace Unity.FoxgloveSDK.Tests
                 .ToArray();
             var expectedProperties = new[]
             {
+                "Depth",
+                "Durability",
                 "Encoding",
+                "History",
                 "Hz",
                 "Mode",
                 "OnlyIf",
                 "Policy",
                 "ProtobufFieldNumber",
-                "Ros2Qos",
+                "QoS",
+                "Reliability",
                 "SchemaName",
                 "Source",
                 "Targets",
@@ -156,8 +160,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && typeof(FoxRunAttribute).GetProperty("Policy")?.PropertyType == typeof(FoxRunPolicy)
                   && typeof(FoxRunAttribute).GetProperty("Source")?.PropertyType == typeof(FoxRunEndpoint)
                   && typeof(FoxRunAttribute).GetProperty("Targets")?.PropertyType == typeof(FoxRunEndpoint)
-                  && typeof(FoxRunAttribute).GetProperty("Encoding")?.PropertyType == typeof(FoxRunEncoding),
-                "Structural 183A-11: the public attribute surface exposes only the fresh flow, policy, endpoint, and encoding model");
+                  && typeof(FoxRunAttribute).GetProperty("Encoding")?.PropertyType == typeof(FoxRunEncoding)
+                  && typeof(FoxRunAttribute).GetProperty("QoS")?.PropertyType == typeof(FoxRunQosProfile)
+                  && typeof(FoxRunAttribute).GetProperty("Reliability")?.PropertyType == typeof(FoxRunQosReliability)
+                  && typeof(FoxRunAttribute).GetProperty("Durability")?.PropertyType == typeof(FoxRunQosDurability)
+                  && typeof(FoxRunAttribute).GetProperty("History")?.PropertyType == typeof(FoxRunQosHistory)
+                  && typeof(FoxRunAttribute).GetProperty("Depth")?.PropertyType == typeof(int),
+                "Structural 183A-11: the public attribute surface exposes only the fresh declaration and portable ROS 2 QoS model");
             Check(!assembly.GetReferencedAssemblies().Any(reference =>
                     reference.Name.IndexOf("Ros2ForUnity", StringComparison.OrdinalIgnoreCase) >= 0
                     || reference.Name.Equals("ros2cs_common", StringComparison.OrdinalIgnoreCase)),

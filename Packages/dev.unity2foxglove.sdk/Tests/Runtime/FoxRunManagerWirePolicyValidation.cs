@@ -70,6 +70,7 @@ namespace Unity.FoxgloveSDK.Tests
             var inbound = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
             var migration = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPolicyMigration.cs");
             var helper = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunEncodingPolicyMigration.cs");
+            var qosSettings = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunQosProfileSettings.cs");
             var copyBudgetPolicy = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunRos2NativeCopyBudgetPolicy.cs");
 
             Check(policy.Contains("public sealed class FoxRunSubscriptionSessionPolicy", StringComparison.Ordinal)
@@ -77,7 +78,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && policy.Contains("public bool SubscriptionsEnabled { get; }", StringComparison.Ordinal)
                   && policy.Contains("public FoxRunEndpoint DefaultSource { get; }", StringComparison.Ordinal)
                   && policy.Contains("public FoxRunEncoding FoxgloveEncoding { get; }", StringComparison.Ordinal)
-                  && policy.Contains("public FoxRunRos2QosPreset DefaultRos2Qos { get; }", StringComparison.Ordinal)
+                  && policy.Contains("public FoxRunResolvedQos DefaultRos2Qos { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int NativeCopyBudgetBytes { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int TransportAdmissionRateLimitHz { get; }", StringComparison.Ordinal)
                   && policy.Contains("public int DefaultSubscribeRateHz { get; }", StringComparison.Ordinal)
@@ -165,13 +166,22 @@ namespace Unity.FoxgloveSDK.Tests
 
             var onValidate = Slice(manager, "private void OnValidate()", "private void OnEnable()");
             Check(inbound.Contains("_defaultFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove", StringComparison.Ordinal)
-                  && inbound.Contains("_defaultFoxRunRos2Qos = FoxRunRos2QosPreset.Default", StringComparison.Ordinal)
+                  && inbound.Contains("[FormerlySerializedAs(\"_defaultFoxRunRos2Qos\")]", StringComparison.Ordinal)
+                  && inbound.Contains("_legacyDefaultFoxRunRos2Qos = 1", StringComparison.Ordinal)
+                  && inbound.Contains("_defaultFoxRunNativeSubscribeQos = new()", StringComparison.Ordinal)
                   && inbound.Contains("_foxRunRos2NativeCopyBudgetBytes = FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes", StringComparison.Ordinal)
                   && inbound.Contains("_defaultFoxRunSubscriptionEncoding = FoxRunEncoding.Protobuf", StringComparison.Ordinal)
                   && migration.Contains("ref _defaultFoxRunSubscriptionSource", StringComparison.Ordinal)
-                  && migration.Contains("ref _defaultFoxRunRos2Qos", StringComparison.Ordinal)
                   && migration.Contains("ref _foxRunRos2NativeCopyBudgetBytes", StringComparison.Ordinal)
+                  && migration.Contains("FoxRunQosPolicySerializationMigration.MigrateNativeProfiles(", StringComparison.Ordinal)
+                  && migration.Contains("ref _defaultFoxRunNativePublishQos", StringComparison.Ordinal)
+                  && migration.Contains("ref _defaultFoxRunNativeSubscribeQos", StringComparison.Ordinal)
+                  && migration.Contains("_legacyDefaultFoxRunRos2Qos", StringComparison.Ordinal)
                   && helper.Contains("CurrentSerializationVersion = 2", StringComparison.Ordinal)
+                  && helper.Contains("QosProfileSerializationVersion = 3", StringComparison.Ordinal)
+                  && helper.Contains("internal static void MarkCurrent(", StringComparison.Ordinal)
+                  && helper.Contains("publish.MigrateLegacyPreset(legacyPublishPreset)", StringComparison.Ordinal)
+                  && helper.Contains("subscribe.MigrateLegacyPreset(legacySubscribePreset)", StringComparison.Ordinal)
                   && copyBudgetPolicy.Contains("public const int MinBytes = 1024", StringComparison.Ordinal)
                   && copyBudgetPolicy.Contains("public const int MaxBytes = 256 * 1024 * 1024", StringComparison.Ordinal)
                   && copyBudgetPolicy.Contains("public const int DefaultBytes = 4 * 1024 * 1024", StringComparison.Ordinal)
@@ -179,7 +189,8 @@ namespace Unity.FoxgloveSDK.Tests
                   && helper.Contains("MaxRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MaxBytes", StringComparison.Ordinal)
                   && helper.Contains("DefaultRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes", StringComparison.Ordinal)
                   && helper.Contains("=> FoxRunRos2NativeCopyBudgetPolicy.NormalizeSerializedBytes(configuredBytes)", StringComparison.Ordinal)
-                  && helper.Contains("FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(qos)", StringComparison.Ordinal)
+                  && qosSettings.Contains("FoxRunRos2QosProfileResolver.Resolve(", StringComparison.Ordinal)
+                  && qosSettings.Contains("internal void MigrateLegacyPreset(int legacyPreset)", StringComparison.Ordinal)
                   && !inbound.Contains("public FoxRunEncoding DefaultFoxRunEncoding", StringComparison.Ordinal)
                   && !inbound.Contains("public FoxRunEncoding ActiveFoxRunDefaultWireEncoding", StringComparison.Ordinal)
                   && !inbound.Contains("public FoxRunEncoding ResolveFoxRunEncoding(FoxRunEncoding declaredEncoding)", StringComparison.Ordinal)

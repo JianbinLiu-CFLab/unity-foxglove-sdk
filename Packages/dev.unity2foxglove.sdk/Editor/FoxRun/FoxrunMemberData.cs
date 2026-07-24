@@ -48,7 +48,11 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly int Encoding;
             public readonly int Source;
             public readonly int Targets;
-            public readonly int Ros2Qos;
+            public readonly int QosProfile;
+            public readonly int QosReliability;
+            public readonly int QosDurability;
+            public readonly int QosHistory;
+            public readonly int QosDepth;
             public readonly FoxRunRos2MessageShape Ros2MessageShape;
             public readonly FoxRunRos2CustomDtoShape Ros2CustomDtoShape;
             public readonly FoxRunRos2ContractKind Ros2ContractKind;
@@ -69,7 +73,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context.
             /// </summary>
             public MemberData(string name, Type type, string memberKind, string ns, string cn, string topic, float hz, string schema,
-                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0)
+                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int qosProfile = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0, int qosReliability = 0, int qosDurability = 0, int qosHistory = 0, int qosDepth = 0)
             {
                 MemberName = name;
                 MemberKind = memberKind;
@@ -88,7 +92,11 @@ namespace Unity.FoxgloveSDK.Editor
                 Encoding = encoding;
                 Source = source;
                 Targets = targets;
-                Ros2Qos = ros2Qos;
+                QosProfile = qosProfile;
+                QosReliability = qosReliability;
+                QosDurability = qosDurability;
+                QosHistory = qosHistory;
+                QosDepth = qosDepth;
                 Ros2MessageShape = ros2MessageShape
                     ?? TryBuildRos2MessageShape(type, source);
                 Ros2CustomDtoShape = ros2CustomDtoShape
@@ -114,7 +122,7 @@ namespace Unity.FoxgloveSDK.Editor
             /// namespace/class context (used in tests or diagnostics).
             /// </summary>
             public MemberData(string name, string rawType, string topic, float hz, string schema,
-                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int ros2Qos = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0)
+                int policy = 1, float tolerance = 0f, int rawMemberOrder = -1, string conditionalSymbols = "", string onlyIf = "", bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0, int source = 0, int qosProfile = 0, FoxRunRos2MessageShape ros2MessageShape = null, FoxRunRos2CustomDtoShape ros2CustomDtoShape = null, FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported, FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None, FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None, int targets = 0, int qosReliability = 0, int qosDurability = 0, int qosHistory = 0, int qosDepth = 0)
             {
                 if (LooksLikeArrayType(rawType))
                     throw new ArgumentException("Raw array/list type strings are ambiguous; use the Type-based MemberData constructor.", nameof(rawType));
@@ -136,7 +144,11 @@ namespace Unity.FoxgloveSDK.Editor
                 Encoding = encoding;
                 Source = source;
                 Targets = targets;
-                Ros2Qos = ros2Qos;
+                QosProfile = qosProfile;
+                QosReliability = qosReliability;
+                QosDurability = qosDurability;
+                QosHistory = qosHistory;
+                QosDepth = qosDepth;
                 Ros2MessageShape = ros2MessageShape;
                 Ros2CustomDtoShape = ros2CustomDtoShape;
                 Ros2ContractKind = ResolveRos2ContractKind(
@@ -191,7 +203,7 @@ namespace Unity.FoxgloveSDK.Editor
                     ProtobufFieldNumber,
                     ProtobufTypeShape,
                     Source,
-                    Ros2Qos,
+                    QosProfile,
                     ProtobufTypeShape != null
                         || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
                             FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
@@ -206,7 +218,11 @@ namespace Unity.FoxgloveSDK.Editor
                     Ros2ContractKind,
                     NamedArgumentPresence,
                     ConditionMemberKind,
-                    Targets);
+                    Targets,
+                    QosReliability,
+                    QosDurability,
+                    QosHistory,
+                    QosDepth);
             }
         }
 
@@ -333,9 +349,25 @@ namespace Unity.FoxgloveSDK.Editor
                         snapshot.Targets = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Targets;
                         break;
-                    case "Ros2Qos":
-                        snapshot.Ros2Qos = Convert.ToInt32(argument.TypedValue.Value);
-                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Ros2Qos;
+                    case "QoS":
+                        snapshot.QosProfile = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.QoS;
+                        break;
+                    case "Reliability":
+                        snapshot.QosReliability = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Reliability;
+                        break;
+                    case "Durability":
+                        snapshot.QosDurability = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Durability;
+                        break;
+                    case "History":
+                        snapshot.QosHistory = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.History;
+                        break;
+                    case "Depth":
+                        snapshot.QosDepth = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Depth;
                         break;
                     case "ProtobufFieldNumber":
                         snapshot.ProtobufFieldNumber = Convert.ToInt32(argument.TypedValue.Value);
@@ -381,6 +413,26 @@ namespace Unity.FoxgloveSDK.Editor
                         snapshot.Targets = Convert.ToInt32(argument.TypedValue.Value);
                         snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Targets;
                         break;
+                    case "QoS":
+                        snapshot.QosProfile = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.QoS;
+                        break;
+                    case "Reliability":
+                        snapshot.QosReliability = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Reliability;
+                        break;
+                    case "Durability":
+                        snapshot.QosDurability = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Durability;
+                        break;
+                    case "History":
+                        snapshot.QosHistory = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.History;
+                        break;
+                    case "Depth":
+                        snapshot.QosDepth = Convert.ToInt32(argument.TypedValue.Value);
+                        snapshot.NamedArgumentPresence |= FoxRunNamedArgumentPresence.Depth;
+                        break;
                 }
             }
         }
@@ -404,7 +456,11 @@ namespace Unity.FoxgloveSDK.Editor
             public int Encoding;
             public int Source;
             public int Targets;
-            public int Ros2Qos;
+            public int QosProfile;
+            public int QosReliability;
+            public int QosDurability;
+            public int QosHistory;
+            public int QosDepth;
             public int ProtobufFieldNumber;
             public FoxRunNamedArgumentPresence NamedArgumentPresence;
 
@@ -425,6 +481,11 @@ namespace Unity.FoxgloveSDK.Editor
             public int Policy = (int)FoxRunPolicy.FixedRate;
             public int Encoding;
             public int Targets;
+            public int QosProfile;
+            public int QosReliability;
+            public int QosDurability;
+            public int QosHistory;
+            public int QosDepth;
             public FoxRunNamedArgumentPresence NamedArgumentPresence;
 
             public FoxRunMessageAttributeSnapshot(string topic)

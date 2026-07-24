@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -25,6 +26,99 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             var attr = new FoxRunAttribute("/phase157/default");
 
             Assert.Equal(FoxRunFlow.Publish, attr.Mode);
+        }
+
+        [Fact]
+        public void GenerationMemberConstructorsInferOmittedAndExplicitJsonEncodingPresence()
+        {
+            var omitted = new[]
+            {
+                new FoxRunGenerationMember(
+                    ns: "Demo",
+                    className: "Defaults",
+                    memberName: "_first",
+                    memberKind: "field",
+                    rawTypeName: "System.Int32",
+                    isValueType: true,
+                    isArray: false,
+                    elementTypeName: "",
+                    topic: "/phase184/defaults/first",
+                    hz: -1f,
+                    schemaName: "",
+                    policy: 1,
+                    tolerance: 0f,
+                    hostKind: "UnitTest",
+                    rawMemberOrder: 0,
+                    conditionalSymbols: ""),
+                new FoxRunGenerationMember(
+                    ns: "Demo",
+                    className: "Defaults",
+                    memberName: "_second",
+                    memberKind: "field",
+                    rawObservedTypeName: "System.Int32",
+                    emissionTypeName: "int",
+                    isValueType: true,
+                    isArray: false,
+                    elementTypeName: "",
+                    topic: "/phase184/defaults/second",
+                    hz: -1f,
+                    schemaName: "",
+                    policy: 1,
+                    tolerance: 0f,
+                    hostKind: "UnitTest",
+                    rawMemberOrder: 1,
+                    conditionalSymbols: ""),
+                new FoxRunGenerationMember(
+                    ns: "Demo",
+                    className: "Defaults",
+                    memberName: "_third",
+                    memberKind: "field",
+                    rawObservedTypeName: "System.Int32",
+                    emissionTypeName: "int",
+                    canonicalType: "int32",
+                    isValueType: true,
+                    isArray: false,
+                    elementTypeName: "",
+                    topic: "/phase184/defaults/third",
+                    hz: -1f,
+                    schemaName: "",
+                    policy: 1,
+                    tolerance: 0f,
+                    hostKind: "UnitTest",
+                    rawMemberOrder: 2,
+                    conditionalSymbols: "")
+            };
+            var explicitJson = new FoxRunGenerationMember(
+                ns: "Demo",
+                className: "Defaults",
+                memberName: "_json",
+                memberKind: "field",
+                rawTypeName: "System.Int32",
+                isValueType: true,
+                isArray: false,
+                elementTypeName: "",
+                topic: "/phase184/defaults/json",
+                hz: -1f,
+                schemaName: "",
+                policy: 1,
+                tolerance: 0f,
+                hostKind: "UnitTest",
+                rawMemberOrder: 3,
+                conditionalSymbols: "",
+                encoding: FoxRunGenerationDescriptorConstants.JsonEncoding);
+
+            Assert.All(omitted, member =>
+            {
+                Assert.Equal(FoxRunGenerationDescriptorConstants.InheritEncoding, member.Encoding);
+                Assert.Equal(FoxRunNamedArgumentPresence.None, member.NamedArgumentPresence);
+                Assert.False(member.HasNamedArgument(FoxRunNamedArgumentPresence.Encoding));
+            });
+            Assert.Equal(FoxRunGenerationDescriptorConstants.JsonEncoding, explicitJson.Encoding);
+            Assert.True(explicitJson.HasNamedArgument(FoxRunNamedArgumentPresence.Encoding));
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(
+                    FoxRunGenerationModel.FromMembers(omitted.Append(explicitJson).ToArray())),
+                diagnostic => diagnostic.Severity == "Error");
         }
 
         [Fact]
@@ -222,6 +316,260 @@ namespace Demo
             Assert.Equal(0, regularFieldNumber.GetValue(new FoxRunAttribute("/phase175/regular")));
             Assert.Equal((FoxRunEncoding)0, aggregateEncoding.GetValue(new FoxRunMessageAttribute("/phase175/aggregate")));
             Assert.Equal(0, aggregateFieldNumber.GetValue(new FoxRunFieldAttribute()));
+        }
+
+        [Fact]
+        public void OfficialQosDeclarationsUseStronglyTypedAxesAndUnnamedOmissionSentinels()
+        {
+            Assert.Equal(
+                new[] { "Default", "SensorData", "SystemDefault" },
+                Enum.GetNames(typeof(FoxRunQosProfile)));
+            Assert.Equal(
+                new[] { "SystemDefault", "Reliable", "BestEffort" },
+                Enum.GetNames(typeof(FoxRunQosReliability)));
+            Assert.Equal(
+                new[] { "SystemDefault", "Volatile", "TransientLocal" },
+                Enum.GetNames(typeof(FoxRunQosDurability)));
+            Assert.Equal(
+                new[] { "SystemDefault", "KeepLast", "KeepAll" },
+                Enum.GetNames(typeof(FoxRunQosHistory)));
+
+            var member = new FoxRunAttribute("/phase184/qos");
+            var aggregate = new FoxRunMessageAttribute("/phase184/qos-message");
+            Assert.Equal((FoxRunQosProfile)0, member.QoS);
+            Assert.Equal((FoxRunQosReliability)0, member.Reliability);
+            Assert.Equal((FoxRunQosDurability)0, member.Durability);
+            Assert.Equal((FoxRunQosHistory)0, member.History);
+            Assert.Equal(0, member.Depth);
+            Assert.Equal((FoxRunQosProfile)0, aggregate.QoS);
+            Assert.Null(typeof(FoxRunAttribute).GetProperty("Ros2Qos"));
+        }
+
+        [Fact]
+        public void OfficialQosStaticImportGrammarCompiles()
+        {
+            var output = CreateCompilation(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunEndpoint;
+using static Unity.FoxgloveSDK.Components.FoxRunQosProfile;
+using static Unity.FoxgloveSDK.Components.FoxRunQosReliability;
+using static Unity.FoxgloveSDK.Components.FoxRunQosDurability;
+using static Unity.FoxgloveSDK.Components.FoxRunQosHistory;
+
+namespace Demo
+{
+    public partial class QosGrammar
+    {
+        [FoxRun(""/phase184/sensor"", Targets = Ros2Native, QoS = SensorData)]
+        private float _sensor;
+
+        [FoxRun(""/phase184/map"", Targets = Ros2Native | Ros2Bridge,
+            QoS = Default, Reliability = Reliable,
+            Durability = TransientLocal, History = KeepLast, Depth = 1)]
+        private float _map;
+
+        [FoxRun(""/phase184/system"", Targets = Ros2Native,
+            QoS = FoxRunQosProfile.SystemDefault,
+            Reliability = FoxRunQosReliability.SystemDefault)]
+        private float _system;
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+
+        [Fact]
+        public void RoslynGeneratorAcceptsEveryOfficialQosProfileAndPerAxisOverrides()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class QosProfiles
+    {
+        [FoxRun(""/phase184/default"", QoS = FoxRunQosProfile.Default,
+            Reliability = FoxRunQosReliability.Reliable,
+            Durability = FoxRunQosDurability.TransientLocal,
+            History = FoxRunQosHistory.KeepLast, Depth = 23)]
+        private float _default;
+
+        [FoxRun(""/phase184/sensor"", QoS = FoxRunQosProfile.SensorData)]
+        private float _sensor;
+
+        [FoxRun(""/phase184/system"", QoS = FoxRunQosProfile.SystemDefault,
+            Reliability = FoxRunQosReliability.SystemDefault,
+            Durability = FoxRunQosDurability.SystemDefault,
+            History = FoxRunQosHistory.SystemDefault)]
+        private float _system;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            using var descriptor = JsonDocument.Parse(GeneratedDescriptorJson(result));
+            var members = descriptor.RootElement
+                .GetProperty("types")
+                .EnumerateArray()
+                .SelectMany(type => type.GetProperty("members").EnumerateArray())
+                .ToDictionary(
+                    member => member.GetProperty("topic").GetString(),
+                    StringComparer.Ordinal);
+            var defaultQos = members["/phase184/default"];
+            Assert.Equal("default", defaultQos.GetProperty("qosProfile").GetString());
+            Assert.Equal("reliable", defaultQos.GetProperty("qosReliability").GetString());
+            Assert.Equal("transient-local", defaultQos.GetProperty("qosDurability").GetString());
+            Assert.Equal("keep-last", defaultQos.GetProperty("qosHistory").GetString());
+            Assert.Equal(23, defaultQos.GetProperty("qosDepth").GetInt32());
+
+            var sensorQos = members["/phase184/sensor"];
+            Assert.Equal("sensor-data", sensorQos.GetProperty("qosProfile").GetString());
+            Assert.Equal("inherit", sensorQos.GetProperty("qosReliability").GetString());
+            Assert.Equal("inherit", sensorQos.GetProperty("qosDurability").GetString());
+            Assert.Equal("inherit", sensorQos.GetProperty("qosHistory").GetString());
+            Assert.Equal(0, sensorQos.GetProperty("qosDepth").GetInt32());
+
+            var systemQos = members["/phase184/system"];
+            Assert.Equal("system-default", systemQos.GetProperty("qosProfile").GetString());
+            Assert.Equal("system-default", systemQos.GetProperty("qosReliability").GetString());
+            Assert.Equal("system-default", systemQos.GetProperty("qosDurability").GetString());
+            Assert.Equal("system-default", systemQos.GetProperty("qosHistory").GetString());
+            Assert.Equal(0, systemQos.GetProperty("qosDepth").GetInt32());
+        }
+
+        [Fact]
+        public void RoslynGeneratorKeepsExplicitDepthZeroDistinctFromOmission()
+        {
+            const string omittedSource = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class OmittedQosDepth
+    {
+        [FoxRun(""/phase184/omitted"")]
+        private float _omitted;
+    }
+}";
+            const string explicitZeroSource = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class ExplicitZeroQosDepth
+    {
+        [FoxRun(""/phase184/explicit-zero"", QoS = FoxRunQosProfile.Default,
+            History = FoxRunQosHistory.KeepLast, Depth = 0)]
+        private float _explicitZero;
+    }
+}";
+            const FoxRunNamedArgumentPresence expectedPresence =
+                FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var omitted = Assert.Single(ExtractRoslynMemberData(omittedSource).Topics);
+            var explicitZero = Assert.Single(ExtractRoslynMemberData(explicitZeroSource).Topics);
+
+            Assert.Equal(
+                FoxRunNamedArgumentPresence.None,
+                omitted.NamedArgumentPresence & expectedPresence);
+            Assert.Equal(
+                expectedPresence,
+                explicitZero.NamedArgumentPresence & expectedPresence);
+            Assert.Equal((int)FoxRunQosProfile.Default, explicitZero.QosProfile);
+            Assert.Equal((int)FoxRunQosHistory.KeepLast, explicitZero.QosHistory);
+            Assert.Equal(0, explicitZero.QosDepth);
+            Assert.Single(
+                RunGenerator(explicitZeroSource).Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN613"
+                    && diagnostic.GetMessage().Contains("Depth", StringComparison.Ordinal));
+        }
+
+        [Theory]
+        [InlineData("FoxRunQosProfile.SensorData", "FoxRunQosHistory.KeepAll")]
+        [InlineData("FoxRunQosProfile.SystemDefault", "FoxRunQosHistory.SystemDefault")]
+        public void RoslynGeneratorRejectsDepthForNonKeepLastHistoryWithStableDiagnostic(
+            string profile,
+            string history)
+        {
+            var result = RunGenerator($@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{{
+    public partial class InvalidQosHistory
+    {{
+        [FoxRun(""/phase184/invalid-history"", QoS = {profile},
+            History = {history}, Depth = 8)]
+        private float _value;
+    }}
+}}");
+
+            var diagnostic = Assert.Single(
+                result.Diagnostics,
+                candidate => candidate.Id == "FOXRUN613");
+            Assert.Contains("Depth", diagnostic.GetMessage(), StringComparison.Ordinal);
+            Assert.DoesNotContain(result.Diagnostics, candidate => candidate.Id == "FOXRUN614");
+        }
+
+        [Fact]
+        public void ExplicitQosWithKnownAllFoxgloveDirectionsFailsClosed()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class AllFoxgloveQos
+    {
+        [FoxRun(""/phase184/all-foxglove"", Mode = FoxRunFlow.PublishAndSubscribe,
+            Source = FoxRunEndpoint.Foxglove, Targets = FoxRunEndpoint.Foxglove,
+            QoS = FoxRunQosProfile.SensorData)]
+        private float _value;
+    }
+}");
+
+            Assert.Single(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN614");
+            Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN613");
+        }
+
+        [Fact]
+        public void ExplicitQosWithInheritedDirectionsRemainsADeferredRuntimeConstraint()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class InheritedDirectionQos
+    {
+        [FoxRun(""/phase184/inherited"", Mode = FoxRunFlow.PublishAndSubscribe,
+            QoS = FoxRunQosProfile.SensorData,
+            Reliability = FoxRunQosReliability.BestEffort)]
+        private float _value;
+    }
+}");
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+            var descriptor = GeneratedDescriptor(result);
+            Assert.Contains("\\\"source\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"targets\\\":\\\"inherit\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains("\\\"qosProfile\\\":\\\"sensor-data\\\"", descriptor, StringComparison.Ordinal);
+            Assert.Contains(
+                "\\\"explicitArguments\\\":\\\"Mode,QoS,Reliability\\\"",
+                descriptor,
+                StringComparison.Ordinal);
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class InheritedDirectionQos", StringComparison.Ordinal));
+            Assert.Contains("declaredTargets: (FoxRunEndpoint)0", generated, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitTargets: false", generated, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitQos: true", generated, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -666,6 +1014,160 @@ namespace Demo
         }
 
         [Fact]
+        public void RoslynGeneratorCompilesEveryAccessibleInheritedOnlyIfShape()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public class ConditionalBase
+    {
+        public bool PublicField;
+        protected bool ProtectedProperty => true;
+        protected internal bool ProtectedInternalMethod() => true;
+        internal bool InternalField;
+        private protected bool PrivateProtectedProperty => true;
+    }
+
+    public partial class ConditionalState : ConditionalBase
+    {
+        private bool CurrentPrivateMethod() => true;
+
+        [FoxRun(""/phase184/conditional/public-field"", OnlyIf = ""PublicField"",
+            Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON)]
+        private int _publicField;
+
+        [FoxRun(""/phase184/conditional/protected-property"", OnlyIf = ""ProtectedProperty"",
+            Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON)]
+        private int _protectedProperty;
+
+        [FoxRun(""/phase184/conditional/protected-internal-method"", OnlyIf = ""ProtectedInternalMethod"",
+            Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON)]
+        private int _protectedInternalMethod;
+
+        [FoxRun(""/phase184/conditional/internal-field"", OnlyIf = ""InternalField"",
+            Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON)]
+        private int _internalField;
+
+        [FoxRun(""/phase184/conditional/private-protected-property"", OnlyIf = ""PrivateProtectedProperty"",
+            Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON)]
+        private int _privateProtectedProperty;
+
+        [FoxRun(""/phase184/conditional/current-private-method"", OnlyIf = nameof(CurrentPrivateMethod),
+            Mode = FoxRunFlow.Subscribe, Encoding = FoxRunEncoding.JSON)]
+        private int _currentPrivateMethod;
+    }
+}";
+            var result = RunGenerator(source);
+
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN015" || diagnostic.Id == "FOXRUN016");
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class ConditionalState", StringComparison.Ordinal));
+            Assert.Contains("ProtectedProperty", generated, StringComparison.Ordinal);
+            Assert.Contains("ProtectedInternalMethod()", generated, StringComparison.Ordinal);
+            Assert.Contains("PrivateProtectedProperty", generated, StringComparison.Ordinal);
+            Assert.Contains("CurrentPrivateMethod()", generated, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                RunGeneratorAndUpdateCompilation(source).GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+
+        [Fact]
+        public void RoslynAndReflectionRejectPrivateBaseOnlyIf()
+        {
+            var roslyn = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public class ConditionalBase
+    {
+        private bool Hidden => true;
+    }
+
+    public partial class ConditionalState : ConditionalBase
+    {
+        [FoxRun(""/phase184/conditional/private-base"", OnlyIf = ""Hidden"")]
+        private int _value;
+    }
+}");
+            var reflection = ScanReflectionConditionKinds(typeof(ReflectionInheritedConditionFixture));
+
+            Assert.Contains(roslyn.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN015");
+            Assert.Equal(
+                FoxRunConditionMemberKind.Missing,
+                reflection[nameof(ReflectionInheritedConditionFixture.PrivateBase)]);
+        }
+
+        [Fact]
+        public void ReflectionScannerMatchesAccessibleInheritedOnlyIfShapes()
+        {
+            var members = ScanReflectionConditionKinds(typeof(ReflectionInheritedConditionFixture));
+
+            Assert.Equal(
+                FoxRunConditionMemberKind.Field,
+                members[nameof(ReflectionInheritedConditionFixture.PublicFieldProbe)]);
+            Assert.Equal(
+                FoxRunConditionMemberKind.Property,
+                members[nameof(ReflectionInheritedConditionFixture.ProtectedPropertyProbe)]);
+            Assert.Equal(
+                FoxRunConditionMemberKind.Method,
+                members[nameof(ReflectionInheritedConditionFixture.ProtectedInternalMethodProbe)]);
+            Assert.Equal(
+                FoxRunConditionMemberKind.Field,
+                members[nameof(ReflectionInheritedConditionFixture.InternalFieldProbe)]);
+            Assert.Equal(
+                FoxRunConditionMemberKind.Property,
+                members[nameof(ReflectionInheritedConditionFixture.PrivateProtectedPropertyProbe)]);
+            Assert.Equal(
+                FoxRunConditionMemberKind.Method,
+                members[nameof(ReflectionInheritedConditionFixture.CurrentPrivateMethodProbe)]);
+        }
+
+        [Fact]
+        public void RoslynAndReflectionDoNotBypassInvalidInheritedOnlyIfShadow()
+        {
+            var roslyn = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public class ConditionalGrandBase
+    {
+        protected bool Gate => true;
+    }
+
+    public class ConditionalBase : ConditionalGrandBase
+    {
+        public new int Gate;
+    }
+
+    public partial class ConditionalState : ConditionalBase
+    {
+        [FoxRun(""/phase184/conditional/invalid-shadow"", OnlyIf = ""Gate"")]
+        private int _value;
+    }
+}");
+            var reflection = ScanReflectionConditionKinds(typeof(ReflectionInheritedConditionFixture));
+
+            Assert.Contains(roslyn.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN016");
+            Assert.DoesNotContain(roslyn.Diagnostics, diagnostic => diagnostic.Id == "FOXRUN015");
+            Assert.Equal(
+                FoxRunConditionMemberKind.Invalid,
+                reflection[nameof(ReflectionInheritedConditionFixture.InvalidShadowProbe)]);
+        }
+
+        [Fact]
         public void RoslynGeneratorRejectsExplicitEmptyOnlyIf()
         {
             var result = RunGenerator(@"
@@ -964,15 +1466,32 @@ namespace Demo
             var explicitDefaults = ReadReflectionAttributeSnapshot(
                 typeof(ReflectionArgumentsFixture).GetField(
                     nameof(ReflectionArgumentsFixture.ExplicitDefaults)));
-            const long scheduling = (1L << 0) | (1L << 1) | (1L << 2);
-            const long existingAxes = (1L << 4) | (1L << 5) | (1L << 6)
-                                      | (1L << 7) | (1L << 8) | (1L << 10);
+            const FoxRunNamedArgumentPresence scheduling =
+                FoxRunNamedArgumentPresence.Hz
+                | FoxRunNamedArgumentPresence.Tolerance
+                | FoxRunNamedArgumentPresence.OnlyIf;
+            const FoxRunNamedArgumentPresence existingAxes =
+                FoxRunNamedArgumentPresence.Policy
+                | FoxRunNamedArgumentPresence.Mode
+                | FoxRunNamedArgumentPresence.Encoding
+                | FoxRunNamedArgumentPresence.Source
+                | FoxRunNamedArgumentPresence.Targets
+                | FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var omittedPresence = (FoxRunNamedArgumentPresence)ReadInt64Field(
+                omitted,
+                "NamedArgumentPresence");
+            var explicitPresence = (FoxRunNamedArgumentPresence)ReadInt64Field(
+                explicitDefaults,
+                "NamedArgumentPresence");
 
-            Assert.Equal(0L, ReadInt64Field(omitted, "NamedArgumentPresence") & scheduling);
-            Assert.Equal(0L, ReadInt64Field(omitted, "NamedArgumentPresence") & existingAxes);
-
-            Assert.Equal(scheduling, ReadInt64Field(explicitDefaults, "NamedArgumentPresence") & scheduling);
-            Assert.Equal(existingAxes, ReadInt64Field(explicitDefaults, "NamedArgumentPresence") & existingAxes);
+            Assert.Equal(FoxRunNamedArgumentPresence.None, omittedPresence & scheduling);
+            Assert.Equal(FoxRunNamedArgumentPresence.None, omittedPresence & existingAxes);
+            Assert.Equal(scheduling, explicitPresence & scheduling);
+            Assert.Equal(existingAxes, explicitPresence & existingAxes);
             Assert.Equal(-1f, ReadField<float>(explicitDefaults, "Hz"));
             Assert.Equal(0f, ReadField<float>(explicitDefaults, "Tolerance"));
             Assert.Equal(string.Empty, ReadField<string>(explicitDefaults, "OnlyIf"));
@@ -981,7 +1500,11 @@ namespace Demo
             Assert.Equal(0, ReadField<int>(explicitDefaults, "Encoding"));
             Assert.Equal(0, ReadField<int>(explicitDefaults, "Source"));
             Assert.Equal(0, ReadField<int>(explicitDefaults, "Targets"));
-            Assert.Equal(0, ReadField<int>(explicitDefaults, "Ros2Qos"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosProfile"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosReliability"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosDurability"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosHistory"));
+            Assert.Equal(0, ReadField<int>(explicitDefaults, "QosDepth"));
         }
 
         [Fact]
@@ -992,9 +1515,34 @@ namespace Demo
                     nameof(ReflectionArgumentsFixture.InvalidPolicy)));
 
             Assert.Equal(99, ReadField<int>(invalid, "Policy"));
-            Assert.NotEqual(
-                0L,
-                ReadInt64Field(invalid, "NamedArgumentPresence") & (1L << 4));
+            var presence = (FoxRunNamedArgumentPresence)ReadInt64Field(
+                invalid,
+                "NamedArgumentPresence");
+            Assert.True((presence & FoxRunNamedArgumentPresence.Policy) != 0);
+        }
+
+        [Fact]
+        public void ReflectionScannerPreservesInvalidExplicitQosValuesAndPresence()
+        {
+            var invalid = ReadReflectionAttributeSnapshot(
+                typeof(ReflectionArgumentsFixture).GetField(
+                    nameof(ReflectionArgumentsFixture.InvalidQos)));
+            const FoxRunNamedArgumentPresence qosAxes =
+                FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var presence = (FoxRunNamedArgumentPresence)ReadInt64Field(
+                invalid,
+                "NamedArgumentPresence");
+
+            Assert.Equal(qosAxes, presence & qosAxes);
+            Assert.Equal(99, ReadField<int>(invalid, "QosProfile"));
+            Assert.Equal(98, ReadField<int>(invalid, "QosReliability"));
+            Assert.Equal(97, ReadField<int>(invalid, "QosDurability"));
+            Assert.Equal(96, ReadField<int>(invalid, "QosHistory"));
+            Assert.Equal(-4, ReadField<int>(invalid, "QosDepth"));
         }
 
         [Fact]
@@ -1048,19 +1596,29 @@ using Unity.FoxgloveSDK.Components;
 
 namespace Demo
 {
+    public sealed class PresencePayload
+    {
+        public float Value { get; set; }
+    }
+
     public partial class PresenceProbe
     {
         private bool Enabled => true;
 
         [FoxRun(""/phase184/omitted"")]
-        private float _omitted;
+        private PresencePayload _omitted;
 
         [FoxRun(""/phase184/explicit"", Hz = 10f, Tolerance = 0f,
             OnlyIf = nameof(Enabled), Policy = FoxRunPolicy.FixedRate,
             Mode = FoxRunFlow.PublishAndSubscribe, Encoding = FoxRunEncoding.Protobuf,
-            Source = FoxRunEndpoint.Foxglove, Targets = FoxRunEndpoint.Foxglove,
-            Ros2Qos = FoxRunRos2QosPreset.Inherit)]
-        private float _explicit;
+            Source = FoxRunEndpoint.Foxglove,
+            Targets = FoxRunEndpoint.Foxglove | FoxRunEndpoint.Ros2Native,
+            QoS = FoxRunQosProfile.Default,
+            Reliability = FoxRunQosReliability.Reliable,
+            Durability = FoxRunQosDurability.Volatile,
+            History = FoxRunQosHistory.KeepLast,
+            Depth = 1)]
+        private PresencePayload _explicit;
     }
 }");
             var descriptor = result.Results
@@ -1071,15 +1629,69 @@ namespace Demo
                 .ToString();
 
             Assert.Contains(
-                "\\\"explicitArguments\\\":\\\"Hz,Tolerance,OnlyIf,Policy,Mode,Encoding,Source,Targets,Ros2Qos\\\"",
+                "\\\"explicitArguments\\\":\\\"Hz,Tolerance,OnlyIf,Policy,Mode,Encoding,Source,Targets,QoS,Reliability,Durability,History,Depth\\\"",
                 descriptor,
                 StringComparison.Ordinal);
             Assert.Contains("\\\"explicitArguments\\\":\\\"\\\"", descriptor, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
             Assert.DoesNotContain("\\\"rateHz\\\"", descriptor, StringComparison.Ordinal);
             Assert.DoesNotContain("\\\"changeEpsilon\\\"", descriptor, StringComparison.Ordinal);
             Assert.DoesNotContain("\\\"forceIntervalSeconds\\\"", descriptor, StringComparison.Ordinal);
             Assert.DoesNotContain("\\\"when\\\"", descriptor, StringComparison.Ordinal);
             Assert.DoesNotContain("\\\"unless\\\"", descriptor, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void RoslynExtractionPreservesNonZeroInvalidQosCastsAndPresence()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class InvalidQosCasts
+    {
+        [FoxRun(""/phase184/invalid-qos-casts"",
+            QoS = (FoxRunQosProfile)91,
+            Reliability = (FoxRunQosReliability)92,
+            Durability = (FoxRunQosDurability)93,
+            History = (FoxRunQosHistory)94,
+            Depth = -5)]
+        private float _value;
+    }
+}";
+            const FoxRunNamedArgumentPresence qosPresence =
+                FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            var extracted = ExtractRoslynMemberData(source);
+            var topic = Assert.Single(extracted.Topics);
+
+            Assert.Equal(qosPresence, topic.NamedArgumentPresence & qosPresence);
+            Assert.Equal(91, topic.QosProfile);
+            Assert.Equal(92, topic.QosReliability);
+            Assert.Equal(93, topic.QosDurability);
+            Assert.Equal(94, topic.QosHistory);
+            Assert.Equal(-5, topic.QosDepth);
+
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(extracted.ToRoslynMembers());
+            var member = Assert.Single(Assert.Single(model.Types).Members);
+            Assert.Equal(qosPresence, member.NamedArgumentPresence & qosPresence);
+            Assert.Equal(string.Empty, member.QosProfile);
+            Assert.Equal(string.Empty, member.QosReliability);
+            Assert.Equal(string.Empty, member.QosDurability);
+            Assert.Equal(string.Empty, member.QosHistory);
+            Assert.Equal(-5, member.QosDepth);
+            Assert.Single(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN613");
+            Assert.Single(
+                RunGenerator(source).Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN613");
         }
 
         [Fact]
@@ -1160,15 +1772,15 @@ namespace Demo
             var publish = FoxRunManifestBuilder.Build(new[]
             {
                 ManifestMember(FoxRunFlow.Publish)
-            });
+            }, manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
             var subscribe = FoxRunManifestBuilder.Build(new[]
             {
                 ManifestMember(FoxRunFlow.Subscribe)
-            });
+            }, manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
             var publishAndSubscribe = FoxRunManifestBuilder.Build(new[]
             {
                 ManifestMember(FoxRunFlow.PublishAndSubscribe)
-            });
+            }, manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
 
             var publishJson = FoxRunManifestJsonWriter.WriteCanonical(publish);
             var subscribeJson = FoxRunManifestJsonWriter.WriteCanonical(subscribe);
@@ -1421,6 +2033,30 @@ namespace Demo
             return Assert.Single(snapshots.Cast<object>());
         }
 
+        private static IReadOnlyDictionary<string, FoxRunConditionMemberKind> ScanReflectionConditionKinds(
+            Type type)
+        {
+            const BindingFlags flags = BindingFlags.Public
+                                       | BindingFlags.NonPublic
+                                       | BindingFlags.Instance
+                                       | BindingFlags.DeclaredOnly;
+            return type.GetFields(flags)
+                .Where(field => field.GetCustomAttribute<FoxRunAttribute>() != null)
+                .ToDictionary(
+                    field => field.Name,
+                    field =>
+                    {
+                        var snapshot = ReadReflectionAttributeSnapshot(field);
+                        return FoxRunReflectionConditionMemberResolver.Resolve(
+                            type,
+                            ReadField<string>(snapshot, "OnlyIf"),
+                            (FoxRunNamedArgumentPresence)ReadInt64Field(
+                                snapshot,
+                                "NamedArgumentPresence"));
+                    },
+                    StringComparer.Ordinal);
+        }
+
         private static T ReadField<T>(object value, string name)
         {
             var field = value.GetType().GetField(
@@ -1505,6 +2141,55 @@ namespace Demo
             return driver.GetRunResult();
         }
 
+        private static string GeneratedDescriptor(GeneratorDriverRunResult result)
+            => result.Results
+                .Single()
+                .GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+
+        private static string GeneratedDescriptorJson(GeneratorDriverRunResult result)
+        {
+            var descriptorSource = CSharpSyntaxTree.ParseText(GeneratedDescriptor(result));
+            var descriptorVariable = descriptorSource
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .Single(variable => variable.Identifier.ValueText == "DescriptorJson");
+            var literal = Assert.IsType<LiteralExpressionSyntax>(
+                descriptorVariable.Initializer?.Value);
+            return literal.Token.ValueText;
+        }
+
+        private static Unity.FoxgloveSDK.SourceGenerators.MemberData ExtractRoslynMemberData(
+            string source)
+        {
+            var compilation = CreateCompilation(source);
+            var field = compilation.SyntaxTrees
+                .Single()
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<FieldDeclarationSyntax>()
+                .Single();
+            var constructor = typeof(GeneratorSyntaxContext).GetConstructor(
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                new[] { typeof(SyntaxNode), typeof(SemanticModel) },
+                modifiers: null);
+            Assert.NotNull(constructor);
+            var context = (GeneratorSyntaxContext)constructor.Invoke(
+                new object[] { field, compilation.GetSemanticModel(field.SyntaxTree) });
+            var extract = typeof(FoxgloveLogSourceGenerator).GetMethod(
+                "ExtractMember",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(extract);
+            return Assert.IsType<Unity.FoxgloveSDK.SourceGenerators.MemberData>(
+                extract.Invoke(
+                    null,
+                    new object[] { context, System.Threading.CancellationToken.None }));
+        }
+
         private static Compilation RunGeneratorAndUpdateCompilation(string source)
         {
             var compilation = CreateCompilation(source);
@@ -1539,7 +2224,11 @@ namespace Demo
                 Encoding = (FoxRunEncoding)0,
                 Source = (FoxRunEndpoint)0,
                 Targets = (FoxRunEndpoint)0,
-                Ros2Qos = (FoxRunRos2QosPreset)0)]
+                QoS = (FoxRunQosProfile)0,
+                Reliability = (FoxRunQosReliability)0,
+                Durability = (FoxRunQosDurability)0,
+                History = (FoxRunQosHistory)0,
+                Depth = 0)]
             public float ExplicitDefaults;
 
             [FoxRun(
@@ -1548,9 +2237,63 @@ namespace Demo
             public float InvalidPolicy;
 
             [FoxRun(
+                "/phase184/reflection/invalid-qos",
+                QoS = (FoxRunQosProfile)99,
+                Reliability = (FoxRunQosReliability)98,
+                Durability = (FoxRunQosDurability)97,
+                History = (FoxRunQosHistory)96,
+                Depth = -4)]
+            public float InvalidQos;
+
+            [FoxRun(
                 "/phase184/reflection/whitespace-condition",
                 OnlyIf = " Enabled ")]
             public float WhitespaceCondition;
+        }
+
+        private class ReflectionInheritedConditionGrandBase
+        {
+            protected bool ShadowedCondition => true;
+        }
+
+        private class ReflectionInheritedConditionBase : ReflectionInheritedConditionGrandBase
+        {
+            public bool PublicField;
+            protected bool ProtectedProperty => true;
+            protected internal bool ProtectedInternalMethod() => true;
+            internal bool InternalField;
+            private protected bool PrivateProtectedProperty => true;
+            private bool PrivateBaseCondition => true;
+            public new int ShadowedCondition;
+        }
+
+        private sealed class ReflectionInheritedConditionFixture : ReflectionInheritedConditionBase
+        {
+            private bool CurrentPrivateCondition() => true;
+
+            [FoxRun("/phase184/reflection/public-field", OnlyIf = "PublicField")]
+            public float PublicFieldProbe;
+
+            [FoxRun("/phase184/reflection/protected-property", OnlyIf = "ProtectedProperty")]
+            public float ProtectedPropertyProbe;
+
+            [FoxRun("/phase184/reflection/protected-internal-method", OnlyIf = "ProtectedInternalMethod")]
+            public float ProtectedInternalMethodProbe;
+
+            [FoxRun("/phase184/reflection/internal-field", OnlyIf = "InternalField")]
+            public float InternalFieldProbe;
+
+            [FoxRun("/phase184/reflection/private-protected-property", OnlyIf = "PrivateProtectedProperty")]
+            public float PrivateProtectedPropertyProbe;
+
+            [FoxRun("/phase184/reflection/current-private-method", OnlyIf = nameof(CurrentPrivateCondition))]
+            public float CurrentPrivateMethodProbe;
+
+            [FoxRun("/phase184/reflection/private-base", OnlyIf = "PrivateBaseCondition")]
+            public float PrivateBase;
+
+            [FoxRun("/phase184/reflection/invalid-shadow", OnlyIf = "ShadowedCondition")]
+            public float InvalidShadowProbe;
         }
     }
 }

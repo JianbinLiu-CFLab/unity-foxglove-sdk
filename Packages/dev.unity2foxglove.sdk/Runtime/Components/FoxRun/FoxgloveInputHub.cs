@@ -101,12 +101,14 @@ namespace Unity.FoxgloveSDK.Components
             if (_manager != null)
             {
                 _manager.OnClientMessageWithEncoding -= OnClientMessage;
+                _manager.FoxRunPublishSessionChanged -= OnFoxRunPublishSessionChanged;
                 _manager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
             }
             _manager = manager;
             if (_manager != null)
             {
                 _manager.OnClientMessageWithEncoding += OnClientMessage;
+                _manager.FoxRunPublishSessionChanged += OnFoxRunPublishSessionChanged;
                 _manager.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;
             }
             ApplyManagerPolicy();
@@ -122,7 +124,18 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             _router.MaxPayloadBytes = _manager.FoxRunSubscriptionMaxPayloadBytes;
+            _router.DefaultPublishTargets = _manager.ActiveFoxRunPublishTargets;
             ApplySubscriptionSessionPolicy(_manager.ActiveFoxRunSubscriptionSessionPolicy);
+        }
+
+        private void OnFoxRunPublishSessionChanged(FoxRunPublishSessionPolicy policy)
+        {
+            _router.DefaultPublishTargets = policy != null && policy.SessionActive
+                ? policy.DefaultTargets
+                : _manager != null
+                    ? _manager.ActiveFoxRunPublishTargets
+                    : FoxRunEndpoint.Foxglove;
+            RebuildRouterRegistrationsForActiveSession();
         }
 
         private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
@@ -158,7 +171,7 @@ namespace Unity.FoxgloveSDK.Components
             foreach (var source in _scanSources)
                 _router.Unregister(source);
             foreach (var source in _scanSources)
-                _router.Register(source);
+                _router.Register(source, WarnOnce);
             _scanSources.Clear();
         }
 
@@ -176,7 +189,7 @@ namespace Unity.FoxgloveSDK.Components
             foreach (var source in _scanSources)
             {
                 if (_sources.Add(source))
-                    _router.Register(source);
+                    _router.Register(source, WarnOnce);
             }
         }
 

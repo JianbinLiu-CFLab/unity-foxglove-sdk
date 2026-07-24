@@ -54,14 +54,14 @@ namespace Unity2Foxglove.ManualAcceptance
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunFlow.Publish,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativePublish;
 
         [FoxRun(
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
             Source = FoxRunEndpoint.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _inputPort;
 
 #pragma warning disable FOXRUN400 // The peer protocol explicitly owns the native inbound/output-loop evidence.
@@ -70,7 +70,7 @@ namespace Unity2Foxglove.ManualAcceptance
             Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunEncoding.JSON,
             Source = FoxRunEndpoint.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput;
 #pragma warning restore FOXRUN400
 

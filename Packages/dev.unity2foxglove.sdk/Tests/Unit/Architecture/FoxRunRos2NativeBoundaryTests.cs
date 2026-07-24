@@ -36,7 +36,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Architecture
             Assert.Contains("public sealed class FoxRunRos2GeneratedContract", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunFlow mode", contract, StringComparison.Ordinal);
             Assert.Contains("FoxRunEndpoint source", contract, StringComparison.Ordinal);
-            Assert.Contains("FoxRunRos2QosPreset qosPreset", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosProfile qosProfile", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosProfile", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosReliability qosReliability", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosReliability", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosDurability qosDurability", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosDurability", contract, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosHistory qosHistory", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosHistory", contract, StringComparison.Ordinal);
+            Assert.Contains("int qosDepth", contract, StringComparison.Ordinal);
+            Assert.Contains("bool hasExplicitQosDepth", contract, StringComparison.Ordinal);
+            Assert.Contains(
+                "ResolveQos(FoxRunResolvedQos inherited)",
+                contract,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("FoxRunRos2QosPreset", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("string ros2Qos", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("public string Ros2Qos", contract, StringComparison.Ordinal);
+            Assert.DoesNotContain("public string DeclaredSource", contract, StringComparison.Ordinal);
             Assert.Contains("HasCompleteMetadata", contract, StringComparison.Ordinal);
             Assert.Contains("public float Hz { get; }", contract, StringComparison.Ordinal);
             Assert.Contains("public bool HasExplicitHz { get; }", contract, StringComparison.Ordinal);

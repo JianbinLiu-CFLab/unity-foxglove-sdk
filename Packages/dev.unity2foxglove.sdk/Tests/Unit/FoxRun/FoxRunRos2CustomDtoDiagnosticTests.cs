@@ -3,8 +3,14 @@
 
 using System;
 using System.Linq;
+using System.Reflection;
+using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Editor;
+using Unity.FoxgloveSDK.SourceGenerators;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
@@ -41,6 +47,110 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN402");
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN205");
             Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Id == "FOXRUN206");
+        }
+
+        [Fact]
+        public void NativeCustomDtoPreservesOfficialQosWithoutSilentDowngrade()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public sealed class Payload
+    {
+        public int Count;
+    }
+
+    public partial class Host
+    {
+        [FoxRun(""/custom-valid"", Mode = FoxRunFlow.PublishAndSubscribe,
+            Source = FoxRunEndpoint.Ros2Native,
+            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+            QoS = FoxRunQosProfile.SystemDefault,
+            Reliability = FoxRunQosReliability.SystemDefault,
+            Durability = FoxRunQosDurability.TransientLocal,
+            History = FoxRunQosHistory.KeepLast,
+            Depth = 17)]
+        private Payload _payload = new Payload();
+    }
+}";
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(
+                ExtractRoslynMemberData(source).ToRoslynMembers());
+            var member = Assert.Single(Assert.Single(model.Types).Members);
+
+            Assert.Equal(FoxRunRos2ContractKind.CustomDto, member.Ros2ContractKind);
+            Assert.NotNull(member.Ros2CustomDtoShape);
+            Assert.True(member.Ros2CustomDtoShape.IsSupported);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, member.QosProfile);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, member.QosReliability);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.TransientLocalQosDurability, member.QosDurability);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.KeepLastQosHistory, member.QosHistory);
+            Assert.Equal(17, member.QosDepth);
+            Assert.DoesNotContain(
+                FoxRunGenerationModelValidator.Validate(model),
+                diagnostic => diagnostic.Id == "FOXRUN613" || diagnostic.Id == "FOXRUN614");
+            var result = RunGenerator(source);
+            Assert.DoesNotContain(
+                result.Diagnostics,
+                diagnostic => diagnostic.Id == "FOXRUN613" || diagnostic.Id == "FOXRUN614");
+
+            var binding = Assert.Single(
+                FoxRunManifestBuilder.Build(
+                    new[] { FoxRunManifestMember.FromGenerationMember(member) },
+                    manifestVersion: FoxrunManifestWriter.CurrentManifestVersion)
+                .Sections.Subscriptions.Bindings);
+            Assert.Equal(member.QosProfile, binding.QosProfile);
+            Assert.Equal(member.QosReliability, binding.QosReliability);
+            Assert.Equal(member.QosDurability, binding.QosDurability);
+            Assert.Equal(member.QosHistory, binding.QosHistory);
+            Assert.Equal(17, binding.QosDepth);
+        }
+
+        [Fact]
+        public void NativeCustomDtoInvalidOfficialQosFailsClosedWithoutFallback()
+        {
+            const string source = @"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public sealed class Payload
+    {
+        public int Count;
+    }
+
+    public partial class Host
+    {
+        [FoxRun(""/custom-invalid"", Mode = FoxRunFlow.PublishAndSubscribe,
+            Source = FoxRunEndpoint.Ros2Native,
+            Targets = FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge,
+            QoS = FoxRunQosProfile.SystemDefault,
+            History = FoxRunQosHistory.KeepAll,
+            Depth = 5)]
+        private Payload _payload = new Payload();
+    }
+}";
+            var model = FoxRunRoslynGenerationModelLowerer.Lower(
+                ExtractRoslynMemberData(source).ToRoslynMembers());
+            var member = Assert.Single(Assert.Single(model.Types).Members);
+            Assert.Equal(FoxRunRos2ContractKind.CustomDto, member.Ros2ContractKind);
+            Assert.NotNull(member.Ros2CustomDtoShape);
+            Assert.True(member.Ros2CustomDtoShape.IsSupported);
+            var modelDiagnostic = Assert.Single(
+                FoxRunGenerationModelValidator.Validate(model),
+                candidate => candidate.Id == "FOXRUN613");
+            Assert.Contains("KeepLast", modelDiagnostic.Message, StringComparison.Ordinal);
+
+            var result = RunGenerator(source);
+            Assert.Single(result.Diagnostics, candidate => candidate.Id == "FOXRUN613");
+            var descriptorJson = GeneratedDescriptorJson(result);
+            using var descriptor = JsonDocument.Parse(descriptorJson);
+            Assert.Equal(0, descriptor.RootElement.GetProperty("types").GetArrayLength());
+            Assert.DoesNotContain(
+                result.Results.Single().GeneratedSources,
+                generated => generated.SourceText.ToString()
+                    .Contains("/custom-invalid", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -132,7 +242,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 ros2CustomDtoShape: shape,
                 ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
 
-            var manifest = FoxRunManifestBuilder.Build(new[] { member }, manifestVersion: 2);
+            var manifest = FoxRunManifestBuilder.Build(
+                new[] { member },
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
 
             Assert.Single(Assert.Single(manifest.Sections.FoxRun.Types).Contracts);
             var binding = Assert.Single(manifest.Sections.Subscriptions.Bindings);
@@ -168,7 +280,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 ros2CustomDtoShape: shape,
                 ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
 
-            var binding = Assert.Single(FoxRunManifestBuilder.Build(new[] { member }, manifestVersion: 2)
+            var binding = Assert.Single(FoxRunManifestBuilder.Build(
+                    new[] { member },
+                    manifestVersion: FoxrunManifestWriter.CurrentManifestVersion)
                 .Sections.Subscriptions.Bindings);
 
             Assert.True(binding.SupportsRos2Native);
@@ -182,8 +296,80 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 binding.CustomEnvelopeIdentity);
             Assert.Contains(
                 "\"customEnvelopeIdentity\":\"" + binding.CustomEnvelopeIdentity + "\"",
-                FoxRunManifestJsonWriter.WriteCanonical(FoxRunManifestBuilder.Build(new[] { member }, manifestVersion: 2)),
+                FoxRunManifestJsonWriter.WriteCanonical(FoxRunManifestBuilder.Build(
+                    new[] { member },
+                    manifestVersion: FoxrunManifestWriter.CurrentManifestVersion)),
                 StringComparison.Ordinal);
+        }
+
+        private static CSharpCompilation CreateCompilation(string source)
+        {
+            var trusted = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
+                .Split(System.IO.Path.PathSeparator)
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => MetadataReference.CreateFromFile(path));
+            var references = trusted
+                .Concat(new[] { MetadataReference.CreateFromFile(typeof(FoxRunAttribute).Assembly.Location) })
+                .GroupBy(reference => reference.Display, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First());
+            return CSharpCompilation.Create(
+                "CustomDtoQosProbe",
+                new[] { CSharpSyntaxTree.ParseText(source) },
+                references,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        }
+
+        private static GeneratorDriverRunResult RunGenerator(string source)
+        {
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGenerators(CreateCompilation(source));
+            return driver.GetRunResult();
+        }
+
+        private static string GeneratedDescriptorJson(GeneratorDriverRunResult result)
+        {
+            var descriptorSource = result.Results
+                .Single()
+                .GeneratedSources
+                .Single(source => source.HintName == "FoxRunGeneratedDescriptorInfo.g.cs")
+                .SourceText
+                .ToString();
+            var descriptorVariable = CSharpSyntaxTree.ParseText(descriptorSource)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .Single(variable => variable.Identifier.ValueText == "DescriptorJson");
+            var literal = Assert.IsType<LiteralExpressionSyntax>(
+                descriptorVariable.Initializer?.Value);
+            return literal.Token.ValueText;
+        }
+
+        private static Unity.FoxgloveSDK.SourceGenerators.MemberData ExtractRoslynMemberData(
+            string source)
+        {
+            var compilation = CreateCompilation(source);
+            var field = compilation.SyntaxTrees
+                .Single()
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<FieldDeclarationSyntax>()
+                .Single(field => field.AttributeLists.Count > 0);
+            var constructor = typeof(GeneratorSyntaxContext).GetConstructor(
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                binder: null,
+                new[] { typeof(SyntaxNode), typeof(SemanticModel) },
+                modifiers: null);
+            Assert.NotNull(constructor);
+            var context = (GeneratorSyntaxContext)constructor.Invoke(
+                new object[] { field, compilation.GetSemanticModel(field.SyntaxTree) });
+            var extract = typeof(FoxgloveLogSourceGenerator).GetMethod(
+                "ExtractMember",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(extract);
+            return Assert.IsType<Unity.FoxgloveSDK.SourceGenerators.MemberData>(
+                extract.Invoke(
+                    null,
+                    new object[] { context, System.Threading.CancellationToken.None }));
         }
 
         private static FoxRunGenerationMember CreateMember(

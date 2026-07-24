@@ -56,6 +56,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         [Fact]
         public void CanonicalManifestExposesSeparateSubscriptionBindingSection()
         {
+            Assert.Equal(3, FoxrunManifestWriter.CurrentManifestVersion);
             Assert.NotNull(typeof(FoxRunManifestSections).GetProperty("Subscriptions"));
             Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("Source"));
             Assert.NotNull(typeof(FoxRunManifestMember).GetProperty("GeneratesWebSocketCodec"));
@@ -69,8 +70,55 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Unity.FoxgloveSDK.Components.FoxRunSchemaSubscriptionBindingInfo"));
         }
 
+        [Theory]
+        [InlineData(1, FoxRunFlow.Subscribe)]
+        [InlineData(1, FoxRunFlow.PublishAndSubscribe)]
+        [InlineData(2, FoxRunFlow.Subscribe)]
+        [InlineData(2, FoxRunFlow.PublishAndSubscribe)]
+        public void LegacyManifestVersionsRejectEverySubscriptionBinding(
+            int manifestVersion,
+            FoxRunFlow flow)
+        {
+            var inheritedSubscription = new FoxRunManifestMember(
+                "Demo", "LegacyInput", "_incoming", "field", "System.Int32", true, false, "",
+                "/phase184/legacy-input", 0f, "", (int)FoxRunPolicy.FixedRate, 0f,
+                flow: (int)flow,
+                encoding: (int)(FoxRunEncoding)0,
+                source: FoxRunGenerationDescriptorConstants.InheritSource,
+                qosProfile: FoxRunGenerationDescriptorConstants.InheritQosProfile);
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                FoxRunManifestBuilder.Build(
+                    new[] { inheritedSubscription },
+                    manifestVersion: manifestVersion));
+
+            Assert.Contains("manifest version 3", error.Message, StringComparison.Ordinal);
+            Assert.Contains("subscription binding", error.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        public void LegacyManifestVersionsRemainAvailableForPublishOnlyHistory(int manifestVersion)
+        {
+            var publish = new FoxRunManifestMember(
+                "Demo", "LegacyOutput", "_value", "field", "System.Int32", true, false, "",
+                "/phase184/legacy-output", 10f, "", (int)FoxRunPolicy.FixedRate, 0f,
+                flow: (int)FoxRunFlow.Publish,
+                encoding: (int)FoxRunEncoding.JSON);
+
+            var manifest = FoxRunManifestBuilder.Build(
+                new[] { publish },
+                manifestVersion: manifestVersion);
+
+            Assert.Equal(manifestVersion, manifest.ManifestVersion);
+            Assert.True(manifest.ManifestVersion < FoxrunManifestWriter.CurrentManifestVersion);
+            Assert.Equal(1, manifest.Generator.MajorVersion);
+            Assert.Empty(manifest.Sections.Subscriptions.Bindings);
+        }
+
         [Fact]
-        public void NativeProviderMetadataUsesSeparateV2DigestWithoutChangingWireDigests()
+        public void NativeProviderMetadataUsesSeparateV3DigestWithoutChangingWireDigests()
         {
             var json = new FoxRunManifestMember(
                 "Demo", "RobotState", "_batteryLevel", "field", "System.Single", true, false, "",
@@ -84,15 +132,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 flow: (int)FoxRunFlow.Subscribe,
                 encoding: (int)(FoxRunEncoding)0,
                 source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
-                ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
+                qosProfile: FoxRunGenerationDescriptorConstants.SensorDataQosProfile,
                 generatesWebSocketCodec: false,
-                generatesRos2NativeRegistration: true);
+                generatesRos2NativeRegistration: true,
+                qosReliability: FoxRunGenerationDescriptorConstants.BestEffortQosReliability,
+                qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                qosDepth: 5);
 
-            var manifest = FoxRunManifestBuilder.Build(new[] { json, native }, manifestVersion: 2);
+            var manifest = FoxRunManifestBuilder.Build(
+                new[] { json, native },
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
             var jsonOnlyV1 = FoxRunManifestBuilder.Build(new[] { json }, manifestVersion: 1);
             var contract = Assert.Single(Assert.Single(manifest.Sections.FoxRun.Types).Contracts);
 
-            Assert.Equal(2, manifest.ManifestVersion);
+            Assert.Equal(3, manifest.ManifestVersion);
+            Assert.Equal(1, manifest.Generator.MajorVersion);
             Assert.Equal("json", contract.Encoding);
             Assert.Equal("d241d4a5445597e86dacb8cd4fa6cb0693a025eb8aecceb37631c7da3efe3e16", contract.ContractHash);
             Assert.Equal("dd4037ff4397dca2231b374e9972cce8838883482d0ace1d422132193fdf9f52", contract.BindingHash);
@@ -112,10 +167,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 flow: (int)FoxRunFlow.Subscribe,
                 encoding: (int)(FoxRunEncoding)0,
                 source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
-                ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
+                qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
                 generatesWebSocketCodec: false,
-                generatesRos2NativeRegistration: true);
-            var changed = FoxRunManifestBuilder.Build(new[] { json, qosChanged }, manifestVersion: 2);
+                generatesRos2NativeRegistration: true,
+                qosReliability: FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                qosDepth: 10);
+            var changed = FoxRunManifestBuilder.Build(
+                new[] { json, qosChanged },
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
 
             Assert.Equal(manifest.Sections.FoxRun.ManifestHash, changed.Sections.FoxRun.ManifestHash);
             Assert.NotEqual(manifest.Sections.Subscriptions.ManifestHash, changed.Sections.Subscriptions.ManifestHash);
@@ -123,7 +184,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void SchemaInfoWriterCarriesV2SubscriptionBindingsIntoRuntimeMetadata()
+        public void SchemaInfoWriterCarriesV3SubscriptionBindingsIntoRuntimeMetadata()
         {
             var shape = new FoxRunRos2MessageShape(
                 "std_msgs.msg.String",
@@ -142,22 +203,36 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                         flow: (int)FoxRunFlow.Subscribe,
                         encoding: (int)(FoxRunEncoding)0,
                         source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
-                        ros2Qos: FoxRunGenerationDescriptorConstants.SensorDataRos2Qos,
+                        qosProfile: FoxRunGenerationDescriptorConstants.SensorDataQosProfile,
                         generatesWebSocketCodec: false,
                         generatesRos2NativeRegistration: true,
-                        ros2MessageShape: shape)
+                        ros2MessageShape: shape,
+                        qosReliability: FoxRunGenerationDescriptorConstants.BestEffortQosReliability,
+                        qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                        qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                        qosDepth: 5)
                 },
-                manifestVersion: 2);
+                manifestVersion: FoxrunManifestWriter.CurrentManifestVersion);
 
             var source = FoxRunSchemaInfoWriter.GenerateSource(manifest);
 
-            Assert.Contains("public const int ManifestVersion = 2;", source, StringComparison.Ordinal);
+            Assert.Contains("public const int ManifestVersion = 3;", source, StringComparison.Ordinal);
             Assert.Contains("public const int SubscriptionBindingCount = 1;", source, StringComparison.Ordinal);
             Assert.Contains("public const int CustomNativeContractCount = 0;", source, StringComparison.Ordinal);
             Assert.Contains("public const string SubscriptionManifestHash =", source, StringComparison.Ordinal);
             Assert.Contains("new FoxRunSchemaSubscriptionBindingInfo(", source, StringComparison.Ordinal);
             Assert.Contains("FoxRunEndpoint.Ros2Native", source, StringComparison.Ordinal);
-            Assert.Contains("FoxRunRos2QosPreset.SensorData", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosProfile.SensorData", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosReliability.BestEffort", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosDurability.Volatile", source, StringComparison.Ordinal);
+            Assert.Contains("FoxRunQosHistory.KeepLast", source, StringComparison.Ordinal);
+            var normalizedSource = source.Replace("\r\n", "\n");
+            Assert.Contains(
+                "FoxRunQosHistory.KeepLast,\n"
+                + new string(' ', 20) + "5\n"
+                + new string(' ', 16) + "),",
+                normalizedSource,
+                StringComparison.Ordinal);
             Assert.Contains("\"std_msgs.msg.String\"", source, StringComparison.Ordinal);
             Assert.Contains("\"std_msgs/msg/String\"", source, StringComparison.Ordinal);
             Assert.Contains("\"std-string-copy-v1\"", source, StringComparison.Ordinal);

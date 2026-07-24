@@ -4,7 +4,9 @@
 // Module: Runtime/Components/Manager
 // Purpose: Directional FoxRun publish wire policy.
 
+using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -12,13 +14,21 @@ namespace Unity.FoxgloveSDK.Components
     {
         [SerializeField] private FoxRunEndpoint _defaultFoxRunPublishTargets = FoxRunEndpoint.Foxglove;
         [SerializeField] private FoxRunEncoding _defaultFoxRunPublishEncoding = FoxRunEncoding.Protobuf;
-        [SerializeField] private FoxRunRos2QosPreset _defaultFoxRunNativePublishRos2Qos =
-            FoxRunRos2QosPreset.Default;
+        [FormerlySerializedAs("_defaultFoxRunNativePublishRos2Qos")]
+        [SerializeField, HideInInspector] private int _legacyDefaultFoxRunNativePublishRos2Qos = 1;
+        [SerializeField] private FoxRunQosProfileSettings _defaultFoxRunNativePublishQos = new();
         private readonly FoxRunPublishSessionState _foxRunPublishSessionState = new();
 
         /// <summary>Current immutable publish-profile snapshot.</summary>
         public FoxRunPublishSessionPolicy ActiveFoxRunPublishSessionPolicy =>
             _foxRunPublishSessionState.Current;
+
+        /// <summary>
+        /// Raised synchronously after the immutable publish session begins or
+        /// ends. Optional publisher providers use this to stop owned endpoints
+        /// before the Manager disable transition completes.
+        /// </summary>
+        public event Action<FoxRunPublishSessionPolicy> FoxRunPublishSessionChanged;
 
         /// <summary>Serialized default targets used by inherited Publish contracts.</summary>
         public FoxRunEndpoint DefaultFoxRunPublishTargets
@@ -55,28 +65,66 @@ namespace Unity.FoxgloveSDK.Components
                 ? ActiveFoxRunPublishSessionPolicy.DefaultPublishRateHz
                 : DefaultPublishRateHz;
 
-        /// <summary>Serialized native publish QoS default retained until Phase184-C resolves the official profile.</summary>
-        public FoxRunRos2QosPreset DefaultFoxRunNativePublishRos2Qos
+        /// <summary>
+        /// Effective Bridge publish QoS for the active Manager lifetime.
+        /// Without an active session, this exposes the configured next-session value.
+        /// </summary>
+        public FoxRunResolvedQos ActiveFoxRunBridgePublishQos =>
+            ActiveFoxRunPublishSessionPolicy.SessionActive
+                ? ActiveFoxRunPublishSessionPolicy.BridgeRos2Qos
+                : ResolveConfiguredRos2BridgeQos();
+
+        /// <summary>Resolved native publish QoS default.</summary>
+        public FoxRunResolvedQos DefaultFoxRunNativePublishQos
         {
-            get => FoxRunRos2QosResolver.NormalizeManagerDefault(
-                _defaultFoxRunNativePublishRos2Qos);
-            set => _defaultFoxRunNativePublishRos2Qos =
-                FoxRunRos2QosResolver.NormalizeManagerDefault(value);
+            get
+            {
+                _defaultFoxRunNativePublishQos ??= new FoxRunQosProfileSettings();
+                return _defaultFoxRunNativePublishQos.Resolve();
+            }
         }
 
         internal void BeginFoxRunPublishSessionIfNeeded()
         {
-            _foxRunPublishSessionState.BeginIfNeeded(
+            if (_foxRunPublishSessionState.Current.SessionActive)
+                return;
+
+            var policy = _foxRunPublishSessionState.BeginIfNeeded(
                 DefaultFoxRunPublishTargets,
                 DefaultFoxRunPublishEncoding,
                 DefaultPublishRateHz,
-                DefaultFoxRunNativePublishRos2Qos,
-                ResolveRos2BridgeQos());
+                DefaultFoxRunNativePublishQos,
+                ResolveConfiguredRos2BridgeQos());
+            NotifyFoxRunPublishSessionChanged(policy);
         }
 
         internal void EndFoxRunPublishSession()
         {
-            _foxRunPublishSessionState.End();
+            if (!_foxRunPublishSessionState.Current.SessionActive)
+                return;
+
+            var policy = _foxRunPublishSessionState.End();
+            NotifyFoxRunPublishSessionChanged(policy);
+        }
+
+        private void NotifyFoxRunPublishSessionChanged(
+            FoxRunPublishSessionPolicy policy)
+        {
+            var handlers = FoxRunPublishSessionChanged;
+            if (handlers == null)
+                return;
+
+            foreach (var subscriber in handlers.GetInvocationList())
+            {
+                try
+                {
+                    ((Action<FoxRunPublishSessionPolicy>)subscriber)(policy);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogException(ex);
+                }
+            }
         }
     }
 }

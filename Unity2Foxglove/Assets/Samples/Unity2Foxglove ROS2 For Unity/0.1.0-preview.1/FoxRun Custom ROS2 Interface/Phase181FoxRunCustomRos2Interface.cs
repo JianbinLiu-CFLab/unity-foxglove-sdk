@@ -65,7 +65,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
         [FoxRun(
             NativePublishTopic,
             Mode = FoxRunFlow.Publish,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativePublish = CreateState("publish-only", 1);
 
         [Tooltip("The selected native ROS2 runtime applies this custom DTO on Unity's main thread.")]
@@ -73,7 +73,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             NativeSubscribeTopic,
             Mode = FoxRunFlow.Subscribe,
             Source = FoxRunEndpoint.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _inputPort;
 
         /// <summary>
@@ -89,7 +89,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Samples
             Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunEncoding.JSON,
             Source = FoxRunEndpoint.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            QoS = FoxRunQosProfile.Default)]
         [SerializeField] private Phase181State _nativeInputWebSocketOutput = CreateState("bidirectional", 2);
 #pragma warning restore FOXRUN400
 

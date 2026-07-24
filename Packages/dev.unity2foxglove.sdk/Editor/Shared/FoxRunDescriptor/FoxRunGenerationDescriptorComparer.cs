@@ -132,7 +132,11 @@ namespace Unity.FoxgloveSDK.Editor
             CompareSemantic(key, "encoding", left.Encoding, right.Encoding, semantic);
             CompareSemantic(key, "source", left.Source, right.Source, semantic);
             CompareSemantic(key, "targets", left.Targets, right.Targets, semantic);
-            CompareSemantic(key, "ros2Qos", left.Ros2Qos, right.Ros2Qos, semantic);
+            CompareSemantic(key, "qosProfile", left.QosProfile, right.QosProfile, semantic);
+            CompareSemantic(key, "qosReliability", left.QosReliability, right.QosReliability, semantic);
+            CompareSemantic(key, "qosDurability", left.QosDurability, right.QosDurability, semantic);
+            CompareSemantic(key, "qosHistory", left.QosHistory, right.QosHistory, semantic);
+            CompareSemantic(key, "qosDepth", left.QosDepth, right.QosDepth, semantic);
             CompareSemantic(key, "generatesWebSocketCodec", left.GeneratesWebSocketCodec ? "true" : "false", right.GeneratesWebSocketCodec ? "true" : "false", semantic);
             CompareSemantic(key, "generatesRos2NativeRegistration", left.GeneratesRos2NativeRegistration ? "true" : "false", right.GeneratesRos2NativeRegistration ? "true" : "false", semantic);
             CompareSemantic(key, "ros2ContractKind", left.Ros2ContractKind.ToString(), right.Ros2ContractKind.ToString(), semantic);

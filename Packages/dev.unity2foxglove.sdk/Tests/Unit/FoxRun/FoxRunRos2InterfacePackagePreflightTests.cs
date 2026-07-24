@@ -174,11 +174,21 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 mode: (int)FoxRunFlow.PublishAndSubscribe,
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
                 source: FoxRunGenerationDescriptorConstants.Ros2NativeSource,
-                ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
+                qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: true,
                 ros2CustomDtoShape: shape,
-                ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
+                ros2ContractKind: FoxRunRos2ContractKind.CustomDto,
+                namedArgumentPresence:
+                    FoxRunNamedArgumentPresence.QoS
+                    | FoxRunNamedArgumentPresence.Reliability
+                    | FoxRunNamedArgumentPresence.Durability
+                    | FoxRunNamedArgumentPresence.History
+                    | FoxRunNamedArgumentPresence.Depth,
+                qosReliability: FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                qosDepth: 10);
 
         private static void WithTempPackage(Action<string, string> action)
         {

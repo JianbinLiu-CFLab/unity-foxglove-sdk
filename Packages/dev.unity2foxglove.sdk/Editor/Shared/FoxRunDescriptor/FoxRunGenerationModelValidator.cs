@@ -24,8 +24,18 @@ namespace Unity.FoxgloveSDK.Editor
         private const string InvalidDirectionalEndpointDiagnosticId = "FOXRUN612";
         private const string CustomNativeBidirectionalContractDiagnosticId = "FOXRUN402";
         private const string Ros2SchemaMismatchDiagnosticId = "FOXRUN210";
-        private const string IgnoredRos2QosDiagnosticId = "FOXRUN213";
+        private const string InvalidQosDiagnosticId = "FOXRUN613";
+        private const string QosRequiresRos2DirectionDiagnosticId = "FOXRUN614";
+        private const string MixedDirectionalQosContractDiagnosticId = "FOXRUN615";
         private const string TriggerRateConflictDiagnosticId = "FOXRUN609";
+        private const FoxRunNamedArgumentPresence DirectionalQosPresenceMask =
+            FoxRunNamedArgumentPresence.Source
+            | FoxRunNamedArgumentPresence.Targets
+            | FoxRunNamedArgumentPresence.QoS
+            | FoxRunNamedArgumentPresence.Reliability
+            | FoxRunNamedArgumentPresence.Durability
+            | FoxRunNamedArgumentPresence.History
+            | FoxRunNamedArgumentPresence.Depth;
 
         private static readonly string[] UnityNativeContainerPrefixes =
         {
@@ -121,6 +131,7 @@ namespace Unity.FoxgloveSDK.Editor
             var hasExplicitEncoding = member.HasNamedArgument(FoxRunNamedArgumentPresence.Encoding);
             var hasExplicitSource = member.HasNamedArgument(FoxRunNamedArgumentPresence.Source);
             var hasExplicitTargets = member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets);
+            var hasExplicitQos = HasExplicitQos(member);
 
             if (!IsKnownDeclaredEncoding(member.Encoding, hasExplicitEncoding))
                 diagnostics.Add(FoxRunGenerationDiagnostic.Error(InvalidEncodingDiagnosticId, target, member.MemberName, "FoxRun Encoding must be omitted, Protobuf, or JSON."));
@@ -144,6 +155,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             AppendDirectionalEndpointDiagnostics(member, target, diagnostics);
+            AppendQosDiagnostics(member, target, hasExplicitQos, diagnostics);
 
             if (IsNativeCustomBidirectionalOutputContract(member)
                 && !HasCompleteCustomBidirectionalContract(member))
@@ -162,20 +174,6 @@ namespace Unity.FoxgloveSDK.Editor
                     target,
                     member.MemberName,
                     "FoxRun Encoding requires at least one Foxglove direction; explicit Source and Targets select only ROS 2 endpoints."));
-            }
-
-            if (string.Equals(
-                    member.Source,
-                    FoxRunGenerationDescriptorConstants.FoxgloveWebSocketSource,
-                    StringComparison.Ordinal)
-                && member.Mode == 2
-                && !string.Equals(member.Ros2Qos, FoxRunGenerationDescriptorConstants.InheritRos2Qos, StringComparison.Ordinal))
-            {
-                diagnostics.Add(FoxRunGenerationDiagnostic.Warning(
-                    IgnoredRos2QosDiagnosticId,
-                    target,
-                    member.MemberName,
-                    "Ros2Qos is ignored for an explicitly Foxglove WebSocket-only subscription."));
             }
 
             AppendNativeShapeDiagnostics(member, target, diagnostics);
@@ -493,6 +491,135 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private static void AppendQosDiagnostics(
+            FoxRunGenerationMember member,
+            string target,
+            bool hasExplicitQos,
+            ICollection<FoxRunGenerationDiagnostic> diagnostics)
+        {
+            var hasProfile = member.HasNamedArgument(FoxRunNamedArgumentPresence.QoS);
+            var hasReliability = member.HasNamedArgument(FoxRunNamedArgumentPresence.Reliability);
+            var hasDurability = member.HasNamedArgument(FoxRunNamedArgumentPresence.Durability);
+            var hasHistory = member.HasNamedArgument(FoxRunNamedArgumentPresence.History);
+            var hasDepth = member.HasNamedArgument(FoxRunNamedArgumentPresence.Depth);
+
+            if (!IsKnownQosProfile(member.QosProfile, hasProfile)
+                || !IsKnownQosReliability(member.QosReliability, hasReliability)
+                || !IsKnownQosDurability(member.QosDurability, hasDurability)
+                || !IsKnownQosHistory(member.QosHistory, hasHistory)
+                || (hasDepth && member.QosDepth <= 0))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidQosDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun QoS must use official profile/policy values, and explicit Depth must be positive."));
+                return;
+            }
+
+            if (hasDepth && ExplicitQosCannotResolveKeepLast(member, hasProfile, hasHistory))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    InvalidQosDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun QoS Depth is valid only when the resolved History is KeepLast."));
+            }
+
+            if (hasExplicitQos && EveryDirectionIsExplicitlyNonRos2(member))
+            {
+                diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                    QosRequiresRos2DirectionDiagnosticId,
+                    target,
+                    member.MemberName,
+                    "FoxRun QoS requires at least one ROS 2 Native or ROS 2 Bridge direction."));
+            }
+        }
+
+        private static bool HasExplicitQos(FoxRunGenerationMember member)
+            => member.HasNamedArgument(FoxRunNamedArgumentPresence.QoS)
+               || member.HasNamedArgument(FoxRunNamedArgumentPresence.Reliability)
+               || member.HasNamedArgument(FoxRunNamedArgumentPresence.Durability)
+               || member.HasNamedArgument(FoxRunNamedArgumentPresence.History)
+               || member.HasNamedArgument(FoxRunNamedArgumentPresence.Depth);
+
+        private static bool ExplicitQosCannotResolveKeepLast(
+            FoxRunGenerationMember member,
+            bool hasProfile,
+            bool hasHistory)
+        {
+            if (hasHistory)
+            {
+                return !string.Equals(
+                    member.QosHistory,
+                    FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                    StringComparison.Ordinal);
+            }
+
+            return hasProfile
+                   && string.Equals(
+                       member.QosProfile,
+                       FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile,
+                       StringComparison.Ordinal);
+        }
+
+        private static bool EveryDirectionIsExplicitlyNonRos2(FoxRunGenerationMember member)
+        {
+            var publishes = member.Mode == 1 || member.Mode == 3;
+            var subscribes = member.Mode == 2 || member.Mode == 3;
+            var publishKnownNonRos2 = !publishes
+                                      || (member.HasNamedArgument(FoxRunNamedArgumentPresence.Targets)
+                                          && !TargetsContain(
+                                              member.Targets,
+                                              FoxRunGenerationDescriptorConstants.Ros2NativeTarget)
+                                          && !TargetsContain(
+                                              member.Targets,
+                                              FoxRunGenerationDescriptorConstants.Ros2BridgeTarget));
+            var subscribeKnownNonRos2 = !subscribes
+                                        || (member.HasNamedArgument(FoxRunNamedArgumentPresence.Source)
+                                            && !IsNativeProvider(member.Source));
+            return publishKnownNonRos2 && subscribeKnownNonRos2;
+        }
+
+        private static bool IsKnownQosProfile(string value, bool isExplicit)
+            => isExplicit
+                ? string.Equals(value, FoxRunGenerationDescriptorConstants.DefaultQosProfile, StringComparison.Ordinal)
+                  || string.Equals(value, FoxRunGenerationDescriptorConstants.SensorDataQosProfile, StringComparison.Ordinal)
+                  || string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosProfile, StringComparison.Ordinal)
+                : string.Equals(value, FoxRunGenerationDescriptorConstants.InheritQosProfile, StringComparison.Ordinal);
+
+        private static bool IsKnownQosReliability(string value, bool isExplicit)
+            => IsKnownQosPolicy(
+                value,
+                isExplicit,
+                FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                FoxRunGenerationDescriptorConstants.BestEffortQosReliability);
+
+        private static bool IsKnownQosDurability(string value, bool isExplicit)
+            => IsKnownQosPolicy(
+                value,
+                isExplicit,
+                FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                FoxRunGenerationDescriptorConstants.TransientLocalQosDurability);
+
+        private static bool IsKnownQosHistory(string value, bool isExplicit)
+            => IsKnownQosPolicy(
+                value,
+                isExplicit,
+                FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                FoxRunGenerationDescriptorConstants.KeepAllQosHistory);
+
+        private static bool IsKnownQosPolicy(
+            string value,
+            bool isExplicit,
+            string firstPortableValue,
+            string secondPortableValue)
+            => isExplicit
+                ? string.Equals(value, FoxRunGenerationDescriptorConstants.SystemDefaultQosPolicy, StringComparison.Ordinal)
+                  || string.Equals(value, firstPortableValue, StringComparison.Ordinal)
+                  || string.Equals(value, secondPortableValue, StringComparison.Ordinal)
+                : string.Equals(value, FoxRunGenerationDescriptorConstants.InheritQosPolicy, StringComparison.Ordinal);
+
         private static bool AllowsNativeBidirectionalOutputEncoding(FoxRunGenerationMember member)
             => member != null
                && member.Mode == 3
@@ -554,6 +681,18 @@ namespace Unity.FoxgloveSDK.Editor
                         first.DeclaringType + "." + first.MemberName,
                         first.MemberName,
                         "Topic '" + group.Key + "' has mixed Encoding declarations. Use one policy for every member on the topic."));
+                }
+
+                if (HasMixedDirectionalQosContract(members))
+                {
+                    var first = members.First(member => member.Mode == 1 || member.Mode == 3);
+                    diagnostics.Add(FoxRunGenerationDiagnostic.Error(
+                        MixedDirectionalQosContractDiagnosticId,
+                        first.DeclaringType + "." + first.MemberName,
+                        first.MemberName,
+                        "Topic '" + group.Key + "' has mixed Flow, Source, Targets, or QoS declarations. "
+                        + "Use one directional transport contract, including identical named-argument presence, "
+                        + "for every publishing member on the topic."));
                 }
 
                 var duplicateProtobufTag = members
@@ -631,6 +770,39 @@ namespace Unity.FoxgloveSDK.Editor
                         "Topic '" + group.Key + "' has mixed OnlyIf values."));
                 }
             }
+        }
+
+        private static bool HasMixedDirectionalQosContract(IReadOnlyList<FoxRunGenerationMember> members)
+        {
+            if (members == null || members.Count < 2)
+                return false;
+
+            var publishingMembers = members
+                .Where(member => member.Mode == 1 || member.Mode == 3)
+                .ToList();
+            if (publishingMembers.Count < 2)
+                return false;
+
+            var first = publishingMembers[0];
+            var firstPresence = first.NamedArgumentPresence & DirectionalQosPresenceMask;
+            for (var index = 1; index < publishingMembers.Count; index++)
+            {
+                var member = publishingMembers[index];
+                if (member.Mode != first.Mode
+                    || !string.Equals(member.Source, first.Source, StringComparison.Ordinal)
+                    || !string.Equals(member.Targets, first.Targets, StringComparison.Ordinal)
+                    || !string.Equals(member.QosProfile, first.QosProfile, StringComparison.Ordinal)
+                    || !string.Equals(member.QosReliability, first.QosReliability, StringComparison.Ordinal)
+                    || !string.Equals(member.QosDurability, first.QosDurability, StringComparison.Ordinal)
+                    || !string.Equals(member.QosHistory, first.QosHistory, StringComparison.Ordinal)
+                    || member.QosDepth != first.QosDepth
+                    || (member.NamedArgumentPresence & DirectionalQosPresenceMask) != firstPresence)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsInvalidConditionName(string name)

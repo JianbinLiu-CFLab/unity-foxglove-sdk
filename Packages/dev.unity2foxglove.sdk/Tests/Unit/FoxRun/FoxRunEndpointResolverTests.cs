@@ -104,6 +104,55 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ExplicitQosFailsClosedWhenInheritedProfileResolvesAllDirectionsToFoxglove()
+        {
+            var result = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.PublishAndSubscribe,
+                declaredSource: (FoxRunEndpoint)0,
+                hasExplicitSource: false,
+                declaredTargets: (FoxRunEndpoint)0,
+                hasExplicitTargets: false,
+                declaredEncoding: (FoxRunEncoding)0,
+                hasExplicitEncoding: false,
+                defaultSource: FoxRunEndpoint.Foxglove,
+                defaultTargets: FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON,
+                hasExplicitQos: true);
+
+            Assert.False(result.Success);
+            Assert.Equal(FoxRunEndpointDiagnosticCode.QosRequiresRos2, result.DiagnosticCode);
+            Assert.Equal(
+                "FoxRun QoS requires at least one resolved ROS 2 direction.",
+                result.DiagnosticMessage);
+        }
+
+        [Theory]
+        [InlineData((int)FoxRunEndpoint.Ros2Native, (int)FoxRunEndpoint.Foxglove)]
+        [InlineData((int)FoxRunEndpoint.Foxglove, (int)FoxRunEndpoint.Ros2Native)]
+        [InlineData((int)FoxRunEndpoint.Foxglove, (int)FoxRunEndpoint.Ros2Bridge)]
+        public void ExplicitQosSucceedsWhenEitherResolvedDirectionUsesRos2(
+            int source,
+            int targets)
+        {
+            var result = FoxRunEndpointResolver.Resolve(
+                FoxRunFlow.PublishAndSubscribe,
+                declaredSource: (FoxRunEndpoint)0,
+                hasExplicitSource: false,
+                declaredTargets: (FoxRunEndpoint)0,
+                hasExplicitTargets: false,
+                declaredEncoding: (FoxRunEncoding)0,
+                hasExplicitEncoding: false,
+                defaultSource: (FoxRunEndpoint)source,
+                defaultTargets: (FoxRunEndpoint)targets,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON,
+                hasExplicitQos: true);
+
+            Assert.True(result.Success, result.DiagnosticMessage);
+        }
+
+        [Fact]
         public void OmittedFullDuplexEncodingInheritsEachDirectionalProfile()
         {
             var result = FoxRunEndpointResolver.Resolve(

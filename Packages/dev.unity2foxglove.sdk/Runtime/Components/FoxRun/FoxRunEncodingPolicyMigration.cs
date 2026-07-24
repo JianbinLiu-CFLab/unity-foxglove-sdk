@@ -10,6 +10,7 @@ namespace Unity.FoxgloveSDK.Components
     {
         private const int DirectionalSerializationVersion = 1;
         internal const int CurrentSerializationVersion = 2;
+        internal const int QosProfileSerializationVersion = 3;
         internal const int MinRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MinBytes;
         internal const int MaxRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.MaxBytes;
         internal const int DefaultRos2NativeCopyBudgetBytes = FoxRunRos2NativeCopyBudgetPolicy.DefaultBytes;
@@ -39,7 +40,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         /// <summary>
-        /// Adds subscription source, ROS2 QoS, and native copy-budget policy
+        /// Adds subscription source and native copy-budget policy
         /// while preserving the directional encoding migration.
         /// </summary>
         public static void Migrate(
@@ -48,7 +49,6 @@ namespace Unity.FoxgloveSDK.Components
             ref FoxRunEncoding publishDefault,
             ref FoxRunEncoding subscriptionDefault,
             ref FoxRunEndpoint sourceDefault,
-            ref FoxRunRos2QosPreset qosDefault,
             ref int nativeCopyBudgetBytes)
         {
             Migrate(
@@ -60,14 +60,12 @@ namespace Unity.FoxgloveSDK.Components
             if (serializationVersion < CurrentSerializationVersion)
             {
                 sourceDefault = FoxRunEndpoint.Foxglove;
-                qosDefault = FoxRunRos2QosPreset.Default;
                 nativeCopyBudgetBytes = DefaultRos2NativeCopyBudgetBytes;
                 serializationVersion = CurrentSerializationVersion;
                 return;
             }
 
             sourceDefault = NormalizeSubscriptionSource(sourceDefault);
-            qosDefault = NormalizeRos2Qos(qosDefault);
             nativeCopyBudgetBytes = NormalizeRos2NativeCopyBudgetBytes(nativeCopyBudgetBytes);
         }
 
@@ -81,7 +79,62 @@ namespace Unity.FoxgloveSDK.Components
                 ? FoxRunEndpoint.Ros2Native
                 : FoxRunEndpoint.Foxglove;
 
-        private static FoxRunRos2QosPreset NormalizeRos2Qos(FoxRunRos2QosPreset qos)
-            => FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(qos);
+    }
+
+    /// <summary>
+    /// Pure version gate for Manager-side ROS 2 QoS serialization. New values
+    /// are marked current before their first save, while loaded legacy assets
+    /// still migrate once during deserialization.
+    /// </summary>
+    internal static class FoxRunQosPolicySerializationMigration
+    {
+        internal const int BridgeSerializationVersion = 1;
+
+        internal static void MarkCurrent(
+            ref int policySerializationVersion,
+            ref int bridgeSerializationVersion)
+        {
+            policySerializationVersion =
+                FoxRunEncodingPolicyMigration.QosProfileSerializationVersion;
+            bridgeSerializationVersion = BridgeSerializationVersion;
+        }
+
+        internal static void MigrateNativeProfiles(
+            ref int serializationVersion,
+            ref FoxRunQosProfileSettings publish,
+            ref FoxRunQosProfileSettings subscribe,
+            int legacyPublishPreset,
+            int legacySubscribePreset)
+        {
+            publish ??= new FoxRunQosProfileSettings();
+            subscribe ??= new FoxRunQosProfileSettings();
+            if (serializationVersion >= FoxRunEncodingPolicyMigration.QosProfileSerializationVersion)
+                return;
+
+            publish.MigrateLegacyPreset(legacyPublishPreset);
+            subscribe.MigrateLegacyPreset(legacySubscribePreset);
+            serializationVersion =
+                FoxRunEncodingPolicyMigration.QosProfileSerializationVersion;
+        }
+
+        internal static void MigrateBridgeProfile(
+            ref int serializationVersion,
+            ref FoxRunQosProfileSettings bridge,
+            int legacyPreset,
+            int legacyReliability,
+            int legacyDurability,
+            int legacyDepth)
+        {
+            bridge ??= new FoxRunQosProfileSettings();
+            if (serializationVersion >= BridgeSerializationVersion)
+                return;
+
+            bridge.MigrateLegacyBridgePreset(
+                legacyPreset,
+                legacyReliability,
+                legacyDurability,
+                legacyDepth);
+            serializationVersion = BridgeSerializationVersion;
+        }
     }
 }

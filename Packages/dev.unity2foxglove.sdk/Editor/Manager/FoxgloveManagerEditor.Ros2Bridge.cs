@@ -25,16 +25,9 @@ namespace Unity.FoxgloveSDK.Editor
             DrawProperty("_allowPublisherRos2BridgeOverride", "Allow Publisher Override");
             DrawProperty("_ros2BridgeNamespace", "Bridge Namespace");
 
-            var qosPreset = serializedObject.FindProperty("_ros2BridgeQosPreset");
-            PublisherEncodingEditorLabels.DrawRos2BridgeQosPreset(qosPreset, "Publish QoS Profile");
-            var custom = qosPreset != null && qosPreset.enumValueIndex == (int)Ros2BridgeQosPreset.Custom;
-            if (custom)
-            {
-                FoxgloveManagerInspectorLayout.Subheader("Advanced QoS");
-                DrawProperty("_ros2BridgeCustomReliability", "Reliability");
-                DrawProperty("_ros2BridgeCustomDurability", "Durability");
-                DrawProperty("_ros2BridgeCustomDepth", "Depth");
-            }
+            DrawFoxRunRos2Qos(
+                serializedObject.FindProperty("_ros2BridgeQos"),
+                "ROS 2 QoS Profile");
 
             DrawProperty("_ros2BridgeQueueCapacity", "Queue Capacity");
             DrawProperty("_ros2BridgeReconnectIntervalMs", "Reconnect Interval Ms");
@@ -44,7 +37,7 @@ namespace Unity.FoxgloveSDK.Editor
                 "ROS2 Bridge is optional, disabled by default, and mirrors supported publisher payloads to a local bridge sidecar. Use loopback hosts only.",
                 MessageType.Info);
             EditorGUILayout.HelpBox(
-                "Changing QoS for an existing bridge topic requires restarting the sidecar or using a new bridge topic.",
+                "Changing ROS 2 Bridge QoS takes effect after disabling and re-enabling the Manager.",
                 MessageType.Info);
 
             var manager = (Components.FoxgloveManager)target;
@@ -54,7 +47,10 @@ namespace Unity.FoxgloveSDK.Editor
             using (new EditorGUI.DisabledScope(true))
             {
                 RefreshRos2BridgeStatsForRepaint(manager);
-                EditorGUILayout.TextField("Effective QoS", _ros2BridgeQosThisRepaint.DisplaySummary);
+                EditorGUILayout.TextField(
+                    "Effective QoS",
+                    FoxRunRos2SubscriptionInspectorPresentation.Summary(
+                        _ros2BridgeQosThisRepaint));
             }
 
             var stats = _ros2BridgeStatsThisRepaint;
@@ -81,8 +77,8 @@ namespace Unity.FoxgloveSDK.Editor
 
             _ros2BridgeStatsFrame = Time.frameCount;
             _ros2BridgeQosThisRepaint = manager != null
-                ? manager.ResolveRos2BridgeQos()
-                : Ros2BridgeQosProfile.ReliableDefault;
+                ? manager.ActiveFoxRunBridgePublishQos
+                : Components.FoxRunResolvedQos.Default;
             _ros2BridgeStatsThisRepaint = manager != null
                 ? manager.GetRos2BridgeStatsSnapshot()
                 : Ros2BridgeStatsSnapshot.Disabled;

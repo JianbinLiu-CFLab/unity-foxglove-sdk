@@ -64,7 +64,7 @@ namespace Unity.FoxgloveSDK.Components
             string topicOverride,
             string schemaName,
             out string effectiveTopic,
-            out Ros2BridgeQosProfile qos,
+            out FoxRunResolvedQos qos,
             out string reason)
         {
             effectiveTopic = string.Empty;
@@ -83,7 +83,7 @@ namespace Unity.FoxgloveSDK.Components
                 return false;
             }
 
-            qos = ResolveRos2BridgeQos();
+            qos = ActiveFoxRunBridgePublishQos;
 
             if (_ros2BridgeRuntime == null)
             {

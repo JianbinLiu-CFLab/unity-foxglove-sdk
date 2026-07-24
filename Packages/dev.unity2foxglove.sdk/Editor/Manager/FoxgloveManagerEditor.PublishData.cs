@@ -19,10 +19,6 @@ namespace Unity.FoxgloveSDK.Editor
             FoxgloveManagerInspectorLayout.Subheader("Publish Destinations");
             DrawProperty("_foxgloveOutputEnabled", "Foxglove WebSocket");
             DrawProperty("_ros2NativeEnabled", "ROS 2 Native (R2FU)");
-            if (GetBool("_ros2NativeEnabled"))
-                EditorGUILayout.HelpBox(
-                    "This Manager has no global ROS2 Native publish QoS override; configure QoS on individual R2FU publishers.",
-                    MessageType.Info);
             DrawProperty("_ros2BridgeEnabled", "ROS 2 Bridge");
 
             EditorGUILayout.Space();
@@ -50,7 +46,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (includesRos2Native)
             {
                 DrawFoxRunRos2Qos(
-                    FindCachedProperty("_defaultFoxRunNativePublishRos2Qos"),
+                    FindCachedProperty("_defaultFoxRunNativePublishQos"),
                     "ROS 2 Native QoS Profile");
                 EditorGUILayout.HelpBox(
                     "FoxRun resolves the ROS 2 message type automatically from the generated contract.",

@@ -13,7 +13,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed class FoxRunRos2SubscriptionInspectorPresentationTests
     {
         [Fact]
-        public void ManagerQosChoicesExposeOnlyConcretePresetsWithStableLabelsAndSummaries()
+        public void ManagerQosChoicesExposeOnlyOfficialProfilesWithStableLabelsAndSummaries()
         {
             var choices = FoxRunRos2SubscriptionInspectorPresentation.ManagerQosChoices;
 
@@ -21,27 +21,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 choices,
                 choice => AssertChoice(
                     choice,
-                    FoxRunRos2QosPreset.Default,
-                    "ROS 2 Default (R2FU)",
-                    "R2FU default / Keep Last 10"),
-                choice => AssertChoice(
-                    choice,
-                    FoxRunRos2QosPreset.Reliable,
-                    "Reliable",
+                    FoxRunQosProfile.Default,
+                    "Default",
                     "Reliable / Volatile / Keep Last 10"),
                 choice => AssertChoice(
                     choice,
-                    FoxRunRos2QosPreset.SensorData,
+                    FoxRunQosProfile.SensorData,
                     "Sensor Data",
                     "Best Effort / Volatile / Keep Last 5"),
                 choice => AssertChoice(
                     choice,
-                    FoxRunRos2QosPreset.TransientLocal,
-                    "Transient Local",
-                    "Reliable / Transient Local / Keep Last 1"));
+                    FoxRunQosProfile.SystemDefault,
+                    "System Default",
+                    "System Default / System Default / System Default"));
             Assert.DoesNotContain(
                 choices,
-                choice => choice.Preset == FoxRunRos2QosPreset.Inherit);
+                choice => (int)choice.Profile == 0);
         }
 
         [Fact]
@@ -52,9 +47,61 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             Assert.Same(labels, FoxRunRos2SubscriptionInspectorPresentation.ManagerQosLabels);
             Assert.Equal(choices.Count, labels.Length);
-            Assert.Equal(new[] { "ROS 2 Default (R2FU)", "Reliable", "Sensor Data", "Transient Local" }, labels);
+            Assert.Equal(new[] { "Default", "Sensor Data", "System Default" }, labels);
             for (var index = 0; index < choices.Count; index++)
                 Assert.Equal(choices[index].Label, labels[index]);
+        }
+
+        [Fact]
+        public void AdvancedSummaryUsesOfficialAxesAndOmitsDepthForKeepAll()
+        {
+            Assert.Equal(
+                "Best Effort / Transient Local / Keep All",
+                FoxRunRos2SubscriptionInspectorPresentation.Summary(
+                    new FoxRunResolvedQos(
+                        FoxRunQosProfile.SystemDefault,
+                        FoxRunQosReliability.BestEffort,
+                        FoxRunQosDurability.TransientLocal,
+                        FoxRunQosHistory.KeepAll,
+                        0)));
+            Assert.Equal(
+                "Reliable / Volatile / Keep Last 37",
+                FoxRunRos2SubscriptionInspectorPresentation.Summary(
+                    new FoxRunResolvedQos(
+                        FoxRunQosProfile.Default,
+                        FoxRunQosReliability.Reliable,
+                        FoxRunQosDurability.Volatile,
+                        FoxRunQosHistory.KeepLast,
+                        37)));
+        }
+
+        [Fact]
+        public void DeclaredSummaryPreservesInheritanceAndShowsOnlyExplicitOverrides()
+        {
+            Assert.Equal(
+                "Inherit",
+                FoxRunRos2SubscriptionInspectorPresentation.DeclaredSummary(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0));
+            Assert.Equal(
+                "Sensor Data",
+                FoxRunRos2SubscriptionInspectorPresentation.DeclaredSummary(
+                    FoxRunQosProfile.SensorData,
+                    0,
+                    0,
+                    0,
+                    0));
+            Assert.Equal(
+                "Default; Reliability=Best Effort; History=Keep Last; Depth=37",
+                FoxRunRos2SubscriptionInspectorPresentation.DeclaredSummary(
+                    FoxRunQosProfile.Default,
+                    FoxRunQosReliability.BestEffort,
+                    0,
+                    FoxRunQosHistory.KeepLast,
+                    37));
         }
 
         [Fact]
@@ -137,11 +184,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private static void AssertChoice(
             FoxRunRos2QosInspectorChoice choice,
-            FoxRunRos2QosPreset preset,
+            FoxRunQosProfile profile,
             string label,
             string summary)
         {
-            Assert.Equal(preset, choice.Preset);
+            Assert.Equal(profile, choice.Profile);
             Assert.Equal(label, choice.Label);
             Assert.Equal(summary, choice.Summary);
         }

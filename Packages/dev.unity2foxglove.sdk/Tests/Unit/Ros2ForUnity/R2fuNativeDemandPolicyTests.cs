@@ -114,7 +114,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "/incoming",
                 "Subscribe",
                 (FoxRunEndpoint)0,
-                FoxRunRos2QosPreset.Inherit,
+                (FoxRunQosProfile)0,
                 supportsWebSocket: true,
                 supportsRos2Native: true,
                 nativeType: "std_msgs.msg.String",
@@ -126,12 +126,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 "/native",
                 "Subscribe",
                 FoxRunEndpoint.Ros2Native,
-                FoxRunRos2QosPreset.Default,
+                FoxRunQosProfile.Default,
                 supportsWebSocket: false,
                 supportsRos2Native: true,
                 nativeType: "std_msgs.msg.String",
                 canonicalRosType: "std_msgs/msg/String",
-                copyShapeIdentity: "fixture");
+                copyShapeIdentity: "fixture",
+                qosReliability: FoxRunQosReliability.Reliable,
+                qosDurability: FoxRunQosDurability.Volatile,
+                qosHistory: FoxRunQosHistory.KeepLast,
+                qosDepth: 10);
 
             Assert.False(FoxRunNativeDemandPolicy.HasExplicitNativeContract(
                 new[] { inheritedButCapable }));

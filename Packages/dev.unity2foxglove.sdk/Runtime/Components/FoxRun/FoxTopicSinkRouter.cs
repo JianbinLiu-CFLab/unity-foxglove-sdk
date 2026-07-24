@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Components
 
         public string SinkName { get; }
         public string Topic { get; }
-        /// <summary>One of "register", "publish", or "flush".</summary>
+        /// <summary>One of "register", "unregister", "publish", or "flush".</summary>
         public string Operation { get; }
         public Exception Exception { get; }
     }
@@ -86,15 +86,36 @@ namespace Unity.FoxgloveSDK.Components
         public bool RemoveSink(IFoxTopicSink sink)
             => !_disposed && sink != null && _sinks.Remove(sink);
 
-        /// <summary>Remove a previously registered exported contract.</summary>
+        /// <summary>
+        /// Remove a previously registered exported contract and notify sinks
+        /// that opt into per-contract lifecycle ownership.
+        /// </summary>
         public bool Unregister(string topic)
         {
             if (_disposed)
                 return false;
             if (string.IsNullOrWhiteSpace(topic))
                 return false;
+            if (!_contracts.Remove(topic))
+                return false;
 
-            return _contracts.Remove(topic);
+            for (var i = 0; i < _sinks.Count; i++)
+            {
+                var sink = _sinks[i];
+                if (!(sink is IFoxTopicSinkContractLifecycle lifecycle))
+                    continue;
+
+                try
+                {
+                    lifecycle.Unregister(topic);
+                }
+                catch (Exception ex)
+                {
+                    ReportFault(sink, topic, "unregister", ex);
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

@@ -15,6 +15,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -59,8 +60,10 @@ struct BridgeFrame
   std::string schema_name;
   std::string encoding;
   std::string profile_name = "Reliable Default";
+  std::string profile = "default";
   std::string reliability = "reliable";
   std::string durability = "volatile";
+  std::string history = "keep_last";
   int depth = 10;
   uint64_t log_time_ns = 0;
   uint64_t sequence = 0;
@@ -208,26 +211,190 @@ std::string qos_signature(const BridgeFrame & frame)
 
   std::string signature;
   append_field(signature, frame.schema_name);
+  append_field(signature, frame.profile);
   append_field(signature, frame.reliability);
   append_field(signature, frame.durability);
+  append_field(signature, frame.history);
   append_field(signature, std::to_string(frame.depth));
   return signature;
 }
 
-rclcpp::QoS make_qos(const BridgeFrame & frame)
+enum class PublisherContractDisposition
 {
-  auto qos = rclcpp::QoS(rclcpp::KeepLast(static_cast<size_t>(frame.depth)));
-  if (frame.reliability == "best_effort") {
-    qos.best_effort();
-  } else {
-    qos.reliable();
+  CreatePublisher,
+  ReusePublisher
+};
+
+class PublisherContractRegistry
+{
+public:
+  PublisherContractDisposition register_or_validate(const BridgeFrame & frame)
+  {
+    const auto signature = qos_signature(frame);
+    const auto registered = topic_signatures_.find(frame.topic);
+    if (registered != topic_signatures_.end()) {
+      if (registered->second != signature) {
+        throw std::runtime_error(
+                "reject frame: topic '" + frame.topic +
+                "' reused with different schemaName or QoS: was [" +
+                registered->second + "] got [" + signature + "]");
+      }
+      return PublisherContractDisposition::ReusePublisher;
+    }
+
+    topic_signatures_.emplace(frame.topic, signature);
+    return PublisherContractDisposition::CreatePublisher;
   }
 
-  if (frame.durability == "transient_local") {
-    qos.transient_local();
-  } else {
-    qos.durability_volatile();
+  void rollback_create(const std::string & topic)
+  {
+    const auto registered = topic_signatures_.find(topic);
+    if (registered != topic_signatures_.end()) {
+      topic_signatures_.erase(registered);
+    }
   }
+
+private:
+  std::unordered_map<std::string, std::string> topic_signatures_;
+};
+
+int parse_qos_depth(const nlohmann::json & value)
+{
+  if (value.is_number_unsigned()) {
+    const auto depth = value.get<uint64_t>();
+    if (depth > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+      throw std::runtime_error("qos.depth is outside the supported integer range");
+    }
+    return static_cast<int>(depth);
+  }
+
+  if (value.is_number_integer()) {
+    const auto depth = value.get<int64_t>();
+    if (
+      depth < static_cast<int64_t>(std::numeric_limits<int>::min()) ||
+      depth > static_cast<int64_t>(std::numeric_limits<int>::max()))
+    {
+      throw std::runtime_error("qos.depth is outside the supported integer range");
+    }
+    return static_cast<int>(depth);
+  }
+
+  throw std::runtime_error("qos.depth must be an integer");
+}
+
+void validate_qos_contract(const BridgeFrame & frame)
+{
+  if (
+    frame.profile != "default" &&
+    frame.profile != "sensor_data" &&
+    frame.profile != "system_default")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.profile must be default, sensor_data, or system_default");
+  }
+  if (
+    frame.reliability != "system_default" &&
+    frame.reliability != "reliable" &&
+    frame.reliability != "best_effort")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.reliability must be system_default, reliable, or best_effort");
+  }
+  if (
+    frame.durability != "system_default" &&
+    frame.durability != "volatile" &&
+    frame.durability != "transient_local")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.durability must be system_default, volatile, or transient_local");
+  }
+  if (
+    frame.history != "system_default" &&
+    frame.history != "keep_last" &&
+    frame.history != "keep_all")
+  {
+    throw std::runtime_error(
+            "reject frame: qos.history must be system_default, keep_last, or keep_all");
+  }
+  if (frame.history == "keep_last") {
+    if (frame.depth < 1) {
+      throw std::runtime_error("reject frame: qos.depth must be >= 1 for keep_last");
+    }
+  } else if (frame.depth != 0) {
+    throw std::runtime_error(
+            "reject frame: qos.depth must be 0 unless qos.history is keep_last");
+  }
+}
+
+rmw_qos_profile_t qos_profile_for(const BridgeFrame & frame)
+{
+  if (frame.profile == "default") {
+    return rmw_qos_profile_default;
+  }
+  if (frame.profile == "sensor_data") {
+    return rmw_qos_profile_sensor_data;
+  }
+  if (frame.profile == "system_default") {
+    return rmw_qos_profile_system_default;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.profile");
+}
+
+rmw_qos_reliability_policy_t qos_reliability_for(const BridgeFrame & frame)
+{
+  if (frame.reliability == "system_default") {
+    return RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT;
+  }
+  if (frame.reliability == "reliable") {
+    return RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+  }
+  if (frame.reliability == "best_effort") {
+    return RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.reliability");
+}
+
+rmw_qos_durability_policy_t qos_durability_for(const BridgeFrame & frame)
+{
+  if (frame.durability == "system_default") {
+    return RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT;
+  }
+  if (frame.durability == "volatile") {
+    return RMW_QOS_POLICY_DURABILITY_VOLATILE;
+  }
+  if (frame.durability == "transient_local") {
+    return RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.durability");
+}
+
+rmw_qos_history_policy_t qos_history_for(const BridgeFrame & frame)
+{
+  if (frame.history == "system_default") {
+    return RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT;
+  }
+  if (frame.history == "keep_last") {
+    return RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+  }
+  if (frame.history == "keep_all") {
+    return RMW_QOS_POLICY_HISTORY_KEEP_ALL;
+  }
+  throw std::runtime_error("reject frame: unsupported qos.history");
+}
+
+rclcpp::QoS make_qos(const BridgeFrame & frame)
+{
+  validate_qos_contract(frame);
+
+  const auto base_profile = qos_profile_for(frame);
+  auto qos = rclcpp::QoS(
+    rclcpp::QoSInitialization::from_rmw(base_profile),
+    base_profile);
+  auto & rmw_profile = qos.get_rmw_qos_profile();
+  rmw_profile.reliability = qos_reliability_for(frame);
+  rmw_profile.durability = qos_durability_for(frame);
+  rmw_profile.history = qos_history_for(frame);
+  rmw_profile.depth = static_cast<size_t>(frame.depth);
   return qos;
 }
 
@@ -525,11 +692,19 @@ BridgeFrame parse_publish_frame(const RawFrame & raw)
     if (raw.header.contains("profileName") && !raw.header["profileName"].is_null()) {
       frame.profile_name = raw.header.at("profileName").get<std::string>();
     }
+    // Maintained pre-184 Ros2BridgePublisher callers do not carry a QoS
+    // object. Preserve their established portable Default contract while
+    // requiring every field whenever an explicit QoS object is present.
     if (raw.header.contains("qos") && !raw.header["qos"].is_null()) {
       const auto & qos = raw.header.at("qos");
+      if (!qos.is_object()) {
+        throw std::runtime_error("qos must be an object");
+      }
+      frame.profile = qos.at("profile").get<std::string>();
       frame.reliability = qos.at("reliability").get<std::string>();
       frame.durability = qos.at("durability").get<std::string>();
-      frame.depth = qos.at("depth").get<int>();
+      frame.history = qos.at("history").get<std::string>();
+      frame.depth = parse_qos_depth(qos.at("depth"));
     }
   } catch (const std::exception & ex) {
     throw std::runtime_error(std::string("reject frame: missing or invalid JSON field: ") + ex.what());
@@ -551,15 +726,7 @@ BridgeFrame parse_publish_frame(const RawFrame & raw)
   if (frame.encoding != "cdr") {
     throw std::runtime_error("reject frame: encoding must be cdr");
   }
-  if (frame.reliability != "reliable" && frame.reliability != "best_effort") {
-    throw std::runtime_error("reject frame: qos.reliability must be reliable or best_effort");
-  }
-  if (frame.durability != "volatile" && frame.durability != "transient_local") {
-    throw std::runtime_error("reject frame: qos.durability must be volatile or transient_local");
-  }
-  if (frame.depth < 1) {
-    throw std::runtime_error("reject frame: qos.depth must be >= 1");
-  }
+  validate_qos_contract(frame);
   return frame;
 }
 
@@ -641,34 +808,36 @@ public:
 
   void publish(const BridgeFrame & frame)
   {
-    const auto signature = qos_signature(frame);
-    auto topic_signature = topic_signature_.emplace(frame.topic, signature);
-    if (!topic_signature.second && topic_signature.first->second != signature) {
-      throw std::runtime_error(
-              "reject frame: topic '" + frame.topic +
-              "' reused with different schemaName or QoS: was [" +
-              topic_signature.first->second + "] got [" + signature + "]");
-    }
-
-    auto topic_key = topic_keys_.find(frame.topic);
-    if (topic_key == topic_keys_.end()) {
-      topic_key = topic_keys_.emplace(frame.topic, frame.topic + "\n" + signature).first;
-    }
-    const auto & key = topic_key->second;
-
-    auto publisher_it = publishers_.find(key);
-    if (publisher_it == publishers_.end()) {
-      auto qos = make_qos(frame);
-      auto publisher = node_->create_generic_publisher(frame.topic, frame.schema_name, qos);
-      publisher_it = publishers_.emplace(key, publisher).first;
+    const auto disposition = publisher_contracts_.register_or_validate(frame);
+    auto publisher_it = publishers_.find(frame.topic);
+    if (disposition == PublisherContractDisposition::CreatePublisher) {
+      try {
+        auto qos = make_qos(frame);
+        auto publisher = node_->create_generic_publisher(frame.topic, frame.schema_name, qos);
+        const auto inserted = publishers_.emplace(frame.topic, std::move(publisher));
+        if (!inserted.second) {
+          throw std::runtime_error(
+                  "bridge publisher registry is inconsistent for topic '" + frame.topic + "'");
+        }
+        publisher_it = inserted.first;
+      } catch (...) {
+        publisher_contracts_.rollback_create(frame.topic);
+        throw;
+      }
       RCLCPP_INFO(
         node_->get_logger(),
-        "[unity2foxglove_ros2_bridge] publisher %s %s reliability=%s durability=%s depth=%d",
+        "[unity2foxglove_ros2_bridge] publisher %s %s "
+        "profile=%s reliability=%s durability=%s history=%s depth=%d",
         frame.topic.c_str(),
         frame.schema_name.c_str(),
+        frame.profile.c_str(),
         frame.reliability.c_str(),
         frame.durability.c_str(),
+        frame.history.c_str(),
         frame.depth);
+    } else if (publisher_it == publishers_.end()) {
+      throw std::runtime_error(
+              "bridge publisher registry is inconsistent for topic '" + frame.topic + "'");
     }
 
     const auto payload = payload_for_publish(frame, payload_format_, payload_scratch_);
@@ -681,7 +850,7 @@ public:
     ros_message.buffer_length = payload.size;
     publisher_it->second->publish(serialized);
 
-    const auto count = ++counts_[key];
+    const auto count = ++counts_[frame.topic];
     if (count == 1 || count % 20 == 0) {
       RCLCPP_INFO(
         node_->get_logger(),
@@ -694,15 +863,18 @@ public:
 private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
-  std::unordered_map<std::string, std::string> topic_signature_;
-  std::unordered_map<std::string, std::string> topic_keys_;
+  PublisherContractRegistry publisher_contracts_;
   std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers_;
   std::unordered_map<std::string, size_t> counts_;
   std::vector<uint8_t> payload_scratch_;
 };
 
-void process_client(int client_fd, BridgeNode & bridge, const rclcpp::Node::SharedPtr & node)
+void process_client(
+  int client_fd,
+  const rclcpp::Node::SharedPtr & node,
+  PayloadFormat payload_format)
 {
+  BridgeNode bridge(node, payload_format);
   while (rclcpp::ok()) {
     try {
       const auto raw = read_raw_frame(client_fd, node);
@@ -748,7 +920,6 @@ int main(int argc, char ** argv)
       options.host.c_str(),
       options.port);
 
-    BridgeNode bridge(node, options.payload_format);
     while (rclcpp::ok()) {
       ScopedFd client_fd(accept_with_timeout(listen_fd.get()));
       if (!client_fd.valid()) {
@@ -757,7 +928,7 @@ int main(int argc, char ** argv)
       }
 
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client connected");
-      process_client(client_fd.get(), bridge, node);
+      process_client(client_fd.get(), node, options.payload_format);
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client disconnected");
     }
   } catch (const std::exception & ex) {

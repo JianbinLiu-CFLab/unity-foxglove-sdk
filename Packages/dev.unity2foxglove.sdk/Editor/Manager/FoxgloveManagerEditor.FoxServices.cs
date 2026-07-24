@@ -172,7 +172,14 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     EditorGUILayout.TextField("CLR Type", binding.NativeType ?? binding.DeclaringType ?? string.Empty);
                     EditorGUILayout.TextField("Canonical ROS Type", binding.CanonicalRosType ?? string.Empty);
-                    EditorGUILayout.TextField("QoS", binding.Ros2Qos.ToString());
+                    EditorGUILayout.TextField(
+                        "QoS",
+                        FoxRunRos2SubscriptionInspectorPresentation.DeclaredSummary(
+                            binding.QosProfile,
+                            binding.QosReliability,
+                            binding.QosDurability,
+                            binding.QosHistory,
+                            binding.QosDepth));
                     EditorGUILayout.TextField("Status", status);
                 }
             }

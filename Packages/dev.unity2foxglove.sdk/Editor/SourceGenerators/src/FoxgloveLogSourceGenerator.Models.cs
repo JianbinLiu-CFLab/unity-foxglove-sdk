@@ -228,7 +228,7 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 topic.ProtobufFieldNumber,
                 ProtobufTypeShape,
                 topic.Source,
-                topic.Ros2Qos,
+                topic.QosProfile,
                 ProtobufTypeShape != null
                     || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
                         FoxRunCanonicalTypeNormalizer.NormalizeTypeName(
@@ -243,7 +243,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 Ros2ContractKind,
                 topic.NamedArgumentPresence,
                 topic.ConditionMemberKind,
-                topic.Targets);
+                topic.Targets,
+                topic.QosReliability,
+                topic.QosDurability,
+                topic.QosHistory,
+                topic.QosDepth);
         }
 
         private static FoxRunRos2ContractKind ResolveRos2ContractKind(
@@ -286,7 +290,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public readonly int Encoding;
         public readonly int Source;
         public readonly int Targets;
-        public readonly int Ros2Qos;
+        public readonly int QosProfile;
+        public readonly int QosReliability;
+        public readonly int QosDurability;
+        public readonly int QosHistory;
+        public readonly int QosDepth;
         public readonly int ProtobufFieldNumber;
         /// <summary>Change tolerance.</summary>
         public readonly float Tolerance;
@@ -308,10 +316,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
         public TopicEntry(string topic, float hz, string schema,
             int policy, float tolerance, string onlyIf = "",
             bool isAggregateMember = false, string jsonFieldName = "", int mode = 1, int encoding = 0, int protobufFieldNumber = 0,
-            int source = 0, int ros2Qos = 0,
+            int source = 0, int qosProfile = 0,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            int targets = 0)
+            int targets = 0,
+            int qosReliability = 0,
+            int qosDurability = 0,
+            int qosHistory = 0,
+            int qosDepth = 0)
         {
             Topic = topic; Hz = hz; SchemaName = schema;
             Policy = policy;
@@ -319,7 +331,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             Encoding = encoding;
             Source = source;
             Targets = targets;
-            Ros2Qos = ros2Qos;
+            QosProfile = qosProfile;
+            QosReliability = qosReliability;
+            QosDurability = qosDurability;
+            QosHistory = qosHistory;
+            QosDepth = qosDepth;
             ProtobufFieldNumber = protobufFieldNumber;
             Tolerance = tolerance;
             OnlyIf = onlyIf ?? string.Empty;

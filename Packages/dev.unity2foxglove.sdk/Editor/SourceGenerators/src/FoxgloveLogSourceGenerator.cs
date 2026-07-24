@@ -173,7 +173,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 int encoding = 0;
                 int source = 0;
                 int targets = 0;
-                int ros2Qos = 0;
+                int qosProfile = 0;
+                int qosReliability = 0;
+                int qosDurability = 0;
+                int qosHistory = 0;
+                int qosDepth = 0;
                 int protobufFieldNumber = 0;
                 float tolerance = 0f;
                 string onlyIf = "";
@@ -218,9 +222,25 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             presence |= FoxRunNamedArgumentPresence.Targets;
                             if (TryReadIntConstant(named.Value, out var publishTargets)) targets = publishTargets;
                             break;
-                        case "Ros2Qos":
-                            presence |= FoxRunNamedArgumentPresence.Ros2Qos;
-                            if (TryReadIntConstant(named.Value, out var qos)) ros2Qos = qos;
+                        case "QoS":
+                            presence |= FoxRunNamedArgumentPresence.QoS;
+                            if (TryReadIntConstant(named.Value, out var qos)) qosProfile = qos;
+                            break;
+                        case "Reliability":
+                            presence |= FoxRunNamedArgumentPresence.Reliability;
+                            if (TryReadIntConstant(named.Value, out var reliability)) qosReliability = reliability;
+                            break;
+                        case "Durability":
+                            presence |= FoxRunNamedArgumentPresence.Durability;
+                            if (TryReadIntConstant(named.Value, out var durability)) qosDurability = durability;
+                            break;
+                        case "History":
+                            presence |= FoxRunNamedArgumentPresence.History;
+                            if (TryReadIntConstant(named.Value, out var history)) qosHistory = history;
+                            break;
+                        case "Depth":
+                            presence |= FoxRunNamedArgumentPresence.Depth;
+                            if (TryReadIntConstant(named.Value, out var depth)) qosDepth = depth;
                             break;
                         case "ProtobufFieldNumber":
                             presence |= FoxRunNamedArgumentPresence.ProtobufFieldNumber;
@@ -234,13 +254,17 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     encoding: encoding,
                     protobufFieldNumber: protobufFieldNumber,
                     source: source,
-                    ros2Qos: ros2Qos,
+                    qosProfile: qosProfile,
                     namedArgumentPresence: presence,
                     conditionMemberKind: ResolveConditionMemberKind(
                         containingType,
                         onlyIf,
                         presence),
-                    targets: targets));
+                    targets: targets,
+                    qosReliability: qosReliability,
+                    qosDurability: qosDurability,
+                    qosHistory: qosHistory,
+                    qosDepth: qosDepth));
             }
 
             var aggregateFieldAttr = symbol.GetAttributes()
@@ -261,6 +285,11 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var policy = 1;
                 var encoding = 0;
                 var targets = 0;
+                var qosProfile = 0;
+                var qosReliability = 0;
+                var qosDurability = 0;
+                var qosHistory = 0;
+                var qosDepth = 0;
                 var tolerance = 0f;
                 var onlyIf = "";
                 var presence = FoxRunNamedArgumentPresence.None;
@@ -296,6 +325,26 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                             presence |= FoxRunNamedArgumentPresence.Targets;
                             if (TryReadIntConstant(named.Value, out var publishTargets)) targets = publishTargets;
                             break;
+                        case "QoS":
+                            presence |= FoxRunNamedArgumentPresence.QoS;
+                            if (TryReadIntConstant(named.Value, out var qos)) qosProfile = qos;
+                            break;
+                        case "Reliability":
+                            presence |= FoxRunNamedArgumentPresence.Reliability;
+                            if (TryReadIntConstant(named.Value, out var reliability)) qosReliability = reliability;
+                            break;
+                        case "Durability":
+                            presence |= FoxRunNamedArgumentPresence.Durability;
+                            if (TryReadIntConstant(named.Value, out var durability)) qosDurability = durability;
+                            break;
+                        case "History":
+                            presence |= FoxRunNamedArgumentPresence.History;
+                            if (TryReadIntConstant(named.Value, out var history)) qosHistory = history;
+                            break;
+                        case "Depth":
+                            presence |= FoxRunNamedArgumentPresence.Depth;
+                            if (TryReadIntConstant(named.Value, out var depth)) qosDepth = depth;
+                            break;
                     }
                 }
 
@@ -328,7 +377,12 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                         containingType,
                         onlyIf,
                         presence),
-                    targets: targets));
+                    targets: targets,
+                    qosProfile: qosProfile,
+                    qosReliability: qosReliability,
+                    qosDurability: qosDurability,
+                    qosHistory: qosHistory,
+                    qosDepth: qosDepth));
             }
             if (topics.Count == 0) return null;
 
@@ -460,28 +514,85 @@ namespace Unity.FoxgloveSDK.SourceGenerators
             if (!IsConditionIdentifier(conditionName))
                 return FoxRunConditionMemberKind.Missing;
 
-            var candidates = containingType.GetMembers(conditionName);
-            if (candidates.Length == 0)
-                return FoxRunConditionMemberKind.Missing;
-
-            foreach (var candidate in candidates)
+            for (var candidateType = containingType;
+                 candidateType != null;
+                 candidateType = candidateType.BaseType)
             {
-                switch (candidate)
+                var declared = candidateType.GetMembers(conditionName);
+                if (declared.Length == 0)
+                    continue;
+
+                var declaredOnContainingType =
+                    SymbolEqualityComparer.Default.Equals(candidateType, containingType);
+                var accessible = declared
+                    .Where(candidate => IsConditionMemberAccessible(
+                        candidate,
+                        containingType,
+                        declaredOnContainingType))
+                    .ToArray();
+                if (accessible.Length == 0)
+                    return FoxRunConditionMemberKind.Missing;
+
+                foreach (var candidate in accessible)
                 {
-                    case IFieldSymbol field when IsBoolType(field.Type):
-                        return FoxRunConditionMemberKind.Field;
-                    case IPropertySymbol property when IsBoolType(property.Type):
-                        return FoxRunConditionMemberKind.Property;
-                    case IMethodSymbol method
-                        when method.MethodKind == MethodKind.Ordinary
-                             && method.Arity == 0
-                             && method.Parameters.Length == 0
-                             && IsBoolType(method.ReturnType):
-                        return FoxRunConditionMemberKind.Method;
+                    switch (candidate)
+                    {
+                        case IFieldSymbol field when IsBoolType(field.Type):
+                            return FoxRunConditionMemberKind.Field;
+                        case IPropertySymbol property
+                            when property.GetMethod != null
+                                 && property.Parameters.Length == 0
+                                 && IsBoolType(property.Type):
+                            return FoxRunConditionMemberKind.Property;
+                        case IMethodSymbol method
+                            when method.MethodKind == MethodKind.Ordinary
+                                 && method.Arity == 0
+                                 && method.Parameters.Length == 0
+                                 && IsBoolType(method.ReturnType):
+                            return FoxRunConditionMemberKind.Method;
+                    }
                 }
+
+                return FoxRunConditionMemberKind.Invalid;
             }
 
-            return FoxRunConditionMemberKind.Invalid;
+            return FoxRunConditionMemberKind.Missing;
+        }
+
+        private static bool IsConditionMemberAccessible(
+            ISymbol member,
+            INamedTypeSymbol containingType,
+            bool declaredOnContainingType)
+        {
+            if (declaredOnContainingType)
+                return true;
+
+            if (member is IPropertySymbol property)
+                return property.GetMethod != null
+                       && IsConditionAccessibilityAllowed(property.GetMethod, containingType);
+
+            return IsConditionAccessibilityAllowed(member, containingType);
+        }
+
+        private static bool IsConditionAccessibilityAllowed(
+            ISymbol member,
+            INamedTypeSymbol containingType)
+        {
+            var sameAssembly = SymbolEqualityComparer.Default.Equals(
+                member?.ContainingAssembly,
+                containingType?.ContainingAssembly);
+            switch (member?.DeclaredAccessibility)
+            {
+                case Accessibility.Public:
+                case Accessibility.Protected:
+                case Accessibility.ProtectedOrInternal:
+                    return true;
+                case Accessibility.Internal:
+                case Accessibility.ProtectedAndInternal:
+                    return sameAssembly;
+                default:
+                    return false;
+            }
         }
 
         private static bool IsConditionIdentifier(string value)
@@ -824,8 +935,14 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 "Unity.FoxgloveSDK.Components.FoxRunPolicy";
             private const string SourceMetadataName =
                 "Unity.FoxgloveSDK.Components.FoxRunEndpoint";
-            private const string Ros2QosMetadataName =
-                "Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset";
+            private const string QosProfileMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunQosProfile";
+            private const string QosReliabilityMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunQosReliability";
+            private const string QosDurabilityMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunQosDurability";
+            private const string QosHistoryMetadataName =
+                "Unity.FoxgloveSDK.Components.FoxRunQosHistory";
 
             public NativeCompilationEvidence(bool hasNativeDefine, bool hasNativeAssemblyReference)
             {
@@ -966,9 +1083,19 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                 var mode = compilation.GetTypeByMetadataName(FoxRunFlowMetadataName);
                 var policy = compilation.GetTypeByMetadataName(FoxRunPolicyMetadataName);
                 var provider = compilation.GetTypeByMetadataName(SourceMetadataName);
-                var qos = compilation.GetTypeByMetadataName(Ros2QosMetadataName);
-                if (mode == null || policy == null || provider == null || qos == null)
+                var qosProfile = compilation.GetTypeByMetadataName(QosProfileMetadataName);
+                var qosReliability = compilation.GetTypeByMetadataName(QosReliabilityMetadataName);
+                var qosDurability = compilation.GetTypeByMetadataName(QosDurabilityMetadataName);
+                var qosHistory = compilation.GetTypeByMetadataName(QosHistoryMetadataName);
+                if (mode == null
+                    || policy == null
+                    || provider == null
+                    || qosProfile == null
+                    || qosReliability == null
+                    || qosDurability == null
+                    || qosHistory == null)
                     return false;
+                var intType = compilation.GetSpecialType(SpecialType.System_Int32);
                 var floatType = compilation.GetSpecialType(SpecialType.System_Single);
                 var expected = new ITypeSymbol[]
                 {
@@ -979,20 +1106,58 @@ namespace Unity.FoxgloveSDK.SourceGenerators
                     stringType,
                     mode,
                     provider,
-                    qos,
+                    qosProfile,
+                    boolType,
+                    qosReliability,
+                    boolType,
+                    qosDurability,
+                    boolType,
+                    qosHistory,
+                    boolType,
+                    intType,
+                    boolType,
                     boolType,
                     policy,
                     floatType,
                     boolType,
                     floatType
                 };
+                var expectedNames = new[]
+                {
+                    "id",
+                    "topic",
+                    "declaringType",
+                    "memberName",
+                    "canonicalRosType",
+                    "mode",
+                    "source",
+                    "qosProfile",
+                    "hasExplicitQosProfile",
+                    "qosReliability",
+                    "hasExplicitQosReliability",
+                    "qosDurability",
+                    "hasExplicitQosDurability",
+                    "qosHistory",
+                    "hasExplicitQosHistory",
+                    "qosDepth",
+                    "hasExplicitQosDepth",
+                    "supportsRos2Native",
+                    "policy",
+                    "hz",
+                    "hasExplicitHz",
+                    "heartbeatIntervalSeconds"
+                };
                 return contract.InstanceConstructors.Any(constructor =>
                     constructor.DeclaredAccessibility == Accessibility.Public
                     && constructor.Parameters.Length == expected.Length
                     && constructor.Parameters.Select(parameter => parameter.Type)
                         .SequenceEqual(expected, SymbolEqualityComparer.Default)
-                    && constructor.Parameters.All(parameter =>
-                        parameter.RefKind == RefKind.None && !parameter.IsOptional));
+                    && constructor.Parameters.Select(parameter => parameter.Name)
+                        .SequenceEqual(expectedNames, StringComparer.Ordinal)
+                    && constructor.Parameters.Take(expected.Length - 4).All(parameter =>
+                        parameter.RefKind == RefKind.None && !parameter.IsOptional)
+                    && constructor.Parameters.Skip(expected.Length - 4).All(parameter =>
+                        parameter.RefKind == RefKind.None && parameter.IsOptional));
             }
 
             private static bool HasExactCopyContextSeam(

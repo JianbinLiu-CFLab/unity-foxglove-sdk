@@ -106,10 +106,10 @@ namespace Unity.FoxgloveSDK.Editor
 
         private void DrawRos2NativeSubscriptionQos()
         {
-            var qosProperty = FindCachedProperty("_defaultFoxRunRos2Qos");
+            var qosProperty = FindCachedProperty("_defaultFoxRunNativeSubscribeQos");
             if (qosProperty == null)
             {
-                DrawMissingProperty("_defaultFoxRunRos2Qos");
+                DrawMissingProperty("_defaultFoxRunNativeSubscribeQos");
                 return;
             }
 
@@ -123,16 +123,43 @@ namespace Unity.FoxgloveSDK.Editor
             if (qosProperty == null)
                 return;
 
-            var normalizedPreset = FoxRunRos2QosResolver.NormalizeSerializedManagerDefault(
-                (FoxRunRos2QosPreset)qosProperty.enumValueIndex);
-            if (qosProperty.enumValueIndex != (int)normalizedPreset)
-                qosProperty.enumValueIndex = (int)normalizedPreset;
+            var profileProperty = qosProperty.FindPropertyRelative("_profile");
+            var overrideReliability = qosProperty.FindPropertyRelative("_overrideReliability");
+            var reliabilityProperty = qosProperty.FindPropertyRelative("_reliability");
+            var overrideDurability = qosProperty.FindPropertyRelative("_overrideDurability");
+            var durabilityProperty = qosProperty.FindPropertyRelative("_durability");
+            var overrideHistory = qosProperty.FindPropertyRelative("_overrideHistory");
+            var historyProperty = qosProperty.FindPropertyRelative("_history");
+            var overrideDepth = qosProperty.FindPropertyRelative("_overrideDepth");
+            var depthProperty = qosProperty.FindPropertyRelative("_depth");
+            if (profileProperty == null
+                || overrideReliability == null
+                || reliabilityProperty == null
+                || overrideDurability == null
+                || durabilityProperty == null
+                || overrideHistory == null
+                || historyProperty == null
+                || overrideDepth == null
+                || depthProperty == null)
+            {
+                DrawMissingProperty(qosProperty.propertyPath);
+                return;
+            }
 
             var choices = FoxRunRos2SubscriptionInspectorPresentation.ManagerQosChoices;
+            var normalizedProfile = (FoxRunQosProfile)profileProperty.intValue;
+            if (normalizedProfile != FoxRunQosProfile.Default
+                && normalizedProfile != FoxRunQosProfile.SensorData
+                && normalizedProfile != FoxRunQosProfile.SystemDefault)
+            {
+                normalizedProfile = FoxRunQosProfile.Default;
+                profileProperty.intValue = (int)normalizedProfile;
+            }
+
             var selectedIndex = 0;
             for (var i = 0; i < choices.Count; i++)
             {
-                if (choices[i].Preset == normalizedPreset)
+                if (choices[i].Profile == normalizedProfile)
                     selectedIndex = i;
             }
 
@@ -141,10 +168,65 @@ namespace Unity.FoxgloveSDK.Editor
                 selectedIndex,
                 FoxRunRos2SubscriptionInspectorPresentation.ManagerQosLabels);
             var selectedChoice = choices[changedIndex];
-            if (selectedChoice.Preset != normalizedPreset)
-                qosProperty.enumValueIndex = (int)selectedChoice.Preset;
+            if (selectedChoice.Profile != normalizedProfile)
+                profileProperty.intValue = (int)selectedChoice.Profile;
 
-            EditorGUILayout.HelpBox(selectedChoice.Summary, MessageType.Info);
+            qosProperty.isExpanded = EditorGUILayout.Foldout(
+                qosProperty.isExpanded,
+                "Advanced Overrides",
+                toggleOnLabelClick: true);
+            if (qosProperty.isExpanded)
+            {
+                DrawQosOverride(
+                    overrideReliability,
+                    reliabilityProperty,
+                    "Reliability");
+                DrawQosOverride(
+                    overrideDurability,
+                    durabilityProperty,
+                    "Durability");
+                DrawQosOverride(
+                    overrideHistory,
+                    historyProperty,
+                    "History");
+                DrawQosOverride(
+                    overrideDepth,
+                    depthProperty,
+                    "Depth");
+            }
+
+            var resolution = FoxRunRos2QosProfileResolver.Resolve(
+                selectedChoice.Profile,
+                hasProfile: true,
+                (FoxRunQosReliability)reliabilityProperty.intValue,
+                overrideReliability.boolValue,
+                (FoxRunQosDurability)durabilityProperty.intValue,
+                overrideDurability.boolValue,
+                (FoxRunQosHistory)historyProperty.intValue,
+                overrideHistory.boolValue,
+                depthProperty.intValue,
+                overrideDepth.boolValue,
+                FoxRunResolvedQos.Default);
+            EditorGUILayout.HelpBox(
+                resolution.Success
+                    ? FoxRunRos2SubscriptionInspectorPresentation.Summary(resolution.Qos)
+                    : resolution.DiagnosticMessage,
+                resolution.Success ? MessageType.Info : MessageType.Error);
+        }
+
+        private static void DrawQosOverride(
+            SerializedProperty enabledProperty,
+            SerializedProperty valueProperty,
+            string label)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                enabledProperty.boolValue = EditorGUILayout.Toggle(
+                    enabledProperty.boolValue,
+                    GUILayout.Width(18f));
+                using (new EditorGUI.DisabledScope(!enabledProperty.boolValue))
+                    EditorGUILayout.PropertyField(valueProperty, new GUIContent(label));
+            }
         }
 
         private void DrawRos2NativeCopyBudget()

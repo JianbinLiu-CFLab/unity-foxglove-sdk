@@ -28,8 +28,15 @@ namespace Unity.FoxgloveSDK.Editor
             var sectionHashInput = FoxRunManifestJsonWriter.WriteFoxRunSectionHashInput(types);
             var manifestHash = FoxRunManifestHasher.Sha256Hex(sectionHashInput);
             var section = new FoxRunManifestFoxRunSection(manifestHash, types);
+            var discoveredSubscriptionBindings = BuildSubscriptionBindings(source);
+            if (manifestVersion < 3 && discoveredSubscriptionBindings.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "FoxRun manifest version 3 is required when any subscription binding exists; "
+                    + "legacy manifest versions 1 and 2 are publish-only.");
+            }
             var subscriptionBindings = manifestVersion >= 2
-                ? BuildSubscriptionBindings(source)
+                ? discoveredSubscriptionBindings
                 : Array.Empty<FoxRunManifestSubscriptionBinding>();
             var subscriptionHash = manifestVersion >= 2
                 ? FoxRunManifestHasher.Sha256Hex(
@@ -90,7 +97,7 @@ namespace Unity.FoxgloveSDK.Editor
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
                     member.Source,
-                    member.Ros2Qos,
+                    member.QosProfile,
                     member.GeneratesWebSocketCodec,
                     member.GeneratesRos2NativeRegistration,
                     ResolveNativeType(member),
@@ -100,7 +107,11 @@ namespace Unity.FoxgloveSDK.Editor
                     member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
                     member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
                     ResolveCustomEnvelopeIdentity(member),
-                    member.Targets))
+                    member.Targets,
+                    member.QosReliability,
+                    member.QosDurability,
+                    member.QosHistory,
+                    member.QosDepth))
                 .OrderBy(binding => binding.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(binding => binding.Topic, StringComparer.Ordinal)
                 .ThenBy(binding => binding.MemberName, StringComparer.Ordinal)
@@ -120,12 +131,16 @@ namespace Unity.FoxgloveSDK.Editor
                     member.Topic,
                     FoxRunGenerationMember.FlowToName(member.Flow),
                     member.Source,
-                    member.Ros2Qos,
+                    member.QosProfile,
                     true,
                     member.Ros2CustomDtoShape?.CanonicalIdentity ?? string.Empty,
                     member.Ros2CustomDtoShape?.PayloadIdentity ?? string.Empty,
                     ResolveCustomEnvelopeIdentity(member),
-                    member.Targets))
+                    member.Targets,
+                    member.QosReliability,
+                    member.QosDurability,
+                    member.QosHistory,
+                    member.QosDepth))
                 .OrderBy(contract => contract.DeclaringType, StringComparer.Ordinal)
                 .ThenBy(contract => contract.Topic, StringComparer.Ordinal)
                 .ThenBy(contract => contract.MemberName, StringComparer.Ordinal)

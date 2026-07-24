@@ -47,6 +47,8 @@ namespace Unity.FoxgloveSDK.Components
         private FoxRunEncoding _defaultSubscriptionEncoding = FoxRunEncoding.Protobuf;
         private FoxRunEndpoint _defaultSubscriptionSource =
             FoxRunEndpoint.Foxglove;
+        private FoxRunEndpoint _defaultPublishTargets =
+            FoxRunEndpoint.Foxglove;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
@@ -56,6 +58,22 @@ namespace Unity.FoxgloveSDK.Components
 
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
+
+        /// <summary>Manager-resolved targets used to validate inherited full-duplex constraints.</summary>
+        public FoxRunEndpoint DefaultPublishTargets
+        {
+            get
+            {
+                lock (_gate)
+                    return _defaultPublishTargets;
+            }
+            set
+            {
+                value = FoxRunEndpointResolver.ValidateProfileTargets(value);
+                lock (_gate)
+                    _defaultPublishTargets = value;
+            }
+        }
 
         /// <summary>Manager-resolved source used only when later registrations omit Source.</summary>
         public FoxRunEndpoint DefaultSubscriptionSource
@@ -101,11 +119,14 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
-        public void Register(IFoxgloveInputSource source)
+        public void Register(
+            IFoxgloveInputSource source,
+            Action<string> reportUnavailable = null)
         {
             if (source == null)
                 throw new ArgumentNullException(nameof(source));
 
+            var firstUnavailableDiagnostic = string.Empty;
             lock (_gate)
             {
                 var addedRegistration = false;
@@ -118,18 +139,24 @@ namespace Unity.FoxgloveSDK.Components
                         info.Mode,
                         info.DeclaredSource,
                         info.HasExplicitSource,
-                        declaredTargets: 0,
-                        hasExplicitTargets: false,
+                        info.DeclaredTargets,
+                        info.HasExplicitTargets,
                         info.DeclaredEncoding,
                         info.HasExplicitEncoding,
                         _defaultSubscriptionSource,
-                        defaultTargets: FoxRunEndpoint.Foxglove,
+                        _defaultPublishTargets,
                         publishDefaultEncoding: _defaultSubscriptionEncoding,
-                        subscribeDefaultEncoding: _defaultSubscriptionEncoding);
+                        subscribeDefaultEncoding: _defaultSubscriptionEncoding,
+                        info.HasExplicitQos);
                     if (!topology.Success
                         || topology.Topology.Source != FoxRunEndpoint.Foxglove
                         || !info.SupportsWebSocket)
                     {
+                        if (topology.DiagnosticCode == FoxRunEndpointDiagnosticCode.QosRequiresRos2
+                            && string.IsNullOrEmpty(firstUnavailableDiagnostic))
+                        {
+                            firstUnavailableDiagnostic = topology.DiagnosticMessage;
+                        }
                         continue;
                     }
                     if (!_registrations.TryGetValue(info.Topic, out var registrations))
@@ -150,6 +177,9 @@ namespace Unity.FoxgloveSDK.Components
                 if (addedRegistration)
                     AddSourceSnapshotEntry(source);
             }
+
+            if (!string.IsNullOrEmpty(firstUnavailableDiagnostic))
+                reportUnavailable?.Invoke(firstUnavailableDiagnostic);
         }
 
         public void Unregister(IFoxgloveInputSource source)

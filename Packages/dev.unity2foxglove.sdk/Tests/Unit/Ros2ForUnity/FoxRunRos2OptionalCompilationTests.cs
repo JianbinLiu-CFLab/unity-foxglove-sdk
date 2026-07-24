@@ -127,6 +127,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void CustomPublisherHubStopsOnSynchronousPublishSessionEnd()
+        {
+            var hub = Text(
+                "Packages/dev.unity2foxglove.ros2forunity/Runtime/Native/FoxRun/"
+                + "FoxRunRos2CustomPublisherHub.cs");
+
+            Assert.Contains(
+                "_manager.FoxRunPublishSessionChanged += OnPublishSessionChanged;",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_manager.FoxRunPublishSessionChanged -= OnPublishSessionChanged;",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "=> ApplyPublishSessionPolicy(policy);",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "if (!_publishSessionTracker.AllowsPublishing)",
+                hub,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void FoxRunAddOnDiscoveryDelegatesNativePathRegistrationToR2fu()
         {
             var bootstrap = Text(
@@ -259,15 +284,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     .Assembly.GetName().Name);
             var completeConstructor = typeof(Unity2Foxglove.Ros2ForUnity.Native.FoxRunRos2GeneratedContract)
                 .GetConstructors()
-                .Single(constructor => constructor.GetParameters().Length == 9);
+                .Single(constructor => constructor.GetParameters().Length == 22);
             Assert.Equal(
                 new[]
                 {
                     typeof(string), typeof(string), typeof(string), typeof(string), typeof(string),
                     typeof(Unity.FoxgloveSDK.Components.FoxRunFlow),
                     typeof(Unity.FoxgloveSDK.Components.FoxRunEndpoint),
-                    typeof(Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset),
-                    typeof(bool)
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosProfile),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosReliability),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosDurability),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunQosHistory),
+                    typeof(bool),
+                    typeof(int),
+                    typeof(bool),
+                    typeof(bool),
+                    typeof(Unity.FoxgloveSDK.Components.FoxRunPolicy),
+                    typeof(float),
+                    typeof(bool),
+                    typeof(float)
                 },
                 completeConstructor.GetParameters().Select(parameter => parameter.ParameterType));
         }
@@ -360,7 +398,7 @@ namespace Demo
         [Unity.FoxgloveSDK.Components.FoxRun(""/native/string"",
             Mode = Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
             Source = Unity.FoxgloveSDK.Components.FoxRunEndpoint.Ros2Native,
-            Ros2Qos = Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset.SensorData,
+            QoS = Unity.FoxgloveSDK.Components.FoxRunQosProfile.SensorData,
             SchemaName = ""std_msgs/msg/String"")]
         private std_msgs.msg.String _incoming;
     }
@@ -458,7 +496,12 @@ namespace Demo
                     Path.Combine("..", "..", "Utilities", "FoxRunUpdatePolicy.cs"),
                     "FoxRunEncoding.cs",
                     "FoxRunEndpoint.cs",
-                    "FoxRunRos2QosPreset.cs"
+                    "FoxRunQosProfile.cs",
+                    "FoxRunQosReliability.cs",
+                    "FoxRunQosDurability.cs",
+                    "FoxRunQosHistory.cs",
+                    Path.Combine("..", "FoxRun", "FoxRunResolvedQos.cs"),
+                    Path.Combine("..", "FoxRun", "FoxRunRos2QosProfileResolver.cs")
                 }
                 .Select(file => CSharpSyntaxTree.ParseText(File.ReadAllText(Path.Combine(attributeRoot, file))));
             var compilation = CSharpCompilation.Create(

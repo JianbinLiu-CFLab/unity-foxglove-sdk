@@ -21,21 +21,65 @@ namespace Unity.FoxgloveSDK.Components
         public readonly float Hz;
         public readonly FoxRunPolicy Policy;
         public readonly float Tolerance;
+        public readonly FoxRunFlow Flow;
+        public readonly FoxRunEndpoint DeclaredSource;
+        public readonly bool HasExplicitSource;
+        public readonly FoxRunEndpoint DeclaredTargets;
+        public readonly bool HasExplicitTargets;
+        public readonly bool HasExplicitQos;
 
         public FoxgloveLogTopicInfo(string topic, float hz)
+            : this(
+                topic,
+                hz,
+                FoxRunPolicy.FixedRate,
+                0f,
+                FoxRunFlow.Publish,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                hasExplicitQos: false)
         {
-            Topic = topic;
-            Hz = hz;
-            Policy = FoxRunPolicy.FixedRate;
-            Tolerance = 0f;
         }
 
         public FoxgloveLogTopicInfo(string topic, float hz, FoxRunPolicy policy, float tolerance)
+            : this(
+                topic,
+                hz,
+                policy,
+                tolerance,
+                FoxRunFlow.Publish,
+                declaredSource: 0,
+                hasExplicitSource: false,
+                declaredTargets: 0,
+                hasExplicitTargets: false,
+                hasExplicitQos: false)
+        {
+        }
+
+        public FoxgloveLogTopicInfo(
+            string topic,
+            float hz,
+            FoxRunPolicy policy,
+            float tolerance,
+            FoxRunFlow flow,
+            FoxRunEndpoint declaredSource,
+            bool hasExplicitSource,
+            FoxRunEndpoint declaredTargets,
+            bool hasExplicitTargets,
+            bool hasExplicitQos)
         {
             Topic = topic;
             Hz = hz;
             Policy = policy;
             Tolerance = tolerance < 0 ? 0 : tolerance;
+            Flow = flow;
+            DeclaredSource = declaredSource;
+            HasExplicitSource = hasExplicitSource;
+            DeclaredTargets = declaredTargets;
+            HasExplicitTargets = hasExplicitTargets;
+            HasExplicitQos = hasExplicitQos;
         }
     }
 
@@ -307,7 +351,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (_mgrSearchCooldown <= 0f)
                 {
                     _mgrSearchCooldown = ManagerSearchIntervalSeconds;
-                    _mgr = FindFirstObjectByType<FoxgloveManager>();
+                    SetManager(FindFirstObjectByType<FoxgloveManager>());
                 }
                 if (_mgr == null) return;
             }
@@ -477,6 +521,11 @@ namespace Unity.FoxgloveSDK.Components
             out bool publishLive,
             out bool publishBus)
         {
+            publishLive = false;
+            publishBus = false;
+            if (!TryResolvePublishEndpointConstraint(source, topicIndex, operation))
+                return false;
+
             // Replay must not emit a second real-time external stream. Native
             // custom output is independent of WebSocket availability, but not
             // of the replay-output suppression boundary.
@@ -485,7 +534,6 @@ namespace Unity.FoxgloveSDK.Components
             publishLive = _mgr != null
                           && _mgr.IsRunning
                           && !suppressExternalOutputForReplay;
-            publishBus = false;
             if (!suppressExternalOutputForReplay && source is IFoxgloveTopicBusSource)
             {
                 if (source is IFoxgloveTopicBusDemandSource demandSource)
@@ -515,6 +563,46 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             return publishLive || publishBus;
+        }
+
+        private bool TryResolvePublishEndpointConstraint(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            string operation)
+        {
+            var info = source.FoxgloveLog_GetTopic(topicIndex);
+            if (!info.HasExplicitQos)
+                return true;
+
+            var subscriptionPolicy = _mgr?.ActiveFoxRunSubscriptionSessionPolicy;
+            var defaultSource = subscriptionPolicy != null
+                                && subscriptionPolicy.SubscriptionsEnabled
+                ? subscriptionPolicy.DefaultSource
+                : FoxRunEndpoint.Foxglove;
+            var resolution = FoxRunEndpointResolver.Resolve(
+                info.Flow,
+                info.DeclaredSource,
+                info.HasExplicitSource,
+                info.DeclaredTargets,
+                info.HasExplicitTargets,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource,
+                defaultTargets: _mgr != null
+                    ? _mgr.ActiveFoxRunPublishTargets
+                    : FoxRunEndpoint.Foxglove,
+                publishDefaultEncoding: FoxRunEncoding.JSON,
+                subscribeDefaultEncoding: FoxRunEncoding.JSON,
+                hasExplicitQos: true);
+            if (resolution.Success)
+                return true;
+
+            LogSourceFailure(
+                source,
+                topicIndex,
+                operation + " endpoint resolution",
+                new InvalidOperationException(resolution.DiagnosticMessage));
+            return false;
         }
 
         private bool DispatchTopic(
@@ -646,11 +734,107 @@ namespace Unity.FoxgloveSDK.Components
 
                     // Additive: export the contract to sinks (LocalOnly is gated
                     // inside the router). Live/MCAP keep their primary paths.
-                    _sinkRouter.Register(contract);
+                    if (TryResolvePublishEndpointConstraint(source, i, "topic sink registration"))
+                        _sinkRouter.Register(contract);
                 }
                 catch (Exception ex) when (IsRecoverableSourceException(ex))
                 {
                     LogSourceFailure(source, i, "topic contract registration", ex);
+                }
+            }
+        }
+
+        private void SetManager(FoxgloveManager manager)
+        {
+            if (ReferenceEquals(_mgr, manager))
+                return;
+
+            if (_mgr != null)
+            {
+                _mgr.FoxRunPublishSessionChanged -= OnFoxRunPublishSessionChanged;
+                _mgr.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
+            }
+
+            _mgr = manager;
+            if (_mgr != null)
+            {
+                _mgr.FoxRunPublishSessionChanged += OnFoxRunPublishSessionChanged;
+                _mgr.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;
+            }
+
+            ReconcileSinkContracts();
+        }
+
+        private void OnFoxRunPublishSessionChanged(FoxRunPublishSessionPolicy policy)
+        {
+            if (policy != null && !policy.SessionActive)
+            {
+                UnregisterSinkContracts();
+                return;
+            }
+
+            ReconcileSinkContracts();
+        }
+
+        private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
+        {
+            _ = policy;
+            ReconcileSinkContracts();
+        }
+
+        private void ReconcileSinkContracts()
+        {
+            UnregisterSinkContracts();
+
+            var visitedTopics = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in _timers)
+            {
+                var source = entry.Key;
+                var count = entry.Value.Timers.Length;
+                var contractSource = source as IFoxgloveTopicContractSource;
+                for (var i = 0; i < count; i++)
+                {
+                    try
+                    {
+                        if (!TryResolvePublishEndpointConstraint(source, i, "topic sink reconciliation"))
+                            continue;
+
+                        var contract = contractSource != null
+                            ? contractSource.FoxgloveLog_GetContract(i)
+                            : FallbackContract(source.FoxgloveLog_GetTopic(i));
+                        if (contract != null && visitedTopics.Add(contract.Topic))
+                            _sinkRouter.Register(contract);
+                    }
+                    catch (Exception ex) when (IsRecoverableSourceException(ex))
+                    {
+                        LogSourceFailure(source, i, "topic sink reconciliation register", ex);
+                    }
+                }
+            }
+        }
+
+        private void UnregisterSinkContracts()
+        {
+            var visitedTopics = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in _timers)
+            {
+                var source = entry.Key;
+                var count = entry.Value.Timers.Length;
+                var contractSource = source as IFoxgloveTopicContractSource;
+                for (var i = 0; i < count; i++)
+                {
+                    try
+                    {
+                        var contract = contractSource != null
+                            ? contractSource.FoxgloveLog_GetContract(i)
+                            : FallbackContract(source.FoxgloveLog_GetTopic(i));
+                        if (contract != null && visitedTopics.Add(contract.Topic))
+                            _sinkRouter.Unregister(contract.Topic);
+                    }
+                    catch (Exception ex) when (IsRecoverableSourceException(ex))
+                    {
+                        LogSourceFailure(source, i, "topic sink reconciliation unregister", ex);
+                    }
                 }
             }
         }
@@ -772,7 +956,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             _nextTriggerManagerSearchTime = now + ManagerSearchIntervalSeconds;
-            _mgr = FindFirstObjectByType<FoxgloveManager>();
+            SetManager(FindFirstObjectByType<FoxgloveManager>());
         }
 
         private static bool IsRecoverableSourceException(Exception ex)
@@ -839,6 +1023,12 @@ namespace Unity.FoxgloveSDK.Components
         /// <summary>Clears all timers and nulls the singleton reference.</summary>
         private void OnDestroy()
         {
+            if (_mgr != null)
+            {
+                _mgr.FoxRunPublishSessionChanged -= OnFoxRunPublishSessionChanged;
+                _mgr.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
+                _mgr = null;
+            }
             _sinkRouter.SinkFaulted -= OnSinkFaulted;
             _timers.Clear();
             _pendingAdds.Clear();

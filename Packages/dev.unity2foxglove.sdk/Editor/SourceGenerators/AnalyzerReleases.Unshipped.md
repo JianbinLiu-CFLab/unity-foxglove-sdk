@@ -15,7 +15,6 @@ FOXRUN209 | FoxRun | Error | Native message type must be declared directly in a 
 FOXRUN210 | FoxRun | Error | Explicit SchemaName must match the validated canonical ROS type.
 FOXRUN211 | FoxRun | Error | Native message graph cannot be deep-copied safely.
 FOXRUN212 | FoxRun | Error | Native generation requires the optional Native assembly reference.
-FOXRUN213 | FoxRun | Warning | Ros2Qos is ignored for explicit WebSocket-only subscriptions.
 FOXRUN400 | FoxRun | Warning | PublishAndSubscribe requires explicit authority ownership.
 FOXRUN402 | FoxRun | Error | Native PublishAndSubscribe requires a complete custom DTO interface contract.
 FOXRUN600 | FoxRun | Error | FoxRun mode must be Publish, Subscribe, or PublishAndSubscribe.
@@ -30,6 +29,9 @@ FOXRUN609 | FoxRun | Error | FoxRun Trigger cannot be combined with an explicit 
 FOXRUN610 | FoxRun | Error | Generated FoxRun method conflicts with an existing member.
 FOXRUN611 | FoxRun | Error | FoxRun Targets must be a non-empty set of known publish endpoints.
 FOXRUN612 | FoxRun | Error | Source, Targets, and Encoding must be legal for their declared directions.
+FOXRUN613 | FoxRun | Error | FoxRun ROS 2 QoS profile, policies, and depth must form a valid portable contract.
+FOXRUN614 | FoxRun | Error | Explicit FoxRun QoS requires at least one ROS 2 Native or ROS 2 Bridge direction.
+FOXRUN615 | FoxRun | Error | Members sharing one FoxRun topic must declare an identical directional QoS contract.
 
 ### Removed Rules
 
@@ -64,5 +66,6 @@ FOXRUN044 | FoxRun | Warning | Retired; renumbered as FOXRUN213 and permanently 
 ; FOXRUN205 | FoxRun | Error | Retired before release; Ros2Native is now a legal Subscribe or PublishAndSubscribe Source and this ID remains permanently reserved.
 ; FOXRUN206 | FoxRun | Error | Retired before release; directional Encoding legality now uses FOXRUN612 and this ID remains permanently reserved.
 ; FOXRUN214 | FoxRun | Error | Retired before release; directional Source legality now uses FOXRUN612 and this ID remains permanently reserved.
+; FOXRUN213 | FoxRun | Warning | Retired before release; explicit QoS without a ROS 2 direction now fails with FOXRUN614 and this ID remains permanently reserved.
 ; FOXRUN401 | FoxRun | Error | Retired before release; directional profiles resolve full-duplex encodings independently and this ID remains permanently reserved.
 ; FOXRUN601 | FoxRun | Error | Retired before release with the removed Unless declaration and remains permanently reserved.

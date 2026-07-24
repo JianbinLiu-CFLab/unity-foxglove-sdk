@@ -42,6 +42,9 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2CustomTypesupportMetadata.InterfaceDigest", publisherSection, StringComparison.Ordinal);
             Assert.Contains("FoxRunRos2CustomTypesupportMetadata.BaseRuntimePackageId", publisherSection, StringComparison.Ordinal);
+            Assert.Contains("declaredTargets:", publisherSection, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitTargets: false", publisherSection, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitQos: true", source, StringComparison.Ordinal);
             Assert.Contains(
                 "registrar.Register<global::unity2foxglove_foxrun_interfaces_v1.msg.Phase181State48D288ED82F1Envelope>",
                 source,
@@ -208,12 +211,22 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
                 canonicalType: "phase181/State",
                 encoding: FoxRunGenerationDescriptorConstants.JsonEncoding,
                 source: source,
-                ros2Qos: FoxRunGenerationDescriptorConstants.ReliableRos2Qos,
+                qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
                 generatesWebSocketCodec: true,
                 generatesRos2NativeRegistration: true,
                 ros2MessageShape: null,
                 ros2CustomDtoShape: state,
-                ros2ContractKind: FoxRunRos2ContractKind.CustomDto);
+                ros2ContractKind: FoxRunRos2ContractKind.CustomDto,
+                namedArgumentPresence:
+                    FoxRunNamedArgumentPresence.QoS
+                    | FoxRunNamedArgumentPresence.Reliability
+                    | FoxRunNamedArgumentPresence.Durability
+                    | FoxRunNamedArgumentPresence.History
+                    | FoxRunNamedArgumentPresence.Depth,
+                qosReliability: FoxRunGenerationDescriptorConstants.ReliableQosReliability,
+                qosDurability: FoxRunGenerationDescriptorConstants.VolatileQosDurability,
+                qosHistory: FoxRunGenerationDescriptorConstants.KeepLastQosHistory,
+                qosDepth: 10);
         }
     }
 }

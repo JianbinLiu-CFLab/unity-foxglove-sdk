@@ -65,10 +65,10 @@ namespace Unity.FoxgloveSDK.Editor
         private SerializedProperty _enableFoxRunInboundProperty;
         private SerializedProperty _defaultFoxRunPublishTargetsProperty;
         private SerializedProperty _defaultFoxRunPublishEncodingProperty;
-        private SerializedProperty _defaultFoxRunNativePublishRos2QosProperty;
+        private SerializedProperty _defaultFoxRunNativePublishQosProperty;
         private SerializedProperty _defaultFoxRunSubscriptionEncodingProperty;
         private SerializedProperty _defaultFoxRunSubscriptionSourceProperty;
-        private SerializedProperty _defaultFoxRunRos2QosProperty;
+        private SerializedProperty _defaultFoxRunNativeSubscribeQosProperty;
         private SerializedProperty _foxRunRos2NativeCopyBudgetBytesProperty;
         private SerializedProperty _allowRemoteFoxRunInboundWithSharedTokenProperty;
         private SerializedProperty _certificatePfxPathProperty;
@@ -108,7 +108,8 @@ namespace Unity.FoxgloveSDK.Editor
         private string _cachedRemoteSourceId;
         private string _cachedRemoteBaseUrl;
         private string _cachedRemoteDirectFileUrl;
-        private Ros2BridgeQosProfile _ros2BridgeQosThisRepaint = Ros2BridgeQosProfile.ReliableDefault;
+        private Components.FoxRunResolvedQos _ros2BridgeQosThisRepaint =
+            Components.FoxRunResolvedQos.Default;
         private Ros2BridgeStatsSnapshot _ros2BridgeStatsThisRepaint = Ros2BridgeStatsSnapshot.Disabled;
         private int _ros2BridgeStatsFrame = -1;
 
@@ -157,10 +158,10 @@ namespace Unity.FoxgloveSDK.Editor
             _enableFoxRunInboundProperty = serializedObject.FindProperty("_enableFoxRunInbound");
             _defaultFoxRunPublishTargetsProperty = serializedObject.FindProperty("_defaultFoxRunPublishTargets");
             _defaultFoxRunPublishEncodingProperty = serializedObject.FindProperty("_defaultFoxRunPublishEncoding");
-            _defaultFoxRunNativePublishRos2QosProperty = serializedObject.FindProperty("_defaultFoxRunNativePublishRos2Qos");
+            _defaultFoxRunNativePublishQosProperty = serializedObject.FindProperty("_defaultFoxRunNativePublishQos");
             _defaultFoxRunSubscriptionEncodingProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionEncoding");
             _defaultFoxRunSubscriptionSourceProperty = serializedObject.FindProperty("_defaultFoxRunSubscriptionSource");
-            _defaultFoxRunRos2QosProperty = serializedObject.FindProperty("_defaultFoxRunRos2Qos");
+            _defaultFoxRunNativeSubscribeQosProperty = serializedObject.FindProperty("_defaultFoxRunNativeSubscribeQos");
             _foxRunRos2NativeCopyBudgetBytesProperty = serializedObject.FindProperty("_foxRunRos2NativeCopyBudgetBytes");
             _allowRemoteFoxRunInboundWithSharedTokenProperty = serializedObject.FindProperty("_allowRemoteFoxRunInboundWithSharedToken");
             _certificatePfxPathProperty = serializedObject.FindProperty("_certificatePfxPath");
@@ -398,10 +399,10 @@ namespace Unity.FoxgloveSDK.Editor
                 case "_enableFoxRunInbound": return _enableFoxRunInboundProperty;
                 case "_defaultFoxRunPublishTargets": return _defaultFoxRunPublishTargetsProperty;
                 case "_defaultFoxRunPublishEncoding": return _defaultFoxRunPublishEncodingProperty;
-                case "_defaultFoxRunNativePublishRos2Qos": return _defaultFoxRunNativePublishRos2QosProperty;
+                case "_defaultFoxRunNativePublishQos": return _defaultFoxRunNativePublishQosProperty;
                 case "_defaultFoxRunSubscriptionEncoding": return _defaultFoxRunSubscriptionEncodingProperty;
                 case "_defaultFoxRunSubscriptionSource": return _defaultFoxRunSubscriptionSourceProperty;
-                case "_defaultFoxRunRos2Qos": return _defaultFoxRunRos2QosProperty;
+                case "_defaultFoxRunNativeSubscribeQos": return _defaultFoxRunNativeSubscribeQosProperty;
                 case "_foxRunRos2NativeCopyBudgetBytes": return _foxRunRos2NativeCopyBudgetBytesProperty;
                 case "_allowRemoteFoxRunInboundWithSharedToken": return _allowRemoteFoxRunInboundWithSharedTokenProperty;
                 case "_certificatePfxPath": return _certificatePfxPathProperty;

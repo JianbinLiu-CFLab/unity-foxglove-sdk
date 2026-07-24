@@ -26,7 +26,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         bool RemoveSubscription(object subscription);
 
-        object CreatePublisher<T>(string topic)
+        object CreatePublisher<T>(
+            string topic,
+            ROS2.QualityOfServiceProfile qos)
             where T : ROS2.Message, new();
 
         bool IsPublisherUsable<T>(object publisher)
@@ -50,6 +52,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private readonly object _sync = new object();
         private readonly IFoxRunRos2R2fuNodeDriver _driver;
         private readonly Func<bool> _canUseNativeRuntime;
+        private readonly IFoxRunRos2NativeQosProfileFactory _publisherQosFactory;
         private int _bindingLeases;
         private bool _hostOwnershipReleased;
         private bool _nodeReleased;
@@ -61,11 +64,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal Ros2ForUnityFoxRunNodeOwner(
             IFoxRunRos2R2fuNodeDriver driver,
-            Func<bool> canUseNativeRuntime)
+            Func<bool> canUseNativeRuntime,
+            IFoxRunRos2NativeQosProfileFactory publisherQosFactory = null)
         {
             _driver = driver ?? throw new ArgumentNullException(nameof(driver));
             _canUseNativeRuntime = canUseNativeRuntime
                                    ?? throw new ArgumentNullException(nameof(canUseNativeRuntime));
+            _publisherQosFactory = publisherQosFactory;
         }
 
         internal IFoxRunRos2NativeBackend AcquireBackend()
@@ -95,7 +100,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return new Ros2ForUnityFoxRunPublisherBackend(
                 this,
                 _driver,
-                _canUseNativeRuntime);
+                _canUseNativeRuntime,
+                _publisherQosFactory);
         }
 
         internal void ReleaseHostOwnership()
@@ -294,9 +300,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return false;
         }
 
-        public object CreatePublisher<T>(string topic)
+        public object CreatePublisher<T>(
+            string topic,
+            ROS2.QualityOfServiceProfile qos)
             where T : ROS2.Message, new()
-            => Volatile.Read(ref _node)?.CreatePublisher<T>(topic)
+            => Volatile.Read(ref _node)?.CreatePublisher<T>(topic, qos)
                ?? throw new ObjectDisposedException(nameof(Ros2ForUnityFoxRunR2fuNodeDriver));
 
         public bool IsPublisherUsable<T>(object publisher)

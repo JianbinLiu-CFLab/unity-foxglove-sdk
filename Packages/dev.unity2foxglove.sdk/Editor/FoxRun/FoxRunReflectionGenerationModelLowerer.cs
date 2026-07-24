@@ -7,9 +7,118 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 namespace Unity.FoxgloveSDK.Editor
 {
+    internal static class FoxRunReflectionConditionMemberResolver
+    {
+        internal static FoxRunConditionMemberKind Resolve(
+            Type declaringType,
+            string conditionName,
+            FoxRunNamedArgumentPresence presence)
+        {
+            if ((presence & FoxRunNamedArgumentPresence.OnlyIf) == 0)
+                return FoxRunConditionMemberKind.None;
+            if (declaringType == null || string.IsNullOrWhiteSpace(conditionName))
+                return FoxRunConditionMemberKind.Missing;
+            if (!IsCSharpIdentifier(conditionName))
+                return FoxRunConditionMemberKind.Missing;
+
+            const BindingFlags flags = BindingFlags.Instance
+                                       | BindingFlags.Static
+                                       | BindingFlags.Public
+                                       | BindingFlags.NonPublic
+                                       | BindingFlags.DeclaredOnly;
+            for (var candidateType = declaringType;
+                 candidateType != null;
+                 candidateType = candidateType.BaseType)
+            {
+                var declared = candidateType.GetMember(conditionName, flags);
+                if (declared.Length == 0)
+                    continue;
+
+                var declaredOnContainingType = candidateType == declaringType;
+                var accessible = declared
+                    .Where(member => IsAccessibleFromDerived(
+                        member,
+                        declaringType,
+                        declaredOnContainingType))
+                    .ToArray();
+                if (accessible.Length == 0)
+                    return FoxRunConditionMemberKind.Missing;
+
+                foreach (var member in accessible)
+                {
+                    switch (member)
+                    {
+                        case FieldInfo field when field.FieldType == typeof(bool):
+                            return FoxRunConditionMemberKind.Field;
+                        case PropertyInfo property
+                            when property.GetGetMethod(nonPublic: true) != null
+                                 && property.PropertyType == typeof(bool)
+                                 && property.GetIndexParameters().Length == 0:
+                            return FoxRunConditionMemberKind.Property;
+                        case MethodInfo method
+                            when !method.IsGenericMethodDefinition
+                                 && method.ReturnType == typeof(bool)
+                                 && method.GetParameters().Length == 0:
+                            return FoxRunConditionMemberKind.Method;
+                    }
+                }
+
+                return FoxRunConditionMemberKind.Invalid;
+            }
+
+            return FoxRunConditionMemberKind.Missing;
+        }
+
+        private static bool IsAccessibleFromDerived(
+            MemberInfo member,
+            Type containingType,
+            bool declaredOnContainingType)
+        {
+            if (declaredOnContainingType)
+                return true;
+
+            var sameAssembly = member?.DeclaringType?.Assembly == containingType?.Assembly;
+            switch (member)
+            {
+                case FieldInfo field:
+                    return field.IsPublic
+                           || field.IsFamily
+                           || field.IsFamilyOrAssembly
+                           || sameAssembly && (field.IsAssembly || field.IsFamilyAndAssembly);
+                case PropertyInfo property:
+                    var getter = property.GetGetMethod(nonPublic: true);
+                    return getter != null
+                           && IsAccessibleFromDerived(getter, containingType, false);
+                case MethodBase method:
+                    return method.IsPublic
+                           || method.IsFamily
+                           || method.IsFamilyOrAssembly
+                           || sameAssembly && (method.IsAssembly || method.IsFamilyAndAssembly);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsCSharpIdentifier(string value)
+        {
+            if (string.IsNullOrEmpty(value)
+                || !(value[0] == '_' || char.IsLetter(value[0])))
+            {
+                return false;
+            }
+            for (var index = 1; index < value.Length; index++)
+            {
+                if (value[index] != '_' && !char.IsLetterOrDigit(value[index]))
+                    return false;
+            }
+            return true;
+        }
+    }
+
     public static class FoxRunReflectionGenerationModelLowerer
     {
         public static FoxRunGenerationModel Lower(IReadOnlyList<FoxRunReflectionGenerationMember> members)
@@ -41,7 +150,7 @@ namespace Unity.FoxgloveSDK.Editor
                     protobufFieldNumber: member.ProtobufFieldNumber,
                     protobufTypeShape: member.ProtobufTypeShape,
                     source: FoxRunGenerationMember.DeclaredSourceToText(member.Source),
-                    ros2Qos: FoxRunGenerationMember.DeclaredRos2QosToText(member.Ros2Qos),
+                    qosProfile: FoxRunGenerationMember.DeclaredQosProfileToText(member.QosProfile),
                     generatesWebSocketCodec: member.GeneratesWebSocketCodec,
                     generatesRos2NativeRegistration: member.GeneratesRos2NativeRegistration,
                     ros2MessageShape: member.Ros2MessageShape,
@@ -49,7 +158,11 @@ namespace Unity.FoxgloveSDK.Editor
                     ros2ContractKind: member.Ros2ContractKind,
                     namedArgumentPresence: member.NamedArgumentPresence,
                     conditionMemberKind: member.ConditionMemberKind,
-                    targets: FoxRunGenerationMember.DeclaredTargetsToText(member.Targets)))
+                    targets: FoxRunGenerationMember.DeclaredTargetsToText(member.Targets),
+                    qosReliability: FoxRunGenerationMember.DeclaredQosReliabilityToText(member.QosReliability),
+                    qosDurability: FoxRunGenerationMember.DeclaredQosDurabilityToText(member.QosDurability),
+                    qosHistory: FoxRunGenerationMember.DeclaredQosHistoryToText(member.QosHistory),
+                    qosDepth: member.QosDepth))
                 .ToList();
             return FoxRunGenerationModel.FromMembers(lowered);
         }
@@ -74,7 +187,11 @@ namespace Unity.FoxgloveSDK.Editor
         public readonly int Encoding;
         public readonly int Source;
         public readonly int Targets;
-        public readonly int Ros2Qos;
+        public readonly int QosProfile;
+        public readonly int QosReliability;
+        public readonly int QosDurability;
+        public readonly int QosHistory;
+        public readonly int QosDepth;
         public readonly bool GeneratesWebSocketCodec;
         public readonly bool GeneratesRos2NativeRegistration;
         public readonly FoxRunRos2MessageShape Ros2MessageShape;
@@ -116,7 +233,7 @@ namespace Unity.FoxgloveSDK.Editor
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             int source = 0,
-            int ros2Qos = 0,
+            int qosProfile = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
             FoxRunRos2MessageShape ros2MessageShape = null,
@@ -124,7 +241,11 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            int targets = 0)
+            int targets = 0,
+            int qosReliability = 0,
+            int qosDurability = 0,
+            int qosHistory = 0,
+            int qosDepth = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -145,7 +266,11 @@ namespace Unity.FoxgloveSDK.Editor
             Encoding = encoding;
             Source = source;
             Targets = targets;
-            Ros2Qos = ros2Qos;
+            QosProfile = qosProfile;
+            QosReliability = qosReliability;
+            QosDurability = qosDurability;
+            QosHistory = qosHistory;
+            QosDepth = qosDepth;
             GeneratesWebSocketCodec = generatesWebSocketCodec
                 ?? (protobufTypeShape != null
                     || FoxRunCanonicalTypeNormalizer.IsKnownCanonicalType(
@@ -196,7 +321,7 @@ namespace Unity.FoxgloveSDK.Editor
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             int source = 0,
-            int ros2Qos = 0,
+            int qosProfile = 0,
             bool? generatesWebSocketCodec = null,
             bool? generatesRos2NativeRegistration = null,
             FoxRunRos2MessageShape ros2MessageShape = null,
@@ -204,7 +329,11 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
             FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
             FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
-            int targets = 0)
+            int targets = 0,
+            int qosReliability = 0,
+            int qosDurability = 0,
+            int qosHistory = 0,
+            int qosDepth = 0)
             : this(
                 ns,
                 className,
@@ -230,7 +359,7 @@ namespace Unity.FoxgloveSDK.Editor
                 protobufFieldNumber,
                 protobufTypeShape,
                 source,
-                ros2Qos,
+                qosProfile,
                 generatesWebSocketCodec,
                 generatesRos2NativeRegistration,
                 ros2MessageShape,
@@ -238,7 +367,11 @@ namespace Unity.FoxgloveSDK.Editor
                 ros2ContractKind,
                 namedArgumentPresence,
                 conditionMemberKind,
-                targets)
+                targets,
+                qosReliability,
+                qosDurability,
+                qosHistory,
+                qosDepth)
         {
         }
     }

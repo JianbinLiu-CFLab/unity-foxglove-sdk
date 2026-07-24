@@ -20,7 +20,7 @@ namespace Unity.FoxgloveSDK.Components
             bool subscriptionsEnabled,
             FoxRunEndpoint defaultProvider,
             FoxRunEncoding webSocketSubscriptionEncoding,
-            FoxRunRos2QosPreset defaultRos2Qos,
+            FoxRunResolvedQos defaultRos2Qos,
             int nativeCopyBudgetBytes,
             int transportAdmissionRateLimitHz,
             int defaultSubscribeRateHz)
@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.Components
         public FoxRunEncoding FoxgloveEncoding { get; }
 
         /// <summary>Concrete portable QoS preset for native ROS2 subscriptions.</summary>
-        public FoxRunRos2QosPreset DefaultRos2Qos { get; }
+        public FoxRunResolvedQos DefaultRos2Qos { get; }
 
         /// <summary>Maximum copied native message data retained before main-thread apply.</summary>
         public int NativeCopyBudgetBytes { get; }
@@ -71,7 +71,7 @@ namespace Unity.FoxgloveSDK.Components
                 false,
                 FoxRunEndpoint.Foxglove,
                 FoxRunEncoding.Protobuf,
-                FoxRunRos2QosPreset.Default,
+                FoxRunResolvedQos.Default,
                 FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes,
                 1,
                 1);
@@ -92,7 +92,7 @@ namespace Unity.FoxgloveSDK.Components
         internal FoxRunSubscriptionSessionPolicy BeginIfNeeded(
             FoxRunEndpoint defaultProvider,
             FoxRunEncoding webSocketSubscriptionEncoding,
-            FoxRunRos2QosPreset defaultRos2Qos,
+            FoxRunResolvedQos defaultRos2Qos,
             int nativeCopyBudgetBytes,
             int transportAdmissionRateLimitHz,
             int defaultSubscribeRateHz)
@@ -113,7 +113,7 @@ namespace Unity.FoxgloveSDK.Components
                 true,
                 FoxRunEndpointResolver.ValidateProfileSource(defaultProvider),
                 FoxRunEncodingResolver.ValidateProfileDefault(webSocketSubscriptionEncoding),
-                FoxRunRos2QosResolver.NormalizeManagerDefault(defaultRos2Qos),
+                defaultRos2Qos,
                 FoxRunEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(nativeCopyBudgetBytes),
                 Math.Max(1, transportAdmissionRateLimitHz),
                 Math.Max(1, defaultSubscribeRateHz));

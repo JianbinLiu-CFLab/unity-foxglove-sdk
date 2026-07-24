@@ -97,7 +97,15 @@ namespace Unity.FoxgloveSDK.Editor
             sb.Append(',');
             WriteStringField(sb, "targets", member.Targets);
             sb.Append(',');
-            WriteStringField(sb, "ros2Qos", member.Ros2Qos);
+            WriteStringField(sb, "qosProfile", member.QosProfile);
+            sb.Append(',');
+            WriteStringField(sb, "qosReliability", member.QosReliability);
+            sb.Append(',');
+            WriteStringField(sb, "qosDurability", member.QosDurability);
+            sb.Append(',');
+            WriteStringField(sb, "qosHistory", member.QosHistory);
+            sb.Append(',');
+            WriteIntField(sb, "qosDepth", member.QosDepth);
             sb.Append(',');
             WriteName(sb, "generatesWebSocketCodec");
             sb.Append(member.GeneratesWebSocketCodec ? "true" : "false");
@@ -305,6 +313,12 @@ namespace Unity.FoxgloveSDK.Editor
         {
             WriteName(sb, name);
             WriteString(sb, value);
+        }
+
+        private static void WriteIntField(StringBuilder sb, string name, int value)
+        {
+            WriteName(sb, name);
+            sb.Append(value.ToString(CultureInfo.InvariantCulture));
         }
 
         private static void WriteName(StringBuilder sb, string name)

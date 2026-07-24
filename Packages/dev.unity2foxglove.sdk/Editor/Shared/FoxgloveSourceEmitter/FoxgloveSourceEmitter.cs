@@ -80,8 +80,11 @@ namespace Unity.FoxgloveSDK.Editor
             public readonly string Source;
             /// <summary>Normalized declared publish-target set.</summary>
             public readonly string Targets;
-            /// <summary>Normalized portable ROS2 QoS policy.</summary>
-            public readonly string Ros2Qos;
+            public readonly string QosProfile;
+            public readonly string QosReliability;
+            public readonly string QosDurability;
+            public readonly string QosHistory;
+            public readonly int QosDepth;
             /// <summary>True when a byte-router codec is valid for this member.</summary>
             public readonly bool GeneratesWebSocketCodec;
             /// <summary>True when a validated closed native binding can be emitted.</summary>
@@ -135,7 +138,7 @@ namespace Unity.FoxgloveSDK.Editor
                 string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding, int protobufFieldNumber = 0,
                 FoxRunProtobufTypeShape protobufTypeShape = null,
                 string source = FoxRunGenerationDescriptorConstants.InheritSource,
-                string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+                string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
                 bool generatesWebSocketCodec = true,
                 bool generatesRos2NativeRegistration = false,
                 FoxRunRos2MessageShape ros2MessageShape = null,
@@ -144,7 +147,11 @@ namespace Unity.FoxgloveSDK.Editor
                 bool hasExplicitHz = true,
                 FoxRunConditionMemberKind conditionMemberKind = FoxRunConditionMemberKind.None,
                 FoxRunNamedArgumentPresence namedArgumentPresence = FoxRunNamedArgumentPresence.None,
-                string targets = FoxRunGenerationDescriptorConstants.InheritTargets)
+                string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+                string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+                string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+                string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+                int qosDepth = 0)
             {
                 MemberName = memberName;
                 TypeName = typeName;
@@ -171,7 +178,11 @@ namespace Unity.FoxgloveSDK.Editor
                 ProtobufTypeShape = protobufTypeShape;
                 Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
                 Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
-                Ros2Qos = ros2Qos ?? FoxRunGenerationDescriptorConstants.InheritRos2Qos;
+                QosProfile = qosProfile ?? FoxRunGenerationDescriptorConstants.InheritQosProfile;
+                QosReliability = qosReliability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                QosDurability = qosDurability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                QosHistory = qosHistory ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+                QosDepth = qosDepth;
                 GeneratesWebSocketCodec = generatesWebSocketCodec;
                 GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
                 Ros2MessageShape = ros2MessageShape;

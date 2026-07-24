@@ -115,6 +115,86 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void RouterFailsClosedBeforeRegisteringExplicitQosAgainstAnAllFoxgloveProfile()
+        {
+            var input = new ExplicitQosInheritedTopologyInput("/phase184/qos/all-foxglove");
+            var diagnostics = new List<string>();
+            var router = new FoxRunInputRouter
+            {
+                DefaultSubscriptionSource = FoxRunEndpoint.Foxglove,
+                DefaultPublishTargets = FoxRunEndpoint.Foxglove,
+                DefaultSubscriptionEncoding = FoxRunEncoding.JSON
+            };
+
+            router.Register(input, diagnostics.Add);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch(
+                    "/phase184/qos/all-foxglove",
+                    Array.Empty<byte>(),
+                    "json",
+                    1).Status);
+            Assert.Equal(
+                "FoxRun QoS requires at least one resolved ROS 2 direction.",
+                Assert.Single(diagnostics));
+            Assert.Equal(0, input.ApplyCount);
+        }
+
+        [Fact]
+        public void RouterRegistersFoxgloveInputWhenFullDuplexExplicitQosAlsoResolvesNativePublish()
+        {
+            var input = new ExplicitQosInheritedTopologyInput("/phase184/qos/native-publish");
+            var diagnostics = new List<string>();
+            var router = new FoxRunInputRouter
+            {
+                DefaultSubscriptionSource = FoxRunEndpoint.Foxglove,
+                DefaultPublishTargets = FoxRunEndpoint.Ros2Native,
+                DefaultSubscriptionEncoding = FoxRunEncoding.JSON
+            };
+
+            router.Register(input, diagnostics.Add);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                router.Dispatch(
+                    "/phase184/qos/native-publish",
+                    Array.Empty<byte>(),
+                    "json",
+                    1).Status);
+            Assert.Empty(diagnostics);
+            Assert.Equal(1, input.ApplyCount);
+        }
+
+        [Fact]
+        public void RouterRebuildRecapturesPublishTargetsForExplicitQosConstraint()
+        {
+            const string topic = "/phase184/qos/session-recapture";
+            var input = new ExplicitQosInheritedTopologyInput(topic);
+            var diagnostics = new List<string>();
+            var router = new FoxRunInputRouter
+            {
+                DefaultSubscriptionSource = FoxRunEndpoint.Foxglove,
+                DefaultPublishTargets = FoxRunEndpoint.Foxglove,
+                DefaultSubscriptionEncoding = FoxRunEncoding.JSON
+            };
+
+            router.Register(input, diagnostics.Add);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.UnknownTopic,
+                router.Dispatch(topic, Array.Empty<byte>(), "json", 1).Status);
+
+            router.DefaultPublishTargets = FoxRunEndpoint.Ros2Native;
+            router.Unregister(input);
+            router.Register(input, diagnostics.Add);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                router.Dispatch(topic, Array.Empty<byte>(), "json", 2).Status);
+            Assert.Equal(1, input.ApplyCount);
+        }
+
+        [Fact]
         public void JsonDecoderReadsDeclaredVectorShape()
         {
             var payload = Encoding.UTF8.GetBytes(
@@ -495,19 +575,30 @@ namespace Demo
             var unsubscribeIndex = setManager.IndexOf(
                 "_manager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;",
                 StringComparison.Ordinal);
+            var publishUnsubscribeIndex = setManager.IndexOf(
+                "_manager.FoxRunPublishSessionChanged -= OnFoxRunPublishSessionChanged;",
+                StringComparison.Ordinal);
             var assignIndex = setManager.IndexOf("_manager = manager;", StringComparison.Ordinal);
             var subscribeIndex = setManager.IndexOf(
                 "_manager.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;",
                 StringComparison.Ordinal);
+            var publishSubscribeIndex = setManager.IndexOf(
+                "_manager.FoxRunPublishSessionChanged += OnFoxRunPublishSessionChanged;",
+                StringComparison.Ordinal);
             var applyIndex = setManager.IndexOf("ApplyManagerPolicy();", StringComparison.Ordinal);
 
             Assert.True(unsubscribeIndex >= 0, "SetManager must unsubscribe the previous Manager session event.");
+            Assert.True(publishUnsubscribeIndex >= 0, "SetManager must unsubscribe the previous Manager publish event.");
             Assert.True(assignIndex >= 0, "SetManager must assign the new Manager.");
             Assert.True(subscribeIndex >= 0, "SetManager must subscribe the new Manager session event.");
+            Assert.True(publishSubscribeIndex >= 0, "SetManager must subscribe the new Manager publish event.");
             Assert.True(applyIndex >= 0, "SetManager must immediately apply the current session snapshot.");
             Assert.True(unsubscribeIndex < assignIndex, "Unsubscribe must happen before Manager assignment.");
+            Assert.True(publishUnsubscribeIndex < assignIndex, "Publish unsubscribe must happen before Manager assignment.");
             Assert.True(assignIndex < subscribeIndex, "Manager assignment must happen before subscription.");
+            Assert.True(assignIndex < publishSubscribeIndex, "Manager assignment must happen before publish subscription.");
             Assert.True(subscribeIndex < applyIndex, "Subscription must happen before the current snapshot is applied.");
+            Assert.True(publishSubscribeIndex < applyIndex, "Publish subscription must happen before the current snapshot is applied.");
 
             var onDisable = TestSources.ExtractMethod(source, "private void OnDisable()");
             var onDestroy = TestSources.ExtractMethod(source, "private void OnDestroy()");
@@ -535,6 +626,20 @@ namespace Demo
                 rebuildIndex > applyIndex,
                 "An active replacement session must rebuild registrations after applying its provider.");
 
+            var publishSessionChanged = TestSources.ExtractMethod(
+                source,
+                "private void OnFoxRunPublishSessionChanged(FoxRunPublishSessionPolicy policy)");
+            var targetsIndex = publishSessionChanged.IndexOf(
+                "_router.DefaultPublishTargets =",
+                StringComparison.Ordinal);
+            var publishRebuildIndex = publishSessionChanged.IndexOf(
+                "RebuildRouterRegistrationsForActiveSession();",
+                StringComparison.Ordinal);
+            Assert.True(targetsIndex >= 0, "A new publish session must refresh inherited Targets.");
+            Assert.True(
+                publishRebuildIndex > targetsIndex,
+                "Publish-session target refresh must happen before registrations are rebuilt.");
+
             var setManager = TestSources.ExtractMethod(
                 source,
                 "private void SetManager(FoxgloveManager manager)");
@@ -553,7 +658,7 @@ namespace Demo
             Assert.Contains("RemoveStaleSources();", rebuild, StringComparison.Ordinal);
             Assert.Contains("_scanSources.Sort(CompareInputSourceOrder);", rebuild, StringComparison.Ordinal);
             var unregisterIndex = rebuild.IndexOf("_router.Unregister(source);", StringComparison.Ordinal);
-            var registerIndex = rebuild.IndexOf("_router.Register(source);", StringComparison.Ordinal);
+            var registerIndex = rebuild.IndexOf("_router.Register(source, WarnOnce);", StringComparison.Ordinal);
             Assert.True(unregisterIndex >= 0, "Existing byte-router registrations must be removed.");
             Assert.True(
                 registerIndex > unregisterIndex,
@@ -604,6 +709,11 @@ namespace Demo
                 sessionPolicy,
                 StringComparison.Ordinal);
             Assert.Contains(
+                "_router.DefaultPublishTargets = _manager.ActiveFoxRunPublishTargets;",
+                managerPolicy,
+                StringComparison.Ordinal);
+            Assert.Contains("_router.Register(source, WarnOnce);", source, StringComparison.Ordinal);
+            Assert.Contains(
                 "_router.MaxMessagesPerSecondPerTopic = policy.TransportAdmissionRateLimitHz;",
                 sessionPolicy,
                 StringComparison.Ordinal);
@@ -622,7 +732,7 @@ namespace Demo
             var policy = sessionState.BeginIfNeeded(
                 FoxRunEndpoint.Foxglove,
                 FoxRunEncoding.Protobuf,
-                FoxRunRos2QosPreset.Default,
+                FoxRunResolvedQos.Default,
                 nativeCopyBudgetBytes: 4 * 1024 * 1024,
                 transportAdmissionRateLimitHz: 60,
                 defaultSubscribeRateHz: 60);
@@ -673,7 +783,7 @@ namespace Demo
             var frozenPolicy = sessionState.BeginIfNeeded(
                 FoxRunEndpoint.Ros2Native,
                 FoxRunEncoding.JSON,
-                FoxRunRos2QosPreset.SensorData,
+                FoxRunResolvedQos.SensorData,
                 nativeCopyBudgetBytes: 1024,
                 transportAdmissionRateLimitHz: 1,
                 defaultSubscribeRateHz: 1);
@@ -970,6 +1080,44 @@ namespace Demo
                 out string error)
             {
                 ApplyCounts[topicIndex]++;
+                error = string.Empty;
+                return true;
+            }
+
+            public int FoxgloveInput_Flush(double nowSeconds, int inheritedSubscribeRateHz) => 0;
+        }
+
+        private sealed class ExplicitQosInheritedTopologyInput : IFoxgloveInputSource
+        {
+            private readonly FoxgloveInputTopicInfo _topic;
+
+            public ExplicitQosInheritedTopologyInput(string topic)
+            {
+                _topic = new FoxgloveInputTopicInfo(
+                    topic,
+                    FoxRunEncoding.JSON,
+                    FoxRunFlow.PublishAndSubscribe,
+                    declaredSource: 0,
+                    hasExplicitSource: false,
+                    hasExplicitEncoding: false,
+                    supportsWebSocket: true,
+                    supportsRos2Native: true,
+                    declaredTargets: 0,
+                    hasExplicitTargets: false,
+                    hasExplicitQos: true);
+            }
+
+            public int ApplyCount { get; private set; }
+            public int FoxgloveInput_TopicCount => 1;
+            public FoxgloveInputTopicInfo FoxgloveInput_GetTopic(int index) => _topic;
+
+            public bool FoxgloveInput_TryStage(
+                int topicIndex,
+                byte[] payload,
+                string encoding,
+                out string error)
+            {
+                ApplyCount++;
                 error = string.Empty;
                 return true;
             }

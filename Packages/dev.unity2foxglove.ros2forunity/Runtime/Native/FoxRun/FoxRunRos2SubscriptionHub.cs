@@ -289,18 +289,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal static bool TryResolve(
             FoxRunRos2GeneratedContract contract,
             FoxRunSubscriptionSessionPolicy policy,
-            out FoxRunRos2QosPreset qos,
+            out FoxRunResolvedQos qos,
             out string diagnostic)
             => TryResolve(contract, policy, out qos, out _, out diagnostic);
 
         internal static bool TryResolve(
             FoxRunRos2GeneratedContract contract,
             FoxRunSubscriptionSessionPolicy policy,
-            out FoxRunRos2QosPreset qos,
+            out FoxRunResolvedQos qos,
             out FoxRunRos2RegistrationError error,
             out string diagnostic)
         {
-            qos = FoxRunRos2QosPreset.Default;
+            qos = FoxRunResolvedQos.Default;
             error = FoxRunRos2RegistrationError.RegistrationRejected;
             if (contract == null)
             {
@@ -327,12 +327,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 && !Enum.IsDefined(typeof(FoxRunEndpoint), contract.Source))
             {
                 diagnostic = "Generated ROS2 contract has an invalid Source declaration.";
-                return false;
-            }
-            if (!Enum.IsDefined(typeof(FoxRunRos2QosPreset), contract.QosPreset))
-            {
-                error = FoxRunRos2RegistrationError.UnsupportedQos;
-                diagnostic = "Generated ROS2 contract has an invalid QoS declaration.";
                 return false;
             }
             if (!Enum.IsDefined(typeof(FoxRunFlow), contract.Mode))
@@ -392,7 +386,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return false;
             }
 
-            var qosResolution = FoxRunRos2QosResolver.Resolve(contract.QosPreset, policy.DefaultRos2Qos);
+            var qosResolution = contract.ResolveQos(policy.DefaultRos2Qos);
             if (!qosResolution.Success)
             {
                 error = FoxRunRos2RegistrationError.UnsupportedQos;
@@ -400,7 +394,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return false;
             }
 
-            qos = qosResolution.Preset;
+            qos = qosResolution.Qos;
             error = FoxRunRos2RegistrationError.None;
             diagnostic = string.Empty;
             return true;
@@ -1045,17 +1039,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             FoxRunRos2RegistrationError error,
             string diagnostic)
             => UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
-                contract, contract.QosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Unsupported,
+                contract, FoxRunResolvedQos.Default, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Unsupported,
                 error, diagnostic,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 
         private void RecordWaiting(
             string endpointIdentity,
             FoxRunRos2GeneratedContract contract,
-            FoxRunRos2QosPreset qosPreset,
+            FoxRunResolvedQos qos,
             string diagnostic)
             => UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
-                contract, qosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.WaitingForRuntime,
+                contract, qos, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.WaitingForRuntime,
                 FoxRunRos2RegistrationError.RuntimeUnavailable, diagnostic,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));
 
@@ -1065,7 +1059,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Exception exception)
         {
             UpdateDiagnostic(endpointIdentity, new FoxRunRos2SubscriptionBindingSnapshot(
-                contract, contract.QosPreset, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Failed,
+                contract, FoxRunResolvedQos.Default, ActiveGeneration(), FoxRunRos2SubscriptionBindingState.Failed,
                 FoxRunRos2RegistrationError.BackendFailure,
                 FoxRunRos2PublicDiagnostic.Describe(FoxRunRos2RegistrationError.BackendFailure),
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0));

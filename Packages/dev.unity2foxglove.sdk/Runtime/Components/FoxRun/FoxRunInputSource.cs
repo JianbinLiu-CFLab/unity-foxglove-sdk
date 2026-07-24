@@ -71,7 +71,10 @@ namespace Unity.FoxgloveSDK.Components
             bool supportsRos2Native,
             FoxRunPolicy policy = FoxRunPolicy.FixedRate,
             float hz = -1f,
-            bool hasExplicitHz = false)
+            bool hasExplicitHz = false,
+            FoxRunEndpoint declaredTargets = 0,
+            bool hasExplicitTargets = false,
+            bool hasExplicitQos = false)
             : this(
                 topic,
                 declaredEncoding,
@@ -83,7 +86,10 @@ namespace Unity.FoxgloveSDK.Components
                 supportsRos2Native,
                 policy,
                 hz,
-                hasExplicitHz)
+                hasExplicitHz,
+                declaredTargets,
+                hasExplicitTargets,
+                hasExplicitQos)
         {
         }
 
@@ -98,7 +104,10 @@ namespace Unity.FoxgloveSDK.Components
             bool supportsRos2Native,
             FoxRunPolicy policy = FoxRunPolicy.FixedRate,
             float hz = -1f,
-            bool hasExplicitHz = false)
+            bool hasExplicitHz = false,
+            FoxRunEndpoint declaredTargets = 0,
+            bool hasExplicitTargets = false,
+            bool hasExplicitQos = false)
         {
             Topic = topic ?? string.Empty;
             DeclaredEncoding = declaredEncoding;
@@ -114,6 +123,9 @@ namespace Unity.FoxgloveSDK.Components
             Policy = policy;
             Hz = hz;
             HasExplicitHz = hasExplicitHz;
+            DeclaredTargets = declaredTargets;
+            HasExplicitTargets = hasExplicitTargets;
+            HasExplicitQos = hasExplicitQos;
             HeartbeatIntervalSeconds = policy == FoxRunPolicy.Change
                                        && hasExplicitHz
                                        && hz > 0f
@@ -130,6 +142,9 @@ namespace Unity.FoxgloveSDK.Components
         public bool HasExplicitEncoding { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
+        public FoxRunEndpoint DeclaredTargets { get; }
+        public bool HasExplicitTargets { get; }
+        public bool HasExplicitQos { get; }
         /// <summary>Per-contract policy applied after transport admission.</summary>
         public FoxRunPolicy Policy { get; }
         /// <summary>Declared cadence; input uses it only when <see cref="HasExplicitHz"/> is true and positive.</summary>

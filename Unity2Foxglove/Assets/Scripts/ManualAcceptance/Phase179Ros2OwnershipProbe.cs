@@ -45,8 +45,15 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
         FoxRunEndpoint.Foxglove;
     [SerializeField] private FoxRunEncoding capturedFoxgloveEncoding =
         FoxRunEncoding.Protobuf;
-    [SerializeField] private FoxRunRos2QosPreset capturedDefaultRos2Qos =
-        FoxRunRos2QosPreset.Default;
+    [SerializeField] private FoxRunQosProfile capturedQosProfile =
+        FoxRunQosProfile.Default;
+    [SerializeField] private FoxRunQosReliability capturedQosReliability =
+        FoxRunQosReliability.Reliable;
+    [SerializeField] private FoxRunQosDurability capturedQosDurability =
+        FoxRunQosDurability.Volatile;
+    [SerializeField] private FoxRunQosHistory capturedQosHistory =
+        FoxRunQosHistory.KeepLast;
+    [SerializeField] private int capturedQosDepth = 10;
     [SerializeField] private int capturedNativeCopyBudgetBytes = 4 * 1024 * 1024;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
@@ -57,7 +64,7 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
         Topic,
         Mode = FoxRunFlow.Subscribe,
         Source = FoxRunEndpoint.Ros2Native,
-        Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+        QoS = FoxRunQosProfile.Default)]
     private std_msgs.msg.String inputString;
 #else
     [Header("Native Input Availability")]
@@ -217,7 +224,11 @@ public sealed partial class Phase179Ros2OwnershipProbe : MonoBehaviour
         capturedSessionGeneration = policy.SessionGeneration;
         capturedDefaultSubscriptionSource = policy.DefaultSource;
         capturedFoxgloveEncoding = policy.FoxgloveEncoding;
-        capturedDefaultRos2Qos = policy.DefaultRos2Qos;
+        capturedQosProfile = policy.DefaultRos2Qos.Profile;
+        capturedQosReliability = policy.DefaultRos2Qos.Reliability;
+        capturedQosDurability = policy.DefaultRos2Qos.Durability;
+        capturedQosHistory = policy.DefaultRos2Qos.History;
+        capturedQosDepth = policy.DefaultRos2Qos.Depth;
         capturedNativeCopyBudgetBytes = policy.NativeCopyBudgetBytes;
     }
 

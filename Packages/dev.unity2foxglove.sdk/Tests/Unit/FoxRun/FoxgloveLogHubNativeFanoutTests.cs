@@ -115,6 +115,95 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal(64, fixture.Source.LivePublishes);
         }
 
+        [Fact]
+        public void ExplicitQosWithInheritedAllFoxgloveProfileFailsBeforeLivePublish()
+        {
+            var fixture = new WebSocketOnlyHubFixture(
+                FoxRunEndpoint.Foxglove,
+                hasExplicitQos: true);
+
+            Assert.False(fixture.Trigger());
+            Assert.Equal(0, fixture.Source.LivePublishes);
+        }
+
+        [Fact]
+        public void ExplicitQosDoesNotTreatDisabledInheritedNativeSubscriptionAsRos2Direction()
+        {
+            var fixture = new WebSocketOnlyHubFixture(
+                FoxRunEndpoint.Foxglove,
+                hasExplicitQos: true,
+                flow: FoxRunFlow.PublishAndSubscribe,
+                disabledNativeSubscription: true);
+
+            Assert.False(fixture.Trigger());
+            Assert.Equal(0, fixture.Source.LivePublishes);
+        }
+
+        [Fact]
+        public void ExplicitQosWithInheritedAllFoxgloveProfileNeverRegistersExternalSink()
+        {
+            var fixture = new WebSocketOnlyHubFixture(
+                FoxRunEndpoint.Foxglove,
+                hasExplicitQos: true);
+            var sink = new LifecycleRecordingSink();
+            fixture.AddSink(sink);
+
+            Assert.True(fixture.AddSource());
+            Assert.Equal(0, sink.RegisterCalls);
+        }
+
+        [Fact]
+        public void ExplicitQosWithInheritedNativeProfileRegistersExternalSink()
+        {
+            var fixture = new WebSocketOnlyHubFixture(
+                FoxRunEndpoint.Ros2Native,
+                hasExplicitQos: true);
+            var sink = new LifecycleRecordingSink();
+            fixture.AddSink(sink);
+
+            Assert.True(fixture.AddSource());
+            Assert.Equal(1, sink.RegisterCalls);
+        }
+
+        [Fact]
+        public void PublishSessionChangesDisposeAndRecreateExternalSinkContract()
+        {
+            var fixture = new WebSocketOnlyHubFixture(
+                FoxRunEndpoint.Ros2Native,
+                hasExplicitQos: true);
+            var sink = new LifecycleRecordingSink();
+            fixture.AddSink(sink);
+            Assert.True(fixture.AddSource());
+            Assert.Equal(1, sink.RegisterCalls);
+
+            fixture.ChangePublishTargets(FoxRunEndpoint.Foxglove);
+
+            Assert.Equal(1, sink.UnregisterCalls);
+            Assert.Equal(1, sink.RegisterCalls);
+
+            fixture.ChangePublishTargets(FoxRunEndpoint.Ros2Native);
+
+            Assert.Equal(1, sink.UnregisterCalls);
+            Assert.Equal(2, sink.RegisterCalls);
+        }
+
+        [Fact]
+        public void EndingPublishSessionDisposesWithoutRecreatingExternalSinkContract()
+        {
+            var fixture = new WebSocketOnlyHubFixture(
+                FoxRunEndpoint.Ros2Native,
+                hasExplicitQos: true);
+            var sink = new LifecycleRecordingSink();
+            fixture.AddSink(sink);
+            Assert.True(fixture.AddSource());
+            Assert.Equal(1, sink.RegisterCalls);
+
+            fixture.EndPublishSession();
+
+            Assert.Equal(1, sink.UnregisterCalls);
+            Assert.Equal(1, sink.RegisterCalls);
+        }
+
         private sealed class HubFixture
         {
             private static readonly FieldInfo ManagerField = typeof(FoxgloveLogHub).GetField(
@@ -159,38 +248,75 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
         private sealed class WebSocketOnlyHubFixture
         {
-            private static readonly FieldInfo ManagerField = typeof(FoxgloveLogHub).GetField(
-                "_mgr",
+            private static readonly MethodInfo SetManagerMethod = typeof(FoxgloveLogHub).GetMethod(
+                "SetManager",
                 BindingFlags.Instance | BindingFlags.NonPublic);
             private static readonly MethodInfo TriggerMethod = typeof(FoxgloveLogHub).GetMethod(
                 "TriggerSource",
                 BindingFlags.Instance | BindingFlags.NonPublic);
+            private static readonly MethodInfo AddSourceMethod = typeof(FoxgloveLogHub).GetMethod(
+                "AddSourceNow",
+                BindingFlags.Instance | BindingFlags.NonPublic);
 
             private readonly Func<IFoxgloveLogSource, int, bool> _trigger;
+            private readonly FoxgloveLogHub _hub;
+            private readonly FoxgloveManager _manager;
 
-            public WebSocketOnlyHubFixture()
+            public WebSocketOnlyHubFixture(
+                FoxRunEndpoint publishTargets = FoxRunEndpoint.Foxglove,
+                bool hasExplicitQos = false,
+                FoxRunFlow flow = FoxRunFlow.Publish,
+                bool disabledNativeSubscription = false)
             {
-                Assert.NotNull(ManagerField);
+                Assert.NotNull(SetManagerMethod);
                 Assert.NotNull(TriggerMethod);
-                var hub = new FoxgloveLogHub();
-                ManagerField.SetValue(
-                    hub,
-                    new FoxgloveManager
-                    {
-                        IsRunning = true,
-                        NowNs = 123_456_789UL,
-                    });
+                Assert.NotNull(AddSourceMethod);
+                _hub = new FoxgloveLogHub();
+                _manager = new FoxgloveManager
+                {
+                    IsRunning = true,
+                    NowNs = 123_456_789UL,
+                    ActiveFoxRunPublishTargets = publishTargets,
+                };
+                if (disabledNativeSubscription)
+                {
+                    _manager.ActiveFoxRunSubscriptionSource = FoxRunEndpoint.Ros2Native;
+                    _manager.ActiveFoxRunSubscriptionSessionPolicy =
+                        FoxRunSubscriptionSessionPolicy.Disabled(0);
+                }
+                SetManagerMethod.Invoke(
+                    _hub,
+                    new object[] { _manager });
                 _trigger = (Func<IFoxgloveLogSource, int, bool>)Delegate.CreateDelegate(
                     typeof(Func<IFoxgloveLogSource, int, bool>),
-                    hub,
+                    _hub,
                     TriggerMethod);
-                Source = new WebSocketOnlySource();
+                Source = new WebSocketOnlySource(hasExplicitQos, flow);
             }
 
             public WebSocketOnlySource Source { get; }
 
             public bool Trigger()
                 => _trigger(Source, 0);
+
+            public bool AddSource()
+                => (bool)AddSourceMethod.Invoke(_hub, new object[] { Source });
+
+            public void AddSink(IFoxTopicSink sink)
+                => _hub.TopicSinkRouter.AddSink(sink);
+
+            public void ChangePublishTargets(FoxRunEndpoint targets)
+            {
+                _manager.ActiveFoxRunPublishTargets = targets;
+                _manager.RaiseFoxRunPublishSessionChanged();
+            }
+
+            public void EndPublishSession()
+            {
+                _manager.ActiveFoxRunPublishSessionPolicy =
+                    FoxRunPublishSessionPolicy.Disabled(1);
+                _manager.RaiseFoxRunPublishSessionChanged();
+            }
         }
 
         private sealed class FanoutSource : IFoxgloveLogSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveLogPolicySource
@@ -259,6 +385,17 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
         private sealed class WebSocketOnlySource : IFoxgloveLogSource
         {
+            private readonly bool _hasExplicitQos;
+            private readonly FoxRunFlow _flow;
+
+            public WebSocketOnlySource(
+                bool hasExplicitQos = false,
+                FoxRunFlow flow = FoxRunFlow.Publish)
+            {
+                _hasExplicitQos = hasExplicitQos;
+                _flow = flow;
+            }
+
             public int FoxgloveLog_TopicCount => 1;
             public int LivePublishes { get; private set; }
 
@@ -268,7 +405,13 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                     "/phase181/websocket-only",
                     30f,
                     FoxRunPolicy.Trigger,
-                    0f);
+                    0f,
+                    _flow,
+                    declaredSource: 0,
+                    hasExplicitSource: false,
+                    declaredTargets: 0,
+                    hasExplicitTargets: false,
+                    hasExplicitQos: _hasExplicitQos);
             }
 
             public void FoxgloveLog_Publish(int topicIndex, FoxgloveManager manager, ulong nowNs)
@@ -280,6 +423,20 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             {
                 LivePublishes = 0;
             }
+        }
+
+        private sealed class LifecycleRecordingSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
+        {
+            public string Name => "recording-lifecycle";
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.External;
+            public int RegisterCalls { get; private set; }
+            public int UnregisterCalls { get; private set; }
+
+            public void Register(FoxTopicContract contract) => RegisterCalls++;
+            public void Unregister(string topic) => UnregisterCalls++;
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+            public void Flush() { }
+            public void Dispose() { }
         }
     }
 }

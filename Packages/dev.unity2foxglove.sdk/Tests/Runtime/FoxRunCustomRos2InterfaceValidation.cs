@@ -579,12 +579,20 @@ namespace Unity.FoxgloveSDK.Tests
                   && customTransportHost.Contains("ReleaseLease", StringComparison.Ordinal),
                 "181D-1: custom typed input and output retain one demand-created node lease host");
 
-            Check(customPublisherHub.Contains("Ros2NativeOutputPolicy.Enabled", StringComparison.Ordinal)
-                  && customPublisherHub.Contains("IFoxRunRos2CustomPublisherSource", StringComparison.Ordinal)
-                  && customPublisherHub.Contains("TryAcquirePublisherBackend", StringComparison.Ordinal)
-                  && customPublisherHub.Contains("FoxRunRos2CustomOriginRegistry.BeginPublisher", StringComparison.Ordinal)
-                  && customPublisherHub.Contains("!readiness.IsReady", StringComparison.Ordinal),
-                "181D-2: custom output demand is independent of subscription sessions and fails closed before endpoint creation");
+            var resolveQos = customPublisherHub.IndexOf("contract.ResolveQos(", StringComparison.Ordinal);
+            var resolveTopology = customPublisherHub.IndexOf("ShouldRegisterNativePublisher(", StringComparison.Ordinal);
+            var readinessGate = customPublisherHub.IndexOf("!readiness.IsReady", StringComparison.Ordinal);
+            var acquireBackend = customPublisherHub.IndexOf("TryAcquirePublisherBackend", StringComparison.Ordinal);
+            var beginPublisher = customPublisherHub.IndexOf(
+                "FoxRunRos2CustomOriginRegistry.BeginPublisher",
+                StringComparison.Ordinal);
+            Check(customPublisherHub.Contains("IFoxRunRos2CustomPublisherSource", StringComparison.Ordinal)
+                  && resolveQos >= 0
+                  && resolveTopology > resolveQos
+                  && readinessGate > resolveTopology
+                  && acquireBackend > readinessGate
+                  && beginPublisher > acquireBackend,
+                "181D-2: custom output demand resolves QoS and native targets independently of subscription sessions and fails closed before endpoint creation");
 
             var stopStart = customPublisherBinding.IndexOf("internal void Stop()", StringComparison.Ordinal);
             var stopEnd = customPublisherBinding.IndexOf("private void OnBusEnvelope", StringComparison.Ordinal);

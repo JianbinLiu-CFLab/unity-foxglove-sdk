@@ -13,12 +13,16 @@ namespace Unity.FoxgloveSDK.Components
     public partial class FoxgloveManager
     {
         // Kept as the source for one-to-two migration of scenes serialized before Phase176.
+        [FormerlySerializedAs("_defaultFoxRunWireEncoding")]
         [SerializeField, HideInInspector, Obsolete("Use directional FoxRun encoding defaults.")]
         private FoxRunEncoding _defaultFoxRunEncoding = FoxRunEncoding.Protobuf;
         [SerializeField] private FoxRunEncoding _defaultFoxRunSubscriptionEncoding = FoxRunEncoding.Protobuf;
         [FormerlySerializedAs("_defaultFoxRunEndpoint")]
+        [FormerlySerializedAs("_defaultFoxRunSubscriptionProvider")]
         [SerializeField] private FoxRunEndpoint _defaultFoxRunSubscriptionSource = FoxRunEndpoint.Foxglove;
-        [SerializeField] private FoxRunRos2QosPreset _defaultFoxRunRos2Qos = FoxRunRos2QosPreset.Default;
+        [FormerlySerializedAs("_defaultFoxRunRos2Qos")]
+        [SerializeField, HideInInspector] private int _legacyDefaultFoxRunRos2Qos = 1;
+        [SerializeField] private FoxRunQosProfileSettings _defaultFoxRunNativeSubscribeQos = new();
         [SerializeField, Min(FoxRunEncodingPolicyMigration.MinRos2NativeCopyBudgetBytes)]
         private int _foxRunRos2NativeCopyBudgetBytes = FoxRunEncodingPolicyMigration.DefaultRos2NativeCopyBudgetBytes;
 
@@ -71,19 +75,17 @@ namespace Unity.FoxgloveSDK.Components
                 _defaultFoxRunSubscriptionSource =
                     FoxRunEndpointResolver.ValidateProfileSource(value);
                 _foxRunPolicySerializationVersion =
-                    FoxRunEncodingPolicyMigration.CurrentSerializationVersion;
+                    FoxRunEncodingPolicyMigration.QosProfileSerializationVersion;
             }
         }
 
-        /// <summary>Serialized default QoS used by native ROS2 subscription contracts.</summary>
-        public FoxRunRos2QosPreset DefaultFoxRunRos2Qos
+        /// <summary>Resolved default QoS used by native ROS2 subscription contracts.</summary>
+        public FoxRunResolvedQos DefaultFoxRunNativeSubscribeQos
         {
-            get => FoxRunRos2QosResolver.NormalizeManagerDefault(_defaultFoxRunRos2Qos);
-            set
+            get
             {
-                _defaultFoxRunRos2Qos = FoxRunRos2QosResolver.NormalizeManagerDefault(value);
-                _foxRunPolicySerializationVersion =
-                    FoxRunEncodingPolicyMigration.CurrentSerializationVersion;
+                _defaultFoxRunNativeSubscribeQos ??= new FoxRunQosProfileSettings();
+                return _defaultFoxRunNativeSubscribeQos.Resolve();
             }
         }
 
@@ -97,7 +99,7 @@ namespace Unity.FoxgloveSDK.Components
                 _foxRunRos2NativeCopyBudgetBytes =
                     FoxRunEncodingPolicyMigration.NormalizeRos2NativeCopyBudgetBytes(value);
                 _foxRunPolicySerializationVersion =
-                    FoxRunEncodingPolicyMigration.CurrentSerializationVersion;
+                    FoxRunEncodingPolicyMigration.QosProfileSerializationVersion;
             }
         }
 
@@ -114,10 +116,10 @@ namespace Unity.FoxgloveSDK.Components
                 : DefaultFoxRunSubscriptionSource;
 
         /// <summary>Effective ROS2 QoS for the active subscription session.</summary>
-        public FoxRunRos2QosPreset ActiveFoxRunRos2Qos =>
+        public FoxRunResolvedQos ActiveFoxRunRos2Qos =>
             ActiveFoxRunSubscriptionSessionPolicy.SubscriptionsEnabled
                 ? ActiveFoxRunSubscriptionSessionPolicy.DefaultRos2Qos
-                : DefaultFoxRunRos2Qos;
+                : DefaultFoxRunNativeSubscribeQos;
 
         /// <summary>Effective native copy budget for the active subscription session.</summary>
         public int ActiveFoxRunRos2NativeCopyBudgetBytes =>

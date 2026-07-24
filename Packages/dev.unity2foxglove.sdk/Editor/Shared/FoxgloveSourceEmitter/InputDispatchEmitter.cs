@@ -47,7 +47,10 @@ namespace Unity.FoxgloveSDK.Editor
                     $"supportsRos2Native: {BoolLiteral(member.GeneratesRos2NativeRegistration)}, " +
                     $"policy: {TopicMetadataEmitter.PolicyLiteral(member.Policy)}, " +
                     $"hz: {TypeExprEmitter.FloatLiteral(member.Hz)}, " +
-                    $"hasExplicitHz: {BoolLiteral(member.HasExplicitHz)});");
+                    $"hasExplicitHz: {BoolLiteral(member.HasExplicitHz)}, " +
+                    $"declaredTargets: {TargetsLiteral(member.Targets)}, " +
+                    $"hasExplicitTargets: {BoolLiteral(HasExplicit(member, FoxRunNamedArgumentPresence.Targets))}, " +
+                    $"hasExplicitQos: {BoolLiteral(HasExplicitQos(member))});");
             }
             sb.AppendLine($"{pad}            default: throw new ArgumentOutOfRangeException(nameof(index));");
             sb.AppendLine($"{pad}        }}");
@@ -330,7 +333,7 @@ namespace Unity.FoxgloveSDK.Editor
             return "(FoxRunEncoding)0";
         }
 
-        private static string SourceLiteral(string provider)
+        internal static string SourceLiteral(string provider)
         {
             if (string.Equals(
                     provider,
@@ -349,7 +352,59 @@ namespace Unity.FoxgloveSDK.Editor
             return "(FoxRunEndpoint)0";
         }
 
-        private static string BoolLiteral(bool value) => value ? "true" : "false";
+        internal static string TargetsLiteral(string targets)
+        {
+            if (string.Equals(
+                    targets,
+                    FoxRunGenerationDescriptorConstants.InheritTargets,
+                    System.StringComparison.Ordinal))
+            {
+                return "(FoxRunEndpoint)0";
+            }
+
+            var literals = new List<string>();
+            foreach (var target in (targets ?? string.Empty).Split(','))
+            {
+                if (string.Equals(
+                        target,
+                        FoxRunGenerationDescriptorConstants.FoxgloveTarget,
+                        System.StringComparison.Ordinal))
+                {
+                    literals.Add("FoxRunEndpoint.Foxglove");
+                }
+                else if (string.Equals(
+                             target,
+                             FoxRunGenerationDescriptorConstants.Ros2NativeTarget,
+                             System.StringComparison.Ordinal))
+                {
+                    literals.Add("FoxRunEndpoint.Ros2Native");
+                }
+                else if (string.Equals(
+                             target,
+                             FoxRunGenerationDescriptorConstants.Ros2BridgeTarget,
+                             System.StringComparison.Ordinal))
+                {
+                    literals.Add("FoxRunEndpoint.Ros2Bridge");
+                }
+            }
+
+            return literals.Count == 0
+                ? "(FoxRunEndpoint)0"
+                : string.Join(" | ", literals);
+        }
+
+        internal static bool HasExplicitQos(FoxgloveSourceEmitter.TopicMember member)
+        {
+            const FoxRunNamedArgumentPresence qosArguments =
+                FoxRunNamedArgumentPresence.QoS
+                | FoxRunNamedArgumentPresence.Reliability
+                | FoxRunNamedArgumentPresence.Durability
+                | FoxRunNamedArgumentPresence.History
+                | FoxRunNamedArgumentPresence.Depth;
+            return (member.NamedArgumentPresence & qosArguments) != 0;
+        }
+
+        internal static string BoolLiteral(bool value) => value ? "true" : "false";
 
         private static bool SupportsJsonInbound(FoxgloveSourceEmitter.TopicMember member)
         {

@@ -32,7 +32,11 @@ namespace Unity.FoxgloveSDK.Editor
         public string JsonFieldName { get; }
         public string Source { get; }
         public string Targets { get; }
-        public string Ros2Qos { get; }
+        public string QosProfile { get; }
+        public string QosReliability { get; }
+        public string QosDurability { get; }
+        public string QosHistory { get; }
+        public int QosDepth { get; }
         public bool GeneratesWebSocketCodec { get; }
         public bool GeneratesRos2NativeRegistration { get; }
         public FoxRunRos2MessageShape Ros2MessageShape { get; }
@@ -60,13 +64,17 @@ namespace Unity.FoxgloveSDK.Editor
             int protobufFieldNumber = 0,
             FoxRunProtobufTypeShape protobufTypeShape = null,
             string source = FoxRunGenerationDescriptorConstants.InheritSource,
-            string ros2Qos = FoxRunGenerationDescriptorConstants.InheritRos2Qos,
+            string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
             bool generatesWebSocketCodec = true,
             bool generatesRos2NativeRegistration = false,
             FoxRunRos2MessageShape ros2MessageShape = null,
             FoxRunRos2CustomDtoShape ros2CustomDtoShape = null,
             FoxRunRos2ContractKind ros2ContractKind = FoxRunRos2ContractKind.Unsupported,
-            string targets = FoxRunGenerationDescriptorConstants.InheritTargets)
+            string targets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0)
         {
             Namespace = ns ?? string.Empty;
             ClassName = className ?? string.Empty;
@@ -89,7 +97,11 @@ namespace Unity.FoxgloveSDK.Editor
             JsonFieldName = jsonFieldName ?? string.Empty;
             Source = source ?? FoxRunGenerationDescriptorConstants.InheritSource;
             Targets = targets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
-            Ros2Qos = ros2Qos ?? FoxRunGenerationDescriptorConstants.InheritRos2Qos;
+            QosProfile = qosProfile ?? FoxRunGenerationDescriptorConstants.InheritQosProfile;
+            QosReliability = qosReliability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+            QosDurability = qosDurability ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+            QosHistory = qosHistory ?? FoxRunGenerationDescriptorConstants.InheritQosPolicy;
+            QosDepth = qosDepth;
             GeneratesWebSocketCodec = generatesWebSocketCodec;
             GeneratesRos2NativeRegistration = generatesRos2NativeRegistration;
             Ros2MessageShape = ros2MessageShape;
@@ -150,13 +162,17 @@ namespace Unity.FoxgloveSDK.Editor
                 member.ProtobufFieldNumber,
                 member.ProtobufTypeShape,
                 member.Source,
-                member.Ros2Qos,
+                member.QosProfile,
                 member.GeneratesWebSocketCodec,
                 member.GeneratesRos2NativeRegistration,
                 member.Ros2MessageShape,
                 member.Ros2CustomDtoShape,
                 member.Ros2ContractKind,
-                member.Targets);
+                member.Targets,
+                member.QosReliability,
+                member.QosDurability,
+                member.QosHistory,
+                member.QosDepth);
         }
 
         private static int EncodingValue(string encoding)
@@ -273,7 +289,11 @@ namespace Unity.FoxgloveSDK.Editor
         public string Flow { get; }
         public string DeclaredSource { get; }
         public string DeclaredTargets { get; }
-        public string Ros2Qos { get; }
+        public string QosProfile { get; }
+        public string QosReliability { get; }
+        public string QosDurability { get; }
+        public string QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsWebSocket { get; }
         public bool SupportsRos2Native { get; }
         public string NativeType { get; }
@@ -290,7 +310,7 @@ namespace Unity.FoxgloveSDK.Editor
             string topic,
             string flow,
             string declaredSource,
-            string ros2Qos,
+            string qosProfile,
             bool supportsWebSocket,
             bool supportsRos2Native,
             string nativeType,
@@ -300,7 +320,11 @@ namespace Unity.FoxgloveSDK.Editor
             string customDtoIdentity = "",
             string customPayloadIdentity = "",
             string customEnvelopeIdentity = "",
-            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets)
+            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -308,7 +332,11 @@ namespace Unity.FoxgloveSDK.Editor
             Flow = flow ?? string.Empty;
             DeclaredSource = declaredSource ?? string.Empty;
             DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
-            Ros2Qos = ros2Qos ?? string.Empty;
+            QosProfile = qosProfile ?? string.Empty;
+            QosReliability = qosReliability ?? string.Empty;
+            QosDurability = qosDurability ?? string.Empty;
+            QosHistory = qosHistory ?? string.Empty;
+            QosDepth = qosDepth;
             SupportsWebSocket = supportsWebSocket;
             SupportsRos2Native = supportsRos2Native;
             NativeType = nativeType ?? string.Empty;
@@ -334,7 +362,11 @@ namespace Unity.FoxgloveSDK.Editor
         public string Flow { get; }
         public string DeclaredSource { get; }
         public string DeclaredTargets { get; }
-        public string Ros2Qos { get; }
+        public string QosProfile { get; }
+        public string QosReliability { get; }
+        public string QosDurability { get; }
+        public string QosHistory { get; }
+        public int QosDepth { get; }
         public bool SupportsRos2Native { get; }
         public string CustomDtoIdentity { get; }
         public string CustomPayloadIdentity { get; }
@@ -346,12 +378,16 @@ namespace Unity.FoxgloveSDK.Editor
             string topic,
             string flow,
             string declaredSource,
-            string ros2Qos,
+            string qosProfile,
             bool supportsRos2Native,
             string customDtoIdentity,
             string customPayloadIdentity,
             string customEnvelopeIdentity,
-            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets)
+            string declaredTargets = FoxRunGenerationDescriptorConstants.InheritTargets,
+            string qosReliability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosDurability = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            string qosHistory = FoxRunGenerationDescriptorConstants.InheritQosPolicy,
+            int qosDepth = 0)
         {
             DeclaringType = declaringType ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -359,7 +395,11 @@ namespace Unity.FoxgloveSDK.Editor
             Flow = flow ?? string.Empty;
             DeclaredSource = declaredSource ?? string.Empty;
             DeclaredTargets = declaredTargets ?? FoxRunGenerationDescriptorConstants.InheritTargets;
-            Ros2Qos = ros2Qos ?? string.Empty;
+            QosProfile = qosProfile ?? string.Empty;
+            QosReliability = qosReliability ?? string.Empty;
+            QosDurability = qosDurability ?? string.Empty;
+            QosHistory = qosHistory ?? string.Empty;
+            QosDepth = qosDepth;
             SupportsRos2Native = supportsRos2Native;
             CustomDtoIdentity = customDtoIdentity ?? string.Empty;
             CustomPayloadIdentity = customPayloadIdentity ?? string.Empty;

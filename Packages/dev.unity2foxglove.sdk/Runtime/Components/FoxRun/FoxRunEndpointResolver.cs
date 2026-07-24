@@ -20,7 +20,8 @@ namespace Unity.FoxgloveSDK.Components
         EncodingRequiresFoxglove = 8,
         InvalidProfileSource = 9,
         InvalidProfileTargets = 10,
-        InvalidProfileEncoding = 11
+        InvalidProfileEncoding = 11,
+        QosRequiresRos2 = 12
     }
 
     /// <summary>Typed result for one endpoint-resolution attempt.</summary>
@@ -65,7 +66,8 @@ namespace Unity.FoxgloveSDK.Components
             FoxRunEndpoint defaultSource,
             FoxRunEndpoint defaultTargets,
             FoxRunEncoding publishDefaultEncoding,
-            FoxRunEncoding subscribeDefaultEncoding)
+            FoxRunEncoding subscribeDefaultEncoding,
+            bool hasExplicitQos = false)
         {
             if (!IsValidMode(mode))
                 return Failure(mode, FoxRunEndpointDiagnosticCode.InvalidMode,
@@ -173,6 +175,17 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     subscribeEncoding = subscribeDefaultEncoding;
                 }
+            }
+
+            var hasRos2Direction =
+                source == FoxRunEndpoint.Ros2Native
+                || (targets & (FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge)) != 0;
+            if (hasExplicitQos && !hasRos2Direction)
+            {
+                return Failure(
+                    mode,
+                    FoxRunEndpointDiagnosticCode.QosRequiresRos2,
+                    "FoxRun QoS requires at least one resolved ROS 2 direction.");
             }
 
             return new FoxRunEndpointResolution(

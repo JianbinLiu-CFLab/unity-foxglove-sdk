@@ -15,7 +15,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
             Mode = FoxRunFlow.PublishAndSubscribe,
             Encoding = FoxRunEncoding.JSON,
             Source = FoxRunEndpoint.Ros2Native,
-            Ros2Qos = FoxRunRos2QosPreset.Reliable)]
+            QoS = FoxRunQosProfile.Default,
+            Reliability = FoxRunQosReliability.Reliable)]
         public Phase181State State { get; set; }
     }
 

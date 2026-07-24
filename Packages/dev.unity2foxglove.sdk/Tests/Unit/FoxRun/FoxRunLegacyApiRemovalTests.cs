@@ -46,6 +46,99 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void LegacyRos2QosTypesAreAbsent()
+        {
+            var assembly = typeof(FoxRunAttribute).Assembly;
+            foreach (var typeName in new[]
+                     {
+                         "Unity.FoxgloveSDK.Components.FoxRunRos2QosPreset",
+                         "Unity.FoxgloveSDK.Components.FoxRunRos2QosDiagnosticCode",
+                         "Unity.FoxgloveSDK.Components.FoxRunRos2QosResolution",
+                         "Unity.FoxgloveSDK.Components.FoxRunRos2QosResolver",
+                         "Unity.FoxgloveSDK.Ros2Bridge.Ros2BridgeQosProfile",
+                     })
+            {
+                Assert.Null(assembly.GetType(typeName, throwOnError: false));
+            }
+        }
+
+        [Fact]
+        public void ManagerSerializedFieldsRetainRealLegacyNamesAndCompatibleValues()
+        {
+            var managerSource = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Inbound.cs");
+            var root = CSharpSyntaxTree.ParseText(managerSource).GetRoot();
+            var encodingField = ExtractField(root, "_defaultFoxRunEncoding");
+            var sourceField = ExtractField(root, "_defaultFoxRunSubscriptionSource");
+            var fixtureSource = @"
+using System;
+using UnityEngine;
+using UnityEngine.Serialization;
+
+namespace UnityEngine
+{
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeField : Attribute { }
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class HideInInspector : Attribute { }
+}
+namespace UnityEngine.Serialization
+{
+    [AttributeUsage(AttributeTargets.Field, AllowMultiple = true)]
+    public sealed class FormerlySerializedAsAttribute : Attribute
+    {
+        public FormerlySerializedAsAttribute(string oldName) { OldName = oldName; }
+        public string OldName { get; }
+    }
+}
+namespace Unity.FoxgloveSDK.Components
+{
+    public enum FoxRunEncoding { Protobuf = 1, JSON = 2 }
+    [Flags]
+    public enum FoxRunEndpoint { Foxglove = 1, Ros2Native = 2, Ros2Bridge = 4 }
+    public sealed class SerializedFieldFixture
+    {
+" + encodingField.ToFullString() + sourceField.ToFullString() + @"
+    }
+}";
+            var compilation = CSharpCompilation.Create(
+                "FoxRunSerializedFieldMigration_" + Guid.NewGuid().ToString("N"),
+                new[] { CSharpSyntaxTree.ParseText(fixtureSource) },
+                CompilationReferences().Where(reference =>
+                    !string.Equals(reference.Display, typeof(FoxRunAttribute).Assembly.Location, StringComparison.OrdinalIgnoreCase)),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            using var image = new MemoryStream();
+            var emit = compilation.Emit(image);
+            Assert.True(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics));
+            var fixtureType = Assembly.Load(image.ToArray()).GetType(
+                "Unity.FoxgloveSDK.Components.SerializedFieldFixture",
+                throwOnError: true);
+
+            var reflectedEncoding = fixtureType.GetField(
+                "_defaultFoxRunEncoding",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var reflectedSource = fixtureType.GetField(
+                "_defaultFoxRunSubscriptionSource",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(reflectedEncoding);
+            Assert.NotNull(reflectedSource);
+            Assert.Equal(
+                new[] { "_defaultFoxRunWireEncoding" },
+                LegacySerializedNames(reflectedEncoding));
+            Assert.Equal(
+                new[] { "_defaultFoxRunEndpoint", "_defaultFoxRunSubscriptionProvider" },
+                LegacySerializedNames(reflectedSource).OrderBy(value => value, StringComparer.Ordinal));
+
+            var fixture = Activator.CreateInstance(fixtureType);
+            Assert.Equal(1, Convert.ToInt32(reflectedEncoding.GetValue(fixture)));
+            Assert.Equal(1, Convert.ToInt32(reflectedSource.GetValue(fixture)));
+            Assert.Equal(1, (int)FoxRunEncoding.Protobuf);
+            Assert.Equal(2, (int)FoxRunEncoding.JSON);
+            Assert.Equal(1, (int)FoxRunEndpoint.Foxglove);
+            Assert.Equal(2, (int)FoxRunEndpoint.Ros2Native);
+        }
+
         public static IEnumerable<object[]> RemovedSpellings()
         {
             yield return Case("FoxRunMode", "Mode = FoxRunMode.SubscribeOnly");
@@ -187,6 +280,23 @@ namespace Demo
     }
 }"
             };
+
+        private static FieldDeclarationSyntax ExtractField(SyntaxNode root, string fieldName)
+            => root.DescendantNodes()
+                .OfType<FieldDeclarationSyntax>()
+                .Single(field => field.Declaration.Variables.Any(variable =>
+                    string.Equals(variable.Identifier.ValueText, fieldName, StringComparison.Ordinal)));
+
+        private static string[] LegacySerializedNames(FieldInfo field)
+            => field.GetCustomAttributesData()
+                .Where(attribute =>
+                    string.Equals(
+                        attribute.AttributeType.Name,
+                        "FormerlySerializedAsAttribute",
+                        StringComparison.Ordinal))
+                .Select(attribute => Assert.IsType<string>(attribute.ConstructorArguments.Single().Value))
+                .OrderBy(value => value, StringComparer.Ordinal)
+                .ToArray();
 
         private static IEnumerable<MetadataReference> CompilationReferences()
         {

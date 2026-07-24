@@ -23,7 +23,7 @@ namespace Unity2Foxglove.Ros2ForUnity
     /// references this type; it is added to <c>FoxgloveLogHub.TopicSinkRouter</c>
     /// from this optional package, preserving the core's ROS2-free boundary.
     /// </remarks>
-    public sealed class Ros2R2FUTopicSink : IFoxTopicSink
+    public sealed class Ros2R2FUTopicSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
     {
         private const string DefaultNodeName = "unity2foxglove_foxrun";
 
@@ -131,6 +131,37 @@ namespace Unity2Foxglove.Ros2ForUnity
 
             if (!publisher.TryPublish(payload, timestampNs, out var error))
                 ReportOnce(contract.Topic + ":publish", "ROS2 publish failed for '" + contract.Topic + "': " + error);
+        }
+
+        /// <summary>
+        /// Release the publisher owned by one exported topic contract. A later
+        /// registration for the same topic creates a fresh endpoint and QoS.
+        /// </summary>
+        public void Unregister(string topic)
+        {
+            if (string.IsNullOrWhiteSpace(topic))
+                return;
+
+            IRos2TopicPublisher publisher;
+            lock (_gate)
+            {
+                if (_disposed || !_publishers.TryGetValue(topic, out publisher))
+                    return;
+
+                _publishers.Remove(topic);
+            }
+
+            try
+            {
+                publisher.Dispose();
+            }
+            catch (Exception ex)
+            {
+                ReportOnce(
+                    "dispose:unregister:" + topic + ":" + ex.GetType().FullName,
+                    "ROS2 publisher teardown failed for '" + topic + "': "
+                    + ex.GetType().Name + ": " + ex.Message);
+            }
         }
 
         public void Flush()

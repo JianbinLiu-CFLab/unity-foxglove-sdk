@@ -275,19 +275,11 @@ namespace Unity.FoxgloveSDK.Tests
             var directInvocations = DirectInvocations(publishData).ToArray();
             var allInvocations = AllInvocations(publishData);
             var nativeOutputBranches = DirectIfStatements(publishData)
-                .Where(statement => HasSerializedBooleanCondition(statement, "_ros2NativeEnabled"))
+                .Where(statement => HasIdentifierCondition(statement, "includesRos2Native"))
                 .ToArray();
-            var nativeQosHelp = nativeOutputBranches
+            var nativeProfileInvocations = nativeOutputBranches
                 .SelectMany(DirectThenStatements)
-                .OfType<ExpressionStatementSyntax>()
-                .Select(statement => statement.Expression as InvocationExpressionSyntax)
-                .Where(invocation => invocation != null
-                                     && IsInvocationNamed(invocation, "HelpBox")
-                                     && HasStringArgument(
-                                         invocation,
-                                         0,
-                                         "This Manager has no global ROS2 Native publish QoS override; configure QoS on individual R2FU publishers.")
-                                     && HasMessageTypeInfoArgument(invocation, 1))
+                .SelectMany(AllInvocations)
                 .ToArray();
 
             Check(allInvocations.Count(invocation => IsInvocationNamed(invocation, "Subheader")
@@ -326,8 +318,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && !ContainsStringLiteral(publishData, "FoxRun Contract Encoding"),
                 "180E-2: Publish keeps component encoding separate from the FoxRun Targets, Foxglove Encoding, and rate profile");
             Check(nativeOutputBranches.Length == 1
-                  && nativeQosHelp.Length == 1,
-                "180E-3: selected ROS 2 Native output explains that Manager has no global publish QoS override");
+                  && nativeProfileInvocations.Count(invocation =>
+                      IsInvocationNamed(invocation, "DrawFoxRunRos2Qos")
+                      && HasFindCachedPropertyArgument(
+                          invocation,
+                          0,
+                          "_defaultFoxRunNativePublishQos")
+                      && HasStringArgument(invocation, 1, "ROS 2 Native QoS Profile")) == 1
+                  && nativeProfileInvocations.Count(invocation =>
+                      IsInvocationNamed(invocation, "HelpBox")
+                      && HasStringArgument(
+                          invocation,
+                          0,
+                          "FoxRun resolves the ROS 2 message type automatically from the generated contract.")
+                      && HasMessageTypeInfoArgument(invocation, 1)) == 1,
+                "180E-3: a selected FoxRun ROS 2 Native target exposes its directional QoS profile and automatic message type");
             Check(HasExactlyOneLabeledProperty(
                       directInvocations,
                       "_outputCoordinateMode",
@@ -449,16 +454,32 @@ namespace Unity.FoxgloveSDK.Tests
                   && !ContainsStringLiteral(subscribeData, "Native Copied-Data Budget Bytes"),
                 "180F-4: native input remains visible for a selected or explicit generated native contract, keeps diagnostics readable, and uses dedicated QoS and budget controls");
             Check(nativeQos != null
-                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "NormalizeSerializedManagerDefault")) == 1
                   && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "Popup")) == 1
                   && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "HelpBox")) == 1
+                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "DrawQosOverride")) == 4
+                  && AllInvocations(nativeQos).Count(invocation => IsInvocationNamed(invocation, "Resolve")) == 1
+                  && nativeQos.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+                      .Count(memberAccess => memberAccess.Name.Identifier.ValueText == "ManagerQosChoices") == 1
                   && nativeQos.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
                       .Count(memberAccess => memberAccess.Name.Identifier.ValueText == "ManagerQosLabels") == 1
+                  && ContainsStringLiteral(nativeQos, "Advanced Overrides")
+                  && nativeQos.ToFullString().Contains(
+                      "normalizedProfile != FoxRunQosProfile.Default",
+                      StringComparison.Ordinal)
+                  && nativeQos.ToFullString().Contains(
+                      "normalizedProfile != FoxRunQosProfile.SensorData",
+                      StringComparison.Ordinal)
+                  && nativeQos.ToFullString().Contains(
+                      "normalizedProfile != FoxRunQosProfile.SystemDefault",
+                      StringComparison.Ordinal)
                   && !nativeQos.DescendantNodes().OfType<ArrayCreationExpressionSyntax>().Any(
                       array => array.Type.ElementType is PredefinedTypeSyntax type
                                && type.Keyword.IsKind(SyntaxKind.StringKeyword))
-                  && !ContainsStringLiteral(nativeQos, "Inherit"),
-                "180F-5: native QoS normalizes malformed serialized defaults, uses cached presentation labels, and displays only the concrete portable choices");
+                  && !ContainsStringLiteral(nativeQos, "Inherit")
+                  && !ContainsStringLiteral(nativeQos, "Reliable Default")
+                  && !ContainsStringLiteral(nativeQos, "Transient Local")
+                  && !ContainsStringLiteral(nativeQos, "Custom"),
+                "180F-5: native QoS normalizes malformed profiles, uses cached official choices, exposes four advanced overrides, and reports resolved portable policy");
             Check(nativeBudget != null
                   && nativeBudgetUnit != null
                   && AllInvocations(nativeBudgetUnit).Count(invocation => IsInvocationNamed(invocation, "GetInt")) == 1
@@ -1029,6 +1050,18 @@ namespace Unity.FoxgloveSDK.Tests
                    && invocation.ArgumentList.Arguments[argumentIndex].Expression is LiteralExpressionSyntax literal
                    && literal.RawKind == (int)SyntaxKind.StringLiteralExpression
                    && literal.Token.ValueText == value;
+        }
+
+        private static bool HasFindCachedPropertyArgument(
+            InvocationExpressionSyntax invocation,
+            int argumentIndex,
+            string propertyName)
+        {
+            return invocation != null
+                   && invocation.ArgumentList.Arguments.Count > argumentIndex
+                   && invocation.ArgumentList.Arguments[argumentIndex].Expression is InvocationExpressionSyntax finder
+                   && IsInvocationNamed(finder, "FindCachedProperty")
+                   && HasStringArgument(finder, 0, propertyName);
         }
 
         private static bool HasMethodGroupArgument(InvocationExpressionSyntax invocation, string methodName)

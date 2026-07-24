@@ -30,7 +30,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             int interfaceRevision,
             string interfaceDigest,
             string baseRuntimePackageId,
-            FoxRunFlow mode)
+            FoxRunFlow mode,
+            FoxRunQosProfile qosProfile,
+            bool hasExplicitQosProfile,
+            FoxRunQosReliability qosReliability,
+            bool hasExplicitQosReliability,
+            FoxRunQosDurability qosDurability,
+            bool hasExplicitQosDurability,
+            FoxRunQosHistory qosHistory,
+            bool hasExplicitQosHistory,
+            int qosDepth,
+            bool hasExplicitQosDepth,
+            FoxRunEndpoint declaredSource = 0,
+            bool hasExplicitSource = false,
+            FoxRunEndpoint declaredTargets = 0,
+            bool hasExplicitTargets = false)
         {
             Id = id ?? string.Empty;
             Topic = topic ?? string.Empty;
@@ -44,6 +58,20 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             InterfaceDigest = interfaceDigest ?? string.Empty;
             BaseRuntimePackageId = baseRuntimePackageId ?? string.Empty;
             Mode = mode;
+            QosProfile = qosProfile;
+            HasExplicitQosProfile = hasExplicitQosProfile;
+            QosReliability = qosReliability;
+            HasExplicitQosReliability = hasExplicitQosReliability;
+            QosDurability = qosDurability;
+            HasExplicitQosDurability = hasExplicitQosDurability;
+            QosHistory = qosHistory;
+            HasExplicitQosHistory = hasExplicitQosHistory;
+            QosDepth = qosDepth;
+            HasExplicitQosDepth = hasExplicitQosDepth;
+            DeclaredSource = declaredSource;
+            HasExplicitSource = hasExplicitSource;
+            DeclaredTargets = declaredTargets;
+            HasExplicitTargets = hasExplicitTargets;
         }
 
         public string Id { get; }
@@ -58,6 +86,57 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         public string InterfaceDigest { get; }
         public string BaseRuntimePackageId { get; }
         public FoxRunFlow Mode { get; }
+        public FoxRunQosProfile QosProfile { get; }
+        public bool HasExplicitQosProfile { get; }
+        public FoxRunQosReliability QosReliability { get; }
+        public bool HasExplicitQosReliability { get; }
+        public FoxRunQosDurability QosDurability { get; }
+        public bool HasExplicitQosDurability { get; }
+        public FoxRunQosHistory QosHistory { get; }
+        public bool HasExplicitQosHistory { get; }
+        public int QosDepth { get; }
+        public bool HasExplicitQosDepth { get; }
+        public FoxRunEndpoint DeclaredSource { get; }
+        public bool HasExplicitSource { get; }
+        public FoxRunEndpoint DeclaredTargets { get; }
+        public bool HasExplicitTargets { get; }
+        public bool HasExplicitQos
+            => HasExplicitQosProfile
+               || HasExplicitQosReliability
+               || HasExplicitQosDurability
+               || HasExplicitQosHistory
+               || HasExplicitQosDepth;
+
+        public FoxRunQosResolution ResolveQos(FoxRunResolvedQos inherited)
+            => FoxRunRos2QosProfileResolver.Resolve(
+                QosProfile,
+                HasExplicitQosProfile,
+                QosReliability,
+                HasExplicitQosReliability,
+                QosDurability,
+                HasExplicitQosDurability,
+                QosHistory,
+                HasExplicitQosHistory,
+                QosDepth,
+                HasExplicitQosDepth,
+                inherited);
+
+        public FoxRunEndpointResolution ResolveTopology(
+            FoxRunEndpoint defaultSource,
+            FoxRunEndpoint defaultTargets)
+            => FoxRunEndpointResolver.Resolve(
+                Mode,
+                DeclaredSource,
+                HasExplicitSource,
+                DeclaredTargets,
+                HasExplicitTargets,
+                declaredEncoding: 0,
+                hasExplicitEncoding: false,
+                defaultSource,
+                defaultTargets,
+                publishDefaultEncoding: FoxRunEncoding.Protobuf,
+                subscribeDefaultEncoding: FoxRunEncoding.Protobuf,
+                HasExplicitQos);
 
         /// <summary>True only for a generated custom PublishAndSubscribe contract.</summary>
         public bool IsPublishAndSubscribe => Mode == FoxRunFlow.PublishAndSubscribe;

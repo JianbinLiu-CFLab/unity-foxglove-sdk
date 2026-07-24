@@ -26,6 +26,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.True(binding.TryStart().Succeeded);
             Assert.True(bus.HasSubscribers("/phase181/custom"));
+            Assert.Equal(FoxRunResolvedQos.Default, backend.RegisteredQos);
+            Assert.Equal(FoxRunQosProfile.Default, backend.RegisteredQos.Profile);
+            Assert.Equal(FoxRunQosReliability.Reliable, backend.RegisteredQos.Reliability);
+            Assert.Equal(FoxRunQosDurability.Volatile, backend.RegisteredQos.Durability);
+            Assert.Equal(FoxRunQosHistory.KeepLast, backend.RegisteredQos.History);
+            Assert.Equal(10, backend.RegisteredQos.Depth);
 
             bus.Publish(TopicContract(), 123UL, new TestDto { Value = 42 }, "generated-source");
 
@@ -164,6 +170,32 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(1, backend.ReleaseCount);
         }
 
+        [Fact]
+        public void StopSuppressesNodeReleaseFailureAndStillRunsOriginCleanup()
+        {
+            var bus = new FoxTopicBus();
+            var backend = new FakePublisherBackend
+            {
+                ReleaseFailure = new InvalidOperationException("node graph already stopped")
+            };
+            var originCleanupCount = 0;
+            var binding = CreateBinding(
+                bus,
+                backend,
+                initialSequence: 0UL,
+                onStopped: () => originCleanupCount++);
+
+            Assert.True(binding.TryStart().Succeeded);
+
+            var exception = Record.Exception(binding.Stop);
+
+            Assert.Null(exception);
+            Assert.False(bus.HasSubscribers("/phase181/custom"));
+            Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.Equal(1, originCleanupCount);
+        }
+
         private static FoxRunRos2CustomPublisherBinding<TestDto, TestEnvelope> CreateBinding(
             FoxTopicBus bus,
             FakePublisherBackend backend,
@@ -176,6 +208,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Contract(),
                 bus,
                 backend,
+                FoxRunResolvedQos.Default,
                 map ?? ((dto, origin, sequence, timestamp, budget) => new TestEnvelope
                 {
                     Origin = origin,
@@ -204,7 +237,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 1,
                 "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
                 "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
-                FoxRunFlow.Publish);
+                FoxRunFlow.Publish,
+                FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false);
 
         private static FoxTopicContract TopicContract()
             => new FoxTopicContract(
@@ -240,13 +283,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public List<string> StopOrder { get; } = new List<string>();
             public bool PublishSucceeds { get; set; } = true;
             public Exception RemoveFailure { get; set; }
+            public Exception ReleaseFailure { get; set; }
             public int RegisterCount { get; private set; }
             public int ReleaseCount { get; private set; }
+            public FoxRunResolvedQos RegisteredQos { get; private set; }
 
-            public FoxRunRos2NativePublisherRegistration Register<T>(FoxRunRos2CustomPublisherContract contract)
+            public FoxRunRos2NativePublisherRegistration Register<T>(
+                FoxRunRos2CustomPublisherContract contract,
+                FoxRunResolvedQos qos)
                 where T : ROS2.Message, new()
             {
                 RegisterCount++;
+                RegisteredQos = qos;
                 return FoxRunRos2NativePublisherRegistration.Success(_token);
             }
 
@@ -271,6 +319,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             {
                 ReleaseCount++;
                 StopOrder.Add("release");
+                if (ReleaseFailure != null)
+                    throw ReleaseFailure;
             }
 
             private sealed class Token : IFoxRunRos2NativePublisherToken
