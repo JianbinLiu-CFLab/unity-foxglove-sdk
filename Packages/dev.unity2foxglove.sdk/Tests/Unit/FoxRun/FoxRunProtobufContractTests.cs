@@ -118,6 +118,28 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void SubscriptionBindingSelectionUsesTheV3CapabilityGate()
+        {
+            var builderSource = TestSources.Text(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunManifest/FoxRunManifestBuilder.cs");
+            var legacyV2 = FoxRunManifestBuilder.Build(
+                Array.Empty<FoxRunManifestMember>(),
+                manifestVersion: 2);
+
+            Assert.Contains(
+                "var subscriptionBindings = manifestVersion >= 3",
+                builderSource,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "var subscriptionBindings = manifestVersion >= 2",
+                builderSource,
+                StringComparison.Ordinal);
+            Assert.Empty(legacyV2.Sections.Subscriptions.Bindings);
+            Assert.True(FoxRunManifestHasher.IsLowercaseSha256Hex(
+                legacyV2.Sections.Subscriptions.ManifestHash));
+        }
+
+        [Fact]
         public void NativeProviderMetadataUsesSeparateV3DigestWithoutChangingWireDigests()
         {
             var json = new FoxRunManifestMember(

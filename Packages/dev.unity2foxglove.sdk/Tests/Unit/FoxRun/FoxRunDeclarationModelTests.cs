@@ -122,6 +122,68 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void SharedTopicMemberDefaultsAndBlankEncodingToInheritedContract()
+        {
+            var omitted = new FoxgloveSourceEmitter.TopicMember(
+                "_omitted",
+                "System.Int32",
+                "/phase184/defaults/topic-member-omitted",
+                10f,
+                "");
+            var blank = new FoxgloveSourceEmitter.TopicMember(
+                "_blank",
+                "System.Int32",
+                "/phase184/defaults/topic-member-blank",
+                10f,
+                "",
+                policy: (int)FoxRunPolicy.FixedRate,
+                tolerance: 0f,
+                encoding: " ");
+
+            Assert.Equal(FoxRunGenerationDescriptorConstants.InheritEncoding, omitted.Encoding);
+            Assert.Equal(FoxRunGenerationDescriptorConstants.InheritEncoding, blank.Encoding);
+        }
+
+        [Fact]
+        public void DirectTopicMetadataEmissionKeepsQosPresenceOnCanonicalEndpoint()
+        {
+            const string topic = "/phase184/qos/canonical-endpoint";
+            var source = FoxgloveSourceEmitter.EmitClass(
+                "Demo",
+                "CanonicalEndpoint",
+                new[]
+                {
+                    new FoxgloveSourceEmitter.TopicMember(
+                        "_first",
+                        "System.Int32",
+                        topic,
+                        10f,
+                        "",
+                        policy: (int)FoxRunPolicy.FixedRate,
+                        tolerance: 0f,
+                        encoding: FoxRunGenerationDescriptorConstants.InheritEncoding),
+                    new FoxgloveSourceEmitter.TopicMember(
+                        "_second",
+                        "System.Int32",
+                        topic,
+                        10f,
+                        "",
+                        policy: (int)FoxRunPolicy.FixedRate,
+                        tolerance: 0f,
+                        encoding: FoxRunGenerationDescriptorConstants.InheritEncoding,
+                        qosProfile: FoxRunGenerationDescriptorConstants.DefaultQosProfile,
+                        namedArgumentPresence: FoxRunNamedArgumentPresence.QoS)
+                });
+            var topicLine = source
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Single(line => line.Contains(
+                    "new FoxgloveLogTopicInfo(\"/phase184/qos/canonical-endpoint\"",
+                    StringComparison.Ordinal));
+
+            Assert.Contains("hasExplicitQos: false", topicLine, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedTopicMetadataDistinguishesInheritedAndExplicitPublishRates()
         {
             var result = RunGenerator(@"

@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.Editor
                     InputDispatchEmitter.BoolLiteral(
                         (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Targets)
                         == FoxRunNamedArgumentPresence.Targets),
-                    InputDispatchEmitter.BoolLiteral(fields.Any(InputDispatchEmitter.HasExplicitQos)),
+                    InputDispatchEmitter.BoolLiteral(InputDispatchEmitter.HasExplicitQos(endpoint)),
                     inheritedRateSuffix));
             }
             sb.AppendLine($"{pad}            default: return default;");

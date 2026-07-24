@@ -135,7 +135,7 @@ namespace Unity.FoxgloveSDK.Editor
             public TopicMember(string memberName, string typeName, string topic, float hz, string schemaName,
                 int policy, float tolerance, string onlyIf = "",
                 bool isAggregateMember = false, string jsonFieldName = "", int mode = FlowPublish, string canonicalType = "",
-                string encoding = FoxRunGenerationDescriptorConstants.JsonEncoding, int protobufFieldNumber = 0,
+                string encoding = FoxRunGenerationDescriptorConstants.InheritEncoding, int protobufFieldNumber = 0,
                 FoxRunProtobufTypeShape protobufTypeShape = null,
                 string source = FoxRunGenerationDescriptorConstants.InheritSource,
                 string qosProfile = FoxRunGenerationDescriptorConstants.InheritQosProfile,
@@ -172,7 +172,7 @@ namespace Unity.FoxgloveSDK.Editor
                     ? DefaultJsonFieldName(memberName)
                     : jsonFieldName;
                 Encoding = string.IsNullOrWhiteSpace(encoding)
-                    ? FoxRunGenerationDescriptorConstants.JsonEncoding
+                    ? FoxRunGenerationDescriptorConstants.InheritEncoding
                     : encoding;
                 ProtobufFieldNumber = protobufFieldNumber;
                 ProtobufTypeShape = protobufTypeShape;

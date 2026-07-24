@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Editor
                     "FoxRun manifest version 3 is required when any subscription binding exists; "
                     + "legacy manifest versions 1 and 2 are publish-only.");
             }
-            var subscriptionBindings = manifestVersion >= 2
+            var subscriptionBindings = manifestVersion >= 3
                 ? discoveredSubscriptionBindings
                 : Array.Empty<FoxRunManifestSubscriptionBinding>();
             var subscriptionHash = manifestVersion >= 2
