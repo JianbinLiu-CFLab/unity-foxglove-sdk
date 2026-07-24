@@ -14,10 +14,10 @@ const DEFAULT_ENDPOINT = "ws://127.0.0.1:8765";
 type SubscriptionContractSummary = {
   declaringType: string;
   topic: string;
-  flowMode: string;
+  flow: string;
   encoding: "json" | "protobuf";
   schemaName: string;
-  rateHz: number;
+  hz: number;
   writableFieldCount: number;
   protobufDescriptorAvailable: boolean;
   protobufDescriptorDigest: string;
@@ -548,10 +548,10 @@ function isSubscriptionContractSummary(value: unknown): value is SubscriptionCon
   const contract = value as Partial<SubscriptionContractSummary>;
   return typeof contract.declaringType === "string"
     && typeof contract.topic === "string"
-    && typeof contract.flowMode === "string"
+    && typeof contract.flow === "string"
     && (contract.encoding === "json" || contract.encoding === "protobuf")
     && typeof contract.schemaName === "string"
-    && typeof contract.rateHz === "number"
+    && typeof contract.hz === "number"
     && typeof contract.writableFieldCount === "number"
     && typeof contract.protobufDescriptorAvailable === "boolean"
     && typeof contract.protobufDescriptorDigest === "string";

@@ -19,10 +19,10 @@ const summary = {
     {
       declaringType: "Demo.Input",
       topic: "/zeta",
-      flowMode: "Subscribe",
+      flow: "Subscribe",
       encoding: "protobuf",
       schemaName: "unity2foxglove.foxrun.Demo_Input",
-      rateHz: 10,
+      hz: 10,
       writableFieldCount: 1,
       protobufDescriptorAvailable: true,
       protobufDescriptorDigest: "abc",
@@ -30,10 +30,10 @@ const summary = {
     {
       declaringType: "Demo.Input",
       topic: "/alpha",
-      flowMode: "Subscribe",
+      flow: "Subscribe",
       encoding: "json",
       schemaName: "Demo.Input",
-      rateHz: 10,
+      hz: 10,
       writableFieldCount: 1,
       protobufDescriptorAvailable: false,
       protobufDescriptorDigest: "",
@@ -44,6 +44,19 @@ const summary = {
 describe("FoxRun Publish catalog state", () => {
   it("sorts summary contracts without requiring detail fields", () => {
     expect(normalizeCatalog(summary)?.contracts.map((contract) => contract.topic)).toEqual(["/alpha", "/zeta"]);
+  });
+
+  it("rejects the retired flowMode and rateHz catalog aliases", () => {
+    const stale = {
+      ...summary,
+      contracts: summary.contracts.map(({ flow, hz, ...contract }) => ({
+        ...contract,
+        flowMode: flow,
+        rateHz: hz,
+      })),
+    };
+
+    expect(normalizeCatalog(stale)?.contracts).toEqual([]);
   });
 
   it("reads field and descriptor detail only for the selected topic", () => {

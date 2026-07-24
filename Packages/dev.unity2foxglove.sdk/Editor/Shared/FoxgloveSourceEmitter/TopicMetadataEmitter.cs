@@ -37,13 +37,20 @@ namespace Unity.FoxgloveSDK.Editor
             for (int i = 0; i < topics.Count; i++)
             {
                 var fields = topicMap[topics[i]];
-                var hz = fields.Max(m => m.Hz);
+                var explicitRates = fields.Where(m => m.HasExplicitHz).ToArray();
+                var hasExplicitHz = explicitRates.Length > 0;
+                var hz = hasExplicitHz
+                    ? explicitRates.Max(m => m.Hz)
+                    : fields.Max(m => m.Hz);
                 var mode = topicModes[topics[i]];
                 var tolerance = fields.Max(m => m.Tolerance);
                 var topic = StringLiteralEmitter.CSharpStringLiteral(topics[i]);
                 var endpoint = fields[0];
+                var inheritedRateSuffix = hasExplicitHz
+                    ? string.Empty
+                    : ", hasExplicitHz: false";
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, declaredSource: {7}, hasExplicitSource: {8}, declaredTargets: {9}, hasExplicitTargets: {10}, hasExplicitQos: {11});",
+                    "{0}            case {1}: return new FoxgloveLogTopicInfo(\"{2}\", {3}f, {4}, {5}f, (FoxRunFlow){6}, declaredSource: {7}, hasExplicitSource: {8}, declaredTargets: {9}, hasExplicitTargets: {10}, hasExplicitQos: {11}{12});",
                     pad,
                     i,
                     topic,
@@ -59,7 +66,8 @@ namespace Unity.FoxgloveSDK.Editor
                     InputDispatchEmitter.BoolLiteral(
                         (endpoint.NamedArgumentPresence & FoxRunNamedArgumentPresence.Targets)
                         == FoxRunNamedArgumentPresence.Targets),
-                    InputDispatchEmitter.BoolLiteral(fields.Any(InputDispatchEmitter.HasExplicitQos))));
+                    InputDispatchEmitter.BoolLiteral(fields.Any(InputDispatchEmitter.HasExplicitQos)),
+                    inheritedRateSuffix));
             }
             sb.AppendLine($"{pad}            default: return default;");
             sb.AppendLine($"{pad}        }}");

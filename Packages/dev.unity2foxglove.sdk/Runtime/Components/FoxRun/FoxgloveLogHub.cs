@@ -27,6 +27,7 @@ namespace Unity.FoxgloveSDK.Components
         public readonly FoxRunEndpoint DeclaredTargets;
         public readonly bool HasExplicitTargets;
         public readonly bool HasExplicitQos;
+        public readonly bool HasExplicitHz;
 
         public FoxgloveLogTopicInfo(string topic, float hz)
             : this(
@@ -39,7 +40,8 @@ namespace Unity.FoxgloveSDK.Components
                 hasExplicitSource: false,
                 declaredTargets: 0,
                 hasExplicitTargets: false,
-                hasExplicitQos: false)
+                hasExplicitQos: false,
+                hasExplicitHz: true)
         {
         }
 
@@ -54,7 +56,8 @@ namespace Unity.FoxgloveSDK.Components
                 hasExplicitSource: false,
                 declaredTargets: 0,
                 hasExplicitTargets: false,
-                hasExplicitQos: false)
+                hasExplicitQos: false,
+                hasExplicitHz: true)
         {
         }
 
@@ -68,7 +71,8 @@ namespace Unity.FoxgloveSDK.Components
             bool hasExplicitSource,
             FoxRunEndpoint declaredTargets,
             bool hasExplicitTargets,
-            bool hasExplicitQos)
+            bool hasExplicitQos,
+            bool hasExplicitHz = true)
         {
             Topic = topic;
             Hz = hz;
@@ -80,6 +84,7 @@ namespace Unity.FoxgloveSDK.Components
             DeclaredTargets = declaredTargets;
             HasExplicitTargets = hasExplicitTargets;
             HasExplicitQos = hasExplicitQos;
+            HasExplicitHz = hasExplicitHz;
         }
     }
 
@@ -421,9 +426,12 @@ namespace Unity.FoxgloveSDK.Components
                 switch (info.Policy)
                 {
                     case FoxRunPolicy.FixedRate:
+                        var publishRateHz = info.HasExplicitHz
+                            ? info.Hz
+                            : _mgr.ActiveFoxRunDefaultPublishRateHz;
                         if (!FixedRatePublishScheduler.ShouldPublish(
                                 nowSec,
-                                info.Hz,
+                                publishRateHz,
                                 ref timer,
                                 nonPositivePublishesEveryFrame: false))
                             return false;

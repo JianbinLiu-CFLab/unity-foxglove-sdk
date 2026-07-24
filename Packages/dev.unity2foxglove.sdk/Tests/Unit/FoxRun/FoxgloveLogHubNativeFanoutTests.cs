@@ -8,6 +8,7 @@
 using System;
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
+using Unity.FoxgloveSDK.Util;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.Tests.FoxRun
@@ -204,6 +205,33 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Equal(1, sink.RegisterCalls);
         }
 
+        [Fact]
+        public void ScheduledPublishUsesFrozenProfileRateWhenDeclarationOmitsHz()
+        {
+            var fixture = new ScheduledRateFixture(
+                inheritedRateHz: 2f,
+                declaredRateHz: 10f,
+                hasExplicitHz: false);
+
+            Assert.True(fixture.Tick(0d));
+            Assert.False(fixture.Tick(0.25d));
+            Assert.True(fixture.Tick(0.5d));
+            Assert.Equal(2, fixture.Source.LivePublishes);
+        }
+
+        [Fact]
+        public void ScheduledPublishKeepsExplicitRateInsteadOfProfileRate()
+        {
+            var fixture = new ScheduledRateFixture(
+                inheritedRateHz: 2f,
+                declaredRateHz: 4f,
+                hasExplicitHz: true);
+
+            Assert.True(fixture.Tick(0d));
+            Assert.True(fixture.Tick(0.25d));
+            Assert.Equal(2, fixture.Source.LivePublishes);
+        }
+
         private sealed class HubFixture
         {
             private static readonly FieldInfo ManagerField = typeof(FoxgloveLogHub).GetField(
@@ -319,6 +347,67 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             }
         }
 
+        private sealed class ScheduledRateFixture
+        {
+            private static readonly MethodInfo SetManagerMethod = typeof(FoxgloveLogHub).GetMethod(
+                "SetManager",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            private static readonly MethodInfo ScheduledMethod = typeof(FoxgloveLogHub).GetMethod(
+                "TryPublishScheduledTopic",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            private readonly FoxgloveLogHub _hub = new FoxgloveLogHub();
+            private readonly FoxgloveLogTopicInfo _topic;
+            private FixedRatePublishState _timer;
+
+            public ScheduledRateFixture(
+                float inheritedRateHz,
+                float declaredRateHz,
+                bool hasExplicitHz)
+            {
+                Assert.NotNull(SetManagerMethod);
+                Assert.NotNull(ScheduledMethod);
+                var manager = new FoxgloveManager
+                {
+                    IsRunning = true,
+                    NowNs = 123_456_789UL,
+                    ActiveFoxRunDefaultPublishRateHz = inheritedRateHz
+                };
+                SetManagerMethod.Invoke(_hub, new object[] { manager });
+                _topic = new FoxgloveLogTopicInfo(
+                    ScheduledSource.Topic,
+                    declaredRateHz,
+                    FoxRunPolicy.FixedRate,
+                    0f,
+                    FoxRunFlow.Publish,
+                    declaredSource: 0,
+                    hasExplicitSource: false,
+                    declaredTargets: 0,
+                    hasExplicitTargets: false,
+                    hasExplicitQos: false,
+                    hasExplicitHz: hasExplicitHz);
+                Source = new ScheduledSource(_topic);
+            }
+
+            public ScheduledSource Source { get; }
+
+            public bool Tick(double nowSeconds)
+            {
+                var arguments = new object[]
+                {
+                    Source,
+                    _topic,
+                    0,
+                    _timer,
+                    123_456_789UL,
+                    nowSeconds
+                };
+                var published = (bool)ScheduledMethod.Invoke(_hub, arguments);
+                _timer = (FixedRatePublishState)arguments[3];
+                return published;
+            }
+        }
+
         private sealed class FanoutSource : IFoxgloveLogSource, IFoxgloveTopicBusSource, IFoxgloveTopicBusDemandSource, IFoxgloveLogPolicySource
         {
             internal const string Topic = "/phase181/native-fanout";
@@ -422,6 +511,38 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             public void Reset()
             {
                 LivePublishes = 0;
+            }
+        }
+
+        private sealed class ScheduledSource : IFoxgloveLogSource
+        {
+            internal const string Topic = "/phase184/rate/scheduled";
+
+            private readonly FoxgloveLogTopicInfo _topic;
+
+            public ScheduledSource(FoxgloveLogTopicInfo topic)
+            {
+                _topic = topic;
+            }
+
+            public int FoxgloveLog_TopicCount => 1;
+            public int LivePublishes { get; private set; }
+
+            public FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index)
+            {
+                Assert.Equal(0, index);
+                return _topic;
+            }
+
+            public void FoxgloveLog_Publish(
+                int topicIndex,
+                FoxgloveManager manager,
+                ulong nowNs)
+            {
+                Assert.Equal(0, topicIndex);
+                Assert.NotNull(manager);
+                Assert.Equal(123_456_789UL, nowNs);
+                LivePublishes++;
             }
         }
 

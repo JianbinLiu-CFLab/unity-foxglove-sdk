@@ -122,6 +122,49 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void GeneratedTopicMetadataDistinguishesInheritedAndExplicitPublishRates()
+        {
+            var result = RunGenerator(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace Demo
+{
+    public partial class PublishRates
+    {
+        [FoxRun(""/phase184/rate/inherited"")]
+        public int Inherited;
+
+        [FoxRun(""/phase184/rate/explicit"", Hz = 7f)]
+        public int Explicit;
+
+        [FoxRun(""/phase184/rate/mixed"")]
+        public int MixedInherited;
+
+        [FoxRun(""/phase184/rate/mixed"", Hz = 7f)]
+        public int MixedExplicit;
+    }
+}");
+            var generated = result.GeneratedTrees
+                .Select(tree => tree.GetText().ToString())
+                .Single(text => text.Contains("partial class PublishRates", StringComparison.Ordinal));
+            var topicLines = generated
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(line => line.Contains("new FoxgloveLogTopicInfo", StringComparison.Ordinal))
+                .ToArray();
+            var inherited = topicLines.Single(line =>
+                line.Contains("\"/phase184/rate/inherited\"", StringComparison.Ordinal));
+            var explicitRate = topicLines.Single(line =>
+                line.Contains("\"/phase184/rate/explicit\"", StringComparison.Ordinal));
+            var mixedRate = topicLines.Single(line =>
+                line.Contains("\"/phase184/rate/mixed\"", StringComparison.Ordinal));
+
+            Assert.Contains("hasExplicitHz: false", inherited, StringComparison.Ordinal);
+            Assert.DoesNotContain("hasExplicitHz: false", explicitRate, StringComparison.Ordinal);
+            Assert.Contains(", 7f,", mixedRate, StringComparison.Ordinal);
+            Assert.DoesNotContain("hasExplicitHz: false", mixedRate, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void FreshDeclarationEnumsExposeOnlyNewNonZeroFlowAndPolicyValues()
         {
             var assembly = typeof(FoxRunAttribute).Assembly;

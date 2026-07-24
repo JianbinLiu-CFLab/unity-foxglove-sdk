@@ -159,6 +159,18 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void PublishPanelValidatesTheMaintainedCatalogFieldNames()
+        {
+            var panel = TestSources.Text(
+                "Tools/foxglove-extensions/foxrun-publish-panel/src/index.ts");
+
+            Assert.Contains("typeof contract.flow === \"string\"", panel, StringComparison.Ordinal);
+            Assert.Contains("typeof contract.hz === \"number\"", panel, StringComparison.Ordinal);
+            Assert.DoesNotContain("contract.flowMode", panel, StringComparison.Ordinal);
+            Assert.DoesNotContain("contract.rateHz", panel, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void CatalogExcludesRos2CdrAndUnknownVariantsInsteadOfRelabelingThemAsJson()
         {
             var response = FoxRunSubscriptionCatalog.BuildResponse(

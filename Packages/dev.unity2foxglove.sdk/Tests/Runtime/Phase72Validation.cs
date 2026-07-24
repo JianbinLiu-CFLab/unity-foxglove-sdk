@@ -143,9 +143,12 @@ namespace Unity.FoxgloveSDK.Tests
             var oldCountdownFallback = "t[i] = info.RateHz > 0 ? 1f / " + "info.RateHz : 1f";
             Check(!update.Contains(oldCountdownFallback),
                 "72C-5: FoxRun no longer resets countdown timers from elapsed frames");
-            Check(update.Contains("info.Hz,")
+            Check(update.Contains("var publishRateHz = info.HasExplicitHz")
+                  && update.Contains("? info.Hz")
+                  && update.Contains(": _mgr.ActiveFoxRunDefaultPublishRateHz;")
+                  && update.Contains("publishRateHz,")
                   && !update.Contains("Math.Max(1"),
-                "72C-6: FoxRun passes resolved Hz through without rewriting non-positive rates");
+                "72C-6: FoxRun preserves explicit Hz while resolving omitted cadence from the frozen publish profile");
             Check(update.Contains("FixedRatePublishScheduler.ShouldPublish"),
                 "72C-7: FoxRun routes cadence through the shared scheduler");
             Check(update.Contains("nonPositivePublishesEveryFrame: false"),
