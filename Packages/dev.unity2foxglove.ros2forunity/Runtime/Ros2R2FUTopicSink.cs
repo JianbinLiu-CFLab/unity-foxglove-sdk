@@ -7,7 +7,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using Unity.FoxgloveSDK.Components;
+using Unity2Foxglove.Ros2ForUnity.Native;
 
 namespace Unity2Foxglove.Ros2ForUnity
 {
@@ -23,7 +25,11 @@ namespace Unity2Foxglove.Ros2ForUnity
     /// references this type; it is added to <c>FoxgloveLogHub.TopicSinkRouter</c>
     /// from this optional package, preserving the core's ROS2-free boundary.
     /// </remarks>
-    public sealed class Ros2R2FUTopicSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
+    public sealed class Ros2R2FUTopicSink :
+        IFoxTopicSink,
+        IFoxTopicSinkContractLifecycle,
+        IFoxTopicResolvedContractSink,
+        IFoxTopicTargetSink
     {
         private const string DefaultNodeName = "unity2foxglove_foxrun";
 
@@ -33,6 +39,8 @@ namespace Unity2Foxglove.Ros2ForUnity
         private readonly IUnity2FoxgloveRos2Node _node;
         private readonly object _gate = new object();
         private readonly Dictionary<string, IRos2TopicPublisher> _publishers = new Dictionary<string, IRos2TopicPublisher>(StringComparer.Ordinal);
+        private readonly Dictionary<string, FoxRunResolvedQos?> _publisherQos =
+            new Dictionary<string, FoxRunResolvedQos?>(StringComparer.Ordinal);
         private readonly HashSet<string> _reported = new HashSet<string>(StringComparer.Ordinal);
         private bool _disposed;
 
@@ -52,19 +60,65 @@ namespace Unity2Foxglove.Ros2ForUnity
 
         public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.External;
 
+        public FoxRunEndpoint Target => FoxRunEndpoint.Ros2Native;
+
+        public bool IsReady(FoxTopicContract contract, out string reason)
+        {
+            reason = string.Empty;
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    reason = "ROS2 target sink is disposed.";
+                    return false;
+                }
+                if (!_context.IsAvailable)
+                {
+                    reason = "ROS2 runtime unavailable (" + _context.StatusMessage + ").";
+                    return false;
+                }
+                if (contract == null || !_publishers.ContainsKey(contract.Topic))
+                {
+                    reason = "No ROS2 publisher is registered for the topic.";
+                    return false;
+                }
+                return true;
+            }
+        }
+
         /// <summary>
         /// Resolve a concrete ROS2 publisher for the contract. Unsupported
         /// contracts and an unavailable runtime fail closed with a one-time reason.
         /// </summary>
         public void Register(FoxTopicContract contract)
+            => RegisterCore(contract, null);
+
+        void IFoxTopicResolvedContractSink.Register(
+            FoxTopicContract contract,
+            FoxRunResolvedPublishContract resolved)
+            => RegisterCore(contract, resolved?.NativeQos);
+
+        private void RegisterCore(
+            FoxTopicContract contract,
+            FoxRunResolvedQos? resolvedQos)
         {
+            IRos2TopicPublisher replaced = null;
             lock (_gate)
             {
                 if (_disposed || contract == null)
                     return;
-                if (_publishers.ContainsKey(contract.Topic))
-                    return;
+                if (_publishers.TryGetValue(contract.Topic, out var existing))
+                {
+                    _publisherQos.TryGetValue(contract.Topic, out var existingQos);
+                    if (Nullable.Equals(existingQos, resolvedQos))
+                        return;
+                    _publishers.Remove(contract.Topic);
+                    _publisherQos.Remove(contract.Topic);
+                    replaced = existing;
+                }
             }
+
+            DisposePublisher(replaced, "qos-replace:" + contract.Topic);
 
             if (!_context.IsAvailable)
             {
@@ -72,7 +126,45 @@ namespace Unity2Foxglove.Ros2ForUnity
                 return;
             }
 
-            if (_factory.TryCreate(contract, _node, out var publisher, out var reason) && publisher != null)
+            IRos2TopicPublisher publisher;
+            string reason;
+            bool created;
+            if (resolvedQos.HasValue)
+            {
+                if (_factory is IRos2QosAwareTopicPublisherFactory qosFactory)
+                {
+                    created = qosFactory.TryCreate(
+                        contract,
+                        resolvedQos.Value,
+                        _node,
+                        out publisher,
+                        out reason);
+                }
+                else if (resolvedQos.Value != FoxRunResolvedQos.Default)
+                {
+                    created = false;
+                    publisher = null;
+                    reason = "publisher factory is not QoS-aware and cannot apply the resolved native QoS";
+                }
+                else
+                {
+                    created = _factory.TryCreate(
+                        contract,
+                        _node,
+                        out publisher,
+                        out reason);
+                }
+            }
+            else
+            {
+                created = _factory.TryCreate(
+                    contract,
+                    _node,
+                    out publisher,
+                    out reason);
+            }
+
+            if (created && publisher != null)
             {
                 IRos2TopicPublisher duplicate = null;
                 lock (_gate)
@@ -88,18 +180,11 @@ namespace Unity2Foxglove.Ros2ForUnity
                     else
                     {
                         _publishers[contract.Topic] = publisher;
+                        _publisherQos[contract.Topic] = resolvedQos;
                     }
                 }
 
-                if (duplicate != null)
-                {
-                    try { duplicate.Dispose(); }
-                    catch (Exception ex)
-                    {
-                        ReportOnce("dispose:duplicate:" + ex.GetType().FullName, "ROS2 duplicate publisher teardown failed: "
-                            + ex.GetType().Name + ": " + ex.Message);
-                    }
-                }
+                DisposePublisher(duplicate, "duplicate:" + contract.Topic);
 
                 return;
             }
@@ -114,23 +199,55 @@ namespace Unity2Foxglove.Ros2ForUnity
         /// </summary>
         public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
         {
+            if (!TryPublish(contract, timestampNs, payload, origin, out var reason)
+                && contract != null
+                && !string.IsNullOrWhiteSpace(reason))
+            {
+                ReportOnce(contract.Topic + ":publish", reason);
+            }
+        }
+
+        public bool TryPublish(
+            FoxTopicContract contract,
+            ulong timestampNs,
+            byte[] payload,
+            string origin,
+            out string reason)
+        {
+            reason = string.Empty;
             IRos2TopicPublisher publisher;
             lock (_gate)
             {
-                if (_disposed || contract == null)
-                    return;
+                if (_disposed)
+                {
+                    reason = "ROS2 target sink is disposed.";
+                    return false;
+                }
+                if (contract == null)
+                {
+                    reason = "ROS2 publish contract is missing.";
+                    return false;
+                }
                 if (!_publishers.TryGetValue(contract.Topic, out publisher))
-                    return;
+                {
+                    reason = "No ROS2 publisher is registered for FoxRun topic '" + contract.Topic + "'.";
+                    return false;
+                }
             }
 
             if (payload == null)
             {
-                ReportOnce(contract.Topic + ":null-payload", "ROS2 publish skipped for '" + contract.Topic + "': payload was null.");
-                return;
+                reason = "ROS2 publish skipped for '" + contract.Topic + "': payload was null.";
+                return false;
             }
 
             if (!publisher.TryPublish(payload, timestampNs, out var error))
-                ReportOnce(contract.Topic + ":publish", "ROS2 publish failed for '" + contract.Topic + "': " + error);
+            {
+                reason = "ROS2 publish failed for '" + contract.Topic + "': " + error;
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -149,19 +266,10 @@ namespace Unity2Foxglove.Ros2ForUnity
                     return;
 
                 _publishers.Remove(topic);
+                _publisherQos.Remove(topic);
             }
 
-            try
-            {
-                publisher.Dispose();
-            }
-            catch (Exception ex)
-            {
-                ReportOnce(
-                    "dispose:unregister:" + topic + ":" + ex.GetType().FullName,
-                    "ROS2 publisher teardown failed for '" + topic + "': "
-                    + ex.GetType().Name + ": " + ex.Message);
-            }
+            DisposePublisher(publisher, "unregister:" + topic);
         }
 
         public void Flush()
@@ -180,24 +288,58 @@ namespace Unity2Foxglove.Ros2ForUnity
                 _disposed = true;
                 publishers = new List<IRos2TopicPublisher>(_publishers.Values);
                 _publishers.Clear();
+                _publisherQos.Clear();
             }
 
+            ExceptionDispatchInfo fatal = null;
             foreach (var publisher in publishers)
             {
-                try { publisher.Dispose(); }
+                try
+                {
+                    publisher.Dispose();
+                }
+                catch (Exception ex) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(ex))
+                {
+                    try
+                    {
+                        ReportOnce("dispose:publisher:" + ex.GetType().FullName, "ROS2 publisher teardown failed: "
+                            + ex.GetType().Name + ": " + ex.Message);
+                    }
+                    catch (Exception reportException)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(reportException);
+                    }
+                }
                 catch (Exception ex)
                 {
-                    ReportOnce("dispose:publisher:" + ex.GetType().FullName, "ROS2 publisher teardown failed: "
-                        + ex.GetType().Name + ": " + ex.Message);
+                    fatal ??= ExceptionDispatchInfo.Capture(ex);
                 }
             }
 
-            try { _node?.Dispose(); }
+            try
+            {
+                _node?.Dispose();
+            }
+            catch (Exception ex) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(ex))
+            {
+                try
+                {
+                    ReportOnce("dispose:node:" + ex.GetType().FullName, "ROS2 node teardown failed: "
+                        + ex.GetType().Name + ": " + ex.Message);
+                }
+                catch (Exception reportException)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(reportException);
+                }
+            }
             catch (Exception ex)
             {
-                ReportOnce("dispose:node:" + ex.GetType().FullName, "ROS2 node teardown failed: "
-                    + ex.GetType().Name + ": " + ex.Message);
+                fatal ??= ExceptionDispatchInfo.Capture(ex);
             }
+
+            fatal?.Throw();
         }
 
         private void ReportOnce(string key, string message)
@@ -208,7 +350,33 @@ namespace Unity2Foxglove.Ros2ForUnity
                     return;
             }
 
-            _log?.Invoke("[Ros2TopicSink] " + message);
+            try
+            {
+                _log?.Invoke("[Ros2TopicSink] " + message);
+            }
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+            {
+                // Diagnostics cannot prevent endpoint teardown or routing.
+            }
+        }
+
+        private void DisposePublisher(IRos2TopicPublisher publisher, string context)
+        {
+            if (publisher == null)
+                return;
+            try
+            {
+                publisher.Dispose();
+            }
+            catch (Exception ex) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(ex))
+            {
+                ReportOnce(
+                    "dispose:" + context + ":" + ex.GetType().FullName,
+                    "ROS2 publisher teardown failed (" + context + "): "
+                    + ex.GetType().Name + ": " + ex.Message);
+            }
         }
     }
 }

@@ -342,6 +342,16 @@ namespace Unity.FoxgloveSDK.Editor
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => pair.Value)
                 .ToList();
+            // Mapper helper suffixes are a class-wide ABI between the
+            // subscription and publisher partials. Build one deterministic
+            // union so publish-only members still receive helpers and mixed
+            // direction members cannot be cross-wired by independent indexes.
+            var customNativeMapperMembers = members
+                .Where(member => customNativeInputMembers.Contains(member)
+                                 || customNativePublishMembers.Contains(member))
+                .OrderBy(member => member.Topic, StringComparer.Ordinal)
+                .ThenBy(member => member.MemberName, StringComparer.Ordinal)
+                .ToList();
             var hasPolicy = publishMembers.Any(m => m.Policy != PolicyFixedRate);
             var hasConditions = publishMembers.Any(m => !string.IsNullOrWhiteSpace(m.OnlyIf));
             var pad = string.IsNullOrEmpty(ns) ? "" : "    ";
@@ -361,7 +371,22 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 TopicMetadataEmitter.EmitGetTopic(sb, topics, topicMap, topicModes, pad);
                 TopicMetadataEmitter.EmitGetContract(sb, ns, className, topics, topicMap, pad);
+                PublishDispatchEmitter.EmitCaptureAndTargets(
+                    sb,
+                    ns,
+                    className,
+                    topics,
+                    topicMap,
+                    nativeBusMembers,
+                    pad);
                 PublishDispatchEmitter.EmitPublish(sb, ns, className, topics, topicMap, pad);
+                Ros2CustomCdrEmitter.EmitBuilders(
+                    sb,
+                    ns,
+                    className,
+                    topics,
+                    topicMap,
+                    pad);
                 PublishDispatchEmitter.EmitPublishToBus(
                     sb,
                     ns,
@@ -395,9 +420,20 @@ namespace Unity.FoxgloveSDK.Editor
 
             if (emitRos2NativePartial)
             {
-                Ros2InputDispatchEmitter.EmitConditionalPartial(sb, ns, className, nativeInputMembers);
-                Ros2CustomDtoMapperEmitter.EmitConditionalPartial(sb, ns, className, customNativeInputMembers);
-                Ros2CustomPublishEmitter.EmitConditionalPartial(sb, ns, className, customNativePublishMembers);
+                Ros2InputDispatchEmitter.EmitConditionalPartial(sb, ns, className, nativeInputMembers, topics);
+                Ros2CustomDtoMapperEmitter.EmitConditionalPartial(
+                    sb,
+                    ns,
+                    className,
+                    customNativeMapperMembers,
+                    customNativeInputMembers,
+                    topics);
+                Ros2CustomPublishEmitter.EmitConditionalPartial(
+                    sb,
+                    ns,
+                    className,
+                    customNativePublishMembers,
+                    customNativeMapperMembers);
             }
 
             return sb.ToString();

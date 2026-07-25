@@ -88,7 +88,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 "Demo.Counter|/phase175/implicit|" + expectedSchemaName + "|_count",
                 0);
             Assert.Contains(
-                "FoxRunProtobufWire.WriteInt32(__payload, " + expectedFieldNumber + ", this._count)",
+                "FoxRunProtobufWire.WriteInt32(__payload, " + expectedFieldNumber + ", __foxRunCapture_0_0)",
                 source);
         }
 
@@ -177,9 +177,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var source = FoxgloveSourceEmitter.EmitClass("Demo", "NullableSource", new[] { rootNullable, nestedNullable });
 
-            Assert.Contains("if (this._optionalCount.HasValue)", source);
+            Assert.Contains("if (__foxRunCapture_0_0.HasValue)", source);
             Assert.Contains("WriteInt32(__payload", source);
-            Assert.Contains(", this._optionalCount.Value);", source);
+            Assert.Contains(", __foxRunCapture_0_0.Value);", source);
             Assert.Contains("if (__value.OptionalCount.HasValue)", source);
             Assert.Contains(", __value.OptionalCount.Value);", source);
             Assert.Contains("if (__item.HasValue)", source);

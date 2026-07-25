@@ -146,7 +146,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 hub,
                 StringComparison.Ordinal);
             Assert.Contains(
-                "if (!_publishSessionTracker.AllowsPublishing)",
+                "ShouldStopFoxRunPublishing(",
+                hub,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_publishSessionTracker.AllowsPublishing,",
                 hub,
                 StringComparison.Ordinal);
         }

@@ -90,6 +90,38 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FoxRunBridgeDemandIsIndependentOfLegacyComponentOutputSwitch()
+        {
+            var bridgeSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.Ros2Bridge.cs");
+            var bridgeRoot = CSharpSyntaxTree.ParseText(bridgeSource)
+                .GetCompilationUnitRoot();
+            var foxRunPrepare = bridgeRoot.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(method =>
+                    method.Identifier.ValueText
+                    == "TryPrepareFoxRunRos2BridgePublish");
+            var prepareBody = foxRunPrepare.Body?.ToFullString() ?? string.Empty;
+
+            Assert.DoesNotContain("_ros2BridgeEnabled", prepareBody, StringComparison.Ordinal);
+            Assert.Contains(
+                "EnsureFoxRunRos2BridgeRuntimeDemand",
+                prepareBody,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "_foxRunRos2BridgeRuntimeDemand = true",
+                bridgeSource,
+                StringComparison.Ordinal);
+
+            var managerSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
+            Assert.Contains(
+                "if (!_foxRunRos2BridgeRuntimeDemand)",
+                managerSource,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DirectionalSessionsCaptureThreeDifferentQosDefaults()
         {
             var publishState = new FoxRunPublishSessionState();
@@ -576,6 +608,8 @@ namespace Unity.FoxgloveSDK.Components
 
         public void EndPublishSessionForTest()
             => EndFoxRunPublishSession();
+
+        private void ReleaseFoxRunRos2BridgeRuntimeDemand() { }
 
         private static bool TryResolveRos2BridgeTopic(
             string topic,

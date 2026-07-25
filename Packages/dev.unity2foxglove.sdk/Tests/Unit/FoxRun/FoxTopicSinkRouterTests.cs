@@ -72,6 +72,295 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void RecoverableFaultObserverFailureDoesNotBlockHealthySink()
+        {
+            var router = new FoxTopicSinkRouter();
+            router.SinkFaulted += _ =>
+                throw new InvalidOperationException("diagnostic failed");
+            var bad = new ThrowingSink("bad");
+            var good = new RecordingSink("good", new List<string>());
+            router.AddSink(bad);
+            router.AddSink(good);
+            var contract = Exported("/diagnostic-isolation");
+            router.Register(contract);
+
+            router.Publish(contract, 1UL, Bytes("{}"), "source-a");
+
+            Assert.Single(good.Published);
+        }
+
+        [Fact]
+        public void RecoverableFaultObserverFailureDoesNotBlockLaterObserver()
+        {
+            var router = new FoxTopicSinkRouter();
+            var observed = new List<FoxTopicSinkFault>();
+            router.SinkFaulted += _ =>
+                throw new InvalidOperationException("diagnostic failed");
+            router.SinkFaulted += fault => observed.Add(fault);
+            var good = new RecordingSink("good", new List<string>());
+            router.AddSink(new ThrowingSink("bad"));
+            router.AddSink(good);
+            var contract = Exported("/diagnostic-observer-isolation");
+            router.Register(contract);
+
+            router.Publish(contract, 1UL, Bytes("{}"), "source-a");
+
+            Assert.Single(observed);
+            Assert.Single(good.Published);
+        }
+
+        [Fact]
+        public void FatalFaultObserverFailurePassesThroughRouter()
+        {
+            var router = new FoxTopicSinkRouter();
+            router.SinkFaulted += _ =>
+                throw new OutOfMemoryException("fatal diagnostic");
+            router.AddSink(new ThrowingSink("bad"));
+            var contract = Exported("/diagnostic-fatal");
+            router.Register(contract);
+
+            Assert.Throws<OutOfMemoryException>(() =>
+                router.Publish(contract, 1UL, Bytes("{}"), "source-a"));
+        }
+
+        [Fact]
+        public void TargetAwarePublishSkipsUnselectedSinksAndReturnsPerTargetFailure()
+        {
+            var router = new FoxTopicSinkRouter();
+            var native = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            var bridge = new TargetRecordingSink(
+                "bridge",
+                FoxRunEndpoint.Ros2Bridge,
+                ready: true,
+                succeeds: false);
+            router.AddSink(native);
+            router.AddSink(bridge);
+            var contract = Exported("/phase184/target-aware");
+            router.Register(contract);
+
+            var result = router.PublishTarget(
+                FoxRunEndpoint.Ros2Bridge,
+                contract,
+                41UL,
+                Bytes("{}"),
+                "source-a");
+
+            Assert.True(result.HadReadySink);
+            Assert.False(result.Succeeded);
+            Assert.Equal(0, native.PublishCalls);
+            Assert.Equal(1, bridge.PublishCalls);
+        }
+
+        [Fact]
+        public void FreshButIdenticalGeneratedContractCanUseTheRegisteredTargetRoute()
+        {
+            var router = new FoxTopicSinkRouter();
+            var native = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            router.AddSink(native);
+            var registered = Exported("/phase184/fresh-contract");
+            Assert.True(router.RegisterTargets(
+                FoxRunEndpoint.Ros2Native,
+                registered));
+
+            var freshGeneratedInstance = Exported("/phase184/fresh-contract");
+            var result = router.PublishTarget(
+                FoxRunEndpoint.Ros2Native,
+                freshGeneratedInstance,
+                184UL,
+                Bytes("{}"),
+                "generated-source");
+
+            Assert.True(result.HadReadySink);
+            Assert.True(result.Succeeded);
+            Assert.Equal(1, native.PublishCalls);
+        }
+
+        [Fact]
+        public void ConflictingRegistrationCannotOverwriteTheAcceptedRoute()
+        {
+            var router = new FoxTopicSinkRouter();
+            var native = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            var bridge = new TargetRecordingSink(
+                "bridge",
+                FoxRunEndpoint.Ros2Bridge,
+                ready: true,
+                succeeds: true);
+            router.AddSink(native);
+            router.AddSink(bridge);
+            var accepted = Exported("/phase184/route-conflict");
+            var conflicting = new FoxTopicContract(
+                accepted.Topic,
+                "foxrun.Other",
+                "json",
+                "foxrun.Other",
+                "different-fingerprint",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+
+            Assert.True(router.RegisterTargets(
+                FoxRunEndpoint.Ros2Native,
+                accepted));
+            Assert.False(router.RegisterTargets(
+                FoxRunEndpoint.Ros2Bridge,
+                conflicting));
+
+            Assert.True(router.PublishTarget(
+                FoxRunEndpoint.Ros2Native,
+                Exported(accepted.Topic),
+                185UL,
+                Bytes("{}"),
+                "accepted").Succeeded);
+            Assert.False(router.PublishTarget(
+                FoxRunEndpoint.Ros2Bridge,
+                conflicting,
+                186UL,
+                Bytes("{}"),
+                "rejected").Succeeded);
+            Assert.Equal(1, native.RegisterCalls);
+            Assert.Equal(0, bridge.RegisterCalls);
+        }
+
+        [Fact]
+        public void IdenticalMultiWritersShareOneStableSinkRoute()
+        {
+            var router = new FoxTopicSinkRouter();
+            var native = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            router.AddSink(native);
+            var first = Exported(
+                "/phase184/multiwriter",
+                FoxTopicWriterPolicy.MultiWriter);
+            var second = Exported(
+                "/phase184/multiwriter",
+                FoxTopicWriterPolicy.MultiWriter);
+
+            Assert.True(router.RegisterTargets(FoxRunEndpoint.Ros2Native, first));
+            Assert.True(router.RegisterTargets(FoxRunEndpoint.Ros2Native, second));
+            Assert.True(router.PublishTarget(
+                FoxRunEndpoint.Ros2Native,
+                second,
+                187UL,
+                Bytes("{}"),
+                "writer-b").Succeeded);
+            Assert.Equal(1, native.RegisterCalls);
+            Assert.Equal(1, native.PublishCalls);
+        }
+
+        [Fact]
+        public void RemovingOneIdenticalMultiWriterKeepsSharedSinkRouteAlive()
+        {
+            var router = new FoxTopicSinkRouter();
+            var native = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            router.AddSink(native);
+            var first = Exported(
+                "/phase184/multiwriter-removal",
+                FoxTopicWriterPolicy.MultiWriter);
+            var second = Exported(
+                "/phase184/multiwriter-removal",
+                FoxTopicWriterPolicy.MultiWriter);
+            Assert.True(router.RegisterTargets(FoxRunEndpoint.Ros2Native, first));
+            Assert.True(router.RegisterTargets(FoxRunEndpoint.Ros2Native, second));
+
+            Assert.True(router.Unregister(first.Topic));
+            Assert.True(router.PublishTarget(
+                FoxRunEndpoint.Ros2Native,
+                second,
+                188UL,
+                Bytes("{}"),
+                "writer-b").Succeeded);
+            Assert.Equal(1, native.RegisterCalls);
+            Assert.Equal(1, native.PublishCalls);
+
+            Assert.True(router.Unregister(second.Topic));
+            Assert.False(router.PublishTarget(
+                FoxRunEndpoint.Ros2Native,
+                second,
+                189UL,
+                Bytes("{}"),
+                "writer-b").Succeeded);
+        }
+
+        [Fact]
+        public void LegacyPublishHonorsBridgeOnlyResolvedTargetSelection()
+        {
+            var router = new FoxTopicSinkRouter();
+            var native = new TargetRecordingSink(
+                "native",
+                FoxRunEndpoint.Ros2Native,
+                ready: true,
+                succeeds: true);
+            var bridge = new TargetRecordingSink(
+                "bridge",
+                FoxRunEndpoint.Ros2Bridge,
+                ready: true,
+                succeeds: true);
+            var legacyNative = new RecordingSink("legacy-native", new List<string>());
+            router.AddSink(native);
+            router.AddSink(bridge);
+            router.AddSink(legacyNative);
+            var contract = Exported("/phase184/bridge-only-legacy");
+            Assert.True(router.RegisterTargets(FoxRunEndpoint.Ros2Bridge, contract));
+
+            router.Publish(contract, 190UL, Bytes("{}"), "writer-a");
+
+            Assert.Equal(0, native.PublishCalls);
+            Assert.Equal(1, bridge.PublishCalls);
+            Assert.Empty(legacyNative.Published);
+        }
+
+        [Fact]
+        public void TargetReadinessPreventsPayloadPreparationAndLegacySinkAdaptsToNative()
+        {
+            var router = new FoxTopicSinkRouter();
+            var unavailableBridge = new TargetRecordingSink(
+                "bridge",
+                FoxRunEndpoint.Ros2Bridge,
+                ready: false,
+                succeeds: true);
+            var legacy = new RecordingSink("legacy", new List<string>());
+            router.AddSink(unavailableBridge);
+            router.AddSink(legacy);
+            var contract = Exported("/phase184/readiness");
+            router.Register(contract);
+
+            Assert.False(router.HasReadyTarget(FoxRunEndpoint.Ros2Bridge, contract));
+            Assert.True(router.HasReadyTarget(FoxRunEndpoint.Ros2Native, contract));
+            Assert.Equal(0, unavailableBridge.PublishCalls);
+            Assert.Empty(legacy.Published);
+        }
+
+        [Fact]
+        public void FatalTargetReadinessExceptionPassesThroughTheRouter()
+        {
+            var router = new FoxTopicSinkRouter();
+            router.AddSink(new FatalReadinessSink());
+            var contract = Exported("/phase184/fatal-readiness");
+            router.Register(contract);
+
+            Assert.Throws<OutOfMemoryException>(() =>
+                router.HasReadyTarget(FoxRunEndpoint.Ros2Bridge, contract));
+        }
+
+        [Fact]
         public void FailingRegisterSinkIsIsolatedAndReportedOnce()
         {
             var router = new FoxTopicSinkRouter();
@@ -86,7 +375,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             router.Register(contract);
             router.Register(contract);
 
-            Assert.Equal(2, good.Registered.Count);
+            Assert.Single(good.Registered);
             Assert.Single(faults);
             Assert.Equal("bad", faults[0].SinkName);
             Assert.Equal("/telemetry", faults[0].Topic);
@@ -111,6 +400,47 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Single(faults);
             Assert.Equal("bad", faults[0].SinkName);
             Assert.Equal("register", faults[0].Operation);
+        }
+
+        [Fact]
+        public void FatalAddSinkReplayRollsBackEveryAttemptAndNeverAttachesSink()
+        {
+            var router = new FoxTopicSinkRouter();
+            var first = Exported("/phase184/add-sink/first");
+            var fatal = Exported("/phase184/add-sink/fatal");
+            router.Register(first);
+            router.Register(fatal);
+            var sink = new FatalReplaySink(fatal.Topic);
+
+            var thrown = Assert.Throws<OutOfMemoryException>(() =>
+                router.AddSink(sink));
+
+            Assert.Equal("fatal replay register", thrown.Message);
+            Assert.Equal(
+                new[] { first.Topic, fatal.Topic },
+                sink.RegisteredTopics);
+            Assert.Contains(first.Topic, sink.UnregisteredTopics);
+            Assert.Contains(fatal.Topic, sink.UnregisteredTopics);
+            Assert.False(router.HasSinks);
+            Assert.Equal(0, router.SinkCount);
+            Assert.False(router.RemoveSink(sink));
+            router.Publish(first, 1UL, Bytes("{}"), "owner");
+            Assert.Equal(0, sink.PublishCalls);
+        }
+
+        [Fact]
+        public void RemoveSinkUnregistersOwnedContractsBeforeDetaching()
+        {
+            var router = new FoxTopicSinkRouter();
+            var sink = new LifecycleRecordingSink("lifecycle");
+            router.AddSink(sink);
+            router.Register(Exported("/phase184/remove-sink/first"));
+            router.Register(Exported("/phase184/remove-sink/second"));
+
+            Assert.True(router.RemoveSink(sink));
+
+            Assert.Equal(2, sink.UnregisterCalls);
+            Assert.False(router.HasSinks);
         }
 
         [Fact]
@@ -199,6 +529,48 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FatalUnregisterStillCleansLaterSinksAndRemovesRoute()
+        {
+            var router = new FoxTopicSinkRouter();
+            var fatal = new FatalUnregisterSink("fatal");
+            var good = new LifecycleRecordingSink("good");
+            router.AddSink(fatal);
+            router.AddSink(good);
+            var contract = Exported("/phase184/fatal-unregister");
+            router.Register(contract);
+
+            Assert.Throws<OutOfMemoryException>(() =>
+                router.Unregister(contract.Topic));
+
+            Assert.Equal(1, fatal.UnregisterCalls);
+            Assert.Equal(1, good.UnregisterCalls);
+            var late = new RecordingSink("late", new List<string>());
+            router.AddSink(late);
+            Assert.Empty(late.Registered);
+        }
+
+        [Fact]
+        public void FatalRegisterRollsBackRouteAndAttemptedLifecycleSinks()
+        {
+            var router = new FoxTopicSinkRouter();
+            var good = new LifecycleRecordingSink("good");
+            var fatal = new FatalRegisterSink("fatal");
+            router.AddSink(good);
+            router.AddSink(fatal);
+            var contract = Exported("/phase184/fatal-register");
+
+            var failure = Assert.Throws<OutOfMemoryException>(() =>
+                router.Register(contract));
+
+            Assert.Equal("fatal register", failure.Message);
+            Assert.Equal(1, good.UnregisterCalls);
+            Assert.Equal(1, fatal.UnregisterCalls);
+            Assert.True(router.RemoveSink(fatal));
+            Assert.True(router.Register(contract));
+            Assert.Equal(2, good.RegisterCalls);
+        }
+
+        [Fact]
         public void DisposeDisposesEverySinkAndClearsRouter()
         {
             var router = new FoxTopicSinkRouter();
@@ -215,6 +587,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FatalDisposeStillDisposesLaterSinksAndClearsRouter()
+        {
+            var router = new FoxTopicSinkRouter();
+            var fatal = new FatalDisposeSink("fatal");
+            var good = new RecordingSink("good", new List<string>());
+            router.AddSink(fatal);
+            router.AddSink(good);
+
+            Assert.Throws<OutOfMemoryException>(() => router.Dispose());
+
+            Assert.True(good.Disposed);
+            Assert.Equal(0, router.SinkCount);
+        }
+
+        [Fact]
         public void DisposePreventsReusingRouter()
         {
             var router = new FoxTopicSinkRouter();
@@ -225,8 +612,18 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(0, router.SinkCount);
         }
 
-        private static FoxTopicContract Exported(string topic)
-            => new FoxTopicContract(topic, "foxrun.Test", "json", "foxrun.Test", "abc123", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+        private static FoxTopicContract Exported(
+            string topic,
+            FoxTopicWriterPolicy writerPolicy =
+                FoxTopicWriterPolicy.SingleWriter)
+            => new FoxTopicContract(
+                topic,
+                "foxrun.Test",
+                "json",
+                "foxrun.Test",
+                "abc123",
+                FoxTopicVisibility.Exported,
+                writerPolicy);
 
         private static byte[] Bytes(string value) => Encoding.UTF8.GetBytes(value);
 
@@ -292,13 +689,101 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             public string Name { get; }
             public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+            public int RegisterCalls { get; private set; }
             public int UnregisterCalls { get; private set; }
 
-            public void Register(FoxTopicContract contract) { }
+            public void Register(FoxTopicContract contract) => RegisterCalls++;
             public void Unregister(string topic) => UnregisterCalls++;
             public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
             public void Flush() { }
             public void Dispose() { }
+        }
+
+        private sealed class FatalUnregisterSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
+        {
+            public FatalUnregisterSink(string name) => Name = name;
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+            public int UnregisterCalls { get; private set; }
+            public void Register(FoxTopicContract contract) { }
+            public void Unregister(string topic)
+            {
+                UnregisterCalls++;
+                throw new OutOfMemoryException("fatal unregister");
+            }
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class FatalRegisterSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
+        {
+            public FatalRegisterSink(string name) => Name = name;
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+            public int UnregisterCalls { get; private set; }
+            public void Register(FoxTopicContract contract)
+                => throw new OutOfMemoryException("fatal register");
+            public void Unregister(string topic) => UnregisterCalls++;
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class FatalReplaySink :
+            IFoxTopicSink,
+            IFoxTopicSinkContractLifecycle
+        {
+            private readonly string _fatalTopic;
+
+            public FatalReplaySink(string fatalTopic)
+            {
+                _fatalTopic = fatalTopic;
+            }
+
+            public string Name => "fatal-replay";
+            public FoxTopicSinkCapabilities Capabilities =>
+                FoxTopicSinkCapabilities.Test;
+            public List<string> RegisteredTopics { get; } = new List<string>();
+            public List<string> UnregisteredTopics { get; } = new List<string>();
+            public int PublishCalls { get; private set; }
+
+            public void Register(FoxTopicContract contract)
+            {
+                RegisteredTopics.Add(contract.Topic);
+                if (string.Equals(
+                        contract.Topic,
+                        _fatalTopic,
+                        StringComparison.Ordinal))
+                {
+                    throw new OutOfMemoryException(
+                        "fatal replay register");
+                }
+            }
+
+            public void Unregister(string topic)
+                => UnregisteredTopics.Add(topic);
+
+            public void Publish(
+                FoxTopicContract contract,
+                ulong timestampNs,
+                byte[] payload,
+                string origin)
+                => PublishCalls++;
+
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class FatalDisposeSink : IFoxTopicSink
+        {
+            public FatalDisposeSink(string name) => Name = name;
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.Test;
+            public void Register(FoxTopicContract contract) { }
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+            public void Flush() { }
+            public void Dispose() => throw new OutOfMemoryException("fatal dispose");
         }
 
         private sealed class ThrowingUnregisterSink : IFoxTopicSink, IFoxTopicSinkContractLifecycle
@@ -314,6 +799,79 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             {
                 UnregisterCalls++;
                 throw new InvalidOperationException("unregister boom");
+            }
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class TargetRecordingSink : IFoxTopicSink, IFoxTopicTargetSink
+        {
+            private readonly bool _ready;
+            private readonly bool _succeeds;
+
+            public TargetRecordingSink(
+                string name,
+                FoxRunEndpoint target,
+                bool ready,
+                bool succeeds)
+            {
+                Name = name;
+                Target = target;
+                _ready = ready;
+                _succeeds = succeeds;
+            }
+
+            public string Name { get; }
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.External;
+            public FoxRunEndpoint Target { get; }
+            public int RegisterCalls { get; private set; }
+            public int PublishCalls { get; private set; }
+            public void Register(FoxTopicContract contract) => RegisterCalls++;
+            public bool IsReady(FoxTopicContract contract, out string reason)
+            {
+                reason = _ready ? string.Empty : "unavailable";
+                return _ready;
+            }
+            public bool TryPublish(
+                FoxTopicContract contract,
+                ulong timestampNs,
+                byte[] payload,
+                string origin,
+                out string reason)
+            {
+                PublishCalls++;
+                reason = _succeeds ? string.Empty : "failed";
+                return _succeeds;
+            }
+            public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin)
+            {
+                TryPublish(contract, timestampNs, payload, origin, out _);
+            }
+            public void Flush() { }
+            public void Dispose() { }
+        }
+
+        private sealed class FatalReadinessSink : IFoxTopicSink, IFoxTopicTargetSink
+        {
+            public string Name => "fatal-readiness";
+            public FoxTopicSinkCapabilities Capabilities => FoxTopicSinkCapabilities.External;
+            public FoxRunEndpoint Target => FoxRunEndpoint.Ros2Bridge;
+            public void Register(FoxTopicContract contract) { }
+            public bool IsReady(FoxTopicContract contract, out string reason)
+            {
+                reason = string.Empty;
+                throw new OutOfMemoryException("fatal");
+            }
+            public bool TryPublish(
+                FoxTopicContract contract,
+                ulong timestampNs,
+                byte[] payload,
+                string origin,
+                out string reason)
+            {
+                reason = string.Empty;
+                return true;
             }
             public void Publish(FoxTopicContract contract, ulong timestampNs, byte[] payload, string origin) { }
             public void Flush() { }

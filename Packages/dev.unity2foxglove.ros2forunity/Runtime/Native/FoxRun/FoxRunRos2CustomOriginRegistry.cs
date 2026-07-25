@@ -28,11 +28,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         }
 
         internal static string BeginPublisher(string endpointIdentity)
+            => BeginPublisher(endpointIdentity, null);
+
+        internal static string BeginPublisher(string endpointIdentity, string requestedOrigin)
         {
             if (String.IsNullOrWhiteSpace(endpointIdentity))
                 throw new ArgumentException("Custom ROS2 endpoint identity is required.", nameof(endpointIdentity));
 
-            var origin = "unity2foxglove-" + Guid.NewGuid().ToString("N");
+            var origin = String.IsNullOrWhiteSpace(requestedOrigin)
+                ? "unity2foxglove-" + Guid.NewGuid().ToString("N")
+                : requestedOrigin;
             s_activeOrigins[endpointIdentity] = origin;
             return origin;
         }

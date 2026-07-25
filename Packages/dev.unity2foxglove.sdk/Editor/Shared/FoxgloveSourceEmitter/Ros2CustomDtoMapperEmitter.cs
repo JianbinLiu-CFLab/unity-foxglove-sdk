@@ -36,9 +36,11 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string ns,
             string className,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members)
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> mapperMembers,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> subscriptionMembers,
+            IReadOnlyList<string> publishTopics)
         {
-            if (members == null || members.Count == 0)
+            if (mapperMembers == null || mapperMembers.Count == 0)
                 return;
 
             var pad = string.IsNullOrEmpty(ns) ? string.Empty : "    ";
@@ -51,35 +53,90 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine("{");
             }
 
-            sb.AppendLine(pad + "partial class " + className + " : " + NativeNamespace + "IFoxRunRos2CustomSubscriptionSource");
+            sb.AppendLine(
+                pad + "partial class " + className
+                + (subscriptionMembers != null && subscriptionMembers.Count > 0
+                    ? " : " + NativeNamespace + "IFoxRunRos2CustomSubscriptionSource"
+                    : string.Empty));
             sb.AppendLine(pad + "{");
-            for (var index = 0; index < members.Count; index++)
+            for (var index = 0; index < mapperMembers.Count; index++)
             {
-                var envelope = EnvelopeType(members[index]);
+                if (!ContainsMember(subscriptionMembers, mapperMembers[index]))
+                    continue;
+                var envelope = EnvelopeType(mapperMembers[index]);
                 sb.AppendLine(pad + "    private " + envelope + " __foxRunRos2CustomAppliedOwned_" + index + ";");
                 sb.AppendLine(pad + "    private object __foxRunRos2CustomAppliedDto_" + index + ";");
-                if (members[index].Policy == 4)
-                    sb.AppendLine(pad + "    private int __foxRunRos2Trigger_" + TriggerFieldSuffix(members[index]) + ";");
+                if (mapperMembers[index].Policy == 4)
+                    sb.AppendLine(pad + "    private int __foxRunRos2Trigger_" + TriggerFieldSuffix(mapperMembers[index]) + ";");
             }
 
-            sb.AppendLine();
-            sb.AppendLine(pad + "    int " + NativeNamespace + "IFoxRunRos2CustomSubscriptionSource.FoxRunRos2CustomSubscriptionCount => " + members.Count + ";");
-            sb.AppendLine();
-            sb.AppendLine(pad + "    void " + NativeNamespace + "IFoxRunRos2CustomSubscriptionSource.FoxRunRos2RegisterCustomSubscriptions(");
-            sb.AppendLine(pad + "        " + NativeNamespace + "IFoxRunRos2SubscriptionRegistrar registrar)");
-            sb.AppendLine(pad + "    {");
-            sb.AppendLine(pad + "        if (registrar == null) throw new global::System.ArgumentNullException(nameof(registrar));");
-            for (var index = 0; index < members.Count; index++)
-                EmitRegistration(sb, pad, declaringType, members[index], index);
-            sb.AppendLine(pad + "    }");
+            if (subscriptionMembers != null && subscriptionMembers.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine(pad + "    int " + NativeNamespace + "IFoxRunRos2CustomSubscriptionSource.FoxRunRos2CustomSubscriptionCount => " + subscriptionMembers.Count + ";");
+                sb.AppendLine();
+                sb.AppendLine(pad + "    void " + NativeNamespace + "IFoxRunRos2CustomSubscriptionSource.FoxRunRos2RegisterCustomSubscriptions(");
+                sb.AppendLine(pad + "        " + NativeNamespace + "IFoxRunRos2SubscriptionRegistrar registrar)");
+                sb.AppendLine(pad + "    {");
+                sb.AppendLine(pad + "        if (registrar == null) throw new global::System.ArgumentNullException(nameof(registrar));");
+                for (var index = 0; index < subscriptionMembers.Count; index++)
+                {
+                    var member = subscriptionMembers[index];
+                    EmitRegistration(
+                        sb,
+                        pad,
+                        declaringType,
+                        member,
+                        MapperIndexOf(mapperMembers, member));
+                }
+                sb.AppendLine(pad + "    }");
+            }
 
-            for (var index = 0; index < members.Count; index++)
-                EmitMemberMappers(sb, pad, members[index], index);
+            for (var index = 0; index < mapperMembers.Count; index++)
+            {
+                var member = mapperMembers[index];
+                EmitMemberMappers(
+                    sb,
+                    pad,
+                    member,
+                    index,
+                    publishTopics,
+                    ContainsMember(subscriptionMembers, member));
+            }
 
             sb.AppendLine(pad + "}");
             if (!string.IsNullOrEmpty(ns))
                 sb.AppendLine("}");
             sb.AppendLine("#endif");
+        }
+
+        internal static int MapperIndexOf(
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> mapperMembers,
+            FoxgloveSourceEmitter.TopicMember member)
+        {
+            if (mapperMembers == null)
+                throw new ArgumentNullException(nameof(mapperMembers));
+            for (var index = 0; index < mapperMembers.Count; index++)
+            {
+                if (ReferenceEquals(mapperMembers[index], member))
+                    return index;
+            }
+            throw new InvalidOperationException(
+                "Custom ROS2 member is missing from the shared mapper registry.");
+        }
+
+        private static bool ContainsMember(
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            FoxgloveSourceEmitter.TopicMember member)
+        {
+            if (members == null)
+                return false;
+            for (var index = 0; index < members.Count; index++)
+            {
+                if (ReferenceEquals(members[index], member))
+                    return true;
+            }
+            return false;
         }
 
         private static void EmitRegistration(
@@ -140,7 +197,9 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string pad,
             FoxgloveSourceEmitter.TopicMember member,
-            int index)
+            int index,
+            IReadOnlyList<string> publishTopics,
+            bool emitSubscriptionMappers)
         {
             var registry = new ShapeRegistry(index);
             var root = registry.Get(member.Ros2CustomDtoShape);
@@ -148,10 +207,13 @@ namespace Unity.FoxgloveSDK.Editor
             EmitMapDtoToEnvelope(sb, pad, member, index, root);
             sb.AppendLine();
             EmitCopyEnvelope(sb, pad, member, index, root);
-            sb.AppendLine();
-            EmitApplyAndClear(sb, pad, member, index, root);
-            sb.AppendLine();
-            EmitEnvelopeEquals(sb, pad, member, index, root);
+            if (emitSubscriptionMappers)
+            {
+                sb.AppendLine();
+                EmitApplyAndClear(sb, pad, member, index, root, publishTopics);
+                sb.AppendLine();
+                EmitEnvelopeEquals(sb, pad, member, index, root);
+            }
 
             for (var shapeIndex = 0; shapeIndex < registry.Count; shapeIndex++)
             {
@@ -268,7 +330,8 @@ namespace Unity.FoxgloveSDK.Editor
             string pad,
             FoxgloveSourceEmitter.TopicMember member,
             int index,
-            ShapeEntry root)
+            ShapeEntry root,
+            IReadOnlyList<string> publishTopics)
         {
             var envelope = EnvelopeType(member);
             var access = TypeExprEmitter.MemberAccess(member.MemberName);
@@ -278,6 +341,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "        " + access + " = dto;");
             sb.AppendLine(pad + "        __foxRunRos2CustomAppliedOwned_" + index + " = owned;");
             sb.AppendLine(pad + "        __foxRunRos2CustomAppliedDto_" + index + " = dto;");
+            EmitRemoteOriginMark(sb, pad + "        ", member, publishTopics);
             sb.AppendLine(pad + "    }");
             sb.AppendLine();
             sb.AppendLine(pad + "    private bool __FoxRunRos2CustomClearIfOwned_" + index + "(" + envelope + " owned)");
@@ -292,6 +356,25 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "        return cleared;");
             sb.AppendLine(pad + "    }");
 
+        }
+
+        private static void EmitRemoteOriginMark(
+            StringBuilder sb,
+            string pad,
+            FoxgloveSourceEmitter.TopicMember member,
+            IReadOnlyList<string> publishTopics)
+        {
+            if (member.Mode != 3 || publishTopics == null)
+                return;
+
+            for (var index = 0; index < publishTopics.Count; index++)
+            {
+                if (!string.Equals(publishTopics[index], member.Topic, StringComparison.Ordinal))
+                    continue;
+
+                sb.AppendLine(pad + "__FoxRunMarkRemoteApplied_" + index + "();");
+                return;
+            }
         }
 
         private static string ConditionDelegate(FoxgloveSourceEmitter.TopicMember member)
@@ -364,7 +447,10 @@ namespace Unity.FoxgloveSDK.Editor
                     EmitScalarDtoToRos(sb, pad, source, target, member);
                     return;
                 case FoxRunRos2CustomDtoMemberKind.Enum:
-                    sb.AppendLine(pad + target + " = (" + RosPrimitiveType(member.RosType) + ")" + source + ";");
+                    var enumSource = TryUnwrapNullable(member.FullyQualifiedTypeName, out _)
+                        ? source + ".GetValueOrDefault()"
+                        : source;
+                    sb.AppendLine(pad + target + " = (" + RosPrimitiveType(member.RosType) + ")" + enumSource + ";");
                     return;
                 case FoxRunRos2CustomDtoMemberKind.String:
                     sb.AppendLine(pad + "if (" + source + " != null) budget.RequireBytes(checked((long)" + source + ".Length * 2L));");
@@ -380,7 +466,7 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine(pad + target + " = " + source + " == null ? new " + nested.RosType + "() : " + nested.DtoToRosMethod + "(" + source + ", budget);");
                     return;
                 case FoxRunRos2CustomDtoMemberKind.Sequence:
-                    EmitSequenceDtoToRos(sb, pad, source, target, member);
+                    EmitSequenceDtoToRos(sb, pad, source, target, member, registry);
                     return;
                 default:
                     throw new InvalidOperationException("Unsupported custom DTO member kind: " + member.Kind + ".");
@@ -405,12 +491,15 @@ namespace Unity.FoxgloveSDK.Editor
             string pad,
             string source,
             string target,
-            FoxRunRos2CustomDtoMemberShape member)
+            FoxRunRos2CustomDtoMemberShape member,
+            ShapeRegistry registry)
         {
             var count = member.SequenceRepresentation == FoxRunRos2CustomDtoSequenceRepresentation.List
                 ? source + ".Count"
                 : source + ".Length";
-            var element = CSharpType(member.SequenceElementTypeName);
+            var element = RosSequenceElementType(member, registry);
+            var sourceItem = "__source_" + member.Name + "[__i]";
+            var targetItem = "__target_" + member.Name + "[__i]";
             sb.AppendLine(pad + "if (" + source + " == null)");
             sb.AppendLine(pad + "{");
             sb.AppendLine(pad + "    " + target + " = global::System.Array.Empty<" + element + ">();");
@@ -420,9 +509,32 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    budget.RequireBytes(checked((long)" + count + " * " + ElementSizeLiteral(member.SequenceElementTypeName) + "));" );
             sb.AppendLine(pad + "    var __source_" + member.Name + " = " + source + ";");
             sb.AppendLine(pad + "    var __target_" + member.Name + " = new " + element + "[__source_" + member.Name + (member.SequenceRepresentation == FoxRunRos2CustomDtoSequenceRepresentation.List ? ".Count" : ".Length") + "];" );
-            sb.AppendLine(pad + "    for (var __i = 0; __i < __target_" + member.Name + ".Length; __i++)");
-            sb.AppendLine(pad + "        __target_" + member.Name + "[__i] = __source_" + member.Name + "[__i];");
+            // Publish the owned array into the parent before filling it so the
+            // parent catch/dispose path owns every successfully mapped item
+            // when a later recursive mapping fails.
             sb.AppendLine(pad + "    " + target + " = __target_" + member.Name + ";");
+            sb.AppendLine(pad + "    for (var __i = 0; __i < __target_" + member.Name + ".Length; __i++)");
+            sb.AppendLine(pad + "    {");
+            if (member.NestedShape != null)
+            {
+                var nested = registry.Get(member.NestedShape);
+                sb.AppendLine(pad + "        " + targetItem + " = " + sourceItem + " == null ? new " + nested.RosType + "() : " + nested.DtoToRosMethod + "(" + sourceItem + ", budget);");
+            }
+            else if (IsStringSequence(member))
+            {
+                sb.AppendLine(pad + "        var __item_" + member.Name + " = " + sourceItem + " ?? string.Empty;");
+                sb.AppendLine(pad + "        budget.RequireBytes(checked((long)__item_" + member.Name + ".Length * 2L));");
+                sb.AppendLine(pad + "        " + targetItem + " = __item_" + member.Name + ";");
+            }
+            else if (IsEnumTypeName(member.SequenceElementTypeName))
+            {
+                sb.AppendLine(pad + "        " + targetItem + " = (" + element + ")" + sourceItem + ";");
+            }
+            else
+            {
+                sb.AppendLine(pad + "        " + targetItem + " = " + sourceItem + ";");
+            }
+            sb.AppendLine(pad + "    }");
             sb.AppendLine(pad + "}");
         }
 
@@ -474,7 +586,7 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine(pad + target + " = " + nested.CopyRosMethod + "(" + source + ", budget);");
                     return;
                 case FoxRunRos2CustomDtoMemberKind.Sequence:
-                    var element = CSharpType(member.SequenceElementTypeName);
+                    var element = RosSequenceElementType(member, registry);
                     sb.AppendLine(pad + "if (" + source + " == null)");
                     sb.AppendLine(pad + "{");
                     sb.AppendLine(pad + "    " + target + " = null;");
@@ -483,8 +595,25 @@ namespace Unity.FoxgloveSDK.Editor
                     sb.AppendLine(pad + "{");
                     sb.AppendLine(pad + "    budget.RequireBytes(checked((long)" + source + ".Length * " + ElementSizeLiteral(member.SequenceElementTypeName) + "));" );
                     sb.AppendLine(pad + "    var __values_" + member.Name + " = new " + element + "[" + source + ".Length];");
-                    sb.AppendLine(pad + "    global::System.Array.Copy(" + source + ", __values_" + member.Name + ", " + source + ".Length);");
                     sb.AppendLine(pad + "    " + target + " = __values_" + member.Name + ";");
+                    sb.AppendLine(pad + "    for (var __i = 0; __i < __values_" + member.Name + ".Length; __i++)");
+                    sb.AppendLine(pad + "    {");
+                    if (member.NestedShape != null)
+                    {
+                        var nestedSequence = registry.Get(member.NestedShape);
+                        sb.AppendLine(pad + "        __values_" + member.Name + "[__i] = " + source + "[__i] == null ? new " + nestedSequence.RosType + "() : " + nestedSequence.CopyRosMethod + "(" + source + "[__i], budget);");
+                    }
+                    else if (IsStringSequence(member))
+                    {
+                        sb.AppendLine(pad + "        var __item_" + member.Name + " = " + source + "[__i] ?? string.Empty;");
+                        sb.AppendLine(pad + "        budget.RequireBytes(checked((long)__item_" + member.Name + ".Length * 2L));");
+                        sb.AppendLine(pad + "        __values_" + member.Name + "[__i] = __item_" + member.Name + ";");
+                    }
+                    else
+                    {
+                        sb.AppendLine(pad + "        __values_" + member.Name + "[__i] = " + source + "[__i];");
+                    }
+                    sb.AppendLine(pad + "    }");
                     sb.AppendLine(pad + "}");
                     return;
                 default:
@@ -526,7 +655,20 @@ namespace Unity.FoxgloveSDK.Editor
                     }
                     return;
                 case FoxRunRos2CustomDtoMemberKind.Enum:
-                    sb.AppendLine(pad + target + " = (" + GlobalTypeName(member.FullyQualifiedTypeName) + ")" + source + ";");
+                    if (TryUnwrapNullable(member.FullyQualifiedTypeName, out var nullableEnumElement))
+                    {
+                        var presence = "source." + RosProperty(member.PresenceFieldName);
+                        var enumType = GlobalTypeName(nullableEnumElement);
+                        sb.AppendLine(
+                            pad + target + " = " + presence
+                            + " ? new global::System.Nullable<" + enumType + ">(("
+                            + enumType + ")" + source + ")"
+                            + " : default(global::System.Nullable<" + enumType + ">);");
+                    }
+                    else
+                    {
+                        sb.AppendLine(pad + target + " = (" + GlobalTypeName(member.FullyQualifiedTypeName) + ")" + source + ";");
+                    }
                     return;
                 case FoxRunRos2CustomDtoMemberKind.String:
                     var stringPresence = member.HasPresence
@@ -550,7 +692,8 @@ namespace Unity.FoxgloveSDK.Editor
                         member.HasPresence
                             ? "source." + RosProperty(member.PresenceFieldName)
                             : string.Empty,
-                        member);
+                        member,
+                        registry);
                     return;
                 default:
                     throw new InvalidOperationException("Unsupported custom DTO member kind: " + member.Kind + ".");
@@ -563,7 +706,8 @@ namespace Unity.FoxgloveSDK.Editor
             string source,
             string target,
             string presence,
-            FoxRunRos2CustomDtoMemberShape member)
+            FoxRunRos2CustomDtoMemberShape member,
+            ShapeRegistry registry)
         {
             var element = CSharpType(member.SequenceElementTypeName);
             var isList = member.SequenceRepresentation == FoxRunRos2CustomDtoSequenceRepresentation.List;
@@ -578,12 +722,45 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 sb.AppendLine(pad + "    var __values_" + member.Name + " = new global::System.Collections.Generic.List<" + element + ">(" + source + ".Length);");
                 sb.AppendLine(pad + "    for (var __i = 0; __i < " + source + ".Length; __i++)");
-                sb.AppendLine(pad + "        __values_" + member.Name + ".Add(" + source + "[__i]);");
+                if (member.NestedShape != null)
+                {
+                    var nested = registry.Get(member.NestedShape);
+                    sb.AppendLine(pad + "        __values_" + member.Name + ".Add(" + nested.RosToDtoMethod + "(" + source + "[__i]));");
+                }
+                else if (IsStringSequence(member))
+                {
+                    sb.AppendLine(pad + "        __values_" + member.Name + ".Add(" + source + "[__i] ?? string.Empty);");
+                }
+                else if (IsEnumTypeName(member.SequenceElementTypeName))
+                {
+                    sb.AppendLine(pad + "        __values_" + member.Name + ".Add((" + element + ")" + source + "[__i]);");
+                }
+                else
+                {
+                    sb.AppendLine(pad + "        __values_" + member.Name + ".Add(" + source + "[__i]);");
+                }
             }
             else
             {
                 sb.AppendLine(pad + "    var __values_" + member.Name + " = new " + element + "[" + source + ".Length];");
-                sb.AppendLine(pad + "    global::System.Array.Copy(" + source + ", __values_" + member.Name + ", " + source + ".Length);");
+                sb.AppendLine(pad + "    for (var __i = 0; __i < __values_" + member.Name + ".Length; __i++)");
+                if (member.NestedShape != null)
+                {
+                    var nested = registry.Get(member.NestedShape);
+                    sb.AppendLine(pad + "        __values_" + member.Name + "[__i] = " + nested.RosToDtoMethod + "(" + source + "[__i]);");
+                }
+                else if (IsStringSequence(member))
+                {
+                    sb.AppendLine(pad + "        __values_" + member.Name + "[__i] = " + source + "[__i] ?? string.Empty;");
+                }
+                else if (IsEnumTypeName(member.SequenceElementTypeName))
+                {
+                    sb.AppendLine(pad + "        __values_" + member.Name + "[__i] = (" + element + ")" + source + "[__i];");
+                }
+                else
+                {
+                    sb.AppendLine(pad + "        __values_" + member.Name + "[__i] = " + source + "[__i];");
+                }
             }
             sb.AppendLine(pad + "    " + target + " = __values_" + member.Name + ";");
             sb.AppendLine(pad + "}");
@@ -601,6 +778,20 @@ namespace Unity.FoxgloveSDK.Editor
                 sb.AppendLine(pad + "        var nested_" + member.Name + " = " + property + ";");
                 sb.AppendLine(pad + "        " + property + " = null;");
                 sb.AppendLine(pad + "        " + nested.DisposeRosMethod + "(nested_" + member.Name + ");");
+            }
+            foreach (var member in entry.Shape.Members.Where(
+                         candidate => candidate.Kind == FoxRunRos2CustomDtoMemberKind.Sequence
+                                      && candidate.NestedShape != null))
+            {
+                var nested = entry.Registry.Get(member.NestedShape);
+                var property = "value." + RosProperty(member.RosFieldName);
+                sb.AppendLine(pad + "        var nestedSequence_" + member.Name + " = " + property + ";");
+                sb.AppendLine(pad + "        " + property + " = null;");
+                sb.AppendLine(pad + "        if (nestedSequence_" + member.Name + " != null)");
+                sb.AppendLine(pad + "        {");
+                sb.AppendLine(pad + "            for (var __i = 0; __i < nestedSequence_" + member.Name + ".Length; __i++)");
+                sb.AppendLine(pad + "                " + nested.DisposeRosMethod + "(nestedSequence_" + member.Name + "[__i]);");
+                sb.AppendLine(pad + "        }");
             }
             sb.AppendLine(pad + "        value.Dispose();");
             sb.AppendLine(pad + "    }");
@@ -683,8 +874,15 @@ namespace Unity.FoxgloveSDK.Editor
             }
             else
             {
-                var elementType = CSharpType(member.SequenceElementTypeName);
-                sb.AppendLine(pad + "        if (!global::System.Collections.Generic.EqualityComparer<" + elementType + ">.Default.Equals(" + leftSequence + "[__i], " + rightSequence + "[__i])) return false;");
+                var elementType = RosSequenceElementType(member, registry);
+                if (IsStringSequence(member))
+                {
+                    sb.AppendLine(pad + "        if (!global::System.String.Equals(" + leftSequence + "[__i] ?? string.Empty, " + rightSequence + "[__i] ?? string.Empty, global::System.StringComparison.Ordinal)) return false;");
+                }
+                else
+                {
+                    sb.AppendLine(pad + "        if (!global::System.Collections.Generic.EqualityComparer<" + elementType + ">.Default.Equals(" + leftSequence + "[__i], " + rightSequence + "[__i])) return false;");
+                }
             }
             sb.AppendLine(pad + "    }");
             sb.AppendLine(pad + "}");
@@ -831,6 +1029,36 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
+        private static string RosSequenceElementType(
+            FoxRunRos2CustomDtoMemberShape member,
+            ShapeRegistry registry)
+        {
+            if (member.NestedShape != null)
+                return registry.Get(member.NestedShape).RosType;
+            return RosPrimitiveType(StripSequenceSuffix(member.RosType));
+        }
+
+        private static bool IsStringSequence(FoxRunRos2CustomDtoMemberShape member)
+            => string.Equals(
+                StripSequenceSuffix(member.RosType),
+                "string",
+                StringComparison.Ordinal);
+
+        private static bool IsEnumTypeName(string typeName)
+        {
+            var value = CSharpType(typeName);
+            return !IsKeywordType(value)
+                   && !string.Equals(value, "System.String", StringComparison.Ordinal)
+                   && !string.Equals(value, "string", StringComparison.Ordinal);
+        }
+
+        private static string StripSequenceSuffix(string rosType)
+        {
+            var value = rosType ?? string.Empty;
+            var bracket = value.IndexOf('[', StringComparison.Ordinal);
+            return bracket < 0 ? value : value.Substring(0, bracket);
+        }
+
         private sealed class ShapeRegistry
         {
             private readonly int _memberIndex;
@@ -858,7 +1086,7 @@ namespace Unity.FoxgloveSDK.Editor
                 _entries.Add(entry);
                 foreach (var member in shape.Members)
                 {
-                    if (member.Kind == FoxRunRos2CustomDtoMemberKind.NestedDto)
+                    if (member.NestedShape != null)
                         Get(member.NestedShape);
                 }
                 return entry;

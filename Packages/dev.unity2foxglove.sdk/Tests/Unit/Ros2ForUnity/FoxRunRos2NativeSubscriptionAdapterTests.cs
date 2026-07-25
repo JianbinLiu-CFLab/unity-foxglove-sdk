@@ -514,6 +514,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FatalLateTokenRollbackStillReleasesDeferredNodeOwnership()
+        {
+            var events = new List<string>();
+            var backend = new FakeBackend(events)
+            {
+                RemoveException = new OutOfMemoryException("rollback-primary")
+            };
+            FoxRunRos2SubscriptionBinding<FakeMessage> binding = null;
+            backend.DuringRegister = () => binding.Stop();
+            binding = CreateBinding(backend, 2, () => 2, _ => { }, _ => false);
+
+            var thrown = Assert.Throws<OutOfMemoryException>(() => binding.TryRegister());
+
+            Assert.Equal("rollback-primary", thrown.Message);
+            Assert.Equal(
+                new[] { "remove-subscription", "release-node" },
+                events);
+            Assert.Equal(1, backend.RemoveCount);
+            Assert.Equal(1, backend.ReleaseCount);
+        }
+
+        [Fact]
+        public void SubscriptionHubTeardownContinuesAfterFatalHostedBinding()
+        {
+            var stopOrder = new List<string>();
+            var bindings = new IFoxRunRos2SubscriptionHostedCleanup[]
+            {
+                new FakeHostedCleanup(
+                    "first",
+                    stopOrder,
+                    new OutOfMemoryException("first-primary")),
+                new FakeHostedCleanup("second", stopOrder, null)
+            };
+
+            var thrown = Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2SubscriptionHub.StopHostedBindings(
+                    bindings,
+                    _ => { }));
+
+            Assert.Equal("first-primary", thrown.Message);
+            Assert.Equal(new[] { "first", "second" }, stopOrder);
+        }
+
+        [Fact]
         public void StopDoesNotWaitForBlockedRegisterAndDeferredReleaseIsUnique()
         {
             using var registerEntered = new ManualResetEventSlim();
@@ -847,6 +891,52 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var lateException = Record.Exception(() => backend.InvokeLate(borrowed));
             Assert.Null(lateException);
             Assert.Equal(1, binding.RejectedAfterStopCount);
+        }
+
+        [Fact]
+        public void FatalCallbackCopyFailurePassesThroughTheExecutorBoundary()
+        {
+            var backend = new FakeBackend();
+            var binding = CreateBinding(
+                backend,
+                3,
+                () => 3,
+                _ => { },
+                _ => false,
+                _ => throw new OutOfMemoryException("fatal"));
+            Assert.True(binding.TryRegister().Succeeded);
+            using var borrowed = Message("boom");
+
+            Assert.Throws<OutOfMemoryException>(() => backend.Invoke(borrowed));
+            Assert.Equal(1, binding.CopyFailedCount);
+
+            binding.Stop();
+        }
+
+        [Fact]
+        public void SelfOriginEnvelopeIsDroppedBeforeApplyWhileRemoteOriginStillApplies()
+        {
+            var backend = new FakeBackend();
+            FakeMessage applied = null;
+            var binding = CreateBinding(
+                backend,
+                3,
+                () => 3,
+                value => applied = value,
+                _ => false,
+                dropBeforeApply: value => value.Data == "self");
+            Assert.True(binding.TryRegister().Succeeded);
+
+            backend.Invoke(Message("self"));
+            Assert.False(binding.TryApplyLatest(3));
+            Assert.Null(applied);
+            Assert.Equal(1, binding.SameOriginDropCount);
+
+            backend.Invoke(Message("remote"));
+            Assert.True(binding.TryApplyLatest(3));
+            Assert.Equal("remote", applied.Data);
+
+            binding.Stop();
         }
 
         [Fact]
@@ -1526,7 +1616,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Func<bool> consumeTrigger = null,
             Func<bool> canApply = null,
             int transportAdmissionRateLimitHz = int.MaxValue,
-            Func<long> admissionTimestamp = null)
+            Func<long> admissionTimestamp = null,
+            Func<FakeMessage, bool> dropBeforeApply = null)
         {
             return new FoxRunRos2SubscriptionBinding<FakeMessage>(
                 contract ?? Contract(),
@@ -1543,6 +1634,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 valuesEqual: valuesEqual,
                 consumeTrigger: consumeTrigger,
                 canApply: canApply,
+                dropBeforeApply: dropBeforeApply,
                 transportAdmissionRateLimitHz: transportAdmissionRateLimitHz,
                 admissionTimestamp: admissionTimestamp);
         }
@@ -1686,6 +1778,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
 
             public bool IsUsable { get; }
+        }
+
+        private sealed class FakeHostedCleanup :
+            IFoxRunRos2SubscriptionHostedCleanup
+        {
+            private readonly string _name;
+            private readonly List<string> _stopOrder;
+            private readonly Exception _failure;
+
+            public FakeHostedCleanup(
+                string name,
+                List<string> stopOrder,
+                Exception failure)
+            {
+                _name = name;
+                _stopOrder = stopOrder;
+                _failure = failure;
+            }
+
+            public void Stop()
+            {
+                _stopOrder.Add(_name);
+                if (_failure != null)
+                    throw _failure;
+            }
         }
 
         private sealed class ManagedQosFactory : IFoxRunRos2NativeQosProfileFactory
@@ -2334,6 +2451,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void FatalRegistrationFailurePassesThroughTheIsolationBoundary()
+        {
+            var failures = 0;
+
+            Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2RegistrationIsolation.TryRun(
+                    () => throw new OutOfMemoryException("fatal registration"),
+                    _ => failures++));
+
+            Assert.Equal(0, failures);
+        }
+
+        [Fact]
         public void OneApplyFailureIsTerminalAndDoesNotPreventTheNextContract()
         {
             var first = new FakeHostBinding(
@@ -2355,6 +2485,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.True(first.TryGetSnapshot(1, out var snapshot));
             Assert.Equal(FoxRunRos2RegistrationError.ApplyFailure, snapshot.Error);
             Assert.Equal("The native ROS2 subscription could not apply the copied message.", snapshot.Diagnostic);
+        }
+
+        [Fact]
+        public void FatalApplyFailurePassesThroughWithoutBeingRecordedAsAContractFailure()
+        {
+            var binding = new FakeHostBinding(
+                "fatal-apply",
+                () => throw new OutOfMemoryException("fatal apply"));
+
+            Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2ApplyIsolation.TryRun(binding, 1, out _));
+
+            Assert.Equal(FoxRunRos2SubscriptionBindingState.Ready, binding.State);
         }
 
         private static FoxRunRos2GeneratedContract Contract(

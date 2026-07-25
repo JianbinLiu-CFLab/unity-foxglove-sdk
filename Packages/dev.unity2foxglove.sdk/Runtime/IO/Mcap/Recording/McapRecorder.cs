@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Dictionary<(uint clientId, uint chId), ChannelWriteState> _clientChannelWriteState = new();
         private readonly HashSet<(uint clientId, uint chId)> _skippedClientChannels = new();
         private readonly Dictionary<uint, ChannelWriteState> _serverChannelWriteStates = new();
+        private readonly Dictionary<uint, (string Topic, TopicSignature Signature)> _rejectedServerChannelAdmissions = new();
         private readonly Dictionary<(string topic, McapChannelDirection direction), ChannelWriteState> _topicChannelWriteState = new();
         private readonly Dictionary<string, TopicSignature> _topicSignatures = new();
         private readonly HashSet<ushort> _seenChannelIds = new();
@@ -137,6 +138,71 @@ namespace Unity.FoxgloveSDK.IO
             AddChannelCore(fId, topic, enc, sName, sEnc, sContent, null);
         }
 
+        /// <summary>
+        /// Return whether a server channel id is already recorded and, when it
+        /// is, whether the proposed descriptor exactly matches the durable
+        /// topic and encoding/schema signature.
+        /// </summary>
+        internal bool TryGetServerChannelCompatibility(
+            uint fId,
+            string topic,
+            string enc,
+            string sName,
+            string sEnc,
+            string sContent,
+            out bool compatible)
+        {
+            var candidate = CreateTopicSignature(enc, sName, sEnc, sContent);
+            lock (_lock)
+            {
+                if (!_serverChannelWriteStates.TryGetValue(fId, out var state))
+                {
+                    compatible = false;
+                    return false;
+                }
+
+                compatible = string.Equals(state.Topic, topic, StringComparison.Ordinal)
+                             && state.Signature.Equals(candidate);
+                return true;
+            }
+        }
+
+        /// <summary>Return whether this recorder owns a durable server channel for the Foxglove id.</summary>
+        internal bool HasServerChannel(uint fId)
+        {
+            lock (_lock)
+                return _serverChannelWriteStates.ContainsKey(fId);
+        }
+
+        internal bool IsServerChannelAdmissionRejected(
+            uint fId,
+            string topic,
+            string enc,
+            string sName,
+            string sEnc,
+            string sContent)
+        {
+            var signature = CreateTopicSignature(NormalizeMessageEncoding(enc), sName, sEnc, sContent);
+            lock (_lock)
+            {
+                return _rejectedServerChannelAdmissions.TryGetValue(fId, out var rejection)
+                       && string.Equals(rejection.Topic, topic, StringComparison.Ordinal)
+                       && rejection.Signature.Equals(signature);
+            }
+        }
+
+        internal void ClearServerChannelAdmissionRejection(uint fId)
+        {
+            lock (_lock)
+                _rejectedServerChannelAdmissions.Remove(fId);
+        }
+
+        internal void ClearServerChannelAdmissionRejections()
+        {
+            lock (_lock)
+                _rejectedServerChannelAdmissions.Clear();
+        }
+
         internal void AddChannelPreservingMcapId(uint fId, ushort mcapChannelId, string topic, string enc, string sName, string sEnc, string sContent)
         {
             AddChannelCore(fId, topic, enc, sName, sEnc, sContent, mcapChannelId);
@@ -156,8 +222,16 @@ namespace Unity.FoxgloveSDK.IO
 
                 var normalizedEnc = NormalizeMessageEncoding(enc);
                 var signature = CreateTopicSignature(normalizedEnc, sName, sEnc, sContent);
+                if (_rejectedServerChannelAdmissions.TryGetValue(fId, out var rejection)
+                    && string.Equals(rejection.Topic, topic, StringComparison.Ordinal)
+                    && rejection.Signature.Equals(signature))
+                {
+                    return;
+                }
+
                 if (WouldMixTopicSignature(topic, signature))
                 {
+                    _rejectedServerChannelAdmissions[fId] = (topic, signature);
                     _log.LogWarning(
                         $"MCAP: skipping server channel for topic '{topic}' because its signature is incompatible with an existing recorded channel.");
                     return;
@@ -182,13 +256,27 @@ namespace Unity.FoxgloveSDK.IO
                     if (_nextChannelId == 0) { Fail("Channel ID overflow"); return; }
                     mCid = _nextChannelId++;
                 }
-                var state = new ChannelWriteState { McapId = mCid, SchemaId = sid, Topic = topic };
+                var state = new ChannelWriteState
+                {
+                    McapId = mCid,
+                    SchemaId = sid,
+                    Topic = topic,
+                    Signature = signature
+                };
+                var meta = CreateChannelMetadata(McapChannelDirection.Output);
+                try
+                {
+                    _writer.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
+                }
+                catch (Exception ex)
+                {
+                    Fail("Channel write failed: " + ex.Message);
+                    throw;
+                }
                 _serverChannelWriteStates[fId] = state;
+                _rejectedServerChannelAdmissions.Remove(fId);
                 if (!_topicChannelWriteState.ContainsKey((topic, McapChannelDirection.Output)))
                     _topicChannelWriteState[(topic, McapChannelDirection.Output)] = state;
-
-                var meta = CreateChannelMetadata(McapChannelDirection.Output);
-                _writer.WriteChannel(mCid, sid, topic, normalizedEnc, meta);
                 _channels.Add(new ChannelRecordState { Id = mCid, SchemaId = sid, Topic = topic, Encoding = normalizedEnc, Metadata = SnapshotChannelMetadata(meta) });
                 RecordTopicSignature(topic, signature);
             }
@@ -247,12 +335,26 @@ namespace Unity.FoxgloveSDK.IO
                         if (_recordingFailed) return;
                         if (_nextChannelId == 0) { Fail("Channel ID overflow"); return; }
                         var mcapId = _nextChannelId++;
-                        map = new ChannelWriteState { McapId = mcapId, SchemaId = sid, Topic = topic };
+                        map = new ChannelWriteState
+                        {
+                            McapId = mcapId,
+                            SchemaId = sid,
+                            Topic = topic,
+                            Signature = signature
+                        };
+                        var meta = CreateChannelMetadata(McapChannelDirection.Input);
+                        try
+                        {
+                            _writer.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
+                        }
+                        catch (Exception ex)
+                        {
+                            Fail("Client channel write failed: " + ex.Message);
+                            throw;
+                        }
                         _clientChannelWriteState[key] = map;
                         if (!_topicChannelWriteState.ContainsKey((topic, McapChannelDirection.Input)))
                             _topicChannelWriteState[(topic, McapChannelDirection.Input)] = map;
-                        var meta = CreateChannelMetadata(McapChannelDirection.Input);
-                        _writer.WriteChannel(mcapId, sid, topic, messageEncoding, meta);
                         _channels.Add(new ChannelRecordState { Id = mcapId, SchemaId = sid, Topic = topic, Encoding = messageEncoding, Metadata = SnapshotChannelMetadata(meta) });
                         RecordTopicSignature(topic, signature);
                     }

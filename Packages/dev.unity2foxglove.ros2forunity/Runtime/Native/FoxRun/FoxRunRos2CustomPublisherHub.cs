@@ -7,6 +7,7 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using Unity.FoxgloveSDK.Components;
 using UnityEngine;
 
@@ -105,17 +106,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     ? null
                     : _manager.ActiveFoxRunPublishSessionPolicy);
 
-            if (!_publishSessionTracker.AllowsPublishing)
-            {
-                StopBindings();
-                return;
-            }
-
             // Output policy is independent from the captured subscription
             // session. A Publish custom endpoint must stay available while
-            // subscriptions are disabled.
-            if ((_manager != null && !_manager.Ros2NativeEnabled)
-                || Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(gameObject.scene))
+            // subscriptions or the legacy component-output switch are disabled.
+            if (ShouldStopFoxRunPublishing(
+                    _publishSessionTracker.AllowsPublishing,
+                    _manager == null || _manager.Ros2NativeEnabled,
+                    Ros2ForUnityNativeBridgeLifecycleGate.IsShuttingDownForBridge(
+                        gameObject.scene)))
             {
                 StopBindings();
                 return;
@@ -226,7 +224,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                             defaultSource,
                             defaultTargets));
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     WarnOnce(
                         behaviour.GetInstanceID() + "|" + exception.GetType().FullName,
@@ -241,13 +240,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (binding.IsStopped || !_seen.Contains(binding.Identity))
                     _stale.Add(binding);
             }
-            for (var index = 0; index < _stale.Count; index++)
-            {
-                var binding = _stale[index];
-                binding.Stop();
-                _bindings.Remove(binding);
-                _existing.Remove(binding.Identity);
-            }
+            StopStaleBindings(
+                _bindings,
+                _stale,
+                _existing,
+                exception => WarnOnce(
+                    "stale|" + exception.GetType().FullName + "|" + exception.Message,
+                    "Custom native ROS2 publisher teardown failed: "
+                    + exception.GetType().Name));
         }
 
         private void AddBinding<TDto, TEnvelope>(
@@ -299,6 +299,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
+            if (!TryGetAcceptedSourceOrigin(
+                    source as IFoxgloveLogSource,
+                    bus,
+                    contract.Topic,
+                    out var sourceOrigin))
+            {
+                // The main FoxRun hub is the sole topic-writer admission
+                // authority.  A rejected duplicate must never create a native
+                // endpoint merely because this independent scanner can see it.
+                return;
+            }
+
             var readiness = EvaluateReadiness(contract);
             if (!readiness.IsReady)
             {
@@ -318,7 +330,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            var origin = FoxRunRos2CustomOriginRegistry.BeginPublisher(identity);
+            var origin = FoxRunRos2CustomOriginRegistry.BeginPublisher(identity, sourceOrigin);
             FoxRunRos2CustomPublisherBinding<TDto, TEnvelope> binding = null;
             try
             {
@@ -349,15 +361,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _bindings.Add(new HostedBinding<TDto, TEnvelope>(identity, source.GetInstanceID(), binding));
                 _existing.Add(identity);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
-                if (binding != null)
-                    binding.Stop();
-                else
-                {
-                    FoxRunRos2CustomOriginRegistry.EndPublisher(identity, origin);
-                    backend.ReleaseNodeOwnership();
-                }
+                CleanupFailedStartupAndRethrow(
+                    exception,
+                    binding == null ? null : (Action)binding.Stop,
+                    binding == null
+                        ? () => FoxRunRos2CustomOriginRegistry.EndPublisher(
+                            identity,
+                            origin)
+                        : null,
+                    binding == null
+                        ? backend.ReleaseNodeOwnership
+                        : null);
                 throw;
             }
         }
@@ -368,6 +384,39 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 contract.BaseRuntimePackageId,
                 contract.InterfaceDigest,
                 Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION"));
+
+        internal static bool TryGetAcceptedSourceOrigin(
+            IFoxgloveLogSource source,
+            FoxTopicBus bus,
+            string topic,
+            out string origin)
+        {
+            origin = string.Empty;
+            if (source == null
+                || bus == null
+                || string.IsNullOrWhiteSpace(topic)
+                || source is not IFoxgloveTopicContractSource contractSource)
+            {
+                return false;
+            }
+
+            origin = contractSource.FoxgloveLog_Origin ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(origin))
+                return false;
+            for (var index = 0; index < source.FoxgloveLog_TopicCount; index++)
+            {
+                var candidate = contractSource.FoxgloveLog_GetContract(index);
+                if (candidate != null
+                    && string.Equals(candidate.Topic, topic, StringComparison.Ordinal)
+                    && bus.IsRegistered(candidate, origin))
+                {
+                    return true;
+                }
+            }
+
+            origin = string.Empty;
+            return false;
+        }
 
         private void StopBindings()
         {
@@ -396,24 +445,147 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (bindings == null)
                 return;
 
+            ExceptionDispatchInfo fatal = null;
             for (var index = 0; index < bindings.Count; index++)
             {
                 try
                 {
                     bindings[index]?.Stop();
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     try
                     {
                         reportFailure?.Invoke(exception);
                     }
-                    catch (Exception)
+                    catch (Exception reportException) when (
+                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(reportException))
                     {
                         // Diagnostics must not interrupt the remaining teardown.
                     }
+                    catch (Exception reportException)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(reportException);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    // Finish the remaining mandatory endpoint cleanup, then
+                    // preserve the first fatal exception and its stack.
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
                 }
             }
+
+            fatal?.Throw();
+        }
+
+        internal static void StopStaleBindings(
+            IList<IFoxRunRos2CustomPublisherHostedBinding> bindings,
+            IReadOnlyList<IFoxRunRos2CustomPublisherHostedBinding> stale,
+            ISet<string> existing,
+            Action<Exception> reportFailure)
+        {
+            if (stale == null)
+                return;
+
+            ExceptionDispatchInfo fatal = null;
+            for (var index = 0; index < stale.Count; index++)
+            {
+                var binding = stale[index];
+                try
+                {
+                    binding?.Stop();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    try
+                    {
+                        reportFailure?.Invoke(exception);
+                    }
+                    catch (Exception reportException) when (
+                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(reportException))
+                    {
+                        // Diagnostics must not interrupt mandatory bookkeeping.
+                    }
+                    catch (Exception reportException)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(reportException);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                }
+                finally
+                {
+                    if (binding != null)
+                    {
+                        bindings?.Remove(binding);
+                        existing?.Remove(binding.Identity);
+                    }
+                }
+            }
+
+            fatal?.Throw();
+        }
+
+        internal static void CleanupFailedStartupAndRethrow(
+            Exception primaryException,
+            Action stopBinding,
+            Action endPublisher,
+            Action releaseNode)
+        {
+            if (primaryException == null)
+                throw new ArgumentNullException(nameof(primaryException));
+
+            var primary = ExceptionDispatchInfo.Capture(primaryException);
+            if (stopBinding != null)
+            {
+                try
+                {
+                    stopBinding();
+                }
+                catch (Exception)
+                {
+                    // The startup failure remains primary.
+                }
+            }
+            else
+            {
+                try
+                {
+                    endPublisher?.Invoke();
+                }
+                catch (Exception)
+                {
+                    // Continue to the independently owned node release.
+                }
+
+                try
+                {
+                    releaseNode?.Invoke();
+                }
+                catch (Exception)
+                {
+                    // The startup failure remains primary.
+                }
+            }
+
+            primary.Throw();
+        }
+
+        internal static bool ShouldStopFoxRunPublishing(
+            bool publishSessionAllows,
+            bool legacyComponentNativeOutputEnabled,
+            bool bridgeLifecycleIsShuttingDown)
+        {
+            // The legacy switch owns component publishers only. FoxRun demand
+            // is frozen in its directional publish session and explicit
+            // contracts, so the switch must not disable these endpoints.
+            _ = legacyComponentNativeOutputEnabled;
+            return !publishSessionAllows || bridgeLifecycleIsShuttingDown;
         }
 
         internal static bool ShouldRegisterNativePublisher(

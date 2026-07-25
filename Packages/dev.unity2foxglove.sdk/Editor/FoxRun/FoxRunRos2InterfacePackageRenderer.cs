@@ -240,7 +240,7 @@ namespace Unity.FoxgloveSDK.Editor
             byCanonicalIdentity.Add(shape.CanonicalIdentity, shape);
             foreach (var member in shape.Members)
             {
-                if (member.Kind == FoxRunRos2CustomDtoMemberKind.NestedDto)
+                if (member.NestedShape != null)
                     AddShape(member.NestedShape, byCanonicalIdentity, payloadIdentityOwners);
             }
         }

@@ -180,7 +180,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     "new FoxgloveLogTopicInfo(\"/phase184/qos/canonical-endpoint\"",
                     StringComparison.Ordinal));
 
-            Assert.Contains("hasExplicitQos: false", topicLine, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitQosProfile: false", topicLine, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitReliability: false", topicLine, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitDurability: false", topicLine, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitHistory: false", topicLine, StringComparison.Ordinal);
+            Assert.Contains("hasExplicitDepth: false", topicLine, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -797,8 +801,9 @@ namespace Demo
             Assert.Contains("IFoxgloveInputSource", generated, StringComparison.Ordinal);
             Assert.Contains("__foxRunInputPending_0 = __value", generated, StringComparison.Ordinal);
             Assert.Contains("this._state = __foxRunInputPending_0", generated, StringComparison.Ordinal);
-            Assert.Contains("__foxRunSuppressNextPublish_0 = true", generated, StringComparison.Ordinal);
-            Assert.Contains("if (__foxRunSuppressNextPublish_0)", generated, StringComparison.Ordinal);
+            Assert.Contains("__FoxRunMarkRemoteApplied_0();", generated, StringComparison.Ordinal);
+            Assert.Contains("if (!__foxRunRemoteOwned_0) return true;", generated, StringComparison.Ordinal);
+            Assert.Contains("if (__remoteUnchanged) return false;", generated, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -1213,6 +1218,34 @@ namespace Demo
                 FoxRunConditionMemberKind.Missing,
                 reflection[nameof(ReflectionInheritedConditionFixture.PrivateBase)]);
         }
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void GeneratedBarePublisherObserverSideChannelCompilesWithoutCaptureSequenceState()
+        {
+            var output = RunGeneratorAndUpdateCompilation(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class BarePublisher
+    {
+        [FoxRun(""/phase184/bare-observer"")]
+        private float _value;
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+#endif
 
         [Fact]
         public void ReflectionScannerMatchesAccessibleInheritedOnlyIfShapes()

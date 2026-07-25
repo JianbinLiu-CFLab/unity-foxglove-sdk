@@ -46,8 +46,9 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
         [Theory]
         [InlineData("unity2foxglove_foxrun_interfaces_v1", true)]
-        [InlineData("a", true)]
+        [InlineData("a", false)]
         [InlineData("a_1", true)]
+        [InlineData("foo__bar", false)]
         [InlineData("Unity2Foxglove", false)]
         [InlineData("1interfaces", false)]
         [InlineData("interfaces-1", false)]

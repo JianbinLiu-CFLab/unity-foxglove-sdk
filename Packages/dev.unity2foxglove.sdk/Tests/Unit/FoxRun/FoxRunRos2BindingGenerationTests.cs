@@ -151,6 +151,33 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void NativePublishAndSubscribeApplyMarksTheRemoteOriginSnapshot()
+        {
+            var member = BuildMember(
+                FoxRunGenerationDescriptorConstants.Ros2NativeSource,
+                FoxRunGenerationDescriptorConstants.JsonEncoding,
+                (int)FoxRunFlow.PublishAndSubscribe,
+                FoxRunGenerationDescriptorConstants.InheritQosProfile,
+                ValidShape());
+
+            var source = FoxgloveSourceEmitter.EmitClass(
+                FoxRunGenerationModel.FromMembers(new[] { member }).Types.Single());
+
+            var applyStart = source.IndexOf(
+                "private void __FoxRunRos2Apply_0",
+                StringComparison.Ordinal);
+            Assert.True(applyStart >= 0, source);
+            var applyEnd = source.IndexOf(
+                "private bool __FoxRunRos2ClearIfOwned_0",
+                applyStart,
+                StringComparison.Ordinal);
+            Assert.True(applyEnd > applyStart, source);
+            var applySection = source.Substring(applyStart, applyEnd - applyStart);
+            Assert.Contains("__FoxRunMarkRemoteApplied_0();", applySection, StringComparison.Ordinal);
+            Assert.DoesNotContain("__foxRunSuppressNextPublish_", applySection, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void ExplicitWebSocketQosFailsClosedWithoutNativeFallback()
         {
             var member = BuildMember(
@@ -1729,7 +1756,8 @@ namespace Demo
                 generatedBuilder,
                 "Demo",
                 "Receiver",
-                new[] { member });
+                new[] { member },
+                Array.Empty<string>());
             var generated = generatedBuilder.ToString();
 
             Assert.Contains("\\t", generated, StringComparison.Ordinal);

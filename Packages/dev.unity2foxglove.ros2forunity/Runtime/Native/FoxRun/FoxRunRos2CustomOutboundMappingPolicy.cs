@@ -6,6 +6,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using Unity.FoxgloveSDK.Components;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
@@ -15,7 +16,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     /// </summary>
     public static class FoxRunRos2CustomOutboundMappingPolicy
     {
-        public const long MaximumBytes = 4L * 1024L * 1024L;
+        public const long MaximumBytes =
+            FoxRunRos2CustomOutboundBudgetPolicy.MaximumBytes;
 
         public static FoxRunRos2CustomOutboundMappingContext CreateContext()
             => new FoxRunRos2CustomOutboundMappingContext(MaximumBytes);

@@ -224,8 +224,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains("this._vector.w", source, StringComparison.Ordinal);
-            Assert.Contains("((float)this._color.r / 255f)", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_1.w", source, StringComparison.Ordinal);
+            Assert.Contains("((float)__foxRunCapture_0_0.r / 255f)", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -266,9 +266,9 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains("this._optionalCount == null", source, StringComparison.Ordinal);
-            Assert.Contains("this._optionalCount.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)", source, StringComparison.Ordinal);
-            Assert.DoesNotContain("__AppendFoxRunJsonString(__json, this._optionalCount == null ? null : this._optionalCount", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_0 == null", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_0.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("__AppendFoxRunJsonString(__json, __foxRunCapture_0_0 == null ? null : __foxRunCapture_0_0", source, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -410,6 +410,35 @@ namespace Demo
                 output.GetDiagnostics(),
                 diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
         }
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void GeneratedAggregatePublisherObserverSideChannelCompilesWithoutCaptureSequenceState()
+        {
+            var output = RunGeneratorAndUpdateCompilation(@"
+using Unity.FoxgloveSDK.Components;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    [FoxRunMessage(""/phase184/aggregate-observer"")]
+    public partial class AggregatePublisher
+    {
+        [FoxRunField(""value"")]
+        private float _value;
+    }
+}");
+
+            Assert.DoesNotContain(
+                output.GetDiagnostics(),
+                diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        }
+#endif
 
         [Fact]
         public void RoslynGeneratorRejectsFoxRunFieldOutsideMessage()
@@ -650,6 +679,17 @@ namespace Demo
                 new[] { CSharpSyntaxTree.ParseText(source) },
                 BasicReferences,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        private static Compilation RunGeneratorAndUpdateCompilation(string source)
+        {
+            var compilation = CreateCompilation(source);
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver = driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out var outputCompilation,
+                out _);
+            return outputCompilation;
+        }
 
         private static void AssertGeneratorDiagnostic(string source, string diagnosticId)
         {

@@ -96,7 +96,9 @@ namespace Unity.FoxgloveSDK.Editor
             int protobufFieldNumber = 0,
             FoxRunProtobufRepeatedCollectionKind repeatedCollectionKind = FoxRunProtobufRepeatedCollectionKind.None,
             bool canAssign = true,
-            bool isNullable = false)
+            bool isNullable = false,
+            bool presenceOnly = false,
+            bool presenceUsesHasValue = false)
         {
             JsonName = jsonName ?? string.Empty;
             MemberName = memberName ?? string.Empty;
@@ -110,6 +112,8 @@ namespace Unity.FoxgloveSDK.Editor
                 : FoxRunProtobufRepeatedCollectionKind.None;
             CanAssign = canAssign;
             IsNullable = isNullable;
+            PresenceOnly = presenceOnly;
+            PresenceUsesHasValue = presenceUsesHasValue;
         }
 
         public string JsonName { get; }
@@ -122,6 +126,10 @@ namespace Unity.FoxgloveSDK.Editor
         public bool CanAssign { get; }
         /// <summary>Whether this value-type field or repeated element may be absent.</summary>
         public bool IsNullable { get; }
+        /// <summary>Emit only a structural presence sentinel for origin snapshots.</summary>
+        public bool PresenceOnly { get; }
+        /// <summary>Presence is read through Nullable&lt;T&gt;.HasValue instead of a null check.</summary>
+        public bool PresenceUsesHasValue { get; }
     }
 
     public sealed class FoxRunProtobufEnumValue

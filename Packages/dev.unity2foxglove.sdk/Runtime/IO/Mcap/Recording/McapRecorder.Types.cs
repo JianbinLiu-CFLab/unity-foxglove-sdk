@@ -59,6 +59,8 @@ namespace Unity.FoxgloveSDK.IO
             public ushort SchemaId;
             /// <summary>Topic name.</summary>
             public string Topic;
+            /// <summary>Immutable encoding/schema signature written for this channel.</summary>
+            public TopicSignature Signature;
             /// <summary>Per-channel MCAP message sequence number. Wrap-around is allowed by MCAP.</summary>
             public uint Seq;
             /// <summary>Total messages recorded for statistics; kept separate from wrapping Seq.</summary>

@@ -171,7 +171,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             public int Depth { get; set; }
         }
 
-        private static string ProfileWireValue(FoxRunQosProfile value)
+        internal static string ProfileWireValue(FoxRunQosProfile value)
         {
             switch (value)
             {
@@ -186,7 +186,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
         }
 
-        private static string ReliabilityWireValue(FoxRunQosReliability value)
+        internal static string ReliabilityWireValue(FoxRunQosReliability value)
         {
             switch (value)
             {
@@ -201,7 +201,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
         }
 
-        private static string DurabilityWireValue(FoxRunQosDurability value)
+        internal static string DurabilityWireValue(FoxRunQosDurability value)
         {
             switch (value)
             {
@@ -216,7 +216,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             }
         }
 
-        private static string HistoryWireValue(FoxRunQosHistory value)
+        internal static string HistoryWireValue(FoxRunQosHistory value)
         {
             switch (value)
             {

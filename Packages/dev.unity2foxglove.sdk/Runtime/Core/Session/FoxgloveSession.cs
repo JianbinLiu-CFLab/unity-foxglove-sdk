@@ -39,7 +39,9 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IFoxgloveTransport _transport;
         private readonly IPrioritizedFoxgloveTransport _prioritizedTransport;
         private readonly IFoxgloveClock _clock;
+        private readonly object _channelLifecycleLock = new object();
         private readonly ChannelRegistry _channels = new();
+        private readonly HashSet<uint> _recordingOnlyChannels = new();
         private readonly SubscriptionRegistry _subscriptions = new();
         private readonly object _subscriberScratchLock = new();
         private readonly List<(uint clientId, uint subscriptionId)> _subscriberScratch = new();
@@ -117,28 +119,69 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Inject the runtime context for playback and asset access.</summary>
         internal void SetRuntimeContext(IRuntimeContext ctx) => Volatile.Write(ref _runtime, ctx);
         /// <summary>Attach an MCAP recorder for session recording.</summary>
-        internal void SetRecorder(McapRecorder r) => Volatile.Write(ref _recorder, r);
+        internal void SetRecorder(McapRecorder r)
+        {
+            lock (_channelLifecycleLock)
+            {
+                Volatile.Read(ref _recorder)?.ClearServerChannelAdmissionRejections();
+                r?.ClearServerChannelAdmissionRejections();
+                Volatile.Write(ref _recorder, r);
+                if (r == null)
+                    return;
+
+                try
+                {
+                    foreach (var channel in _channels.GetAll())
+                    {
+                        if (AllowMcapRecording(channel))
+                            EnsureRecorderChannel(r, channel);
+                    }
+                }
+                catch
+                {
+                    r.ClearServerChannelAdmissionRejections();
+                    Volatile.Write(ref _recorder, null);
+                    throw;
+                }
+            }
+        }
 
         /// <summary>Attach an optional mirror sink and seed it with current server-side channels.</summary>
         internal void SetMirrorSink(IFoxgloveMirrorSink sink, bool replayExistingChannels = true)
         {
-            var previous = Interlocked.Exchange(ref _mirrorSink, sink);
-            if (previous != null && !ReferenceEquals(previous, sink))
+            lock (_channelLifecycleLock)
             {
+                var previous = Interlocked.Exchange(ref _mirrorSink, sink);
+                if (previous != null && !ReferenceEquals(previous, sink))
+                {
+                    foreach (var channel in _channels.GetAll())
+                    {
+                        if (!_recordingOnlyChannels.Contains(channel.Id))
+                            TryUnregisterMirrorChannel(previous, channel.Id);
+                    }
+                }
+
+                if (sink == null || !replayExistingChannels)
+                    return;
+
                 foreach (var channel in _channels.GetAll())
-                    TryUnregisterMirrorChannel(previous, channel.Id);
+                {
+                    if (!_recordingOnlyChannels.Contains(channel.Id))
+                        TryRegisterMirrorChannel(sink, channel);
+                }
             }
-
-            if (sink == null || !replayExistingChannels)
-                return;
-
-            foreach (var channel in _channels.GetAll())
-                TryRegisterMirrorChannel(sink, channel);
         }
 
         /// <summary>Set an optional per-sink channel filter. Null allows all channels for the sink.</summary>
         internal void SetSinkChannelFilter(FoxgloveSinkKind sink, ISinkChannelFilter filter)
-            => _channelFilter.SetSinkChannelFilter(sink, filter);
+        {
+            lock (_channelLifecycleLock)
+            {
+                _channelFilter.SetSinkChannelFilter(sink, filter);
+                if (sink == FoxgloveSinkKind.McapRecording)
+                    Volatile.Read(ref _recorder)?.ClearServerChannelAdmissionRejections();
+            }
+        }
 
         /// <summary>Return the configured per-sink channel filter, or null when the sink allows all channels.</summary>
         internal ISinkChannelFilter GetSinkChannelFilter(FoxgloveSinkKind sink)
@@ -149,17 +192,47 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public bool HasChannelDemand(uint channelId)
         {
-            var channel = _channels.Get(channelId);
-            if (channel == null)
-                return false;
+            lock (_channelLifecycleLock)
+            {
+                var channel = _channels.Get(channelId);
+                if (channel == null)
+                    return false;
 
-            if (_subscriptions.HasSubscribersForChannel(channelId) && AllowLiveWebSocket(channel))
-                return true;
+                if (_subscriptions.HasSubscribersForChannel(channelId) && AllowLiveWebSocket(channel))
+                    return true;
 
-            if (Volatile.Read(ref _recorder) != null && AllowMcapRecording(channel))
-                return true;
+                var recorder = Volatile.Read(ref _recorder);
+                if (recorder != null
+                    && AllowMcapRecording(channel)
+                    && recorder.HasServerChannel(channelId))
+                    return true;
 
-            return HasMirrorDemand(channel);
+                if (_recordingOnlyChannels.Contains(channelId))
+                    return false;
+
+                return HasMirrorDemand(channel);
+            }
+        }
+
+        /// <summary>
+        /// Return whether an MCAP-only channel has an attached recorder that
+        /// accepts it. Live subscribers and mirrors never create recording
+        /// demand for these hidden channels.
+        /// </summary>
+        internal bool HasRecordingDemand(uint channelId)
+        {
+            lock (_channelLifecycleLock)
+            {
+                if (!_recordingOnlyChannels.Contains(channelId))
+                    return false;
+
+                var channel = _channels.Get(channelId);
+                var recorder = Volatile.Read(ref _recorder);
+                return channel != null
+                       && recorder != null
+                       && AllowMcapRecording(channel)
+                       && recorder.HasServerChannel(channelId);
+            }
         }
 
         public FoxgloveSession(string name,
@@ -214,14 +287,18 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Clear all transient session channels, subscriptions, and graph state.</summary>
         public void ClearSession()
         {
-            _channels.Clear();
-            _subscriptions.Clear();
-            _paramSubs.Clear();
-            _services.ClearPendingCalls();
-            _graph.Clear();
-            _playback.Clear();
-            _clientPublish.Clear();
-            _timeBroadcaster.Reset();
+            lock (_channelLifecycleLock)
+            {
+                _channels.Clear();
+                _subscriptions.Clear();
+                _paramSubs.Clear();
+                _services.ClearPendingCalls();
+                _graph.Clear();
+                _playback.Clear();
+                _clientPublish.Clear();
+                _timeBroadcaster.Reset();
+                _recordingOnlyChannels.Clear();
+            }
             lock (_subscriptionBudgetWarnedClientsLock)
                 _subscriptionBudgetWarnedClients.Clear();
         }
@@ -296,28 +373,161 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void RegisterChannel(AdvertiseChannel channel)
         {
+            if (channel == null)
+                throw new ArgumentNullException(nameof(channel));
+            RegisterChannelCore(channel, recordingOnly: false);
+        }
+
+        /// <summary>
+        /// Register an MCAP-only external-boundary channel. It is neither
+        /// advertised to live clients nor mirrored into another transport.
+        /// </summary>
+        internal void RegisterRecordingOnlyChannel(AdvertiseChannel channel)
+        {
+            if (channel == null)
+                throw new ArgumentNullException(nameof(channel));
+            RegisterChannelCore(channel, recordingOnly: true);
+        }
+
+        private void RegisterChannelCore(AdvertiseChannel channel, bool recordingOnly)
+        {
+            lock (_channelLifecycleLock)
+                RegisterChannelCoreLocked(channel, recordingOnly);
+        }
+
+        private void RegisterChannelCoreLocked(AdvertiseChannel channel, bool recordingOnly)
+        {
             var previous = _channels.Get(channel.Id);
-            if (previous != null && !string.Equals(previous.Topic, channel.Topic, StringComparison.Ordinal))
+            var recorder = Volatile.Read(ref _recorder);
+            var recorderChannelCompatible = false;
+            var recorderHasChannel = recorder != null
+                                     && recorder.TryGetServerChannelCompatibility(
+                                         channel.Id,
+                                         channel.Topic,
+                                         channel.Encoding,
+                                         channel.SchemaName,
+                                         channel.SchemaEncoding ?? string.Empty,
+                                         channel.Schema,
+                                         out recorderChannelCompatible);
+            if (recorderHasChannel && !recorderChannelCompatible)
+            {
+                throw new InvalidOperationException(
+                    $"Channel id {channel.Id} cannot replace its descriptor while its existing MCAP channel is attached.");
+            }
+
+            var wasRecordingOnly = _recordingOnlyChannels.Contains(channel.Id);
+            var sameDescriptor = previous != null && SameChannelDescriptor(previous, channel);
+            var allowMcapRecording = recorder != null && AllowMcapRecording(channel);
+            if (recorder != null && !allowMcapRecording)
+                recorder.ClearServerChannelAdmissionRejection(channel.Id);
+            if (recordingOnly && wasRecordingOnly && sameDescriptor)
+            {
+                if (recorder != null && !recorderHasChannel && allowMcapRecording)
+                    EnsureRecorderChannel(recorder, channel);
+
+                return;
+            }
+
+            var previousLiveAllowed = previous != null && AllowLiveWebSocket(previous);
+            var topicChanged = previous != null
+                               && !string.Equals(
+                                   previous.Topic,
+                                   channel.Topic,
+                                   StringComparison.Ordinal);
+
+            // Recorder admission may perform durable writes. Complete it
+            // before mutating live/hidden registry, graph, mirror, or
+            // subscription state so an I/O failure leaves the prior session
+            // topology intact.
+            if (recorder != null && !recorderHasChannel && allowMcapRecording)
+                EnsureRecorderChannel(recorder, channel);
+
+            if (recordingOnly)
+                _recordingOnlyChannels.Add(channel.Id);
+            else
+                _recordingOnlyChannels.Remove(channel.Id);
+
+            var liveAllowed = AllowLiveWebSocket(channel);
+            if (previousLiveAllowed && (topicChanged || !liveAllowed))
                 _graph.RemoveUnityPublishedTopic(previous.Topic);
 
             _channels.Register(channel);
-            var recorder = Volatile.Read(ref _recorder);
-            if (recorder != null && AllowMcapRecording(channel))
-            {
-                recorder.AddChannel(channel.Id, channel.Topic, channel.Encoding,
-                    channel.SchemaName, channel.SchemaEncoding ?? "", channel.Schema);
-            }
 
             var mirrorSink = Volatile.Read(ref _mirrorSink);
             if (mirrorSink != null)
-                TryRegisterMirrorChannel(mirrorSink, channel);
+            {
+                if (previous != null && !wasRecordingOnly && recordingOnly)
+                    TryUnregisterMirrorChannel(mirrorSink, channel.Id);
+                if (!recordingOnly)
+                    TryRegisterMirrorChannel(mirrorSink, channel);
+            }
 
-            if (AllowLiveWebSocket(channel))
+            if (liveAllowed)
             {
                 _graph.SetUnityPublishedTopic(channel.Topic);
                 _transport.BroadcastText(SerializeSingleAdvertise(channel));
                 _graph.BroadcastUpdate();
             }
+            else if (previousLiveAllowed)
+            {
+                foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channel.Id))
+                    _graph.RemoveSubscribedTopic(clientId, subId, previous.Topic);
+                _transport.BroadcastText(SerializeSingleUnadvertise(channel.Id));
+                _graph.BroadcastUpdate();
+            }
+        }
+
+        private static bool SameChannelDescriptor(AdvertiseChannel left, AdvertiseChannel right)
+            => left != null
+               && right != null
+               && string.Equals(left.Topic, right.Topic, StringComparison.Ordinal)
+               && string.Equals(left.Encoding, right.Encoding, StringComparison.Ordinal)
+               && string.Equals(left.SchemaName, right.SchemaName, StringComparison.Ordinal)
+               && string.Equals(
+                   left.SchemaEncoding ?? string.Empty,
+                   right.SchemaEncoding ?? string.Empty,
+                   StringComparison.Ordinal)
+               && string.Equals(left.Schema, right.Schema, StringComparison.Ordinal);
+
+        private static bool EnsureRecorderChannel(McapRecorder recorder, AdvertiseChannel channel)
+        {
+            if (recorder.TryGetServerChannelCompatibility(
+                    channel.Id,
+                    channel.Topic,
+                    channel.Encoding,
+                    channel.SchemaName,
+                    channel.SchemaEncoding ?? string.Empty,
+                    channel.Schema,
+                    out var compatible))
+            {
+                if (!compatible)
+                {
+                    throw new InvalidOperationException(
+                        $"Channel id {channel.Id} cannot replace its descriptor while its existing MCAP channel is attached.");
+                }
+
+                return true;
+            }
+
+            if (recorder.IsServerChannelAdmissionRejected(
+                    channel.Id,
+                    channel.Topic,
+                    channel.Encoding,
+                    channel.SchemaName,
+                    channel.SchemaEncoding ?? string.Empty,
+                    channel.Schema))
+            {
+                return false;
+            }
+
+            recorder.AddChannel(
+                channel.Id,
+                channel.Topic,
+                channel.Encoding,
+                channel.SchemaName,
+                channel.SchemaEncoding ?? string.Empty,
+                channel.Schema);
+            return recorder.HasServerChannel(channel.Id);
         }
 
         /// <summary>
@@ -326,23 +536,28 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void UnregisterChannel(uint channelId)
         {
-            var ch = _channels.Get(channelId);
-            var liveAllowed = ch != null && AllowLiveWebSocket(ch);
-            if (ch != null && liveAllowed)
-                _graph.RemoveUnityPublishedTopic(ch.Topic);
-            if (!_channels.Remove(channelId)) return;
-            var mirrorSink = Volatile.Read(ref _mirrorSink);
-            if (mirrorSink != null)
-                TryUnregisterMirrorChannel(mirrorSink, channelId);
-            foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channelId))
+            lock (_channelLifecycleLock)
             {
+                var ch = _channels.Get(channelId);
+                Volatile.Read(ref _recorder)?.ClearServerChannelAdmissionRejection(channelId);
+                var liveAllowed = ch != null && AllowLiveWebSocket(ch);
                 if (ch != null && liveAllowed)
-                    _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
-            }
-            if (liveAllowed)
-            {
-                _transport.BroadcastText(SerializeSingleUnadvertise(channelId));
-                _graph.BroadcastUpdate();
+                    _graph.RemoveUnityPublishedTopic(ch.Topic);
+                if (!_channels.Remove(channelId)) return;
+                var mirrorSink = Volatile.Read(ref _mirrorSink);
+                if (!_recordingOnlyChannels.Contains(channelId) && mirrorSink != null)
+                    TryUnregisterMirrorChannel(mirrorSink, channelId);
+                foreach (var (clientId, subId, _) in _subscriptions.RemoveChannel(channelId))
+                {
+                    if (ch != null && liveAllowed)
+                        _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
+                }
+                if (liveAllowed)
+                {
+                    _transport.BroadcastText(SerializeSingleUnadvertise(channelId));
+                    _graph.BroadcastUpdate();
+                }
+                _recordingOnlyChannels.Remove(channelId);
             }
         }
 
@@ -477,40 +692,45 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
-            var channel = _channels.Get(channelId);
-            if (channel == null) return;
-            payload ??= Array.Empty<byte>();
-            var recorder = Volatile.Read(ref _recorder);
-            if (recorder != null && AllowMcapRecording(channel))
-                recorder.WriteMessage(channelId, logTimeNs, payload);
-            var mirrorSink = Volatile.Read(ref _mirrorSink);
-            if (mirrorSink != null)
-                TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
-            if (!AllowLiveWebSocket(channel))
-                return;
-            var subscribers = CopySubscribersForPublish(channelId);
-            try
+            lock (_channelLifecycleLock)
             {
-                foreach (var (clientId, subscriptionId) in subscribers)
+                var channel = _channels.Get(channelId);
+                if (channel == null) return;
+                payload ??= Array.Empty<byte>();
+                var recorder = Volatile.Read(ref _recorder);
+                if (recorder != null
+                    && AllowMcapRecording(channel)
+                    && recorder.HasServerChannel(channelId))
+                    recorder.WriteMessage(channelId, logTimeNs, payload);
+                var mirrorSink = Volatile.Read(ref _mirrorSink);
+                if (!_recordingOnlyChannels.Contains(channelId) && mirrorSink != null)
+                    TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
+                if (!AllowLiveWebSocket(channel))
+                    return;
+                var subscribers = CopySubscribersForPublish(channelId);
+                try
                 {
-                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                    if (_prioritizedTransport != null)
+                    foreach (var (clientId, subscriptionId) in subscribers)
                     {
-                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                            _logger.LogWarning(trace);
-                        _prioritizedTransport.SendDataBinary(clientId, frame);
-                    }
-                    else
-                    {
-                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                            _logger.LogWarning(trace);
-                        _transport.SendBinary(clientId, frame);
+                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                        if (_prioritizedTransport != null)
+                        {
+                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                                _logger.LogWarning(trace);
+                            _prioritizedTransport.SendDataBinary(clientId, frame);
+                        }
+                        else
+                        {
+                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                                _logger.LogWarning(trace);
+                            _transport.SendBinary(clientId, frame);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                subscribers.Clear();
+                finally
+                {
+                    subscribers.Clear();
+                }
             }
         }
 
@@ -551,33 +771,36 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         internal void PublishReplay(uint channelId, byte[] payload, ulong logTimeNs, string source = "Replay", string topic = null)
         {
-            var channel = _channels.Get(channelId);
-            if (channel == null) return;
-            payload ??= Array.Empty<byte>();
-            topic ??= channel.Topic;
-            var subscribers = CopySubscribersForPublish(channelId);
-            try
+            lock (_channelLifecycleLock)
             {
-                foreach (var (clientId, subscriptionId) in subscribers)
+                var channel = _channels.Get(channelId);
+                if (channel == null) return;
+                payload ??= Array.Empty<byte>();
+                topic ??= channel.Topic;
+                var subscribers = CopySubscribersForPublish(channelId);
+                try
                 {
-                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                    if (_prioritizedTransport != null)
+                    foreach (var (clientId, subscriptionId) in subscribers)
                     {
-                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                            _logger.LogWarning(trace);
-                        _prioritizedTransport.SendDataBinary(clientId, frame);
-                    }
-                    else
-                    {
-                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                            _logger.LogWarning(trace);
-                        _transport.SendBinary(clientId, frame);
+                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                        if (_prioritizedTransport != null)
+                        {
+                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                                _logger.LogWarning(trace);
+                            _prioritizedTransport.SendDataBinary(clientId, frame);
+                        }
+                        else
+                        {
+                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                                _logger.LogWarning(trace);
+                            _transport.SendBinary(clientId, frame);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                subscribers.Clear();
+                finally
+                {
+                    subscribers.Clear();
+                }
             }
         }
 
@@ -834,18 +1057,40 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientConnected(uint clientId)
         {
-            var chs = FilterLiveChannels(_channels.GetAll());
-            var svcs = _services.GetAll();
+            lock (_channelLifecycleLock)
+            {
+                var chs = FilterLiveChannels(_channels.GetAll());
+                var svcs = _services.GetAll();
 
-            SendSessionSnapshot(clientId, chs, svcs);
-            _graph.SeedUnityState(chs, svcs);
+                SendSessionSnapshot(clientId, chs, svcs);
+                _graph.SeedUnityState(chs, svcs);
+            }
         }
 
         private IReadOnlyCollection<AdvertiseChannel> FilterLiveChannels(IReadOnlyCollection<AdvertiseChannel> channels)
-            => _channelFilter.FilterLiveChannels(channels);
+        {
+            var filtered = _channelFilter.FilterLiveChannels(channels);
+            if (filtered.Count == 0 || _recordingOnlyChannels.Count == 0)
+                return filtered;
+
+            var live = new List<AdvertiseChannel>(filtered.Count);
+            foreach (var channel in filtered)
+            {
+                // Keep late-client snapshots on the same predicate as immediate
+                // advertisements. In particular, MCAP-only CDR channels must
+                // never become visible merely because the client connected
+                // after their registration.
+                if (channel != null && !_recordingOnlyChannels.Contains(channel.Id))
+                    live.Add(channel);
+            }
+
+            return live;
+        }
 
         private bool AllowLiveWebSocket(AdvertiseChannel channel)
-            => _channelFilter.AllowLiveWebSocket(channel);
+            => channel != null
+               && !_recordingOnlyChannels.Contains(channel.Id)
+               && _channelFilter.AllowLiveWebSocket(channel);
 
         private bool AllowMcapRecording(AdvertiseChannel channel)
             => _channelFilter.AllowMcapRecording(channel);
@@ -910,24 +1155,26 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         private void OnClientDisconnected(uint clientId)
         {
-            // Snapshot and remove subscriptions before cleaning graph, so we
-            // can remove the subscribed-topic entries using the correct subscriber id.
-            var removedSubs = _subscriptions.RemoveClientPreservingData(clientId);
-            foreach (var (subId, chId) in removedSubs)
+            lock (_channelLifecycleLock)
             {
-                var ch = _channels.Get(chId);
-                if (ch != null)
-                    _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
-            }
+                // Snapshot and remove subscriptions before cleaning graph, so we
+                // can remove the subscribed-topic entries using the correct subscriber id.
+                var removedSubs = _subscriptions.RemoveClientPreservingData(clientId);
+                foreach (var (subId, chId) in removedSubs)
+                {
+                    var ch = _channels.Get(chId);
+                    if (ch != null)
+                        _graph.RemoveSubscribedTopic(clientId, subId, ch.Topic);
+                }
 
-            _paramSubs.RemoveClient(clientId);
-            _services.RemoveClientCalls(clientId);
-            _clientPublish.RemoveClient(clientId);
+                _paramSubs.RemoveClient(clientId);
+                _services.RemoveClientCalls(clientId);
+                _clientPublish.RemoveClient(clientId);
+                _graph.RemoveClient(clientId);
+                _graph.BroadcastUpdate();
+            }
             lock (_subscriptionBudgetWarnedClientsLock)
                 _subscriptionBudgetWarnedClients.Remove(clientId);
-
-            _graph.RemoveClient(clientId);
-            _graph.BroadcastUpdate();
         }
 
         private void OnChannelOverwritten(AdvertiseChannel previous, AdvertiseChannel replacement)

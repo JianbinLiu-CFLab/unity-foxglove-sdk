@@ -7,6 +7,7 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity.Profiling;
@@ -14,6 +15,11 @@ using UnityEngine;
 
 namespace Unity2Foxglove.Ros2ForUnity.Native
 {
+    internal interface IFoxRunRos2SubscriptionHostedCleanup
+    {
+        void Stop();
+    }
+
     internal static class FoxRunRos2RegistrationIsolation
     {
         internal static bool TryRun(Action registration, Action<Exception> onFailure)
@@ -27,7 +33,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 registration();
                 return true;
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 onFailure(exception);
                 return false;
@@ -133,7 +140,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     ? timed.TryApplyLatest(generation, nowSeconds)
                     : binding.TryApplyLatest(generation);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 binding.RecordApplyFailure(exception);
                 failure = exception;
@@ -784,7 +792,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     source.Native?.FoxRunRos2RegisterSubscriptions(registrar);
                     source.Custom?.FoxRunRos2RegisterCustomSubscriptions(registrar);
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     WarnHostOnce(
                         source.Key + ": " + exception.GetType().Name,
@@ -805,17 +814,35 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                              gameObject.scene))
                     binding.Binding.TryRegister();
             }
-            for (var i = 0; i < _stale.Count; i++)
+            ExceptionDispatchInfo staleFatal = null;
+            try
             {
-                var stale = _stale[i];
-                stale.Stop();
-                _bindings.Remove(stale);
-                _existingBindings.Remove(stale.Identity);
-                _diagnostics.Remove(stale.Identity);
+                StopHostedBindings(
+                    _stale,
+                    exception => WarnHostOnce(
+                        "stale-binding|" + exception.GetType().Name,
+                        "Native ROS2 subscription teardown failed: "
+                        + FoxRunRos2PublicDiagnostic.Describe(
+                            FoxRunRos2RegistrationError.TeardownFailure)));
+            }
+            catch (Exception exception)
+            {
+                staleFatal = ExceptionDispatchInfo.Capture(exception);
+            }
+            finally
+            {
+                for (var i = 0; i < _stale.Count; i++)
+                {
+                    var stale = _stale[i];
+                    _bindings.Remove(stale);
+                    _existingBindings.Remove(stale.Identity);
+                    _diagnostics.Remove(stale.Identity);
+                }
             }
             _diagnostics.RemoveExcept(_seenEndpoints);
             _bindings.Sort((left, right) => left.Key.CompareTo(right.Key));
             SampleDiagnostics();
+            staleFatal?.Throw();
         }
 
         private void DrainBindings(double nowSeconds)
@@ -891,7 +918,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _nodeRetry.RecordSuccess();
                 return true;
             }
-            catch (Exception exception)
+            catch (Exception exception) when (
+                FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
             {
                 _nodeRetry.RecordFailure(now);
                 WarnHostOnce(
@@ -963,13 +991,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<T, bool> dropBeforeApply = null;
             if (contract.ContractKind == FoxRunRos2GeneratedContractKind.CustomInterface)
             {
+                var sourceOrigin =
+                    (source.Behaviour as IFoxgloveTopicContractSource)?.FoxgloveLog_Origin;
                 // The callback has already deep-copied this envelope when the
                 // predicate runs. Do not construct/apply a DTO for a message
                 // emitted by this exact active Unity publisher origin.
                 dropBeforeApply = owned => contract.TryGetCustomEnvelopeOrigin(
                         owned,
                         out var origin)
-                    && FoxRunRos2CustomOriginRegistry.IsCurrentOrigin(identity, origin);
+                    && IsSelfOrigin(identity, origin, sourceOrigin);
             }
             try
             {
@@ -1007,12 +1037,30 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _bindings.Add(hosted);
                 _existingBindings.Add(identity);
             }
-            catch
+            catch (Exception exception)
             {
-                if (binding != null)
-                    binding.Stop();
-                else
-                    backend.ReleaseNodeOwnership();
+                var primary = ExceptionDispatchInfo.Capture(exception);
+                try
+                {
+                    if (binding != null)
+                        binding.Stop();
+                }
+                catch (Exception)
+                {
+                    // Preserve the startup failure while completing cleanup.
+                }
+                if (binding == null)
+                {
+                    try
+                    {
+                        backend.ReleaseNodeOwnership();
+                    }
+                    catch (Exception)
+                    {
+                        // Preserve the startup failure.
+                    }
+                }
+                primary.Throw();
                 throw;
             }
         }
@@ -1083,8 +1131,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void StopBindingsAndNode()
         {
-            for (var i = 0; i < _bindings.Count; i++)
-                _bindings[i].Stop();
+            ExceptionDispatchInfo fatal = null;
+            try
+            {
+                StopHostedBindings(
+                    _bindings,
+                    exception => WarnHostOnce(
+                        "stop-binding|" + exception.GetType().Name,
+                        "Native ROS2 subscription teardown failed: "
+                        + FoxRunRos2PublicDiagnostic.Describe(
+                            FoxRunRos2RegistrationError.TeardownFailure)));
+            }
+            catch (Exception exception)
+            {
+                fatal = ExceptionDispatchInfo.Capture(exception);
+            }
             _bindings.Clear();
             _stale.Clear();
             _sources.Clear();
@@ -1101,7 +1162,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     owner.ReleaseHostOwnership();
                 }
-                catch (Exception exception)
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
                 {
                     WarnHostOnce(
                         "release-node|" + exception.GetType().Name,
@@ -1109,8 +1171,53 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         + FoxRunRos2PublicDiagnostic.Describe(
                             FoxRunRos2RegistrationError.TeardownFailure));
                 }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                }
             }
             _ros2Unity = null;
+            fatal?.Throw();
+        }
+
+        internal static void StopHostedBindings(
+            IReadOnlyList<IFoxRunRos2SubscriptionHostedCleanup> bindings,
+            Action<Exception> reportFailure)
+        {
+            if (bindings == null)
+                return;
+
+            ExceptionDispatchInfo fatal = null;
+            for (var index = 0; index < bindings.Count; index++)
+            {
+                try
+                {
+                    bindings[index]?.Stop();
+                }
+                catch (Exception exception) when (
+                    FoxRunRos2NativeExceptionPolicy.IsRecoverable(exception))
+                {
+                    try
+                    {
+                        reportFailure?.Invoke(exception);
+                    }
+                    catch (Exception reportException) when (
+                        FoxRunRos2NativeExceptionPolicy.IsRecoverable(reportException))
+                    {
+                        // Diagnostics cannot interrupt remaining teardown.
+                    }
+                    catch (Exception reportException)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(reportException);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(exception);
+                }
+            }
+
+            fatal?.Throw();
         }
 
         private void BeginShutdown()
@@ -1181,6 +1288,24 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         exception));
         }
 
+        internal static bool IsSelfOrigin(
+            string endpointIdentity,
+            string candidateOrigin,
+            string generatedSourceOrigin)
+        {
+            if (string.IsNullOrWhiteSpace(candidateOrigin))
+                return false;
+
+            return (!string.IsNullOrWhiteSpace(generatedSourceOrigin)
+                    && string.Equals(
+                        candidateOrigin,
+                        generatedSourceOrigin,
+                        StringComparison.Ordinal))
+                   || FoxRunRos2CustomOriginRegistry.IsCurrentOrigin(
+                       endpointIdentity,
+                       candidateOrigin);
+        }
+
         private readonly struct SourceCandidate
         {
             internal SourceCandidate(
@@ -1204,7 +1329,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             internal FoxRunRos2DiscoveryKey Key { get; }
         }
 
-        private sealed class HostedBinding
+        private sealed class HostedBinding : IFoxRunRos2SubscriptionHostedCleanup
         {
             private readonly MonoBehaviour _source;
             private readonly int _sourceInstanceId;
@@ -1249,6 +1374,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             internal void Stop() => Binding.Stop();
+
+            void IFoxRunRos2SubscriptionHostedCleanup.Stop()
+                => Stop();
         }
     }
 

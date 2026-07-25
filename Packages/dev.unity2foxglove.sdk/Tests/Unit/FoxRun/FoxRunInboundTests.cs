@@ -419,6 +419,92 @@ namespace Demo
             Assert.Equal(4, conditionEvaluationCount.GetValue(receiver));
         }
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void FullDuplexRemoteApplyBlocksScheduledHeartbeatUntilLocalMutationButExplicitTriggerBypassesIt()
+        {
+            var compilation = CSharpCompilation.Create(
+                "Phase184FullDuplexOrigin_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(@"
+using Unity.FoxgloveSDK.Components;
+using static Unity.FoxgloveSDK.Components.FoxRunFlow;
+
+namespace UnityEngine.Scripting
+{
+    [System.AttributeUsage(System.AttributeTargets.All)]
+    public sealed class PreserveAttribute : System.Attribute { }
+}
+
+namespace Demo
+{
+    public partial class FullDuplexOrigin
+    {
+        [FoxRun(""/phase184/full-duplex-origin"", Mode = PublishAndSubscribe,
+            Encoding = FoxRunEncoding.JSON, Policy = FoxRunPolicy.Change,
+            Hz = 10f)]
+        public int Value;
+    }
+}")
+                },
+                DynamicCompilationReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(new FoxgloveLogSourceGenerator());
+            driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out _);
+            using var image = new MemoryStream();
+            var emit = output.Emit(image);
+
+            Assert.True(
+                emit.Success,
+                "Full-duplex fixture failed to compile: " +
+                string.Join("; ", emit.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+
+            image.Position = 0;
+            var assembly = AssemblyLoadContext.Default.LoadFromStream(image);
+            var receiverType = assembly.GetType("Demo.FullDuplexOrigin", throwOnError: true);
+            var receiver = Activator.CreateInstance(receiverType);
+            var input = Assert.IsAssignableFrom<IFoxgloveInputSource>(receiver);
+            var policy = Assert.IsAssignableFrom<IFoxgloveLogPolicySource>(receiver);
+            var origin = Assert.IsAssignableFrom<IFoxglovePublishOriginSource>(receiver);
+            var value = receiverType.GetField("Value");
+            Assert.NotNull(value);
+
+            value.SetValue(receiver, 4);
+            Assert.True(origin.FoxgloveLog_CanPublishOrigin(0, explicitTrigger: false));
+            Assert.True(policy.FoxgloveLog_ShouldPublish(0, 0d));
+            policy.FoxgloveLog_MarkPublished(0, 0d);
+
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Value\":7}"),
+                "json",
+                out var error), error);
+            Assert.Equal(1, input.FoxgloveInput_Flush(1d, 60));
+            Assert.Equal(7, value.GetValue(receiver));
+
+            Assert.False(origin.FoxgloveLog_CanPublishOrigin(0, explicitTrigger: false));
+            Assert.False(origin.FoxgloveLog_CanPublishOrigin(0, explicitTrigger: false));
+
+            // Returning to the previously published local value is still a
+            // new local ownership claim. Origin release must invalidate the
+            // Change-policy snapshot before ShouldPublish evaluates it.
+            value.SetValue(receiver, 4);
+            Assert.True(origin.FoxgloveLog_CanPublishOrigin(0, explicitTrigger: false));
+            Assert.True(policy.FoxgloveLog_ShouldPublish(0, 0.01d));
+            policy.FoxgloveLog_MarkPublished(0, 0.01d);
+
+            Assert.True(input.FoxgloveInput_TryStage(
+                0,
+                Encoding.UTF8.GetBytes("{\"Value\":9}"),
+                "json",
+                out error), error);
+            Assert.Equal(1, input.FoxgloveInput_Flush(3d, 60));
+            Assert.True(origin.FoxgloveLog_CanPublishOrigin(0, explicitTrigger: true));
+        }
+
+#endif
+
         [Fact]
         public void RouterRejectsUnknownOversizedAndRateLimitedMessages()
         {
@@ -960,6 +1046,7 @@ namespace Demo
                 .Select(path => MetadataReference.CreateFromFile(path))
                 .ToArray();
         }
+
 
         private sealed class StagedRecordingInput : IFoxgloveInputSource
         {

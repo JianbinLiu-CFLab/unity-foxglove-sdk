@@ -51,6 +51,44 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
+        public void RendererIncludesNestedSequenceMessagesInFilesCmakeAndDigest()
+        {
+            var model = BuildModel(typeof(Phase184NestedSequenceState));
+            var root = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(
+                typeof(Phase184NestedSequenceState));
+            var children = Assert.Single(
+                root.Members,
+                member => member.Name == "Children");
+            Assert.NotNull(children.NestedShape);
+
+            var rendered = FoxRunRos2InterfacePackageRenderer.Render(model);
+            var rootPath =
+                "Ros2Package~/msg/" + root.PayloadIdentity + ".msg";
+            var nestedPath =
+                "Ros2Package~/msg/"
+                + children.NestedShape.PayloadIdentity
+                + ".msg";
+            var cmake = rendered.GetText("Ros2Package~/CMakeLists.txt");
+
+            Assert.Contains(
+                rendered.Files,
+                file => file.RelativePath == rootPath);
+            Assert.Contains(
+                rendered.Files,
+                file => file.RelativePath == nestedPath);
+            Assert.Contains(
+                children.NestedShape.PayloadIdentity + "[] children",
+                rendered.GetText(rootPath),
+                StringComparison.Ordinal);
+            Assert.Contains(rootPath.Substring("Ros2Package~/".Length), cmake, StringComparison.Ordinal);
+            Assert.Contains(nestedPath.Substring("Ros2Package~/".Length), cmake, StringComparison.Ordinal);
+            Assert.False(string.IsNullOrWhiteSpace(rendered.InterfaceDigest));
+            Assert.Equal(
+                rendered.InterfaceDigest,
+                FoxRunRos2InterfacePackageRenderer.Render(model).InterfaceDigest);
+        }
+
+        [Fact]
         public void RendererAndCheckedInStaticPackageMatchTheExactGoldenUtf8LfFiles()
         {
             var rendered = FoxRunRos2InterfacePackageRenderer.Render(BuildModel(typeof(Phase181State)));

@@ -19,7 +19,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string ns,
             string className,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members)
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            IReadOnlyList<string> publishTopics)
         {
             if (members == null || members.Count == 0)
                 return;
@@ -56,7 +57,7 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    }");
 
             for (var i = 0; i < members.Count; i++)
-                EmitBindingMethods(sb, pad, members[i], i);
+                EmitBindingMethods(sb, pad, members[i], i, publishTopics);
 
             sb.AppendLine(pad + "}");
             if (!string.IsNullOrEmpty(ns))
@@ -248,7 +249,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string pad,
             FoxgloveSourceEmitter.TopicMember member,
-            int index)
+            int index,
+            IReadOnlyList<string> publishTopics)
         {
             var shape = member.Ros2MessageShape;
             var typeName = GlobalTypeName(shape.FullyQualifiedTypeName);
@@ -298,12 +300,14 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "                if (global::System.Object.ReferenceEquals(" + access + ", owned))");
             sb.AppendLine(pad + "                {");
             sb.AppendLine(pad + "                    __foxRunRos2AppliedOwned_" + index + " = owned;");
+            EmitRemoteOriginMark(sb, pad + "                    ", member, publishTopics);
             sb.AppendLine(pad + "                    return;");
             sb.AppendLine(pad + "                }");
             sb.AppendLine(pad + "            }");
             sb.AppendLine(pad + "            throw;");
             sb.AppendLine(pad + "        }");
             sb.AppendLine(pad + "        __foxRunRos2AppliedOwned_" + index + " = owned;");
+            EmitRemoteOriginMark(sb, pad + "        ", member, publishTopics);
             sb.AppendLine(pad + "    }");
             sb.AppendLine();
             sb.AppendLine(pad + "    private bool __FoxRunRos2ClearIfOwned_" + index + "(" + typeName + " owned)");
@@ -346,6 +350,25 @@ namespace Unity.FoxgloveSDK.Editor
                 EmitEqualsMember(sb, pad + "        ", shape.Members[memberIndex], memberIndex, helpers);
             sb.AppendLine(pad + "        return true;");
             sb.AppendLine(pad + "    }");
+        }
+
+        private static void EmitRemoteOriginMark(
+            StringBuilder sb,
+            string pad,
+            FoxgloveSourceEmitter.TopicMember member,
+            IReadOnlyList<string> publishTopics)
+        {
+            if (member.Mode != 3 || publishTopics == null)
+                return;
+
+            for (var index = 0; index < publishTopics.Count; index++)
+            {
+                if (!string.Equals(publishTopics[index], member.Topic, StringComparison.Ordinal))
+                    continue;
+
+                sb.AppendLine(pad + "__FoxRunMarkRemoteApplied_" + index + "();");
+                return;
+            }
         }
 
         private static void EmitEqualsMember(

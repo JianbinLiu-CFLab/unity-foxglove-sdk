@@ -84,6 +84,16 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        /// <summary>
+        /// Effective Native ROS 2 publish QoS for the active Manager lifetime.
+        /// Inspector edits configure the next session and cannot mutate an
+        /// already resolved target contract.
+        /// </summary>
+        public FoxRunResolvedQos ActiveFoxRunNativePublishQos =>
+            ActiveFoxRunPublishSessionPolicy.SessionActive
+                ? ActiveFoxRunPublishSessionPolicy.NativeRos2Qos
+                : DefaultFoxRunNativePublishQos;
+
         internal void BeginFoxRunPublishSessionIfNeeded()
         {
             if (_foxRunPublishSessionState.Current.SessionActive)
@@ -104,7 +114,14 @@ namespace Unity.FoxgloveSDK.Components
                 return;
 
             var policy = _foxRunPublishSessionState.End();
-            NotifyFoxRunPublishSessionChanged(policy);
+            try
+            {
+                NotifyFoxRunPublishSessionChanged(policy);
+            }
+            finally
+            {
+                ReleaseFoxRunRos2BridgeRuntimeDemand();
+            }
         }
 
         private void NotifyFoxRunPublishSessionChanged(

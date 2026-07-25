@@ -32,12 +32,14 @@ namespace Unity.FoxgloveSDK.Tests
             Check(publishJson.Contains("JsonSerializerCache.Value.Serialize(jsonWriter, message)", StringComparison.Ordinal)
                   && !publishJson.Contains("JsonSerializer.CreateDefault().Serialize", StringComparison.Ordinal),
                 "164-45A-2: PublishJson avoids allocating a JsonSerializer for every message");
-            Check(source.Contains("=> _channelFilter.FilterLiveChannels(channels)", StringComparison.Ordinal)
+            Check(source.Contains("var filtered = _channelFilter.FilterLiveChannels(channels);", StringComparison.Ordinal)
+                  && source.Contains("_recordingOnlyChannels.Count == 0", StringComparison.Ordinal)
+                  && source.Contains("return filtered;", StringComparison.Ordinal)
                   && filterLive.Contains("var filter = Volatile.Read(ref _liveWebSocketChannelFilter)", StringComparison.Ordinal)
                   && filterLive.Contains("if (filter == null)")
                   && filterLive.Contains("return channels;", StringComparison.Ordinal)
                   && filterLive.Contains("filter.AllowChannel(CreateFilterContext(FoxgloveSinkKind.LiveWebSocket, channel))", StringComparison.Ordinal),
-                "164-45A-3: live channel filtering returns the existing snapshot when no filter is configured");
+                "164-45A-3: live channel filtering reuses the existing snapshot when no filter or hidden channel requires a copy");
         }
 
         private static void VerifyExistingSubscriptionAndGraphOptimizations()

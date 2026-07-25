@@ -115,6 +115,57 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void CustomPublisherAdmissionRequiresTheExactAcceptedSourceOrigin()
+        {
+            var bus = new FoxTopicBus();
+            var contract = TopicContract(
+                "/phase184/custom-owner",
+                FoxTopicWriterPolicy.SingleWriter);
+            var accepted = new ContractSource("source-a", contract);
+            var rejected = new ContractSource("source-b", contract);
+            Assert.True(bus.Register(contract, "source-a").Accepted);
+            Assert.False(bus.Register(contract, "source-b").Accepted);
+
+            Assert.True(FoxRunRos2CustomPublisherHub.TryGetAcceptedSourceOrigin(
+                accepted,
+                bus,
+                contract.Topic,
+                out var acceptedOrigin));
+            Assert.Equal("source-a", acceptedOrigin);
+            Assert.False(FoxRunRos2CustomPublisherHub.TryGetAcceptedSourceOrigin(
+                rejected,
+                bus,
+                contract.Topic,
+                out _));
+        }
+
+        [Fact]
+        public void MatchingMultiWritersEachOwnTheirCustomPublisherOrigin()
+        {
+            var bus = new FoxTopicBus();
+            var contract = TopicContract(
+                "/phase184/custom-multi",
+                FoxTopicWriterPolicy.MultiWriter);
+            var first = new ContractSource("source-a", contract);
+            var second = new ContractSource("source-b", contract);
+            Assert.True(bus.Register(contract, "source-a").Accepted);
+            Assert.True(bus.Register(contract, "source-b").Accepted);
+
+            Assert.True(FoxRunRos2CustomPublisherHub.TryGetAcceptedSourceOrigin(
+                first,
+                bus,
+                contract.Topic,
+                out var firstOrigin));
+            Assert.True(FoxRunRos2CustomPublisherHub.TryGetAcceptedSourceOrigin(
+                second,
+                bus,
+                contract.Topic,
+                out var secondOrigin));
+            Assert.Equal("source-a", firstOrigin);
+            Assert.Equal("source-b", secondOrigin);
+        }
+
+        [Fact]
         public void FixedOutboundBudgetDoesNotExposeTheInboundCopyBudget()
         {
             var context = FoxRunRos2CustomOutboundMappingPolicy.CreateContext();
@@ -208,6 +259,68 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.NotEqual(first, second);
             Assert.False(FoxRunRos2CustomOriginRegistry.IsCurrentOrigin(endpoint, first));
             Assert.True(FoxRunRos2CustomOriginRegistry.IsCurrentOrigin(endpoint, second));
+        }
+
+        [Fact]
+        public void SelfOriginDetectionUsesGeneratedSourceOriginWithoutNativePublisherRegistration()
+        {
+            FoxRunRos2CustomOriginRegistry.ResetForTests();
+            const string endpoint = "18|bridge-only-contract";
+            const string generatedSourceOrigin = "unity2foxglove-instance-18";
+
+            Assert.True(FoxRunRos2SubscriptionHub.IsSelfOrigin(
+                endpoint,
+                generatedSourceOrigin,
+                generatedSourceOrigin));
+            Assert.False(FoxRunRos2SubscriptionHub.IsSelfOrigin(
+                endpoint,
+                "remote-peer",
+                generatedSourceOrigin));
+        }
+
+        private static FoxTopicContract TopicContract(
+            string topic,
+            FoxTopicWriterPolicy writerPolicy)
+            => new(
+                topic,
+                "phase184.CustomState",
+                "json",
+                "phase184.CustomState",
+                "phase184-custom-state",
+                FoxTopicVisibility.Exported,
+                writerPolicy);
+
+        private sealed class ContractSource :
+            IFoxgloveLogSource,
+            IFoxgloveTopicContractSource
+        {
+            private readonly FoxTopicContract _contract;
+
+            public ContractSource(string origin, FoxTopicContract contract)
+            {
+                FoxgloveLog_Origin = origin;
+                _contract = contract;
+            }
+
+            public int FoxgloveLog_TopicCount => 1;
+            public string FoxgloveLog_Origin { get; }
+
+            public FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index)
+                => new(
+                    _contract.Topic,
+                    10f,
+                    FoxRunPolicy.Trigger,
+                    0f);
+
+            public FoxTopicContract FoxgloveLog_GetContract(int index)
+                => _contract;
+
+            public void FoxgloveLog_Publish(
+                int topicIndex,
+                FoxgloveManager manager,
+                ulong nowNs)
+            {
+            }
         }
     }
 }

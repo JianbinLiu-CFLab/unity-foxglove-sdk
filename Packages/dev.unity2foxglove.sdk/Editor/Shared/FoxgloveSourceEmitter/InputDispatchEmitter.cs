@@ -273,7 +273,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var publishIndex = IndexOf(publishTopics, member.Topic);
                 if (publishIndex >= 0)
-                    sb.AppendLine($"{pad}        __foxRunSuppressNextPublish_{publishIndex} = true;");
+                    sb.AppendLine($"{pad}        __FoxRunMarkRemoteApplied_{publishIndex}();");
             }
             sb.AppendLine($"{pad}        return true;");
             sb.AppendLine($"{pad}    }}");

@@ -7,7 +7,9 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <exception>
 #include <limits>
+#include <thread>
 
 // Include the production translation unit directly to exercise internal parser helpers.
 #define UNITY2FOXGLOVE_ROS2_BRIDGE_TESTING
@@ -49,6 +51,22 @@ RawFrame MakePublishRawFrame(
   return raw;
 }
 
+RawFrame MakePreparePublisherRawFrame(
+  const std::string & request_id = "phase184-prepare-1",
+  const std::string & topic = "/unity/tf",
+  const std::string & schema_name = "foxglove_msgs/msg/FrameTransform",
+  const WireQosContract & qos = WireQosContract{})
+{
+  auto raw = MakePublishRawFrame(topic, schema_name, qos);
+  raw.header["op"] = "prepare_publisher";
+  raw.header["requestId"] = request_id;
+  raw.header["protocolVersion"] = 1;
+  raw.header.erase("logTimeNs");
+  raw.header.erase("sequence");
+  raw.payload.clear();
+  return raw;
+}
+
 rmw_qos_profile_t MakeRmwQosProfile(const WireQosContract & contract)
 {
   const auto frame = parse_publish_frame(
@@ -83,10 +101,50 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, ValidatesTopicNames)
   EXPECT_FALSE(is_valid_ros2_topic_name("/unity/tf-with-dash"));
 }
 
-TEST(Unity2FoxgloveRos2BridgeProtocol, RejectsNonFoxgloveSchemas)
+TEST(Unity2FoxgloveRos2BridgeProtocol, AcceptsCanonicalRos2MessageTypes)
 {
-  auto raw = MakePublishRawFrame("/unity/image", "sensor_msgs/msg/Image");
-  EXPECT_THROW(parse_publish_frame(raw), std::runtime_error);
+  const std::array<std::string, 3> message_types = {
+    "foxglove_msgs/msg/FrameTransform",
+    "sensor_msgs/msg/Image",
+    "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope"
+  };
+
+  for (const auto & message_type : message_types) {
+    SCOPED_TRACE("message_type=" + message_type);
+    const auto frame = parse_publish_frame(
+      MakePublishRawFrame("/unity/message", message_type));
+    EXPECT_EQ(message_type, frame.schema_name);
+  }
+}
+
+TEST(Unity2FoxgloveRos2BridgeProtocol, RejectsNonCanonicalRos2MessageTypes)
+{
+  const std::array<std::string, 17> invalid_message_types = {
+    "",
+    "a/msg/Type",
+    "foo__bar/msg/Type",
+    "sensor_msgs",
+    "sensor_msgs/msg",
+    "sensor_msgs/msg/",
+    "/sensor_msgs/msg/Image",
+    "Sensor_msgs/msg/Image",
+    "1sensor_msgs/msg/Image",
+    "sensor-msgs/msg/Image",
+    "sensor_msgs_/msg/Image",
+    "sensor_msgs/srv/Image",
+    "sensor_msgs/msg/image",
+    "sensor_msgs/msg/Image_Name",
+    "sensor_msgs/msg/Image/Extra",
+    "sensor_msgs//msg/Image",
+    "sensor_msgs/msg/État"
+  };
+
+  for (const auto & message_type : invalid_message_types) {
+    SCOPED_TRACE("message_type=" + message_type);
+    EXPECT_THROW(
+      parse_publish_frame(MakePublishRawFrame("/unity/message", message_type)),
+      std::runtime_error);
+  }
 }
 
 TEST(Unity2FoxgloveRos2BridgeProtocol, ParsesDefaultQosContract)
@@ -325,6 +383,436 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, RejectsEncapsulatedBodyOnlyPayload)
   EXPECT_THROW(payload_for_publish(frame, PayloadFormat::CdrBodyOnly, scratch), std::runtime_error);
 }
 
+TEST(Unity2FoxgloveRos2BridgeProtocol, ParsesCorrelatedZeroPayloadPreparePublisherContract)
+{
+  const WireQosContract qos{
+    "sensor_data", "best_effort", "transient_local", "keep_last", 37};
+  const auto request = parse_prepare_publisher_frame(
+    MakePreparePublisherRawFrame(
+      "phase184-prepare-exact",
+      "/unity/custom",
+      "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope",
+      qos));
+
+  EXPECT_EQ("phase184-prepare-exact", request.request_id);
+  EXPECT_EQ(1, request.protocol_version);
+  EXPECT_EQ("/unity/custom", request.frame.topic);
+  EXPECT_EQ(
+    "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope",
+    request.frame.schema_name);
+  EXPECT_EQ("cdr", request.frame.encoding);
+  EXPECT_EQ(qos.profile, request.frame.profile);
+  EXPECT_EQ(qos.reliability, request.frame.reliability);
+  EXPECT_EQ(qos.durability, request.frame.durability);
+  EXPECT_EQ(qos.history, request.frame.history);
+  EXPECT_EQ(qos.depth, request.frame.depth);
+  EXPECT_TRUE(request.frame.payload.empty());
+}
+
+TEST(Unity2FoxgloveRos2BridgeProtocol, RejectsPreparePublisherPayloadAndProtocolMismatch)
+{
+  auto payload = MakePreparePublisherRawFrame();
+  payload.payload = {0x00};
+  EXPECT_THROW(parse_prepare_publisher_frame(payload), std::runtime_error);
+
+  auto unsupported = MakePreparePublisherRawFrame();
+  unsupported.header["protocolVersion"] = 2;
+  EXPECT_THROW(parse_prepare_publisher_frame(unsupported), std::runtime_error);
+}
+
+TEST(Unity2FoxgloveRos2BridgeProtocol, PreparePublisherProtocolVersionRequiresJsonInteger)
+{
+  const std::array<nlohmann::json, 3> invalid_versions = {
+    nlohmann::json(1.0),
+    nlohmann::json("1"),
+    nlohmann::json(true)
+  };
+
+  for (const auto & invalid_version : invalid_versions) {
+    SCOPED_TRACE("protocolVersion=" + invalid_version.dump());
+    auto raw = MakePreparePublisherRawFrame();
+    raw.header["protocolVersion"] = invalid_version;
+    EXPECT_THROW(parse_prepare_publisher_frame(raw), std::runtime_error);
+  }
+}
+
+TEST(Unity2FoxgloveRos2BridgeProtocol, PreparePublisherProtocolVersionRejectsNarrowingBoundaries)
+{
+  const std::array<nlohmann::json, 6> unsupported_versions = {
+    nlohmann::json(-1),
+    nlohmann::json(0),
+    nlohmann::json(2),
+    nlohmann::json(std::numeric_limits<int32_t>::max()),
+    nlohmann::json(static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()) + 2U),
+    nlohmann::json(std::numeric_limits<uint64_t>::max())
+  };
+
+  for (const auto & unsupported_version : unsupported_versions) {
+    SCOPED_TRACE("protocolVersion=" + unsupported_version.dump());
+    auto raw = MakePreparePublisherRawFrame();
+    raw.header["protocolVersion"] = unsupported_version;
+    EXPECT_THROW(parse_prepare_publisher_frame(raw), std::runtime_error);
+  }
+}
+
+TEST(Unity2FoxgloveRos2BridgeProtocol, PreparePublisherRequiresExplicitCompleteQos)
+{
+  auto missing_qos = MakePreparePublisherRawFrame();
+  missing_qos.header.erase("qos");
+  EXPECT_THROW(parse_prepare_publisher_frame(missing_qos), std::runtime_error);
+
+  auto partial_qos = MakePreparePublisherRawFrame();
+  partial_qos.header["qos"].erase("history");
+  EXPECT_THROW(parse_prepare_publisher_frame(partial_qos), std::runtime_error);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  PreparePublisherIsIdempotentAndLegacyPublishReusesPreparedPublisher)
+{
+  size_t create_count = 0;
+  size_t publish_count = 0;
+  GenericPublisherFactory factory =
+    [&](const std::string &, const std::string &, const rclcpp::QoS &) {
+      ++create_count;
+      return [&](const rclcpp::SerializedMessage &) {
+          ++publish_count;
+        };
+    };
+  BridgeNode bridge(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+  const auto frame = parse_prepare_publisher_frame(
+    MakePreparePublisherRawFrame()).frame;
+
+  EXPECT_EQ(PublisherContractDisposition::CreatePublisher, bridge.prepare(frame));
+  EXPECT_EQ(PublisherContractDisposition::ReusePublisher, bridge.prepare(frame));
+  EXPECT_EQ(1U, create_count);
+  EXPECT_EQ(0U, publish_count);
+
+  bridge.publish(parse_publish_frame(MakePublishRawFrame()));
+  EXPECT_EQ(1U, create_count);
+  EXPECT_EQ(1U, publish_count);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  PreparePublisherFailureReturnsCorrelatedErrorAndKeepsSessionUsable)
+{
+  const std::string unavailable_type = "missing_phase184_interfaces/msg/MissingEnvelope";
+  const std::string available_type = "std_msgs/msg/String";
+  std::vector<std::string> creation_attempts;
+  size_t publish_count = 0;
+  GenericPublisherFactory factory =
+    [&](const std::string &, const std::string & message_type, const rclcpp::QoS &) {
+      creation_attempts.push_back(message_type);
+      if (message_type == unavailable_type) {
+        throw std::runtime_error("typesupport unavailable");
+      }
+      return [&](const rclcpp::SerializedMessage &) {
+          ++publish_count;
+        };
+    };
+  BridgeNode bridge(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+
+  const auto rejected = handle_prepare_publisher_frame(
+    MakePreparePublisherRawFrame(
+      "phase184-prepare-missing",
+      "/unity/custom",
+      unavailable_type),
+    bridge);
+  EXPECT_EQ("publisher_ready", rejected.at("op").get<std::string>());
+  EXPECT_EQ("phase184-prepare-missing", rejected.at("requestId").get<std::string>());
+  EXPECT_EQ(1, rejected.at("protocolVersion").get<int>());
+  EXPECT_EQ("error", rejected.at("status").get<std::string>());
+  EXPECT_EQ("publisher_unavailable", rejected.at("errorCode").get<std::string>());
+  EXPECT_FALSE(rejected.at("message").get<std::string>().empty());
+
+  const auto ready = handle_prepare_publisher_frame(
+    MakePreparePublisherRawFrame(
+      "phase184-prepare-available",
+      "/unity/custom",
+      available_type),
+    bridge);
+  EXPECT_EQ("publisher_ready", ready.at("op").get<std::string>());
+  EXPECT_EQ("phase184-prepare-available", ready.at("requestId").get<std::string>());
+  EXPECT_EQ(1, ready.at("protocolVersion").get<int>());
+  EXPECT_EQ("ok", ready.at("status").get<std::string>());
+  EXPECT_FALSE(ready.contains("errorCode"));
+  EXPECT_FALSE(ready.contains("message"));
+
+  const std::vector<std::string> expected_attempts = {unavailable_type, available_type};
+  EXPECT_EQ(expected_attempts, creation_attempts);
+  EXPECT_EQ(0U, publish_count);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  SameSocketSessionContinuesFromUnavailablePrepareToReadyAndLegacyPublish)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto node = std::make_shared<rclcpp::Node>(
+    "phase184_bridge_session_loop_test",
+    options);
+
+  int sockets[2] = {-1, -1};
+  ASSERT_EQ(0, ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets));
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+
+  const std::string topic = "/phase184/session";
+  const std::string unavailable_type = "missing_phase184_interfaces/msg/MissingEnvelope";
+  const std::string available_type = "std_msgs/msg/String";
+  std::vector<std::string> creation_attempts;
+  size_t publish_count = 0;
+  GenericPublisherFactory factory =
+    [&](const std::string &, const std::string & message_type, const rclcpp::QoS &) {
+      creation_attempts.push_back(message_type);
+      if (message_type == unavailable_type) {
+        throw std::runtime_error("typesupport unavailable");
+      }
+      return [&](const rclcpp::SerializedMessage &) {
+          ++publish_count;
+        };
+    };
+  BridgeNode bridge(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+
+  std::exception_ptr server_failure;
+  std::thread server_thread(
+    [&]() {
+      try {
+        process_client(server_socket.get(), bridge, node);
+      } catch (...) {
+        server_failure = std::current_exception();
+      }
+    });
+
+  RawFrame unavailable_ack;
+  RawFrame ready_ack;
+  std::exception_ptr client_failure;
+  try {
+    const auto unavailable = MakePreparePublisherRawFrame(
+      "phase184-session-unavailable",
+      topic,
+      unavailable_type);
+    write_u2r2_frame(client_socket.get(), unavailable.header, unavailable.payload);
+    unavailable_ack = read_raw_frame(client_socket.get(), node);
+
+    const auto ready = MakePreparePublisherRawFrame(
+      "phase184-session-ready",
+      topic,
+      available_type);
+    write_u2r2_frame(client_socket.get(), ready.header, ready.payload);
+    ready_ack = read_raw_frame(client_socket.get(), node);
+
+    const auto publish = MakePublishRawFrame(topic, available_type);
+    write_u2r2_frame(client_socket.get(), publish.header, publish.payload);
+  } catch (...) {
+    client_failure = std::current_exception();
+  }
+
+  EXPECT_EQ(0, ::shutdown(client_socket.get(), SHUT_WR));
+  server_thread.join();
+  context->shutdown("phase184 bridge session loop test complete");
+
+  if (client_failure) {
+    try {
+      std::rethrow_exception(client_failure);
+    } catch (const std::exception & ex) {
+      ADD_FAILURE() << "client session failed: " << ex.what();
+    }
+  }
+  if (server_failure) {
+    try {
+      std::rethrow_exception(server_failure);
+    } catch (const std::exception & ex) {
+      ADD_FAILURE() << "server session failed: " << ex.what();
+    }
+  }
+
+  EXPECT_EQ("publisher_ready", unavailable_ack.header.value("op", ""));
+  EXPECT_EQ("phase184-session-unavailable", unavailable_ack.header.value("requestId", ""));
+  EXPECT_EQ("error", unavailable_ack.header.value("status", ""));
+  EXPECT_EQ("publisher_unavailable", unavailable_ack.header.value("errorCode", ""));
+  EXPECT_TRUE(unavailable_ack.payload.empty());
+
+  EXPECT_EQ("publisher_ready", ready_ack.header.value("op", ""));
+  EXPECT_EQ("phase184-session-ready", ready_ack.header.value("requestId", ""));
+  EXPECT_EQ("ok", ready_ack.header.value("status", ""));
+  EXPECT_FALSE(ready_ack.header.contains("errorCode"));
+  EXPECT_TRUE(ready_ack.payload.empty());
+
+  const std::vector<std::string> expected_attempts = {unavailable_type, available_type};
+  EXPECT_EQ(expected_attempts, creation_attempts);
+  EXPECT_EQ(1U, publish_count);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  PreparePublisherConflictReturnsErrorWithoutReplacingPreparedPublisher)
+{
+  size_t create_count = 0;
+  GenericPublisherFactory factory =
+    [&](const std::string &, const std::string &, const rclcpp::QoS &) {
+      ++create_count;
+      return [](const rclcpp::SerializedMessage &) {};
+    };
+  BridgeNode bridge(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+
+  const auto ready = handle_prepare_publisher_frame(
+    MakePreparePublisherRawFrame("phase184-prepare-first"),
+    bridge);
+  EXPECT_EQ("ok", ready.at("status").get<std::string>());
+
+  const auto conflict = handle_prepare_publisher_frame(
+    MakePreparePublisherRawFrame(
+      "phase184-prepare-conflict",
+      "/unity/tf",
+      "foxglove_msgs/msg/FrameTransform",
+      WireQosContract{"sensor_data", "best_effort", "volatile", "keep_last", 5}),
+    bridge);
+  EXPECT_EQ("error", conflict.at("status").get<std::string>());
+  EXPECT_EQ("publisher_contract_conflict", conflict.at("errorCode").get<std::string>());
+  EXPECT_EQ(1U, create_count);
+
+  const auto original = handle_prepare_publisher_frame(
+    MakePreparePublisherRawFrame("phase184-prepare-original"),
+    bridge);
+  EXPECT_EQ("ok", original.at("status").get<std::string>());
+  EXPECT_EQ(1U, create_count);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  GenericPublisherFactoryReceivesExactCustomTypeAndPublishesExactSerializedBytes)
+{
+  const std::string custom_type =
+    "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope";
+  const std::vector<uint8_t> first_payload =
+    {0x00, 0x01, 0x00, 0x00, 0x12, 0x34, 0x56, 0x78};
+  const std::vector<uint8_t> second_payload =
+    {0x00, 0x01, 0x00, 0x00, 0xab, 0xcd};
+  std::string created_topic;
+  std::string created_type;
+  std::vector<std::vector<uint8_t>> published_payloads;
+  size_t create_count = 0;
+
+  GenericPublisherFactory factory =
+    [&](const std::string & topic, const std::string & message_type, const rclcpp::QoS &) {
+      ++create_count;
+      created_topic = topic;
+      created_type = message_type;
+      return [&](const rclcpp::SerializedMessage & message) {
+          const auto & serialized = message.get_rcl_serialized_message();
+          published_payloads.emplace_back(
+            serialized.buffer,
+            serialized.buffer + serialized.buffer_length);
+        };
+    };
+  BridgeNode bridge(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+
+  auto first_raw = MakePublishRawFrame("/unity/custom", custom_type);
+  first_raw.payload = first_payload;
+  bridge.publish(parse_publish_frame(first_raw));
+
+  auto second_raw = MakePublishRawFrame("/unity/custom", custom_type);
+  second_raw.header["logTimeNs"] = 5678;
+  second_raw.header["sequence"] = 8;
+  second_raw.payload = second_payload;
+  bridge.publish(parse_publish_frame(second_raw));
+
+  EXPECT_EQ(1U, create_count);
+  EXPECT_EQ("/unity/custom", created_topic);
+  EXPECT_EQ(custom_type, created_type);
+  ASSERT_EQ(2U, published_payloads.size());
+  EXPECT_EQ(first_payload, published_payloads[0]);
+  EXPECT_EQ(second_payload, published_payloads[1]);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  UnavailableTypesupportFailsClosedWithoutPollutingPublisherRegistry)
+{
+  const std::string unavailable_type = "missing_phase184_interfaces/msg/MissingEnvelope";
+  const std::string available_type =
+    "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1Envelope";
+  std::vector<std::string> creation_attempts;
+  size_t publish_count = 0;
+
+  GenericPublisherFactory factory =
+    [&](const std::string &, const std::string & message_type, const rclcpp::QoS &) {
+      creation_attempts.push_back(message_type);
+      if (message_type == unavailable_type) {
+        throw std::runtime_error("typesupport unavailable");
+      }
+      return [&](const rclcpp::SerializedMessage &) {
+          ++publish_count;
+        };
+    };
+  BridgeNode bridge(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+
+  EXPECT_THROW(
+    bridge.publish(
+      parse_publish_frame(
+        MakePublishRawFrame("/unity/custom", unavailable_type))),
+    std::runtime_error);
+  EXPECT_NO_THROW(
+    bridge.publish(
+      parse_publish_frame(
+        MakePublishRawFrame("/unity/custom", available_type))));
+  EXPECT_NO_THROW(
+    bridge.publish(
+      parse_publish_frame(
+        MakePublishRawFrame("/unity/custom", available_type))));
+  EXPECT_THROW(
+    bridge.publish(
+      parse_publish_frame(
+        MakePublishRawFrame(
+          "/unity/custom",
+          "unity2foxglove_foxrun_interfaces_v1/msg/OtherEnvelope"))),
+    std::runtime_error);
+
+  const std::vector<std::string> expected_attempts = {unavailable_type, available_type};
+  EXPECT_EQ(expected_attempts, creation_attempts);
+  EXPECT_EQ(2U, publish_count);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  ProductionGenericPublisherLookupRejectsUnavailableTypesupportWithoutCaching)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  {
+    rclcpp::NodeOptions options;
+    options.context(context);
+    auto node = std::make_shared<rclcpp::Node>(
+      "phase184_bridge_typesupport_test",
+      options);
+    BridgeNode bridge(node, PayloadFormat::CdrWithEncapsulation);
+
+    EXPECT_THROW(
+      bridge.publish(
+        parse_publish_frame(
+          MakePublishRawFrame(
+            "/phase184/typesupport",
+            "missing_phase184_interfaces/msg/MissingEnvelope"))),
+      std::runtime_error);
+
+    auto available = MakePublishRawFrame(
+      "/phase184/typesupport",
+      "std_msgs/msg/String");
+    available.payload = {
+      0x00, 0x01, 0x00, 0x00,
+      0x06, 0x00, 0x00, 0x00,
+      'h', 'e', 'l', 'l', 'o', 0x00
+    };
+    EXPECT_NO_THROW(bridge.publish(parse_publish_frame(available)));
+  }
+  context->shutdown("phase184 bridge typesupport test complete");
+}
+
 TEST(Unity2FoxgloveRos2BridgeProtocol, PublisherReuseSignatureCapturesSchemaAndEveryQosField)
 {
   const auto baseline = parse_publish_frame(MakePublishRawFrame());
@@ -460,18 +948,7 @@ TEST(
 
 TEST(
   Unity2FoxgloveRos2BridgeProtocol,
-  ProcessClientOwnsFreshPublisherSession)
-{
-  using ProcessClientSession =
-    void (*)(int, const rclcpp::Node::SharedPtr &, PayloadFormat);
-  ProcessClientSession process = &process_client;
-
-  EXPECT_NE(nullptr, process);
-}
-
-TEST(
-  Unity2FoxgloveRos2BridgeProtocol,
-  NewClientSessionAcceptsReplacementQosForTheSameTopic)
+  IndependentBridgeNodeSessionsAcceptReplacementQosForTheSameTopic)
 {
   const auto first = parse_publish_frame(MakePublishRawFrame());
   const auto replacement = parse_publish_frame(
@@ -479,23 +956,42 @@ TEST(
       "/unity/tf",
       "foxglove_msgs/msg/FrameTransform",
       WireQosContract{"sensor_data", "best_effort", "volatile", "keep_last", 5}));
+  size_t first_create_count = 0;
+  size_t first_publish_count = 0;
+  size_t replacement_create_count = 0;
+  size_t replacement_publish_count = 0;
 
   {
-    PublisherContractRegistry first_client;
-    EXPECT_EQ(
-      PublisherContractDisposition::CreatePublisher,
-      first_client.register_or_validate(first));
+    GenericPublisherFactory factory =
+      [&](const std::string &, const std::string &, const rclcpp::QoS &) {
+        ++first_create_count;
+        return [&](const rclcpp::SerializedMessage &) {
+            ++first_publish_count;
+          };
+      };
+    BridgeNode first_client(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+    EXPECT_NO_THROW(first_client.publish(first));
     EXPECT_THROW(
-      first_client.register_or_validate(replacement),
+      first_client.publish(replacement),
       std::runtime_error);
   }
 
   {
-    PublisherContractRegistry replacement_client;
-    EXPECT_EQ(
-      PublisherContractDisposition::CreatePublisher,
-      replacement_client.register_or_validate(replacement));
+    GenericPublisherFactory factory =
+      [&](const std::string &, const std::string &, const rclcpp::QoS &) {
+        ++replacement_create_count;
+        return [&](const rclcpp::SerializedMessage &) {
+            ++replacement_publish_count;
+          };
+      };
+    BridgeNode replacement_client(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+    EXPECT_NO_THROW(replacement_client.publish(replacement));
   }
+
+  EXPECT_EQ(1U, first_create_count);
+  EXPECT_EQ(1U, first_publish_count);
+  EXPECT_EQ(1U, replacement_create_count);
+  EXPECT_EQ(1U, replacement_publish_count);
 }
 
 TEST(Unity2FoxgloveRos2BridgeProtocol, MakesCanonicalDefaultQos)

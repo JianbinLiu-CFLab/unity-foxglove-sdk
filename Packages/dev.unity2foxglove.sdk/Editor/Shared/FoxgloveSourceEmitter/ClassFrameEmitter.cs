@@ -51,9 +51,14 @@ namespace Unity.FoxgloveSDK.Editor
                 interfaces.Add("IFoxgloveLogSource");
                 interfaces.Add("IFoxgloveTopicContractSource");
                 interfaces.Add("IFoxgloveTopicBusSource");
+                interfaces.Add("IFoxgloveTopicObserverSource");
                 if (hasNativeBusDemand)
                     interfaces.Add("IFoxgloveTopicBusDemandSource");
                 interfaces.Add("IFoxgloveTopicSinkSource");
+                interfaces.Add("IFoxglovePublishCaptureSource");
+                interfaces.Add("IFoxglovePublishTargetSource");
+                interfaces.Add("IFoxglovePublishRecordingSource");
+                interfaces.Add("IFoxglovePublishOriginSource");
                 if (hasPolicy)
                     interfaces.Add("IFoxgloveLogPolicySource");
                 if (hasConditions)

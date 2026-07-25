@@ -9,85 +9,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using UnityEngine;
 using Unity.FoxgloveSDK.Util;
 
 namespace Unity.FoxgloveSDK.Components
 {
-    /// <summary>Metadata for a FoxRun-published topic.</summary>
-    public readonly struct FoxgloveLogTopicInfo
-    {
-        public readonly string Topic;
-        public readonly float Hz;
-        public readonly FoxRunPolicy Policy;
-        public readonly float Tolerance;
-        public readonly FoxRunFlow Flow;
-        public readonly FoxRunEndpoint DeclaredSource;
-        public readonly bool HasExplicitSource;
-        public readonly FoxRunEndpoint DeclaredTargets;
-        public readonly bool HasExplicitTargets;
-        public readonly bool HasExplicitQos;
-        public readonly bool HasExplicitHz;
-
-        public FoxgloveLogTopicInfo(string topic, float hz)
-            : this(
-                topic,
-                hz,
-                FoxRunPolicy.FixedRate,
-                0f,
-                FoxRunFlow.Publish,
-                declaredSource: 0,
-                hasExplicitSource: false,
-                declaredTargets: 0,
-                hasExplicitTargets: false,
-                hasExplicitQos: false,
-                hasExplicitHz: true)
-        {
-        }
-
-        public FoxgloveLogTopicInfo(string topic, float hz, FoxRunPolicy policy, float tolerance)
-            : this(
-                topic,
-                hz,
-                policy,
-                tolerance,
-                FoxRunFlow.Publish,
-                declaredSource: 0,
-                hasExplicitSource: false,
-                declaredTargets: 0,
-                hasExplicitTargets: false,
-                hasExplicitQos: false,
-                hasExplicitHz: true)
-        {
-        }
-
-        public FoxgloveLogTopicInfo(
-            string topic,
-            float hz,
-            FoxRunPolicy policy,
-            float tolerance,
-            FoxRunFlow flow,
-            FoxRunEndpoint declaredSource,
-            bool hasExplicitSource,
-            FoxRunEndpoint declaredTargets,
-            bool hasExplicitTargets,
-            bool hasExplicitQos,
-            bool hasExplicitHz = true)
-        {
-            Topic = topic;
-            Hz = hz;
-            Policy = policy;
-            Tolerance = tolerance < 0 ? 0 : tolerance;
-            Flow = flow;
-            DeclaredSource = declaredSource;
-            HasExplicitSource = hasExplicitSource;
-            DeclaredTargets = declaredTargets;
-            HasExplicitTargets = hasExplicitTargets;
-            HasExplicitQos = hasExplicitQos;
-            HasExplicitHz = hasExplicitHz;
-        }
-    }
-
     /// <summary>
     /// Interface implemented by code-generated <c>[FoxRun]</c> log sources.
     /// Provides topic metadata and per-topic publish dispatch.
@@ -139,6 +66,20 @@ namespace Unity.FoxgloveSDK.Components
     }
 
     /// <summary>
+    /// Phase184 side-channel for ordinary process-local observers. Generated
+    /// target-aware sources publish their already-captured payload through
+    /// this path exactly once, independently from selected transport targets.
+    /// </summary>
+    public interface IFoxgloveTopicObserverSource
+    {
+        bool FoxgloveLog_HasObservers(int topicIndex, FoxTopicBus bus);
+        void FoxgloveLog_PublishCapturedToObservers(
+            int topicIndex,
+            FoxTopicBus bus,
+            ulong nowNs);
+    }
+
+    /// <summary>
     /// Optional side-channel implemented by generated sources that can fan one
     /// already-serialized topic payload out to additional sinks after live
     /// publish succeeds. The live Foxglove and MCAP paths remain primary; this
@@ -148,6 +89,74 @@ namespace Unity.FoxgloveSDK.Components
     {
         /// <summary>Fan one serialized topic payload out to the sink router.</summary>
         void FoxgloveLog_PublishToSinks(int topicIndex, FoxTopicSinkRouter router, ulong nowNs);
+    }
+
+    /// <summary>
+    /// Optional Phase184 capture surface. A generated source captures every
+    /// member for one logical publication exactly once, then all selected
+    /// transports consume that immutable capture.
+    /// </summary>
+    public interface IFoxglovePublishCaptureSource
+    {
+        bool FoxgloveLog_BeginCapture(int topicIndex);
+        void FoxgloveLog_EndCapture(int topicIndex);
+    }
+
+    /// <summary>
+    /// Optional Phase184 target-aware publish surface. Readiness and publish
+    /// outcomes stay independent so one unavailable target cannot reroute or
+    /// block another selected target.
+    /// </summary>
+    public interface IFoxglovePublishTargetSource
+    {
+        bool FoxgloveLog_IsTargetReady(
+            int topicIndex,
+            FoxRunEndpoint target,
+            FoxRunResolvedPublishContract contract,
+            FoxgloveManager manager,
+            FoxTopicBus bus,
+            FoxTopicSinkRouter router,
+            out string reason);
+
+        bool FoxgloveLog_PublishCaptured(
+            int topicIndex,
+            FoxRunEndpoint target,
+            FoxRunResolvedPublishContract contract,
+            FoxgloveManager manager,
+            FoxTopicBus bus,
+            FoxTopicSinkRouter router,
+            ulong nowNs,
+            out string reason);
+    }
+
+    /// <summary>
+    /// Optional external-boundary MCAP surface for declarations that do not
+    /// select the live Foxglove target.
+    /// </summary>
+    public interface IFoxglovePublishRecordingSource
+    {
+        bool FoxgloveLog_IsRecordingReady(
+            int topicIndex,
+            FoxRunResolvedPublishContract contract,
+            FoxgloveManager manager,
+            out string reason);
+
+        bool FoxgloveLog_RecordCaptured(
+            int topicIndex,
+            FoxRunResolvedPublishContract contract,
+            FoxgloveManager manager,
+            ulong nowNs,
+            out string reason);
+    }
+
+    /// <summary>
+    /// Optional origin gate for full-duplex declarations. Scheduled work must
+    /// remain suppressed while the current value still equals the last remote
+    /// apply; an explicit trigger is allowed to bypass this gate.
+    /// </summary>
+    public interface IFoxglovePublishOriginSource
+    {
+        bool FoxgloveLog_CanPublishOrigin(int topicIndex, bool explicitTrigger);
     }
 
     /// <summary>
@@ -183,6 +192,7 @@ namespace Unity.FoxgloveSDK.Components
         [SerializeField] private bool _enableFallbackSceneScan = true;
         /// <summary>Per-source scheduler state for rate throttling.</summary>
         private readonly Dictionary<IFoxgloveLogSource, FoxgloveLogSourceState> _timers = new();
+        private readonly List<IFoxgloveLogSource> _sourceRegistrationOrder = new();
         private readonly FoxTopicBus _topicBus = new();
         private readonly FoxTopicSinkRouter _sinkRouter = new();
         /// <summary>List of destroyed sources to clean up this frame.</summary>
@@ -193,6 +203,7 @@ namespace Unity.FoxgloveSDK.Components
         private readonly HashSet<IFoxgloveLogSource> _pendingAddSet = new();
         private readonly HashSet<IFoxgloveLogSource> _pendingRemoveSet = new();
         private readonly HashSet<SourceFailureKey> _warnedSourceFailures = new();
+        private readonly Dictionary<SourceTopicKey, FoxRunPublishDispatchResult> _publishTargetStatuses = new();
         private bool _iteratingTimers;
         /// <summary>Countdown until the next Scan for new sources.</summary>
         private float _scanTimer;
@@ -215,6 +226,15 @@ namespace Unity.FoxgloveSDK.Components
         /// Main-thread only.
         /// </summary>
         public FoxTopicSinkRouter TopicSinkRouter => _sinkRouter;
+
+        /// <summary>Try to read the latest target health for one declaration.</summary>
+        public bool TryGetPublishTargetStatus(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            out FoxRunPublishDispatchResult result)
+            => _publishTargetStatuses.TryGetValue(
+                new SourceTopicKey(source, topicIndex),
+                out result);
 
         private void Awake()
         {
@@ -419,8 +439,14 @@ namespace Unity.FoxgloveSDK.Components
                     // values fail closed rather than becoming fixed-rate.
                     return false;
                 }
+                if (!IsRegisteredForDispatch(source, topicIndex))
+                    return false;
 
-                if (!TryResolvePublishRoutes(source, topicIndex, "scheduled publish", out var publishLive, out var publishBus))
+                var targetAware = IsTargetAware(source);
+                var publishLive = false;
+                var publishBus = false;
+                if (!targetAware
+                    && !TryResolvePublishRoutes(source, topicIndex, "scheduled publish", out publishLive, out publishBus))
                     return false;
 
                 switch (info.Policy)
@@ -450,6 +476,9 @@ namespace Unity.FoxgloveSDK.Components
 
                 if (!CanPublishSourceTopic(source, topicIndex, "scheduled publish"))
                     return false;
+                if (source is IFoxglovePublishOriginSource originSource
+                    && !originSource.FoxgloveLog_CanPublishOrigin(topicIndex, explicitTrigger: false))
+                    return false;
 
                 var policySource = source as IFoxgloveLogPolicySource;
                 if (info.Policy == FoxRunPolicy.Change && policySource == null)
@@ -457,7 +486,9 @@ namespace Unity.FoxgloveSDK.Components
                 if (policySource != null && !policySource.FoxgloveLog_ShouldPublish(topicIndex, nowSec))
                     return false;
 
-                var published = DispatchTopic(source, topicIndex, nowNs, "scheduled publish", publishLive, publishBus);
+                var published = targetAware
+                    ? DispatchTargetAwareTopic(source, topicIndex, nowNs, "scheduled publish")
+                    : DispatchTopic(source, topicIndex, nowNs, "scheduled publish", publishLive, publishBus);
                 if (published)
                     policySource?.FoxgloveLog_MarkPublished(topicIndex, nowSec);
                 return published;
@@ -475,14 +506,25 @@ namespace Unity.FoxgloveSDK.Components
             {
                 if (source.FoxgloveLog_GetTopic(topicIndex).Policy != FoxRunPolicy.Trigger)
                     return false;
+                if (!IsRegisteredForDispatch(source, topicIndex))
+                    return false;
 
-                if (!TryResolvePublishRoutes(source, topicIndex, "trigger publish", out var publishLive, out var publishBus))
+                var targetAware = IsTargetAware(source);
+                var publishLive = false;
+                var publishBus = false;
+                if (!targetAware
+                    && !TryResolvePublishRoutes(source, topicIndex, "trigger publish", out publishLive, out publishBus))
                     return false;
 
                 if (!CanPublishSourceTopic(source, topicIndex, "trigger publish"))
                     return false;
+                if (source is IFoxglovePublishOriginSource originSource
+                    && !originSource.FoxgloveLog_CanPublishOrigin(topicIndex, explicitTrigger: true))
+                    return false;
 
-                var published = DispatchTopic(source, topicIndex, nowNs, "trigger publish", publishLive, publishBus);
+                var published = targetAware
+                    ? DispatchTargetAwareTopic(source, topicIndex, nowNs, "trigger publish")
+                    : DispatchTopic(source, topicIndex, nowNs, "trigger publish", publishLive, publishBus);
                 if (published && source is IFoxgloveLogPolicySource policySource)
                     policySource.FoxgloveLog_MarkPublished(topicIndex, nowSec);
                 return published;
@@ -652,6 +694,361 @@ namespace Unity.FoxgloveSDK.Components
             return emitted;
         }
 
+        private static bool IsTargetAware(IFoxgloveLogSource source)
+            => source is IFoxglovePublishCaptureSource
+               && source is IFoxglovePublishTargetSource;
+
+        private bool DispatchTargetAwareTopic(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            ulong nowNs,
+            string operation)
+        {
+            if (!(source is IFoxglovePublishCaptureSource captureSource)
+                || !(source is IFoxglovePublishTargetSource targetSource)
+                || !TryGetResolvedPublishContract(
+                    source,
+                    topicIndex,
+                    operation,
+                    out var contract))
+            {
+                return false;
+            }
+
+            var captureAttempted = false;
+            var captureStarted = false;
+            var observerSource = source as IFoxgloveTopicObserverSource;
+            var observerReady = false;
+            if (observerSource != null
+                && _mgr != null
+                && !_mgr.SuppressLivePublishersForReplay)
+            {
+                try
+                {
+                    observerReady = observerSource.FoxgloveLog_HasObservers(
+                        topicIndex,
+                        _topicBus);
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(
+                        source,
+                        topicIndex,
+                        operation + " observer demand",
+                        ex);
+                }
+            }
+
+            var recordingSource = source as IFoxglovePublishRecordingSource;
+            var recordingReady = false;
+            if (recordingSource != null && !contract.Selects(FoxRunEndpoint.Foxglove))
+            {
+                try
+                {
+                    recordingReady = recordingSource.FoxgloveLog_IsRecordingReady(
+                        topicIndex,
+                        contract,
+                        _mgr,
+                        out var recordingReason);
+                    if (!recordingReady && !string.IsNullOrWhiteSpace(recordingReason))
+                    {
+                        LogSourceFailure(
+                            source,
+                            topicIndex,
+                            operation + " MCAP readiness",
+                            new InvalidOperationException(recordingReason));
+                    }
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, topicIndex, operation + " MCAP readiness", ex);
+                }
+            }
+
+            var recorded = false;
+            var result = default(FoxRunPublishDispatchResult);
+            ExceptionDispatchInfo fatal = null;
+            try
+            {
+                try
+                {
+                    result = FoxRunPublishFanout.Dispatch(
+                        contract,
+                        nowNs,
+                        capture: () =>
+                        {
+                            captureAttempted = true;
+                            if (!captureSource.FoxgloveLog_BeginCapture(topicIndex))
+                                throw new InvalidOperationException("Generated source rejected a nested publish capture.");
+                            captureStarted = true;
+                            return true;
+                        },
+                        isReady: target =>
+                        {
+                            var ready = targetSource.FoxgloveLog_IsTargetReady(
+                                topicIndex,
+                                target,
+                                contract,
+                                _mgr,
+                                _topicBus,
+                                _sinkRouter,
+                                out var reason);
+                            if (!ready && !string.IsNullOrWhiteSpace(reason))
+                            {
+                                LogSourceFailure(
+                                    source,
+                                    topicIndex,
+                                    operation + " " + target + " readiness",
+                                    new InvalidOperationException(reason));
+                            }
+                            return ready;
+                        },
+                        publish: (target, _, timestamp) =>
+                        {
+                            var published = targetSource.FoxgloveLog_PublishCaptured(
+                                topicIndex,
+                                target,
+                                contract,
+                                _mgr,
+                                _topicBus,
+                                _sinkRouter,
+                                timestamp,
+                                out var reason);
+                            if (!published && !string.IsNullOrWhiteSpace(reason))
+                            {
+                                LogSourceFailure(
+                                    source,
+                                    topicIndex,
+                                    operation + " " + target + " publish",
+                                    new InvalidOperationException(reason));
+                            }
+                            return published;
+                        },
+                        onTargetFault: (target, targetOperation, exception) =>
+                            LogSourceFailure(
+                                source,
+                                topicIndex,
+                                operation + " " + target + " " + targetOperation,
+                                exception));
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, topicIndex, operation + " capture", ex);
+                    result = new FoxRunPublishDispatchResult(
+                        FoxRunPublishTargetStatus.Unavailable,
+                        0,
+                        contract.Targets);
+                }
+
+                if (recordingReady)
+                {
+                    try
+                    {
+                        if (!captureAttempted)
+                        {
+                            captureAttempted = true;
+                            if (!captureSource.FoxgloveLog_BeginCapture(topicIndex))
+                                throw new InvalidOperationException("Generated source rejected a nested MCAP capture.");
+                            captureStarted = true;
+                        }
+
+                        if (captureStarted)
+                        {
+                            recorded = recordingSource.FoxgloveLog_RecordCaptured(
+                                topicIndex,
+                                contract,
+                                _mgr,
+                                nowNs,
+                                out var recordingReason);
+                            if (!recorded && !string.IsNullOrWhiteSpace(recordingReason))
+                            {
+                                LogSourceFailure(
+                                    source,
+                                    topicIndex,
+                                    operation + " MCAP publish",
+                                    new InvalidOperationException(recordingReason));
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (IsRecoverableSourceException(ex))
+                    {
+                        LogSourceFailure(source, topicIndex, operation + " MCAP publish", ex);
+                    }
+                }
+
+                // Ordinary observers run only after every selected transport
+                // and MCAP have synchronously consumed the frozen capture.
+                // User callbacks may mutate reference-typed DTOs and must not
+                // alter any external representation of this logical sample.
+                if (observerReady)
+                {
+                    try
+                    {
+                        if (!captureAttempted)
+                        {
+                            captureAttempted = true;
+                            if (!captureSource.FoxgloveLog_BeginCapture(topicIndex))
+                            {
+                                throw new InvalidOperationException(
+                                    "Generated source rejected a nested observer capture.");
+                            }
+                            captureStarted = true;
+                        }
+
+                        if (captureStarted)
+                        {
+                            observerSource.FoxgloveLog_PublishCapturedToObservers(
+                                topicIndex,
+                                _topicBus,
+                                nowNs);
+                        }
+                    }
+                    catch (Exception ex) when (IsRecoverableSourceException(ex))
+                    {
+                        LogSourceFailure(
+                            source,
+                            topicIndex,
+                            operation + " observer side-channel",
+                            ex);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                fatal = ExceptionDispatchInfo.Capture(ex);
+            }
+            finally
+            {
+                if (captureStarted)
+                {
+                    try
+                    {
+                        captureSource.FoxgloveLog_EndCapture(topicIndex);
+                    }
+                    catch (Exception ex) when (IsRecoverableSourceException(ex))
+                    {
+                        LogSourceFailure(
+                            source,
+                            topicIndex,
+                            operation + " capture cleanup",
+                            ex);
+                    }
+                    catch (Exception ex)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(ex);
+                    }
+                }
+            }
+
+            var statusKey = new SourceTopicKey(source, topicIndex);
+            if (fatal != null)
+            {
+                _publishTargetStatuses.Remove(statusKey);
+                fatal.Throw();
+            }
+            _publishTargetStatuses[statusKey] = result;
+            // Recording is an additive hidden sink, not evidence that a
+            // selected live target accepted the sample.  In particular,
+            // Change policy must retain its dirty sample when every selected
+            // live target fails so target recovery can retry it.  Keep the
+            // zero-target branch explicit for a recording-only contract seam
+            // without ever projecting that success into the live status.
+            return contract.Targets != 0
+                ? result.Published
+                : recorded;
+        }
+
+        private bool TryGetResolvedPublishContract(
+            IFoxgloveLogSource source,
+            int topicIndex,
+            string operation,
+            out FoxRunResolvedPublishContract contract)
+        {
+            contract = null;
+            if (_timers.TryGetValue(source, out var state)
+                && topicIndex >= 0
+                && topicIndex < state.Contracts.Length)
+            {
+                contract = state.Contracts[topicIndex];
+                if (contract != null)
+                    return true;
+            }
+
+            if (TryResolvePublishContract(
+                    source.FoxgloveLog_GetTopic(topicIndex),
+                    out contract,
+                    out var diagnostic))
+            {
+                return true;
+            }
+
+            LogSourceFailure(
+                source,
+                topicIndex,
+                operation + " contract resolution",
+                new InvalidOperationException(diagnostic));
+            return false;
+        }
+
+        private bool IsRegisteredForDispatch(
+            IFoxgloveLogSource source,
+            int topicIndex)
+        {
+            if (!_timers.TryGetValue(source, out var state)
+                || topicIndex < 0
+                || topicIndex >= state.Contracts.Length
+                || !state.TopicRegistrationsAccepted[topicIndex]
+                || state.Contracts[topicIndex] == null)
+            {
+                return false;
+            }
+
+            var externalTargets = state.Contracts[topicIndex].Targets
+                                  & (FoxRunEndpoint.Ros2Native
+                                     | FoxRunEndpoint.Ros2Bridge);
+            return externalTargets == 0
+                   || state.SinkRegistrationsAccepted[topicIndex];
+        }
+
+        private bool TryResolvePublishContract(
+            FoxgloveLogTopicInfo info,
+            out FoxRunResolvedPublishContract contract,
+            out string diagnostic)
+        {
+            var subscriptionPolicy = _mgr?.ActiveFoxRunSubscriptionSessionPolicy;
+            var defaultSource = subscriptionPolicy != null
+                                && subscriptionPolicy.SubscriptionsEnabled
+                ? subscriptionPolicy.DefaultSource
+                : _mgr != null
+                    ? _mgr.ActiveFoxRunSubscriptionSource
+                    : FoxRunEndpoint.Foxglove;
+            var subscribeEncoding = subscriptionPolicy != null
+                                    && subscriptionPolicy.SubscriptionsEnabled
+                ? subscriptionPolicy.FoxgloveEncoding
+                : _mgr != null
+                    ? _mgr.ActiveFoxRunSubscriptionEncoding
+                    : FoxRunEncoding.JSON;
+
+            return FoxRunResolvedPublishContract.TryResolve(
+                info,
+                _mgr != null
+                    ? _mgr.ActiveFoxRunPublishTargets
+                    : FoxRunEndpoint.Foxglove,
+                _mgr != null
+                    ? _mgr.ActiveFoxRunPublishEncoding
+                    : FoxRunEncoding.JSON,
+                _mgr != null
+                    ? _mgr.ActiveFoxRunNativePublishQos
+                    : FoxRunResolvedQos.Default,
+                _mgr != null
+                    ? _mgr.ActiveFoxRunBridgePublishQos
+                    : FoxRunResolvedQos.Default,
+                defaultSource,
+                subscribeEncoding,
+                out contract,
+                out diagnostic);
+        }
+
         private void PublishTopicSinkSideChannel(
             IFoxgloveLogSource source,
             int topicIndex,
@@ -712,11 +1109,56 @@ namespace Unity.FoxgloveSDK.Components
                 for (var i = 0; i < count; i++)
                     topics[i] = source.FoxgloveLog_GetTopic(i);
 
-                _timers[source] = new FoxgloveLogSourceState(
+                var contracts = new FoxRunResolvedPublishContract[count];
+                for (var i = 0; i < count; i++)
+                {
+                    if (!TryResolvePublishContract(topics[i], out contracts[i], out var diagnostic))
+                    {
+                        LogSourceFailure(
+                            source,
+                            i,
+                            "session contract resolution",
+                            new InvalidOperationException(diagnostic));
+                    }
+                }
+
+                var state = new FoxgloveLogSourceState(
                     new FixedRatePublishState[count],
-                    topics);
-                RegisterSourceContracts(source, count);
-                return true;
+                    topics,
+                    contracts);
+                _timers[source] = state;
+                _sourceRegistrationOrder.Add(source);
+                try
+                {
+                    RegisterSourceContracts(source, count);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    var primary = ExceptionDispatchInfo.Capture(ex);
+                    try
+                    {
+                        UnregisterSourceContracts(source, count);
+                    }
+                    catch
+                    {
+                        // A later cleanup failure cannot replace the fatal
+                        // admission failure that initiated whole-source rollback.
+                    }
+                    finally
+                    {
+                        _timers.Remove(source);
+                        _sourceRegistrationOrder.Remove(source);
+                        for (var index = 0; index < count; index++)
+                        {
+                            _publishTargetStatuses.Remove(
+                                new SourceTopicKey(source, index));
+                        }
+                    }
+
+                    primary.Throw();
+                    throw;
+                }
             }
 
             return false;
@@ -726,29 +1168,130 @@ namespace Unity.FoxgloveSDK.Components
         {
             var contractSource = source as IFoxgloveTopicContractSource;
             var origin = contractSource?.FoxgloveLog_Origin ?? source.GetType().FullName ?? string.Empty;
+            if (!_timers.TryGetValue(source, out var state))
+                return;
             for (var i = 0; i < count; i++)
             {
+                if (i >= state.Contracts.Length || state.Contracts[i] == null)
+                {
+                    ClearRegistrationState(source, state, i);
+                    continue;
+                }
+
+                TryRegisterSourceContract(
+                    source,
+                    state,
+                    i,
+                    contractSource,
+                    origin,
+                    "topic contract registration");
+            }
+        }
+
+        private bool TryRegisterSourceContract(
+            IFoxgloveLogSource source,
+            FoxgloveLogSourceState state,
+            int topicIndex,
+            IFoxgloveTopicContractSource contractSource,
+            string origin,
+            string operation)
+        {
+            if (topicIndex < 0
+                || topicIndex >= state.Contracts.Length
+                || state.Contracts[topicIndex] == null)
+            {
+                ClearRegistrationState(source, state, topicIndex);
+                return false;
+            }
+
+            var busAccepted = false;
+            var sinkRegistrationAttempted = false;
+            FoxTopicContract contract = null;
+            try
+            {
+                contract = contractSource != null
+                    ? contractSource.FoxgloveLog_GetContract(topicIndex)
+                    : FallbackContract(state.Topics[topicIndex]);
+                if (contract == null)
+                    return false;
+
+                var result = _topicBus.Register(contract, origin);
+                if (!result.Accepted)
+                {
+                    ClearRegistrationState(source, state, topicIndex);
+                    LogSourceFailure(
+                        source,
+                        topicIndex,
+                        operation,
+                        new InvalidOperationException(result.Diagnostic));
+                    return false;
+                }
+
+                busAccepted = true;
+                state.RegisteredTopicContracts[topicIndex] = contract;
+                var externalTargets = ExternalTargets(state.Contracts[topicIndex]);
+                var sinkAccepted = externalTargets == 0;
+                if (!sinkAccepted)
+                {
+                    sinkRegistrationAttempted = true;
+                    sinkAccepted = _sinkRouter.RegisterTargets(
+                        state.Contracts[topicIndex],
+                        contract);
+                }
+
+                if (!sinkAccepted)
+                {
+                    _topicBus.Unregister(contract.Topic, origin);
+                    ClearRegistrationState(source, state, topicIndex);
+                    LogSourceFailure(
+                        source,
+                        topicIndex,
+                        operation + " sink",
+                        new InvalidOperationException(
+                            "Topic '" + contract.Topic
+                            + "' conflicts with an existing resolved target or QoS contract."));
+                    return false;
+                }
+
+                state.TopicRegistrationsAccepted[topicIndex] = true;
+                state.SinkRegistrationsAccepted[topicIndex] = true;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                var primary = ExceptionDispatchInfo.Capture(ex);
                 try
                 {
-                    var contract = contractSource != null
-                        ? contractSource.FoxgloveLog_GetContract(i)
-                        : FallbackContract(source.FoxgloveLog_GetTopic(i));
-                    if (contract == null)
-                        continue;
-
-                    var result = _topicBus.Register(contract, origin);
-                    if (!result.Accepted)
-                        LogSourceFailure(source, i, "topic contract registration", new InvalidOperationException(result.Diagnostic));
-
-                    // Additive: export the contract to sinks (LocalOnly is gated
-                    // inside the router). Live/MCAP keep their primary paths.
-                    if (TryResolvePublishEndpointConstraint(source, i, "topic sink registration"))
-                        _sinkRouter.Register(contract);
+                    if (sinkRegistrationAttempted && contract != null)
+                        TryRollbackSinkRoute(contract.Topic);
                 }
-                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                catch
                 {
-                    LogSourceFailure(source, i, "topic contract registration", ex);
+                    // Rollback is mandatory but a cleanup failure cannot mask
+                    // the original registration exception.
                 }
+                try
+                {
+                    if (busAccepted && contract != null)
+                        _topicBus.Unregister(contract.Topic, origin);
+                }
+                catch
+                {
+                    // Preserve the primary registration failure after every
+                    // mandatory cleanup step has been attempted.
+                }
+                finally
+                {
+                    ClearRegistrationState(source, state, topicIndex);
+                }
+                if (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, topicIndex, operation, ex);
+                    return false;
+                }
+
+                primary.Throw();
+                throw;
             }
         }
 
@@ -770,14 +1313,23 @@ namespace Unity.FoxgloveSDK.Components
                 _mgr.FoxRunSubscriptionSessionChanged += OnFoxRunSubscriptionSessionChanged;
             }
 
+            RefreshResolvedPublishContracts();
             ReconcileSinkContracts();
         }
 
         private void OnFoxRunPublishSessionChanged(FoxRunPublishSessionPolicy policy)
         {
+            RefreshResolvedPublishContracts();
             if (policy != null && !policy.SessionActive)
             {
-                UnregisterSinkContracts();
+                try
+                {
+                    UnregisterSinkContracts();
+                }
+                finally
+                {
+                    _publishTargetStatuses.Clear();
+                }
                 return;
             }
 
@@ -787,88 +1339,260 @@ namespace Unity.FoxgloveSDK.Components
         private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
         {
             _ = policy;
+            RefreshResolvedPublishContracts();
             ReconcileSinkContracts();
+        }
+
+        private void RefreshResolvedPublishContracts()
+        {
+            ExceptionDispatchInfo fatal = null;
+            foreach (var entry in _timers)
+            {
+                var source = entry.Key;
+                var state = entry.Value;
+                for (var index = 0; index < state.Topics.Length; index++)
+                {
+                    var resolved = TryResolvePublishContract(
+                        state.Topics[index],
+                        out var nextContract,
+                        out var diagnostic);
+                    var previousContract = state.Contracts[index];
+                    if (!resolved
+                        || !ResolvedPublishContractsMatch(
+                            previousContract,
+                            nextContract))
+                    {
+                        try
+                        {
+                            ReleaseSourceRegistration(
+                                source,
+                                state,
+                                index,
+                                "session contract invalidation");
+                        }
+                        catch (Exception ex)
+                        {
+                            fatal ??= ExceptionDispatchInfo.Capture(ex);
+                        }
+                    }
+
+                    state.Contracts[index] = resolved ? nextContract : null;
+                    if (!resolved)
+                    {
+                        ClearRegistrationState(source, state, index);
+                        LogSourceFailure(
+                            source,
+                            index,
+                            "session contract resolution",
+                            new InvalidOperationException(diagnostic));
+                    }
+                }
+            }
+
+            fatal?.Throw();
         }
 
         private void ReconcileSinkContracts()
         {
-            UnregisterSinkContracts();
+            RetryRejectedTopicRegistrations();
+        }
 
-            var visitedTopics = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var entry in _timers)
+        private void RetryRejectedTopicRegistrations()
+        {
+            for (var sourceIndex = 0;
+                 sourceIndex < _sourceRegistrationOrder.Count;
+                 sourceIndex++)
             {
-                var source = entry.Key;
-                var count = entry.Value.Timers.Length;
+                var source = _sourceRegistrationOrder[sourceIndex];
+                if (!_timers.TryGetValue(source, out var state))
+                    continue;
                 var contractSource = source as IFoxgloveTopicContractSource;
-                for (var i = 0; i < count; i++)
+                var origin = contractSource?.FoxgloveLog_Origin
+                             ?? source.GetType().FullName
+                             ?? string.Empty;
+                for (var topicIndex = 0;
+                     topicIndex < state.TopicRegistrationsAccepted.Length;
+                     topicIndex++)
                 {
-                    try
+                    if (topicIndex >= state.Contracts.Length
+                        || state.Contracts[topicIndex] == null)
                     {
-                        if (!TryResolvePublishEndpointConstraint(source, i, "topic sink reconciliation"))
-                            continue;
+                        continue;
+                    }
 
-                        var contract = contractSource != null
-                            ? contractSource.FoxgloveLog_GetContract(i)
-                            : FallbackContract(source.FoxgloveLog_GetTopic(i));
-                        if (contract != null && visitedTopics.Add(contract.Topic))
-                            _sinkRouter.Register(contract);
-                    }
-                    catch (Exception ex) when (IsRecoverableSourceException(ex))
-                    {
-                        LogSourceFailure(source, i, "topic sink reconciliation register", ex);
-                    }
+                    if (state.TopicRegistrationsAccepted[topicIndex]
+                        && state.SinkRegistrationsAccepted[topicIndex])
+                        continue;
+
+                    TryRegisterSourceContract(
+                        source,
+                        state,
+                        topicIndex,
+                        contractSource,
+                        origin,
+                        "topic contract reconciliation");
                 }
             }
         }
 
         private void UnregisterSinkContracts()
         {
-            var visitedTopics = new HashSet<string>(StringComparer.Ordinal);
+            ExceptionDispatchInfo fatal = null;
             foreach (var entry in _timers)
             {
                 var source = entry.Key;
-                var count = entry.Value.Timers.Length;
-                var contractSource = source as IFoxgloveTopicContractSource;
+                var state = entry.Value;
+                var count = state.Timers.Length;
                 for (var i = 0; i < count; i++)
                 {
+                    if (!state.SinkRegistrationsAccepted[i])
+                        continue;
                     try
                     {
-                        var contract = contractSource != null
-                            ? contractSource.FoxgloveLog_GetContract(i)
-                            : FallbackContract(source.FoxgloveLog_GetTopic(i));
-                        if (contract != null && visitedTopics.Add(contract.Topic))
+                        var contract = state.RegisteredTopicContracts[i];
+                        if (contract != null
+                            && ExternalTargets(state.Contracts[i]) != 0)
                             _sinkRouter.Unregister(contract.Topic);
                     }
                     catch (Exception ex) when (IsRecoverableSourceException(ex))
                     {
                         LogSourceFailure(source, i, "topic sink reconciliation unregister", ex);
                     }
+                    catch (Exception ex)
+                    {
+                        fatal ??= ExceptionDispatchInfo.Capture(ex);
+                    }
+                    finally
+                    {
+                        state.SinkRegistrationsAccepted[i] = false;
+                    }
                 }
             }
+
+            fatal?.Throw();
         }
 
         private void UnregisterSourceContracts(IFoxgloveLogSource source, int count)
         {
-            var contractSource = source as IFoxgloveTopicContractSource;
-            var origin = contractSource?.FoxgloveLog_Origin ?? source.GetType().FullName ?? string.Empty;
+            if (!_timers.TryGetValue(source, out var state))
+                return;
+            ExceptionDispatchInfo fatal = null;
             for (var i = 0; i < count; i++)
             {
                 try
                 {
-                    var contract = contractSource != null
-                        ? contractSource.FoxgloveLog_GetContract(i)
-                        : FallbackContract(source.FoxgloveLog_GetTopic(i));
-                    if (contract != null)
-                    {
-                        _topicBus.Unregister(contract.Topic, origin);
-                        _sinkRouter.Unregister(contract.Topic);
-                    }
+                    ReleaseSourceRegistration(
+                        source,
+                        state,
+                        i,
+                        "topic contract unregister");
+                }
+                catch (Exception ex)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(ex);
+                }
+            }
+
+            fatal?.Throw();
+        }
+
+        private void ReleaseSourceRegistration(
+            IFoxgloveLogSource source,
+            FoxgloveLogSourceState state,
+            int topicIndex,
+            string operation)
+        {
+            if (state == null
+                || topicIndex < 0
+                || topicIndex >= state.TopicRegistrationsAccepted.Length)
+                return;
+
+            var contract = state.RegisteredTopicContracts[topicIndex];
+            var origin = (source as IFoxgloveTopicContractSource)?.FoxgloveLog_Origin
+                         ?? source?.GetType().FullName
+                         ?? string.Empty;
+            ExceptionDispatchInfo fatal = null;
+            if (contract != null
+                && state.SinkRegistrationsAccepted[topicIndex]
+                && ExternalTargets(state.Contracts[topicIndex]) != 0)
+            {
+                try
+                {
+                    _sinkRouter.Unregister(contract.Topic);
                 }
                 catch (Exception ex) when (IsRecoverableSourceException(ex))
                 {
-                    LogSourceFailure(source, i, "topic contract unregister", ex);
+                    LogSourceFailure(source, topicIndex, operation + " sink", ex);
+                }
+                catch (Exception ex)
+                {
+                    fatal = ExceptionDispatchInfo.Capture(ex);
                 }
             }
+
+            if (contract != null && state.TopicRegistrationsAccepted[topicIndex])
+            {
+                try
+                {
+                    _topicBus.Unregister(contract.Topic, origin);
+                }
+                catch (Exception ex) when (IsRecoverableSourceException(ex))
+                {
+                    LogSourceFailure(source, topicIndex, operation + " bus", ex);
+                }
+                catch (Exception ex)
+                {
+                    fatal ??= ExceptionDispatchInfo.Capture(ex);
+                }
+            }
+
+            ClearRegistrationState(source, state, topicIndex);
+            fatal?.Throw();
+        }
+
+        private void ClearRegistrationState(
+            IFoxgloveLogSource source,
+            FoxgloveLogSourceState state,
+            int topicIndex)
+        {
+            if (state != null
+                && topicIndex >= 0
+                && topicIndex < state.TopicRegistrationsAccepted.Length)
+            {
+                state.TopicRegistrationsAccepted[topicIndex] = false;
+                state.SinkRegistrationsAccepted[topicIndex] = false;
+                state.RegisteredTopicContracts[topicIndex] = null;
+            }
+
+            if (source != null && topicIndex >= 0)
+                _publishTargetStatuses.Remove(new SourceTopicKey(source, topicIndex));
+        }
+
+        private void TryRollbackSinkRoute(string topic)
+        {
+            if (!string.IsNullOrWhiteSpace(topic))
+                _sinkRouter.Unregister(topic);
+        }
+
+        private static FoxRunEndpoint ExternalTargets(
+            FoxRunResolvedPublishContract contract)
+            => contract == null
+                ? 0
+                : contract.Targets
+                  & (FoxRunEndpoint.Ros2Native | FoxRunEndpoint.Ros2Bridge);
+
+        private static bool ResolvedPublishContractsMatch(
+            FoxRunResolvedPublishContract left,
+            FoxRunResolvedPublishContract right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            if (left == null || right == null)
+                return false;
+            return left.Targets == right.Targets
+                   && left.FoxgloveEncoding == right.FoxgloveEncoding
+                   && left.NativeQos == right.NativeQos
+                   && left.BridgeQos == right.BridgeQos;
         }
 
         private static FoxTopicContract FallbackContract(FoxgloveLogTopicInfo info)
@@ -902,8 +1626,31 @@ namespace Unity.FoxgloveSDK.Components
             if (!_timers.TryGetValue(source, out var state))
                 return;
 
-            UnregisterSourceContracts(source, state.Timers.Length);
+            ExceptionDispatchInfo fatal = null;
+            try
+            {
+                UnregisterSourceContracts(source, state.Timers.Length);
+            }
+            catch (Exception ex)
+            {
+                fatal = ExceptionDispatchInfo.Capture(ex);
+            }
+
             _timers.Remove(source);
+            _sourceRegistrationOrder.Remove(source);
+            for (var index = 0; index < state.Timers.Length; index++)
+                _publishTargetStatuses.Remove(new SourceTopicKey(source, index));
+
+            try
+            {
+                RetryRejectedTopicRegistrations();
+            }
+            catch (Exception ex)
+            {
+                fatal ??= ExceptionDispatchInfo.Capture(ex);
+            }
+
+            fatal?.Throw();
         }
 
         private void ApplyPendingTimerMutations()
@@ -953,6 +1700,12 @@ namespace Unity.FoxgloveSDK.Components
                 TryRefreshManagerForTrigger();
             if (_mgr == null)
                 return false;
+            // Generated explicit triggers can run before the next pending
+            // registration drain (for example from an early Unity callback).
+            // Admit the source through the same contract/ownership gates used
+            // by the normal lifecycle before allowing the trigger to dispatch.
+            if (!_timers.ContainsKey(source) && !AddSource(source))
+                return false;
 
             return TryPublishTriggeredTopic(source, topicIndex, _mgr.NowNs, Time.realtimeSinceStartupAsDouble);
         }
@@ -968,12 +1721,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private static bool IsRecoverableSourceException(Exception ex)
-        {
-            return !(ex is OutOfMemoryException)
-                   && !(ex is StackOverflowException)
-                   && !(ex is AccessViolationException)
-                   && !(ex is AppDomainUnloadedException);
-        }
+            => FoxRunExceptionPolicy.IsRecoverable(ex);
 
         private static void OnSinkFaulted(FoxTopicSinkFault fault)
         {
@@ -985,14 +1733,55 @@ namespace Unity.FoxgloveSDK.Components
 
         private sealed class FoxgloveLogSourceState
         {
-            public FoxgloveLogSourceState(FixedRatePublishState[] timers, FoxgloveLogTopicInfo[] topics)
+            public FoxgloveLogSourceState(
+                FixedRatePublishState[] timers,
+                FoxgloveLogTopicInfo[] topics,
+                FoxRunResolvedPublishContract[] contracts)
             {
                 Timers = timers;
                 Topics = topics;
+                Contracts = contracts;
+                TopicRegistrationsAccepted = new bool[contracts.Length];
+                SinkRegistrationsAccepted = new bool[contracts.Length];
+                RegisteredTopicContracts = new FoxTopicContract[contracts.Length];
             }
 
             public FixedRatePublishState[] Timers { get; }
             public FoxgloveLogTopicInfo[] Topics { get; }
+            public FoxRunResolvedPublishContract[] Contracts { get; }
+            public bool[] TopicRegistrationsAccepted { get; }
+            public bool[] SinkRegistrationsAccepted { get; }
+            public FoxTopicContract[] RegisteredTopicContracts { get; }
+        }
+
+        private readonly struct SourceTopicKey : IEquatable<SourceTopicKey>
+        {
+            private readonly IFoxgloveLogSource _source;
+            private readonly int _topicIndex;
+
+            public SourceTopicKey(IFoxgloveLogSource source, int topicIndex)
+            {
+                _source = source;
+                _topicIndex = topicIndex;
+            }
+
+            public bool Equals(SourceTopicKey other)
+                => ReferenceEquals(_source, other._source)
+                   && _topicIndex == other._topicIndex;
+
+            public override bool Equals(object obj)
+                => obj is SourceTopicKey other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((_source != null
+                                ? System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(_source)
+                                : 0) * 397)
+                           ^ _topicIndex;
+                }
+            }
         }
 
         private readonly struct SourceFailureKey : IEquatable<SourceFailureKey>
@@ -1039,10 +1828,12 @@ namespace Unity.FoxgloveSDK.Components
             }
             _sinkRouter.SinkFaulted -= OnSinkFaulted;
             _timers.Clear();
+            _sourceRegistrationOrder.Clear();
             _pendingAdds.Clear();
             _pendingRemoves.Clear();
             _pendingAddSet.Clear();
             _pendingRemoveSet.Clear();
+            _publishTargetStatuses.Clear();
             _sinkRouter.Dispose();
             if (_instance == this) _instance = null;
         }

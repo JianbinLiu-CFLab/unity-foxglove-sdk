@@ -32,4 +32,13 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         /// <summary>Disconnect or disable delivery.</summary>
         void Disconnect();
     }
+
+    /// <summary>
+    /// Optional bidirectional capability required for the Phase184 per-publisher
+    /// preparation handshake. A legacy send-only sink does not imply readiness.
+    /// </summary>
+    public interface IRos2BridgePublisherPreparationTransport
+    {
+        byte[] ExchangePublisherPreparation(byte[] request, int timeoutMs);
+    }
 }

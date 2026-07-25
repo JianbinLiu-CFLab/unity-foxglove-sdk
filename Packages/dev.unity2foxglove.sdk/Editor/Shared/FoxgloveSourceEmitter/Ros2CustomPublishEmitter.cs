@@ -22,7 +22,8 @@ namespace Unity.FoxgloveSDK.Editor
             StringBuilder sb,
             string ns,
             string className,
-            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members)
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> members,
+            IReadOnlyList<FoxgloveSourceEmitter.TopicMember> mapperMembers)
         {
             if (members == null || members.Count == 0)
                 return;
@@ -46,7 +47,15 @@ namespace Unity.FoxgloveSDK.Editor
             sb.AppendLine(pad + "    {");
             sb.AppendLine(pad + "        if (registrar == null) throw new global::System.ArgumentNullException(nameof(registrar));");
             for (var index = 0; index < members.Count; index++)
-                EmitRegistration(sb, pad, declaringType, members[index], index);
+            {
+                var member = members[index];
+                EmitRegistration(
+                    sb,
+                    pad,
+                    declaringType,
+                    member,
+                    Ros2CustomDtoMapperEmitter.MapperIndexOf(mapperMembers, member));
+            }
             sb.AppendLine(pad + "    }");
             sb.AppendLine(pad + "}");
             if (!string.IsNullOrEmpty(ns))

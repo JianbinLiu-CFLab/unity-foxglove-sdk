@@ -88,13 +88,21 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
                 throw new ArgumentException("ROS 2 bridge topic contains invalid ROS 2 characters.", nameof(topic));
             if (string.IsNullOrWhiteSpace(schemaName))
                 throw new ArgumentException("ROS 2 bridge schemaName must be non-empty.", nameof(schemaName));
+            if (!FoxRunRos2InterfaceIdentity.IsValidCanonicalRosMessageType(schemaName))
+                throw new ArgumentException(
+                    "ROS 2 bridge schemaName must be an exact canonical package/msg/Message identity.",
+                    nameof(schemaName));
             if (validateSchema && !FoxgloveRos2MsgSchemaCatalog.TryGet(schemaName, out _))
-                throw new ArgumentException("ROS 2 bridge schemaName must exist in the bundled ros2msg catalog: " + schemaName, nameof(schemaName));
+            {
+                throw new ArgumentException(
+                    "ROS 2 bridge schemaName must exist in the bundled ros2msg catalog: " + schemaName,
+                    nameof(schemaName));
+            }
             if (!string.Equals(encoding, CdrEncoding, StringComparison.Ordinal))
                 throw new ArgumentException("ROS 2 bridge encoding must be exactly 'cdr'.", nameof(encoding));
             if (payload == null || payload.Length == 0)
                 throw new ArgumentException("ROS 2 bridge payload must be non-empty.", nameof(payload));
-            if (qos.HasValue && !IsResolvedQos(qos.Value))
+            if (qos.HasValue && !IsValidResolvedQos(qos.Value))
             {
                 throw new ArgumentException(
                     "ROS 2 bridge QoS must be a fully resolved portable contract.",
@@ -110,7 +118,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
             Qos = qos;
         }
 
-        private static bool IsResolvedQos(FoxRunResolvedQos qos)
+        internal static bool IsValidResolvedQos(FoxRunResolvedQos qos)
             => FoxRunResolvedQos.IsDefined(qos.Profile)
                && FoxRunResolvedQos.IsDefined(qos.Reliability)
                && FoxRunResolvedQos.IsDefined(qos.Durability)

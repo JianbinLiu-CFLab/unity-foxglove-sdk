@@ -15,6 +15,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -38,6 +39,7 @@ constexpr uint32_t kMaxPayloadBytes = 64U * 1024U * 1024U;
 constexpr uint8_t kCdrLittleEndianHeader[4] = {0x00, 0x01, 0x00, 0x00};
 constexpr auto kReadStallTimeout = std::chrono::seconds(5);
 constexpr int kHealthProtocolVersion = 1;
+constexpr int kPublisherPreparationProtocolVersion = 1;
 constexpr const char * kSidecarName = "unity2foxglove_ros2_bridge";
 constexpr const char * kSidecarVersion = "0.1.0";
 
@@ -163,10 +165,84 @@ void write_u32_le(std::vector<uint8_t> & bytes, uint32_t value)
   bytes.push_back(static_cast<uint8_t>((value >> 24) & 0xff));
 }
 
-bool has_prefix(const std::string & value, const std::string & prefix)
+bool is_lower_ascii_letter(char value)
 {
-  return value.size() >= prefix.size() &&
-    std::equal(prefix.begin(), prefix.end(), value.begin());
+  return value >= 'a' && value <= 'z';
+}
+
+bool is_upper_ascii_letter(char value)
+{
+  return value >= 'A' && value <= 'Z';
+}
+
+bool is_ascii_digit(char value)
+{
+  return value >= '0' && value <= '9';
+}
+
+bool is_valid_ros2_package_name(const std::string & value)
+{
+  if (
+    value.size() < 2 || value.size() > 255 ||
+    !is_lower_ascii_letter(value.front()) || value.back() == '_')
+  {
+    return false;
+  }
+
+  auto previous_was_separator = false;
+  for (auto character : value) {
+    if (
+      !is_lower_ascii_letter(character) &&
+      !is_ascii_digit(character) &&
+      character != '_')
+    {
+      return false;
+    }
+    if (character == '_' && previous_was_separator) {
+      return false;
+    }
+    previous_was_separator = character == '_';
+  }
+  return true;
+}
+
+bool is_valid_ros2_message_name(const std::string & value)
+{
+  if (value.empty() || value.size() > 255 || !is_upper_ascii_letter(value.front())) {
+    return false;
+  }
+
+  return std::all_of(
+    value.begin() + 1,
+    value.end(),
+    [](char character) {
+      return
+        is_lower_ascii_letter(character) ||
+        is_upper_ascii_letter(character) ||
+        is_ascii_digit(character);
+    });
+}
+
+bool is_valid_ros2_message_type(const std::string & value)
+{
+  const auto package_separator = value.find('/');
+  if (package_separator == std::string::npos) {
+    return false;
+  }
+
+  constexpr const char * kMessageNamespace = "/msg/";
+  constexpr size_t kMessageNamespaceLength = 5;
+  if (
+    value.compare(package_separator, kMessageNamespaceLength, kMessageNamespace) != 0)
+  {
+    return false;
+  }
+
+  const auto package_name = value.substr(0, package_separator);
+  const auto message_name = value.substr(package_separator + kMessageNamespaceLength);
+  return
+    is_valid_ros2_package_name(package_name) &&
+    is_valid_ros2_message_name(message_name);
 }
 
 bool contains_newline(const std::string & value)
@@ -225,6 +301,15 @@ enum class PublisherContractDisposition
   ReusePublisher
 };
 
+class PublisherContractConflictException : public std::runtime_error
+{
+public:
+  explicit PublisherContractConflictException(const std::string & message)
+  : std::runtime_error(message)
+  {
+  }
+};
+
 class PublisherContractRegistry
 {
 public:
@@ -234,7 +319,7 @@ public:
     const auto registered = topic_signatures_.find(frame.topic);
     if (registered != topic_signatures_.end()) {
       if (registered->second != signature) {
-        throw std::runtime_error(
+        throw PublisherContractConflictException(
                 "reject frame: topic '" + frame.topic +
                 "' reused with different schemaName or QoS: was [" +
                 registered->second + "] got [" + signature + "]");
@@ -607,10 +692,10 @@ void write_u2r2_frame(int fd, const nlohmann::json & header, const std::vector<u
 {
   const auto header_text = header.dump();
   if (header_text.empty() || header_text.size() > kMaxHeaderBytes) {
-    throw std::runtime_error("health response JSON header length is invalid");
+    throw std::runtime_error("U2R2 response JSON header length is invalid");
   }
   if (payload.size() > kMaxPayloadBytes) {
-    throw std::runtime_error("health response payload length is invalid");
+    throw std::runtime_error("U2R2 response payload length is invalid");
   }
 
   std::vector<uint8_t> frame;
@@ -720,14 +805,82 @@ BridgeFrame parse_publish_frame(const RawFrame & raw)
   if (!is_valid_ros2_topic_name(frame.topic)) {
     throw std::runtime_error("reject frame: topic contains invalid ROS 2 characters");
   }
-  if (!has_prefix(frame.schema_name, "foxglove_msgs/msg/")) {
-    throw std::runtime_error("reject frame: schemaName must start with foxglove_msgs/msg/");
+  if (!is_valid_ros2_message_type(frame.schema_name)) {
+    throw std::runtime_error(
+            "reject frame: schemaName must use canonical ROS 2 package/msg/Type grammar");
   }
   if (frame.encoding != "cdr") {
     throw std::runtime_error("reject frame: encoding must be cdr");
   }
   validate_qos_contract(frame);
   return frame;
+}
+
+struct PublisherPreparationRequest
+{
+  std::string request_id;
+  int protocol_version = 0;
+  BridgeFrame frame;
+};
+
+PublisherPreparationRequest parse_prepare_publisher_frame(const RawFrame & raw)
+{
+  if (!raw.payload.empty()) {
+    throw std::runtime_error("reject frame: prepare_publisher payload must be empty");
+  }
+  if (
+    !raw.header.contains("qos") ||
+    raw.header["qos"].is_null())
+  {
+    throw std::runtime_error(
+            "reject frame: prepare_publisher requires an explicit complete qos object");
+  }
+
+  PublisherPreparationRequest request;
+  nlohmann::json protocol_version;
+  try {
+    const auto op = raw.header.at("op").get<std::string>();
+    if (op != "prepare_publisher") {
+      throw std::runtime_error("op must be prepare_publisher");
+    }
+    request.request_id = raw.header.at("requestId").get<std::string>();
+    protocol_version = raw.header.at("protocolVersion");
+  } catch (const std::exception & ex) {
+    throw std::runtime_error(
+            std::string("reject frame: missing or invalid prepare_publisher field: ") + ex.what());
+  }
+  if (request.request_id.empty() || contains_newline(request.request_id)) {
+    throw std::runtime_error(
+            "reject frame: prepare_publisher requestId must be non-empty and contain no newline");
+  }
+  if (
+    !protocol_version.is_number_integer() &&
+    !protocol_version.is_number_unsigned())
+  {
+    throw std::runtime_error(
+            "reject frame: prepare_publisher protocolVersion must be a JSON integer");
+  }
+  const auto supported_protocol =
+    protocol_version.is_number_unsigned()
+    ? protocol_version.get<uint64_t>() ==
+    static_cast<uint64_t>(kPublisherPreparationProtocolVersion)
+    : protocol_version.get<int64_t>() ==
+    static_cast<int64_t>(kPublisherPreparationProtocolVersion);
+  if (!supported_protocol) {
+    throw std::runtime_error("reject frame: unsupported prepare_publisher protocol version");
+  }
+  request.protocol_version = kPublisherPreparationProtocolVersion;
+
+  // Reuse the maintained publish contract parser so topic/type/encoding and
+  // every QoS axis have exactly one validation path. The synthetic payload
+  // and counters exist only to satisfy the legacy publish envelope fields.
+  auto publish_contract = raw;
+  publish_contract.header["logTimeNs"] = 0;
+  publish_contract.header["sequence"] = 0;
+  publish_contract.payload = {0};
+  request.frame = parse_publish_frame(publish_contract);
+  request.frame.payload.clear();
+  return request;
 }
 
 void write_health_pong_ok(int fd, const std::string & request_id)
@@ -798,22 +951,64 @@ PayloadView payload_for_publish(
   return PayloadView{scratch.data(), scratch.size()};
 }
 
+using SerializedPublishCallback =
+  std::function<void(const rclcpp::SerializedMessage &)>;
+using GenericPublisherFactory =
+  std::function<SerializedPublishCallback(
+      const std::string &,
+      const std::string &,
+      const rclcpp::QoS &)>;
+
 class BridgeNode
 {
 public:
   explicit BridgeNode(rclcpp::Node::SharedPtr node, PayloadFormat payload_format)
   : node_(std::move(node)), payload_format_(payload_format)
   {
+    if (!node_) {
+      throw std::invalid_argument("bridge node is required");
+    }
+
+    const auto publisher_node = node_;
+    publisher_factory_ =
+      [publisher_node](
+      const std::string & topic,
+      const std::string & message_type,
+      const rclcpp::QoS & qos)
+      {
+        // create_generic_publisher performs the rosidl_typesupport_cpp lookup
+        // for the exact canonical message type before returning a publisher.
+        auto publisher =
+          publisher_node->create_generic_publisher(topic, message_type, qos);
+        return [publisher = std::move(publisher)](
+          const rclcpp::SerializedMessage & message)
+          {
+            publisher->publish(message);
+          };
+      };
   }
 
-  void publish(const BridgeFrame & frame)
+  BridgeNode(PayloadFormat payload_format, GenericPublisherFactory publisher_factory)
+  : payload_format_(payload_format), publisher_factory_(std::move(publisher_factory))
+  {
+    if (!publisher_factory_) {
+      throw std::invalid_argument("generic publisher factory is required");
+    }
+  }
+
+  PublisherContractDisposition prepare(const BridgeFrame & frame)
   {
     const auto disposition = publisher_contracts_.register_or_validate(frame);
     auto publisher_it = publishers_.find(frame.topic);
     if (disposition == PublisherContractDisposition::CreatePublisher) {
       try {
         auto qos = make_qos(frame);
-        auto publisher = node_->create_generic_publisher(frame.topic, frame.schema_name, qos);
+        auto publisher = publisher_factory_(frame.topic, frame.schema_name, qos);
+        if (!publisher) {
+          throw std::runtime_error(
+                  "generic publisher factory returned no publisher for type '" +
+                  frame.schema_name + "'");
+        }
         const auto inserted = publishers_.emplace(frame.topic, std::move(publisher));
         if (!inserted.second) {
           throw std::runtime_error(
@@ -824,18 +1019,32 @@ public:
         publisher_contracts_.rollback_create(frame.topic);
         throw;
       }
-      RCLCPP_INFO(
-        node_->get_logger(),
-        "[unity2foxglove_ros2_bridge] publisher %s %s "
-        "profile=%s reliability=%s durability=%s history=%s depth=%d",
-        frame.topic.c_str(),
-        frame.schema_name.c_str(),
-        frame.profile.c_str(),
-        frame.reliability.c_str(),
-        frame.durability.c_str(),
-        frame.history.c_str(),
-        frame.depth);
+      if (node_) {
+        RCLCPP_INFO(
+          node_->get_logger(),
+          "[unity2foxglove_ros2_bridge] publisher %s %s "
+          "profile=%s reliability=%s durability=%s history=%s depth=%d",
+          frame.topic.c_str(),
+          frame.schema_name.c_str(),
+          frame.profile.c_str(),
+          frame.reliability.c_str(),
+          frame.durability.c_str(),
+          frame.history.c_str(),
+          frame.depth);
+      }
     } else if (publisher_it == publishers_.end()) {
+      throw std::runtime_error(
+              "bridge publisher registry is inconsistent for topic '" + frame.topic + "'");
+    }
+
+    return disposition;
+  }
+
+  void publish(const BridgeFrame & frame)
+  {
+    prepare(frame);
+    const auto publisher_it = publishers_.find(frame.topic);
+    if (publisher_it == publishers_.end()) {
       throw std::runtime_error(
               "bridge publisher registry is inconsistent for topic '" + frame.topic + "'");
     }
@@ -848,10 +1057,10 @@ public:
     }
     std::memcpy(ros_message.buffer, payload.data, payload.size);
     ros_message.buffer_length = payload.size;
-    publisher_it->second->publish(serialized);
+    publisher_it->second(serialized);
 
     const auto count = ++counts_[frame.topic];
-    if (count == 1 || count % 20 == 0) {
+    if (node_ && (count == 1 || count % 20 == 0)) {
       RCLCPP_INFO(
         node_->get_logger(),
         "[unity2foxglove_ros2_bridge] published %s count=%zu",
@@ -863,19 +1072,83 @@ public:
 private:
   rclcpp::Node::SharedPtr node_;
   PayloadFormat payload_format_;
+  GenericPublisherFactory publisher_factory_;
   PublisherContractRegistry publisher_contracts_;
-  std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers_;
+  std::unordered_map<std::string, SerializedPublishCallback> publishers_;
   std::unordered_map<std::string, size_t> counts_;
   std::vector<uint8_t> payload_scratch_;
 };
 
+nlohmann::json publisher_ready_ok(const std::string & request_id)
+{
+  return {
+    {"op", "publisher_ready"},
+    {"requestId", request_id},
+    {"protocolVersion", kPublisherPreparationProtocolVersion},
+    {"status", "ok"}
+  };
+}
+
+nlohmann::json publisher_ready_error(
+  const std::string & request_id,
+  const std::string & error_code,
+  const std::string & message)
+{
+  return {
+    {"op", "publisher_ready"},
+    {"requestId", request_id},
+    {"protocolVersion", kPublisherPreparationProtocolVersion},
+    {"status", "error"},
+    {"errorCode", error_code},
+    {"message", message}
+  };
+}
+
+nlohmann::json handle_prepare_publisher_frame(const RawFrame & raw, BridgeNode & bridge)
+{
+  std::string request_id;
+  if (
+    raw.header.is_object() &&
+    raw.header.contains("requestId") &&
+    raw.header["requestId"].is_string())
+  {
+    request_id = raw.header["requestId"].get<std::string>();
+  }
+
+  PublisherPreparationRequest request;
+  try {
+    request = parse_prepare_publisher_frame(raw);
+  } catch (const std::exception & ex) {
+    return publisher_ready_error(request_id, "invalid_contract", ex.what());
+  }
+
+  try {
+    bridge.prepare(request.frame);
+    return publisher_ready_ok(request.request_id);
+  } catch (const PublisherContractConflictException & ex) {
+    return publisher_ready_error(
+      request.request_id,
+      "publisher_contract_conflict",
+      ex.what());
+  } catch (const std::exception & ex) {
+    return publisher_ready_error(
+      request.request_id,
+      "publisher_unavailable",
+      ex.what());
+  }
+}
+
 void process_client(
   int client_fd,
-  const rclcpp::Node::SharedPtr & node,
-  PayloadFormat payload_format)
+  BridgeNode & bridge,
+  const rclcpp::Node::SharedPtr & node)
 {
-  BridgeNode bridge(node, payload_format);
-  while (rclcpp::ok()) {
+  if (!node) {
+    throw std::invalid_argument("bridge session node is required");
+  }
+
+  const auto context = node->get_node_base_interface()->get_context();
+  while (rclcpp::ok(context)) {
     try {
       const auto raw = read_raw_frame(client_fd, node);
       if (!raw.header.contains("op") || !raw.header["op"].is_string()) {
@@ -884,6 +1157,9 @@ void process_client(
       const auto op = raw.header.at("op").get<std::string>();
       if (op == "health_ping") {
         handle_health_ping(client_fd, raw);
+      } else if (op == "prepare_publisher") {
+        const auto response = handle_prepare_publisher_frame(raw, bridge);
+        write_u2r2_frame(client_fd, response, {});
       } else if (op == "publish") {
         const auto frame = parse_publish_frame(raw);
         bridge.publish(frame);
@@ -901,6 +1177,15 @@ void process_client(
       break;
     }
   }
+}
+
+void process_client(
+  int client_fd,
+  const rclcpp::Node::SharedPtr & node,
+  PayloadFormat payload_format)
+{
+  BridgeNode bridge(node, payload_format);
+  process_client(client_fd, bridge, node);
 }
 }  // namespace
 

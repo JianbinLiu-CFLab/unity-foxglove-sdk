@@ -33,7 +33,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Equal(FoxRunQosHistory.KeepLast, backend.RegisteredQos.History);
             Assert.Equal(10, backend.RegisteredQos.Depth);
 
-            bus.Publish(TopicContract(), 123UL, new TestDto { Value = 42 }, "generated-source");
+            bus.Publish(TopicContract(), 123UL, new TestDto { Value = 42 }, "local-origin");
 
             var published = Assert.Single(backend.Published);
             Assert.Equal("local-origin", published.Origin);
@@ -47,7 +47,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             Assert.False(bus.HasSubscribers("/phase181/custom"));
             Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
-            bus.Publish(TopicContract(), 124UL, new TestDto { Value = 99 }, "generated-source");
+            bus.Publish(TopicContract(), 124UL, new TestDto { Value = 99 }, "local-origin");
             Assert.Single(backend.Published);
         }
 
@@ -76,13 +76,135 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 });
 
             Assert.True(binding.TryStart().Succeeded);
-            bus.Publish(TopicContract(), 100UL, new TestDto { Value = 1 }, "source");
-            bus.Publish(TopicContract(), 101UL, new TestDto { Value = 2 }, "source");
+            bus.Publish(TopicContract(), 100UL, new TestDto { Value = 1 }, "local-origin");
+            bus.Publish(TopicContract(), 101UL, new TestDto { Value = 2 }, "local-origin");
 
             var published = Assert.Single(backend.Published);
             Assert.Equal(0UL, published.Sequence);
             Assert.Equal(1, binding.MapperFailureCount);
             binding.Stop();
+        }
+
+        [Fact]
+        public void RecoverableBackendPublishFailureIsIsolatedAndTheNextSampleCanPublish()
+        {
+            var bus = new FoxTopicBus();
+            var backend = new FakePublisherBackend
+            {
+                PublishFailure = new InvalidOperationException("native publisher unavailable")
+            };
+            var binding = CreateBinding(bus, backend, initialSequence: 11UL);
+
+            Assert.True(binding.TryStart().Succeeded);
+            var failed = bus.PublishToResultSubscribers(
+                TopicContract(),
+                100UL,
+                new TestDto { Value = 1 },
+                "local-origin");
+
+            Assert.Equal(1, failed.Matched);
+            Assert.Equal(0, failed.Succeeded);
+            Assert.Equal(1, failed.Failed);
+            Assert.Equal(0, binding.MapperFailureCount);
+            Assert.Equal(1, binding.PublishFailureCount);
+
+            backend.PublishFailure = null;
+            var succeeded = bus.PublishToResultSubscribers(
+                TopicContract(),
+                101UL,
+                new TestDto { Value = 2 },
+                "local-origin");
+
+            Assert.Equal(1, succeeded.Succeeded);
+            Assert.Equal(1, binding.PublishedCount);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void FatalBackendPublishFailurePassesThroughTheTypedTransportBoundary()
+        {
+            var bus = new FoxTopicBus();
+            var backend = new FakePublisherBackend
+            {
+                PublishFailure = new OutOfMemoryException("fatal")
+            };
+            var binding = CreateBinding(bus, backend, initialSequence: 12UL);
+
+            Assert.True(binding.TryStart().Succeeded);
+            Assert.Throws<OutOfMemoryException>(() =>
+                bus.PublishToResultSubscribers(
+                    TopicContract(),
+                    100UL,
+                    new TestDto { Value = 1 },
+                    "local-origin"));
+
+            binding.Stop();
+        }
+
+        [Fact]
+        public void FatalPublishRemainsPrimaryWhenEnvelopeDisposeAlsoFails()
+        {
+            var bus = new FoxTopicBus();
+            var backend = new FakePublisherBackend
+            {
+                PublishFailure = new OutOfMemoryException("publish-primary")
+            };
+            TestEnvelope mapped = null;
+            var binding = CreateBinding(
+                bus,
+                backend,
+                initialSequence: 12UL,
+                map: (dto, origin, sequence, timestamp, budget) =>
+                {
+                    mapped = new TestEnvelope
+                    {
+                        Origin = origin,
+                        Sequence = sequence,
+                        TimestampNs = timestamp,
+                        Value = dto.Value
+                    };
+                    return mapped;
+                },
+                dispose: value =>
+                {
+                    value.Dispose();
+                    throw new OutOfMemoryException("dispose-secondary");
+                });
+
+            Assert.True(binding.TryStart().Succeeded);
+            var fatal = Assert.Throws<OutOfMemoryException>(() =>
+                bus.PublishToResultSubscribers(
+                    TopicContract(),
+                    100UL,
+                    new TestDto { Value = 1 },
+                    "local-origin"));
+
+            Assert.Equal("publish-primary", fatal.Message);
+            Assert.NotNull(mapped);
+            Assert.Equal(1, mapped.DisposeCount);
+            binding.Stop();
+        }
+
+        [Fact]
+        public void FatalTokenUsabilityGetterStillOwnsAndCleansPublisher()
+        {
+            var bus = new FoxTopicBus();
+            var backend = new FakePublisherBackend
+            {
+                TokenUsabilityFailure =
+                    new OutOfMemoryException("token-primary"),
+                RemoveFailure =
+                    new OutOfMemoryException("remove-secondary")
+            };
+            var binding = CreateBinding(bus, backend, initialSequence: 0UL);
+
+            var fatal = Assert.Throws<OutOfMemoryException>(
+                () => binding.TryStart());
+
+            Assert.Equal("token-primary", fatal.Message);
+            Assert.Equal(new[] { "remove", "release" }, backend.StopOrder);
+            Assert.Equal(1, backend.ReleaseCount);
+            Assert.False(bus.HasSubscribers("/phase181/custom"));
         }
 
         [Fact]
@@ -93,8 +215,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             var binding = CreateBinding(bus, backend, initialSequence: ulong.MaxValue);
 
             Assert.True(binding.TryStart().Succeeded);
-            bus.Publish(TopicContract(), 1UL, new TestDto { Value = 1 }, "source");
-            bus.Publish(TopicContract(), 2UL, new TestDto { Value = 2 }, "source");
+            bus.Publish(TopicContract(), 1UL, new TestDto { Value = 1 }, "local-origin");
+            bus.Publish(TopicContract(), 2UL, new TestDto { Value = 2 }, "local-origin");
 
             var published = Assert.Single(backend.Published);
             Assert.Equal(ulong.MaxValue, published.Sequence);
@@ -138,7 +260,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 onStopped: () => originCleanupCount++);
 
             Assert.True(binding.TryStart().Succeeded);
-            bus.Publish(TopicContract(), 123UL, new TestDto { Value = 9 }, "generated-source");
+            bus.Publish(TopicContract(), 123UL, new TestDto { Value = 9 }, "local-origin");
 
             var envelope = Assert.Single(backend.Published);
             Assert.Equal(1, binding.PublishFailureCount);
@@ -202,6 +324,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             ulong initialSequence,
             Func<TestDto, string, ulong, ulong, FoxRunRos2CustomOutboundMappingContext, TestEnvelope> map = null,
             Func<FoxRunRos2CustomTypesupportReadiness> readiness = null,
+            Action<TestEnvelope> dispose = null,
             Action onStopped = null)
         {
             return new FoxRunRos2CustomPublisherBinding<TestDto, TestEnvelope>(
@@ -216,7 +339,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     TimestampNs = timestamp,
                     Value = dto.Value
                 }),
-                value => value.Dispose(),
+                dispose ?? (value => value.Dispose()),
                 "local-origin",
                 new FoxRunRos2CustomSequenceSource(initialSequence),
                 readiness ?? (() => FoxRunRos2CustomTypesupportReadiness.From(
@@ -282,8 +405,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             public List<TestEnvelope> Published { get; } = new List<TestEnvelope>();
             public List<string> StopOrder { get; } = new List<string>();
             public bool PublishSucceeds { get; set; } = true;
+            public Exception PublishFailure { get; set; }
             public Exception RemoveFailure { get; set; }
             public Exception ReleaseFailure { get; set; }
+            public Exception TokenUsabilityFailure
+            {
+                get => _token.UsabilityFailure;
+                set => _token.UsabilityFailure = value;
+            }
             public int RegisterCount { get; private set; }
             public int ReleaseCount { get; private set; }
             public FoxRunResolvedQos RegisteredQos { get; private set; }
@@ -303,6 +432,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             {
                 if (token != _token || message is not TestEnvelope envelope)
                     return false;
+                if (PublishFailure != null)
+                    throw PublishFailure;
                 Published.Add(envelope);
                 return PublishSucceeds;
             }
@@ -325,7 +456,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
             private sealed class Token : IFoxRunRos2NativePublisherToken
             {
-                public bool IsUsable => true;
+                public Exception UsabilityFailure { get; set; }
+
+                public bool IsUsable
+                {
+                    get
+                    {
+                        if (UsabilityFailure != null)
+                            throw UsabilityFailure;
+                        return true;
+                    }
+                }
             }
         }
     }

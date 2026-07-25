@@ -50,4 +50,14 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun.Fixtures
         public int Count { get; set; }
         public double Velocity { get; set; }
     }
+
+    public sealed class Phase184NestedSequenceItem
+    {
+        public string Label { get; set; }
+    }
+
+    public sealed class Phase184NestedSequenceState
+    {
+        public List<Phase184NestedSequenceItem> Children { get; set; }
+    }
 }

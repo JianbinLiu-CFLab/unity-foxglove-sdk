@@ -7,6 +7,7 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -72,6 +73,23 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void LegacyComponentNativeSwitchCannotStopFoxRunPublishDemand()
+        {
+            Assert.False(FoxRunRos2CustomPublisherHub.ShouldStopFoxRunPublishing(
+                publishSessionAllows: true,
+                legacyComponentNativeOutputEnabled: false,
+                bridgeLifecycleIsShuttingDown: false));
+            Assert.True(FoxRunRos2CustomPublisherHub.ShouldStopFoxRunPublishing(
+                publishSessionAllows: false,
+                legacyComponentNativeOutputEnabled: true,
+                bridgeLifecycleIsShuttingDown: false));
+            Assert.True(FoxRunRos2CustomPublisherHub.ShouldStopFoxRunPublishing(
+                publishSessionAllows: true,
+                legacyComponentNativeOutputEnabled: true,
+                bridgeLifecycleIsShuttingDown: true));
+        }
+
+        [Fact]
         public void StopAllBindingsContinuesAfterOneBindingThrows()
         {
             var stopOrder = new List<string>();
@@ -87,6 +105,78 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
             Assert.Equal(new[] { "first", "second" }, stopOrder);
             Assert.Single(failures);
             Assert.Equal("first failed", failures[0].Message);
+        }
+
+        [Fact]
+        public void StaleRemovalContinuesAfterFatalStopAndClearsBookkeeping()
+        {
+            var stopOrder = new List<string>();
+            var first = new FatalHostedBinding("first", stopOrder);
+            var second = new FakeHostedBinding("second", stopOrder, throws: false);
+            var bindings = new List<IFoxRunRos2CustomPublisherHostedBinding>
+            {
+                first,
+                second
+            };
+            var stale = bindings.ToArray();
+            var existing = new HashSet<string>(StringComparer.Ordinal)
+            {
+                first.Identity,
+                second.Identity
+            };
+
+            var thrown = Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2CustomPublisherHub.StopStaleBindings(
+                    bindings,
+                    stale,
+                    existing,
+                    _ => { }));
+
+            Assert.Equal("first fatal", thrown.Message);
+            Assert.Equal(new[] { "first", "second" }, stopOrder);
+            Assert.Empty(bindings);
+            Assert.Empty(existing);
+        }
+
+        [Fact]
+        public void StartupPrimarySurvivesFatalCleanupAndAllUnboundStagesRun()
+        {
+            var boundCleanupCalls = 0;
+            var boundPrimary = new OutOfMemoryException("startup-bound-primary");
+            var boundThrown = Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2CustomPublisherHub.CleanupFailedStartupAndRethrow(
+                    boundPrimary,
+                    () =>
+                    {
+                        boundCleanupCalls++;
+                        throw new InsufficientMemoryException("stop-secondary");
+                    },
+                    null,
+                    null));
+            Assert.Same(boundPrimary, boundThrown);
+            Assert.Equal(1, boundCleanupCalls);
+
+            var unboundEvents = new List<string>();
+            var unboundPrimary = new OutOfMemoryException("startup-unbound-primary");
+            var unboundThrown = Assert.Throws<OutOfMemoryException>(() =>
+                FoxRunRos2CustomPublisherHub.CleanupFailedStartupAndRethrow(
+                    unboundPrimary,
+                    null,
+                    () =>
+                    {
+                        unboundEvents.Add("end-origin");
+                        throw new InsufficientMemoryException("origin-secondary");
+                    },
+                    () =>
+                    {
+                        unboundEvents.Add("release-node");
+                        throw new InsufficientMemoryException("release-secondary");
+                    }));
+
+            Assert.Same(unboundPrimary, unboundThrown);
+            Assert.Equal(
+                new[] { "end-origin", "release-node" },
+                unboundEvents);
         }
 
         private sealed class FakeHostedBinding : IFoxRunRos2CustomPublisherHostedBinding
@@ -111,6 +201,28 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                 IsStopped = true;
                 if (_throws)
                     throw new InvalidOperationException(Identity + " failed");
+            }
+        }
+
+        private sealed class FatalHostedBinding : IFoxRunRos2CustomPublisherHostedBinding
+        {
+            private readonly List<string> _stopOrder;
+
+            public FatalHostedBinding(string identity, List<string> stopOrder)
+            {
+                Identity = identity;
+                _stopOrder = stopOrder;
+            }
+
+            public string Identity { get; }
+            public int SourceInstanceId => 0;
+            public bool IsStopped { get; private set; }
+
+            public void Stop()
+            {
+                _stopOrder.Add(Identity);
+                IsStopped = true;
+                throw new OutOfMemoryException(Identity + " fatal");
             }
         }
     }

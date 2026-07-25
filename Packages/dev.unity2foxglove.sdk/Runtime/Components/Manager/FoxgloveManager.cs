@@ -217,6 +217,8 @@ namespace Unity.FoxgloveSDK.Components
 
         private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName, string encoding, string schemaEncoding), uint> _channelCache
             = new System.Collections.Generic.Dictionary<(string, string, string, string), uint>();
+        private readonly System.Collections.Generic.Dictionary<(string topic, string schemaName), uint> _foxRunRecordingChannelCache
+            = new System.Collections.Generic.Dictionary<(string, string), uint>();
 
         private System.Action<string, byte[]> _replayForwarder;
         private System.Action<ReplayMessageContext> _replayContextForwarder;
@@ -523,12 +525,13 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnDisable()
         {
-            EndFoxRunSubscriptionSession();
-            _ros2BridgeRuntime?.Stop();
-            StopServer(restoreLivePublishers: true);
-            EndFoxRunPublishSession();
-            _connectionState.OutputModeWatchInitialized = false;
-            FoxgloveProfiler.ResetGlobal(this);
+            FoxgloveManagerTeardownState.RunDisable(
+                EndFoxRunSubscriptionSession,
+                () => _ros2BridgeRuntime?.Stop(),
+                () => StopServer(restoreLivePublishers: true),
+                EndFoxRunPublishSession,
+                () => _connectionState.OutputModeWatchInitialized = false,
+                () => FoxgloveProfiler.ResetGlobal(this));
         }
 
         /// <summary>
@@ -536,18 +539,55 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void OnDestroy()
         {
-            EndFoxRunSubscriptionSession();
-            StopServer(restoreLivePublishers: true);
-            _ros2BridgeRuntime?.Dispose();
-            _ros2BridgeRuntime = null;
-            _replayCursorEndpoint?.Dispose();
-            _replayCursorEndpoint = null;
-            _certificateDistributor?.Dispose();
-            _certificateDistributor = null;
-            _runtime?.Dispose();
-            _runtime = null;
-            EndFoxRunPublishSession();
-            FoxgloveProfiler.ResetGlobal(this);
+            FoxgloveManagerTeardownState.RunDestroy(
+                EndFoxRunSubscriptionSession,
+                () => StopServer(restoreLivePublishers: true),
+                () =>
+                {
+                    try
+                    {
+                        _ros2BridgeRuntime?.Dispose();
+                    }
+                    finally
+                    {
+                        _ros2BridgeRuntime = null;
+                    }
+                },
+                () =>
+                {
+                    try
+                    {
+                        _replayCursorEndpoint?.Dispose();
+                    }
+                    finally
+                    {
+                        _replayCursorEndpoint = null;
+                    }
+                },
+                () =>
+                {
+                    try
+                    {
+                        _certificateDistributor?.Dispose();
+                    }
+                    finally
+                    {
+                        _certificateDistributor = null;
+                    }
+                },
+                () =>
+                {
+                    try
+                    {
+                        _runtime?.Dispose();
+                    }
+                    finally
+                    {
+                        _runtime = null;
+                    }
+                },
+                EndFoxRunPublishSession,
+                () => FoxgloveProfiler.ResetGlobal(this));
         }
 
         /// <summary>
@@ -649,7 +689,8 @@ namespace Unity.FoxgloveSDK.Components
                 }
                 else
                 {
-                    _ros2BridgeRuntime?.Stop();
+                    if (!_foxRunRos2BridgeRuntimeDemand)
+                        _ros2BridgeRuntime?.Stop();
                 }
             }
 
