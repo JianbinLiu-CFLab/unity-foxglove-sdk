@@ -114,6 +114,19 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void GeneratedBuilderReadsPresenceBearingPropertyExactlyOnce()
+        {
+            var actual = Contract.Value.Build(
+                new FixtureValues { OptionalText = "single-read" },
+                "phase184-single-read",
+                184UL,
+                184UL);
+
+            Assert.True(actual.Success, actual.Reason);
+            Assert.Equal(1, actual.OptionalTextReadCount);
+        }
+
+        [Fact]
         public void GeneratedBuilderNormalizesNullStringSequenceElementsToEmptyStrings()
         {
             const string origin = "phase184-string-sequence";
@@ -209,7 +222,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             source.AppendLine("        public string Message;");
             source.AppendLine("        public NestedState Nested;");
             source.AppendLine("        public int? OptionalCount;");
-            source.AppendLine("        public string OptionalText;");
+            source.AppendLine("        private string _optionalText;");
+            source.AppendLine("        public int OptionalTextReadCount;");
+            source.AppendLine("        public string OptionalText");
+            source.AppendLine("        {");
+            source.AppendLine("            get { OptionalTextReadCount++; return _optionalText; }");
+            source.AppendLine("            set { _optionalText = value; }");
+            source.AppendLine("        }");
             source.AppendLine("        public List<long> Values;");
             source.AppendLine("    }");
             source.AppendLine("    public sealed class GeneratedCdrProbe");
@@ -505,7 +524,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 SetField(state, "Labels", values.Labels);
                 SetField(state, "Message", values.Message);
                 SetField(state, "OptionalCount", values.OptionalCount);
-                SetField(state, "OptionalText", values.OptionalText);
+                SetProperty(state, "OptionalText", values.OptionalText);
                 SetField(state, "Values", values.Values);
                 if (values.Nested == null)
                 {
@@ -524,7 +543,14 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     new[] { origin, state, (object)sequence });
                 var arguments = new object[] { nowNs, null, null };
                 var success = (bool)_buildMethod.Invoke(probe, arguments);
-                return new BuildResult(success, (byte[])arguments[1], (string)arguments[2]);
+                var optionalTextReadCount = (int)_stateType
+                    .GetField("OptionalTextReadCount", BindingFlags.Instance | BindingFlags.Public)
+                    .GetValue(state);
+                return new BuildResult(
+                    success,
+                    (byte[])arguments[1],
+                    (string)arguments[2],
+                    optionalTextReadCount);
             }
 
             private static void SetField(object target, string name, object value)
@@ -532,6 +558,13 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 var field = target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public)
                             ?? throw new InvalidOperationException("Dynamic fixture field was missing: " + name);
                 field.SetValue(target, value);
+            }
+
+            private static void SetProperty(object target, string name, object value)
+            {
+                var property = target.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public)
+                               ?? throw new InvalidOperationException("Dynamic fixture property was missing: " + name);
+                property.SetValue(target, value);
             }
         }
 
@@ -556,16 +589,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
         private readonly struct BuildResult
         {
-            public BuildResult(bool success, byte[] payload, string reason)
+            public BuildResult(
+                bool success,
+                byte[] payload,
+                string reason,
+                int optionalTextReadCount)
             {
                 Success = success;
                 Payload = payload;
                 Reason = reason;
+                OptionalTextReadCount = optionalTextReadCount;
             }
 
             public bool Success { get; }
             public byte[] Payload { get; }
             public string Reason { get; }
+            public int OptionalTextReadCount { get; }
         }
 
         private readonly struct OracleResult

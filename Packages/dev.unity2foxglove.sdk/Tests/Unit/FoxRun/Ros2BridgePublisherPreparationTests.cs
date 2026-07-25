@@ -486,6 +486,19 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void DisposeIsIdempotentAfterAHealthyStop()
+        {
+            var runtime = Runtime(() => new TrackingLifecycleSink());
+
+            runtime.Dispose();
+            var secondDispose = Record.Exception(() => runtime.Dispose());
+            var laterStop = Record.Exception(() => runtime.Stop());
+
+            Assert.Null(secondDispose);
+            Assert.Null(laterStop);
+        }
+
+        [Fact]
         public void FatalPreviousSinkCloseRollsBackConnectedReplacement()
         {
             var previous = new FatalDisconnectSink();

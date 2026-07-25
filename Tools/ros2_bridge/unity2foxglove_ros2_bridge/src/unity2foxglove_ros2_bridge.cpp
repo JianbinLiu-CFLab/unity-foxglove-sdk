@@ -270,6 +270,9 @@ bool is_valid_ros2_topic_name(const std::string & value)
     if (ch != '_' && std::isalnum(ch) == 0) {
       return false;
     }
+    if (!token_has_characters && std::isdigit(ch) != 0) {
+      return false;
+    }
     token_has_characters = true;
   }
 
@@ -915,14 +918,37 @@ void write_health_pong_error(
 
 void handle_health_ping(int fd, const RawFrame & raw)
 {
-  const auto request_id = raw.header.value("requestId", std::string());
+  const auto request_id_it = raw.header.find("requestId");
+  if (request_id_it == raw.header.end() || !request_id_it->is_string()) {
+    write_health_pong_error(
+      fd,
+      std::string(),
+      "malformed_request",
+      "health_ping requires a string requestId");
+    return;
+  }
+  const auto request_id = request_id_it->get<std::string>();
   if (request_id.empty()) {
-    write_health_pong_error(fd, request_id, "malformed_request", "health_ping requires requestId");
+    write_health_pong_error(
+      fd,
+      request_id,
+      "malformed_request",
+      "health_ping requires a non-empty requestId");
     return;
   }
 
-  const auto protocol_version = raw.header.value("protocolVersion", -1);
-  if (protocol_version != kHealthProtocolVersion) {
+  const auto protocol_it = raw.header.find("protocolVersion");
+  if (protocol_it == raw.header.end() ||
+    (!protocol_it->is_number_integer() && !protocol_it->is_number_unsigned()))
+  {
+    write_health_pong_error(
+      fd,
+      request_id,
+      "malformed_request",
+      "health_ping requires an integer protocolVersion");
+    return;
+  }
+  if (*protocol_it != kHealthProtocolVersion) {
     write_health_pong_error(fd, request_id, "unsupported_protocol", "Unsupported health protocol version");
     return;
   }
@@ -1162,7 +1188,16 @@ void process_client(
         write_u2r2_frame(client_fd, response, {});
       } else if (op == "publish") {
         const auto frame = parse_publish_frame(raw);
-        bridge.publish(frame);
+        try {
+          bridge.publish(frame);
+        } catch (const std::exception & ex) {
+          RCLCPP_WARN(
+            node->get_logger(),
+            "[unity2foxglove_ros2_bridge] dropped publish frame for topic '%s': %s",
+            frame.topic.c_str(),
+            ex.what());
+          continue;
+        }
       } else {
         throw std::runtime_error("reject frame: unsupported op '" + op + "'");
       }
@@ -1172,8 +1207,13 @@ void process_client(
     } catch (const ClientReadTimeoutException & ex) {
       RCLCPP_WARN(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
       break;
-    } catch (const std::runtime_error & ex) {
+    } catch (const std::exception & ex) {
       RCLCPP_WARN(node->get_logger(), "[unity2foxglove_ros2_bridge] %s", ex.what());
+      break;
+    } catch (...) {
+      RCLCPP_WARN(
+        node->get_logger(),
+        "[unity2foxglove_ros2_bridge] client session failed with an unknown exception");
       break;
     }
   }
@@ -1213,7 +1253,18 @@ int main(int argc, char ** argv)
       }
 
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client connected");
-      process_client(client_fd.get(), node, options.payload_format);
+      try {
+        process_client(client_fd.get(), node, options.payload_format);
+      } catch (const std::exception & ex) {
+        RCLCPP_WARN(
+          node->get_logger(),
+          "[unity2foxglove_ros2_bridge] client session escaped: %s",
+          ex.what());
+      } catch (...) {
+        RCLCPP_WARN(
+          node->get_logger(),
+          "[unity2foxglove_ros2_bridge] client session escaped with an unknown exception");
+      }
       RCLCPP_INFO(node->get_logger(), "[unity2foxglove_ros2_bridge] client disconnected");
     }
   } catch (const std::exception & ex) {

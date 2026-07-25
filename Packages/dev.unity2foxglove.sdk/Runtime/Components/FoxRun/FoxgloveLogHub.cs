@@ -202,7 +202,9 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxgloveLogSource> _pendingRemoves = new();
         private readonly HashSet<IFoxgloveLogSource> _pendingAddSet = new();
         private readonly HashSet<IFoxgloveLogSource> _pendingRemoveSet = new();
-        private readonly HashSet<SourceFailureKey> _warnedSourceFailures = new();
+        private readonly Dictionary<SourceFailureKey, SourceFailureWarningState> _warnedSourceFailures = new();
+        private static readonly long SourceFailureWarningIntervalTicks =
+            Math.Max(1L, System.Diagnostics.Stopwatch.Frequency * 5L);
         private readonly Dictionary<SourceTopicKey, FoxRunPublishDispatchResult> _publishTargetStatuses = new();
         private bool _iteratingTimers;
         /// <summary>Countdown until the next Scan for new sources.</summary>
@@ -557,11 +559,22 @@ namespace Unity.FoxgloveSDK.Components
         {
             var sourceType = source?.GetType();
             var key = new SourceFailureKey(sourceType, topicIndex, operation);
-            if (_warnedSourceFailures.Add(key))
-            {
-                var sourceName = sourceType?.FullName ?? "<null>";
-                Debug.LogWarning($"[FoxRun] {operation} failed for {sourceName}[{topicIndex}]: {ex.Message}");
-            }
+            var failureIdentity =
+                (ex.GetType().FullName ?? ex.GetType().Name) + ": " + ex.Message;
+            var nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_warnedSourceFailures.TryGetValue(key, out var previous) &&
+                !WarningDebouncer.ShouldEmitKeyedCooldown(
+                    failureIdentity,
+                    previous.FailureIdentity,
+                    previous.WarningTicks,
+                    nowTicks,
+                    SourceFailureWarningIntervalTicks))
+                return;
+
+            _warnedSourceFailures[key] =
+                new SourceFailureWarningState(failureIdentity, nowTicks);
+            var sourceName = sourceType?.FullName ?? "<null>";
+            Debug.LogWarning($"[FoxRun] {operation} failed for {sourceName}[{topicIndex}]: {ex.Message}");
         }
 
         private bool TryResolvePublishRoutes(
@@ -1319,6 +1332,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnFoxRunPublishSessionChanged(FoxRunPublishSessionPolicy policy)
         {
+            _warnedSourceFailures.Clear();
             RefreshResolvedPublishContracts();
             if (policy != null && !policy.SessionActive)
             {
@@ -1817,6 +1831,18 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        private readonly struct SourceFailureWarningState
+        {
+            public SourceFailureWarningState(string failureIdentity, long warningTicks)
+            {
+                FailureIdentity = failureIdentity ?? string.Empty;
+                WarningTicks = warningTicks;
+            }
+
+            public string FailureIdentity { get; }
+            public long WarningTicks { get; }
+        }
+
         /// <summary>Clears all timers and nulls the singleton reference.</summary>
         private void OnDestroy()
         {
@@ -1833,6 +1859,7 @@ namespace Unity.FoxgloveSDK.Components
             _pendingRemoves.Clear();
             _pendingAddSet.Clear();
             _pendingRemoveSet.Clear();
+            _warnedSourceFailures.Clear();
             _publishTargetStatuses.Clear();
             _sinkRouter.Dispose();
             if (_instance == this) _instance = null;

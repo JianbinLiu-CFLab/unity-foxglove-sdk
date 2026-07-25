@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private readonly int _sendTimeoutMs;
         private readonly Func<IRos2BridgeSink> _sinkFactory;
         private readonly object _gate = new object();
+        private readonly object _lifecycleGate = new object();
         private readonly Queue<QueuedPublish> _queue;
         private readonly Queue<PublisherPreparationKey> _preparationQueue =
             new Queue<PublisherPreparationKey>();
@@ -48,6 +49,7 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
         private IRos2BridgeSink _sink;
         private long _connectionGeneration;
         private long _nextConnectAttemptUnixMs;
+        private bool _disposed;
 
         public Ros2BridgeRuntime(
             string host,
@@ -287,6 +289,16 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         public void Stop()
         {
+            lock (_lifecycleGate)
+            {
+                if (_disposed)
+                    return;
+                StopCore();
+            }
+        }
+
+        private void StopCore()
+        {
             Thread worker;
             IRos2BridgeSink sinkToClose;
             lock (_gate)
@@ -380,13 +392,19 @@ namespace Unity.FoxgloveSDK.Ros2Bridge
 
         public void Dispose()
         {
-            try
+            lock (_lifecycleGate)
             {
-                Stop();
-            }
-            finally
-            {
-                _signal.Dispose();
+                if (_disposed)
+                    return;
+                try
+                {
+                    StopCore();
+                }
+                finally
+                {
+                    _disposed = true;
+                    _signal.Dispose();
+                }
             }
         }
 

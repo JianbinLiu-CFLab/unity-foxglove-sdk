@@ -110,13 +110,13 @@ namespace Unity.FoxgloveSDK.Components
 
         internal void EndFoxRunPublishSession()
         {
-            if (!_foxRunPublishSessionState.Current.SessionActive)
-                return;
-
-            var policy = _foxRunPublishSessionState.End();
             try
             {
-                NotifyFoxRunPublishSessionChanged(policy);
+                if (_foxRunPublishSessionState.Current.SessionActive)
+                {
+                    var policy = _foxRunPublishSessionState.End();
+                    NotifyFoxRunPublishSessionChanged(policy);
+                }
             }
             finally
             {

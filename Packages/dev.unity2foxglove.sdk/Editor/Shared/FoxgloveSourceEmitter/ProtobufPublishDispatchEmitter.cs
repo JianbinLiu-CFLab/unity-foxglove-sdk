@@ -379,7 +379,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static string StripRosArray(string value)
         {
             var type = value ?? string.Empty;
-            var bracket = type.IndexOf('[', StringComparison.Ordinal);
+            var bracket = type.IndexOf('[');
             return bracket < 0 ? type : type.Substring(0, bracket);
         }
 

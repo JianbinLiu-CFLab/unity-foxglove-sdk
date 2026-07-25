@@ -135,10 +135,6 @@ namespace Unity.FoxgloveSDK.Components
                 reason = "Replay is suppressing live publishers.";
                 return false;
             }
-            if (!EnsureFoxRunRos2BridgeRuntimeDemand(out reason))
-            {
-                return false;
-            }
             if (!TryResolveRos2BridgeTopic(topic, string.Empty, out effectiveTopic, out reason))
                 return false;
             if (!FoxRunRos2InterfaceIdentity.IsValidCanonicalRosMessageType(schemaName))
@@ -152,6 +148,8 @@ namespace Unity.FoxgloveSDK.Components
                 reason = "ROS2 Bridge QoS must be a fully resolved portable contract.";
                 return false;
             }
+            if (!EnsureFoxRunRos2BridgeRuntimeDemand(out reason))
+                return false;
             try
             {
                 var readiness = _ros2BridgeRuntime.PreparePublisher(
@@ -172,7 +170,16 @@ namespace Unity.FoxgloveSDK.Components
         {
             // FoxRun's frozen/explicit Bridge target is independent from the
             // legacy component-output master switch.
-            _foxRunRos2BridgeRuntimeDemand = true;
+            if (!ActiveFoxRunPublishSessionPolicy.SessionActive)
+            {
+                reason = "FoxRun publish session is not active.";
+                return false;
+            }
+            if (!isActiveAndEnabled)
+            {
+                reason = "FoxgloveManager is not active and enabled.";
+                return false;
+            }
             if (_ros2BridgeRuntime == null)
                 CreateRos2BridgeRuntime();
             if (_ros2BridgeRuntime == null)
@@ -186,6 +193,7 @@ namespace Unity.FoxgloveSDK.Components
             _ros2BridgeRuntime.Start(
                 enabled: true,
                 autoConnect: _ros2BridgeAutoConnect);
+            _foxRunRos2BridgeRuntimeDemand = true;
             reason = string.Empty;
             return true;
         }

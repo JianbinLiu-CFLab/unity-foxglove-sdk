@@ -99,6 +99,13 @@ namespace Unity.FoxgloveSDK.Editor
             int ordinal)
         {
             var access = "source." + IdentifierUtils.EscapeIdentifier(member.Name);
+            if (member.HasPresence)
+            {
+                var captured = "__member_" + ordinal;
+                sb.AppendLine(
+                    $"{pad}var {captured} = __hasSource ? {access} : default({GlobalTypeName(member.FullyQualifiedTypeName)});");
+                access = captured;
+            }
             switch (member.Kind)
             {
                 case FoxRunRos2CustomDtoMemberKind.NestedDto:
@@ -291,7 +298,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static string StripArray(string rosType)
         {
             var value = rosType ?? string.Empty;
-            var bracket = value.IndexOf('[', StringComparison.Ordinal);
+            var bracket = value.IndexOf('[');
             return bracket < 0 ? value : value.Substring(0, bracket);
         }
 

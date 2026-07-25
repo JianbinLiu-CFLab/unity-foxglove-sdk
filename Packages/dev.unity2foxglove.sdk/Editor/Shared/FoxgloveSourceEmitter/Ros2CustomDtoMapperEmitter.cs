@@ -1055,7 +1055,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static string StripSequenceSuffix(string rosType)
         {
             var value = rosType ?? string.Empty;
-            var bracket = value.IndexOf('[', StringComparison.Ordinal);
+            var bracket = value.IndexOf('[');
             return bracket < 0 ? value : value.Substring(0, bracket);
         }
 

@@ -122,6 +122,102 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void FoxRunBridgeDemandStartsOnlyAfterSessionAndContractValidation()
+        {
+            var bridgeSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Publishing.Ros2Bridge.cs");
+            var bridgeRoot = CSharpSyntaxTree.ParseText(bridgeSource)
+                .GetCompilationUnitRoot();
+            var methods = bridgeRoot.DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .ToArray();
+            var prepare = methods.Single(method =>
+                method.Identifier.ValueText == "TryPrepareFoxRunRos2BridgePublish");
+            var ensure = methods.Single(method =>
+                method.Identifier.ValueText == "EnsureFoxRunRos2BridgeRuntimeDemand");
+            var prepareBody = prepare.Body?.ToFullString() ?? string.Empty;
+            var ensureBody = ensure.Body?.ToFullString() ?? string.Empty;
+
+            var topicValidation = prepareBody.IndexOf(
+                "TryResolveRos2BridgeTopic",
+                StringComparison.Ordinal);
+            var schemaValidation = prepareBody.IndexOf(
+                "IsValidCanonicalRosMessageType",
+                StringComparison.Ordinal);
+            var qosValidation = prepareBody.IndexOf(
+                "IsValidResolvedQos",
+                StringComparison.Ordinal);
+            var demand = prepareBody.IndexOf(
+                "EnsureFoxRunRos2BridgeRuntimeDemand",
+                StringComparison.Ordinal);
+
+            Assert.True(topicValidation >= 0 && topicValidation < demand);
+            Assert.True(schemaValidation >= 0 && schemaValidation < demand);
+            Assert.True(qosValidation >= 0 && qosValidation < demand);
+            Assert.Contains(
+                "ActiveFoxRunPublishSessionPolicy.SessionActive",
+                ensureBody,
+                StringComparison.Ordinal);
+            Assert.Contains("isActiveAndEnabled", ensureBody, StringComparison.Ordinal);
+            Assert.True(
+                ensureBody.IndexOf("_ros2BridgeRuntime.Start", StringComparison.Ordinal)
+                < ensureBody.IndexOf(
+                    "_foxRunRos2BridgeRuntimeDemand = true",
+                    StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void EndingPublishAlwaysReleasesBridgeDemandEvenWithoutAnActiveSession()
+        {
+            var publishingSource = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.FoxRunPublishing.cs");
+            var method = CSharpSyntaxTree.ParseText(publishingSource)
+                .GetCompilationUnitRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .Single(candidate =>
+                    candidate.Identifier.ValueText == "EndFoxRunPublishSession");
+
+            Assert.Empty(method.Body?.Statements.OfType<IfStatementSyntax>()
+                         ?? Enumerable.Empty<IfStatementSyntax>());
+            var terminalTry = Assert.Single(
+                method.Body?.Statements.OfType<TryStatementSyntax>()
+                ?? Enumerable.Empty<TryStatementSyntax>());
+            Assert.Contains(
+                "ReleaseFoxRunRos2BridgeRuntimeDemand",
+                terminalTry.Finally?.ToFullString() ?? string.Empty,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void SourceFailureDiagnosticsUseReasonAwareCooldownAndResetAtSessionBoundary()
+        {
+            var source = ReadRepoText(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
+            var methods = CSharpSyntaxTree.ParseText(source)
+                .GetCompilationUnitRoot()
+                .DescendantNodes()
+                .OfType<MethodDeclarationSyntax>()
+                .ToArray();
+            var logFailure = methods.Single(method =>
+                method.Identifier.ValueText == "LogSourceFailure");
+            var publishSessionChanged = methods.Single(method =>
+                method.Identifier.ValueText == "OnFoxRunPublishSessionChanged");
+            var logBody = logFailure.Body?.ToFullString() ?? string.Empty;
+            var sessionBody = publishSessionChanged.Body?.ToFullString() ?? string.Empty;
+
+            Assert.Contains(
+                "WarningDebouncer.ShouldEmitKeyedCooldown",
+                logBody,
+                StringComparison.Ordinal);
+            Assert.Contains("ex.GetType().FullName", logBody, StringComparison.Ordinal);
+            Assert.Contains(
+                "_warnedSourceFailures.Clear()",
+                sessionBody,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void DirectionalSessionsCaptureThreeDifferentQosDefaults()
         {
             var publishState = new FoxRunPublishSessionState();

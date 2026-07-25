@@ -99,6 +99,8 @@ TEST(Unity2FoxgloveRos2BridgeProtocol, ValidatesTopicNames)
   EXPECT_FALSE(is_valid_ros2_topic_name("unity/tf"));
   EXPECT_FALSE(is_valid_ros2_topic_name("/unity//tf"));
   EXPECT_FALSE(is_valid_ros2_topic_name("/unity/tf-with-dash"));
+  EXPECT_FALSE(is_valid_ros2_topic_name("/1st/sensor"));
+  EXPECT_FALSE(is_valid_ros2_topic_name("/unity/2nd_sensor"));
 }
 
 TEST(Unity2FoxgloveRos2BridgeProtocol, AcceptsCanonicalRos2MessageTypes)
@@ -645,6 +647,151 @@ TEST(
 
   const std::vector<std::string> expected_attempts = {unavailable_type, available_type};
   EXPECT_EQ(expected_attempts, creation_attempts);
+  EXPECT_EQ(1U, publish_count);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  MalformedHealthFieldTypesReturnAnErrorWithoutEscapingTheClientSession)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto node = std::make_shared<rclcpp::Node>(
+    "phase184_bridge_health_type_test",
+    options);
+
+  int sockets[2] = {-1, -1};
+  ASSERT_EQ(0, ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets));
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  BridgeNode bridge(
+    PayloadFormat::CdrWithEncapsulation,
+    [](const std::string &, const std::string &, const rclcpp::QoS &) {
+      return [](const rclcpp::SerializedMessage &) {};
+    });
+
+  std::exception_ptr server_failure;
+  std::thread server_thread(
+    [&]() {
+      try {
+        process_client(server_socket.get(), bridge, node);
+      } catch (...) {
+        server_failure = std::current_exception();
+      }
+    });
+
+  RawFrame invalid_request_id;
+  invalid_request_id.header = {
+    {"op", "health_ping"},
+    {"requestId", 184},
+    {"protocolVersion", 1}
+  };
+  write_u2r2_frame(client_socket.get(), invalid_request_id.header, {});
+  const auto invalid_request_id_response = read_raw_frame(client_socket.get(), node);
+  EXPECT_EQ("health_pong", invalid_request_id_response.header.value("op", ""));
+  EXPECT_EQ("", invalid_request_id_response.header.value("requestId", ""));
+  EXPECT_EQ("error", invalid_request_id_response.header.value("status", ""));
+  EXPECT_EQ("malformed_request", invalid_request_id_response.header.value("errorCode", ""));
+
+  RawFrame invalid_protocol;
+  invalid_protocol.header = {
+    {"op", "health_ping"},
+    {"requestId", "phase184-health-type"},
+    {"protocolVersion", "one"}
+  };
+  write_u2r2_frame(client_socket.get(), invalid_protocol.header, {});
+  const auto invalid_protocol_response = read_raw_frame(client_socket.get(), node);
+  EXPECT_EQ("health_pong", invalid_protocol_response.header.value("op", ""));
+  EXPECT_EQ("phase184-health-type", invalid_protocol_response.header.value("requestId", ""));
+  EXPECT_EQ("error", invalid_protocol_response.header.value("status", ""));
+  EXPECT_EQ("malformed_request", invalid_protocol_response.header.value("errorCode", ""));
+
+  nlohmann::json valid_health = {
+    {"op", "health_ping"},
+    {"requestId", "phase184-health-recovery"},
+    {"protocolVersion", 1}
+  };
+  write_u2r2_frame(client_socket.get(), valid_health, {});
+  const auto recovered = read_raw_frame(client_socket.get(), node);
+  EXPECT_EQ("health_pong", recovered.header.value("op", ""));
+  EXPECT_EQ("phase184-health-recovery", recovered.header.value("requestId", ""));
+  EXPECT_EQ("ok", recovered.header.value("status", ""));
+
+  EXPECT_EQ(0, ::shutdown(client_socket.get(), SHUT_WR));
+  server_thread.join();
+  context->shutdown("phase184 bridge health type test complete");
+  if (server_failure) {
+    try {
+      std::rethrow_exception(server_failure);
+    } catch (const std::exception & ex) {
+      ADD_FAILURE() << "server session failed: " << ex.what();
+    }
+  }
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
+  LegacyPublishContractFailureDoesNotDropHealthyPublishersInTheSameSession)
+{
+  auto context = std::make_shared<rclcpp::Context>();
+  context->init(0, nullptr);
+  rclcpp::NodeOptions options;
+  options.context(context);
+  auto node = std::make_shared<rclcpp::Node>(
+    "phase184_bridge_publish_isolation_test",
+    options);
+
+  int sockets[2] = {-1, -1};
+  ASSERT_EQ(0, ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets));
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+
+  const std::string unavailable_type = "missing_phase184_interfaces/msg/MissingEnvelope";
+  const std::string available_type = "std_msgs/msg/String";
+  size_t publish_count = 0;
+  GenericPublisherFactory factory =
+    [&](const std::string &, const std::string & message_type, const rclcpp::QoS &) {
+      if (message_type == unavailable_type) {
+        throw std::runtime_error("typesupport unavailable");
+      }
+      return [&](const rclcpp::SerializedMessage &) {
+          ++publish_count;
+        };
+    };
+  BridgeNode bridge(PayloadFormat::CdrWithEncapsulation, std::move(factory));
+
+  std::exception_ptr server_failure;
+  std::thread server_thread(
+    [&]() {
+      try {
+        process_client(server_socket.get(), bridge, node);
+      } catch (...) {
+        server_failure = std::current_exception();
+      }
+    });
+
+  const auto unavailable = MakePublishRawFrame(
+    "/phase184/unavailable",
+    unavailable_type);
+  write_u2r2_frame(client_socket.get(), unavailable.header, unavailable.payload);
+  const auto available = MakePublishRawFrame(
+    "/phase184/healthy",
+    available_type);
+  write_u2r2_frame(client_socket.get(), available.header, available.payload);
+  EXPECT_EQ(0, ::shutdown(client_socket.get(), SHUT_WR));
+
+  server_thread.join();
+  context->shutdown("phase184 bridge publish isolation test complete");
+
+  if (server_failure) {
+    try {
+      std::rethrow_exception(server_failure);
+    } catch (const std::exception & ex) {
+      ADD_FAILURE() << "server session failed: " << ex.what();
+    }
+  }
   EXPECT_EQ(1U, publish_count);
 }
 
